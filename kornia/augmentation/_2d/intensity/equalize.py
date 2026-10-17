@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import equalize
 
 
@@ -41,25 +41,13 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - this class raises on an out-of-``[0, 1]`` input instead of transforming it. See
-          :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the policies used by the other
-          intensity augmentations. :class:`RandomClahe` also raises out of range, with a message naming
-          :func:`kornia.enhance.equalize_clahe` and the range; its check is skipped on MPS, where the raw
-          indexing error survives on torch ``2.14``.
-        - the rejection is not exactly at the boundary: the check guards the 256-entry lookup indexed with
-          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]``, at either end, is
-          still admitted, up to the rounding of ``input * 255`` in the input's dtype: in ``float16``,
-          ``1.00390625`` already raises.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the wrapper clamps before calling :func:`kornia.enhance.equalize`; the functional API
+          retains its strict range check.
 
     .. note::
-        This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
-        :math:`[0, 1]` and raises a ``RuntimeError`` for values it cannot equalize. Where the value check
-        runs, its message names that range; kornia skips the check for an MPS image, and what happens
-        there depends on torch: from ``2.14`` the lookup raises a raw indexing error
-        (``AcceleratorError: gather: index 260 is out of bounds for dimension with size 256``), while
-        ``2.5.1`` and ``2.9.1`` leave the MPS gather unchecked and return an out-of-range image silently.
-        That MPS gap is what `#4431 <https://github.com/kornia/kornia/issues/4431>`_ left behind when it
-        was closed, and is tracked in `#4600 <https://github.com/kornia/kornia/issues/4600>`_.
+        This function internally uses :func:`kornia.enhance.equalize`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -80,10 +68,13 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        input = _clamp_unit_range(input)
         return equalize(input)

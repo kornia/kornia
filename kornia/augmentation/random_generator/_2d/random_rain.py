@@ -74,8 +74,7 @@ class RainGenerator(RandomGeneratorBase):
         self.drop_width = drop_width
 
     def __repr__(self) -> str:
-        repr = f"number_of_drops={self.number_of_drops}, drop_height={self.drop_height}, drop_width={self.drop_width}"
-        return repr
+        return f"number_of_drops={self.number_of_drops}, drop_height={self.drop_height}, drop_width={self.drop_width}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         # Each range is a closed integer interval: the sampler covers ``[lo, hi + 1)`` and ``forward``

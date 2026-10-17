@@ -30,14 +30,17 @@ __all__ = ["PatchMixGenerator"]
 class PatchMixGenerator(RandomGeneratorBase):
     r"""Generate patchmix indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.PatchMix`.
+
     Args:
-        alpha (float): hyperparameter for generating cut size from beta distribution.
+        alpha (float): parameter of the ``Beta(alpha, alpha)`` draw returned as ``lam``. It does not affect
+            the patch, whose side is always ``patch_size``.
         patch_size (int): size of the patch to be swapped.
-        p (float): probability of applying patchmix.
+        p (float): stored for ``repr`` only; the augmentation draws the gate itself.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B).
+            - mix_pairs (torch.Tensor): pairing indices with a shape of (B).
             - patch_coords (torch.Tensor): top-left coordinates of the patch (B, 2).
             - lam (torch.Tensor): mixing parameter (B).
 
@@ -59,17 +62,19 @@ class PatchMixGenerator(RandomGeneratorBase):
         self.p = p
 
     def __repr__(self) -> str:
-        repr = f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
-        return repr
+        return f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.beta_sampler = Beta(
             torch.tensor(self.alpha, device=device, dtype=dtype),
             torch.tensor(self.alpha, device=device, dtype=dtype),
         )
+        # The draw is truncated to a patch start, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype),
-            torch.tensor(1.0, device=device, dtype=dtype),
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
         self.pair_sampler = Uniform(
             torch.tensor(0.0, device=device, dtype=dtype),

@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import solarize
 
 
@@ -48,28 +48,16 @@ class RandomSolarize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the addition comes first: the drawn ``additions`` value is added to the whole image and the sum
           is clamped into ``[0, 1]``, and only then is everything at or above the drawn ``thresholds``
           replaced by ``1 - value``.
         - the scalar forms are centred, not absolute: a scalar ``thresholds`` is a half-width around
           ``0.5`` and a scalar ``additions`` a half-width around ``0``, so the class defaults centre on
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
-        - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, and
-          :func:`kornia.enhance.solarize` accepts the same closed interval, so a range that reaches an endpoint,
-          or draws one exactly, is applied rather than rejected. Because the two intervals are now the same,
-          the function's own forward check cannot fire for this class; it still applies to a direct
-          :func:`kornia.enhance.solarize` call, on the device its own ``.. note::`` describes.
-
-    .. warning::
-        An input entirely outside ``[0, 1]`` can collapse at either end. An all-negative input can come back
-        as an all-zero image when the sampled addition does not raise it above zero; a positive sampled
-        addition can recover values instead, and a drawn threshold of ``0`` inverts the clamped zeros into
-        an all-ones image. At the upper end, ``clamp(x + a, 0, 1)``
-        sends every ``x >= 1.5`` to exactly ``1.0`` for any admissible ``a``, and the inversion then returns
-        ``1 - 1.0 == 0``, so an input drawn from ``[1.5, 3.0]`` is an all-zero image on every draw.
-        Values between ``1`` and ``1.5`` can instead produce nonzero output after a negative addition:
-        ``x=1.1``, ``additions=(-0.4, -0.4)`` and ``thresholds=(0.5, 0.5)`` give ``0.3``. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, so a
+          range that reaches an endpoint is applied rather than rejected.
 
     .. note::
         This function internally uses :func:`kornia.enhance.solarize`.
@@ -113,10 +101,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = _clamp_unit_range(input)
         thresholds = params["thresholds"]
         additions: Optional[torch.Tensor]
-        if "additions" in params:
-            additions = params["additions"]
-        else:
-            additions = None
+        additions = params.get("additions")
         return solarize(input, thresholds, additions)

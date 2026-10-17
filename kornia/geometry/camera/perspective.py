@@ -15,8 +15,6 @@
 # limitations under the License.
 #
 
-import math
-
 import torch
 import torch.nn.functional as F
 
@@ -36,16 +34,13 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
     Convention:
         - ``point_3d`` is a **camera-frame** point and ``camera_matrix`` the :math:`(*, 3, 3)` ``K``; the
           function takes no extrinsics, so it does not move between frames.
-        - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`
-          although the shape below reads :math:`(*, 3)`.
-        - a point with ``z = 0`` does not raise: the perspective divide is skipped and ``K`` is applied to the
-          undivided point, giving ``fx x + cx``. A point behind the camera is projected just as silently.
-
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-frame coordinates,
-        intrinsics and the pixel-centre convention.
+        - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`.
 
     .. warning::
-        The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        At ``abs(z) <= 1e-8`` the divide is skipped and ``K`` is applied to the undivided point, giving the
+        finite placeholder ``fx x + cx``; the other projection entry points do not follow this rule yet:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_. Neither that placeholder nor a point behind the
+        camera is flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
     Args:
         point_3d: tensor containing the 3d points to be projected
@@ -88,9 +83,6 @@ def unproject_points(
         - ``depth`` is the camera-frame ``z`` of the result. With ``normalize=True`` it is read as the
           Euclidean ray length instead, so the result has that norm and a smaller ``z``.
 
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-frame depth,
-        intrinsics and the pixel-centre convention.
-
     Args:
         point_2d: tensor containing the 2d points to be projected to
             the camera frame. The shape of the tensor can be :math:`(*, 2)`.
@@ -126,34 +118,3 @@ def unproject_points(
         xyz = F.normalize(xyz, dim=-1, p=2.0)
 
     return xyz * depth
-
-
-def projection_valid_mask(points_in_camera: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    """Return whether camera-frame points have finite coordinates and depth greater than eps.
-
-    Args:
-        points_in_camera: Real floating-point coordinates of shape (...,3), in the camera
-            frame. Positive z points in front of the camera.
-        eps: Finite nonnegative absolute z threshold, in the same length units as the points.
-            Half-precision coordinates are compared in float32 to avoid rounding this threshold.
-
-    Returns:
-        Boolean tensor of shape (...), preserving device and every leading dimension.
-
-    Note:
-        This geometric predicate does not check intrinsics, image bounds, occlusion or
-        numerical representability of a subsequent perspective divide. It does not change
-        the historical behavior of project_points for zero or negative depth.
-    """
-    if not isinstance(points_in_camera, torch.Tensor):
-        raise TypeError("points_in_camera must be a Tensor.")
-    if not points_in_camera.is_floating_point():
-        raise TypeError("points_in_camera must have a real floating dtype.")
-    if points_in_camera.ndim < 1 or points_in_camera.shape[-1] != 3:
-        raise ValueError("points_in_camera must have shape (..., 3).")
-    if not math.isfinite(eps) or eps < 0:
-        raise ValueError("eps must be finite and nonnegative.")
-    work = points_in_camera
-    if work.dtype in (torch.float16, torch.bfloat16):
-        work = work.float()
-    return torch.isfinite(work).all(dim=-1) & (work[..., 2] > eps)

@@ -67,7 +67,8 @@ def _magnitude_bin(magnitudes: torch.Tensor, magnitude: int, name: str) -> Tuple
 
 def shear_x(probability: float, magnitude: int) -> OperationBase:
     """Return ShearX op."""
-    magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.0
+    # A shear fraction, which ShearX's magnitude mapping turns into degrees.
+    magnitudes = torch.linspace(-0.3, 0.3, 11)
     return ShearX(
         None,
         probability,
@@ -78,7 +79,8 @@ def shear_x(probability: float, magnitude: int) -> OperationBase:
 
 def shear_y(probability: float, magnitude: int) -> OperationBase:
     """Return ShearY op."""
-    magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.0
+    # A shear fraction, which ShearY's magnitude mapping turns into degrees.
+    magnitudes = torch.linspace(-0.3, 0.3, 11)
     return ShearY(
         None,
         probability,

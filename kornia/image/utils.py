@@ -19,23 +19,38 @@
 from functools import wraps
 from typing import Any, Callable, List, Optional
 
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 
 def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
-    """Convert a numpy image to a PyTorch 4d tensor image.
+    """Convert a NumPy image to a PyTorch tensor image.
+
+    Convention:
+        - The last axis of a 3-D or 4-D array is always the channels: :math:`(H, W, C)` becomes :math:`(C, H, W)` and
+          :math:`(B, H, W, C)` becomes :math:`(B, C, H, W)`. A channels-first :math:`(C, H, W)` array is not detected:
+          it is read as :math:`(H, W, C)`.
+        - The dtype and the values are kept, so ``uint8`` stays in [0, 255], and the tensor is a view of the array
+          that shares its memory. An array with a negative stride, such as OpenCV's ``img[..., ::-1]``, raises
+          ``ValueError``; pass ``img[..., ::-1].copy()``.
+        - ``keepdim`` defaults to ``True`` here and to ``False`` in :class:`~kornia.image.ImageToTensor`.
+        - :ref:`Files and arrays <image-io-conventions>` relates it to torchvision's ``ToTensor``.
 
     Args:
         image: image of the form :math:`(H, W, C)`, :math:`(H, W)` or
             :math:`(B, H, W, C)`.
-        keepdim: If ``False`` unsqueeze the input image to match the shape
-            :math:`(B, H, W, C)`.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
+            always :math:`(B, C, H, W)`.
 
     Returns:
-        tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
-            :math:`(C, H, W)` otherwise.
+        tensor of the form :math:`(C, H, W)` for a 2-D or 3-D input with ``keepdim=True`` (a 2-D input has
+        :math:`C = 1`), and :math:`(B, C, H, W)` otherwise.
+
+    Raises:
+        TypeError: if ``image`` is not a ``numpy.ndarray``.
+        ValueError: if ``image`` is not two, three or four dimensional.
 
     Example:
         >>> img = np.ones((3, 3))
@@ -51,6 +66,9 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
         torch.Size([1, 3, 4, 4])
 
     """
+    if not isinstance(image, np.ndarray):
+        raise TypeError(f"Input type is not a numpy.ndarray. Got {type(image)}")
+
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional array")
 
@@ -76,9 +94,12 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
 def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
     """Convert a list of numpy images to a PyTorch 4d tensor image.
 
+    Convention:
+        See the Convention block of :func:`~kornia.image.image_to_tensor`. Unlike it, this function copies the images
+        into a new tensor and takes :math:`(H, W, C)` images only.
+
     Args:
-        images: list of images, each of the form :math:`(H, W, C)`.
-        Image shapes must be consistent
+        images: list of images, each of the form :math:`(H, W, C)`, all of the same shape.
 
     Returns:
         tensor of the form :math:`(B, C, H, W)`.
@@ -167,17 +188,28 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
 def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguous: bool = False) -> Any:
     """Convert a PyTorch tensor image to a numpy image.
 
-    In case the tensor is in the GPU, it will be copied back to CPU.
+    Convention:
+        - The channels move last, and a single channel is always dropped: :math:`(1, H, W)` gives :math:`(H, W)` and
+          :math:`(B, 1, H, W)` gives :math:`(B, H, W)`. ``keepdim`` keeps only the batch axis of a
+          :math:`(1, C, H, W)` input.
+        - The array shares memory with a CPU tensor whose dtype NumPy supports. A ``bfloat16`` tensor is returned as a
+          ``float32`` copy, a dtype NumPy cannot represent, such as ``float8_e4m3fn``, raises ``TypeError``, a tensor
+          on another device is copied, and ``force_contiguous=True`` copies a result that is not contiguous, such as
+          the channels-last view of a contiguous tensor with more than one channel.
+        - The dtype is kept, except ``bfloat16``, which NumPy lacks: it becomes ``float32``.
 
     Args:
         tensor: image of the form :math:`(H, W)`, :math:`(C, H, W)` or
             :math:`(B, C, H, W)`.
-        keepdim: If ``False`` squeeze the input image to match the shape
-            :math:`(H, W, C)` or :math:`(H, W)`.
-        force_contiguous: If ``True`` call `contiguous` to the tensor before
+        keepdim: If ``True``, keep the batch axis of a :math:`(1, C, H, W)` input.
+        force_contiguous: If ``True``, call ``contiguous`` on the result before converting it to NumPy.
 
     Returns:
-        image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
+        image of the form :math:`(H, W)`, :math:`(H, W, C)`, :math:`(B, H, W)` or :math:`(B, H, W, C)`.
+
+    Raises:
+        TypeError: if ``tensor`` is not a ``torch.Tensor``.
+        ValueError: if ``tensor`` is not two, three or four dimensional.
 
     Example:
         >>> img = torch.ones(1, 3, 3)
@@ -197,17 +229,17 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
 
     input_shape = tensor.shape
     image = tensor.cpu().detach()
+    if image.dtype == torch.bfloat16:
+        image = image.float()  # NumPy has no bfloat16
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
         pass
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
-        if input_shape[0] == 1:
-            # Grayscale for proper plt.imshow needs to be (H,W)
-            image = image.squeeze()
-        else:
-            image = image.permute(1, 2, 0)
+        # Grayscale for proper plt.imshow needs to be (H,W); squeeze only the channel axis so that a unit H or W
+        # of a 1-row or 1-column image survives.
+        image = image.squeeze(0) if input_shape[0] == 1 else image.permute(1, 2, 0)
     elif len(input_shape) == 4:
         # (B, C, H, W) -> (B, H, W, C)
         image = image.permute(0, 2, 3, 1)
@@ -226,10 +258,15 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguou
 
 
 class ImageToTensor(nn.Module):
-    """Converts a numpy image to a PyTorch 4d tensor image.
+    """Convert a NumPy image to a PyTorch tensor image with :func:`image_to_tensor`.
+
+    Convention:
+        See the Convention block of :func:`~kornia.image.image_to_tensor`. Unlike it, ``keepdim`` defaults to
+        ``False``, so an :math:`(H, W, C)` array becomes :math:`(1, C, H, W)`.
 
     Args:
-        keepdim: If ``False`` unsqueeze the input image to match the shape :math:`(B, H, W, C)`.
+        keepdim: If ``False``, a 2-D or 3-D input gets a leading batch axis, :math:`(1, C, H, W)`. A 4-D input is
+            always :math:`(B, C, H, W)`.
 
     """
 
@@ -238,41 +275,58 @@ class ImageToTensor(nn.Module):
         self.keepdim = keepdim
 
     def forward(self, x: Any) -> torch.Tensor:
-        """Convert a NumPy-style image object into a PyTorch image tensor.
+        """Convert a NumPy image array into a PyTorch image tensor.
 
         Args:
-            x: Input image array accepted by :func:`image_to_tensor`. Common
-                layouts are ``(H, W)``, ``(H, W, C)``, or ``(B, H, W, C)``,
+            x: Input image array accepted by :func:`image_to_tensor`, of
+                layout ``(H, W)``, ``(H, W, C)`` or ``(B, H, W, C)``,
                 where :math:`B` is batch size, :math:`H` is height,
                 :math:`W` is width, and :math:`C` is channel count.
 
         Returns:
-            Tensor returned by :func:`image_to_tensor`. When ``self.keepdim`` is
-            ``False``, a batch dimension is added so image data follows
-            PyTorch's channel-first convention.
+            Tensor returned by :func:`image_to_tensor` with ``keepdim=self.keepdim``.
         """
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
 def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 2) -> torch.Tensor:
-    """Convert a batched tensor to one image with padding in between.
+    r"""Convert a batched tensor to one image with padding in between.
+
+    Convention:
+        - ``n_row`` is the number of images in each row, that is the number of columns, as torchvision's ``nrow``;
+          it defaults to :math:`\lceil \sqrt{B} \rceil`. The images fill each row in batch order, zero images complete
+          the last row, and ``n_row > B`` still gives ``n_row`` columns.
+        - ``padding`` zeros go between the images only, with no outer border, and the channels are kept: ``R`` rows
+          of ``n_row`` images give :math:`(C, R (H + p) - p, n_{row} (W + p) - p)` for :math:`p` = ``padding``.
+        - The grid is a new tensor in the input's dtype and on its device; :math:`B = 0` gives a zero-height grid.
+        - :ref:`Files and arrays <image-io-conventions>` compares it with torchvision's ``make_grid``.
 
     Args:
         tensor: A batched tensor of shape (B, C, H, W).
-        n_row: Number of images displayed in each row of the grid.
-        padding: The amount of padding to add between images.
+        n_row: Number of images displayed in each row of the grid. If ``None``, use the square root
+            of the batch size rounded up. Images are placed in batch order, filling each row before the next.
+        padding: The amount of padding to add between images; must be non-negative.
 
     Returns:
         torch.Tensor: The combined image grid.
 
+    Raises:
+        TypeError: if ``tensor`` is not a ``torch.Tensor``.
+        ValueError: if ``tensor`` is not four dimensional, ``n_row`` is not positive or ``padding`` is negative.
+
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor must be a PyTorch tensor.")
+    if padding < 0:
+        raise ValueError("padding must be non-negative.")
 
     B, C, H, W = tensor.shape
     if n_row is None:
-        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item())
-    n_col = (B + n_row - 1) // n_row
+        n_row = max(1, int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item()))
+    elif n_row < 1:
+        raise ValueError("n_row must be positive.")
+    n_col = n_row
+    n_row = (B + n_col - 1) // n_col
 
     padded_H = H + padding
     padded_W = W + padding
@@ -298,16 +352,19 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
     # crop trailing right/bottom padding to match original
     combined_H = n_row * padded_H - padding
     combined_W = n_col * padded_W - padding
-    combined = combined[:, :combined_H, :combined_W]
 
-    return combined
+    return combined[:, :combined_H, :combined_W]
 
 
 def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
-    """Apply `f` to an image of arbitrary leading dimensions `(*, C, H, W)`.
+    """Apply ``f`` to an image of arbitrary leading dimensions ``(*, C, H, W)``.
 
-    The input is reshaped to `(B, C, H, W)`, the function is applied, and the output is reshaped back to the original
-    shape.
+    Convention:
+        - ``f`` always receives a ``(B, C, H, W)`` tensor: an ``(H, W)`` input becomes ``(1, 1, H, W)``, a
+          ``(C, H, W)`` input ``(1, C, H, W)``, and the leading dimensions of a longer input are flattened into ``B``.
+          The output gets the input's leading dimensions back around ``f``'s own ``C``, ``H`` and ``W``, except that an
+          ``(H, W)`` input gets ``f``'s first channel only; ``f`` must keep the batch size.
+        - An empty input raises ``ValueError`` before ``f`` is called.
     """
 
     @wraps(f)
@@ -336,10 +393,12 @@ def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., to
 
 
 def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
-    """Apply `f` to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
+    """Apply ``f`` to an image of arbitrary leading dimensions ``(*, C, D, H, W)``.
 
-    The input is reshaped to `(B, C, D, H, W)`, the function is applied, and the output is reshaped back to the original
-    shape.
+    Convention:
+        See the Convention block of :func:`~kornia.image.perform_keep_shape_image`, with ``f`` receiving
+        ``(B, C, D, H, W)``: a ``(D, H, W)`` input becomes ``(1, 1, D, H, W)`` and a ``(C, D, H, W)`` input
+        ``(1, C, D, H, W)``.
     """
 
     @wraps(f)

@@ -55,8 +55,7 @@ class ResizeGenerator(RandomGeneratorBase):
         self.side = side
 
     def __repr__(self) -> str:
-        repr = f"output_size={self.output_size}"
-        return repr
+        return f"output_size={self.output_size}"
 
     def make_samplers(self, device: Union[str, torch.device, None], dtype: torch.dtype) -> None:
         self.device = device

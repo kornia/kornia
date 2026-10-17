@@ -34,18 +34,31 @@ class RandomJigsaw(MixAugmentationBaseV2):
     Make Jigsaw puzzles for each image individually. To mix with different images in a
     batch, referring to :class:`kornia.augmentation.RandomMosaic`.
 
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
             each output will mix image patches in a 2x2 grid.
-        ensure_perm: to ensure the nonidentical patch permutation generation against
-            the original one.
-        data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints",
-            "class", "label".
+        ensure_perm: reject the image-preserving permutation ``arange(N).view(rows, columns).T.flatten()`` when
+            drawing, so a selected sample is never returned unchanged. For a single-row or single-column grid that
+            permutation is ``[0, ..., N - 1]``; see the Convention block. A ``1 x 1`` grid has no other
+            permutation, so it raises ``ValueError`` unless ``ensure_perm=False``.
+        data_keys: the input type sequential for applying augmentations. Only "input" and "image" are
+            implemented; see the Convention block.
         p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
+
+    Convention:
+        - ``grid=(rows, columns)`` partitions each image independently. Both image dimensions must be divisible by
+          their grid entries, otherwise ``RuntimeError`` is raised whatever the gate. An entry's position selects
+          the destination cell in column-major order, while its value indexes the source patch in row-major order,
+          so the identity permutation reproduces the image only on a single-row or single-column grid (on a square
+          grid it transposes the patches). The image-preserving permutation is
+          ``arange(N).view(rows, columns).T.flatten()``, ``[0, 2, 1, 3]`` for a ``2 x 2`` grid.
+        - ``p`` is a per-sample gate; ``same_on_batch=True`` shares one gate draw and one permutation. Only image
+          input is implemented.
 
     Examples:
         >>> jigsaw = RandomJigsaw((4, 4))
@@ -96,11 +109,10 @@ class RandomJigsaw(MixAugmentationBaseV2):
         )
         perm = (perm + torch.arange(0, b, device=perm.device)[:, None] * perm.shape[1]).view(-1)
         input = input[:, perm, :, :]
-        input = (
+        return (
             input.reshape(-1, b, self.flags["grid"][1], h, piece_size_w)
             .permute(0, 1, 2, 4, 3)
             .reshape(-1, b, w, h)
             .permute(0, 1, 3, 2)
             .permute(1, 0, 2, 3)
         )
-        return input

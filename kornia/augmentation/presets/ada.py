@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.constants import DataKey
+
 from .. import (  # noqa: TID252
     AugmentationSequential,
     ColorJitter,
@@ -31,6 +33,7 @@ from .. import (  # noqa: TID252
     RandomRotation90,
 )
 from ..base import _AugmentationBase  # noqa: TID252
+from ..container.ops import DataType  # noqa: TID252
 from ..container.params import ParamItem  # noqa: TID252
 
 _data_keys_type = List[str]
@@ -211,6 +214,33 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
+    def _preproc_dict_data(
+        self, data: Dict[str, DataType]
+    ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...], Optional[Dict[str, Any]]]:
+        # ``data_keys`` describe a tensor input, and ADA always sets them, so the parent's rule that a dictionary needs
+        # ``data_keys=None`` would reject every dictionary. A dictionary names its own entries instead.
+        keys = tuple(data.keys())
+        data_keys, invalid_keys = self._read_datakeys_from_dict(keys)
+        invalid_data = {k: data[k] for k in invalid_keys} if invalid_keys else None
+        keys = tuple(k for k in keys if k not in invalid_keys) if invalid_keys else keys
+        return keys, data_keys, tuple(data[k] for k in keys), invalid_data
+
+    def _dict_keys(self, inputs: Dict[str, torch.Tensor], data_keys: Optional[_data_keys_type]) -> _data_keys_type:
+        """Return the augmentable keys of a dictionary input, the image key first."""
+        keys, dict_data_keys, _, _ = self._preproc_dict_data(cast(Dict[str, DataType], inputs))
+        if not keys:
+            raise ValueError(f"No key of the dictionary input names a data key. Got {list(inputs)}.")
+        # The dictionary sets the order, so only the data keys themselves have to agree.
+        if data_keys is not None and sorted(DataKey.get(k).value for k in data_keys) != sorted(
+            k.value for k in dict_data_keys
+        ):
+            raise ValueError(
+                f"A dictionary input names its own data keys, so `data_keys` must match them, in any order, or be "
+                f"None. Got {data_keys} for the keys {list(keys)}."
+            )
+        order = sorted(range(len(keys)), key=lambda i: dict_data_keys[i] != DataKey.INPUT)
+        return [keys[i] for i in order]
+
     def _get_inputs_metadata(
         self, inputs: _inputs_type, data_keys: _data_keys_type
     ) -> Tuple[int, Optional[Union[str, torch.device]]]:
@@ -238,8 +268,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     ) -> _inputs_type:
         merged: _inputs_type
         if isinstance(original, dict) and isinstance(augmented, dict):
-            merged = {}
-            for key in original.keys():
+            # Entries that name no data key were not augmented and pass through unchanged.
+            merged = dict(original)
+            for key in augmented:
                 merged_tensor = original[key].clone()
                 merged_tensor[p_tensor] = augmented[key]
                 merged[key] = merged_tensor
@@ -253,7 +284,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             )
         return merged
 
-    def forward(  # type: ignore[override]
+    def forward(
         self,
         inputs: _inputs_type,
         params: Optional[List[ParamItem]] = None,
@@ -268,6 +299,11 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         if `real_acc` is provided, the internal probability `p` is updated via the `update` method.
         Non-augmented samples retain their original values, and the output matches the input structure.
 
+        A dictionary input names its own data keys, as with :class:`~kornia.augmentation.AugmentationSequential`,
+        whatever ``data_keys`` the preset was built with; ``data_keys`` passed here must match them, in any order, or
+        be None. The same samples are augmented in every entry, and an entry whose key names no data key is returned
+        unchanged.
+
         `real_acc` is the Discriminator's accuracy on real images; for example,
         `(real_logits > 0).float().mean().item()` if using logits andn assuming real labels are positive.
         """
@@ -277,18 +313,23 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         if self.p == 0:
             return inputs
 
-        if data_keys is None:
-            data_keys = (
-                [k.name for k in self.data_keys]
-                if self.data_keys is not None
-                else [
-                    "input",
-                ]
-            )
+        if isinstance(inputs, dict):
+            # Each entry is row-selected and merged by its own key; the parent reads the data keys from the names.
+            data_keys = self._dict_keys(inputs, data_keys)
+            forward_data_keys = None
+        else:
+            if data_keys is None:
+                data_keys = [k.name for k in self.data_keys] if self.data_keys is not None else ["input"]
+            forward_data_keys = data_keys
 
         batch_size, device = self._get_inputs_metadata(inputs, data_keys=data_keys)
 
-        p_tensor = torch.bernoulli(torch.full((batch_size,), self.p, dtype=torch.float32, device=device)).bool()
+        sample_size = min(batch_size, 1) if self.same_on_batch else batch_size
+        p_tensor = (
+            torch.bernoulli(torch.full((sample_size,), self.p, dtype=torch.float32, device=device))
+            .bool()
+            .expand(batch_size)
+        )
 
         if not p_tensor.any():
             return inputs
@@ -297,9 +338,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         augmented_inputs = cast(
             _inputs_type,
             super().forward(
-                selected_inputs,  # type: ignore[arg-type]
+                selected_inputs,
                 params=params,
-                data_keys=data_keys,
+                data_keys=forward_data_keys,
             ),
         )
 

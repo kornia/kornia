@@ -55,8 +55,7 @@ class StemBlock(nn.Module):
         """
         x = self.stem1(x)
         x = torch.cat([self.pool(x), self.stem2b(self.stem2a(x))], 1)
-        x = self.stem4(self.stem3(x))
-        return x
+        return self.stem4(self.stem3(x))
 
 
 # Separable conv

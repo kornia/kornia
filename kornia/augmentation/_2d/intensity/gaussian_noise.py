@@ -39,12 +39,9 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - the noise is additive and recorded in full: the output is the input plus
-          ``_params["gaussian_noise"]``, a tensor with the original normalized ``(B, C, H, W)`` input shape,
-          so ``mean`` offsets the image rather than naming the mean the output should have. A
-          ``(C, H, W)`` input remains batched in the stored parameters even when ``keepdim=True``. With
-          ``same_on_batch=True``, the stored field has shape ``(1, C, H, W)`` and is expanded across the
-          input batch during application.
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
+        - the noise is additive and recorded in full: the output is the input plus ``_params["gaussian_noise"]``,
+          so ``mean`` offsets the image rather than naming the mean the output should have.
         - nothing is clamped, so an input already inside ``[0, 1]`` can leave it in either direction.
 
     Examples:

@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
@@ -85,7 +85,7 @@ def get_planckian_coeffs(mode: str) -> torch.Tensor:
             ]
         )
     else:
-        raise RuntimeError(f"Unexpected mode. Gotcha {mode}")
+        raise RuntimeError(f"Unexpected mode. Got {mode}")
 
     return torch.stack((coefs[:, 0] / coefs[:, 1], coefs[:, 2] / coefs[:, 1]), 1)
 
@@ -105,7 +105,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
     Args:
         mode: 'blackbody' or 'CIED'.
-        select_from: choose a list of jitters to apply from. `blackbody` range [0-24], `CIED` range [0-22]
+        select_from: choose a list of jitters to apply from. `blackbody` range [0-24], `CIED` range [0-22].
+          The entries index the table like a Python sequence: one past the end raises at construction, and a
+          negative one counts from the end.
         same_on_batch: apply the same transformation across the batch.
         p: probability that the random erasing operation will be performed.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -116,12 +118,10 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the red and blue channels are scaled by the selected row of the illuminant table and the green
-          channel is not scaled. The result is then clamped at the upper end only, so negative values stay
-          negative while any value the scaling leaves above ``1``, green included, is cut back to ``1``. Every
-          other 2D intensity augmentation whose clamp reaches the whole output bounds both ends;
-          :class:`RandomSnow` clamps only the pixels the snow covers, so it bounds the lower end of an
-          all-negative image and not the upper end of one above ``1``.
+          channel is not scaled. Both input and output are clamped into ``[0, 1]``, including green.
         - ``mode`` selects the illuminant lookup table, held in the persistent buffer ``pl``, and
           ``select_from`` narrows that table to the listed rows. The input must have three channels.
 
@@ -130,49 +130,46 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         does not load into an instance built with the other. Tracked in
         `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
-    .. note::
-        Input torch.Tensor must be float and normalized into [0, 1].
-
     Examples:
         To apply planckian jitter based on mode
 
         >>> rng = torch.manual_seed(0)
-        >>> input = torch.randn(1, 3, 2, 2)
-        >>> aug = RandomPlanckianJitter(mode='CIED')
+        >>> input = torch.rand(1, 3, 2, 2)
+        >>> aug = RandomPlanckianJitter(mode='CIED', p=1.0)
         >>> aug(input)
-        tensor([[[[ 1.0000, -0.2389],
-                  [-1.7740,  0.4628]],
+        tensor([[[[0.6543, 1.0000],
+                  [0.1167, 0.1741]],
         <BLANKLINE>
-                 [[-1.0845, -1.3986],
-                  [ 0.4033,  0.8380]],
+                 [[0.3074, 0.6341],
+                  [0.4901, 0.8964]],
         <BLANKLINE>
-                 [[-0.9228, -0.5175],
-                  [-0.7654,  0.2335]]]])
+                 [[0.2358, 0.3272],
+                  [0.1806, 0.2079]]]])
 
         To apply planckian jitter on image(s) from list of interested jitters
 
         >>> rng = torch.manual_seed(0)
-        >>> input = torch.randn(2, 3, 2, 2)
-        >>> aug = RandomPlanckianJitter(mode='blackbody', select_from=[23, 24, 1, 2])
+        >>> input = torch.rand(2, 3, 2, 2)
+        >>> aug = RandomPlanckianJitter(mode='blackbody', select_from=[23, 24, 1, 2], p=1.0)
         >>> aug(input)
-        tensor([[[[-1.1258, -1.1524],
-                  [-0.2506, -0.4339]],
+        tensor([[[[0.3736, 0.5784],
+                  [0.0666, 0.0994]],
         <BLANKLINE>
-                 [[ 0.8487,  0.6920],
-                  [-0.3160, -2.1152]],
+                 [[0.3074, 0.6341],
+                  [0.4901, 0.8964]],
         <BLANKLINE>
-                 [[ 0.4681, -0.1577],
-                  [ 1.4437,  0.2660]]],
+                 [[0.6789, 0.9421],
+                  [0.5199, 0.5986]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[ 0.1268,  0.6658],
-                  [-0.1093, -0.0850]],
+                [[[0.0331, 0.2501],
+                  [0.4353, 0.7679]],
         <BLANKLINE>
-                 [[ 0.9318,  1.0000],
-                  [ 1.0000,  0.0537]],
+                 [[0.6977, 0.8000],
+                  [0.1610, 0.2823]],
         <BLANKLINE>
-                 [[ 0.9134, -0.6101],
-                  [-1.2430, -3.4228]]]])
+                 [[0.2676, 0.3593],
+                  [0.1559, 0.3432]]]])
 
     """
 
@@ -208,6 +205,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = _clamp_unit_range(input)
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
         # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. Cast the
         # buffer to the input so both device and dtype follow the input for the channel-wise multiplication.
@@ -222,4 +220,4 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         output = torch.stack([r, g, b], -3)
 
-        return output.clamp(max=1.0)
+        return _clamp_unit_range(output)

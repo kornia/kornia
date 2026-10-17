@@ -63,11 +63,11 @@ The promises (stable core)
 
 1. **Deprecation before removal.** A public symbol is never removed or given
    an incompatible signature in a single step. It first spends at least one
-   minor release wrapped in ``kornia.core._compat.deprecated``, which
+   minor release as a deprecated alias -- ``kornia.core._compat.deprecated``, or a shim
+   with the old signature where the old function scripted with TorchScript -- which
    keeps the old call working while emitting a :class:`DeprecationWarning`
    that names the replacement and the version that introduced the
-   deprecation (this is the mechanism the 0.8.3 ``kornia.utils`` →
-   ``kornia.image`` migration used).
+   deprecation.
 2. **No silent semantic changes.** Changing a default that alters numerical
    output (interpolation flags, ``align_corners``, padding modes, coordinate
    conventions) counts as a breaking change and gets the same
@@ -112,12 +112,16 @@ The import-surface check verifies that recorded names leave the export surface
 in that change. An inventory edit acknowledges an ``__all__`` removal only for
 the exact same module and name; it does not authorize submodule removals.
 
-For a submodule API recorded only under an ancestor package, or an API absent
-from the inventory, record the exact module and removed ``__all__`` name in
+Each module that declares ``__all__`` under a recorded package root has its own row.
+To delete such a module, keep its key with an empty list: an empty row for a module
+that no longer exists records the deletion, and stays in the inventory.
+
+For an ``__all__`` name of a module that has no row of its own, such as a module
+outside the recorded package roots, record the exact module and removed name in
 ``tests/api_surface_removals.json``. For example::
 
     {
-      "kornia.geometry.boxes": ["Boxes"]
+      "kornia.feature.dedode": ["DeDoDe"]
     }
 
 Only module/name pairs newly added relative to the pull request's merge base

@@ -182,31 +182,15 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(patch_src[..., -1, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
 
     def test_convention_align_corners_default_false(self, device, dtype):
-        # HomographyWarper's bare default align_corners=False (every HomographyWarper construction in
-        # this file passes align_corners=True explicitly; this exercises the bare default). An identity
-        # homography must reproduce the input under either convention: the internal sampling grid is
-        # built to match align_corners, so the two agree rather than differing by half a pixel (#3904).
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
-        # Snippet used to generate the pre-#3945 literal (the call under test, verbatim):
-        #   height, width = 4, 5
-        #   patch_src = torch.arange(float(height * width)).view(1, 1, height, width)
-        #   warper = kornia.geometry.transform.HomographyWarper(height, width)  # no align_corners passed
-        #   expected = warper(patch_src, torch.eye(3)[None])
-        # Pre-#3945 literal, i.e. what an *identity* warp returned under the bare default:
-        #   [[[[0.0000, 0.3750, 1.0000, 1.6250, 1.0000],
-        #      [2.0833, 4.9167, 6.1667, 7.4167, 4.0833],
-        #      [5.4167, 11.5833, 12.8333, 14.0833, 7.4167],
-        #      [3.7500, 7.8750, 8.5000, 9.1250, 4.7500]]]]
-        # The corrected expectation is the input itself, so it needs no literal.
+        # At HomographyWarper's bare default align_corners=False, an identity homography reproduces
+        # the input: the sampling grid is built under the same convention it samples with (#3904).
         height, width = 4, 5
         patch_src = torch.arange(float(height * width), device=device, dtype=dtype).view(1, 1, height, width)
         dst_homo_src = eye_like(3, patch_src)
         warper = kornia.geometry.transform.HomographyWarper(height, width)
         patch_dst = warper(patch_src, dst_homo_src)
         self.assert_close(patch_dst, patch_src, atol=1e-3, rtol=1e-3)
-        # the literal above cannot distinguish False from None (grid_sample treats them alike), so
-        # the documented defaults are additionally pinned on the signatures of both APIs
+        # the identity holds under either setting, so the default itself is pinned on the signatures
         import inspect
 
         assert (
@@ -313,6 +297,81 @@ class TestHomographyWarper(BaseTester):
         # not exactly representable at half precision
         self.assert_close(precomputed, direct, atol=1e-4, rtol=1e-4)
         self.assert_close(direct, patch_src)
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
+    def test_warp_grid_ignores_the_homography_scale(self, scale, align_corners, device, dtype):
+        # A homography and any nonzero multiple of it describe the same warp. An absolute eps inside
+        # convert_points_from_homogeneous used to leave grid points with |w| <= eps undivided, so the
+        # sampled pixels depended on the matrix's arbitrary scale (#5761).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("these scales test the float32/float64 arithmetic range")
+        height, width = 6, 6
+        image = torch.arange(float(height * width), device=device, dtype=dtype).reshape(1, 1, height, width) / 36
+        dst_homo_src = torch.tensor(
+            [[[1.0, 0.1, 0.03], [0.05, 1.0, 0.02], [0.1, 0.2, 1.0]]], device=device, dtype=dtype
+        )
+        grid = kornia.geometry.create_meshgrid(
+            height, width, normalized_coordinates=True, device=device, dtype=dtype, align_corners=align_corners
+        )
+
+        self.assert_close(
+            kornia.geometry.transform.warp_grid(grid, scale * dst_homo_src),
+            kornia.geometry.transform.warp_grid(grid, dst_homo_src),
+        )
+
+        warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=align_corners)
+        self.assert_close(warper(image, scale * dst_homo_src), warper(image, dst_homo_src))
+
+        dst_homo_src_norm = _torch_inverse_cast(
+            kornia.geometry.normalize_homography(
+                dst_homo_src, (height, width), (height, width), align_corners=align_corners
+            )
+        )
+        warp = kornia.geometry.homography_warp
+        kwargs = {"align_corners": align_corners, "normalized_homography": True}
+        scaled = warp(image, scale * dst_homo_src_norm, (height, width), **kwargs)
+        assert torch.isfinite(scaled).all()
+        self.assert_close(scaled, warp(image, dst_homo_src_norm, (height, width), **kwargs))
+
+    @pytest.mark.parametrize("scale", [1e-8, 1e-12, 1e12])
+    def test_homography_warp_gradient_follows_the_projective_gauge(self, scale, device, dtype):
+        # The scale is divided out with a detached factor, so the image is unchanged and the gradient
+        # obeys the projective rule dL/d(s*H) = (dL/dH)/s rather than being silently rescaled (#5761).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("these scales test the float32/float64 arithmetic range")
+        height, width = 6, 6
+        image = torch.arange(float(height * width), device=device, dtype=dtype).reshape(1, 1, height, width) / 36
+        dst_homo_src = torch.tensor(
+            [[[1.0, 0.1, 0.03], [0.05, 1.0, 0.02], [0.1, 0.2, 1.0]]], device=device, dtype=dtype
+        )
+        normalized = _torch_inverse_cast(
+            kornia.geometry.normalize_homography(dst_homo_src, (height, width), (height, width))
+        )
+        reference_matrix = normalized.clone().requires_grad_()
+        scaled_matrix = (normalized * scale).requires_grad_()
+
+        reference = kornia.geometry.homography_warp(image, reference_matrix, (height, width))
+        actual = kornia.geometry.homography_warp(image, scaled_matrix, (height, width))
+        reference_grad = torch.autograd.grad(reference.square().sum(), reference_matrix)[0]
+        actual_grad = torch.autograd.grad(actual.square().sum(), scaled_matrix)[0]
+
+        assert torch.isfinite(actual_grad).all()
+        self.assert_close(actual, reference)
+        self.assert_close(actual_grad * scale, reference_grad)
+
+    def test_warp_grid_keeps_a_gradient_for_an_all_zero_matrix(self, device, dtype):
+        # A zero matrix has no nonzero magnitude to scale by. The gauge must fall back to 1 instead of
+        # dividing by the infinite "smallest magnitude", which would collapse every grid gradient to 0.
+        grid = kornia.geometry.create_meshgrid(3, 3, normalized_coordinates=True, device=device, dtype=dtype)
+        matrix = torch.zeros(1, 3, 3, device=device, dtype=dtype).requires_grad_(True)
+
+        warped = kornia.geometry.transform.warp_grid(grid, matrix)
+        grad = torch.autograd.grad(warped.sum(), matrix)[0]
+
+        assert torch.isfinite(warped).all()
+        assert torch.isfinite(grad).all()
+        assert grad.abs().sum() > 0
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16)])
     def test_gradcheck(self, batch_shape, device):
@@ -457,6 +516,91 @@ class TestHomographyNormalTransform(BaseTester):
         self.assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
 
+class TestHomographyNormalizePrecision(BaseTester):
+    """The normalization matrices must be built in the caller's dtype, not in float32 and then cast.
+
+    The oracle is the documented contract of each op, evaluated natively in float64 with the same
+    public helper: ``normalize_homography`` chains ``normal_transform_pixel(dst)`` with the inverse
+    of ``normal_transform_pixel(src)``. Every size is picked so that ``2 / (size - 1)`` is not
+    exactly representable in binary -- the 2-D pins use 2/3 and 2/5, the 3-D pin 2/3, 2/5, 2/7 and
+    2/9 across all six axes -- which is what exposes the float32 rounding. A size whose
+    ``size - 1`` is a power of two (2/1, 2/2, 2/4, 2/8 ...) is exact in every dtype and pins
+    nothing here, so do not "simplify" these numbers.
+    """
+
+    @staticmethod
+    def _skip_if_no_float64(device):
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+
+    def test_normalize_homography_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.normalize_homography(dst_pix_trans_src_pix, (4, 4), (6, 6))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel(4, 4, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel(6, 6, device=device, dtype=f64)
+        expected = dst_norm @ _torch_inverse_cast(src_norm)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_denormalize_homography_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.denormalize_homography(dst_pix_trans_src_pix, (4, 4), (6, 6))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel(4, 4, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel(6, 6, device=device, dtype=f64)
+        expected = _torch_inverse_cast(dst_norm) @ src_norm
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_normalize_homography3d_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(4, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.normalize_homography3d(dst_pix_trans_src_pix, (4, 4, 6), (6, 8, 10))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel3d(4, 4, 6, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel3d(6, 8, 10, device=device, dtype=f64)
+        expected = dst_norm @ _torch_inverse_cast(src_norm)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    @pytest.mark.parametrize("side", [3000, 11600])
+    def test_normalize_homography_of_a_large_image(self, device, dtype, side):
+        # #5197: normalize_homography inverts the source normalization matrix, whose determinant 4 / (side - 1)**2 is
+        # subnormal in float16 above about 256 px and rounds to zero there from about 11.6k px. The inverse ran
+        # in float16, so the result was 6.8 % off at 3000 px and NaN at 11600 px; it now runs in float32 for half
+        # input. Oracle: the same call in float64 on the CPU, on the same dtype-rounded homography. The bound is a
+        # few roundings in `dtype` at the largest entry: the normalization matrices are built in `dtype` and the
+        # chain of two products is rounded there.
+        homography = torch.tensor([[[1.0, 0.02, 3.0], [0.01, 0.98, -2.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.normalize_homography(homography, (side, side), (side, side))
+
+        assert out.dtype == dtype
+        expected = kornia.geometry.conversions.normalize_homography(
+            homography.cpu().double(), (side, side), (side, side)
+        )
+        atol = 4 * torch.finfo(dtype).eps * expected.abs().max().item()
+        self.assert_close(out.cpu().double(), expected, rtol=0.0, atol=atol)
+
+    def test_dtype_device_preserved(self, device, dtype):
+        homo_2d = torch.eye(3, device=device, dtype=dtype)[None]
+        homo_3d = torch.eye(4, device=device, dtype=dtype)[None]
+
+        for out in (
+            kornia.geometry.conversions.normalize_homography(homo_2d, (4, 4), (6, 6)),
+            kornia.geometry.conversions.denormalize_homography(homo_2d, (4, 4), (6, 6)),
+            kornia.geometry.conversions.normalize_homography3d(homo_3d, (2, 4, 5), (3, 8, 9)),
+        ):
+            assert out.dtype == dtype
+            assert out.device.type == device.type
+
+
 class TestHomographyWarper3D(BaseTester):
     num_tests = 10
     threshold = 0.1
@@ -524,6 +668,33 @@ class TestHomographyWarper3D(BaseTester):
             dtype=dtype,
         ).expand(batch_size, -1, -1)
         self.assert_close(norm_homo, res)
+
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_denormalize_homography_general(self, batch_size, device, dtype):
+        # The inverse of test_normalize_homography_general: denormalizing its expected result gives
+        # back its input. Every entry and normalization constant is dyadic, so the values are exact
+        # in every dtype.
+        norm_homo = torch.tensor(
+            [[[0.5, 0.0, 0.0, 0.0], [0.0, 0.5, 0.0, 3.5], [0.0, 0.0, 2.0, 7.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(batch_size, -1, -1)
+
+        dst_homo_src = kornia.geometry.conversions.denormalize_homography3d(norm_homo, (2, 2, 5), (2, 2, 5))
+        res = torch.tensor(
+            [[[0.5, 0.0, 0.0, 1.0], [0.0, 0.5, 0.0, 2.0], [0.0, 0.0, 2.0, 3.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(batch_size, -1, -1)
+        assert dst_homo_src.shape == (batch_size, 4, 4)
+        self.assert_close(dst_homo_src, res)
+
+    def test_denormalize_homography_invalid_input(self, device):
+        with pytest.raises(TypeError, match=r"Input type is not a torch.Tensor"):
+            kornia.geometry.conversions.denormalize_homography3d([[1.0]], (3, 5, 7), (6, 8, 11))
+
+        with pytest.raises(ValueError, match="must be a Bx4x4 tensor"):
+            kornia.geometry.conversions.denormalize_homography3d(torch.ones(2, 2, device=device), (3, 5, 7), (6, 8, 11))
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [(4, 5, 6), (2, 4, 6), (4, 3, 9), (5, 7, 8)])

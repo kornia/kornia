@@ -155,10 +155,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         """
         output = self.pre_processor(images)
-        if isinstance(output, list | tuple):
-            images = output[0]
-        else:
-            images = output
+        images = output[0] if isinstance(output, (list, tuple)) else output
         if isinstance(images, list):
             out_images = [self.model(image[None])[0] for image in images]
         else:
@@ -170,7 +167,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         images: Union[torch.Tensor, List[torch.Tensor]],
         edge_maps: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:  # type: ignore
+    ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:
         """Draw the super resolution results.
 
         Args:
@@ -214,14 +211,14 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_sr")
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: Optional[List[Tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type: ignore
+    ) -> "onnx.ModelProto":
         """Export the current super resolution model to an ONNX model file.
 
         Args:
@@ -243,12 +240,15 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
+        # The dummy input must agree with a fixed input size, which ``to_onnx`` checks.
+        pseudo_size = self.pseudo_image_size or self.input_image_size or 352
+
         return ONNXExportMixin.to_onnx(
             self,
             onnx_name,
             input_shape=[-1, 3, self.input_image_size or -1, self.input_image_size or -1],
             output_shape=[-1, 3, self.output_image_size or -1, self.output_image_size or -1],
-            pseudo_shape=[1, 3, self.pseudo_image_size or 352, self.pseudo_image_size or 352],
+            pseudo_shape=[1, 3, pseudo_size, pseudo_size],
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,
@@ -280,9 +280,7 @@ class RRDBNetBuilder:
         Raises:
             ValueError: If ``model_name`` is not one of the supported variants.
         """
-        if model_name == "RealESRGAN_x4plus":
-            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-        elif model_name == "RealESRNet_x4plus":
+        if model_name in ("RealESRGAN_x4plus", "RealESRNet_x4plus"):
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x4plus_anime_6B":
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
@@ -300,7 +298,8 @@ class RRDBNetBuilder:
             model_path = CachedDownloader.download_to_cache(
                 url, model_name, download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
             )
-            model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"))["params_ema"], strict=True)
+            state_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
+            model.load_state_dict(state_dict["params_ema"], strict=True)
         model.eval()
 
         return SuperResolution(

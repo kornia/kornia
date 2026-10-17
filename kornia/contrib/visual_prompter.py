@@ -129,9 +129,8 @@ class VisualPrompter:
         encoder_im_size = self.model.image_encoder.img_size
         pad_h = encoder_im_size - x.shape[-2]
         pad_w = encoder_im_size - x.shape[-1]
-        x = F.pad(x, (0, pad_w, 0, pad_h))
 
-        return x
+        return F.pad(x, (0, pad_w, 0, pad_h))
 
     @torch.no_grad()
     def set_image(
@@ -191,12 +190,7 @@ class VisualPrompter:
 
             boxes = Boxes.from_tensor(boxes, mode="xyxy")
 
-        if boxes.mode == "xyxy":
-            boxes_xyxy = boxes
-        else:
-            boxes_xyxy = Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
-
-        return boxes_xyxy
+        return boxes if boxes.mode == "xyxy" else Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
 
     def _valid_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Validate the input masks shape."""
@@ -375,7 +369,7 @@ class VisualPrompter:
             >>> # Use the prompter methods ...
 
         """
-        # self.set_image = torch.compile(  # type: ignore[method-assign]
+        # self.set_image = torch.compile(
         #     self.set_image,
         #     fullgraph=fullgraph,
         #     dynamic=dynamic,
@@ -385,7 +379,7 @@ class VisualPrompter:
         #     disable=disable,
         # )
         # FIXME: compile set image will try to compile AugmentationSequential which fails
-        self.model.image_encoder = torch.compile(  # type: ignore
+        self.model.image_encoder = torch.compile(
             self.model.image_encoder,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -395,7 +389,7 @@ class VisualPrompter:
             disable=disable,
         )
 
-        # self.preprocess_image = torch.compile(  # type: ignore[method-assign]
+        # self.preprocess_image = torch.compile(
         #     self.preprocess_image,
         #     fullgraph=fullgraph,
         #     dynamic=dynamic,
@@ -407,7 +401,7 @@ class VisualPrompter:
 
         # FIXME: compile predict will try to compile Preproc prompts, which need to compileAugmentationSequential
         # which fails
-        # self.predict = torch.compile(  # type: ignore[method-assign]
+        # self.predict = torch.compile(
         #     self.predict,
         #     fullgraph=fullgraph,
         #     dynamic=dynamic,
@@ -416,7 +410,7 @@ class VisualPrompter:
         #     options=options,
         #     disable=disable,
         # )
-        self.model.mask_decoder = torch.compile(  # type: ignore
+        self.model.mask_decoder = torch.compile(
             self.model.mask_decoder,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -425,7 +419,7 @@ class VisualPrompter:
             options=options,
             disable=disable,
         )
-        self.model.prompt_encoder = torch.compile(  # type: ignore
+        self.model.prompt_encoder = torch.compile(
             self.model.prompt_encoder,
             fullgraph=fullgraph,
             dynamic=dynamic,

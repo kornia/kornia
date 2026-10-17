@@ -17,17 +17,18 @@
 
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core.check import ShapeError
+from kornia.feature import KeyNetDetector
 from kornia.feature.scale_space_detector import (
-    _MAX_ABS_SIN_12,
     MultiResolutionDetector,
     ScaleSpaceDetector,
     _resize_mask,
     get_default_detector_config,
 )
-from kornia.geometry.subpix import AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d
+from kornia.geometry.subpix import AdaptiveQuadInterp3d, ConvQuadInterp3d, ConvSoftArgmax3d, IterativeQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
 from testing.base import (
@@ -35,9 +36,18 @@ from testing.base import (
     BaseTester,
     dynamo_is_available,
     supports_conv2d,
+    supports_reflect_padding,
     supports_replicate_padding,
     supports_topk,
 )
+from testing.default_device import default_device
+
+
+def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
+    # torch 2.5.1 has no float16 CPU reflection_pad2d or replication_pad2d; these pins blur (reflect) and take
+    # gradients (replicate).
+    if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+        pytest.skip(f"no reflection or replication padding kernel for {dtype} on {device.type}")
 
 
 def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype) -> None:
@@ -78,11 +88,47 @@ def _canonical_order(lafs: torch.Tensor, responses: torch.Tensor) -> tuple[torch
 
 
 class TestScaleSpaceDetector(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("constructor", [ScalePyramid, ScaleSpaceDetector, kornia.feature.SIFTFeatureScaleSpace])
+    @pytest.mark.parametrize("use_set_default_device", [False, True])
+    def test_constructor_without_non_cpu_float64(self, constructor, use_set_default_device):
+        # Model MPS's float64 restriction on meta so this regression also runs on CPU-only machines.
+        class NoDoubleOffCPU(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                kwargs = kwargs or {}
+                if kwargs.get("dtype") == torch.float64:
+                    assert torch.device(kwargs.get("device", "cpu")).type == "cpu"
+                return func(*args, **kwargs)
+
+        # SIFTFeatureScaleSpace explicitly moves to CPU unless its device argument is given.
+        constructor_kwargs = {"device": "meta"} if constructor is kornia.feature.SIFTFeatureScaleSpace else {}
+        # ``default_device`` leaves neither a DeviceContext mode nor a broken ``get_default_device`` behind (#5916).
+        with default_device("meta") if use_set_default_device else torch.device("meta"), NoDoubleOffCPU():
+            module = constructor(**constructor_kwargs)
+
+        pyramids = [child for child in module.modules() if isinstance(child, ScalePyramid)]
+        assert len(pyramids) == 1
+        buffers = dict(pyramids[0].named_buffers())
+        assert buffers
+        for kernel in buffers.values():
+            assert kernel.device.type == "meta"
+            assert kernel.dtype == torch.float32
+
+    @pytest.mark.parametrize("constructor", [ScaleSpaceDetector, kornia.feature.SIFTFeatureScaleSpace])
+    def test_constructor_under_default_device(self, device, constructor):
+        with device:
+            module = constructor()
+        pyramid = next(child for child in module.modules() if isinstance(child, ScalePyramid))
+        target = "cpu" if constructor is kornia.feature.SIFTFeatureScaleSpace else device
+        expected_device = torch.empty(0, device=target).device
+        for kernel in pyramid.buffers():
+            assert kernel.device == expected_device
+            assert kernel.dtype == torch.float32
+
     @pytest.mark.parametrize("subpix_type", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d])
     @pytest.mark.parametrize("batch", [1, 2])
-    @pytest.mark.parametrize("bonus", [0.0, 10.0])
     @pytest.mark.parametrize("max_candidates", [None, 3])
-    def test_joint_extrema_matches_separate_refinement(self, device, dtype, subpix_type, batch, bonus, max_candidates):
+    def test_joint_extrema_matches_separate_refinement(self, device, dtype, subpix_type, batch, max_candidates):
         # A subclass remains on the general extension path, which refines each sign
         # independently. Pin the batched built-in path to that reference, including
         # signed/weighted responses and gradients through the selected features. The value
@@ -95,7 +141,9 @@ class TestScaleSpaceDetector(BaseTester):
             pytest.skip("ConvQuadInterp3d has no candidate cap")
         torch.manual_seed(17)
         img = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype, requires_grad=True)
-        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype)
+        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype).clamp_min(0.05)
+        # Zero only the top band: a float16 draw also rounds a few scattered weights to exactly 0, and the refined
+        # centre of a candidate beside one fails the mask re-check, which left this fixture without a detection.
         mask[..., :8, :] = 0
 
         def detector(subpix):
@@ -120,7 +168,7 @@ class TestScaleSpaceDetector(BaseTester):
             module.forward = counted
             return calls
 
-        kwargs = {"strict_maxima_bonus": bonus}
+        kwargs = {}
         if subpix_type is not ConvQuadInterp3d:
             kwargs["max_candidates"] = max_candidates
         joint, separate = subpix_type(**kwargs), SeparateSubpix(**kwargs)
@@ -132,7 +180,8 @@ class TestScaleSpaceDetector(BaseTester):
             self.assert_close(a, e)
         # The subclass refines each sign of every octave in its own call. The built-in refiner
         # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
-        assert len(separate_calls) > 0 and len(separate_calls) % 2 == 0
+        assert len(separate_calls) > 0
+        assert len(separate_calls) % 2 == 0
         assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
         actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
         expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
@@ -160,7 +209,11 @@ class TestScaleSpaceDetector(BaseTester):
         n_feats = 1
         det = ScaleSpaceDetector(n_feats, resp_module=kornia.feature.BlobHessian(), mr_size=3.0).to(device, dtype)
         lafs, resps = det(inp)
-        expected_laf = torch.tensor([[[[8.4260, 0.0000, 16.0], [0.0, 8.4260, 16.0]]]], device=device, dtype=dtype)
+        expected_laf = torch.tensor(
+            [[[[8.4260, 0.0000, 16.0], [0.0, 8.4260, 16.0]]]],
+            device=device,
+            dtype=torch.promote_types(dtype, torch.float32),
+        )
         expected_resp = torch.tensor([[0.1159]], device=device, dtype=dtype)
         # The scale is `sigma * 2 ** (level / num_levels)` after a sub-pixel refinement; float16
         # resolves it to ~3e-3 and bfloat16, with its 8-bit mantissa, to ~3e-2.
@@ -178,7 +231,11 @@ class TestScaleSpaceDetector(BaseTester):
         n_feats = 1
         det = ScaleSpaceDetector(n_feats, resp_module=kornia.feature.BlobHessian(), mr_size=3.0).to(device, dtype)
         lafs, resps = det(inp, mask)
-        expected_laf = torch.tensor([[[[8.4260, 0.0000, 16.0], [0.0, 8.4260, 16.0]]]], device=device, dtype=dtype)
+        expected_laf = torch.tensor(
+            [[[[8.4260, 0.0000, 16.0], [0.0, 8.4260, 16.0]]]],
+            device=device,
+            dtype=torch.promote_types(dtype, torch.float32),
+        )
         expected_resp = torch.tensor([[0.1159]], device=device, dtype=dtype)
         # The scale is `sigma * 2 ** (level / num_levels)` after a sub-pixel refinement; float16
         # resolves it to ~3e-3 and bfloat16, with its 8-bit mantissa, to ~3e-2.
@@ -197,7 +254,7 @@ class TestScaleSpaceDetector(BaseTester):
         mask = torch.ones(1, 1, 32, 32, device=device, dtype=other)
         det = ScaleSpaceDetector(5).to(device, dtype)
         lafs, resps = det(inp, mask)
-        assert lafs.dtype == dtype
+        assert lafs.dtype == torch.promote_types(dtype, torch.float32)
         assert resps.dtype == dtype
 
     def test_mask_spatial_size_must_match_the_image(self, device, dtype):
@@ -240,7 +297,8 @@ class TestScaleSpaceDetector(BaseTester):
         n_real = int((~zero_laf).sum())
         assert bool((~zero_laf[:n_real]).all()), "real detections must come first"
         lafs_fwd, resps_fwd = det(inp)
-        assert torch.equal(resps_fwd, resps) and torch.equal(lafs_fwd, lafs)
+        assert torch.equal(resps_fwd, resps)
+        assert torch.equal(lafs_fwd, lafs)
 
     def test_negative_detections_sort_before_the_padding(self, device, dtype):
         # A signed response function can have every maximum below zero. The padding must still
@@ -256,14 +314,23 @@ class TestScaleSpaceDetector(BaseTester):
         if dtype in (torch.float16, torch.bfloat16):
             # The shifted response is flat at half precision and yields no maxima at all.
             pytest.skip("a Hessian response offset by 1.0 has no resolution left in half precision")
-        torch.manual_seed(0)
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # Gaussian blobs of increasing size give the Hessian one scale-space maximum per blob. Random noise
+        # left one or two maxima whose survival depended on the exact response scale and on the dtype.
+        # Built in float64 on the CPU so every device sees the same input: MPS has no float64.
+        coords = torch.arange(96, dtype=torch.float64)
+        yy, xx = torch.meshgrid(coords, coords, indexing="ij")
+        inp = torch.zeros(96, 96, dtype=torch.float64)
+        for i, sigma in enumerate((1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0)):
+            cy, cx = 16 + 32 * (i // 3), 16 + 32 * (i % 3)
+            inp += torch.exp(-((yy - cy) ** 2 + (xx - cx) ** 2) / (2 * sigma**2))
+        inp = inp[None, None].to(device=device, dtype=dtype)
         det = ScaleSpaceDetector(50, resp_module=NegatedHessian()).to(device, dtype)
         lafs, resps = det(inp)
         filled = lafs[0].ne(0).any(dim=-1).any(dim=-1)
         n_real = int(filled.sum())
         assert 0 < n_real < 50, f"expected a partially filled result, got {n_real}"
-        assert bool(filled[:n_real].all()) and not bool(filled[n_real:].any())
+        assert bool(filled[:n_real].all())
+        assert not bool(filled[n_real:].any())
         assert (resps[0, :n_real] < 0).all()
         assert (resps[0, n_real:] == 0).all()
 
@@ -301,7 +368,8 @@ class TestScaleSpaceDetector(BaseTester):
         self.assert_close(resps[0][~right], torch.tensor([-0.20, -0.40], device=device, dtype=dtype))
         self.assert_close(resps[0][right], torch.tensor([-0.50, -0.60], device=device, dtype=dtype))
         assert resps[0].tolist() == sorted(resps[0].tolist(), reverse=True)
-        assert xs[0] < 48 and xs[1] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
+        assert xs[0] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
+        assert xs[1] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
 
     def test_a_weighted_negative_response_never_sorts_below_the_padding(self, device, dtype):
         # A weight *divides* a negative score, and a small weight can push the quotient past the
@@ -353,7 +421,8 @@ class TestScaleSpaceDetector(BaseTester):
         filled1 = lafs1.ne(0).any(dim=-1).any(dim=-1)
         filled2 = lafs2.ne(0).any(dim=-1).any(dim=-1)
         assert int(filled1.sum()) == 4, f"single-image path lost a detection: {resps1.tolist()}"
-        assert int(filled2[0].sum()) == 4 and int(filled2[1].sum()) == 4, f"batched path lost one: {resps2.tolist()}"
+        assert int(filled2[0].sum()) == 4, f"batched path lost one: {resps2.tolist()}"
+        assert int(filled2[1].sum()) == 4, f"batched path lost one: {resps2.tolist()}"
         assert torch.isfinite(resps2).all()
         self.assert_close(resps2[0], resps1[0])
 
@@ -375,14 +444,17 @@ class TestScaleSpaceDetector(BaseTester):
         mask = torch.zeros(1, 1, 96, 96, device=device, dtype=torch.bool)
         mask[..., 32:] = True
         lafs, resps = det(img, mask)
-        assert bool((lafs == 0).all()) and bool((resps == 0).all()), (
+        assert bool((lafs == 0).all()), f"a refined centre at {lafs[0, 0, :, 2].tolist()} lies in the masked-out region"
+        assert bool((resps == 0).all()), (
             f"a refined centre at {lafs[0, 0, :, 2].tolist()} lies in the masked-out region"
         )
         # Control: the same peak is returned, refined, when the mask allows the pixels it touches.
         mask[..., 31:] = True
         lafs, resps = det(img, mask)
         assert bool(resps[0, 0] > 0)
-        self.assert_close(lafs[0, 0, :, 2], torch.tensor([31.6, 48.0], device=device, dtype=dtype), atol=0.2, rtol=0)
+        self.assert_close(
+            lafs[0, 0, :, 2], torch.tensor([31.6, 48.0], device=device, dtype=lafs.dtype), atol=0.2, rtol=0
+        )
 
     def test_fill_sentinel_follows_the_response_dtype(self, device, dtype):
         # The top-K sentinel is written into the *response* tensor, so it must fit that dtype: a
@@ -412,6 +484,19 @@ class TestScaleSpaceDetector(BaseTester):
             assert 0 < int(filled[0].sum()) < 20
             assert bool((resps[~filled] == 0).all())
 
+    def test_float_weights_are_cast_to_the_response_dtype(self, device, dtype):
+        # The refinement runs on a float32 copy of a half-precision response, but the weights are still cast to the
+        # response's dtype first: a weight of 1e-8 is zero in float16, where it suppresses, and positive otherwise.
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        _skip_without_half_padding(device, dtype)
+        g = torch.Generator().manual_seed(0)
+        img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 96, 128, generator=g), 5, 1, 2).to(device, dtype)
+        det = ScaleSpaceDetector(8).to(device, dtype)
+        assert bool(kornia.feature.laf_is_filled(det(img)[0]).any())
+        lafs, _ = det(img, torch.full((1, 1, 96, 128), 1e-8, device=device))
+        assert bool(kornia.feature.laf_is_filled(lafs).any()) == (dtype != torch.float16)
+
     def test_float_weights_above_one_are_clamped(self, device, dtype):
         # A float 0/255 mask -- an OpenCV mask after `.astype(np.float32)` -- is weights, and a weight
         # above one scaled every score by 255. Weights are clamped to one, so it means what the
@@ -421,7 +506,8 @@ class TestScaleSpaceDetector(BaseTester):
         det = ScaleSpaceDetector(50).to(device, dtype)
         lafs_b, resps_b = det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=torch.bool))
         lafs_f, resps_f = det(inp, torch.full((1, 1, 64, 64), 255.0, device=device, dtype=dtype))
-        assert torch.equal(resps_f, resps_b) and torch.equal(lafs_f, lafs_b)
+        assert torch.equal(resps_f, resps_b)
+        assert torch.equal(lafs_f, lafs_b)
 
     def test_a_zero_response_maximum_keeps_its_laf(self, device, dtype):
         # The response function is pluggable and may be signed, so an exact zero can be a genuine
@@ -441,8 +527,12 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, resps = det(torch.zeros(1, 1, 96, 96, device=device, dtype=dtype))
         assert (resps == 0).all()
         centers = lafs[0, :, :, 2]
-        found = (centers == 48).all(dim=-1)
-        assert int(found.sum()) == 3, f"expected the three centre maxima, got {centers.tolist()}"
+        # The maximum sits at octave pixel W_o // 2 of the 96, 48 and 24 px octaves, which ScalePyramid's
+        # align_corners=True resizes put at 48, 24 * 95 / 47 and 12 * 95 / 23 in the input.
+        expected = torch.tensor([48.0, 24 * 95 / 47, 12 * 95 / 23], device=device, dtype=centers.dtype)
+        atol = 1e-9 if dtype == torch.float64 else 1e-4  # float32 centres for float16 and bfloat16 images too
+        found = torch.isclose(centers[:, None, :], expected[None, :, None], rtol=0.0, atol=atol).all(-1).any(0)
+        assert bool(found.all()), f"expected the three maxima at {expected.tolist()}, got {centers.tolist()}"
 
     def test_batched_underfill_does_not_leak_the_topk_sentinel(self, device, dtype):
         # For B > 1 the octave top-K ranks over the whole volume with non-candidates masked to
@@ -511,8 +601,10 @@ class TestScaleSpaceDetector(BaseTester):
         valid = lafs.ne(0).any(dim=-1).any(dim=-1)
         centers = lafs[..., 2][valid]
         assert bool(valid.any())
-        assert (centers[:, 0] >= 0).all() and (centers[:, 0] <= 95).all()
-        assert (centers[:, 1] >= 0).all() and (centers[:, 1] <= 95).all()
+        assert (centers[:, 0] >= 0).all()
+        assert (centers[:, 0] <= 95).all()
+        assert (centers[:, 1] >= 0).all()
+        assert (centers[:, 1] <= 95).all()
 
     def test_multichannel_response_is_rejected(self, device, dtype):
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
@@ -552,6 +644,110 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
 
+    @pytest.mark.parametrize("sigma", [2.016, 4.032])
+    def test_octave_boundary_scale_is_detected_once_5670(self, device, dtype, sigma):
+        # sigma = 1.6 * 2 ** (4 / 3) * 2 ** k is level 4 of one octave and level 1 of the next. With
+        # extra_levels=3 a per-level response has a level 4 in every octave, but it is only the NMS neighbour of
+        # level 3: searching it as well found this blob once in each octave.
+        if dtype == torch.bfloat16:
+            pytest.skip(
+                "in bfloat16 the octave-1 copy of this blob does not survive NMS, with or without a spare level"
+            )
+        yy, xx = torch.meshgrid(
+            torch.arange(160, dtype=torch.float64), torch.arange(200, dtype=torch.float64), indexing="ij"
+        )
+        blob = torch.exp(-((xx - 150.3) ** 2 + (yy - 110.6) ** 2) / (2 * sigma**2))
+        img = blob[None, None].to(device, dtype)
+        det = ScaleSpaceDetector(
+            16,
+            resp_module=kornia.feature.BlobHessian(),
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True, extra_levels=3),
+        ).to(device, dtype)
+        lafs, resps = det(img)
+        found = kornia.feature.laf_is_filled(lafs)[0] & (resps[0] > 1e-3 * resps[0].max())
+        assert int(found.sum()) == 1
+
+    @pytest.mark.parametrize(
+        "resp_module, scale_space_response, minima_are_also_good, extra_levels",
+        [
+            (kornia.feature.BlobHessian, False, False, (2, 3)),
+            (kornia.feature.BlobDoG, True, True, (3, 4)),
+        ],
+    )
+    def test_spare_pyramid_levels_do_not_change_the_detections_5670(
+        self, device, dtype, resp_module, scale_space_response, minima_are_also_good, extra_levels
+    ):
+        # Each octave searches response levels 1..n_levels, and levels 0 and n_levels + 1 are their NMS
+        # neighbours. A pyramid that builds a level past those detects exactly what the minimal one does.
+        # Bright and dark blobs from below the first octave boundary to above the second.
+        yy, xx = torch.meshgrid(
+            torch.arange(96, device=device, dtype=dtype), torch.arange(128, device=device, dtype=dtype), indexing="ij"
+        )
+        img = torch.zeros_like(xx)
+        for i, sigma in enumerate((1.3, 1.6, 2.016, 2.6, 3.2, 4.032, 5.0)):
+            cx, cy = 18.0 + 15.0 * i, 30.0 + 36.0 * (i % 2)
+            img = img + (-1) ** i * torch.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2))
+        img = img[None, None]
+        lafs, resps = [], []
+        for extra in extra_levels:
+            det = ScaleSpaceDetector(
+                30,
+                mr_size=1.0,
+                resp_module=resp_module(),
+                scale_pyr_module=ScalePyramid(3, 1.6, 16, extra_levels=extra),
+                scale_space_response=scale_space_response,
+                minima_are_also_good=minima_are_also_good,
+            ).to(device, dtype)
+            out_lafs, out_resps = det(img)
+            lafs.append(out_lafs)
+            resps.append(out_resps)
+        self.assert_close(lafs[1], lafs[0])
+        self.assert_close(resps[1], resps[0])
+
+    @pytest.mark.parametrize(
+        "double_image, sigma, octave_div",
+        [
+            (True, 1.5, 0.5),
+            (True, 3.0, 1),
+            (True, 6.0, 2),
+            (True, 12.0, 4),
+            (False, 3.0, 1),
+            (False, 6.0, 2),
+            (False, 12.0, 4),
+        ],
+    )
+    def test_detection_lands_on_the_blob_centre_in_every_octave_5675(
+        self, device, dtype, double_image, sigma, octave_div
+    ):
+        # One blob per octave, far from the origin. ScalePyramid resizes with align_corners=True, so octave pixel u
+        # is input pixel u * (W - 1) / (W_o - 1); mapping it by 2 ** o instead put the doubled octave ~0.4 px past
+        # the blob and pulled every coarser octave towards the origin, by ~0.8 px at 1/2 and ~2.3 px at 1/4.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the sub-pixel refinement alone moves a half-precision centre by more than the tolerance")
+        h, w = 241, 320
+        yy, xx = torch.meshgrid(
+            torch.arange(h, dtype=torch.float64), torch.arange(w, dtype=torch.float64), indexing="ij"
+        )
+        blob = torch.exp(-((xx - 251.3) ** 2 + (yy - 180.6) ** 2) / (2 * sigma**2))
+        det = ScaleSpaceDetector(
+            4,
+            resp_module=kornia.feature.BlobHessian(),
+            scale_pyr_module=ScalePyramid(3, 1.6, 15, double_image=double_image, extra_levels=2),
+        ).to(device, dtype)
+        lafs, _ = det(blob[None, None].to(device, dtype))
+        expected = torch.tensor([[251.3, 180.6]], device=device, dtype=dtype)
+        self.assert_close(kornia.feature.get_laf_center(lafs)[0, :1], expected, rtol=0.0, atol=0.1)
+        # The frame follows the same per-axis map. With an odd height the two factors differ (by 0.05 % on the
+        # doubled octave, 0.5 % at 1/2, 0.7 % at 1/4), so an isotropic frame in octave units fails the ratio.
+        h_o, w_o = (2 * h, 2 * w) if octave_div == 0.5 else (h // octave_div, w // octave_div)
+        sx, sy = (w - 1) / (w_o - 1), (h - 1) / (h_o - 1)
+        frame = lafs[0, 0, :, :2]
+        assert frame[0, 1] == 0
+        assert frame[1, 0] == 0
+        self.assert_close(
+            frame[1, 1] / frame[0, 0], torch.tensor(sy / sx, device=device, dtype=dtype), rtol=1e-5, atol=0.0
+        )
+
     def test_few_detections_padding(self, device, dtype):
         # Constant image → very few (possibly zero) NMS candidates; output must still
         # have the requested shape because the detect() method pads with zeros.
@@ -562,26 +758,32 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
 
-    def test_inline_boundary_constant_matches_reference(self):
-        """`_MAX_ABS_SIN_12` must be the x-extent `laf_to_boundary_points(laf, 12)` actually produces.
+    @pytest.mark.parametrize("x0", [80, 15])
+    def test_frame_overhanging_the_border_between_boundary_samples_is_rejected_5733(self, device, dtype, x0):
+        # A candidate is kept when half its frame lies inside the octave less a 5 px border, the rule of
+        # `laf_is_inside_image(scale_laf(frame, 0.5), octave, 5)`. One response maximum at level 2 of the first
+        # octave, row 32 and column 80 or 15, gets a half frame of radius 10.3, which overhangs the border at x = 90
+        # or x = 5 by 0.3 px. Ten points sampled on that circle reach only 10.3 sin(72 deg) = 9.8 px and kept it.
+        class PeakResponse(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = -torch.ones_like(x)
+                if x.shape[-1] == 96:  # the first octave only
+                    out[:, :, 2, 32, x0] = 0.0
+                return out
 
-        `_process_octave` inlines `laf_is_inside_image(scale_laf(lafs, 0.5), octave, 5)` for the
-        isotropic LAFs it builds. That inline form is only equivalent to the reference if the
-        constant is the maximum ``|sin|`` over the angles the reference samples, which are
-        ``linspace(0, 2 * pi, n_pts - 1)`` -- spacing ``2 * pi / 10``, not ``2 * pi / 11`` (#4064).
-        Device- and dtype-independent: this pins a Python float against a sampling convention.
-        """
-        cx, cy, half_s = 10.0, 20.0, 3.0
-        laf = kornia.feature.laf_from_center_scale_ori(
-            torch.tensor([[[cx, cy]]], dtype=torch.float64),
-            torch.full((1, 1, 1, 1), half_s, dtype=torch.float64),
-        )
-        pts = kornia.feature.laf_to_boundary_points(laf, 12)
-        # `laf_to_boundary_points` builds its angles in float32 before casting, so compare at
-        # float32 resolution -- the wrong spacing is off by 4e-2, four orders of magnitude more.
-        assert abs(((pts[..., 0].max() - cx) / half_s).item() - _MAX_ABS_SIN_12) < 1e-6
-        # ... and the y-extent the same block hardcodes as `half_s` (max|cos| = 1).
-        assert abs(((pts[..., 1].max() - cy) / half_s).item() - 1.0) < 1e-6
+        sigma = 1.6 * 2 ** (2 / 3)  # the scale of level 2 of the first octave
+        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        for radius, kept in ((10.3, False), (9.7, True)):
+            det = ScaleSpaceDetector(
+                1, resp_module=PeakResponse(), scale_space_response=True, mr_size=2 * radius / sigma
+            ).to(device, dtype)
+            lafs, _ = det(img)
+            assert bool(kornia.feature.laf_is_filled(lafs)[0, 0]) == kept
+            half_frame = kornia.feature.laf_from_center_scale_ori(
+                torch.tensor([[[float(x0), 32.0]]], device=device, dtype=dtype),
+                torch.full((1, 1, 1, 1), radius, device=device, dtype=dtype),
+            )
+            assert bool(kornia.feature.laf_is_inside_image(half_frame, img, 5)[0, 0]) == kept
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_scale_space_detector_init_preserves_global_config_4095(self):
@@ -649,12 +851,57 @@ class TestScaleSpaceDetector(BaseTester):
         det = ScaleSpaceDetector(2, subpix_module=ConvQuadInterp3d(10)).to(device)
         self.gradcheck(det, patches, nondet_tol=1e-4)
 
+    @pytest.mark.parametrize("refiner", ["adaptive", "conv_quad", "iterative", "soft_argmax"])
+    def test_half_image_refines_coordinates_in_float32(self, refiner, device, dtype):
+        # R4 / plan review P2: the refiners write absolute coordinates into a tensor of the response's dtype, and
+        # bfloat16 holds no odd integer above 256 (torch.arange(257, 263, dtype=bfloat16) == [256, 258, 260, 260,
+        # 260, 262]); float16 holds only multiples of 0.25 in [256, 512). The refiner sees a float32 response, so the
+        # refined centres past x = 256 lie off that grid; a centre rounded through the half dtype in the image frame
+        # lies on it, whatever the LAF dtype.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        _skip_without_half_padding(device, dtype)
+        refiners = {
+            "adaptive": AdaptiveQuadInterp3d,
+            "conv_quad": ConvQuadInterp3d,
+            "iterative": IterativeQuadInterp3d,
+            "soft_argmax": ConvSoftArgmax3d,
+        }
+        g = torch.Generator().manual_seed(0)
+        img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 300, 420, generator=g), 5, 1, 2).to(device, dtype)
+        det = ScaleSpaceDetector(200, subpix_module=refiners[refiner]()).to(device, dtype)
+        seen = []
+        det.subpix.register_forward_pre_hook(lambda mod, args: seen.append(args[0].dtype))
+        with torch.no_grad():
+            lafs, responses = det(img)
+        assert set(seen) == {torch.float32}
+        assert lafs.dtype == torch.float32
+        assert responses.dtype == dtype
+        x = lafs[0, :, 0, 2]
+        far = x[x > 256]
+        assert far.numel() > 20
+        assert (far != far.to(dtype).float()).float().mean() > 0.5
+
 
 class TestMultiResolutionDetector(BaseTester):
     def _make_detector(self, num_features: int = 50, **config_overrides):
         cfg = get_default_detector_config()
         cfg.update(config_overrides)
         return MultiResolutionDetector(kornia.feature.BlobHessian(), num_features=num_features, config=cfg)
+
+    def test_multi_resolution_half_image_gives_float32_lafs(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        _skip_without_half_padding(device, dtype)
+        g = torch.Generator().manual_seed(0)
+        img = torch.nn.functional.avg_pool2d(torch.rand(1, 1, 300, 420, generator=g), 5, 1, 2).to(device, dtype)
+        torch.manual_seed(1)  # random KeyNet weights; those of seed 0 give no positive response maximum at all
+        lafs, responses = KeyNetDetector(False, num_features=100).eval().to(device, dtype)(img)
+        assert lafs.dtype == torch.float32
+        assert responses.dtype == dtype
+        x = lafs[0, :, 0, 2]
+        assert x[x > 256].numel() > 20
+        assert (x[x > 256] % 2 != 0).any()
 
     def test_shape(self, device, dtype):
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
@@ -676,8 +923,10 @@ class TestMultiResolutionDetector(BaseTester):
         lafs, _ = det(inp)
         cx = lafs[0, :, 0, 2]
         cy = lafs[0, :, 1, 2]
-        assert (cx >= 0).all() and (cx <= 64).all()
-        assert (cy >= 0).all() and (cy <= 64).all()
+        assert (cx >= 0).all()
+        assert (cx <= 64).all()
+        assert (cy >= 0).all()
+        assert (cy <= 64).all()
 
     def test_no_upscale_levels(self, device, dtype):
         # up_levels=0 disables the upsampling branch; should still produce valid output.
@@ -766,6 +1015,63 @@ class TestMultiResolutionDetector(BaseTester):
         assert (resps == 0).all(), f"detected on the masked side: {lafs[0][resps[0] != 0][:, 0, 2].tolist()}"
         assert (lafs == 0).all()
 
+    def test_border_does_not_create_maxima_5694(self, device, dtype):
+        # A cone with its single maximum at x = 8, inside the 15 px border strip of every level. Zeroing
+        # the strip before non-maxima suppression carved an edge into the response, and on every level the
+        # pixel beside that edge was reported as a "maximum", 15 level pixels from the image border.
+        yy, xx = torch.meshgrid(
+            torch.arange(64, device=device, dtype=dtype), torch.arange(64, device=device, dtype=dtype), indexing="ij"
+        )
+
+        def cone(x0: float) -> torch.Tensor:
+            return (1 - ((xx - x0) ** 2 + (yy - 32) ** 2).sqrt() / 40).clamp(min=0)[None, None]
+
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=4).to(device, dtype)
+        lafs, resps = det(cone(8.0))
+        assert (resps == 0).all(), f"detected beside the border: {lafs[0][resps[0] != 0][:, :, 2].tolist()}"
+        assert (lafs == 0).all()
+        # A maximum outside the strip is still detected, and only there. The peak lies at x = 17 at full
+        # resolution and at x = 24 on the 90 px upscaled level, outside the strip (x < 15), and at x = 12
+        # or below on every coarser level, inside it, so a one-pixel change in how a level is resampled
+        # cannot move it across the strip's edge: exactly those two levels report it.
+        lafs, resps = det(cone(17.0))
+        found = resps[0] != 0
+        assert int(found.sum()) == 2, lafs[0][found][:, :, 2].tolist()
+        centres = lafs[0][found][:, :, 2].float()
+        target = torch.tensor([17.0, 32.0], device=device)
+        assert ((centres - target).abs() <= 1.0).all(), centres.tolist()
+
+    def test_strip_response_suppresses_like_any_neighbour(self, device, dtype):
+        # The suppression reads the response inside the strip, so a stronger response there removes a
+        # weaker maximum within `nms_size // 2` beside it, as a stronger neighbour does anywhere in the
+        # image. Only the strip's own positions are excluded from the detections.
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=2, config=cfg).to(device, dtype)
+        resp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        resp[0, 0, 32, 16], resp[0, 0, 32, 12], resp[0, 0, 32, 40] = 1.0, 2.0, 0.5
+        lafs, resps = det(resp)
+        self.assert_close(resps, torch.tensor([[0.5, 0.0]], device=device, dtype=dtype))
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([40.0, 32.0], device=device, dtype=lafs.dtype))
+
+    def test_remove_borders_writes_an_exact_zero(self, device, dtype):
+        # A 0/1 mask multiplied into the scores turns an infinite score inside the strip into NaN, which
+        # `topk` ranks ahead of every real detection before the validity test empties its slot.
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=1, config=cfg).to(device, dtype)
+        score = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        score[0, 0, 32, 10], score[0, 0, 32, 32] = float("inf"), 1.0
+        out = det.remove_borders(score)
+        inside = torch.zeros_like(score, dtype=torch.bool)
+        inside[..., 15:49, 15:49] = True
+        assert bool((out[~inside] == 0).all()), out[~inside].unique().tolist()
+        assert torch.equal(out[inside], score[inside])
+        assert torch.equal(det.remove_borders(score, borders=0), score)
+        lafs, resps = det(score)
+        self.assert_close(resps, torch.ones_like(resps))
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([32.0, 32.0], device=device, dtype=lafs.dtype))
+
     def test_thin_masked_stripe_survives_downsampling(self, device, dtype):
         # A two-pixel zero stripe is narrower than the sampling step of a coarse level, so an
         # interpolated mask reads 1.0 there and the stripe is gone; the conservative resample keeps
@@ -803,30 +1109,71 @@ class TestMultiResolutionDetector(BaseTester):
         det = self._make_detector().to(device, dtype)
         lafs_b, resps_b = det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=torch.bool))
         lafs_f, resps_f = det(inp, torch.full((1, 1, 64, 64), 255.0, device=device, dtype=dtype))
-        assert torch.equal(resps_f, resps_b) and torch.equal(lafs_f, lafs_b)
+        assert torch.equal(resps_f, resps_b)
+        assert torch.equal(lafs_f, lafs_b)
 
     def test_float_mask_weights_the_score_and_keeps_the_candidates(self, device, dtype):
         # A graded mask used to be multiplied into the response before the NMS and the sub-pixel
         # step, which moved maxima and their refined positions. It now weights only the score of a
         # maximum found in the unweighted response: same detections, same positions, ranked by weight.
-        torch.manual_seed(0)
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        det = self._make_detector(num_features=2000).to(device, dtype)
+        # Isolated interior peaks give a known candidate set, independent of random Hessian
+        # responses or spurious maxima created by removing the border before NMS.
+        inp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        inp[0, 0, 20, 20], inp[0, 0, 20, 44] = 4.0, 3.0
+        inp[0, 0, 44, 20], inp[0, 0, 44, 44] = 2.0, 1.0
+        # Weighting the response before NMS would move the first peak onto this shoulder.
+        inp[0, 0, 20, 21] = 3.99
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=0, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=2000, config=cfg).to(device, dtype)
         lafs_plain, resps_plain = det(inp)
         ramp = torch.linspace(0.2, 1.0, 64, device=device, dtype=dtype).view(1, 1, 1, 64).expand(1, 1, 64, 64)
         lafs, resps = det(inp, ramp.contiguous())
         keep_plain, keep = resps_plain[0] != 0, resps[0] != 0
-        assert int(keep.sum()) == int(keep_plain.sum()) > 20
-        # Same set of frames, up to the order the weighted score imposes.
+        assert int(keep.sum()) == int(keep_plain.sum()) == 4
+        self._check_weighted_like_plain(
+            lafs[0][keep], resps[0][keep], lafs_plain[0][keep_plain], resps_plain[0][keep_plain]
+        )
 
-        def order(t: torch.Tensor) -> torch.Tensor:
-            key = t[:, 0, 2].cpu().double() * 1000 + t[:, 1, 2].cpu().double()
-            return t[torch.sort(key).indices.to(t.device)]
+    def _check_weighted_like_plain(self, lafs_w, resps_w, lafs_p, resps_p):
+        # Same set of frames, up to the order the weighted score imposes: pair the detections by
+        # centre, then by scale, and compare the frames and the score of each pair.
+        def by_frame(lafs_: torch.Tensor, resps_: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            frames = lafs_.flatten(1).cpu().double().tolist()
+            idx = sorted(range(len(frames)), key=lambda i: (frames[i][2], frames[i][5], frames[i][0]))
+            return lafs_[idx], resps_[idx]
 
-        self.assert_close(order(lafs[0][keep]), order(lafs_plain[0][keep_plain]))
-        ratio = resps[0][keep] / resps_plain[0][keep]
-        assert float(ratio.min()) >= 0.2 - 1e-2 and float(ratio.max()) <= 1.0 + 1e-2
-        assert not torch.allclose(resps[0][keep], resps_plain[0][keep_plain])
+        lafs_w, resps_w = by_frame(lafs_w, resps_w)
+        lafs_p, resps_p = by_frame(lafs_p, resps_p)
+        self.assert_close(lafs_w, lafs_p)
+        ratio = resps_w / resps_p
+        assert float(ratio.min()) >= 0.2 - 1e-2
+        assert float(ratio.max()) <= 1.0 + 1e-2
+        assert float(ratio.min()) < 0.9, ratio.tolist()
+
+    def test_float_mask_weights_the_score_on_every_level(self, device, dtype):
+        # The same contract on resampled levels: the ramp is min-pooled onto every level, the upscaled
+        # one included, and still only weights the scores. Three blobs with off-grid centres give
+        # maxima on the upscaled, the full-resolution and two downsampled levels.
+        n = 96
+        yy, xx = torch.meshgrid(
+            torch.arange(n, dtype=torch.float64), torch.arange(n, dtype=torch.float64), indexing="ij"
+        )
+        blobs = [(37.3, 41.6, 1.0, 4.0), (58.7, 52.2, 0.8, 6.0), (45.1, 61.9, 0.6, 3.0)]
+        inp = sum(a * torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2 * s * s)) for x0, y0, a, s in blobs)
+        inp = inp[None, None].to(device, dtype)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=2000).to(device, dtype)
+        lafs_plain, resps_plain = det(inp)
+        ramp = torch.linspace(0.2, 1.0, n, device=device, dtype=dtype).view(1, 1, 1, n).expand(1, 1, n, n)
+        lafs, resps = det(inp, ramp.contiguous())
+        keep_plain, keep = resps_plain[0] != 0, resps[0] != 0
+        assert int(keep.sum()) == int(keep_plain.sum())
+        # A detection's scale identifies its level.
+        levels = kornia.feature.get_laf_scale(lafs_plain)[0][keep_plain].view(-1).unique()
+        assert levels.numel() >= 3, levels.tolist()
+        self._check_weighted_like_plain(
+            lafs[0][keep], resps[0][keep], lafs_plain[0][keep_plain], resps_plain[0][keep_plain]
+        )
 
     def test_response_map_must_match_the_level_size(self, device, dtype):
         # A response index is decoded as a level pixel with no offset, so a valid-convolution net
@@ -919,27 +1266,26 @@ class TestMultiResolutionDetector(BaseTester):
             pytest.skip(f"no replicate-padding kernel for {half_dtype} on {device.type}")
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
-    def test_half_precision_dtype_is_preserved(self, device, half_dtype):
-        # `detect_features_on_single_level` used to hardcode `.float()` on the pixel
-        # coordinates, so half-precision input came back with float32 LAFs beside
-        # half-precision responses.
+    def test_half_precision_gives_float32_lafs_and_half_responses(self, device, half_dtype):
+        # Pixel coordinates are float32 for a half-precision image: bfloat16 holds no odd pixel above 256. The
+        # responses keep the response function's dtype.
         self._require_half_response(device, half_dtype)
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=half_dtype)
         det = self._make_detector(num_features=20).to(device, half_dtype)
         lafs, resps = det(inp)
-        assert lafs.dtype == half_dtype
+        assert lafs.dtype == torch.float32
         assert resps.dtype == half_dtype
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_mask_does_not_promote_the_response_dtype(self, device, half_dtype):
         # A float32 mask multiplied into a half-precision response map used to promote the
-        # responses to float32 while the LAFs stayed half.
+        # responses to float32. The LAFs are float32 for a half-precision image either way.
         self._require_half_response(device, half_dtype)
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=half_dtype)
         mask = torch.ones(1, 1, 64, 64, device=device, dtype=torch.float32)
         det = self._make_detector(num_features=20).to(device, half_dtype)
         lafs, resps = det(inp, mask)
-        assert lafs.dtype == half_dtype
+        assert lafs.dtype == torch.float32
         assert resps.dtype == half_dtype
 
     def test_color_input_with_single_channel_response(self, device, dtype):
@@ -955,8 +1301,10 @@ class TestMultiResolutionDetector(BaseTester):
         assert bool(found.any())
         cx = lafs[0, :, 0, 2]
         cy = lafs[0, :, 1, 2]
-        assert (cx >= 0).all() and (cx <= 63).all()
-        assert (cy >= 0).all() and (cy <= 63).all()
+        assert (cx >= 0).all()
+        assert (cx <= 63).all()
+        assert (cy >= 0).all()
+        assert (cy <= 63).all()
 
     def test_multichannel_response_is_rejected(self, device, dtype):
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
@@ -983,10 +1331,16 @@ class TestMultiResolutionDetector(BaseTester):
         # `detect` used to run its final top-K only when the levels had produced *more* slots than
         # `num_features`, so a short result came back in level order with each level's own padding
         # left in place and the real detections scattered through it.
-        det = self._make_detector(num_features=6000, pyramid_levels=2, up_levels=0).to(device, dtype)
-        resps, _lafs = det.detect(torch.rand(1, 1, 48, 48, device=device, dtype=dtype))
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=2, up_levels=0)
+        det = MultiResolutionDetector(torch.nn.Identity(), num_features=6000, config=cfg).to(device, dtype)
+        # A central impulse survives at the original and first downsampled levels, so this
+        # exercises moving a later level's detection ahead of the first level's padding.
+        inp = torch.zeros(1, 1, 48, 48, device=device, dtype=dtype)
+        inp[0, 0, 24, 24] = 1.0
+        resps, _lafs = det.detect(inp)
         found = int((resps[0] != 0).sum())
-        assert 0 < found < 6000, f"expected a short result, got {found} detections"
+        assert found == 2, f"expected one detection on each of two levels, got {found}"
         assert bool((resps[0][:found] != 0).all()), "the detections do not come first"
         assert torch.equal(resps[0], torch.sort(resps[0], descending=True).values)
 
@@ -1125,7 +1479,8 @@ class TestMultiResolutionDetector(BaseTester):
         ref = self._make_detector(num_features=10).to(device, dtype)
         lafs, resps = det(inp)
         lafs_ref, resps_ref = ref(inp)
-        assert torch.equal(lafs, lafs_ref) and torch.equal(resps, resps_ref)
+        assert torch.equal(lafs, lafs_ref)
+        assert torch.equal(resps, resps_ref)
         with pytest.raises(TypeError):
             det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=dtype))
 
@@ -1137,3 +1492,320 @@ class TestMultiResolutionDetector(BaseTester):
         lafs, resps = det(inp)
         assert lafs.shape == torch.Size([1, 5, 2, 3])
         assert resps.abs().max().item() > 0
+
+
+def _conv_blob(x0: float, y0: float, sigma: float, height: int, width: int, device, dtype) -> torch.Tensor:
+    """Gaussian blob of ``sigma`` centred at pixel ``(x0, y0)`` (pixel centres at integers), ``(1, 1, H, W)``."""
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float64), torch.arange(width, dtype=torch.float64), indexing="ij"
+    )
+    blob = torch.exp(-((xx - x0) ** 2 + (yy - y0) ** 2) / (2 * sigma**2))
+    return blob.view(1, 1, height, width).to(device, dtype)
+
+
+class _TwoMaxima(torch.nn.Module):
+    """A scale-space response with two maxima at level 2 of the 64 x 96 octave: A at (40, 50), a weaker B at (30, 20).
+
+    ``pull`` sets A's right neighbour (41, 50) so that the sub-pixel step moves A's centre towards x = 41.
+    """
+
+    def __init__(self, pull: float | None = None) -> None:
+        super().__init__()
+        self.pull = pull
+
+    def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+        out = -torch.ones_like(x)
+        if x.shape[-1] == 96:  # the first octave only
+            out[:, :, 2, 50, 40] = 0.0
+            if self.pull is not None:
+                out[:, :, 2, 50, 41] = self.pull
+            out[:, :, 2, 20, 30] = -0.5
+        return out
+
+
+class _Extrema(torch.nn.Module):
+    """A scale-space response on a constant background with single-voxel extrema at level 2 of the 64 x 96 octave.
+
+    ``items`` holds ``((u, v), value, box)``: the voxel's value and, unless ``box`` is None, the value of the rest of
+    its 3 x 3 x 3 neighbourhood.
+    """
+
+    def __init__(self, items: list, background: float) -> None:
+        super().__init__()
+        self.items = items
+        self.background = background
+
+    def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+        out = torch.full_like(x[:, :1], self.background)
+        if x.shape[-1] == 96:  # the first octave only
+            for (u, v), value, box in self.items:
+                if box is not None:
+                    out[:, :, 1:4, v - 1 : v + 2, u - 1 : u + 2] = box
+                out[:, :, 2, v, u] = value
+        return out
+
+
+class _QuadraticMinimum(torch.nn.Module):
+    """A scale-space response ``(d - 2.375)^2 + (y - 30.375)^2 + (x - 20.375)^2 - 0.3`` on the 64 x 96 octave.
+
+    Every other octave is 1. Its minimum, -0.3 at level 2.375 and pixel (20.375, 30.375), lies between samples: every
+    sampled value is at least 3 * 0.375^2 - 0.3 = 0.121875, at the strict minimum voxel (2, 30, 20). The offsets are
+    exact in bfloat16.
+    """
+
+    def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+        out = torch.ones_like(x[:, :1])
+        if x.shape[-1] == 96:  # the first octave only
+            d, y, xx = torch.meshgrid(
+                *(torch.arange(n, device=x.device, dtype=x.dtype) for n in out.shape[-3:]), indexing="ij"
+            )
+            out[:] = (d - 2.375) ** 2 + (y - 30.375) ** 2 + (xx - 20.375) ** 2 - 0.3
+        return out
+
+
+class _LevelPeaks(torch.nn.Module):
+    """A response map with one peak per pyramid level, looked up by the level's ``(H, W)``.
+
+    Each peak has one lower neighbour, ``0.9`` of it, at the offset ``(du, dv)`` = ``neighbour``. Non-maxima
+    suppression removes the neighbour, but it makes the peak asymmetric, so any sub-pixel step would move the peak
+    towards it (a parabolic fit by 0.41 pixel).
+    """
+
+    def __init__(self, peaks: dict, neighbour: tuple[int, int]) -> None:
+        super().__init__()
+        self.peaks = peaks
+        self.neighbour = neighbour
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = torch.zeros_like(x[:, :1])
+        peak = self.peaks.get(tuple(x.shape[-2:]))
+        if peak is not None:
+            (u, v), value = peak
+            out[..., v, u] = value
+            out[..., v + self.neighbour[1], u + self.neighbour[0]] = 0.9 * value
+        return out
+
+
+class TestConventionsScaleSpaceDetector(BaseTester):
+    def test_convention_scale_space_detector_centre_is_sub_pixel_in_the_laf_frame(self, device, dtype):
+        # A blob of sigma 2.5 centred at x = 25.4, y = 18.6 (pixel centres at integers, LAF frame) on a 48 x 72 image is
+        # found at its centre to sub-pixel accuracy, and the other 15 slots are padding: zero LAF, zero response.
+        # Measured on CPU: (25.4001, 18.5999) in float32 and float64. The centres are float32 for a half-precision
+        # image, and the half-precision response moves them by about 0.05 px in bfloat16 and 0.01 px in float16.
+        _skip_without_half_padding(device, dtype)
+        tol = 0.15 if dtype == torch.bfloat16 else 0.05
+        img = _conv_blob(25.4, 18.6, 2.5, 48, 72, device, dtype)
+        det = ScaleSpaceDetector(16).to(device, dtype)
+        # relabelling: the transposed image swaps the centre's coordinates
+        for image, centre in ((img, (25.4, 18.6)), (img.transpose(-1, -2).contiguous(), (18.6, 25.4))):
+            lafs, resps = det(image)
+            expected = torch.tensor(centre, device=device, dtype=lafs.dtype)
+            self.assert_close(lafs[0, 0, :, 2], expected, rtol=0.0, atol=tol)
+            assert resps[0, 0] > 0
+            assert bool((lafs[0, 1:] == 0).all())
+            assert bool((resps[0, 1:] == 0).all())
+
+    @pytest.mark.parametrize(
+        "sigma, centre, size",
+        [(2.5, (25.4, 18.6), (48, 72)), (6.0, (70.4, 52.6), (96, 128))],
+        ids=["octave0", "octave1"],
+    )
+    def test_convention_scale_space_detector_laf_scale_is_mr_size_times_the_detection_sigma(
+        self, device, dtype, sigma, centre, size
+    ):
+        # The LAF scale is mr_size times the scale the blob is detected at, in input pixels, also from octave 1. The
+        # detection scale of a blob of sigma s lies within [0.95 s, 1.15 s] (1.035 s and 1.042 s here, CPU float32),
+        # so the default mr_size = 6 gives a frame of about 6 s; OpenCV's KeyPoint.size is 2 s.
+        _skip_without_half_padding(device, dtype)
+        img = _conv_blob(*centre, sigma, *size, device, dtype)
+        scales = {}
+        for mr_size in (6.0, 1.0):
+            lafs, _ = ScaleSpaceDetector(16, mr_size=mr_size).to(device, dtype)(img)
+            assert int(kornia.feature.laf_is_filled(lafs)[0].sum()) == 1
+            frame = lafs[0, 0, :, :2]
+            assert frame[0, 1] == 0
+            assert frame[1, 0] == 0
+            scales[mr_size] = kornia.feature.get_laf_scale(lafs)[0, 0, 0, 0]
+        self.assert_close(scales[6.0], 6.0 * scales[1.0])
+        assert 0.95 <= scales[1.0].item() / sigma <= 1.15
+
+    @pytest.mark.parametrize(
+        "response, polarity, minima_are_also_good, found",
+        [
+            ("hessian", "bright", False, True),
+            ("hessian", "dark", False, True),
+            ("dog", "dark", False, True),
+            ("dog", "bright", False, False),
+            ("dog", "bright", True, True),
+        ],
+    )
+    def test_convention_scale_space_detector_polarity_follows_the_response(
+        self, device, dtype, response, polarity, minima_are_also_good, found
+    ):
+        # The detector keeps response maxima, and minima only with minima_are_also_good. The Hessian determinant is a
+        # maximum at bright and dark blobs alike; DoG (coarser minus finer blur) is a maximum at a dark blob and a
+        # minimum at a bright one, which is detected only with minima_are_also_good, and a minimum's slot carries the
+        # negated response, so it is positive.
+        _skip_without_half_padding(device, dtype)
+        if response == "dog" and polarity == "bright" and dtype == torch.bfloat16:
+            # The same tie would hide the maximum that a reversed DoG makes of the bright blob, so the maxima-only case
+            # could not fail either.
+            pytest.skip("bfloat16 rounds the DoG minimum into a tie with a neighbour, and the 3x3x3 NMS is strict")
+        blob = _conv_blob(25.4, 18.6, 2.5, 48, 72, device, dtype)
+        img = blob if polarity == "bright" else 1.0 - blob
+        if response == "hessian":
+            det = ScaleSpaceDetector(8, minima_are_also_good=minima_are_also_good)
+        else:
+            det = ScaleSpaceDetector(
+                8,
+                resp_module=kornia.feature.BlobDoG(),
+                scale_space_response=True,
+                minima_are_also_good=minima_are_also_good,
+            )
+        lafs, resps = det.to(device, dtype)(img)
+        target = torch.tensor([25.4, 18.6], device=device, dtype=dtype)
+        near = kornia.feature.laf_is_filled(lafs)[0] & ((lafs[0, :, :, 2] - target).norm(dim=-1) < 1.0)
+        assert bool(near.any()) == found
+        if found:  # the strongest detection, with a positive response
+            assert bool(near[0])
+            assert resps[0, 0] > 0
+
+    @pytest.mark.parametrize("rejection", ["border", "mask"])
+    def test_wart_scale_space_detector_tests_border_and_mask_after_the_octave_top_k_5741(
+        self, device, dtype, rejection
+    ):
+        # An octave hands only its `num_features` strongest candidates to the border and mask test, so a rejected
+        # candidate's slot stays empty while a weaker valid one exists (#5741). A is rejected -- its half frame of
+        # radius 10.3 overhangs the border y = 63 - 5, or its refined centre x = 40.17 touches the masked pixel
+        # (41, 50) -- and B at (30, 20) is valid: num_features=1 returns an empty slot, num_features=2 returns B.
+        _skip_without_half_padding(device, dtype)
+        sigma = 1.6 * 2 ** (2 / 3)  # the scale of level 2 of the first octave
+        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        mask = None
+        if rejection == "border":
+            response, radius = _TwoMaxima(), 10.3
+        else:
+            response, radius = _TwoMaxima(pull=-0.5), 5.0
+            mask = torch.ones(1, 1, 64, 96, device=device, dtype=torch.bool)
+            mask[..., 50, 41] = False
+        filled = {}
+        for n in (1, 2):
+            det = ScaleSpaceDetector(n, resp_module=response, scale_space_response=True, mr_size=2 * radius / sigma)
+            lafs, resps = det.to(device, dtype)(img, mask)
+            filled[n] = kornia.feature.laf_is_filled(lafs)[0].tolist()
+        assert filled[1] == [False]
+        assert filled[2] == [True, False]
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=lafs.dtype))
+        self.assert_close(resps[0, 0], torch.tensor(-0.5, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        "sign, minima_are_also_good, centres, values",
+        [
+            (1.0, False, [[40.0, 30.0], [70.0, 45.0]], [0.8, -0.2]),
+            (1.0, True, [[40.0, 30.0], [25.0, 40.0], [70.0, 45.0]], [0.8, 0.7, -0.2]),
+            (-1.0, True, [[40.0, 30.0], [25.0, 40.0], [60.0, 25.0]], [0.8, 0.7, -0.3]),
+        ],
+        ids=["maxima", "minima", "minima-negated-response"],
+    )
+    def test_convention_scale_space_detector_takes_single_voxel_minima_below_zero_only(
+        self, device, dtype, sign, minima_are_also_good, centres, values
+    ):
+        # On a background of 0.5: maxima of 0.8 at (40, 30) and of -0.2 inside a -0.4 box at (70, 45), minima of -0.7
+        # at (25, 40) and of 0.3 at (60, 25). A strict maximum is a candidate whatever its sign; with
+        # minima_are_also_good a strict minimum is one when its refined negated response exceeds the response sampled
+        # there. Refinement leaves a single-voxel extremum at its sampled value, so such a minimum is one only below
+        # zero, and returns its negated response. So the minimum of 0.3 is not detected, and negating the response
+        # detects it (as a maximum of -0.3) instead of the maximum of -0.2 (now a minimum of 0.2).
+        _skip_without_half_padding(device, dtype)
+        items = [((40, 30), 0.8, None), ((70, 45), -0.2, -0.4), ((25, 40), -0.7, None), ((60, 25), 0.3, None)]
+        items = [(site, sign * value, None if box is None else sign * box) for site, value, box in items]
+        det = ScaleSpaceDetector(
+            8,
+            resp_module=_Extrema(items, background=sign * 0.5),
+            scale_space_response=True,
+            mr_size=1.0,
+            minima_are_also_good=minima_are_also_good,
+        )
+        lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, 64, 96, device=device, dtype=dtype))
+        n = len(values)
+        assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [True] * n + [False] * (8 - n)
+        self.assert_close(lafs[0, :n, :, 2], torch.tensor(centres, device=device, dtype=lafs.dtype))
+        self.assert_close(resps[0, :n], torch.tensor(values, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("minima_are_also_good", [False, True])
+    def test_convention_scale_space_detector_compares_a_refined_minimum_with_the_sampled_response(
+        self, device, dtype, minima_are_also_good
+    ):
+        # The selection compares a minimum after refinement: its refined negated response, 0.3, exceeds the 0.121875
+        # sampled at its voxel, so the minimum is a candidate although no sampled response is below zero. It is
+        # reported at its refined centre (20.375, 30.375) with response 0.3. The response has no strict maximum, so
+        # without minima_are_also_good there is no detection.
+        _skip_without_half_padding(device, dtype)
+        det = ScaleSpaceDetector(
+            2,
+            resp_module=_QuadraticMinimum(),
+            scale_space_response=True,
+            mr_size=1.0,
+            minima_are_also_good=minima_are_also_good,
+        )
+        lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, 64, 96, device=device, dtype=dtype))
+        if not minima_are_also_good:
+            assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [False, False]
+            return
+        assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [True, False]
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([20.375, 30.375], device=device, dtype=lafs.dtype))
+        self.assert_close(resps[0, 0], torch.tensor(0.3, device=device, dtype=dtype))
+
+    def test_convention_scale_space_detector_masks_candidates_before_the_top_k(self, device, dtype):
+        # A mask drops a candidate at its integer site before the octave's top-k; only the check of the refined centre
+        # comes after it (#5741). A, the strongest maximum, at (40, 50) lies in a masked 5 x 5 region, so the only slot
+        # of num_features=1 goes to the weaker B at (30, 20); without the mask it goes to A.
+        _skip_without_half_padding(device, dtype)
+        img = torch.zeros(1, 1, 64, 96, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 64, 96, device=device, dtype=torch.bool)
+        mask[..., 48:53, 38:43] = False
+        det = ScaleSpaceDetector(1, resp_module=_TwoMaxima(), scale_space_response=True, mr_size=2.0).to(device, dtype)
+        lafs, resps = det(img, mask)
+        assert kornia.feature.laf_is_filled(lafs)[0].tolist() == [True]
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([30.0, 20.0], device=device, dtype=lafs.dtype))
+        self.assert_close(resps[0, 0], torch.tensor(-0.5, device=device, dtype=dtype))
+        lafs, _ = det(img)
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([40.0, 50.0], device=device, dtype=lafs.dtype))
+
+
+class TestConventionsMultiResolutionDetector(BaseTester):
+    @pytest.mark.parametrize("detector", ["MultiResolutionDetector", "KeyNetDetector"])
+    def test_convention_multi_resolution_detector_reports_the_level_pixel_times_the_level_factor(
+        self, device, dtype, detector
+    ):
+        # A detection is an integer level pixel (u, v), reported at (u * W / W_l, v * H / H_l) with scale
+        # s_mult * mean(W / W_l, H / H_l), s_mult = 22 by default; there is no sub-pixel step, and (u, v) is not mapped
+        # to its pixel centre (u + 0.5) * W / W_l - 0.5 (the Key.Net reference maps it the same way). Level 1 of
+        # 69 x 128 at factor 2 is 34 x 64: pixel (20, 17) -> (40.0, 17 * 69 / 34 = 34.5), scale 22 * (2 + 69 / 34) / 2.
+        # Each peak's lower neighbour on its +x side (+y when transposed) would pull a sub-pixel step off the pixel.
+        _skip_without_half_padding(device, dtype)
+        cfg = get_default_detector_config()
+        cfg.update(pyramid_levels=1, up_levels=0, scale_factor_levels=2.0)
+        tol = 1e-3  # the LAFs are float32 for a half-precision image as well
+        for transposed in (False, True):
+            if transposed:  # relabelling: the transposed image reports swapped coordinates
+                size, peaks = (128, 69), {(128, 69): ((31, 45), 1.0), (64, 34): ((17, 20), 0.5)}
+                centres, neighbour = [[31.0, 45.0], [34.5, 40.0]], (0, 1)
+            else:
+                size, peaks = (69, 128), {(69, 128): ((45, 31), 1.0), (34, 64): ((20, 17), 0.5)}
+                centres, neighbour = [[45.0, 31.0], [40.0, 34.5]], (1, 0)
+            response = _LevelPeaks(peaks, neighbour)
+            if detector == "MultiResolutionDetector":
+                det = MultiResolutionDetector(response, num_features=4, config=cfg)
+            else:  # the KeyNet response is replaced by the same peaks through a forward hook
+                conf = {**kornia.feature.keynet.keynet_default_config, "Detector_conf": cfg}
+                det = kornia.feature.KeyNetDetector(False, num_features=4, keynet_conf=conf).eval()
+                det.model.register_forward_hook(lambda module, args, output, response=response: response(args[0]))
+            lafs, resps = det.to(device, dtype)(torch.zeros(1, 1, *size, device=device, dtype=dtype))
+            self.assert_close(resps, torch.tensor([[1.0, 0.5, 0.0, 0.0]], device=device, dtype=dtype))
+            expected = kornia.feature.laf_from_center_scale_ori(
+                torch.tensor([centres], device=device, dtype=lafs.dtype),
+                torch.tensor([22.0, 44.3235294], device=device, dtype=lafs.dtype).view(1, 2, 1, 1),
+            )
+            self.assert_close(lafs[:, :2], expected, rtol=0.0, atol=tol)
+            assert bool((lafs[0, 2:] == 0).all())

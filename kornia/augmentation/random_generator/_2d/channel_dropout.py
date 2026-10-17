@@ -50,8 +50,7 @@ class ChannelDropoutGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr_buf = f"num_drop_channels={self.num_drop_channels}"
-        return repr_buf
+        return f"num_drop_channels={self.num_drop_channels}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random dropout parameters."""

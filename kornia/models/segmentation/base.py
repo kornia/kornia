@@ -211,7 +211,7 @@ class SemanticSegmentation(ModelBase):
         output_type: str = "torch",
         colormap: str = "random",
         manual_seed: int = 2147,
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Visualize the segmentation masks.
 
         Args:
@@ -248,7 +248,7 @@ class SemanticSegmentation(ModelBase):
             colors = self.get_colormap(semantic_masks.size(1), colormap, manual_seed=manual_seed)
             outputs = self.visualize_output(semantic_masks, colors)
 
-        return self._tensor_to_type(outputs, output_type, is_batch=True if isinstance(outputs, torch.Tensor) else False)
+        return self._tensor_to_type(outputs, output_type, is_batch=isinstance(outputs, torch.Tensor))
 
     def save(
         self,

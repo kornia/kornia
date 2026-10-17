@@ -80,8 +80,7 @@ class Attention(nn.Module):
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        return self.proj_drop(x)
 
 
 class MemEffAttention(Attention):
@@ -92,7 +91,7 @@ class MemEffAttention(Attention):
     DINOv2 signature. Nothing in kornia passes it, and it must be ``None``.
     """
 
-    def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
+    def forward(self, x: Tensor, attn_bias=None) -> Tensor:
         """Run this DeDoDe module forward.
 
         Args:

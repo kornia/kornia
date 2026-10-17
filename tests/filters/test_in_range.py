@@ -15,8 +15,6 @@
 # limitations under the License.
 #
 
-import re
-
 import pytest
 import torch
 
@@ -92,23 +90,350 @@ class TestInRange(BaseTester):
         ):
             InRange(lower=(0.2,), upper=(0.2,))(input_tensor)
 
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "`lower` and `upper` bounds as Tensors must have compatible shapes with the input (B, C, 1, 1)."
-            ),
-        ):
-            lower = torch.tensor([0.2, 0.2, 0.2])
-            upper = torch.tensor([0.6, 0.6, 0.6])
+        # A 1-D Tensor bound must have one element per channel: C = 3 here.
+        lower = torch.tensor([0.2, 0.2, 0.2, 0.2])
+        upper = torch.tensor([0.6, 0.6, 0.6, 0.6])
+        with pytest.raises(ValueError, match=r"`lower` as a Tensor must be"):
             InRange(lower=lower, upper=upper)(input_tensor)
 
+        lower = torch.tensor([0.2, 0.2, 0.2])
+        upper = torch.tensor([0.6, 0.6, 0.6])
         with pytest.raises(Exception, match=r"Invalid `return_mask` format. Should be boolean."):
-            lower = torch.tensor([0.2, 0.2, 0.2])
-            upper = torch.tensor([0.6, 0.6, 0.6])
             InRange(lower=lower, upper=upper, return_mask=2)(input_tensor)
 
+    @staticmethod
+    def _per_channel_bounds(channels, device, dtype):
+        lower = torch.linspace(0.0, 0.3, channels, device=device, dtype=torch.float32).to(dtype)
+        upper = torch.linspace(0.7, 0.95, channels, device=device, dtype=torch.float32).to(dtype)
+        return lower, upper
+
+    @staticmethod
+    def _bounds_in_form(bound, form, batch_size):
+        # `bound` is the per-channel (C,) vector; build the same bound in every accepted tensor layout.
+        channels = bound.shape[0]
+        if form == "c":
+            return bound
+        if form == "c11":
+            return bound.reshape(channels, 1, 1)
+        if form == "chw":
+            return bound.reshape(channels, 1, 1).repeat(1, 4, 5)
+        if form == "1c11":
+            return bound.reshape(1, channels, 1, 1)
+        if form == "1chw":
+            return bound.reshape(1, channels, 1, 1).repeat(1, 1, 4, 5)
+        if form == "bc11":
+            return bound.reshape(1, channels, 1, 1).repeat(batch_size, 1, 1, 1)
+        if form == "bchw":
+            return bound.reshape(1, channels, 1, 1).repeat(batch_size, 1, 4, 5)
+        raise AssertionError(form)
+
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    @pytest.mark.parametrize("lower_form", ["c", "c11", "chw", "1c11", "1chw", "bc11", "bchw"])
+    @pytest.mark.parametrize("upper_form", ["c", "c11", "chw", "1c11", "1chw", "bc11", "bchw"])
+    @pytest.mark.parametrize("return_mask", [True, False])
+    def test_tensor_bound_forms_match_bchw(self, batch_size, lower_form, upper_form, return_mask, device, dtype):
+        # Every accepted tensor layout of a bound gives the same result as the (B, C, 1, 1) bound, in any pairing.
+        torch.manual_seed(0)
+        channels = 3
+        img = torch.rand(batch_size, channels, 4, 5).to(device=device, dtype=dtype)
+        lower_c, upper_c = self._per_channel_bounds(channels, device, dtype)
+        expected = in_range(
+            img,
+            self._bounds_in_form(lower_c, "bc11", batch_size),
+            self._bounds_in_form(upper_c, "bc11", batch_size),
+            return_mask=return_mask,
+        )
+        lower = self._bounds_in_form(lower_c, lower_form, batch_size)
+        upper = self._bounds_in_form(upper_c, upper_form, batch_size)
+
+        actual = in_range(img, lower, upper, return_mask=return_mask)
+        module_actual = InRange(lower, upper, return_mask=return_mask)(img)
+
+        assert actual.dtype == img.dtype
+        assert actual.device == img.device
+        assert torch.equal(actual, expected)
+        assert torch.equal(module_actual, expected)
+        # Guard against a vacuous comparison: the bounds keep some pixels and reject others.
+        mask = in_range(img, lower, upper, return_mask=True)
+        assert 0 < mask.sum() < mask.numel()
+
+    @staticmethod
+    def _reference_mask(img, lower, upper):
+        """Compute the mask with explicit loops, on the CPU.
+
+        A bound is aligned with (B, C, H, W) from its last dimension, a dimension of size 1 is repeated, and a 1-D
+        bound is read per channel.
+        """
+        batch, channels, height, width = img.shape
+
+        def at(bound, b, c, y, x):
+            if bound.dim() == 1:
+                return float(bound[0 if bound.shape[0] == 1 else c])
+            shape = (1,) * (4 - bound.dim()) + tuple(bound.shape)
+            index = tuple(0 if size == 1 else i for size, i in zip(shape, (b, c, y, x)))
+            return float(bound.reshape(shape)[index])
+
+        mask = torch.zeros(batch, 1, height, width)
+        for b in range(batch):
+            for y in range(height):
+                for x in range(width):
+                    keep = all(
+                        at(lower, b, c, y, x) <= float(img[b, c, y, x]) <= at(upper, b, c, y, x)
+                        for c in range(channels)
+                    )
+                    mask[b, 0, y, x] = float(keep)
+        return mask
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("pairing", ["lower", "upper", "both"])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            pytest.param(lambda b: (), id="0d"),
+            pytest.param(lambda b: (1,), id="1d-one-element"),
+            pytest.param(lambda b: (3,), id="c"),
+            pytest.param(lambda b: (3, 1, 1), id="c11"),
+            pytest.param(lambda b: (1, 3, 1, 1), id="1c11"),
+            pytest.param(lambda b: (b, 3, 1, 1), id="bc11"),
+            pytest.param(lambda b: (3, 4, 5), id="chw"),
+            pytest.param(lambda b: (1, 3, 4, 5), id="1chw"),
+            pytest.param(lambda b: (b, 3, 4, 5), id="bchw"),
+            pytest.param(lambda b: (4, 5), id="hw"),
+            pytest.param(lambda b: (1, 1, 4, 5), id="11hw"),
+            pytest.param(lambda b: (b, 1, 1, 1), id="b111"),
+            pytest.param(lambda b: (1, 5), id="1w"),
+        ],
+    )
+    def test_tensor_bound_layouts_match_explicit_loops(self, batch_size, pairing, shape, device, dtype):
+        # H != W != C, so a bound applied along the wrong axis changes the mask. `lower` / `upper` pair the layout
+        # with a (B, C, 1, 1) bound; `both` uses the layout for both bounds.
+        gen = torch.Generator().manual_seed(0)
+        img = torch.rand(batch_size, 3, 4, 5, generator=gen).to(dtype)
+        layout = shape(batch_size)
+        lower_t = (torch.rand(layout, generator=gen) * 0.3).to(dtype)
+        upper_t = (0.7 + torch.rand(layout, generator=gen) * 0.3).to(dtype)
+        lower_b = (torch.rand(batch_size, 3, 1, 1, generator=gen) * 0.3).to(dtype)
+        upper_b = (0.7 + torch.rand(batch_size, 3, 1, 1, generator=gen) * 0.3).to(dtype)
+        lower, upper = {"lower": (lower_t, upper_b), "upper": (lower_b, upper_t), "both": (lower_t, upper_t)}[pairing]
+
+        expected = self._reference_mask(img, lower, upper).to(device=device, dtype=dtype)
+        assert 0 < expected.sum() < expected.numel()  # not a vacuous comparison
+
+        actual = in_range(img.to(device), lower.to(device), upper.to(device), return_mask=True)
+        assert actual.dtype == dtype
+        assert actual.device == img.to(device).device
+        assert torch.equal(actual, expected)
+        assert torch.equal(InRange(lower.to(device), upper.to(device), return_mask=True)(img.to(device)), expected)
+
+    def test_one_dim_bound_is_per_channel_not_per_column(self, device, dtype):
+        # (C,) must apply along the channel axis: a bound of 0 on channel 2 only clears the pixels through channel 2.
+        img = torch.full((2, 3, 4, 5), 0.5, device=device, dtype=dtype)
+        lower = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+        upper = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=dtype)
+        assert not in_range(img, lower, upper, return_mask=True).any()
+        upper = torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype)
+        assert in_range(img, lower, upper, return_mask=True).all()
+
+    def test_one_dim_bound_as_long_as_channels_and_width_is_per_channel(self, device, dtype):
+        # C == W == 5: the shape cannot tell a per-channel bound from a per-column one, and a 1-D bound is per channel.
+        # Channel 4 has an upper bound of 0, so every pixel is cleared; a per-column reading would keep columns 0-3.
+        img = torch.full((2, 5, 4, 5), 0.5, device=device, dtype=dtype)
+        lower = torch.zeros(5, device=device, dtype=dtype)
+        upper = torch.tensor([1.0, 1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype)
+        assert not in_range(img, lower, upper, return_mask=True).any()
+        assert not InRange(lower, upper, return_mask=True)(img).any()
+        assert not in_range(img, lower, upper, return_mask=False).any()
+
+    @pytest.mark.parametrize("input_shape", [(3, 4, 5), (2, 3, 4, 5), (2, 2, 3, 4, 5)])
+    def test_one_dim_bound_leading_dims(self, input_shape, device, dtype):
+        # `in_range` flattens leading dims into the batch; a (C,) bound is shared by every flattened image.
+        torch.manual_seed(0)
+        img = torch.rand(input_shape, device=device, dtype=dtype)
+        lower_c, upper_c = self._per_channel_bounds(3, device, dtype)
+        expected = in_range(img, tuple(lower_c.tolist()), tuple(upper_c.tolist()), return_mask=True)
+        actual = in_range(img, lower_c, upper_c, return_mask=True)
+        assert actual.shape == expected.shape
+        self.assert_close(actual, expected)
+
+    def test_bounds_are_inclusive(self, device, dtype):
+        # lower <= input <= upper: values equal to a bound are kept (these values are exact in every dtype).
+        img = torch.tensor([0.125, 0.25, 0.5, 0.75, 0.875], device=device, dtype=dtype).reshape(1, 1, 1, 5)
+        expected = torch.tensor([0.0, 1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype).reshape(1, 1, 1, 5)
+        by_tuple = in_range(img, (0.25,), (0.75,), return_mask=True)
+        by_tensor = in_range(
+            img, torch.tensor([0.25]).reshape(1, 1, 1, 1), torch.tensor([0.75]).reshape(1, 1, 1, 1), return_mask=True
+        )
+        self.assert_close(by_tuple, expected)
+        self.assert_close(by_tensor, expected)
+
+    @pytest.mark.parametrize("tensor_bounds", [False, True])
+    @pytest.mark.parametrize("return_mask", [False, True])
+    @pytest.mark.parametrize(
+        "image_dtype, values, lower, upper, expected",
+        [
+            (torch.uint8, [99, 100, 101, 200, 201], 100.7, 200.5, [0, 0, 1, 1, 0]),
+            (torch.int16, [-5, -4, -3, -2], -10.0, -3.5, [1, 1, 0, 0]),
+            (torch.int16, [-5, -4, -3, -2], -3.5, -2.5, [0, 0, 1, 0]),
+            (torch.uint8, [100, 101], 100.2, 100.8, [0, 0]),
+            (torch.uint8, [0, 100, 255], -1, 256, [1, 1, 1]),
+            (torch.uint8, [0, 100, 255], -10.0, -0.5, [0, 0, 0]),
+            (torch.uint8, [0, 100, 255], 255.5, 300.0, [0, 0, 0]),
+            (torch.int16, [-32768, 0, 32767], -40000.0, 40000.0, [1, 1, 1]),
+            (torch.int16, [-32768, 0, 32767], float("-inf"), float("inf"), [1, 1, 1]),
+            (torch.int16, [-1, 0, 1], float("nan"), 1.0, [0, 0, 0]),
+            (torch.int16, [-1, 0, 1], -1.0, float("nan"), [0, 0, 0]),
+            (torch.int64, [2**60, 2**60 + 1, 2**60 + 2], 2**60 + 1, 2**60 + 1, [0, 1, 0]),
+            (torch.int64, [-(2**63), 0, 2**63 - 1], float("-inf"), float(2**63), [1, 1, 1]),
+            (torch.int64, [-(2**63), 0, 2**63 - 1], float(2**63), float("inf"), [0, 0, 0]),
+        ],
+    )
+    def test_integer_bounds(self, image_dtype, values, lower, upper, expected, tensor_bounds, return_mask, device):
+        # Expected masks follow the inclusive inequalities using the original bounds, before any dtype conversion.
+        img = torch.tensor(values, device=device, dtype=image_dtype).reshape(1, 1, 1, -1)
+        lower, upper = (lower,), (upper,)
+        if tensor_bounds:
+            lower, upper = torch.tensor(lower), torch.tensor(upper)
+        expected = torch.tensor(expected, device=device, dtype=image_dtype).reshape_as(img)
+        if not return_mask:
+            expected = img * expected
+        actual = in_range(img, lower, upper, return_mask=return_mask)
+        assert actual.dtype == img.dtype
+        assert actual.device == img.device
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(InRange(lower, upper, return_mask=return_mask)(img), expected, rtol=0, atol=0)
+
+    def test_integer_input_is_not_rounded_to_bound_dtype(self, device):
+        img = torch.tensor([2**24, 2**24 + 1], device=device, dtype=torch.int32).reshape(1, 1, 1, 2)
+        bound = torch.tensor([2**24], dtype=torch.float32)
+        expected = torch.tensor([[[[1, 0]]]], device=device, dtype=img.dtype)
+        self.assert_close(in_range(img, bound, bound, return_mask=True), expected, rtol=0, atol=0)
+
+    def test_integer_tuple_bound_preserves_python_precision(self, device):
+        img = torch.tensor([100, 101], device=device, dtype=torch.uint8).reshape(1, 1, 1, 2)
+        expected = torch.tensor([[[[0, 1]]]], device=device, dtype=img.dtype)
+        self.assert_close(in_range(img, (100.0000001,), (101.0,), return_mask=True), expected)
+
+    def test_integer_tensor_bounds_broadcast_per_batch_and_channel(self, device):
+        img = torch.tensor([100, 101, -4, -3, 200, 201, -2, -1], device=device, dtype=torch.int16).reshape(2, 2, 1, 2)
+        lower = torch.tensor([[100.7, -5.0], [199.5, -2.5]], device=device).reshape(2, 2, 1, 1)
+        upper = torch.tensor([[200.5, -3.5], [200.5, -0.5]], device=device).reshape(2, 2, 1, 1)
+        expected = torch.tensor([0, 0, 1, 0], device=device, dtype=img.dtype).reshape(2, 1, 1, 2)
+        self.assert_close(in_range(img, lower, upper, return_mask=True), expected)
+
+    @pytest.mark.parametrize("tensor_bounds", [False, True])
+    def test_dynamo_integer_bounds(self, device, tensor_bounds, torch_optimizer):
+        img = torch.tensor([0, 100, 101, 200, 255], device=device, dtype=torch.uint8).reshape(1, 1, 1, 5)
+        lower, upper = (100.7,), (256.0,)
+        if tensor_bounds:
+            lower, upper = torch.tensor(lower, device=device), torch.tensor(upper, device=device)
+        op = InRange(lower, upper, return_mask=True)
+        expected = torch.tensor([[[[0, 0, 1, 1, 1]]]], device=device, dtype=img.dtype)
+        self.assert_close(torch_optimizer(op, fullgraph=True)(img), expected)
+
+    def test_multi_channel_mask_requires_every_channel(self, device, dtype):
+        # The conjunction runs over the C channels: one channel out of range clears the pixel.
+        img = torch.tensor([0.5, 0.5, 0.5, 0.5, 0.5, 0.95], device=device, dtype=dtype).reshape(1, 3, 1, 2)
+        mask = in_range(img, (0.0, 0.0, 0.0), (1.0, 1.0, 0.9), return_mask=True)
+        self.assert_close(mask, torch.tensor([[[[1.0, 0.0]]]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize(
+        "bad_shape",
+        [
+            pytest.param(lambda b: (4,), id="1d-C+1"),
+            pytest.param(lambda b: (5,), id="1d-W"),  # a 1-D bound is per channel, so W elements fit no axis
+            pytest.param(lambda b: (3, 1), id="2d-C1"),
+            pytest.param(lambda b: (5, 4), id="2d-WH"),
+            pytest.param(lambda b: (4, 4, 5), id="3d-C+1HW"),
+            pytest.param(lambda b: (3, 5, 4), id="3d-CWH"),
+            pytest.param(lambda b: (1, b, 3, 1, 1), id="5d"),
+            pytest.param(lambda b: (1, 1, 1, 1, 1), id="5d-all-ones"),  # every dimension fits, only the rank is wrong
+            pytest.param(lambda b: (b, 4, 1, 1), id="4d-C+1"),
+            pytest.param(lambda b: (b, 1, 3, 1), id="4d-channels-on-height-axis"),
+            pytest.param(lambda b: (b + 1, 3, 1, 1), id="4d-B+1"),
+            pytest.param(lambda b: (b, 3, 7, 1), id="4d-height-neither-1-nor-H"),
+        ],
+    )
+    @pytest.mark.parametrize("bad_bound", ["lower", "upper"])
+    def test_mis_shaped_tensor_bound_raises(self, batch_size, bad_shape, bad_bound, device, dtype):
+        # Every bound is validated on its own: a mis-shaped one raises, whatever the other bound is.
+        img = torch.rand(batch_size, 3, 4, 5, device=device, dtype=dtype)
+        bad = torch.full(bad_shape(batch_size), 0.5, device=device, dtype=dtype)
+        match = rf"`{bad_bound}` as a Tensor must be"
+
+        # The other bound is a well-formed (B, C, 1, 1) Tensor, then a well-formed (C,) Tensor.
+        for good_shape in [(batch_size, 3, 1, 1), (3,)]:
+            good = torch.full(good_shape, 0.5, device=device, dtype=dtype)
+            lower, upper = (bad, good) if bad_bound == "lower" else (good, bad)
+            with pytest.raises(ValueError, match=match):
+                in_range(img, lower, upper)
+            with pytest.raises(ValueError, match=match):
+                InRange(lower, upper)(img)
+
+    @pytest.mark.parametrize(
+        "input_shape, input_view",
+        [
+            ((2, 3, 4, 5), (2, 3, 4, 5)),
+            ((3, 4, 5), (1, 3, 4, 5)),
+            ((4, 5), (1, 1, 4, 5)),
+            ((2, 2, 3, 4, 5), (4, 3, 4, 5)),
+        ],
+    )
+    @pytest.mark.parametrize("bad_bound", ["lower", "upper"])
+    def test_error_message_quotes_the_bound_shape_and_the_input_view(
+        self, input_shape, input_view, bad_bound, device, dtype
+    ):
+        # The error quotes the shape of the offending bound and the (B, C, H, W) view of the input it was checked
+        # against.
+        img = torch.rand(input_shape, device=device, dtype=dtype)
+        bad = torch.zeros(7, device=device, dtype=dtype)
+        good = torch.zeros(input_view[1], device=device, dtype=dtype)
+        lower, upper = (bad, good) if bad_bound == "lower" else (good, bad)
+        with pytest.raises(ValueError) as error:
+            in_range(img, lower, upper)
+        message = str(error.value)
+        assert message.startswith(f"`{bad_bound}` as a Tensor must be")
+        assert f"Got (7,) for an input viewed as (B, C, H, W) = {input_view}." in message
+
+    @pytest.mark.parametrize("tensor_bound", ["lower", "upper"])
+    def test_tensor_bound_with_tuple_bound_raises(self, tensor_bound, device, dtype):
+        # A Tensor bound paired with a tuple bound raises a TypeError that names the rule, whatever the Tensor's shape.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        for shape in [(5,), (3,), (2, 3, 1, 1)]:
+            bound = torch.full(shape, 0.5, device=device, dtype=dtype)
+            lower, upper = (bound, (0.9, 0.9, 0.9)) if tensor_bound == "lower" else ((0.1, 0.1, 0.1), bound)
+            with pytest.raises(TypeError, match=r"Both should be tuples or both torch\.Tensor"):
+                in_range(img, lower, upper)
+            with pytest.raises(TypeError, match=r"Both should be tuples or both torch\.Tensor"):
+                InRange(lower, upper)(img)
+
+    def test_tensor_bounds_follow_input_dtype_and_device(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        lower = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32)  # created on the CPU, not on `device`
+        upper = torch.tensor([0.9, 0.8, 0.7], dtype=torch.float32)
+        out = in_range(img, lower, upper, return_mask=False)
+        mask = in_range(img, lower, upper, return_mask=True)
+        assert out.dtype == dtype
+        assert out.device == img.device
+        assert mask.dtype == dtype
+        assert mask.device == img.device
+
+    @pytest.mark.parametrize("bound_shape", [(1,), (1, 1, 1, 1)])
+    def test_tensor_bounds_are_cast_to_the_input_dtype(self, bound_shape, device, dtype):
+        # 0.1 is not exact in any dtype. The input holds 0.1 rounded to `dtype`; a bound of a wider dtype holds a
+        # different number and only equals the input once it is cast to the input's dtype, so the pixel is kept only
+        # if it is. The bound is created on the CPU, which also covers devices without float64.
+        bound_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else torch.float64
+        img = torch.full((1, 1, 1, 1), 0.1, dtype=torch.float64).to(dtype).to(device)
+        bound = torch.full(bound_shape, 0.1, dtype=bound_dtype)
+        assert bound.item() != img.item() or dtype == torch.float64  # the bound really is a different number
+        mask = in_range(img, bound, bound, return_mask=True)
+        assert mask.dtype == dtype
+        assert mask.all()
+        self.assert_close(in_range(img, bound, bound, return_mask=False), img)
+
     def test_tensor_bounds_return_masked_input(self, device, dtype):
-        # Exercises the Tensor-bounds branch (lines 132-139) with return_mask=False (line 148)
+        # Exercises the Tensor-bounds branch with return_mask=False
         inp = torch.ones(1, 3, 4, 4, device=device, dtype=dtype) * 0.5
         lower = torch.tensor([0.2, 0.2, 0.2], device=device, dtype=dtype).reshape(1, 3, 1, 1)
         upper = torch.tensor([0.8, 0.8, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
@@ -149,5 +474,97 @@ class TestInRange(BaseTester):
             pytest.skip("Failing to compile on CPU see pytorch/pytorch#126619")
         data = torch.rand(batch_size, 3, 5, 5, device=device, dtype=dtype)
         op = InRange(lower=(0.2, 0.2, 0.2), upper=(0.6, 0.6, 0.6), return_mask=True)
-        op_optimized = torch_optimizer(op)
+        op_optimized = torch_optimizer(op, fullgraph=True)
         self.assert_close(op(data), op_optimized(data))
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("form", ["c", "c11", "1c11", "chw", "bc11"])
+    def test_dynamo_tensor_bounds(self, batch_size, form, device, dtype, torch_optimizer):
+        if device == torch.device("cpu") and torch_version() in {"2.3.0", "2.3.1"}:
+            pytest.skip("Failing to compile on CPU see pytorch/pytorch#126619")
+        data = torch.rand(batch_size, 3, 4, 5, device=device, dtype=dtype)
+        lower_c, upper_c = self._per_channel_bounds(3, device, dtype)
+        lower = self._bounds_in_form(lower_c, form, batch_size)
+        upper = self._bounds_in_form(upper_c, form, batch_size)
+        op = InRange(lower=lower, upper=upper, return_mask=True)
+        op_optimized = torch_optimizer(op, fullgraph=True)
+        self.assert_close(op(data), op_optimized(data))
+
+
+class TestConventionsInRange(BaseTester):
+    def test_convention_in_range_bounds_inclusive_and_all_channels_must_pass(self, device, dtype):
+        # built in the test dtype so that a value equal to a bound is equal after rounding
+        row = [0.2, 0.5, 0.8, 0.9]
+        img = torch.tensor([[row, row]] * 3, device=device, dtype=dtype)[None]  # (1, 3, 2, 4), H != W
+        img[0, 2, 1, 1] = 0.95  # above channel 2's upper bound 0.9 at one pixel only
+        img[0, 0, 1, 0] = float("nan")  # at a pixel that is otherwise in range
+        img[0, 1, 0, 3] = float("inf")  # at a pixel that fails anyway (0.9 > 0.8)
+        lower, upper = (0.2, 0.2, 0.2), (0.8, 0.8, 0.9)
+        mask = in_range(img, lower, upper, return_mask=True)
+        # both bounds inclusive (0.2 and 0.8 pass), a pixel passes only if every channel does, NaN fails;
+        # the mask is (B, 1, H, W) in the input dtype with 1 (not 255) for a pass
+        expected = torch.tensor([[[[1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]], device=device, dtype=dtype)
+        assert mask.dtype == dtype
+        self.assert_close(mask, expected)
+        # return_mask=False is input * mask: a failing pixel's channels become 0, a NaN stays NaN and an inf becomes NaN
+        out = in_range(img, lower, upper)
+        assert out[0, 0, 1, 0].isnan()
+        self.assert_close(out[0, 1:, 1, 0], torch.zeros(2, device=device, dtype=dtype))
+        assert out[0, 1, 0, 3].isnan()
+        self.assert_close(out[0, [0, 2], 0, 3], torch.zeros(2, device=device, dtype=dtype))
+        self.assert_close(out.nan_to_num(), (img * expected).nan_to_num())
+        # relabel: transposing the image transposes the mask
+        self.assert_close(in_range(img.transpose(-1, -2), lower, upper, return_mask=True), expected.transpose(-1, -2))
+        # lower > upper is not rejected; it selects nothing
+        assert in_range(img, upper, lower, return_mask=True).sum().item() == 0
+
+    def test_convention_in_range_casts_floating_bounds_before_checking_order(self, device, dtype):
+        """A floating interval is reversed only if it remains so after conversion to the input dtype."""
+        if dtype == torch.float64:
+            pytest.skip("A Python float cannot express a value strictly between adjacent float64 values at one.")
+
+        # The wider lower bound is above upper, but the gap is less than half an input ULP, so both become 1.
+        lower, upper = 1.0 + torch.finfo(dtype).eps / 4, 1.0
+        image = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        expected = torch.ones_like(image)
+        self.assert_close(in_range(image, (lower,), (upper,), return_mask=True), expected)
+        self.assert_close(
+            in_range(
+                image,
+                torch.tensor([lower], dtype=torch.float64),
+                torch.tensor([upper], dtype=torch.float64),
+                return_mask=True,
+            ),
+            expected,
+        )
+
+    def test_convention_in_range_rounds_fractional_bounds_on_integer_input_5423(self, device, dtype):
+        """#5423: fractional lower bounds round up and fractional upper bounds round down for integer inputs."""
+        # a floating image keeps lower <= input <= upper: the value 100 lies below the lower bound 100.7
+        values = torch.tensor([100, 101, 200, 201], device=device, dtype=torch.uint8).view(1, 1, 1, 4)
+        as_float = in_range(values.to(dtype), (100.7,), (200.2,), return_mask=True)
+        assert as_float.flatten().tolist() == [0, 1, 1, 0]
+        # uint8 with tuple bounds has the same comparisons: lower=100.7 rounds to 101 and upper=200.2 to 200
+        as_uint8 = in_range(values, (100.7,), (200.2,), return_mask=True)
+        assert as_uint8.dtype == torch.uint8
+        assert as_uint8.flatten().tolist() == [0, 1, 1, 0]
+        # int16 Tensor bounds follow the same rule: upper=-3.5 rounds down to -4, rejecting -3
+        negative = torch.tensor([-4, -3, -2], device=device, dtype=torch.int16).view(1, 1, 1, 3)
+        lower, upper = torch.tensor([-10.0], device=device), torch.tensor([-3.5], device=device)
+        assert in_range(negative, lower, upper, return_mask=True).flatten().tolist() == [1, 0, 0]
+
+    def test_convention_in_range_checks_each_tensor_bound_shape_5176(self, device, dtype):
+        """Each Tensor bound is checked on its own, and a 1-D bound is read per channel, never per column."""
+        generator = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 4, 5, generator=generator).to(device=device, dtype=dtype)  # C = 3, W = 5
+        per_sample = torch.zeros(2, 3, 1, 1, device=device, dtype=dtype)
+        per_column = torch.tensor([1.0, 1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype)
+        # a (W,) bound is rejected whichever bound it is, even beside a valid (B, C, 1, 1) one
+        with pytest.raises(ValueError):
+            in_range(img, per_sample, per_column, return_mask=True)
+        with pytest.raises(ValueError):
+            in_range(img, per_column - 1, per_sample + 1, return_mask=True)
+        # a (C,) bound applies to its channel: channel 2's upper bound 0.5 decides the mask
+        per_channel = torch.tensor([1.0, 1.0, 0.5], device=device, dtype=dtype)
+        mask = in_range(img, per_sample, per_channel, return_mask=True)
+        self.assert_close(mask, (img[:, 2:] <= 0.5).to(dtype))

@@ -26,6 +26,8 @@ from testing.base import (
     assert_close,
     dynamic_export_is_available,
     dynamo_is_available,
+    supports_bilinear_2d_grid_sample,
+    supports_bilinear_3d_grid_sample,
 )
 
 
@@ -146,12 +148,12 @@ def test_normalized_meshgrid_trace_matches_eager_at_unrepresentable_sizes(is_3d,
     ``bfloat16`` holds 299 only as 300, so casting ``size - 1`` into the coordinate dtype before
     dividing shifts every normalized coordinate -- up to 0.0078 in bfloat16, 0.00098 in float16.
     Eager divides by a Python ``int``, so the traced graph has to divide against the unrounded
-    size too and round only the quotient. Every size the singleton-boundary tests above use is
+    size too and narrow only after normalization. Every size the singleton-boundary tests above use is
     representable in all four dtypes, so none of them can catch this.
 
     The sizes here are the ones whose predecessor is *not* exactly representable in bfloat16
-    (all five) or float16 (2050 and 3000); at float32 and float64 they all are, which pins the
-    two paths as agreeing there rather than merely not being compared.
+    (all five) or float16 (2050 and 3000). CPU eager supplies the correctly rounded reference;
+    exact comparison at every dtype preserves the half-precision regression check.
     """
 
     class MeshGrid(torch.nn.Module):
@@ -172,7 +174,9 @@ def test_normalized_meshgrid_trace_matches_eager_at_unrepresentable_sizes(is_3d,
     shape = (1, 1, 2, size, 4) if is_3d else (1, 1, size, 4)
     image = torch.zeros(*shape, device=device, dtype=dtype)
     traced = torch.jit.trace(MeshGrid(), image)
-    assert_close(traced(image), MeshGrid()(image), atol=0.0, rtol=0.0)
+    # CUDA eager's Python-scalar division multiplies by a host-computed reciprocal, which can
+    # round differently from the traced tensor division (#4195).
+    assert_close(traced(image).cpu(), MeshGrid()(image.cpu()), atol=0.0, rtol=0.0)
 
 
 @pytest.mark.parametrize("normalized_coordinates", [False, True], ids=["pixel", "normalized"])
@@ -407,3 +411,53 @@ def test_normalized_meshgrid3d_trace_crosses_singleton_boundary(trace_depth, run
     runtime = torch.zeros(1, 1, runtime_depth, 3, 4, device=device, dtype=dtype)
     traced = torch.jit.trace(MeshGrid3d(), example)
     assert_close(traced(runtime), MeshGrid3d()(runtime), atol=0.0, rtol=0.0)
+
+
+def test_convention_create_meshgrid_align_corners_matches_grid_sample(device, dtype):
+    # A normalized grid samples an image as the identity only under grid_sample's own align_corners flag: True puts
+    # pixel centres 0 and W - 1 at -1 and +1, False puts the outer pixel edges there. Crossing the flags shifts every
+    # sample. H != W, so neither axis can stand in for the other.
+    if not supports_bilinear_2d_grid_sample(device, dtype):
+        pytest.skip(f"torch has no bilinear 2D grid_sample kernel for {device.type} {dtype}")
+    generator = torch.Generator(device="cpu").manual_seed(0)
+    image = torch.rand(1, 1, 3, 5, generator=generator).to(device, dtype)
+
+    for align_corners in (True, False):
+        grid = kornia.geometry.create_meshgrid(3, 5, device=device, dtype=dtype, align_corners=align_corners)
+        same = torch.nn.functional.grid_sample(image, grid, align_corners=align_corners)
+        crossed = torch.nn.functional.grid_sample(image, grid, align_corners=not align_corners)
+        assert_close(same, image)
+        assert (crossed - image).abs().max() > 0.1
+
+
+def test_convention_create_meshgrid3d_reorder_for_grid_sample(device, dtype):
+    # The last axis of create_meshgrid3d is (d, x, y) -- depth, column, row -- while grid_sample reads (x, y, z), so
+    # the default corner-aligned grid samples a volume as the identity after the [1, 2, 0] reorder.
+    # D != H != W; the permuted volume is the relabel control.
+    if not supports_bilinear_3d_grid_sample(device, dtype):
+        pytest.skip(f"torch has no bilinear 3D grid_sample kernel for {device.type} {dtype}")
+    pixel = kornia.geometry.create_meshgrid3d(2, 3, 4, normalized_coordinates=False, device=device, dtype=dtype)
+    # (d, h, w) = (1, 2, 3) holds (d, x, y) = (1, 3, 2)
+    assert_close(pixel[0, 1, 2, 3], torch.tensor([1.0, 3.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    generator = torch.Generator(device="cpu").manual_seed(0)
+    volume = torch.rand(1, 1, 2, 3, 4, generator=generator).to(device, dtype)
+    grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype)
+    reordered = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=True)
+    as_is = torch.nn.functional.grid_sample(volume, grid, align_corners=True)
+    assert_close(reordered, volume)
+    assert (as_is - volume).abs().max() > 0.1
+
+    permuted = volume.permute(0, 1, 4, 2, 3).contiguous()  # (D, H, W) = (4, 2, 3)
+    grid = kornia.geometry.create_meshgrid3d(4, 2, 3, device=device, dtype=dtype)
+    assert_close(torch.nn.functional.grid_sample(permuted, grid[..., [1, 2, 0]], align_corners=True), permuted)
+
+
+@pytest.mark.xfail(
+    strict=True, raises=TypeError, reason="#4503: create_meshgrid3d cannot produce an align_corners=False grid"
+)
+def test_wart_create_meshgrid3d_lacks_align_corners_false_4503(device, dtype):
+    # Correct half-pixel coordinates for (D, H, W) = (2, 3, 4), in Kornia's (d, x, y) order.
+    grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype, align_corners=False)
+    assert_close(grid[0, 0, 0, 0], torch.tensor([-0.5, -0.75, -2 / 3], device=device, dtype=dtype))
+    assert_close(grid[0, -1, -1, -1], torch.tensor([0.5, 0.75, 2 / 3], device=device, dtype=dtype))

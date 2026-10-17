@@ -31,9 +31,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.filters``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 18 / 9
-     - Accuracy misses in Canny magnitudes, discrete Gaussian kernels and Otsu thresholding. On CPU,
-       ``fft_conv`` computes its FFTs in float32 and returns the input dtype.
+     - 6 / 8
+     - Accuracy misses in Canny magnitudes, the sampled Gaussian kernel and separable blur. On CPU, ``fft_conv``
+       computes its FFTs in float32 and returns the input dtype.
    * - ``kornia.enhance``
      - ✅ Yes
      - ⚠️ Partial
@@ -55,9 +55,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.transform``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 43 / 58
+     - 31 / 32
      - Linalg steps go through ``_torch_inverse_cast`` / ``_torch_solve_cast``, but rotation matrices,
-       affine/perspective warps, the homography warper and 3D crops miss their accuracy checks.
+       affine/perspective warps and the homography warper miss their accuracy checks.
    * - ``kornia.geometry.camera``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -74,23 +74,27 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.epipolar``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 58 / 56
-     - ``find_fundamental``, ``find_essential``, ``decompose_essential_matrix``, ``motion_from_essential*``
-       and ``KRt_from_projection`` raise ``NotImplementedError``: they call ``lu``, ``eigh`` or QR, which have
-       no CPU half-precision kernels.
+     - 41 / 41
+     - ``decompose_essential_matrix``, ``motion_from_essential*``, ``KRt_from_projection`` and the eight-point
+       ``find_fundamental`` when weighted or given more than 8 points raise ``NotImplementedError``: they call ``lu``,
+       ``eigh`` or QR, which have no CPU half-precision kernels. ``find_essential`` solves in float64, and the
+       unweighted eight-point ``find_fundamental`` on exactly 8 points and the seven-point ``find_fundamental``
+       factorize in float32 or float64; they return half-precision results, whose accuracy the half-precision inputs
+       limit.
    * - ``kornia.geometry.homography``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 11 / 16
+     - 10 / 16
      - The DLT solvers run (``_torch_svd_cast`` promotes the SVD to float32) but miss the clean-point accuracy
        checks, including the iterated and line-based variants.
    * - ``kornia.geometry.liegroup``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - 36 / 130
-     - ``So2`` and ``Se2`` use complex tensors: float16 hits missing ``ComplexHalf`` kernels, and most
-       bfloat16 ``So2`` / ``Se2`` tests raise because the complex path does not accept bfloat16 (119 entries).
-       ``So3`` and ``Se3`` nearly all pass.
+     - 0 / 0
+     - ``So3`` and ``Se3`` compute ``matrix()``, composition and point transforms in float32 for float16/bfloat16
+       inputs and return the input dtype. ``So2`` and ``Se2`` store complex tensors; float16 inverses are computed
+       in complex64. PyTorch has no complex bfloat16 dtype, so building a bfloat16 ``So2`` or ``Se2`` raises
+       ``TypeCheckError``, while ``.bfloat16()`` on a built one keeps the rotation's complex precision.
    * - ``kornia.geometry.solvers``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -99,36 +103,38 @@ precision, so the table says nothing about those backends.
    * - ``kornia.geometry.subpix``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 14 / 12
-     - ``ConvSoftArgmax3d`` raises because CPU ``avg_pool3d`` has no half-precision kernel; the remaining
-       entries are accuracy.
+     - 6 / 4
+     - Accuracy of ``SpatialSoftArgmax2d`` and of the ``ConvQuadInterp3d`` diagonal refinement; bfloat16 also
+       ``render_gaussian2d``.
    * - ``kornia.geometry.conversions``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 72 / 60
+     - 71 / 65
      - Angle-axis, quaternion and rotation-matrix round trips lose accuracy (including ``tests/integration``).
    * - ``kornia.geometry.ransac``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 4 / 4
-     - The essential and fundamental models raise through the epipolar solvers.
+     - 2 / 2
+     - Essential matrices with ``local_optimization="dlt"`` raise in its eight-point refits, which call ``eigh``.
    * - ``kornia.geometry`` (other)
      - ⚠️ Partial
      - ⚠️ Partial
-     - 8 / 17
-     - Accuracy in boxes, depth and line utilities; bfloat16 ``NamedPose`` construction raises.
+     - 7 / 14
+     - Accuracy of the box transforms and depth utilities. A bfloat16 ``NamedPose`` of an ``Se2`` pose raises as
+       ``Se2`` does.
    * - ``kornia.image``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 4 / 4
-     - ``draw_convex_polygon`` fill accuracy.
+     - 2 / 2
+     - ``draw_convex_polygon`` runs its edge maths in at least float32, so it adds no half-precision error of its
+       own; the vertices are used as given, already rounded to half precision. The circle and ellipse tests still
+       miss because they compute their vertices and their reference mask in half precision.
    * - ``kornia.losses``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - 3 / 4
-     - Dice averaging overflows to inf/NaN in float16; the mutual-information range check fails in both
-       dtypes; bfloat16 Dice weighting and total variation miss accuracy. Hausdorff and the photometric losses
-       pass.
+     - 0 / 2
+     - Mutual information, Dice averaging, Hausdorff and the photometric losses pass.
+       bfloat16 total variation misses accuracy.
    * - ``kornia.feature``
      - ✅ Yes
      - ✅ Yes
@@ -144,10 +150,10 @@ precision, so the table says nothing about those backends.
      - 0 / 1
      - bfloat16: ``ssim3d`` accuracy.
    * - ``kornia.models``
+     - ✅ Yes
      - ⚠️ Partial
-     - ⚠️ Partial
-     - 9 / 1
-     - float16: EfficientViT raises dtype-mismatch errors. bfloat16: RT-DETR RepVGG deployment fusion misses
+     - 0 / 1
+     - bfloat16: RT-DETR RepVGG deployment fusion misses
        accuracy.
    * - ``contrib``, ``core``, ``io``, ``onnx``, ``sensors``, ``tracking``, ``utils``
      - ✅ Yes
@@ -166,14 +172,18 @@ Test Results
 ------------
 
 Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed); skipped tests and tests marked ``xfail`` in
-the source are excluded. The CPU rows come from the nightly ``main`` CI jobs at commit ``ca5021eb``
+the source are excluded. The CPU rows come from the scheduled ``main`` CI jobs at commit ``ca5021eb``
 (2026-09-14; Linux x86_64, Python 3.11, PyTorch 2.9.1). In the half-precision jobs, *Failed* is the manifest's entry
 count: CI reports those tests as strict xfails and turns red if any of them passes or fails differently. The CUDA
-rows are still from ``6131e98`` (2026-03-21), have not been re-measured since, and predate the CPU half-precision
-fixes merged since then.
+rows are a local run at commit ``f8449854`` (2026-09-23; RTX 4090, Python 3.11, PyTorch 2.14.0+cu130), not CI. Every
+CUDA failure is re-run on its own (with ``--isolate-half-precision`` for the half dtypes) and counted by that result.
+Eight of the CUDA float32 failures are cuDNN TF32 accuracy misses in convolutions
+(`#4778 <https://github.com/kornia/kornia/issues/4778>`_); the other 14 are tests that assume CPU behavior
+(`#4779 <https://github.com/kornia/kornia/issues/4779>`_).
 
-Reproduce a CPU half-precision row in that environment (the manifest header pins the OS, architecture, Python and
-PyTorch versions) with:
+The manifests now pin PyTorch 2.14.0, so the CPU half-precision rows below are not reproducible from them. Verify the
+current profiles on Linux x86_64, Python 3.11 and PyTorch 2.14.0 (the manifest header pins the OS, architecture, Python
+and PyTorch versions) with:
 
 .. code-block:: bash
 
@@ -208,20 +218,20 @@ counts can drift slightly from the manifests.
      - 3774
      - **95.1%**
    * - CUDA float32 *(baseline)*
-     - 7634
-     - 3
-     - 3280
-     - **99.9%**
+     - 12193
+     - 22
+     - 3957
+     - **99.8%**
    * - CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6727
-     - 643
-     - 3556
-     - **91.3%**
+     - 11738
+     - 451
+     - 3983
+     - **96.3%**
    * - CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6695
-     - 713
-     - 3518
-     - **90.4%**
+     - 11736
+     - 500
+     - 3936
+     - **95.9%**
 
 .. note::
 

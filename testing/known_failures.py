@@ -22,7 +22,6 @@ from typing import Any, Sequence
 
 import pytest
 
-ISSUE_URL = "https://github.com/kornia/kornia/issues/4159"
 _MANIFEST_DIR = Path(__file__).with_name("known_failure_xfails")
 _EXCEPTION_TYPES: dict[str, type[BaseException]] = {
     "AssertionError": AssertionError,
@@ -130,7 +129,7 @@ def mark_known_failures(
         preview = "\n".join(sorted(missing)[:10])
         raise ValueError(f"{len(missing)} failures from {path} were not collected:\n{preview}")
 
-    reason = f"Known {device}/{dtype} failure tracked in {ISSUE_URL}"
+    reason = f"Known {device}/{dtype} failure recorded in {path.name}; see its tracking issue there"
     tracker = KnownFailureTracker(failures, path, reason)
     for item in items:
         if exception_type := failures.get(item.nodeid):

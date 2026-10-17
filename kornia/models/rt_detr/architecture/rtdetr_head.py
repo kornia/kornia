@@ -158,9 +158,7 @@ class MultiScaleDeformableAttention(nn.Module):
         out = _deformable_attention_kernel(value_buf, value_spatial_shapes, sampling_locations, attention_weights)
 
         # final projection
-        out = self.output_proj(out)
-
-        return out
+        return self.output_proj(out)
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -229,9 +227,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt = self.norm2(tgt + self.dropout2(out))
 
         # ffn
-        out = self.norm3(tgt + self.dropout4(self._ffn(tgt)))
-
-        return out
+        return self.norm3(tgt + self.dropout4(self._ffn(tgt)))
 
 
 class TransformerDecoder(nn.Module):

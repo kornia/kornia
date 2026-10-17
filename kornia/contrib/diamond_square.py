@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-# based on: https://github.com/anguelos/tormentor/blob/e8050ac235b0c7ad3c7d931cfa47c308a305c486/diamond_square/diamond_square.py  # noqa: E501
+# based on: https://github.com/anguelos/tormentor/blob/e8050ac235b0c7ad3c7d931cfa47c308a305c486/diamond_square/diamond_square.py
 import math
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -62,25 +62,22 @@ def _diamond_square_seed(
     # width is always 3
     KORNIA_CHECK(height % 2 == 1 and height > 2, "Height must be odd and height bigger than 2")
 
-    res: torch.Tensor = random_fn([replicates, 1, width, height], device=device, dtype=dtype)
+    # `width` is always 3 here: rows 0 and 2 hold the corner draws, row 1 the midpoints. `height` is the odd length K.
+    res = torch.zeros([replicates, 1, width, height], device=device, dtype=dtype)
     res[..., ::2, ::2] = random_fn([replicates, 1, 2, (height + 1) // 2], device=device, dtype=dtype)
 
-    # Diamond step
-    res[..., 1, 1::2] = (res[..., ::2, :-2:2] + res[..., ::2, 2::2]).sum(dim=2) / 4.0
+    # diamond step: the centre of each cell is the mean of its four corners
+    res[..., 1, 1::2] = (res[..., 0, :-2:2] + res[..., 0, 2::2] + res[..., 2, :-2:2] + res[..., 2, 2::2]) / 4.0
 
-    # Square step
-    if width > 3:
-        res[..., 1, 2:-3:2] = (
-            res[..., 0, 2:-3:2] + res[..., 2, 2:-3:2] + res[..., 1, 0:-4:2] + res[..., 1, 2:-3:2]
+    # square step: a border point has three neighbours, an interior one four
+    res[..., 0, 1::2] = (res[..., 0, :-2:2] + res[..., 0, 2::2] + res[..., 1, 1::2]) / 3.0
+    res[..., 2, 1::2] = (res[..., 2, :-2:2] + res[..., 2, 2::2] + res[..., 1, 1::2]) / 3.0
+    res[..., 1, 0] = (res[..., 0, 0] + res[..., 2, 0] + res[..., 1, 1]) / 3.0
+    res[..., 1, -1] = (res[..., 0, -1] + res[..., 2, -1] + res[..., 1, -2]) / 3.0
+    if height > 3:
+        res[..., 1, 2:-1:2] = (
+            res[..., 0, 2:-1:2] + res[..., 2, 2:-1:2] + res[..., 1, 1:-2:2] + res[..., 1, 3::2]
         ) / 4.0
-
-    tmp1 = res[..., 2, 0]
-    res[..., 1, 0] = res[..., 0, 0] + res[..., 1, 1] + tmp1
-    res[..., 1, -1] = res[..., -1, -1] + res[..., 1, -2] + tmp1
-    tmp2 = res[..., 1, 1::2]
-    res[..., 0, 1::2] = res[..., 0, 0:-2:2] + res[..., 0, 2::2] + tmp2
-    res[..., 2, 1::2] = res[..., 2, 0:-2:2] + res[..., 2, 2::2] + tmp2
-    res = res / 3.0
 
     if transpose:
         res = res.transpose(2, 3)
@@ -139,21 +136,20 @@ def _one_diamond_one_square(
 
     random_img: torch.Tensor = random_fn(new_img.size(), device=img.device, dtype=img.dtype) * random_scale
 
-    # TODO(edgar): use kornia.filter2d
+    # the diamond and square centres are fixed by index parity, not by the sign of the filtered values
+    rows = torch.arange(new_img.shape[-2], device=img.device).view(-1, 1) % 2
+    cols = torch.arange(new_img.shape[-1], device=img.device).view(1, -1) % 2
+    diamond_centers = ((rows == 1) & (cols == 1)).to(img.dtype)
+    square_centers = ((rows + cols) == 1).to(img.dtype)
+
     # diamond
     diamond_regions = filter2d(new_img, diamond_kernel)
-    diamond_centers = (diamond_regions > 0).to(img.dtype)
-    # TODO (anguelos) make sure diamond_regions*diamond_centers is needed
     new_img = new_img + (1 - random_scale) * diamond_regions * diamond_centers + diamond_centers * random_img
 
-    # square
-    square_regions = filter2d(new_img, square_kernel) * pad_compencate
-    square_centers = (square_regions > 0).to(img.dtype)
-
-    # TODO (anguelos) make sure square_centers*square_regions is needed
-    new_img = new_img + square_centers * random_img + (1 - random_scale) * square_centers * square_regions
-
-    return new_img
+    # square: zero padding + 4/3 turns a border point's three-neighbour sum into their mean
+    # ('reflect' would duplicate a neighbour)
+    square_regions = filter2d(new_img, square_kernel, border_type="constant") * pad_compencate
+    return new_img + square_centers * random_img + (1 - random_scale) * square_centers * square_regions
 
 
 def diamond_square(
@@ -165,17 +161,42 @@ def diamond_square(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Generate Plasma Fractal Images using the diamond square algorithm.
+    r"""Generate Plasma Fractal Images using a variant of the diamond square algorithm.
 
-    See: https://en.wikipedia.org/wiki/Diamond-square_algorithm
+    It ports `tormentor <https://github.com/anguelos/tormentor>`_'s variant of the
+    `diamond-square algorithm <https://en.wikipedia.org/wiki/Diamond-square_algorithm>`_.
+
+    Convention:
+        - The map is grown on a :math:`2^n + 1` grid and cropped to ``output_size`` at its top-left corner, so it can
+          be a non-contiguous view. The seed is a :math:`3 \times K` grid, transposed to :math:`K \times 3` for a map
+          taller than wide, whose cell corners, the even nodes of its first and last rows (columns when transposed),
+          are ``random_scale`` times a ``random_fn`` draw, and whose other nodes are the means of their neighbours.
+          Each level sets a new node to
+          :math:`(1 - s_k)\,\overline{n} + s_k\,u`, the mean :math:`\overline{n}` of its neighbours mixed with a
+          ``random_fn`` draw :math:`u` by :math:`s_k = \mathrm{random\_scale} \cdot \mathrm{roughness}^k` at level
+          :math:`k \geq 1`: both are mixing weights, not amplitudes. A border node of the square step averages its
+          three neighbours; the diamond step's nodes are all interior, so its ``reflect`` padding never reaches them.
+        - ``random_fn`` is called as ``random_fn(shape, device=device, dtype=dtype)`` and is the only source of
+          randomness, so ``functools.partial(torch.rand, generator=g)`` leaves the global generator alone. With
+          ``torch.rand`` the map stays in [0, 1] without normalization while ``random_scale`` and ``roughness`` are in
+          [0, 1], and with ``random_scale=1`` it is flat in mean (0.5 everywhere), though its variance varies across
+          the map.
+        - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a :math:`(B,)` tensor with one value per
+          sample, and follow ``device`` and ``dtype``.
+        - ``normalize_range=(min, max)`` rescales each :math:`(b, c)` plane to that range with
+          :func:`~kornia.enhance.normalize_min_max`.
+        - Known defect: the mean is not flat when ``random_scale`` is neither 0 nor 1, ``roughness`` is non-zero and
+          both sides of the map exceed 3, so that it grows past its seed. The seed's mean is ``0.5 * random_scale`` and
+          every level mixes towards 0.5, so at ``random_scale=0.5`` the seed nodes average 0.25 and the other pixels
+          more, by an amount that depends on ``roughness`` and the map size: 0.31 to 0.35 on a :math:`9 \times 17` map
+          at the default ``roughness`` (`#5963 <https://github.com/kornia/kornia/issues/5963>`_).
 
     Args:
         output_size: a tuple of integers with the BxCxHxW of the image to be generated.
-        roughness: the scale value to apply at each recursion step.
-        random_scale: the initial value of the scale for recursion.
+        roughness: the factor that scales the mixing weight at each recursion step.
+        random_scale: the mixing weight before the first recursion step, which also scales the seed.
         random_fn: the callable function to use to sample a random torch.Tensor.
-        normalize_range: whether to F.normalize using min-max the output map. In case of a
-            range is specified, min-max norm is applied between the provided range.
+        normalize_range: if given, the ``(min, max)`` range each plane is min-max normalized to.
         device: the torch device to place the output map.
         dtype: the torch dtype to place the output map.
 
@@ -189,7 +210,7 @@ def diamond_square(
         random_scale = random_scale.expand([output_size[0] * output_size[1], 1, 1, 1])
     else:
         KORNIA_CHECK_IS_TENSOR(random_scale)
-        random_scale = random_scale.view(-1, 1, 1, 1)
+        random_scale = random_scale.to(device=device, dtype=dtype).view(-1, 1, 1, 1)
         random_scale = random_scale.expand([output_size[0], output_size[1], 1, 1])
         random_scale = random_scale.reshape([-1, 1, 1, 1])
 
@@ -197,7 +218,7 @@ def diamond_square(
         roughness = torch.Tensor([[[[roughness]]]]).to(device, dtype)
         roughness = roughness.expand([output_size[0] * output_size[1], 1, 1, 1])
     else:
-        roughness = roughness.view(-1, 1, 1, 1)
+        roughness = roughness.to(device=device, dtype=dtype).view(-1, 1, 1, 1)
         roughness = roughness.expand([output_size[0], output_size[1], 1, 1])
         roughness = roughness.reshape([-1, 1, 1, 1])
 
@@ -228,8 +249,8 @@ def diamond_square(
     img = img[..., :width, :height]
     img = img.view(output_size)
 
-    # F.normalize the output in the range using min-max
+    # min-max normalize each (b, c) plane to the range
     if normalize_range is not None:
-        min_val, max_val = normalize_range
+        min_val, max_val = float(normalize_range[0]), float(normalize_range[1])
         img = normalize_min_max(img.contiguous(), min_val, max_val)
     return img

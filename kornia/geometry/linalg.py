@@ -39,16 +39,23 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     r"""Compose two homogeneous transformations.
 
     .. math::
-        T_0^{2} = \begin{bmatrix} R_0^1 R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \
-        \\mathbf{0} & 1\end{bmatrix}
+        T_0^{2} = \begin{bmatrix} R_0^{1} R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \\
+        \mathbf{0} & 1 \end{bmatrix}
+
+    Convention:
+        - The result is the matrix product ``trans_01 @ trans_12``, with the frame naming of
+          :func:`relative_transformation`. Only the top three rows of each input are read and the last row of the
+          result is always :math:`[0, 0, 0, 1]`: any affine pair composes exactly, and a projective input is used as
+          if its last row were :math:`[0, 0, 0, 1]`.
 
     Args:
         trans_01: tensor with the homogeneous transformation from
-          a reference frame 1 respect to a frame 0. The tensor has must have a
+          a reference frame 1 respect to a frame 0. The tensor must have a
           shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_12: tensor with the homogeneous transformation from
-          a reference frame 2 respect to a frame 1. The tensor has must have a
-          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
+          a reference frame 2 respect to a frame 1. The tensor must have a
+          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch of one broadcasts against a batch of
+          :math:`N` in either argument.
 
     Returns:
         the transformation between the two frames with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -71,6 +78,11 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     if trans_01.dim() != trans_12.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
 
+    try:
+        batch_shape = torch.broadcast_shapes(trans_01.shape[:-2], trans_12.shape[:-2])
+    except RuntimeError as err:
+        raise ValueError(f"Incompatible batch shapes: {trans_01.shape} and {trans_12.shape}") from err
+
     # unpack input data
     rmat_01 = trans_01[..., :3, :3]
     rmat_12 = trans_12[..., :3, :3]
@@ -81,7 +93,7 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     rmat_02 = torch.matmul(rmat_01, rmat_12)
     tvec_02 = torch.matmul(rmat_01, tvec_12) + tvec_01
 
-    trans_02 = trans_01.new_zeros(trans_01.shape)
+    trans_02 = trans_01.new_zeros(batch_shape + (4, 4))
     trans_02[..., :3, :3] = rmat_02
     trans_02[..., :3, 3:] = tvec_02
     trans_02[..., 3, 3] = 1.0
@@ -89,9 +101,9 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
 
 
 def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
-    r"""Invert a 4x4 homogeneous transformation.
+    r"""Invert a 4x4 rigid homogeneous transformation.
 
-     :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
+    :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
 
     The inverse transformation is computed as follows:
 
@@ -100,6 +112,12 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
         T_2^{1} = (T_1^{2})^{-1} = \begin{bmatrix} R_1^T & -R_1^T t_1 \\
         \mathbf{0} & 1\end{bmatrix}
 
+    Convention:
+        - The input must be a rigid :math:`[R|t]`, and this is not validated: the rotation block is transposed, not
+          inverted, and the last row is read as :math:`[0, 0, 0, 1]`, so a scaled, sheared or projective matrix
+          returns a result that is not its inverse. Use :func:`torch.linalg.inv` for a general matrix. Frame naming
+          is on :func:`relative_transformation`.
+
     Args:
         trans_12: transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
@@ -107,8 +125,12 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
         tensor with inverted transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
     Example:
-        >>> trans_12 = torch.rand(1, 4, 4)  # Nx4x4
+        >>> trans_12 = torch.eye(4)[None]  # Nx4x4: a rotation of 90 degrees about z and a translation
+        >>> trans_12[:, :3, :3] = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+        >>> trans_12[:, :3, 3] = torch.tensor([1.0, 2.0, 3.0])
         >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
+        >>> trans_21[:, :3, 3]
+        tensor([[-2.,  1., -3.]])
 
     """
     KORNIA_CHECK_IS_TENSOR(trans_12)
@@ -134,18 +156,31 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
 def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
     r"""Compute the relative homogeneous transformation from a reference transformation.
 
-    :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
-    \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
-
-    The relative transformation is computed as follows:
+    Given the reference :math:`T_0^{1} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` and the
+    destination :math:`T_0^{2} = \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`, the relative
+    transformation is computed as follows:
 
     .. math::
 
         T_1^{2} = (T_0^{1})^{-1} \cdot T_0^{2}
 
+    Convention:
+        - ``trans_ab`` (:math:`T_a^{b}`) maps points in frame ``b`` to frame ``a``, :math:`p_a = T_a^{b} p_b`:
+          ``transform_points(trans_01, points_1)`` returns ``points_0``, and
+          ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``.
+          :ref:`Rotations and rigid motions <rotation-conventions>` maps this onto other libraries.
+        - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`, and the last row of
+          ``trans_02`` is read as :math:`[0, 0, 0, 1]`, as in :func:`compose_transformations`. Neither is validated:
+          a scaled, sheared or projective ``trans_01``, or a projective ``trans_02``, gives a wrong result silently.
+        - :func:`~kornia.geometry.epipolar.relative_camera_motion` takes world-to-camera extrinsics
+          :math:`E_1, E_2` and returns the :math:`[R|t]` of :math:`E_2 E_1^{-1}`, which is
+          ``relative_transformation`` of :math:`E_2^{-1}` and :math:`E_1^{-1}`, in this order, not of :math:`E_1` and
+          :math:`E_2`.
+
     Args:
         trans_01: reference transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
-        trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch
+          of one broadcasts against a batch of :math:`N` in either argument.
 
     Returns:
         the relative transformation between the transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -165,6 +200,11 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
 
+    try:
+        batch_shape = torch.broadcast_shapes(trans_01.shape[:-2], trans_02.shape[:-2])
+    except RuntimeError as err:
+        raise ValueError(f"Incompatible batch shapes: {trans_01.shape} and {trans_02.shape}") from err
+
     rmat_01 = trans_01[..., :3, :3]
     tvec_01 = trans_01[..., :3, 3:4]
     rmat_02 = trans_02[..., :3, :3]
@@ -172,7 +212,7 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     rmat_10 = rmat_01.transpose(-1, -2)
     rmat_12 = torch.matmul(rmat_10, rmat_02)
     tvec_12 = torch.matmul(rmat_10, tvec_02 - tvec_01)
-    trans_12 = torch.zeros_like(trans_01)
+    trans_12 = trans_01.new_zeros(batch_shape + (4, 4))
     trans_12[..., :3, :3] = rmat_12
     trans_12[..., :3, 3:4] = tvec_12
     trans_12[..., 3, 3] = 1.0
@@ -185,14 +225,14 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Args:
         trans_01: tensor for transformations of shape
-          :math:`(B, D+1, D+1)`.
-        points_1: tensor of points of shape :math:`(B, N, D)`.
+          :math:`(D+1, D+1)` or :math:`(B, D+1, D+1)`.
+        points_1: tensor of points of shape :math:`(N, D)` or :math:`(B, N, D)`.
 
     Returns:
-        a tensor of N-dimensional points.
+        transformed points with the same shape as ``points_1``.
 
     Shape:
-        - Output: :math:`(B, N, D)`
+        - Output: same shape as ``points_1``.
 
     Examples:
         >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
@@ -202,12 +242,17 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(points_1)
-    if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
+    if trans_01.ndim == 2:
+        trans_01 = trans_01.unsqueeze(0)
+    # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a
+    # coincidence, not a match: it used to reach ``bmm`` with an empty batch (kornia#4969).
+    unbatched_points = points_1.ndim == 2 and trans_01.shape[0] > 1
+    if (not trans_01.shape[0] == points_1.shape[0] or unbatched_points) and trans_01.shape[0] != 1:
         raise ValueError(
             f"Input batch size must be the same for both tensors or 1. Got {trans_01.shape} and {points_1.shape}"
         )
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError(f"Last input dimensions must differ by one unit Got{trans_01} and {points_1}")
+        raise ValueError(f"Last input dimensions must differ by one unit. Got {trans_01.shape} and {points_1.shape}")
 
     # No points to transform (e.g. an image chip with no annotations): transforming an empty set
     # yields the same empty set. Return early — the reshape below cannot infer ``-1`` from a
@@ -242,13 +287,41 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     return points_0.to(points_dtype)
 
 
+def _nonzero(x: torch.Tensor) -> torch.Tensor:
+    """``x`` with 1 in place of its zeros: a divisor for entries the caller then sets to inf with :func:`_inf_where`."""
+    return torch.where(x == 0, torch.ones_like(x), x)
+
+
+def _inf_where(value: torch.Tensor, singular: torch.Tensor) -> torch.Tensor:
+    """``value`` with inf at the ``singular`` entries.
+
+    This is the guard that replaces ``eps`` in the two-view metrics (#4881): ``torch.where`` also differentiates the
+    branch it does not select, so ``value`` must be formed with divisors from :func:`_nonzero`; the gradient at a
+    singular entry is then 0 instead of NaN.
+    """
+    return torch.where(singular, torch.full_like(value, torch.inf), value)
+
+
+def _sqrt_or_zero(squared: torch.Tensor) -> torch.Tensor:
+    """``squared.sqrt()`` with a zero gradient at ``squared == 0``, an exact match, where the root's own is infinite."""
+    zero = squared <= 0
+    return torch.where(zero, torch.zeros_like(squared), torch.where(zero, torch.ones_like(squared), squared).sqrt())
+
+
 def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     r"""Return the distance from points to lines.
 
+    Convention:
+        - ``line`` need not be normalised: the distance is :math:`|ax + by + c| / \|(a, b)\|` at every scale of the
+          coefficients. A line with :math:`a = b = 0`, the line at infinity or no line at all, is at distance ``inf``
+          from every point, as a point at infinity is from every line.
+
     Args:
-       point: (possibly homogeneous) points :math:`(*, N, 2 or 3)`.
+       point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
+         weight :math:`w`; a point at infinity (:math:`w = 0`) is at distance ``inf`` from every line.
        line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
-       eps: Small constant for safe sqrt.
+       eps: unused; it was added to :math:`\|(a, b)\|` and made the distance depend on the scale of the line
+         (#4881). The singular line is guarded exactly instead. Accepted so that existing calls keep working.
 
     Returns:
         the computed distance with shape :math:`(*, N)`.
@@ -266,13 +339,24 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
     # Using in-place operations to improve performance
     numerator = line[..., 0] * point[..., 0]
     numerator += line[..., 1] * point[..., 1]
-    numerator += line[..., 2]
+    if point.shape[-1] == 3:
+        numerator += line[..., 2] * point[..., 2]
+    else:
+        numerator += line[..., 2]
     numerator.abs_()
 
-    # Avoid computing norm multiple times by saving its value
-    denom_norm = (line[..., 0].square() + line[..., 1].square()).sqrt()
-
-    return numerator / (denom_norm + eps)
+    # The root and the divisions are taken on safe arguments (see _inf_where); a line with a = b = 0 is singular.
+    squared_norm = line[..., 0].square() + line[..., 1].square()
+    singular = squared_norm == 0
+    distance = numerator / _nonzero(squared_norm).sqrt()
+    if point.shape[-1] == 3:
+        # (x, y, w) is the Euclidean point (x / w, y / w), so its distance is |ax + by + cw| / (|w| |(a, b)|); the
+        # weight used to be ignored, which is right only for w = 1 (#4935). A point at infinity (w = 0) is singular
+        # as well.
+        w = point[..., 2].abs()
+        distance = distance / _nonzero(w)
+        singular = singular | (w == 0)
+    return _inf_where(distance, singular)
 
 
 def batched_dot_product(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
@@ -296,13 +380,19 @@ def euclidean_distance(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False, 
         x: first set of points of shape :math:`(*, N)`.
         y: second set of points of shape :math:`(*, N)`.
         keepdim: whether to keep the dimension after reduction.
-        eps: small value to have numerical stability.
+        eps: unused; kept for backward compatibility. The result is the exact Euclidean distance.
 
     """
     KORNIA_CHECK_SHAPE(x, ["*", "N"])
     KORNIA_CHECK_SHAPE(y, ["*", "N"])
 
-    return (x - y).pow(2).sum(dim=-1, keepdim=keepdim).add_(eps).sqrt_()
+    d2 = (x - y).pow(2).sum(dim=-1, keepdim=keepdim)
+    # Guard the singular point by substituting a safe argument into the square root and taking the
+    # value from the other arm of the ``torch.where``, so coincident points return exactly ``0``
+    # with a finite (zero) gradient instead of the ``sqrt(eps)`` floor the previous form added.
+    positive = d2 > 0
+    safe_d2 = torch.where(positive, d2, torch.ones_like(d2))
+    return torch.where(positive, safe_d2.sqrt(), torch.zeros_like(d2))
 
 
 # aliases

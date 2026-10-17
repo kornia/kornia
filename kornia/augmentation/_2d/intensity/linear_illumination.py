@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
 
@@ -45,23 +45,14 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
-          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
-          It adds the field to the image and
-          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           edge where the gradient is strongest is drawn separately, per sample.
-        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
-          bound, the sum is cut there rather than rescaled.
-        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
-          original's output under the same seed.
-
-    .. warning::
-        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
-        above zero; a positive sampled gradient can recover values instead. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -149,6 +140,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
+        input = _clamp_unit_range(input)
         return input.add(params["gradient"].to(input)).clamp(0, 1)
 
 
@@ -173,23 +165,14 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
-          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
-          It adds the field to the image and
-          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           corner where the gradient is strongest is drawn separately, per sample.
-        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
-          bound, the sum is cut there rather than rescaled.
-        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
-          original's output under the same seed.
-
-    .. warning::
-        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
-        above zero; a positive sampled gradient can recover values instead. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -277,4 +260,5 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
+        input = _clamp_unit_range(input)
         return input.add(params["gradient"].to(input)).clamp(0, 1)

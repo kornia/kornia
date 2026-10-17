@@ -120,7 +120,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         images: Union[torch.Tensor, list[torch.Tensor]],
         edge_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Draw the edge detection results.
 
         Args:
@@ -163,7 +163,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_edge")
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 352,
@@ -171,7 +171,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type: ignore
+    ) -> onnx.ModelProto:
         """Export the current edge detection model to an ONNX model file.
 
         Args:

@@ -20,24 +20,18 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core.utils import is_compiling, is_exporting
-
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
     r"""Estimate the tilt projection matrix or the inverse tilt projection matrix.
 
     Convention:
-        - the rotation is ``R = Ry(tauy) @ Rx(taux)`` and ``Pz`` is built from the third column of ``R``. Both
-          branches return exactly ``eye(3)`` when ``taux`` and ``tauy`` are zero, which is the case for a
-          ``dist`` vector whose 13th and 14th entries are zero.
-        - ``return_inverse=True`` returns the inverse of ``Pz @ R``. That is the branch
-          :func:`~kornia.geometry.calibration.undistort_points` applies, and it is what reproduces OpenCV's
-          ``undistortPoints`` on this repository's own reference values.
-        - ``return_inverse=False`` returns ``Pz @ R``, matching OpenCV's tilt projection.
-        - Scalar angles return :math:`(3, 3)`. For non-scalar angles, a trailing singleton angle-component
-          axis is consumed and every leading batch dimension is preserved; without that trailing singleton,
-          the full input shape is treated as the batch shape.
+        - the rotation is ``R = Ry(tauy) @ Rx(taux)`` and ``Pz`` is built from the third column of ``R``;
+          ``return_inverse=False`` returns ``Pz @ R`` (OpenCV's tilt projection) and ``return_inverse=True`` its
+          inverse, the branch :func:`~kornia.geometry.calibration.undistort_points` applies. Zero angles give
+          ``eye(3)``.
+        - scalar angles return :math:`(3, 3)`; otherwise a trailing singleton angle axis, if present, is
+          consumed and the remaining dimensions are the batch shape.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -93,8 +87,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
             -2,
         )
 
-        inv_tilt = R.transpose(-1, -2) @ invPz
-        return inv_tilt
+        return R.transpose(-1, -2) @ invPz
 
     Pz = torch.stack(
         [
@@ -105,8 +98,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         -2,
     )
 
-    tilt = Pz @ R
-    return tilt
+    return Pz @ R
 
 
 def distort_points(
@@ -119,24 +111,17 @@ def distort_points(
     distortion models are considered in this function.
 
     Convention:
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera-intrinsics and
-        integer pixel-centre conventions used here.
-
-        - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result. Pixel centres lie at
-          integer coordinates: the top-left centre is ``(0, 0)``.
+        - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result (integer pixel centres;
+          see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
           :func:`~kornia.geometry.camera.distort_points_affine` and
-          :func:`~kornia.geometry.camera.distort_points_kannala_brandt` are the counterparts that take a point
-          on the normalized :math:`z = 1` plane and a flat parameter vector instead of ``K`` and ``dist``.
+          :func:`~kornia.geometry.camera.distort_points_kannala_brandt` take a point on the normalized
+          :math:`z = 1` plane and a flat parameter vector instead.
         - ``dist`` is OpenCV's coefficient vector in the order listed under ``Args``. The lengths 4, 5, 8, 12
-          and 14 are accepted and every other length raises :class:`ValueError`; an accepted shorter vector is
-          zero-padded to 14 internally, so a 4-element vector and its 14-element zero padding give the same
-          answer.
-        - ``new_K`` and ``K`` play opposite roles: ``new_K`` maps the incoming pixel onto the normalized
-          plane and ``K`` maps the distorted normalized point back to pixels. ``new_K`` defaults to ``K``.
-        - :func:`~kornia.geometry.calibration.undistort_points` is the inverse map and takes the same
-          coefficient layout, with the two intrinsics in the mirrored roles.
-        - Matching leading dimensions are preserved with or without tilt. Compilation and ONNX export always apply
-          the tilt branch, including for zero tilt, where the resulting projection is the identity.
+          and 14 are accepted, zero-padded to 14 internally; any other length raises :class:`ValueError`.
+        - ``new_K`` maps the incoming pixel onto the normalized plane and ``K`` maps the distorted point back
+          to pixels; ``new_K`` defaults to ``K``. :func:`~kornia.geometry.calibration.undistort_points` is the
+          inverse map, with the two intrinsics in the mirrored roles.
+        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -174,6 +159,7 @@ def distort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
+    has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = F.pad(dist, [0, 14 - dist.shape[-1]])
@@ -211,12 +197,9 @@ def distort_points(
         + dist[..., 11:12] * r4
     )
 
-    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
-    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
-    capture = is_exporting()
-    if not torch.jit.is_scripting():
-        capture = capture or is_compiling()
-    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
+    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
+    if has_tilt:
         tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])

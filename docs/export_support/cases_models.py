@@ -286,31 +286,6 @@ for tagname, mdl, err in (("mobile_sam", sam_mobile, _e_sm), ("vit_b,random", sa
         )
     )
 
-# ============================================================================= kornia.models.sam3
-from kornia.models.sam3 import ImageEncoderHiera  # noqa: E402
-
-A(
-    mcase(
-        "models.sam3.ImageEncoderHiera[tiny,random]",
-        "models.sam3",
-        lambda: ev(ImageEncoderHiera(img_size=64, patch_size=16, embed_dim=64, depth=2, num_heads=2)),
-        lambda m: m,
-        [torch.rand(1, 3, 64, 64)],
-        note="random init, img_size=64 (square, pos_embed fixed to img_size)",
-        tags=("model",),
-    )
-)
-A(
-    case(
-        "models.sam3.ImageEncoderHiera[default 1024]",
-        "models.sam3",
-        None,
-        [],
-        skip="default config = ViT-B at 1024x1024 random init; no weights loader exists in kornia; "
-        "tiny variant exported",
-    )
-)
-
 # ============================================================================= kornia.models.yunet
 from kornia.models.yunet import YuNet  # noqa: E402
 from kornia.models.yunet.processors import PriorBox, decode  # noqa: E402
@@ -755,7 +730,7 @@ A(
 # ============================================================================= VLM re-implementations (pure PyTorch)
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel, KimiVLProjectorConfig, MoonViT, MoonViTConfig  # noqa: E402
 from kornia.models.paligemma import PaliGemma, PaliGemmaConfig  # noqa: E402
-from kornia.models.qwen25 import Qwen2VLVisionTransformer  # noqa: E402
+from kornia.models.qwen25 import Qwen25VisionConfig, Qwen25VisionTransformer  # noqa: E402
 from kornia.models.siglip2 import SigLip2Config, SigLip2ImagePreprocessor, SigLip2Model  # noqa: E402
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig  # noqa: E402
 from kornia.models.smolvlm2 import SmolVLM2  # noqa: E402
@@ -876,12 +851,24 @@ A(
 )
 A(
     mcase(
-        "models.qwen25.Qwen2VLVisionTransformer[tiny,random]",
+        "models.qwen25.Qwen25VisionTransformer[tiny,random]",
         "models.vlm",
-        lambda: ev(Qwen2VLVisionTransformer(embed_dim=32, depth=1, num_heads=2)),
+        lambda: ev(
+            Qwen25VisionTransformer(
+                Qwen25VisionConfig(
+                    depth=2,
+                    hidden_size=32,
+                    intermediate_size=48,
+                    num_heads=2,
+                    out_hidden_size=16,
+                    window_size=56,
+                    fullatt_block_indexes=(1,),
+                )
+            )
+        ),
         lambda m: m,
-        [torch.rand(1, 3, 28, 42)],
-        note="pure-PyTorch skeleton; conv14 patch embed + rotary attention blocks",
+        [torch.rand(1, 3, 112, 84)],
+        note="pure-PyTorch Qwen2.5-VL tower; conv3d patch embed, 2D RoPE, windowed + full attention, 2x2 merger",
         tags=("model",),
     )
 )
@@ -981,7 +968,7 @@ A(
         K.contrib.combine_tensor_patches,
         [_patches_o],
         {"original_size": (32, 48), "window_size": (8, 12), "stride": (4, 6), "unpadding": (2, 3)},
-        note="overlapping windows: divides by ones-fold count (eps=1e-8)",
+        note="overlapping windows: divides by the exact ones-fold overlap count",
     )
 )
 _patches_a = K.contrib.extract_tensor_patches(_x, window_size=10, stride=7, allow_auto_padding=True)

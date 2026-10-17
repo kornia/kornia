@@ -34,12 +34,11 @@ def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, par
 
     Convention:
         - ``projected_points_in_camera_z1_plane`` is a point on the **normalized** :math:`z = 1` plane, not a
-          pixel, and ``params`` is the flat vector ``[fx, fy, cx, cy]``; the result is in pixels.
-          Pixel centres lie at integer coordinates: the top-left centre is ``(0, 0)``.
+          pixel, and ``params`` is the flat vector ``[fx, fy, cx, cy]``; the result is in pixels (integer pixel
+          centres; see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
         - :func:`~kornia.geometry.calibration.distort_points` is the same camera parametrized by a
           :math:`(*, 3, 3)` ``K`` and an OpenCV coefficient vector; it takes a **pixel** input instead.
-        - :func:`undistort_points_affine` inverts this map in closed form -- one subtraction and one division
-          per axis, with no iteration; the Kannala-Brandt pair needs a Gauss-Newton solve for the same step.
+        - :func:`undistort_points_affine` is the closed-form inverse.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
@@ -83,9 +82,8 @@ def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: to
         - ``distorted_points_in_camera`` is a **pixel** coordinate and the result is a point on the normalized
           :math:`z = 1` plane; ``params`` is the same ``[fx, fy, cx, cy]`` vector that
           :func:`distort_points_affine` takes, and this function is its closed-form inverse.
-        - a zero ``fx`` or ``fy`` is not rejected: that axis divides by zero and comes back as an infinity
-          carrying the numerator's sign, or as ``nan`` for a point that sits exactly on the corresponding
-          principal-point coordinate.
+        - ``params`` values are not validated (a design choice shared with the other intrinsics consumers): a
+          zero ``fx`` or ``fy`` gives ``inf`` or ``nan`` on that axis.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
@@ -125,8 +123,7 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, 
 
     Convention:
         - the result is the :math:`(..., 2, 2)` Jacobian of :func:`distort_points_affine` with respect to the
-          **point**: rows are the output components ``(u, v)``, columns the input components ``(x, y)``. It
-          agrees with :func:`torch.autograd.functional.jacobian` of the same function.
+          **point**: rows are the output components ``(u, v)``, columns the input components ``(x, y)``.
         - the map is affine, so that Jacobian is ``diag(fx, fy)`` and does not depend on the point.
 
     Args:

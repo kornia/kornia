@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numbers
 from typing import Optional, Tuple, Union
 
 import torch
@@ -45,6 +46,16 @@ __all__ = [
     "shear",
     "translate",
 ]
+
+
+def _register_transform_tensor(module: nn.Module, name: str, value: Optional[torch.Tensor]) -> None:
+    # Preserve trainable constructor parameters; ordinary tensors follow Module.to
+    # without adding new entries to existing checkpoints.
+    if isinstance(value, nn.Parameter):
+        module.register_parameter(name, value)
+    else:
+        module.register_buffer(name, value, persistent=False)
+
 
 # utilities to compute affine matrices
 
@@ -145,9 +156,10 @@ def affine(
     .. image:: _static/img/warp_affine.png
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
+        defaults and sampling rules.
+
         - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of
@@ -179,7 +191,10 @@ def affine(
     if tensor.shape[0] == 1 and matrix.shape[0] != 1:
         tensor = tensor.expand(matrix.shape[0], tensor.shape[1], tensor.shape[2], tensor.shape[3])
 
-    matrix = matrix.expand(tensor.shape[0], -1, -1)
+    # Keep a shared matrix singleton so warp_affine builds only one sampling grid.
+    # Keep parameter-gradient reductions in their original order, and retain batch validation.
+    if matrix.shape[0] != 1 or tensor.shape[0] == 0 or matrix.requires_grad:
+        matrix = matrix.expand(tensor.shape[0], -1, -1)
 
     # warp the input tensor
     height: int = tensor.shape[-2]
@@ -204,8 +219,7 @@ def affine3d(
 
     Convention:
         - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - align_corners: ``False`` by default (the 2D :func:`affine` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of
@@ -269,8 +283,6 @@ def rotate(
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -317,8 +329,22 @@ def rotate(
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
-    angle = angle.expand(tensor.shape[0])
-    center = center.expand(tensor.shape[0], -1)
+    # A singleton angle and center describe one transform shared by all images. Keep
+    # it singleton through affine so warp_affine can reuse its sampling grid. Trainable
+    # parameters keep the original reduction order, which matters for half-precision gradients.
+    batch = tensor.shape[0]
+    if (
+        tensor.dim() == 4
+        and batch > 0
+        and angle.shape == (1,)
+        and not angle.requires_grad
+        and not center.requires_grad
+        and (center.shape == (2,) or center.shape == (1, 2))  # noqa: PLR1714 - TorchScript shape checks
+        and not torch.jit.is_tracing()
+    ):
+        batch = 1
+    angle = angle.expand(batch)
+    center = center.expand(batch, -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix(angle, center)
 
     # warp using the affine transform
@@ -340,16 +366,24 @@ def rotate3d(
     Convention:
         - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
           slice (``z = 0``); defaults to the tensor center
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - ``yaw``, ``pitch`` and ``roll`` are **one axis-angle vector** ``(rx, ry, rz)`` in degrees,
+          not three composed per-axis Euler rotations: the three are concatenated and handed to
+          :func:`~kornia.geometry.transform.get_projective_transform`, which applies Rodrigues'
+          formula. The rotation axis is ``(rx, ry, rz) / ||(rx, ry, rz)||`` and the angle is
+          ``||(rx, ry, rz)||`` degrees, so ``(90, 90, 0)`` turns through ``90 * sqrt(2)`` degrees
+          about ``(1, 1, 0) / sqrt(2)`` while ``(30, 0, 0)`` is a 30-degree turn about ``x``. A
+          single non-zero component therefore *is* the per-axis rotation it names, which is why
+          one angle reads the same under either reading; two or more do not, and neither Euler
+          order reproduces the axis-angle result.
+        - align_corners: ``False`` by default (the 2D :func:`rotate` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
-        yaw: The yaw angle through which to rotate. The tensor
+        yaw: The ``rx`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
-        pitch: The pitch angle through which to rotate. The tensor
+        pitch: The ``ry`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
-        roll: The roll angle through which to rotate. The tensor
+        roll: The ``rz`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
           must have a shape of (B, 3), where B is batch size and last
@@ -411,8 +445,6 @@ def translate(
 
     Convention:
         - ``translation`` is ``(dx, dy)`` in pixels
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -466,8 +498,6 @@ def scale(
 
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
-        - align_corners: ``True`` by default
-        - padding_mode: ``'zeros'`` by default
 
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
@@ -531,14 +561,18 @@ def shear(
     .. image:: _static/img/shear.png
 
     Convention:
-        - ``shear`` is ``(shx, shy)``
-        - align_corners: ``False`` by default
-        - padding_mode: ``'zeros'`` by default
+        - ``shear`` is a pair of raw factors ``(shx, shy)`` about pixel ``(0, 0)``:
+          ``x_out = x + shx * y``, ``y_out = y + shy * x`` (x right, y down).
+        - Known defect: :class:`Affine` reads its ``shear`` as angles in radians about the image centre and shears
+          by their negative tangent, so the same tensor shears the other way there while its values stay below
+          ``pi / 2`` in magnitude (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
+        - align_corners: ``False`` by default (differs from the other 2D affine warps and from
+          :class:`Shear`, which default to ``True``)
 
     Args:
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -614,8 +648,8 @@ def resize(
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
             or ``'horz'``.
@@ -637,6 +671,12 @@ def resize(
 
     if len(input.shape) < 2:
         raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
+    # Every input is resampled as a 4-D (B, C, H, W) batch, for which F.interpolate rejects the 1-D and 3-D modes.
+    if interpolation in ("linear", "trilinear"):
+        raise ValueError(
+            f"interpolation={interpolation!r} is not supported: resize resamples (H, W), so use 'nearest', "
+            "'nearest-exact', 'bilinear', 'bicubic' or 'area'."
+        )
 
     original_shape = input.shape
     h, w = input.shape[-2:]
@@ -686,10 +726,20 @@ def resize(
             ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
             ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
+            # A singleton axis has nothing to smooth and cannot accept reflection padding.
+            ks = (1 if h == 1 else ks[0], 1 if w == 1 else ks[1])
 
             input = gaussian_blur2d(input, ks, sigmas)
 
-        output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+        if interpolation == "nearest-exact" and torch.onnx.is_in_onnx_export():
+            # The TorchScript ONNX exporter has no symbolic for ``nearest-exact``; gather the
+            # half-pixel indices ``floor((i + 0.5) * in / out)`` that ``interpolate`` samples.
+            for dim, (in_size, out_size) in zip((-2, -1), ((h, size[0]), (w, size[1]))):
+                index = ((torch.arange(out_size, device=input.device) + 0.5) * (in_size / out_size)).floor()
+                input = input.index_select(dim, index.long().clamp(max=in_size - 1))
+            output = input
+        else:
+            output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
     if len(original_shape) == 2:
         output = output[0, 0]
@@ -712,9 +762,10 @@ def resize_to_be_divisible(
     """Resize the input tensor to be divisible by a certain factor.
 
     Convention:
-        - align_corners: ``None`` by default; see the convention block of :func:`resize`
+        - see the convention block of :func:`resize`
         - rounds ``height``/``width`` to the nearest multiple of ``divisible_factor`` before
-          delegating to :func:`resize`
+          delegating to :func:`resize`; a positive side becomes at least ``divisible_factor``, and an empty side
+          stays empty
 
     Args:
         input (torch.Tensor): Input tensor to be resized.
@@ -730,13 +781,16 @@ def resize_to_be_divisible(
         torch.Tensor: The resized tensor.
 
     """
-    if isinstance(input, torch.Tensor) and len(input.shape) == 4:
-        height, width = input.shape[2], input.shape[3]
-    if isinstance(input, torch.Tensor) and len(input.shape) == 3:
-        height, width = input.shape[1], input.shape[2]
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
+    if input.ndim < 2:
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {input.ndim}")
+    if not isinstance(divisible_factor, numbers.Integral) or divisible_factor <= 0:
+        raise ValueError(f"divisible_factor must be a positive integer. Got {divisible_factor}")
 
-    height = round(height / divisible_factor) * divisible_factor
-    width = round(width / divisible_factor) * divisible_factor
+    height, width = input.shape[-2:]
+    height = max(1, round(height / divisible_factor)) * divisible_factor if height > 0 else 0
+    width = max(1, round(width / divisible_factor)) * divisible_factor if width > 0 else 0
     return resize(input, (height, width), interpolation, align_corners, side, antialias)
 
 
@@ -754,16 +808,18 @@ def rescale(
     Convention:
         - ``factor`` is ``(factor_h, factor_w)`` when a pair — height first (contrast
           :func:`scale`, whose ``scale_factor`` is x-first)
-        - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
-          see the convention block of :func:`resize`)
         - delegates to :func:`resize` after converting ``factor`` to an output ``size``
+        - ONNX: an export with a dynamic height or width keeps it dynamic for the ``'nearest'``,
+          ``'bilinear'`` and ``'bicubic'`` modes without ``antialias``; the other modes keep the output size of
+          the traced input. The exported graph computes the size in float32, which can be one pixel off eager
+          when ``factor`` is not a power of two (``0.7`` at a side of 90 gives 63, eager 62)
 
     Args:
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -783,6 +839,25 @@ def rescale(
     else:
         factor_vert, factor_horz = factor
 
+    if (
+        torch.onnx.is_in_onnx_export()
+        and not antialias
+        and interpolation in ("nearest", "bilinear", "bicubic")
+        and factor_vert > 0
+        and factor_horz > 0
+        and input.ndim == 4
+    ):
+        # ONNX export: keep the scale in the graph, so a dynamic height or width stays dynamic instead of freezing
+        # the traced output size. ``is_exporting()`` is not used: it is also true inside ``torch.compile`` on torch
+        # 2.5.1 and 2.9.1, where this path would skip ``resize``.
+        return torch.nn.functional.interpolate(
+            input,
+            scale_factor=(factor_vert, factor_horz),
+            mode=interpolation,
+            align_corners=align_corners,
+            recompute_scale_factor=True,
+        )
+
     height, width = input.size()[-2:]
     size = (int(height * factor_vert), int(width * factor_horz))
     return resize(input, size, interpolation=interpolation, align_corners=align_corners, antialias=antialias)
@@ -796,7 +871,6 @@ class Resize(nn.Module):
         conventions. When resizing camera images, see
         :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
 
-        - align_corners: ``None`` by default, matching :func:`resize`
         - See the convention block of :func:`resize`.
 
     Args:
@@ -804,8 +878,8 @@ class Resize(nn.Module):
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
             or ``'horz'``.
@@ -866,8 +940,12 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`affine`
-        - See the convention block of :func:`affine`.
+        - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
+          of :func:`get_shear_matrix2d` about ``center`` (by default ``((W - 1) / 2, (H - 1) / 2)``).
+        - Known defect: :func:`shear` and :class:`Shear` read their ``shear`` as raw factors about pixel ``(0, 0)``,
+          without the negative tangent, so the same tensor shears the other way there while its values stay below
+          ``pi / 2`` in magnitude (`#5661 <https://github.com/kornia/kornia/issues/5661>`_).
+        - ``align_corners`` defaults to ``True``. See the convention block of :func:`affine`.
 
     Args:
         angle: Angle in degrees for counter-clockwise rotation around the center. The tensor
@@ -876,7 +954,7 @@ class Affine(nn.Module):
             have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
         scale_factor: Factor for scaling. The tensor must have a shape of (B,2), where B is the
             batch size and the last dimension contains scale factors for x and y direction.
-        shear: Factor for shearing in x- and y-direction around the center. The
+        shear: Angles in radians for shearing in x- and y-direction around the center. The
             tensor must have a shape of (B, 2), where B is the batch size and the last dimension
             contains sx and sy.
         center: Transformation center in pixels. The tensor must have a shape of (B, 2), where
@@ -890,6 +968,9 @@ class Affine(nn.Module):
 
     Raises:
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
+        DeviceError: If ``angle``, ``translation``, ``scale_factor`` and ``shear`` are not all on one device.
+        TypeCheckError: If they are on one device but do not all have one dtype. The ones not given are
+            created on that device and in that dtype.
 
     Returns:
         The transformed tensor with same shape as input.
@@ -929,22 +1010,22 @@ class Affine(nn.Module):
         self._batch_size = batch_size
 
         super().__init__()
-        device, dtype = _extract_device_dtype([angle, translation, scale_factor])
+        device, dtype = _extract_device_dtype([angle, translation, scale_factor, shear])
 
         if angle is None:
             angle = torch.zeros(batch_size, device=device, dtype=dtype)
-        self.angle = angle
+        _register_transform_tensor(self, "angle", angle)
 
         if translation is None:
             translation = torch.zeros(batch_size, 2, device=device, dtype=dtype)
-        self.translation = translation
+        _register_transform_tensor(self, "translation", translation)
 
         if scale_factor is None:
             scale_factor = torch.ones(batch_size, 2, device=device, dtype=dtype)
-        self.scale_factor = scale_factor
+        _register_transform_tensor(self, "scale_factor", scale_factor)
 
-        self.shear = shear
-        self.center = center
+        _register_transform_tensor(self, "shear", shear)
+        _register_transform_tensor(self, "center", center)
         self.mode = mode
         self.padding_mode = padding_mode
         self.align_corners = align_corners
@@ -970,10 +1051,7 @@ class Affine(nn.Module):
         else:
             sx, sy = self.shear[..., 0], self.shear[..., 1]
 
-        if self.center is None:
-            center = _compute_tensor_center(input).expand(input.size()[0], -1)
-        else:
-            center = self.center
+        center = _compute_tensor_center(input).expand(input.size()[0], -1) if self.center is None else self.center
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
         return affine(input, matrix[..., :2, :3], self.mode, self.padding_mode, self.align_corners)
@@ -984,14 +1062,17 @@ class Rescale(nn.Module):
 
     Convention:
         - align_corners: ``True`` by default (differs from function :func:`rescale`, whose default
-          is ``None``)
+          is ``None``). It applies to the ``'bilinear'`` and ``'bicubic'`` modes only. ``'nearest'``,
+          ``'nearest-exact'`` and ``'area'`` ignore it, an explicit ``align_corners=True`` included, because
+          ``torch.nn.functional.interpolate`` accepts no value but ``None`` for them; the function
+          :func:`rescale` raises ``ValueError`` for such a call.
         - See the convention block of :func:`rescale`.
 
     Args:
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -1032,16 +1113,18 @@ class Rescale(nn.Module):
             Tensor with the same leading and channel dimensions as ``input``.
             The output height and width are computed from ``self.factor``.
         """
-        return rescale(
-            input, self.factor, self.interpolation, align_corners=self.align_corners, antialias=self.antialias
+        # ``align_corners`` only applies to the interpolating modes: ``F.interpolate`` rejects any value but ``None``
+        # for ``nearest``, ``nearest-exact`` and ``area``, which the default ``True`` would otherwise make unusable.
+        align_corners = (
+            self.align_corners if self.interpolation in ("linear", "bilinear", "bicubic", "trilinear") else None
         )
+        return rescale(input, self.factor, self.interpolation, align_corners=align_corners, antialias=self.antialias)
 
 
 class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`rotate`
         - See the convention block of :func:`rotate`.
 
     Args:
@@ -1077,8 +1160,8 @@ class Rotate(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.angle: torch.Tensor = angle
-        self.center: Union[torch.Tensor, None] = center
+        _register_transform_tensor(self, "angle", angle)
+        _register_transform_tensor(self, "center", center)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1103,7 +1186,6 @@ class Translate(nn.Module):
     r"""Translate the tensor in pixel units.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`translate`
         - See the convention block of :func:`translate`.
 
     Args:
@@ -1136,7 +1218,7 @@ class Translate(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.translation: torch.Tensor = translation
+        _register_transform_tensor(self, "translation", translation)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1160,7 +1242,6 @@ class Scale(nn.Module):
     r"""Scale the tensor by a factor.
 
     Convention:
-        - align_corners: ``True`` by default, matching :func:`scale`
         - See the convention block of :func:`scale`.
 
     Args:
@@ -1198,8 +1279,8 @@ class Scale(nn.Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        self.scale_factor: torch.Tensor = scale_factor
-        self.center: Union[torch.Tensor, None] = center
+        _register_transform_tensor(self, "scale_factor", scale_factor)
+        _register_transform_tensor(self, "center", center)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1228,8 +1309,8 @@ class Shear(nn.Module):
         - See the convention block of :func:`shear`.
 
     Args:
-        shear: tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
+        shear: tensor containing raw shear factors
+          in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -1253,7 +1334,7 @@ class Shear(nn.Module):
         self, shear: torch.Tensor, mode: str = "bilinear", padding_mode: str = "zeros", align_corners: bool = True
     ) -> None:
         super().__init__()
-        self.shear: torch.Tensor = shear
+        _register_transform_tensor(self, "shear", shear)
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners

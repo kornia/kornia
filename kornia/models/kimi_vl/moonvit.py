@@ -199,8 +199,7 @@ class MoonViTMLP(nn.Module):
         x = self.fc1(x)
         x = self.act(x)
         x = self.fc2(x)
-        x = self.dropout(x)
-        return x
+        return self.dropout(x)
 
 
 class MoonViTLayer(nn.Module):
@@ -247,8 +246,7 @@ class MoonViTLayer(nn.Module):
             residual updates.
         """
         x = x + self.attn(self.norm1(x), cos, sin, attention_mask)
-        x = x + self.mlp(self.norm2(x))
-        return x
+        return x + self.mlp(self.norm2(x))
 
 
 class MoonViTEncoder(nn.Module):
@@ -341,6 +339,4 @@ class MoonViT(nn.Module):
         # Generate RoPE
         cos, sin = self.rope(h_patches, w_patches, x.device)  # (N, head_dim / 2)
         x = self.encoder(x, cos, sin, attention_mask=attention_mask)
-        x = self.norm(x)
-
-        return x
+        return self.norm(x)

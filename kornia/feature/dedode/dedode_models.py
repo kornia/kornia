@@ -72,8 +72,7 @@ def dedode_detector_L(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDetector:
     )
     encoder = VGG19(amp=amp, amp_dtype=amp_dtype)
     decoder = Decoder(conv_refiner)
-    model = DeDoDeDetector(encoder=encoder, decoder=decoder)
-    return model
+    return DeDoDeDetector(encoder=encoder, decoder=decoder)
 
 
 def dedode_descriptor_B(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescriptor:
@@ -124,8 +123,7 @@ def dedode_descriptor_B(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescrip
     )
     encoder = VGG19(amp=amp, amp_dtype=amp_dtype)
     decoder = Decoder(conv_refiner, num_prototypes=NUM_PROTOTYPES)
-    model = DeDoDeDescriptor(encoder=encoder, decoder=decoder)
-    return model
+    return DeDoDeDescriptor(encoder=encoder, decoder=decoder)
 
 
 def dedode_descriptor_G(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescriptor:
@@ -187,8 +185,7 @@ def dedode_descriptor_G(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescrip
     dinov2_kwargs = {"amp": amp, "amp_dtype": amp_dtype, "dinov2_weights": None}
     encoder = VGG_DINOv2(vgg_kwargs=vgg_kwargs, dinov2_kwargs=dinov2_kwargs)
     decoder = Decoder(conv_refiner, num_prototypes=NUM_PROTOTYPES)
-    model = DeDoDeDescriptor(encoder=encoder, decoder=decoder)
-    return model
+    return DeDoDeDescriptor(encoder=encoder, decoder=decoder)
 
 
 def get_detector(kind: str = "L", amp_dtype: torch.dtype = torch.float16) -> DeDoDeDetector:

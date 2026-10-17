@@ -261,3 +261,82 @@ class TestRandomCrop3D(BaseTester):
         actual = op_trace(img)
         expected = op(img)
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    def test_rejects_a_crop_one_voxel_larger_than_the_input(self, axis, device, dtype):
+        # The size guard counted valid start offsets and rejected only a negative count, so a crop exactly
+        # one voxel too large passed and the output gained an empty slab.
+        """Reject crops exceeding the input by even one voxel on any spatial axis."""
+        volume = torch.ones(1, 1, 4, 5, 6, device=device, dtype=dtype)
+        size = [4, 5, 6]
+        size[axis] += 1
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input"):
+            RandomCrop3D(tuple(size), p=1.0)(volume)
+        # The whole volume is still a valid crop.
+        assert RandomCrop3D((4, 5, 6), p=1.0)(volume).shape == (1, 1, 4, 5, 6)
+        # Padding is counted in, so the same size fits once the axis is padded.
+        padding = [0, 0, 0, 0, 0, 0]
+        padding[2 * (2 - axis)] = 1
+        assert RandomCrop3D(tuple(size), padding=tuple(padding), p=1.0)(volume).shape == (1, 1, *size)
+
+    def test_fill_accepts_one_value_per_channel(self, device, dtype):
+        volume = torch.zeros(1, 3, 2, 2, 2, device=device, dtype=dtype)
+        fill = (0.25, 0.5, 0.75)
+        padded = RandomCrop3D((4, 4, 4), padding=1, fill=fill, p=1.0).precrop_padding(volume)
+        assert padded.shape == (1, 3, 4, 4, 4)
+        expected = volume.new_tensor(fill).view(1, 3, 1, 1, 1)
+        self.assert_close(padded[:, :, 0, 0, 0], expected[:, :, 0, 0, 0])
+        self.assert_close(padded[:, :, -1, -1, -1], expected[:, :, 0, 0, 0])
+        self.assert_close(padded[:, :, 1:3, 1:3, 1:3], volume)  # the interior is untouched
+        # A scalar keeps the old behaviour.
+        scalar = RandomCrop3D((4, 4, 4), padding=1, fill=7.0, p=1.0).precrop_padding(volume)
+        self.assert_close(scalar[:, :, 0, 0, 0], torch.full((1, 3), 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_fill_sequence_is_validated(self):
+        volume = torch.zeros(1, 3, 2, 2, 2)
+        with pytest.raises(ValueError, match="one value per channel"):
+            RandomCrop3D((4, 4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(volume)
+        with pytest.raises(ValueError, match="padding_mode='constant'"):
+            RandomCrop3D((4, 4, 4), padding=1, fill=(1.0, 0.0, 0.0), padding_mode="replicate", p=1.0).precrop_padding(
+                volume
+            )
+
+
+class TestRandomCrop3DPaddingMatrix(BaseTester):
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize(
+        "padding,automatic,size",
+        [
+            (None, False, (4, 5, 6)),
+            ((1, 2, 2, 1, 3, 1), False, (7, 7, 8)),
+            (None, True, (6, 7, 8)),
+            ((1, 0, 2, 0, 0, 1), True, (7, 9, 9)),
+        ],
+    )
+    def test_original_voxel_coordinates_and_replay_4801(self, same_on_batch, padding, automatic, size, device, dtype):
+        torch.manual_seed(4)
+        volume = torch.zeros(2, 1, 5, 6, 7, device=device, dtype=dtype)
+        volume[..., 2, 3, 3] = 1
+        aug = RandomCrop3D(
+            size,
+            padding=padding,
+            pad_if_needed=automatic,
+            same_on_batch=same_on_batch,
+            resample="nearest",
+            p=1.0,
+        )
+        output = aug(volume)
+        matrix = aug.transform_matrix.clone()
+        mapped = (matrix @ volume.new_tensor([3, 3, 2, 1]))[:, :3]
+        for row in range(2):
+            indices = (output[row, 0] == 1).nonzero()
+            assert indices.shape == (1, 3)
+            self.assert_close(mapped[row], indices[0].flip(0).to(volume), rtol=0, atol=0)
+        if same_on_batch:
+            self.assert_close(matrix[0], matrix[1], rtol=0, atol=0)
+        self.assert_close(aug(volume, params=aug._params), output, rtol=0, atol=0)
+        self.assert_close(aug.transform_matrix, matrix, rtol=0, atol=0)
+        skipped = RandomCrop3D(size, padding=padding, pad_if_needed=automatic, p=0.0)
+        self.assert_close(skipped(volume), volume, rtol=0, atol=0)
+        self.assert_close(skipped.transform_matrix, torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1))

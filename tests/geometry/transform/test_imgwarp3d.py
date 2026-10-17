@@ -22,7 +22,90 @@ import kornia
 import kornia.geometry.transform as proj
 from kornia.core.utils import _torch_inverse_cast
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_close
+
+
+class TestWarpAffine3dEmptyBatch(BaseTester):
+    """Empty volume batches retain affine-warp geometry and gradient connections."""
+
+    @pytest.mark.parametrize("dsize", [(3, 4, 5), (2, 6, 7)])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("mode,padding", [("bilinear", "zeros"), ("nearest", "reflection")])
+    def test_empty_batch_4429(self, dsize, align_corners, mode, padding, device, dtype):
+        """Keep the requested canvas, dtype, device and gradients for both empty operands."""
+        src = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        out = proj.warp_affine3d(src, matrix, dsize, mode, padding, align_corners)
+        assert out.shape == (0, 2, *dsize)
+        assert out.dtype == dtype
+        assert out.device == device
+        out.sum().backward()
+        assert src.grad is not None
+        assert src.grad.shape == src.shape
+        assert matrix.grad is not None
+        assert matrix.grad.shape == matrix.shape
+
+    @pytest.mark.parametrize("spatial", [(3, 4, 5), (0, 4, 5), (3, 0, 5), (3, 4, 0)])
+    def test_empty_batch_validation_4429(self, spatial, device, dtype):
+        """An empty batch still rejects invalid sampling options and incompatible matrices."""
+        src = torch.empty(0, 2, *spatial, device=device, dtype=dtype)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="expected mode"):
+            proj.warp_affine3d(src, matrix, (3, 4, 5), flags="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            proj.warp_affine3d(src, matrix, (3, 4, 5), padding_mode="invalid")
+        with pytest.raises(RuntimeError):
+            proj.warp_affine3d(src, torch.eye(3, 4, device=device, dtype=dtype)[None], (3, 4, 5))
+        # A non-empty batch rejects a matrix of another dtype, so an empty one must too.
+        other = torch.float16 if dtype != torch.float16 else torch.float32
+        with pytest.raises(RuntimeError, match="same dtype"):
+            proj.warp_affine3d(src, matrix.to(other), (3, 4, 5))
+
+    @pytest.mark.parametrize("spatial", [(0, 4, 5), (3, 0, 5), (3, 4, 0)])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("mode,padding", [("bilinear", "zeros"), ("nearest", "reflection")])
+    def test_empty_spatial_batch_4429(self, spatial, align_corners, mode, padding, device, dtype):
+        """An empty batch needs no source voxels to retain its output shape and gradients."""
+        src = torch.empty(0, 2, *spatial, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        out = proj.warp_affine3d(src, matrix, (2, 6, 7), mode, padding, align_corners)
+        assert out.shape == (0, 2, 2, 6, 7)
+        assert out.dtype == dtype
+        assert out.device == device
+        out.sum().backward()
+        assert src.grad is not None
+        assert src.grad.shape == src.shape
+        assert matrix.grad is not None
+        assert matrix.grad.shape == matrix.shape
+
+    @pytest.mark.parametrize("augmentation", ["RandomAffine3D", "RandomRotation3D"])
+    @pytest.mark.parametrize("container", [False, True])
+    def test_empty_augmentation_4429(self, augmentation, container, device, dtype):
+        """Both direct and sequential 3D augmentations retain empty image batches."""
+        op = getattr(kornia.augmentation, augmentation)(20.0, p=1.0)
+        if container:
+            op = kornia.augmentation.AugmentationSequential(op, data_keys=["input"])
+        image = torch.empty(0, 2, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
+        out = op(image)
+        assert out.shape == image.shape
+        assert out.dtype == dtype
+        assert out.device == device
+        assert op.transform_matrix.shape == (0, 4, 4)
+        out.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize("spatial", [(3, 4, 5), (0, 4, 5), (3, 0, 5), (3, 4, 0)])
+    def test_dynamo_empty_batch_4429(self, spatial, device, dtype, torch_optimizer):
+        """Fullgraph capture keeps the empty affine warp and its backward pass."""
+        src = torch.empty(0, 2, *spatial, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype, requires_grad=True)
+        compiled = torch_optimizer(proj.warp_affine3d, fullgraph=True)
+        out = compiled(src, matrix, (2, 6, 7))
+        assert out.shape == (0, 2, 2, 6, 7)
+        out.sum().backward()
+        assert src.grad is not None
+        assert matrix.grad is not None
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
@@ -40,13 +123,17 @@ def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, 
     assert out.shape == (1, 2, *dsize)
     assert out.numel() == 0
     out.sum().backward()
-    assert src.grad is not None and torch.count_nonzero(src.grad) == 0
-    assert transform.grad is not None and torch.count_nonzero(transform.grad) == 0
+    assert src.grad is not None
+    assert torch.count_nonzero(src.grad) == 0
+    assert transform.grad is not None
+    assert torch.count_nonzero(transform.grad) == 0
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
-def test_empty_source_policy(op_name, device, dtype):
-    src = torch.empty(1, 2, 0, 4, 5, device=device, dtype=dtype, requires_grad=True)
+@pytest.mark.parametrize("spatial", [(0, 4, 5), (3, 0, 5), (3, 4, 0)])
+def test_empty_source_policy(op_name, spatial, device, dtype):
+    """A nonempty batch with no source voxels only permits an empty destination."""
+    src = torch.empty(1, 2, *spatial, device=device, dtype=dtype, requires_grad=True)
     if op_name == "warp_affine3d":
         transform = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
         op = proj.warp_affine3d
@@ -54,10 +141,11 @@ def test_empty_source_policy(op_name, device, dtype):
         transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
         op = proj.warp_perspective3d
 
-    empty = op(src, transform, (0, 4, 5))
-    assert empty.shape == (1, 2, 0, 4, 5)
+    empty = op(src, transform, spatial)
+    assert empty.shape == (1, 2, *spatial)
     empty.sum().backward()
-    assert src.grad is not None and transform.grad is not None
+    assert src.grad is not None
+    assert transform.grad is not None
 
     with pytest.raises(ValueError, match="must be positive"):
         op(src, transform, (3, 4, 5))
@@ -139,6 +227,59 @@ def test_homography_warp3d_negative_destination_raises(device, dtype):
         proj.homography_warp3d(src, transform, (-1, 4, 5))
 
 
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [1e-7, 1e-8, 1e-12, 1e-30, 1e12, -1e8])
+def test_warp_grid3d_ignores_the_homography_scale(scale, align_corners, device, dtype):
+    # A homography and any nonzero multiple of it describe the same warp. An absolute eps inside
+    # convert_points_from_homogeneous used to leave grid points with |w| <= eps undivided, so the
+    # sampled voxels depended on the matrix's arbitrary scale (#5761). Comparing a scaled call with an
+    # unscaled one cancels the 3D normalization convention tracked in #4503, which both share.
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("these scales test the float32/float64 arithmetic range")
+    dsize = (4, 5, 6)
+    d, h, w = dsize
+    volume = torch.arange(float(d * h * w), device=device, dtype=dtype).view(1, 1, d, h, w) / (d * h * w)
+    dst_homo_src = torch.tensor(
+        [
+            [
+                [1.0, 0.05, 0.1, 0.03],
+                [0.02, 1.0, 0.05, 0.02],
+                [0.03, 0.01, 1.0, 0.01],
+                [0.1, 0.2, 0.15, 1.0],
+            ]
+        ],
+        device=device,
+        dtype=dtype,
+    )
+    grid = torch.stack(
+        torch.meshgrid(
+            torch.linspace(-1, 1, d, device=device, dtype=dtype),
+            torch.linspace(-1, 1, h, device=device, dtype=dtype),
+            torch.linspace(-1, 1, w, device=device, dtype=dtype),
+            indexing="ij",
+        ),
+        dim=-1,
+    ).unsqueeze(0)
+
+    reference_grid = proj.warp_grid3d(grid, dst_homo_src)
+    actual_grid = proj.warp_grid3d(grid, scale * dst_homo_src)
+    assert_close(actual_grid, reference_grid)
+
+    reference = proj.homography_warp3d(volume, dst_homo_src, dsize, align_corners=align_corners)
+    actual = proj.homography_warp3d(volume, scale * dst_homo_src, dsize, align_corners=align_corners)
+    assert torch.isfinite(actual).all()
+    assert_close(actual, reference)
+
+    # warp_perspective3d consumes a source-to-destination pixel matrix and inverts it internally, so a
+    # large matrix becomes a small inverse and reaches the same threshold from the other side.
+    src_homo_dst = torch.eye(4, device=device, dtype=dtype).unsqueeze(0) * 0.5
+    src_homo_dst[:, :3, 3] = torch.tensor([0.2, -0.1, 0.05], device=device, dtype=dtype)
+    reference_p = proj.warp_perspective3d(volume, src_homo_dst, dsize, align_corners=align_corners)
+    actual_p = proj.warp_perspective3d(volume, scale * src_homo_dst, dsize, align_corners=align_corners)
+    assert torch.isfinite(actual_p).all()
+    assert_close(actual_p, reference_p)
+
+
 class TestWarpPerspective3d(BaseTester):
     # Before #4502 none of these could pass: homography_warp3d handed create_meshgrid3d's (d, x, y)
     # grid straight to warp_grid3d and grid_sample, which both read (x, y, z), so even an identity
@@ -160,6 +301,19 @@ class TestWarpPerspective3d(BaseTester):
         identity = torch.eye(4, device=device, dtype=dtype)[None]
         out = proj.warp_perspective3d(sample, identity, dsize, align_corners=True)
         self.assert_close(out, sample)
+
+    @pytest.mark.parametrize("size", [8, 32])
+    def test_identity_float64_precision(self, device, size):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        # the sampling grid is built in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff like warp_affine3d, not to float32 grid precision
+        dsize = (size // 2, size, size)
+        sample = torch.rand(1, 1, *dsize, device=device, dtype=torch.float64)
+        identity = torch.eye(4, device=device, dtype=torch.float64)[None]
+        out = proj.warp_perspective3d(sample, identity, dsize, align_corners=True)
+        assert out.dtype == torch.float64
+        self.assert_close(out, sample, rtol=0.0, atol=1e-12)
 
     @pytest.mark.parametrize("dsize", [(4, 4, 4), (2, 3, 4)])
     @pytest.mark.xfail(strict=True, raises=AssertionError, reason="3D normalization ignores align_corners, #4503")

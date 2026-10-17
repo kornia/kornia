@@ -98,6 +98,9 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
     rectangle[..., 2] = bboxes[..., 0] + bboxes[..., -2]  # x2
     rectangle[..., 3] = bboxes[..., 1] + bboxes[..., -1]  # y2
     color = torch.tensor([1, 0, 0]).repeat(imgs.shape[0], imgs.shape[1], 1)
+    # keep every box four-sided: a side outside the image is not drawn by draw_rectangle
+    rectangle[..., 0::2] = rectangle[..., 0::2].clamp(0, imgs.shape[-1] - 1)
+    rectangle[..., 1::2] = rectangle[..., 1::2].clamp(0, imgs.shape[-2] - 1)
     imgs_draw = K.image.draw_rectangle(imgs, rectangle, color=color)
 
     rectangle2 = torch.zeros(imgs.shape[0], imgs.shape[1], 4)
@@ -107,9 +110,9 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
         rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
         rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
-    imgs_draw = K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
-
-    return imgs_draw
+    rectangle2[..., 0::2] = rectangle2[..., 0::2].clamp(0, imgs.shape[-1] - 1)
+    rectangle2[..., 1::2] = rectangle2[..., 1::2].clamp(0, imgs.shape[-2] - 1)
+    return K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
 
 def main():
@@ -131,8 +134,10 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
-    hash1 = "8b98f44abbe92b7a84631ed06613b08fee7dae14"
-    BASE_IMAGEOUTDOOR_URL7: str = f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.pt"  # image matching
+    hash1 = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+    BASE_IMAGEOUTDOOR_URL7: str = (  # image matching
+        f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.safetensors"
+    )
     BASE_IMAGEOUTDOOR_URL8: str = (  # Response functions
         "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
     )
@@ -468,10 +473,7 @@ def main():
         img_in = img3.repeat(num_samples, 1, 1, 1)
         if fn_name == "jpeg_codec_differentiable":
             img_in = img_in[..., :176, :]
-        if fn_name == "add_weighted":
-            args_in = (img_in, args[0], img2, args[1], args[2])
-        else:
-            args_in = (img_in, *args)
+        args_in = (img_in, args[0], img2, args[1], args[2]) if fn_name == "add_weighted" else (img_in, *args)
         # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
@@ -671,8 +673,8 @@ def main():
         print(f"Generated image example for {fn_name}. {sig}")
 
     # Image Matching and local features
-    img_matching_data = torch.hub.load_state_dict_from_url(BASE_IMAGEOUTDOOR_URL7, map_location=torch.device("cpu"))
-    img_outdoor = img_matching_data["img2"]
+    img_matching_path = K.core.download_file_from_url(BASE_IMAGEOUTDOOR_URL7, validate=K.core.check_safetensors)
+    img_outdoor = K.core.load_safetensors(img_matching_path)["img2"]
     print("Generating local feature detections ")
     disk = K.feature.DISK.from_pretrained("depth")
     with torch.no_grad():
@@ -809,9 +811,11 @@ def main():
     if confident:
         boxes = torch.stack(confident)[None]
         for pad in (0, 1, 2):  # three passes give a 3 px outline
-            out = K.image.draw_rectangle(
-                out, boxes + torch.tensor([-pad, -pad, pad, pad]), color=torch.tensor([0.4, 1.0, 0.2])
-            )
+            padded = boxes + torch.tensor([-pad, -pad, pad, pad])
+            # keep the outline four-sided for a face at the border
+            padded[..., 0::2] = padded[..., 0::2].clamp(0, out.shape[-1] - 1)
+            padded[..., 1::2] = padded[..., 1::2].clamp(0, out.shape[-2] - 1)
+            out = K.image.draw_rectangle(out, padded, color=torch.tensor([0.4, 1.0, 0.2]))
     write_png(OUTPUT_PATH / "face_detection.png", K.image.tensor_to_image((out[0] * 255.0).byte()))
     print(f"Generated image example for FaceDetector. {len(confident)} faces")
 

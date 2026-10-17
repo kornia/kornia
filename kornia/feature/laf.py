@@ -27,8 +27,27 @@ from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
 
 
+def _laf_product_dtype(dtype: torch.dtype) -> torch.dtype:
+    """Return the dtype to multiply two LAF entries in.
+
+    A product of two entries of an ordinary LAF can leave the float16 range. It overflows above 65504: the determinant
+    of any LAF of scale 256 px or more, and the square of a 256 px entry of an elongated LAF of a smaller scale (300 x
+    20 px has a scale of 77 px). It rounds to zero for entries below about 1.7e-4. float16 therefore works in float32,
+    which holds every product of two float16 values exactly. bfloat16 has the exponent range of float32 and is left as
+    it is.
+    """
+    if dtype == torch.float16:
+        return torch.float32
+    return dtype
+
+
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """Return a scale of the LAFs.
+
+    Convention:
+        - See the Convention block on :func:`~kornia.feature.laf_from_center_scale_ori`, which defines the scale.
+        - The determinant of a float16 LAF is formed in float32, so that a LAF whose entry products leave the float16
+          range does not overflow; the scale is returned in the LAF dtype.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -43,12 +62,24 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     eps = 1e-10
-    out = LAF[..., 0:1, 0:1] * LAF[..., 1:2, 1:2] - LAF[..., 1:2, 0:1] * LAF[..., 0:1, 1:2] + eps
-    return out.abs().sqrt()
+    work = LAF.to(_laf_product_dtype(LAF.dtype))
+    out = work[..., 0:1, 0:1] * work[..., 1:2, 1:2] - work[..., 1:2, 0:1] * work[..., 0:1, 1:2] + eps
+    scale = out.abs().sqrt()
+    if work.dtype != LAF.dtype:
+        scale = scale.to(LAF.dtype)
+    return scale
 
 
 def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
     """Check that each LAF is finite and has a finite, nonzero determinant.
+
+    Convention:
+        - A LAF with a negative determinant, a mirrored frame, is valid. The all-zero padding LAF (see
+          :func:`~kornia.feature.laf_is_filled`), a rank-1 ``A`` and an ``A`` whose determinant overflows are not.
+        - The determinant of a float16 LAF is formed in float32, so the LAF is not judged by an intermediate outside
+          the float16 range: one whose entry products overflow float16 (for instance any LAF of scale 256 px or more)
+          is valid, and so is one whose determinant is too small for float16. The determinant of a float32, float64
+          or bfloat16 LAF is formed in that dtype, where it can overflow.
 
     Args:
         laf: :math:`(B, N, 2, 3)`.
@@ -63,6 +94,7 @@ def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(laf)
+    laf = laf.to(_laf_product_dtype(laf.dtype))
     det = laf[..., 0, 0] * laf[..., 1, 1] - laf[..., 1, 0] * laf[..., 0, 1]
     return laf.isfinite().all(dim=-1).all(dim=-1) & det.isfinite() & (det != 0)
 
@@ -70,14 +102,15 @@ def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
 def laf_is_filled(laf: torch.Tensor) -> torch.Tensor:
     """Check which slots hold a detection rather than the zero-LAF padding.
 
-    Detectors return a fixed number of slots and pad the ones no detection filled with an all-zero
-    LAF and a zero response, so that the output shape does not depend on the image. Drop those
-    slots before matching: the padding frames are identical to one another, so a mutual
-    nearest-neighbour test does not reject them and they match each other at zero distance.
-
-    Occupancy cannot be read off the response instead, because a pluggable signed response may have
-    a genuine maximum at exactly zero. Only an all-zero frame is padding: a detection at the image
-    origin has a zero centre but a nonzero shape, so it is filled.
+    Convention:
+        - kornia's LAF detectors pad the slots no detection filled with an all-zero LAF and a zero response, so that a
+          batch is one tensor. Drop those slots before matching: the padding frames are identical to one another, so a
+          mutual nearest-neighbour test does not reject them and they match each other at zero distance.
+        - Only an all-zero frame is padding. Any other frame is filled: a detection at the image origin, which has a
+          zero centre but a nonzero shape, and also a singular or non-finite frame, which
+          :func:`~kornia.feature.laf_is_valid` screens out.
+        - Occupancy cannot be read off the response instead, because a pluggable signed response may have a genuine
+          maximum at exactly zero.
 
     Args:
         laf: :math:`(B, N, 2, 3)`.
@@ -98,7 +131,9 @@ def laf_is_filled(laf: torch.Tensor) -> torch.Tensor:
 def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
     """Return a center (keypoint) of the LAFs.
 
-    The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
+    Convention:
+        The centre is ``(x, y)`` in pixels, with pixel centres at integers; see
+        :ref:`Local features <local-features-conventions>`.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -112,12 +147,14 @@ def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(LAF)
-    out = LAF[..., 2]
-    return out
+    return LAF[..., 2]
 
 
 def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
     """Return orientation of the LAFs, in degrees.
+
+    Convention:
+        See the Convention block on :func:`~kornia.feature.laf_from_center_scale_ori`, which defines the orientation.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -138,7 +175,11 @@ def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
 def rotate_laf(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
     """Apply additional rotation to the LAFs.
 
-    Compared to `set_laf_orientation`, the resulting rotation is original LAF orientation plus angles_degrees.
+    Convention:
+        - The result is ``[A @ R | c]``, with ``R`` the rotation matrix of ``angles_degrees`` from
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`. The orientation grows by ``angles_degrees``
+          (:func:`~kornia.feature.set_laf_orientation` sets it instead), and the centre and the upright factor that
+          :func:`~kornia.feature.make_upright` returns are kept.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -159,6 +200,10 @@ def rotate_laf(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
 def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
     """Change the orientation of the LAFs.
 
+    Convention:
+        See the Convention block on :func:`~kornia.feature.rotate_laf`. This rotates by ``angles_degrees`` minus the
+        current orientation, so the orientation reads back as ``angles_degrees`` wrapped into ``[-180, 180]``.
+
     Args:
         LAF: :math:`(B, N, 2, 3)`
         angles_degrees: :math:`(B, N, 1)` in degrees.
@@ -176,9 +221,23 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
 def laf_from_center_scale_ori(
     xy: torch.Tensor, scale: Optional[torch.Tensor] = None, ori: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    """Create a LAF from keypoint center, scale and orientation.
+    r"""Create a LAF from keypoint center, scale and orientation.
 
-    Useful to create kornia LAFs from OpenCV keypoints.
+    Convention:
+        - A LAF is a :math:`(B, N, 2, 3)` tensor ``[A | c]``, with the centre ``c = (x, y)`` and ``A`` in pixels.
+          ``A`` maps the patch frame onto the image: its first column is the image of the patch's x axis and its
+          second column that of the patch's y axis. :ref:`Local features <local-features-conventions>` gives the
+          pixel frame, the patch that :func:`~kornia.feature.extract_patches_from_pyramid` samples and the
+          conversion of OpenCV keypoints.
+        - This function returns ``A = scale * R``, with ``R = [[cos, sin], [-sin, cos]]`` of ``ori`` in degrees, the
+          matrix of :func:`~kornia.geometry.conversions.angle_to_rotation_matrix`. A positive ``ori`` turns the
+          patch's x axis counter-clockwise on screen, with image y pointing down.
+        - For any LAF, the scale is :math:`\sqrt{|\det A|}` (:func:`~kornia.feature.get_laf_scale`, which adds
+          ``1e-10`` to the determinant) and the orientation is ``atan2(a12, a11)`` in degrees
+          (:func:`~kornia.feature.get_laf_orientation`), within ``[-180, 180]``: a LAF made with ``ori = 181`` reads
+          back ``-179``. For :math:`\det A > 0`, ``A = U R`` with ``U`` the upright ``A`` that
+          :func:`~kornia.feature.make_upright` returns, up to its stabilizers, and ``R`` the rotation matrix of that
+          orientation.
 
     Args:
         xy: :math:`(B, N, 2)`.
@@ -187,6 +246,12 @@ def laf_from_center_scale_ori(
 
     Returns:
         LAF :math:`(B, N, 2, 3)`
+
+    Example:
+        >>> xy = torch.tensor([[[5.0, 7.0]]])
+        >>> laf_from_center_scale_ori(xy, torch.full((1, 1, 1, 1), 2.0), torch.tensor([[[30.0]]]))
+        tensor([[[[ 1.7321,  1.0000,  5.0000],
+                  [-1.0000,  1.7321,  7.0000]]]])
 
     """
     KORNIA_CHECK_SHAPE(xy, ["B", "N", "2"])
@@ -200,14 +265,18 @@ def laf_from_center_scale_ori(
     KORNIA_CHECK_SHAPE(scale, ["B", "N", "1", "1"])
     KORNIA_CHECK_SHAPE(ori, ["B", "N", "1"])
     unscaled_laf = torch.cat([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
-    laf = scale_laf(unscaled_laf, scale)
-    return laf
+    return scale_laf(unscaled_laf, scale)
 
 
 def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torch.Tensor:
     """Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
 
-    So the center, shape and orientation of the local feature stays the same, but the region area changes.
+    Convention:
+        - The result is ``[k A | c]`` for ``k = scale_coef``, a product taken elementwise: the centre is kept. With one
+          coefficient per LAF, the scale is multiplied by ``|k|``, and a negative ``k`` also turns the frame by 180
+          degrees.
+        - ``scale_coef`` is a ``float`` or a tensor that broadcasts against :math:`(B, N, 2, 2)`, such as one
+          coefficient per LAF in a :math:`(B, N, 1, 1)` tensor; an ``int`` is rejected.
 
     Args:
         laf: :math:`(B, N, 2, 3)`
@@ -215,6 +284,9 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 
     Returns:
         LAF :math:`(B, N, 2, 3)`
+
+    Raises:
+        TypeError: if ``scale_coef`` is neither a ``float`` nor a tensor.
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
@@ -230,7 +302,23 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 
 
 def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
-    """Rectify the affine matrix, so that it becomes upright.
+    r"""Rectify the affine matrix, so that it becomes upright.
+
+    Convention:
+        - The result is ``[U | c]``: the centre is kept, and ``U`` is the lower-triangular matrix with a positive
+          diagonal and :math:`U U^\top = A A^\top`. The region, the ellipse ``c + A u`` over the unit vectors ``u``,
+          and the scale are therefore kept, and the orientation becomes 0.
+        - For :math:`\det A > 0`, ``A = U R`` with ``R`` the rotation matrix of the LAF's orientation, as in
+          :func:`~kornia.feature.laf_from_center_scale_ori`. For :math:`\det A < 0` the reflection is dropped too:
+          ``U`` has the determinant :math:`|\det A|`.
+        - The equalities above hold up to two stabilizers: ``U`` is built from the norm of the first row of ``A``
+          plus ``eps``, and from the scale of :func:`~kornia.feature.get_laf_scale`, which adds ``1e-10`` to the
+          determinant. Both are negligible for a LAF in pixels, but a tiny frame such as ``A = diag(1e-12, 1)`` keeps
+          neither its region nor its scale. The centre and the zero orientation are exact.
+        - The all-zero LAF that pads an unfilled detector slot (see :func:`~kornia.feature.laf_is_filled`) is
+          returned unchanged, so the padding stays recognizable.
+        - A float16 LAF is rectified in float32, so that a LAF whose entry products leave the float16 range does not
+          overflow; the result is returned in the LAF dtype.
 
     Args:
         laf: :math:`(B, N, 2, 3)`
@@ -245,10 +333,18 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 
     """
     KORNIA_CHECK_LAF(laf)
+    dtype = laf.dtype
+    laf = laf.to(_laf_product_dtype(dtype))
+    # Differentiate through an identity frame in place of the zero padding: sqrt at exactly zero has an infinite
+    # derivative, which torch.where below would turn into nan rather than mask.
+    filled = laf_is_filled(laf)[..., None, None]
+    eye = torch.eye(2, 3, device=laf.device, dtype=laf.dtype).expand_as(laf)
+    padding = laf
+    laf = torch.where(filled, laf, eye)
     det = get_laf_scale(laf)
     scale = det
-    # The function is equivalent to doing 2x2 SVD and resetting rotation
-    # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
+    # The result is the lower-triangular factor of the LQ decomposition A = U Q (Q orthogonal): for the rows r0, r1
+    # of A, U = [[|r0|, 0], [r1 . r0 / |r0|, |det A| / |r0|]], built at unit scale and multiplied back by the scale.
     b2a2 = torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps
     laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
     laf2_ell = torch.cat(
@@ -259,14 +355,33 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
         dim=3,
     )
     laf_unit_scale = torch.cat([torch.cat([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
-    return scale_laf(laf_unit_scale, scale)
+    upright = scale_laf(laf_unit_scale, scale)
+    # The padding LAF would otherwise come back as a tiny nonzero frame (the determinant and the division carry eps).
+    out = torch.where(filled, upright, padding)
+    if laf.dtype != dtype:
+        out = out.to(dtype)
+    return out
 
 
 def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
-    """Convert ellipse regions to LAF format.
+    r"""Convert ellipse regions to LAF format.
 
-    Ellipse (a, b, c) and upright covariance matrix [a11 a12; 0 a22] are connected
-    by inverse matrix square root: A = invsqrt([a b; b c]).
+    Convention:
+        - An ellipse ``[x, y, a, b, c]`` is the region :math:`a u^2 + 2 b u v + c v^2 \le 1` in the coordinates
+          ``(u, v)`` relative to its centre ``(x, y)``, as in the Oxford affine-region files. ``(x, y)`` becomes the
+          LAF centre unchanged.
+        - ``A`` is the lower-triangular matrix with a positive diagonal and ``A @ A.T == inverse([[a, b], [b, c]])``:
+          the Cholesky factor of the inverse ellipse matrix, as VLFeat's ``vl_frame2oell.m`` builds it, not the
+          symmetric inverse square root (the two differ by a rotation). Either one maps the unit circle onto the
+          ellipse; the lower-triangular one is what :func:`~kornia.feature.make_upright` returns, up to its
+          stabilizers, for any LAF of that region.
+        - The conversion checks only the shape :math:`(B, N, 5)`; it does not check the ellipse values and does not
+          raise on them. An ellipse that is degenerate or indefinite (``a``, ``c`` or ``a * c - b * b`` not positive)
+          is not a bounded region; its LAF has ``inf`` or ``nan`` entries, or huge finite ones where rounding leaves
+          ``a - b * b / c`` barely positive. Rounding also works the other way: a nearly singular valid ellipse can
+          give ``inf`` or ``nan``. :func:`~kornia.feature.laf_is_valid` screens out the ``inf`` and ``nan`` results,
+          which an ``isnan`` test misses for ``inf``; the huge finite ones pass it, so check the ellipse itself where
+          that matters.
 
     See also https://github.com/vlfeat/vlfeat/blob/master/toolbox/sift/vl_frame2oell.m
 
@@ -276,17 +391,6 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     Returns:
         LAF :math:`(B, N, 2, 3)`
 
-    Note:
-        A degenerate ellipse -- one whose ``a`` or ``c`` is ``0`` after rounding to ``ells.dtype`` --
-        describes an unbounded strip rather than a bounded region, and makes the matrix being inverted
-        singular. Its LAF is non-finite: ``inf`` always appears on the diagonal, while ``nan`` appears
-        only in the sub-case where the off-diagonal ``b`` is exactly ``0`` (``0 * inf``) -- the generic
-        degenerate ellipse is ``inf``-only, so screen results with :func:`laf_is_valid` rather than an
-        ``isnan`` test, which misses it. :func:`get_laf_scale` of such a LAF is non-finite as
-        well. The conversion does not raise. Rounding is part of the condition: in ``float16`` an ``a``
-        below roughly ``3e-8`` (half the smallest subnormal) rounds to ``0``, and a backend that
-        flushes subnormals to zero raises that cutoff to the smallest normal, about ``6e-5``.
-
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
         >>> output = ellipse_to_laf(input)  #  BxNx2x3
@@ -294,47 +398,39 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(ells, ["B", "N", "5"])
     B, N, _ = ells.shape
-    # Previous implementation was incorrectly using Cholesky decomp as matrix sqrt
-    # ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
-    #                       torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
-    # out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
-
-    # We will calculate 2x2 matrix square root via special case formula
-    # https://en.wikipedia.org/wiki/Square_root_of_a_matrix
-    # "The Cholesky factorization provides another particular example of square root
-    #  which should not be confused with the unique non-negative square root."
-    # https://en.wikipedia.org/wiki/Square_root_of_a_2_by_2_matrix
-    # M = (A 0; C D)
-    # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
-    a11 = ells[..., 2:3].abs().sqrt()
-    a22 = ells[..., 4:5].abs().sqrt()
-    a21 = ells[..., 3:4] / (a11 + a22)
-    # The matrix [[a11, 0], [a21, a22]] is lower-triangular, so its inverse is the closed form
-    # [[1/a11, 0], [-a21/(a11*a22), 1/a22]] — no batched torch.inverse, which is orders of
-    # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
-    inv11 = 1.0 / a11
-    inv22 = 1.0 / a22
-    # Divide by the product of the roots instead of multiplying the reciprocals: every ordering of
-    # `-a21 * inv11 * inv22` has an input region where an intermediate overflows to inf (or a
-    # mathematically-zero off-diagonal becomes 0 * inf = nan) or flushes a representable result to
-    # zero. a11 * a22 = sqrt(a) * sqrt(c) can neither overflow nor round to zero, so the single
-    # division is correctly rounded (not exact) wherever the product is a normal number; when the
-    # product is subnormal the result loses precision but is never a corrupted zero, inf, or nan.
-    # What remains non-finite is exactly the singular ellipse, which we deliberately do not guard.
-    inv21 = -a21 / (a11 * a22)
+    # The LAF is the upright (lower-triangular) A with A @ A.T == inverse([[a, b], [b, c]]), i.e. the
+    # Cholesky factor of the inverse ellipse matrix, written with the Schur complement a - b^2 / c
+    # (= det / c) so that b == 0 reduces to the plain 1 / sqrt(a), 1 / sqrt(c) diagonal.
+    # Scaling b by 1 / sqrt(c) first keeps b^2 out of the arithmetic (it overflows for large but valid
+    # ellipses) and, for a positive definite ellipse, b / sqrt(c) <= sqrt(a) can neither overflow nor
+    # flush a representable off-diagonal to zero. The off-diagonal -b / (c * sqrt(a - b^2 / c)) is then
+    # a single division by sqrt(c) * sqrt(a - b^2 / c) = sqrt(det), which stays within range whenever the
+    # factors do; forming it as -(b / c) / sqrt(...) or -b / (c * sqrt(...)) instead has valid inputs
+    # where b / c underflows or c * sqrt(...) overflows although the result itself is representable.
+    a = ells[..., 2:3]
+    b = ells[..., 3:4]
+    c = ells[..., 4:5]
+    sqrt_c = c.sqrt()
+    b_scaled = b / sqrt_c
+    sqrt_schur = (a - b_scaled * b_scaled).sqrt()
+    inv11 = 1.0 / sqrt_schur
+    inv22 = 1.0 / sqrt_c
+    inv21 = -b_scaled / (sqrt_c * sqrt_schur)
     A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
-    out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
-    return out
+    return torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
 
 
 def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
-    """Convert LAFs to boundary points of the regions + center.
+    r"""Convert LAFs to boundary points of the regions + center.
 
-    Used for local features visualization, see visualize_laf function.
+    Convention:
+        - The first point is the centre ``c``. The other ``n_pts - 1`` points are ``c + A @ (sin t, cos t)`` for ``t``
+          from 0 to :math:`2 \pi` in equal steps: they start and end at ``c + A[:, 1]``, the tip of the patch's y
+          axis, and so close the outline of the region.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
-        n_pts: number of points to output.
+        n_pts: number of points to output, the centre included.
 
     Returns:
         torch.Tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
@@ -342,16 +438,15 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     B, N, _, _ = LAF.size()
+    # Build the circle on the CPU in at least float32 (the LAF's dtype when it is wider, so float64 LAFs do not carry
+    # float32 rounding), then cast it once.
+    build = torch.promote_types(LAF.dtype, torch.float32)
+    angles = torch.linspace(0, 2 * math.pi, n_pts - 1, dtype=build)
     pts = torch.cat(
-        [
-            torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-            torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-            torch.ones(n_pts - 1, 1),
-        ],
-        dim=1,
+        [torch.sin(angles).unsqueeze(-1), torch.cos(angles).unsqueeze(-1), torch.ones(n_pts - 1, 1, dtype=build)], dim=1
     )
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0]).view(1, 3), pts], dim=0)
+    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0], dtype=build).view(1, 3), pts], dim=0)
     # Move the 3-column basis before broadcasting it: expanding first and casting afterwards
     # materialized -- and on an accelerator transferred -- one copy per LAF (~12 MiB at N = 20000)
     # of a tensor with `n_pts` distinct rows.
@@ -392,8 +487,6 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[int],
 def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """Denormalize LAFs from the [0, 1] scale to image (pixel) scale.
 
-    The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
-
         B,CH,H,W = images.size()
         MIN_SIZE = min(H - 1, W -1)
         [a11 a12 x]
@@ -404,6 +497,9 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
     A singleton axis (``H == 1`` or ``W == 1``) has no spatial extent and counts as one pixel, so
     the conversion stays finite and round-trips with :func:`normalize_laf`.
+
+    Convention:
+        See the Convention block on :func:`~kornia.feature.normalize_laf`, which this inverts.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -443,12 +539,21 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     A singleton axis (``H == 1`` or ``W == 1``) has no spatial extent and counts as one pixel, so
     the conversion stays finite instead of dividing by zero.
 
+    Convention:
+        - The centre becomes ``(x / max(W - 1, 1), y / max(H - 1, 1))``, which lies in ``[0, 1]`` for
+          ``0 <= x <= W - 1`` and ``0 <= y <= H - 1``. ``A`` is divided by the smaller of the two denominators as a
+          whole, not per axis, and can exceed 1.
+        - Taken to an image of another size with :func:`~kornia.feature.denormalize_laf`, ``x`` becomes
+          ``x max(W' - 1, 1) / max(W - 1, 1)``, which maps corner to corner when neither width is 1. A resize with
+          ``align_corners=False``, the default of :func:`~kornia.geometry.transform.resize` in bilinear mode, maps
+          pixel ``x`` to ``(x + 0.5) W' / W - 0.5`` instead, so the two disagree away from the image centre.
+
     Args:
         LAF: :math:`(B, N, 2, 3)`
         images: :math:`(B, CH, H, W)`
 
     Returns:
-        the normalized LAF: :math:`(B, N, 2, 3)`, scale in image percentage (0, 1)
+        the normalized LAF: :math:`(B, N, 2, 3)`
 
     """
     KORNIA_CHECK_LAF(LAF)
@@ -485,10 +590,10 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False)
-    # A singleton axis has no spatial extent; one pixel of denominator keeps the grid finite and
-    # lets the border padding return that single pixel (see `denormalize_laf`).
-    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(max(w - 1, 1)) - 1.0
-    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(max(h - 1, 1)) - 1.0
+    # The grid is in pixels, centres at integers (the LAF frame); `grid_sample(align_corners=False)` puts pixel x at
+    # (2x + 1) / W - 1. A singleton axis maps every sample to its only pixel's centre.
+    grid[..., :, 0] = (2.0 * grid[..., :, 0].clone() + 1.0) / float(w) - 1.0
+    grid[..., :, 1] = (2.0 * grid[..., :, 1].clone() + 1.0) / float(h) - 1.0
     return grid
 
 
@@ -596,6 +701,31 @@ def _sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) -> to
     return _grid_sample_patches(img, folded, h, w).view(B, ch, N, PS, PS).permute(0, 2, 1, 3, 4)
 
 
+def _pyramid_grid_frame(nlaf: torch.Tensor, h: int, w: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Return the scale ``k`` and translation ``t`` that map a normalized LAF's patch grid to sampling coordinates.
+
+    ``grid = affine_grid(A, align_corners=False) * k + t`` addresses, for ``grid_sample(align_corners=False)``, the
+    input pixels the LAF describes: pixel :math:`x` of the :math:`(h, w)` input sits at :math:`(2x + 1) / w - 1`.
+    ``pyrdown`` resizes to ``floor(side / 2)`` with ``align_corners=False``, so input pixel :math:`x` is pixel
+    :math:`(x + 0.5) w_l / w - 0.5` of level :math:`l` -- which that level's ``grid_sample`` addresses at the same
+    :math:`(2x + 1) / w - 1`. One grid therefore serves every pyramid level.
+
+    Args:
+        nlaf: normalized LAFs :math:`(B, N, 2, 3)` (``normalize_laf``'s frame).
+        h: input height.
+        w: input width.
+
+    Returns:
+        ``k`` of shape :math:`(2,)` and ``t`` of shape :math:`(B, N, 2)`, in ``nlaf``'s dtype and device.
+    """
+    # `denormalize_laf`'s extents: a singleton axis counts as one pixel.
+    wf, hf = float(max(w - 1, 1)), float(max(h - 1, 1))
+    min_size = min(wf, hf)
+    k = nlaf.new_tensor([2.0 * min_size / float(w), 2.0 * min_size / float(h)])
+    t = (2.0 * nlaf[..., :, 2] * nlaf.new_tensor([wf, hf]) + 1.0) / nlaf.new_tensor([float(w), float(h)]) - 1.0
+    return k, t
+
+
 def _extract_patches_from_pyramid_levelwise(
     img: torch.Tensor,
     nlaf: torch.Tensor,
@@ -620,7 +750,7 @@ def _extract_patches_from_pyramid_levelwise(
     chunk = _grid_chunk_lafs(B, N, ch, PS, _grid_elem_bytes(grid_dtype))
     cur_img = img.to(grid_laf.dtype) if img.dtype != grid_laf.dtype else img
     laf_a = grid_laf[..., :2]
-    t = 2.0 * grid_laf[..., :, 2] - 1.0
+    k, t = _pyramid_grid_frame(grid_laf, heights[0], widths[0])
 
     # Most calls fit in one bounded chunk, so their level-independent affine grid can be reused
     # across the streaming pyramid. A multi-chunk call rebuilds each chunk's grid per level rather
@@ -649,11 +779,6 @@ def _extract_patches_from_pyramid_levelwise(
                     B, nc, PS, PS, 2
                 )
             translation = t[:, st:en].view(B, nc, 1, 1, 2)
-            # Match `normalize_laf` / `denormalize_laf`: a singleton axis counts as one pixel of
-            # extent. Border padding still repeats that axis's only pixel, while the other axis
-            # keeps its spatial variation instead of being collapsed by a shared zero `min_l`.
-            min_l = float(min(max(h_l - 1, 1), max(w_l - 1, 1)))
-            k = base_grid.new_tensor([2.0 * min_l / float(max(w_l - 1, 1)), 2.0 * min_l / float(max(h_l - 1, 1))])
             grid = base_grid * k + translation
             patches = _sample_patches(cur_img, grid, h_l, w_l).to(img.dtype)
             mask = (pyr_idx[:, st:en] == level_idx).view(B, en - st, 1, 1, 1)
@@ -666,13 +791,16 @@ def extract_patches_simple(
 ) -> torch.Tensor:
     """Extract patches defined by LAFs from image torch.Tensor.
 
-    No smoothing applied, huge aliasing (better use extract_patches_from_pyramid).
+    Convention:
+        See the Convention block on :func:`~kornia.feature.extract_patches_from_pyramid`. This function samples the
+        same positions, always from ``img`` itself: a LAF larger than the patch is not smoothed first, so it aliases.
 
     Args:
         img: images, LAFs are detected in  :math:`(B, CH, H, W)`.
         laf: :math:`(B, N, 2, 3)`.
         PS: patch size.
-        normalize_lafs_before_extraction: if True, lafs are normalized to image size.
+        normalize_lafs_before_extraction: if True, lafs are normalized to image size; if False, ``laf`` must already
+            be in the frame that :func:`~kornia.feature.normalize_laf` gives for ``img``.
 
     Returns:
         patches with shape :math:`(B, N, CH, PS,PS)`.
@@ -686,10 +814,7 @@ def extract_patches_simple(
     laf = laf.to(device=img.device)
     grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
     laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
-    if normalize_lafs_before_extraction:
-        nlaf = normalize_laf(laf, img)
-    else:
-        nlaf = laf
+    nlaf = normalize_laf(laf, img) if normalize_lafs_before_extraction else laf
     _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
     if B == 0 or N == 0:
@@ -720,14 +845,29 @@ def extract_patches_from_pyramid(
 ) -> torch.Tensor:
     """Extract patches defined by LAFs from image torch.Tensor.
 
-    Patches are extracted from the appropriate pyramid level. A LAF whose scale selects a level
-    smaller than ``PS`` is sampled from the coarsest level that can still provide a full patch.
+    Patches are extracted from the appropriate pyramid level.
+
+    Convention:
+        - Cell ``(i, j)`` of a ``PS x PS`` patch samples the image at ``c + A @ (u_j, u_i)``, with
+          ``u_k = (2 k + 1) / PS - 1`` and the LAF ``[A | c]`` in pixels, pixel centres at integers. Row 0 is on the
+          patch's ``-y`` side, the top for an upright LAF, the columns run along the patch's x axis, and the cells
+          tile the square ``c + A [-1, 1]^2``. For an odd ``PS``, a LAF with ``A = (PS / 2) I`` centred on a pixel
+          returns the image crop around that pixel.
+        - The pyramid level is ``floor(log2(2 s / PS))`` for the scale ``s = sqrt(|det A|)``, clamped to the levels
+          that exist: :func:`~kornia.geometry.transform.pyrdown` builds them while the shorter side stays at least
+          ``PS``, so a larger LAF is sampled from the coarsest level that can still provide a full patch. Level 0,
+          the image itself, always exists: an image whose shorter side is below ``PS`` has only that level, so even a
+          large LAF is sampled from it. A level samples the same image positions as level 0, in its own pixels.
+        - A cell outside the image reads the nearest border pixel of the level it samples.
+        - The patches have the image's dtype. The sampling runs in the promoted dtype of the image and the LAF, and
+          in at least ``float32``. A LAF with a non-finite entry gives a zero patch.
 
     Args:
         img: images, LAFs are detected in  :math:`(B, CH, H, W)`.
         laf: :math:`(B, N, 2, 3)`.
         PS: patch size.
-        normalize_lafs_before_extraction: if True, lafs are normalized to image size.
+        normalize_lafs_before_extraction: if True, lafs are normalized to image size; if False, ``laf`` must already
+            be in the frame that :func:`~kornia.feature.normalize_laf` gives for ``img``.
 
     Returns:
         patches with shape :math:`(B, N, CH, PS,PS)`.
@@ -740,10 +880,7 @@ def extract_patches_from_pyramid(
     laf = laf.to(device=img.device)
     grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
     laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
-    if normalize_lafs_before_extraction:
-        nlaf = normalize_laf(laf, img)
-    else:
-        nlaf = laf
+    nlaf = normalize_laf(laf, img) if normalize_lafs_before_extraction else laf
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     if B == 0 or N == 0:
@@ -794,15 +931,12 @@ def extract_patches_from_pyramid(
     # levelwise path preserves the same clamping and reduced-precision grid semantics. The atlas
     # is built in the grid's dtype -- reduced-precision inputs are upcast once, so the replicate
     # pad, `pyrdown` and every chunk's `grid_sample` run on kernels every torch build has, and no
-    # full-atlas recast is paid per chunk. A 1-pixel axis in any *built level* -- a 1-pixel input
-    # image, or a coarse level that `PS == 1` lets the pyramid descend to -- would make the level
-    # constants' Python `size - 1` division below raise; the levelwise sampler treats that axis
-    # as having zero spatial extent instead.
+    # full-atlas recast is paid per chunk.
     atlas_elements = B * ch * atlas_h * atlas_w
     atlas_bytes = atlas_elements * _grid_elem_bytes(grid_dtype)
     if img.dtype != grid_dtype:
         atlas_bytes += B * ch * h * w * _grid_elem_bytes(grid_dtype)  # the one-time upcast copy
-    if min(heights[-1], widths[-1]) < 2 or not _pyramid_atlas_fits(atlas_bytes):
+    if not _pyramid_atlas_fits(atlas_bytes):
         return _extract_patches_from_pyramid_levelwise(img, nlaf, pyr_idx, heights, widths, PS)
     sample_img = img.to(grid_dtype) if img.dtype != grid_dtype else img
     atlas = sample_img.new_zeros(B, ch, atlas_h, atlas_w)
@@ -818,7 +952,7 @@ def extract_patches_from_pyramid(
     # zero translation; reduced-precision inputs need float32 grid arithmetic because the atlas is
     # wider than the original image.
     laf_a = nlaf[..., :2].to(grid_dtype)
-    t = 2.0 * nlaf[..., :, 2].to(grid_dtype) - 1.0
+    k, t = _pyramid_grid_frame(nlaf.to(grid_dtype), h, w)
 
     # Gather all level-dependent conversion constants per patch, packed as (x, y) pairs so the
     # remap below runs on the whole grid tensor step by step, never holding split-axis copies. A
@@ -827,11 +961,8 @@ def extract_patches_from_pyramid(
     xoff = 0
     constants = []
     for h_l, w_l in zip(heights, widths):
-        min_l = float(min(h_l - 1, w_l - 1))
         constants.append(
             (
-                2.0 * min_l / float(w_l - 1),  # k: LAF frame -> level-normalized units
-                2.0 * min_l / float(h_l - 1),
                 -1.0 + 1.0 / float(w_l),  # lo/hi: the level's outermost pixel centers
                 -1.0 + 1.0 / float(h_l),
                 1.0 - 1.0 / float(w_l),
@@ -843,7 +974,7 @@ def extract_patches_from_pyramid(
             )
         )
         xoff += w_l + 2
-    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 5, 2)
+    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device).view(-1, 4, 2)
 
     # The folded grid and its remap intermediates scale with B*N*PS^2, so sampling is chunked
     # along N to bound peak memory; each chunk repeats exactly the single-call arithmetic, and
@@ -859,9 +990,7 @@ def extract_patches_from_pyramid(
         nc = en - st
         theta = torch.cat([laf_a[:, st:en], torch.zeros(B, nc, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1)
         grid = F.affine_grid(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS], align_corners=False).view(B, nc, PS, PS, 2)
-        k, lo, hi, level_scale, level_offset = (
-            level_constants[safe_pyr_idx[:, st:en]].view(B, nc, 1, 1, 5, 2).unbind(-2)
-        )
+        lo, hi, level_scale, level_offset = level_constants[safe_pyr_idx[:, st:en]].view(B, nc, 1, 1, 4, 2).unbind(-2)
         grid = grid * k
         grid = grid + t[:, st:en].view(B, nc, 1, 1, 2)
         grid = grid.maximum(lo)
@@ -873,9 +1002,15 @@ def extract_patches_from_pyramid(
 
 
 def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:
-    """Check if the LAF is touching or partly outside the image boundary.
+    """Check which LAFs lie fully inside the image.
 
-    Returns the mask of LAFs, which are fully inside the image, i.e. valid.
+    Convention:
+        - The region of a LAF ``[A | c]`` is the ellipse ``c + A u`` over the unit vectors ``u``. Along image axis
+          ``i`` (0 for x, 1 for y) it spans exactly ``c_i - r_i`` to ``c_i + r_i``, where ``r_i`` is the Euclidean
+          norm of row ``i`` of ``A``. A LAF is inside when both spans lie in ``border <= x <= w - 1 - border`` and
+          ``border <= y <= h - 1 - border``, so a region that touches the last valid pixel coordinate is inside.
+        - The all-zero padding LAF is a point at the origin, so it counts as inside for ``border <= 0``, the default
+          included; combine the mask with :func:`~kornia.feature.laf_is_filled` to drop the padding.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.
@@ -888,20 +1023,24 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     """
     KORNIA_CHECK_LAF(laf)
     _, _, h, w = images.size()
-    pts = laf_to_boundary_points(laf, 12)
+    # r_i = max over unit u of A[i, :] u, half the side of the ellipse's axis-aligned bounding box.
+    extent = torch.linalg.vector_norm(laf[..., :2], dim=-1)
+    lo = laf[..., 2] - extent
+    hi = laf[..., 2] + extent
     # Valid pixel coordinates run 0 .. w-1 and 0 .. h-1, matching the convention documented on
     # `get_laf_center` and the `w - 1` / `h - 1` extent used by `normalize_laf` / `denormalize_laf`.
     x_max = float(w - 1) - border
     y_max = float(h - 1) - border
-    good_lafs_mask = (pts[..., 0] >= border) * (pts[..., 0] <= x_max) * (pts[..., 1] >= border) * (pts[..., 1] <= y_max)
-    # `.all` rather than `.min` on the bool mask: ONNX ReduceMin has no bool overload.
-    good_lafs_mask = good_lafs_mask.all(dim=2)
-    return good_lafs_mask
+    return (lo[..., 0] >= border) & (hi[..., 0] <= x_max) & (lo[..., 1] >= border) & (hi[..., 1] <= y_max)
 
 
 def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
-    """Convert local affine frame(LAF) to alternative representation: coordinates of LAF center, LAF-x unit vector,
-    LAF-y unit vector.
+    """Convert local affine frames (LAFs) to three points: the tips of the patch's x and y axes, and the centre.
+
+    Convention:
+        - The columns of the result are the points ``c + A[:, 0]``, ``c + A[:, 1]`` and ``c``, in that order: the
+          images of the patch points ``(1, 0)``, ``(0, 1)`` and ``(0, 0)``, at the frame's scale rather than of unit
+          length. :func:`~kornia.feature.laf_from_three_points` is the inverse.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.
@@ -909,16 +1048,17 @@ def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
     Returns:
         threepts :math:`(B, N, 2, 3)`.
 
-    """  # noqa:D205
+    """
     KORNIA_CHECK_LAF(laf)
-    three_pts = torch.stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
-    return three_pts
+    return torch.stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
 
 
 def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
     """Convert three points to local affine frame.
 
-    Order is (0,0), (0, 1), (1, 0).
+    Convention:
+        See the Convention block on :func:`~kornia.feature.laf_to_three_points`, which this inverts: the columns of
+        ``threepts`` are the images of the patch points ``(1, 0)``, ``(0, 1)`` and ``(0, 0)``, in that order.
 
     Args:
         threepts: :math:`(B, N, 2, 3)`.
@@ -927,21 +1067,29 @@ def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
         laf :math:`(B, N, 2, 3)`.
 
     """
-    laf = torch.stack(
+    KORNIA_CHECK_SHAPE(threepts, ["B", "N", "2", "3"])
+    return torch.stack(
         [threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]], dim=-1
     )
-    return laf
 
 
 def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:
     r"""Apply perspective transformations to a set of local affine frames (LAFs).
+
+    Convention:
+        - ``trans_01`` maps pixels of frame 1 to pixels of frame 0, as in
+          :func:`~kornia.geometry.linalg.transform_points`, and the centre maps through it exactly. The new ``A``
+          is the chord through the mapped tips of the patch axes: the three points of
+          :func:`~kornia.feature.laf_to_three_points` are transformed and turned back into a LAF. For an affine
+          ``trans_01`` this equals the Jacobian of ``trans_01`` at the centre times ``A``; for a perspective one the
+          two differ, the more so the larger the LAF.
 
     Args:
         trans_01: torch.Tensor for perspective transformations of shape :math:`(B, 3, 3)`.
         lafs_1: torch.Tensor of lafs of shape :math:`(B, N, 2, 3)`.
 
     Returns:
-        torch.Tensor of N-dimensional points of shape :math:`(B, N, 2, 3)`.
+        the transformed LAFs in frame 0, of shape :math:`(B, N, 2, 3)`.
 
     Examples:
         >>> rng = torch.manual_seed(0)

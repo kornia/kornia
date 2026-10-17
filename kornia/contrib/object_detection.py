@@ -24,6 +24,7 @@ from typing import Any, ClassVar, List, Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.constants import _get_by_name
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
@@ -108,7 +109,7 @@ def results_from_detections(
     KORNIA_CHECK_SHAPE(detections, ["D", "6"])
 
     if isinstance(format, str):
-        format = BoundingBoxDataFormat[format.upper()]
+        format = _get_by_name(BoundingBoxDataFormat, format, format)
 
     results: list[ObjectDetectorResult] = []
     for det in detections:
@@ -178,28 +179,28 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         """
         images, images_sizes = self.pre_processor(images)
         logits, boxes = self.model(images)
-        detections = self.post_processor(logits, boxes, images_sizes)
-        return detections
+        return self.post_processor(logits, boxes, images_sizes)
 
     def visualize(
         self,
         images: Union[torch.Tensor, list[torch.Tensor]],
         detections: Optional[torch.Tensor] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Very simple drawing.
 
         Needs to be more fancy later.
         """
-        dets = detections or self.forward(images)
+        dets = self.forward(images) if detections is None else detections
         output = []
         for image, detection in zip(images, dets):
             out_img = image[None].clone()
             for out in detection:
-                out_img = draw_rectangle(
-                    out_img,
-                    torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]]),
-                )
+                box = torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
+                # a detection that reaches or crosses the border stays visible on all four sides
+                box[..., 0::2] = box[..., 0::2].clamp(0, out_img.shape[-1] - 1)
+                box[..., 1::2] = box[..., 1::2].clamp(0, out_img.shape[-2] - 1)
+                out_img = draw_rectangle(out_img, box)
             output.append(out_img[0])
 
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
@@ -221,7 +222,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         outputs = self.visualize(images, detections)
         self._save_outputs(outputs, directory)
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,
@@ -229,7 +230,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type: ignore
+    ) -> onnx.ModelProto:
         """Export an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
@@ -278,7 +279,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         disable: bool = False,
     ) -> None:
         """Compile the internal object detection model with :py:func:`torch.compile()`."""
-        self.model = torch.compile(  # type: ignore
+        self.model = torch.compile(
             self.model,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -371,8 +372,7 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         combined_mask = confidence_mask & class_mask  # [B, D]
 
         if self.filter_as_zero:
-            filtered_boxes = boxes * combined_mask[:, :, None]
-            return filtered_boxes
+            return boxes * combined_mask[:, :, None]
 
         filtered_boxes_list = []
         for i in range(boxes.shape[0]):

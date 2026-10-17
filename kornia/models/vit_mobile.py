@@ -309,8 +309,7 @@ class MobileViTBlock(nn.Module):
         # Fusion
         x = self.conv3(x)
         x = torch.cat((x, y), 1)
-        x = self.conv4(x)
-        return x
+        return self.conv4(x)
 
 
 class MobileViT(nn.Module):
@@ -404,5 +403,4 @@ class MobileViT(nn.Module):
 
         x = self.mv2[6](x)
         x = self.mvit[2](x)
-        x = self.conv2(x)
-        return x
+        return self.conv2(x)

@@ -69,3 +69,21 @@ class TestVisionTransformer(BaseTester):
         out = vit(img)
         assert out.shape == (1, 197, 128)
         assert len(vit.encoder_results) == 12
+
+    @pytest.mark.device_agnostic
+    def test_from_config_pretrained(self):
+        # vit_s/32 is the checkpoint whose Hub repository does not follow the URL pattern (#5226).
+        model = VisionTransformer.from_config("vit_s/32", pretrained=True).eval()
+        with torch.no_grad():
+            out = model(torch.rand(1, 3, 224, 224))
+        assert out.shape == (1, 50, 384)
+
+    @pytest.mark.device_agnostic
+    def test_from_config_mode(self, monkeypatch):
+        state_dict = VisionTransformer.from_config("vit_ti/16").state_dict()
+        monkeypatch.setattr("kornia.models.vit.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in VisionTransformer.from_config("vit_ti/16", pretrained=True).modules()} == {False}
+        assert {m.training for m in VisionTransformer.from_config("vit_ti/16").modules()} == {True}
+        assert {m.training for m in VisionTransformer.from_config("vit_ti/16", pretrained=False).modules()} == {True}

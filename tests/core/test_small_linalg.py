@@ -27,6 +27,7 @@ dispatcher ``_adjugate_closed_form`` and is tested in ``test_helpers.py``.
 """
 
 import io
+import itertools
 import re
 
 import pytest
@@ -37,6 +38,9 @@ from kornia.core._small_linalg import (
     _adjugate_2x2,
     _adjugate_3x3,
     _adjugate_4x4,
+    _det_perm_2x2,
+    _det_perm_3x3,
+    _det_perm_4x4,
     _inverse_3x3_cross,
     _inverse_3x3_scalar,
 )
@@ -44,6 +48,7 @@ from kornia.core._small_linalg import (
 from testing.base import BaseTester
 
 ADJUGATE = {2: _adjugate_2x2, 3: _adjugate_3x3, 4: _adjugate_4x4}
+DET_PERM = {2: _det_perm_2x2, 3: _det_perm_3x3, 4: _det_perm_4x4}
 
 # Op-type substrings that mean a linalg decomposition reached the graph. The point of these
 # kernels is that an exported graph is basic arithmetic and nothing else, so this is what a
@@ -231,6 +236,128 @@ class _AdjugateModule(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         adj, det = ADJUGATE[self.n](x)
         return adj / det[..., None, None]
+
+
+def _signed(n, device, dtype):
+    """A batch of two: ``_well_conditioned``, all positive, so terms of the determinant cancel and the permanent
+    of the absolute values is strictly larger than ``|det|``, and the same with mixed signs."""
+    x = _well_conditioned(n, device, dtype)
+    signs = torch.tensor([[(-1.0) ** (r * c) for c in range(n)] for r in range(n)], device=device, dtype=dtype)
+    return torch.stack([x, x * signs])
+
+
+def _permanent_of_abs(x):
+    """The permanent of ``|x|`` summed over the permutations, in float64 on the CPU (MPS has no float64)."""
+    n = x.shape[-1]
+    x = x.abs().cpu().to(torch.float64)
+    terms = [x[..., range(n), perm].prod(-1) for perm in itertools.permutations(range(n))]
+    return torch.stack(terms, -1).sum(-1)
+
+
+class TestDetPermKernels(BaseTester):
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_smoke(self, device, dtype, n):
+        det, perm = DET_PERM[n](_well_conditioned(n, device, dtype))
+        assert det.shape == ()
+        assert perm.shape == ()
+        assert det.dtype == dtype
+        assert perm.dtype == dtype
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    @pytest.mark.parametrize("batch", [(), (2,), (2, 3)])
+    def test_cardinality(self, device, dtype, n, batch):
+        det, perm = DET_PERM[n](_well_conditioned(n, device, dtype, batch))
+        assert det.shape == batch
+        assert perm.shape == batch
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_matches_linalg_det_and_the_permanent_of_the_absolute_values(self, device, dtype, n):
+        # The determinant is checked against torch within the rounding scale the permanent names, and the
+        # permanent against its definition, the sum over the permutations of the products of ``|x|``.
+        x = _signed(n, device, dtype)
+        det, perm = DET_PERM[n](x)
+        ref_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        eps = torch.finfo(dtype).eps
+        det_ref = torch.linalg.det(x.to(ref_dtype)).to(dtype)
+        assert ((det - det_ref).abs() <= 8 * n * eps * perm).all()
+        self.assert_close(perm.cpu().to(torch.float64), _permanent_of_abs(x), rtol=8 * n * eps, atol=0.0)
+        assert (perm >= det.abs()).all()
+        assert (perm > det.abs()).any()
+        if n == 4:
+            # the same Laplace pairing of the minors, in the same order, as the adjugate kernel's determinant
+            assert torch.equal(det, ADJUGATE[n](x)[1])
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_scaling_a_row_scales_both_and_keeps_their_ratio(self, device, dtype, n):
+        # Both are homogeneous of degree one in every row and column, so their ratio, which is what
+        # ``safe_inverse_with_mask`` reads, does not depend on the units of the matrix. Powers of two keep
+        # the scaling exact in every dtype.
+        x = _signed(n, device, dtype)
+        det, perm = DET_PERM[n](x)
+        scale = torch.ones(n, 1, device=device, dtype=dtype)
+        scale[0] = 2.0**6
+        scale[-1] = 2.0**-9
+        det_s, perm_s = DET_PERM[n](x * scale)
+        factor = 2.0 ** (6 - 9)
+        assert torch.equal(det_s, det * factor)
+        assert torch.equal(perm_s, perm * factor)
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_dependent_rows_give_a_zero_determinant_and_a_positive_permanent(self, device, dtype, n):
+        # Small integers keep every product and sum exact, so the determinant of a matrix with a row equal
+        # to the sum of two others is exactly zero while the permanent of the absolute values is not.
+        x = torch.arange(1, n * n + 1, device=device, dtype=dtype).reshape(n, n)
+        x = x * torch.tensor([[(-1.0) ** (r * n + c) for c in range(n)] for r in range(n)], device=device, dtype=dtype)
+        x[-1] = x[0] + x[1] if n > 2 else -2 * x[0]
+        det, perm = DET_PERM[n](x)
+        assert torch.equal(det, torch.zeros_like(det))
+        assert perm.item() > 0
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_dynamo(self, device, dtype, n, torch_optimizer):
+        x = _signed(n, device, dtype)
+        op = DET_PERM[n]
+        op_optimized = torch_optimizer(op)
+        expected_det, expected_perm = op(x)
+        actual_det, actual_perm = op_optimized(x)
+        self.assert_close(actual_det, expected_det)
+        self.assert_close(actual_perm, expected_perm)
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_scripts(self, device, dtype, n):
+        x = _signed(n, device, dtype)
+        scripted = torch.jit.script(DET_PERM[n])
+        expected_det, expected_perm = DET_PERM[n](x)
+        actual_det, actual_perm = scripted(x)
+        self.assert_close(actual_det, expected_det)
+        self.assert_close(actual_perm, expected_perm)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.filterwarnings("ignore::DeprecationWarning")
+    @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_onnx_export_uses_basic_arithmetic(self, device, n, use_dynamo_exporter):
+        # The singular verdict of ``safe_inverse_with_mask`` under capture is built from these kernels, so
+        # the exported graph has to stay basic arithmetic as the adjugate's does.
+        _require_exporter(use_dynamo_exporter)
+        onnx = pytest.importorskip("onnx")
+        x = _signed(n, device, torch.float32)
+        buffer = io.BytesIO()
+        torch.onnx.export(_DetPermModule(n), (x,), buffer, **_export_kwargs(use_dynamo_exporter))
+        ops = {node.op_type for node in onnx.load_from_string(buffer.getvalue()).graph.node}
+        _assert_basic_arithmetic_only(ops)
+
+
+class _DetPermModule(torch.nn.Module):
+    """Wrapper so the kernels can be handed to ``torch.onnx.export``."""
+
+    def __init__(self, n: int) -> None:
+        super().__init__()
+        self.n = n
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        det, perm = DET_PERM[self.n](x)
+        return det.abs() <= 1e-6 * perm
 
 
 class TestInverse3x3Kernels(BaseTester):

@@ -21,7 +21,9 @@ import torch.nn.functional as F
 
 from kornia.core.check import ShapeError
 from kornia.feature.sold2 import SOLD2, SOLD2_detector
-from kornia.feature.sold2.sold2 import keypoints_to_grid
+from kornia.feature.sold2.sold2 import WunschLineMatcher, keypoints_to_grid
+from kornia.feature.sold2.sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
+from kornia.feature.sold2.structures import DetectorCfg, LineDetectorCfg
 
 from testing.base import BaseTester
 
@@ -31,7 +33,7 @@ class TestSOLD2_detector(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_shape(self, device, batch_size, dtype):
         inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2_detector(pretrained=False).to(device, dtype)
+        sold2 = SOLD2_detector(pretrained=False).to(device, dtype).eval()
         out = sold2(inp)
         assert out["junction_heatmap"].shape == (batch_size, 64, 64)
         assert out["line_heatmap"].shape == (batch_size, 64, 64)
@@ -39,7 +41,7 @@ class TestSOLD2_detector(BaseTester):
     @pytest.mark.skip("Takes ages to run")
     def test_gradcheck(self, device):
         img = torch.rand(2, 1, 128, 128, device=device, dtype=torch.float64)
-        sold2 = SOLD2_detector(pretrained=False).to(img.device, img.dtype)
+        sold2 = SOLD2_detector(pretrained=False).to(img.device, img.dtype).eval()
 
         def proxy_forward(x):
             return sold2.forward(x)["junction_heatmap"]
@@ -58,19 +60,110 @@ class TestSOLD2_detector(BaseTester):
         self.assert_close(model(img), model_jit(img))
 
 
+class TestJunctionsAndSegments(BaseTester):
+    @staticmethod
+    def _junction_map(points, device, dtype, shape=(96, 128)):
+        prob = torch.zeros(shape, device=device, dtype=dtype)
+        for (row, col), score in points:
+            prob[row, col] = score
+        return prob
+
+    @pytest.mark.parametrize(
+        "offset, n_kept",
+        [
+            # (d_row, d_col) between the strong and the weak junction; the reference suppresses up to and at 8 px
+            ((0, 7), 1),
+            ((0, 8), 1),
+            ((0, 9), 2),
+            ((8, 0), 1),
+            ((9, 0), 2),
+            ((8, 8), 1),
+            ((8, 9), 2),
+            ((-8, 3), 1),
+            ((-9, 3), 2),
+        ],
+    )
+    def test_nms_radius_matches_reference_5730(self, device, dtype, offset, n_kept):
+        # reference: cvg/SOLD2 sold2/model/metrics.py ``super_nms`` / ``nms_fast`` (pad = 8, inclusive window)
+        r0, c0 = 40, 30
+        prob = self._junction_map([((r0, c0), 1.0), ((r0 + offset[0], c0 + offset[1]), 0.9)], device, dtype)
+        junctions = prob_to_junctions(prob, 8, 0.0153846, 500)
+        assert len(junctions) == n_kept
+        assert [float(r0), float(c0)] in junctions.tolist()
+
+    @pytest.mark.parametrize(
+        "dist, offset, n_kept",
+        [(8.7, (0, 8), 1), (8.7, (0, 9), 2), (3.6, (0, 3), 1), (3.6, (0, 4), 2), (3.6, (4, 4), 2)],
+    )
+    def test_nms_fractional_distance_5730(self, device, dtype, dist, offset, n_kept):
+        # junction locations are integers, so a junction at most ``dist`` away is at most ``floor(dist)`` away
+        r0, c0 = 40, 30
+        prob = self._junction_map([((r0, c0), 1.0), ((r0 + offset[0], c0 + offset[1]), 0.9)], device, dtype)
+        junctions = prob_to_junctions(prob, dist, 0.0153846, 500)
+        assert len(junctions) == n_kept
+        assert [float(r0), float(c0)] in junctions.tolist()
+
+    def test_nms_is_greedy_by_score_5730(self, device, dtype):
+        # the strongest junction suppresses both of its 8 px neighbours, which cannot then suppress the one beyond
+        prob = self._junction_map([((40, 20), 0.9), ((40, 28), 1.0), ((40, 37), 0.8)], device, dtype)
+        junctions = prob_to_junctions(prob, 8, 0.0153846, 500)
+        assert junctions.tolist() == [[40.0, 28.0], [40.0, 37.0]]
+
+    def test_junctions_are_in_raster_order_5730(self, device, dtype):
+        # scores run against the raster order, in an H != W map
+        points = [((70, 100), 1.0), ((30, 20), 0.9), ((30, 60), 0.8), ((10, 110), 0.7), ((90, 5), 0.6)]
+        # row 40 ends at a column above row 41's start with a width stride, but not with a height stride
+        points += [((40, 120), 0.55), ((41, 2), 0.5)]
+        prob = self._junction_map(points, device, dtype)
+        junctions = prob_to_junctions(prob, 8, 0.0153846, 500)
+        expected = [[10.0, 110.0], [30.0, 20.0], [30.0, 60.0], [40.0, 120.0], [41.0, 2.0], [70.0, 100.0], [90.0, 5.0]]
+        assert junctions.tolist() == expected
+
+    def test_top_k_selects_by_score_then_raster_order_5730(self, device, dtype):
+        points = [((70, 100), 1.0), ((30, 20), 0.9), ((30, 60), 0.8), ((10, 110), 0.7)]
+        prob = self._junction_map(points, device, dtype)
+        junctions = prob_to_junctions(prob, 8, 0.0153846, 3)
+        assert junctions.tolist() == [[30.0, 20.0], [30.0, 60.0], [70.0, 100.0]]
+
+    @pytest.mark.parametrize("end", [(70, 100), (30, 100)], ids=["diagonal", "horizontal"])
+    @pytest.mark.parametrize("use_junction_refinement", [False, True])
+    def test_segment_endpoints_are_in_raster_order_5730(self, device, dtype, use_junction_refinement, end):
+        # a line from (row, col) = (30, 20) to ``end``, with the junction at ``end`` the stronger one. Raster order puts
+        # (30, 20) first: by row on the diagonal line, by column on the horizontal one. cvg/SOLD2 b2e49f2 returns these
+        # endpoints in this order in both modes, moved by up to 0.75 px by the junction refinement.
+        prob = self._junction_map([(end, 1.0), ((30, 20), 0.5)], device, dtype)
+        heatmap = torch.zeros(96, 128, device=device, dtype=dtype)
+        t = torch.linspace(0, 1, 400, device=device)
+        rows = torch.round(30 + (end[0] - 30) * t).long()
+        cols = torch.round(20 + (end[1] - 20) * t).long()
+        heatmap[rows, cols] = 1.0
+        cfg = LineDetectorCfg(
+            use_heatmap_refinement=False,
+            use_junction_refinement=use_junction_refinement,
+            use_candidate_suppression=False,
+        )
+        junctions = prob_to_junctions(prob, 8, 0.0153846, 500)
+        line_map, junctions, _ = LineSegmentDetectionModule(cfg).detect(junctions, heatmap)
+        segments = line_map_to_segments(junctions, line_map)
+        assert segments.shape == (1, 2, 2)
+        assert segments[0, 0].tolist() < segments[0, 1].tolist()  # lexicographic: row, then column
+        expected = torch.tensor([[30.0, 20.0], [float(end[0]), float(end[1])]], device=device, dtype=segments.dtype)
+        self.assert_close(segments[0], expected, atol=1.0, rtol=0)
+
+
 class TestSOLD2(BaseTester):
     @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_shape(self, device, batch_size, dtype):
         inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
-        sold2 = SOLD2(pretrained=False).to(device, dtype)
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
         out = sold2(inp)
         assert out["dense_desc"].shape == (batch_size, 128, 16, 16)
 
     @pytest.mark.skip("Takes ages to run")
     def test_gradcheck(self, device):
         img = torch.rand(2, 1, 256, 256, device=device, dtype=torch.float64)
-        sold2 = SOLD2(pretrained=False).to(img.device, img.dtype)
+        sold2 = SOLD2(pretrained=False).to(img.device, img.dtype).eval()
 
         def proxy_forward(x):
             return sold2.forward(x)["dense_desc"]
@@ -84,6 +177,79 @@ class TestSOLD2(BaseTester):
         model = SOLD2().to(img.device, img.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
+
+    def test_config_is_not_modified_5722(self):
+        cfg = DetectorCfg()
+        assert cfg.use_descriptor is False
+        sold2 = SOLD2(pretrained=False, config=cfg)
+        assert cfg.use_descriptor is False
+        assert sold2.config is not cfg
+        assert sold2.config.use_descriptor is True
+
+    def test_config_dict_is_not_modified_5722(self):
+        cfg = {"grid_size": 4}
+        sold2 = SOLD2(pretrained=False, config=cfg)
+        assert cfg == {"grid_size": 4}
+        assert sold2.config.grid_size == 4
+        assert sold2.config.use_descriptor is True
+
+    def test_detector_config_is_not_modified_5722(self):
+        cfg = DetectorCfg()
+        detector = SOLD2_detector(pretrained=False, config=cfg)
+        assert cfg.use_descriptor is False
+        assert detector.config.use_descriptor is False
+
+    def test_match_keeps_torch_diag_5722(self, device, dtype):
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
+        diag = torch.diag
+        seg1 = torch.tensor([[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]]], device=device, dtype=dtype)
+        desc = torch.randn(1, 128, 24, 32, device=device, dtype=dtype)
+        sold2.match(seg1, seg1 + 1.0, desc, desc.flip(-1))
+        assert torch.diag is diag
+        assert callable(torch.diag)
+        self.assert_close(
+            torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
+        )
+
+    def test_match_segment_dtype_differs_from_descriptors_5722(self, device, dtype):
+        # SOLD2.forward returns float32 segments whatever the model dtype, so match must accept segments whose
+        # dtype differs from the descriptor map's, in both directions.
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
+        seg = torch.tensor(
+            [[[10.0, 10.0], [60.0, 90.0]], [[20.0, 70.0], [80.0, 20.0]], [[85.0, 5.0], [85.0, 120.0]]], device=device
+        )
+        desc = torch.randn(1, 128, 24, 32, device=device, dtype=dtype)
+        # identical segments and descriptors in both images: every line matches itself
+        assert sold2.match(seg, seg, desc, desc).tolist() == [0, 1, 2]
+        desc32 = desc.float()
+        assert sold2.match(seg.to(dtype), seg.to(dtype), desc32, desc32).tolist() == [0, 1, 2]
+
+
+class TestWunschLineMatcher(BaseTester):
+    def test_needleman_wunsch_keeps_torch_diag_5722(self, device, dtype):
+        diag = torch.diag
+        scores = torch.rand(2, 3, 5, device=device, dtype=dtype)
+        out = WunschLineMatcher().needleman_wunsch(scores)
+        assert out.shape == (2,)
+        assert torch.diag is diag
+        self.assert_close(
+            torch.diag(torch.ones(3, device=device, dtype=dtype)), torch.eye(3, device=device, dtype=dtype)
+        )
+
+    def test_needleman_wunsch_float64_matches_float32_5722(self, device):
+        if torch.device(device).type == "mps":
+            pytest.skip("MPS does not support float64")
+        scores = torch.rand(2, 3, 5, device=device, dtype=torch.float32)
+        out32 = WunschLineMatcher().needleman_wunsch(scores)
+        out64 = WunschLineMatcher().needleman_wunsch(scores.double())
+        assert out64.dtype == torch.float64
+        self.assert_close(out64.float(), out32, low_tolerance=True)
+
+    def test_needleman_wunsch_value(self, device, dtype):
+        # one-to-one alignment: dp[-1, -1] is the best sum of (score - 0.1) over a monotone matching
+        scores = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]], device=device, dtype=dtype)
+        out = WunschLineMatcher().needleman_wunsch(scores)
+        self.assert_close(out, torch.tensor([2.8], device=device, dtype=dtype), low_tolerance=True)
 
 
 class TestKeypointsToGrid(BaseTester):
@@ -158,3 +324,122 @@ class TestKeypointsToGrid(BaseTester):
         op = keypoints_to_grid
         op_optimized = torch_optimizer(op)
         self.assert_close(op(kp, (32, 64)), op_optimized(kp, (32, 64)))
+
+
+class _FixedSOLD2Net(torch.nn.Module):
+    """A SOLD2 network stand-in that returns fixed outputs."""
+
+    def __init__(self, outputs):
+        super().__init__()
+        self.outputs = outputs
+
+    def forward(self, img):
+        return self.outputs
+
+
+class TestConventionsSOLD2(BaseTester):
+    @staticmethod
+    def _maps(start, end, s_start, s_end, device, dtype, h=96, w=128):
+        # Junction and line heatmaps (B, H, W) for one line from start to end, given as (x, y), with the junction
+        # scores s_start and s_end.
+        junctions = torch.zeros(1, h, w)
+        junctions[0, start[1], start[0]], junctions[0, end[1], end[0]] = s_start, s_end
+        heatmap = torch.zeros(1, h, w)
+        t = torch.linspace(0, 1, 400)
+        heatmap[
+            0,
+            torch.round(start[1] + (end[1] - start[1]) * t).long(),
+            torch.round(start[0] + (end[0] - start[0]) * t).long(),
+        ] = 1.0
+        return junctions.to(device, dtype), heatmap.to(device, dtype)
+
+    @staticmethod
+    def _segments(model, maps, image):
+        # The network is replaced by one that returns the given junction and line maps (and empty descriptors); the
+        # line detector runs as usual.
+        junctions, heatmap = maps
+        h, w = heatmap.shape[-2:]
+        descriptors = heatmap.new_zeros(1, 128, h // 4, w // 4)
+        network = model.model
+        model.model = _FixedSOLD2Net({"junctions": junctions, "heatmap": heatmap, "descriptors": descriptors})
+        try:
+            with torch.no_grad():
+                return model(image)["line_segments"][0]
+        finally:
+            model.model = network
+
+    @pytest.mark.parametrize("model_cls", [SOLD2_detector, SOLD2])
+    def test_convention_sold2_segments_are_row_col_endpoints_in_raster_order(self, device, dtype, model_cls):
+        # A line from (x, y) = (100, 30) to (20, 70) on a 96 x 128 image. Segments are (N, 2, 2) endpoints (row, col) in
+        # kornia's pixel frame (flip(-1) gives (x, y)), and the first endpoint is the one with the smaller row, here the
+        # one with the larger column, whatever the junction scores. Without junction refinement the endpoints are the
+        # junction pixels. The default refinement (JunctionRefineCfg: 9 perturbations 0.25 px apart) moves each
+        # endpoint by at most 1 px per axis, in 0.25 px steps, and does not depend on the junction scores.
+        image = torch.rand(1, 1, 96, 128, device=device, dtype=dtype)
+        unrefined = DetectorCfg(line_detector_cfg=LineDetectorCfg(use_junction_refinement=False))
+        junctions = torch.tensor([[[30.0, 100.0], [70.0, 20.0]]], device=device)
+        for config in (unrefined, None):
+            model = model_cls(pretrained=False, config=config).to(device, dtype).eval()
+            per_score_order = []
+            for scores in ((0.5, 1.0), (1.0, 0.5)):
+                maps = self._maps((100, 30), (20, 70), *scores, device, dtype)
+                per_score_order.append(self._segments(model, maps, image).float())
+            for segments in per_score_order:
+                if config is unrefined:
+                    self.assert_close(segments, junctions, rtol=0.0, atol=0.0)
+                else:
+                    assert (segments - junctions).abs().max() <= 1.0
+                    assert torch.equal(segments * 4, (segments * 4).round())
+            assert torch.equal(per_score_order[0], per_score_order[1])
+        # relabelling: the transposed maps give the transposed endpoints, (row, col) in the transposed image, where the
+        # other endpoint now has the smaller row and comes first
+        model = model_cls(pretrained=False, config=unrefined).to(device, dtype).eval()
+        maps = self._maps((30, 100), (70, 20), 0.5, 1.0, device, dtype, h=128, w=96)
+        segments = self._segments(model, maps, image.transpose(-1, -2))
+        self.assert_close(segments.float(), junctions.flip(-1).flip(1), rtol=0.0, atol=0.0)
+
+    def test_convention_sold2_takes_one_channel_and_returns_maps_at_the_input_size(self, device, dtype):
+        # (B, 1, H, W) with H and W multiples of 8: the junction and line heatmaps are (B, H, W), SOLD2's dense
+        # descriptors (B, 128, H / 4, W / 4); a three-channel image is rejected. SOLD2.match returns an int64 index into
+        # the second set of segments per segment of the first, or -1.
+        # The detection threshold is raised above any probability, so that the line detector, which this pin does not
+        # read, has no junctions of the random network to connect.
+        model = SOLD2(pretrained=False, config=DetectorCfg(detection_thresh=2.0)).to(device, dtype).eval()
+        image = torch.rand(2, 1, 64, 96, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = model(image)
+            raw = model.model(image)["descriptors"]
+            with pytest.raises(ShapeError):
+                model(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
+        assert out["junction_heatmap"].shape == (2, 64, 96)
+        assert out["line_heatmap"].shape == (2, 64, 96)
+        assert out["dense_desc"].shape == (2, 128, 16, 24)
+        # dense_desc is the descriptor head's output as it is, not normalised per position
+        assert torch.equal(out["dense_desc"], raw)
+        assert (raw.float().norm(dim=1) - 1.0).abs().max() > 0.1
+        segments1 = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]], device=device)
+        segments2 = torch.cat([segments1 + 1.0, torch.tensor([[[5.0, 5.0], [5.0, 60.0]]], device=device)])
+        maps = torch.rand(2, 1, 128, 16, 24, device=device)  # float32: torch 2.5.1 has no CPU half grid_sample
+        matches = model.match(segments1, segments2, maps[0], maps[1])
+        assert matches.dtype == torch.int64
+        assert matches.shape == (2,)
+        assert ((matches >= -1) & (matches < 3)).all()
+
+    def test_convention_sold2_match_returns_int64_when_a_set_of_segments_is_empty(self, device, dtype):
+        # SOLD2.match returns an int64 index per segment of line_seg1, also when either set of segments is empty:
+        # an empty tensor when image 1 has no segments, -1 per segment when image 2 has none (#5915).
+        model = SOLD2(pretrained=False).eval()
+        segments = torch.tensor([[[10.0, 10.0], [50.0, 90.0]], [[20.0, 70.0], [55.0, 20.0]]], device=device)
+        maps = torch.rand(2, 1, 128, 16, 24, device=device, dtype=dtype)
+        for line_seg1, line_seg2, expected in (
+            (segments[:0], segments, []),
+            (segments, segments[:0], [-1, -1]),
+            (segments[:0], segments[:0], []),
+        ):
+            matches = model.match(line_seg1, line_seg2, maps[0], maps[1])
+            assert matches.dtype == torch.int64
+            assert matches.device == maps.device
+            assert matches.tolist() == expected
+        # two non-empty sets give int64 as well (float32 maps: torch 2.5.1 has no CPU half grid_sample)
+        matches = model.match(segments, segments, maps[0].float(), maps[1].float())
+        assert matches.dtype == torch.int64

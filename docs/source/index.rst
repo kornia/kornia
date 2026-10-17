@@ -167,7 +167,7 @@ Kornia: Differentiable Computer Vision for PyTorch
 
             .. code-block:: python
 
-               torch.onnx.export(kornia.color.RgbToGrayscale(), x, "gray.onnx", dynamo=False)
+               torch.onnx.export(kornia.color.RgbToGrayscale(), (x,), "gray.onnx", dynamo=True)
 
             **Export once, run anywhere ONNX Runtime does** — chained with Hub-hosted operators into one graph.
 

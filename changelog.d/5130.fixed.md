@@ -1,0 +1,1 @@
+`AugmentationSequential` now processes `input` before annotations so nested geometric augmentations and auto-augment policies use the current call's transformation matrix, regardless of caller argument order.

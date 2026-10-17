@@ -248,8 +248,9 @@ If a URL is passed, the model automatically downloads and caches the weights usi
     # Load/build the model
     sam_model = Sam.from_config(SamConfig(model_type))
 
-    # Load the checkpoint
+    # Load the checkpoint; loading keeps the module's mode, so switch to evaluation mode for inference
     sam_model.load_checkpoint(checkpoint, device)
+    sam_model.eval()
 
 
 .. Mask Generator

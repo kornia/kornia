@@ -27,23 +27,77 @@ from testing.base import BaseTester
 
 
 class TestConventionGeometricMatrices(BaseTester):
-    @pytest.mark.device_agnostic
-    def test_convention_flips_use_inclusive_pixel_coordinates(self):
-        x = torch.zeros(1, 1, 5, 7)
-        x[..., 1, 2] = 1
-        horizontal = K.RandomHorizontalFlip(p=1.0)(x)
-        vertical = K.RandomVerticalFlip(p=1.0)(x)
+    def test_nearest_resize_uses_nearest_exact_and_half_pixel_matrix(self):
+        image = torch.arange(49, dtype=torch.float64).view(1, 1, 7, 7)
+        augmentation = K.Resize((14, 21), resample="nearest")
 
-        assert horizontal[0, 0].argmax().item() == 1 * 7 + 4
-        assert vertical[0, 0].argmax().item() == 3 * 7 + 2
+        output = augmentation(image)
+        expected = torch.nn.functional.interpolate(image, size=(14, 21), mode="nearest-exact")
+        self.assert_close(output, expected)
+        self.assert_close(
+            augmentation.transform_matrix,
+            image.new_tensor([[[3.0, 0.0, 1.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]]),
+        )
 
-    def test_convention_flips_expose_their_discrete_coordinate_matrices(self, device, dtype):
+    @pytest.mark.parametrize("input_size,output_size", [((7, 7), (21, 21)), ((12, 12), (9, 9)), ((5, 5), (8, 8))])
+    def test_nearest_resize_inverse_roundtrip(self, input_size, output_size):
+        image = torch.arange(input_size[0] * input_size[1], dtype=torch.float32).view(1, 1, *input_size)
+        augmentation = K.AugmentationSequential(K.Resize(output_size, resample="nearest"))
+        restored = augmentation.inverse(augmentation(image))
+        assert restored.shape == image.shape
+        # Nearest downsampling is lossy, but inverse resampling must still cover both image edges.
+        self.assert_close(restored[..., 0, 0], image[..., 0, 0])
+        self.assert_close(restored[..., -1, -1], image[..., -1, -1])
+
+    @pytest.mark.parametrize(
+        "augmentation", [K.LongestMaxSize(21, resample="nearest"), K.SmallestMaxSize(9, resample="nearest")]
+    )
+    def test_nearest_max_size_matches_nearest_exact(self, augmentation):
+        image = torch.arange(35, dtype=torch.float64).view(1, 1, 5, 7)
+        output = augmentation(image)
+        expected = torch.nn.functional.interpolate(image, size=output.shape[-2:], mode="nearest-exact")
+        self.assert_close(output, expected)
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_nearest_slice_resized_crop_uses_nearest_exact(self, align_corners):
+        image = torch.arange(11, dtype=torch.float64).view(1, 1, 1, 11).expand(1, 1, 5, -1)
+        augmentation = K.RandomResizedCrop(
+            (6, 21), resample="nearest", align_corners=align_corners, cropping_mode="slice"
+        )
+        params = augmentation.forward_parameters(image.shape)
+        params["src"] = image.new_tensor([[[2, 1], [8, 1], [8, 3], [2, 3]]])
+
+        output = augmentation(image, params=params)
+        expected = torch.nn.functional.interpolate(image[..., 1:4, 2:9], size=(6, 21), mode="nearest-exact")
+        self.assert_close(output, expected)
+        self.assert_close(
+            augmentation.transform_matrix,
+            image.new_tensor([[[3.0, 0.0, -5.0], [0.0, 2.0, -1.5], [0.0, 0.0, 1.0]]]),
+        )
+
+    @pytest.mark.parametrize(
+        "augmentation,output_size",
+        [
+            (K.Resize((6, 9), resample="nearest"), (6, 9)),
+            (K.LongestMaxSize(9, resample="nearest"), (7, 9)),
+            (K.SmallestMaxSize(6, resample="nearest"), (6, 7)),
+        ],
+    )
+    def test_nearest_resize_handles_empty_batch(self, augmentation, output_size):
+        image = torch.empty(0, 1, 4, 5)
+        output = augmentation(image)
+        assert output.shape == (0, 1, *output_size)
+        assert augmentation.transform_matrix.shape == (0, 3, 3)
+
+    def test_convention_flips_use_inclusive_pixel_coordinates(self, device, dtype):
         x = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
+        x[..., 1, 2] = 1
         horizontal = K.RandomHorizontalFlip(p=1.0)
         vertical = K.RandomVerticalFlip(p=1.0)
-        horizontal(x)
-        vertical(x)
 
+        # x' = W - 1 - x and y' = H - 1 - y, in the image and in the matrix alike.
+        assert horizontal(x)[0, 0].argmax().item() == 1 * 7 + 4
+        assert vertical(x)[0, 0].argmax().item() == 3 * 7 + 2
         self.assert_close(
             horizontal.transform_matrix,
             torch.tensor([[[-1.0, 0.0, 6.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
@@ -116,9 +170,11 @@ class TestConventionGeometricMatrices(BaseTester):
         extent = basic_offset.new_tensor([1.75, 1.25])
 
         assert (basic_offset[:, 0] >= 0).all()
-        assert (basic_offset[:, 1, 0] <= 0).all() and (basic_offset[:, 1, 1] >= 0).all()
+        assert (basic_offset[:, 1, 0] <= 0).all()
+        assert (basic_offset[:, 1, 1] >= 0).all()
         assert (basic_offset[:, 2] <= 0).all()
-        assert (basic_offset[:, 3, 0] >= 0).all() and (basic_offset[:, 3, 1] <= 0).all()
+        assert (basic_offset[:, 3, 0] >= 0).all()
+        assert (basic_offset[:, 3, 1] <= 0).all()
         assert (basic_offset.abs() <= extent).all()
         assert (basic_offset.abs().amax(dim=(0, 1)) > 0.9 * extent).all()
         assert (area_offset.abs() <= extent).all()
@@ -142,18 +198,60 @@ class TestConventionGeometricMatrices(BaseTester):
             K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image), image, low_tolerance=True
         )
 
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_random_perspective_float64_identity_is_exact_4776(self, device, align_corners):
+        # #4776: warp_perspective builds its grid in the input dtype, so a float64 identity warp is exact to
+        # float64 roundoff, like RandomAffine's warp_affine on the same input.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        image = torch.arange(35, device=device, dtype=torch.float64).reshape(1, 1, 5, 7) / 35
+        output = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image)
+        assert output.dtype == torch.float64
+        assert (output - image).abs().max() < 1e-12
+
     @pytest.mark.parametrize("size", [(1, 7), (5, 1), (1, 1)])
     @pytest.mark.parametrize("align_corners", [False, True])
-    def test_wart_random_perspective_singleton_dimensions_4538(self, device, dtype, size, align_corners):
+    def test_convention_random_perspective_singleton_dimensions_4787(self, device, dtype, size, align_corners):
+        # #4787: a size-1 axis gets a unit source extent and no offset, so the solve is not degenerate and
+        # zero distortion is the identity.
         height, width = size
         image = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width)
         augmentation = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)
 
         output = augmentation(image)
 
-        # Coincident source corners make the perspective solve degenerate, even without distortion.
-        assert torch.isnan(augmentation.transform_matrix).all()
-        assert torch.isnan(output).all()
+        assert torch.isfinite(augmentation.transform_matrix).all()
+        self.assert_close(output, image, low_tolerance=True)
+
+    @pytest.mark.parametrize("sampling_method", ["basic", "area_preserving"])
+    @pytest.mark.parametrize("size", [(1, 7), (5, 1)])
+    def test_convention_random_perspective_does_not_distort_a_singleton_axis_4787(
+        self, device, dtype, size, sampling_method
+    ):
+        height, width = size
+        torch.manual_seed(0)
+        image = torch.rand(4, 1, height, width, device=device, dtype=dtype)
+        augmentation = K.RandomPerspective(1.0, p=1.0, sampling_method=sampling_method)
+
+        output = augmentation(image)
+
+        assert torch.isfinite(output).all()
+        # The singleton axis spans a unit source extent (the other axis keeps its inclusive corners).
+        start = augmentation._params["start_points"]
+        x_end, y_end = (width - 1, 1) if height == 1 else (1, height - 1)
+        expected = torch.tensor([[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]).to(start).expand_as(start)
+        assert torch.equal(start, expected)
+        matrix = augmentation.transform_matrix.to(torch.float32)
+        assert torch.isfinite(matrix).all()
+        # The singleton row (or column) maps onto itself, while the other axis is still warped.
+        axis = 1 if height == 1 else 0
+        extent = width if height == 1 else height
+        points = torch.zeros(4, extent, 2, device=device)
+        points[..., 1 - axis] = torch.arange(extent, device=device, dtype=torch.float32)
+        homogeneous = torch.cat([points, torch.ones_like(points[..., :1])], dim=-1) @ matrix.transpose(-1, -2)
+        mapped = homogeneous[..., :2] / homogeneous[..., 2:]
+        self.assert_close(mapped[..., axis], torch.zeros_like(mapped[..., axis]), low_tolerance=True)
+        assert not torch.allclose(mapped[..., 1 - axis], points[..., 1 - axis], atol=1e-2)
 
     def test_wart_random_affine_rotation_sign_4408(self, device, dtype):
         x = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)

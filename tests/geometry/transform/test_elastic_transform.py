@@ -34,6 +34,85 @@ def _row_spread_std(out: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
 
 
 class TestElasticTransform(BaseTester):
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection"])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize("axis", [0, 1])
+    @pytest.mark.parametrize("direction", [-1, 1])
+    def test_displacement_outside_image(self, device, dtype, padding_mode, align_corners, mode, axis, direction):
+        if padding_mode == "border" and not supports_2d_border_padding(device):
+            pytest.skip("MPS 2D grid_sample lacks 'border' padding")
+        image = torch.arange(1, 6, device=device, dtype=dtype).view(1, 1, 1, 5).expand(2, 2, 5, 5).clone()
+        rows = {
+            "zeros": [3.0, 4.0, 5.0, 0.0, 0.0],
+            "border": [3.0, 4.0, 5.0, 5.0, 5.0],
+            "reflection": [3.0, 4.0, 5.0, 4.0, 3.0] if align_corners else [3.0, 4.0, 5.0, 5.0, 4.0],
+        }
+        expected = torch.tensor(rows[padding_mode], device=device, dtype=dtype).view(1, 1, 1, 5).expand_as(image)
+        if direction == -1:
+            image, expected = image.flip(-1), expected.flip(-1)
+        if axis == 1:
+            image, expected = image.transpose(-2, -1), expected.transpose(-2, -1)
+        noise = torch.zeros(2, 2, 5, 5, device=device, dtype=dtype)
+        noise[:, axis] = direction
+        # A constant displacement of two pixels; the 1-tap Gaussian leaves the field unchanged.
+        scale = 1.0 if align_corners else 0.8
+        output = elastic_transform2d(
+            image,
+            noise,
+            kernel_size=(1, 1),
+            sigma=(1.0, 1.0),
+            alpha=(scale, scale),
+            align_corners=align_corners,
+            mode=mode,
+            padding_mode=padding_mode,
+        )
+        # A rounded float16 grid can land just inside the zero-padding boundary (5 * 2**-9 here).
+        tolerance = {"rtol": 1e-3, "atol": 1e-2} if dtype == torch.float16 else {}
+        self.assert_close(output, expected, **tolerance)
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_zero_padding_fractional_boundary(self, device, align_corners):
+        image = torch.ones(1, 1, 5, 5, device=device)
+        noise = torch.zeros(1, 2, 5, 5, device=device)
+        noise[:, 0] = 1.0
+        # Three quarters of a pixel beyond the final centre leaves one quarter of its bilinear weight.
+        scale = 0.375 if align_corners else 0.3
+        output = elastic_transform2d(
+            image,
+            noise,
+            kernel_size=(1, 1),
+            sigma=(1.0, 1.0),
+            alpha=(scale, 0.0),
+            align_corners=align_corners,
+            padding_mode="zeros",
+        )
+        expected = torch.ones_like(image)
+        expected[..., -1] = 0.25
+        self.assert_close(output, expected)
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_reflected_displacement_gradient(self, device, align_corners):
+        image = torch.arange(1, 6, device=device, dtype=torch.float32).view(1, 1, 1, 5).expand(1, 1, 5, 5)
+        noise = torch.zeros(1, 2, 5, 5, device=device)
+        noise[:, 0] = 1.0
+        noise.requires_grad_()
+        # The last column samples strictly inside the reflected image, beyond normalized coordinate 1.
+        scale = 1.15 if align_corners else 0.92
+        output = elastic_transform2d(
+            image,
+            noise,
+            kernel_size=(1, 1),
+            sigma=(1.0, 1.0),
+            alpha=(scale, 0.0),
+            align_corners=align_corners,
+            padding_mode="reflection",
+        )
+        gradient = torch.autograd.grad(output[..., -1].sum(), noise)[0]
+        expected = torch.zeros_like(noise)
+        expected[:, 0, :, -1] = -2.3
+        self.assert_close(gradient, expected)
+
     def test_smoke(self, device, dtype):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
         noise = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
@@ -58,30 +137,30 @@ class TestElasticTransform(BaseTester):
             elastic_transform2d(ex, 1)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
+        img = torch.ones(1, 1, 1, device=device, dtype=dtype)
+        noise = torch.ones(1, 2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError) as errinfo:
-            img = torch.ones(1, 1, 1, device=device, dtype=dtype)
-            noise = torch.ones(1, 2, 1, 1, device=device, dtype=dtype)
             elastic_transform2d(img, noise)
         assert "Shape dimension mismatch" in str(errinfo.value)
 
+        img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        noise = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ShapeError) as errinfo:
-            img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
-            noise = torch.ones(2, 1, 1, device=device, dtype=dtype)
             elastic_transform2d(img, noise)
         assert "Shape dimension mismatch" in str(errinfo.value)
 
+        img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        noise = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
         with pytest.raises(RuntimeError) as errinfo:
-            img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
-            noise = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
             elastic_transform2d(img, noise)
         assert "The size of tensor a (2) must match the size of tensor b (3)" in str(errinfo.value)
 
     @pytest.mark.parametrize(
         "kernel_size, sigma, alpha",
         [
-            [(3, 3), (4.0, 4.0), (32.0, 32.0)],
-            [(5, 3), (4.0, 8.0), (16.0, 32.0)],
-            [(5, 5), torch.tensor([2.0, 8.0]), torch.tensor([16.0, 64.0])],
+            ((3, 3), (4.0, 4.0), (32.0, 32.0)),
+            ((5, 3), (4.0, 8.0), (16.0, 32.0)),
+            ((5, 5), torch.tensor([2.0, 8.0]), torch.tensor([16.0, 64.0])),
         ],
     )
     def test_valid_paramters(self, device, dtype, kernel_size, sigma, alpha):
@@ -157,10 +236,8 @@ class TestElasticTransform(BaseTester):
         assert (out[0, 0] > 0.1).nonzero().tolist() == [[2, 1]]
 
     def test_convention_alpha_xy_order(self, device, dtype):
-        # alpha is genuinely (x, y) order in the executed code: alpha[0] always scales the
-        # x-displacement and alpha[1] the y-displacement -- contradicting the "in the y and x
-        # directions, respectively" docstring text, which only holds for kernel_size/sigma
-        # (see test_convention_sigma_yx_order for that half).
+        # alpha is (x, y): alpha[0] scales the x-displacement, unlike kernel_size and sigma, which
+        # are (y, x) (test_convention_sigma_yx_order).
         image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
         image[0, 0, 4, 4] = 1.0
         noise = torch.zeros(1, 2, 9, 9, device=device, dtype=dtype)
@@ -222,46 +299,26 @@ class TestElasticTransform(BaseTester):
         # sigma=(0.3, 3.0) (large sigma_x) -- a robust ordering property, not an exact pixel list.
         assert spread_y_wide > 5 * spread_x_wide
 
-    def test_convention_padding_mode_default_zeros(self, device, dtype):
-        # padding_mode's default ('zeros') genuinely affects boundary sampling, but only once the
-        # displacement pushes the (internally clamped-to-[-1,1]) sampling grid all the way to the
-        # edge -- no other existing test drives the displacement far enough to reach it.
+    def test_convention_padding_mode_border_differs_from_zeros(self, device, dtype):
+        # Displacements beyond the image use zeros by default, or the edge pixel with 'border'.
         image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
         image[0, 0, 2, 4] = 5.0
         noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
         noise[0, 0] = 1.0
         kwargs = {"kernel_size": (3, 3), "sigma": (1.0, 1.0), "alpha": (4.0, 0.0)}
 
-        out_default = elastic_transform2d(image, noise, **kwargs)
-        out_zeros = elastic_transform2d(image, noise, padding_mode="zeros", **kwargs)
         # Snippet used to generate expected (requires only this module):
         # image = torch.zeros(1, 1, 5, 5); image[0, 0, 2, 4] = 5.0
         # noise = torch.zeros(1, 2, 5, 5); noise[0, 0] = 1.0
         # kwargs = dict(kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(4.0, 0.0))
-        # elastic_transform2d(image, noise, **kwargs)[0, 0, 2]                       # 'zeros' row
-        expected_zeros_row = torch.tensor([2.5, 2.5, 2.5, 2.5, 2.5], device=device, dtype=dtype)
+        # elastic_transform2d(image, noise, **kwargs)[0, 0, 2]                        # default row
+        # elastic_transform2d(image, noise, padding_mode="border", **kwargs)[0, 0, 2]  # 'border' row
+        out_default = elastic_transform2d(image, noise, **kwargs)
+        expected_zeros_row = torch.zeros(5, device=device, dtype=dtype)
         self.assert_close(out_default[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
-        self.assert_close(out_zeros[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
 
-    def test_convention_padding_mode_border_differs_from_zeros(self, device, dtype):
-        # Companion to test_convention_padding_mode_default_zeros above: 'border' padding must
-        # actually differ from the 'zeros' default. MPS's 2D grid_sample doesn't support 'border'
-        # (probed at runtime), so this half is skipped visibly there instead of silently no-op'ing
-        # inside an `if` guard.
         if not supports_2d_border_padding(device):
             pytest.skip("MPS 2D grid_sample lacks 'border' padding")
-
-        image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
-        image[0, 0, 2, 4] = 5.0
-        noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
-        noise[0, 0] = 1.0
-        kwargs = {"kernel_size": (3, 3), "sigma": (1.0, 1.0), "alpha": (4.0, 0.0)}
-
-        # Snippet used to generate expected (requires only this module):
-        # image = torch.zeros(1, 1, 5, 5); image[0, 0, 2, 4] = 5.0
-        # noise = torch.zeros(1, 2, 5, 5); noise[0, 0] = 1.0
-        # kwargs = dict(kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(4.0, 0.0))
-        # elastic_transform2d(image, noise, padding_mode="border", **kwargs)[0, 0, 2]  # 'border' row
         out_border = elastic_transform2d(image, noise, padding_mode="border", **kwargs)
         expected_border_row = torch.tensor([5.0, 5.0, 5.0, 5.0, 5.0], device=device, dtype=dtype)
         self.assert_close(out_border[0, 0, 2], expected_border_row, rtol=1e-2, atol=1e-2)

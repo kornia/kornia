@@ -112,54 +112,27 @@ class CameraModelBase:
 
     Convention:
         - the API is ``Vector``-typed: :meth:`project` takes a ``Vector3`` and returns a ``Vector2``, and
-          :meth:`unproject` takes a ``Vector2`` and returns a ``Vector3``. A raw :class:`torch.Tensor` is not
-          accepted -- reading a coordinate off it raises ``AttributeError``.
-        - ``params`` is a flat parameter vector whose length is fixed by the :class:`CameraModelType`:
-          ``[fx, fy, cx, cy]`` for ``PINHOLE`` and ``ORTHOGRAPHIC``, 12 parameters for ``BROWN_CONRADY`` and
-          8 for ``KANNALA_BRANDT_K3``, laid out as each constructor documents. That length is enforced by
-          the typed constructors -- :class:`CameraModel` and the :class:`PinholeModel`,
-          :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` subclasses -- which
-          accept an unbatched ``(N,)`` vector and a batched :math:`(B, N)` one and raise ``ValueError`` for
-          another length or a rank above 2. ``CameraModelBase.__init__`` applies the same check on the direct
-          construction path, reading the length off the distortion type -- 4 for
-          :class:`~kornia.sensors.camera.distortion_model.AffineTransform`, 12 for ``BrownConradyTransform``
-          and 8 for ``KannalaBrandtK3Transform``.
-        - :meth:`matrix` and its alias :meth:`K` return the :math:`(*, 3, 3)` intrinsics
-          ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, carrying the batch axis of ``params`` -- not the
-          :math:`(B, 4, 4)` ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera`
-          stores, whose :attr:`~kornia.geometry.camera.pinhole.PinholeCamera.camera_matrix` property returns
-          the :math:`(B, 3, 3)` block of it. ``CameraModelBase.matrix`` implements it for all supported camera models.
-        - :meth:`project` is ``self.distortion.distort(self.params, self.projection.project(points))`` and
-          :meth:`unproject` the reverse,
-          ``self.projection.unproject(self.distortion.undistort(self.params, points), depth)``. ``depth`` is
-          the camera-frame ``z``: :class:`~kornia.sensors.camera.projection_model.Z1Projection` multiplies
-          the :math:`z = 1` point by it, so the third coordinate of the result is the ``depth`` that was
-          passed in, and not a Euclidean ray length.
-        - with shared intrinsics ``params.shape == (4,)``, or one point per camera with ``params`` of shape
-          ``(B, 4)`` and points of shape ``(B, 3)`` / ``(B, 2)``, the Pinhole path uses the same mathematical
-          camera mapping as :doc:`kornia.geometry.camera </geometry.camera>` with ``K`` built from the same
-          ``[fx, fy, cx, cy]``.
-          However, :meth:`project` divides directly by ``z``, whereas
-          :func:`~kornia.geometry.camera.perspective.project_points` multiplies by its reciprocal and skips
-          the divide when ``abs(z) <= 1e-8`` (compared in the working dtype). Results can differ by rounding
-          away from that threshold and differ substantially at or below it: ``[1, 2, 0]`` yields infinities
-          here but finite pixels there. See `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
-          :meth:`unproject` corresponds to :func:`~kornia.geometry.camera.perspective.unproject_points`
-          with ``normalize=False`` and depth shaped as ``(*, 1)`` there instead of ``(*,)`` here.
-        - for point clouds shaped ``(B, N, 3)`` / ``(B, N, 2)``, batched ``(B, 4)`` intrinsics broadcast
-          differently: this API applies each ``(B,)`` intrinsic component directly to ``(B, N)`` coordinates,
-          aligning it with the point axis. The geometry functions insert a singleton point axis and apply
-          intrinsics along the camera batch axis. When ``B == N > 1``, both APIs run but associate the
-          intrinsics with different points; with ``B = 2, N = 3``, both :meth:`project` and :meth:`unproject`
-          here raise ``RuntimeError`` while the geometry functions support those shapes. Changing only the
-          point container and depth shape is therefore insufficient for batched point clouds.
-        - pixels use the integer-centre grid described in
-          the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. The two type systems
-          are kept separate by design -- this one takes ``Vector`` objects, that one plain tensors -- which is
-          recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
+          :meth:`unproject` the reverse; a raw :class:`torch.Tensor` is not accepted. This type system is kept
+          separate from :doc:`kornia.geometry.camera </geometry.camera>` by design
+          (`#4274 <https://github.com/kornia/kornia/issues/4274>`_).
+        - ``params`` is a flat ``(N,)`` or batched :math:`(B, N)` vector whose length is fixed by the model:
+          ``[fx, fy, cx, cy]`` for ``PINHOLE`` and ``ORTHOGRAPHIC``, 12 for ``BROWN_CONRADY`` and 8 for
+          ``KANNALA_BRANDT_K3``; another length or a rank above 2 raises ``ValueError``.
+        - :meth:`matrix` and its alias :meth:`K` return the :math:`(*, 3, 3)` ``K``, not the :math:`(B, 4, 4)`
+          ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
+        - :meth:`project` is ``distortion.distort(params, projection.project(points))`` and :meth:`unproject`
+          the reverse; ``depth`` is the camera-frame ``z``, shaped ``(*,)`` where
+          :func:`~kornia.geometry.camera.perspective.unproject_points` takes ``(*, 1)``. Pixel centres are
+          integers (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
 
-        See :doc:`camera and world conventions </get-started/camera-conventions>` for the shared pixel-centre,
-        depth and intrinsics conventions across the camera APIs.
+    .. warning::
+        Batched ``(B, 4)`` intrinsics apply along the **last point axis**, not the camera axis: with
+        ``(B, N, 3)`` points and ``B > 1`` they silently pair with the wrong points when ``B == N``,
+        :meth:`project` broadcasts to a ``(B, B, 2)`` result when ``N == 1``, and other ``N`` raise, whereas the
+        geometry functions apply them per camera:
+        `#4274 <https://github.com/kornia/kornia/issues/4274>`_. :meth:`project` divides by ``z`` with no guard,
+        so ``z = 0`` gives infinities where :func:`~kornia.geometry.camera.perspective.project_points` returns
+        finite pixels: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
@@ -370,19 +343,13 @@ class PinholeModel(CameraModelBase):
 
         Convention:
             - returns a **new** model whose focal lengths, principal point and image size are multiplied by
-              ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``, the half-pixel rule, which is the rule
-              :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale` applies as well.
-
-            See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
-            the matching intrinsics scaling convention.
+              ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``, as
+              :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale` does.
 
         .. warning::
-            ``cx' = s * cx`` disagrees with the integer pixel centres the rest of the library enumerates, and
-            a tensor ``scale_factor`` rebuilds ``image_size`` with 0-dim tensors in the promoted dtype
-            (floating for a floating-point factor) where the constructor took python integers -- a python
-            ``int`` keeps ``int`` fields and a python ``float`` gives ``float`` ones. Both are tracked in
-            `#4263 <https://github.com/kornia/kornia/issues/4263>`_, the second in its comment thread; they
-            are documented as they are.
+            ``cx' = s * cx`` disagrees with kornia's integer pixel centres, and a tensor ``scale_factor``
+            rebuilds ``image_size`` with 0-dim tensors where the constructor took python integers:
+            `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
         Args:
             scale_factor: Scale factor to scale the camera model.

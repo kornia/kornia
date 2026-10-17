@@ -21,9 +21,9 @@ from abc import abstractmethod
 from typing import Any, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import _torch_grid_sample
 from kornia.geometry.grid import create_meshgrid
 
 from .imgwarp import homography_warp, warp_grid
@@ -85,7 +85,6 @@ class HomographyWarper(BaseWarper):
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
         coordinates and sampling conventions.
 
-        - align_corners: ``False`` by default, matching :func:`homography_warp`
         - See the convention block of :func:`homography_warp`.
 
     Args:
@@ -185,7 +184,7 @@ class HomographyWarper(BaseWarper):
                     " precompute_warp_grid() with the correct device for the homograhy"
                     " or change the patch device."
                 )
-            warped_patch = F.grid_sample(
+            warped_patch = _torch_grid_sample(
                 patch_src,
                 _warped_grid,
                 mode=self.mode,

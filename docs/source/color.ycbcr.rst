@@ -10,6 +10,7 @@ Functions
 ---------
 
 .. autofunction:: rgb_to_ycbcr
+.. autofunction:: rgb_to_y
 .. autofunction:: ycbcr_to_rgb
 
 Modules

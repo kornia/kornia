@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
+import io
 import math
+import warnings
 
 import pytest
 import torch
@@ -27,6 +29,23 @@ from testing.base import BaseTester
 
 
 class TestRgbToHls(BaseTester):
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_red_hue_rounded_to_period_is_wrapped(self, device, dtype, requires_grad):
+        # A tiny negative red-max hue rounds up to the dtype's 2π (#5369); 4 * eps gives the largest hue below it.
+        blue = {torch.float16: 1e-3, torch.bfloat16: 1e-2, torch.float32: 6e-8, torch.float64: 1e-17}[dtype]
+        near_seam = 4 * torch.finfo(dtype).eps
+        image = torch.tensor([[1.0, 1.0], [0.0, 0.0], [blue, near_seam]], device=device, dtype=dtype)
+        image = image.reshape(1, 3, 1, 2).requires_grad_(requires_grad)
+        hls = kornia.color.rgb_to_hls(image)
+        hue = hls[0, 0, 0]
+
+        assert hue[0] == 0
+        assert 6.2 < hue[1] < 2 * math.pi
+        if requires_grad:
+            hls.sum().backward()
+            assert image.grad is not None
+            assert torch.isfinite(image.grad).all()
+
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
@@ -41,12 +60,12 @@ class TestRgbToHls(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_hls([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hls(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hls(img)
 
     def test_unit(self, device, dtype):
@@ -207,6 +226,41 @@ class TestRgbToHls(BaseTester):
         fcn = kornia.color.rgb_to_hls
         self.assert_close(ops(img), fcn(img))
 
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer):
+        # Without grad the channels used to be written with `out=` into views of one output tensor, and Dynamo
+        # rejects an `out=` tensor that is not contiguous.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        compiled = torch_optimizer(kornia.color.rgb_to_hls, fullgraph=True)
+        self.assert_close(compiled(img), kornia.color.rgb_to_hls(img))
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_matches_eager(self, dtype):
+        # The TorchScript exporter (the torch.onnx.export default before torch 2.9) did not trace the `out=` writes
+        # into views of the output, so the exported graph ignored its input and returned zeros.
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        traced = torch.rand(1, 3, 4, 5, dtype=dtype)
+        image = torch.rand(2, 3, 6, 7, dtype=dtype)
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(
+                kornia.color.RgbToHls(),
+                (traced,),
+                buffer,
+                input_names=["image"],
+                output_names=["hls"],
+                dynamic_axes={"image": {0: "B", 2: "H", 3: "W"}, "hls": {0: "B", 2: "H", 3: "W"}},
+                opset_version=17,
+                dynamo=False,
+            )
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        exported = torch.from_numpy(session.run(None, {"image": image.numpy()})[0])
+        self.assert_close(exported, kornia.color.rgb_to_hls(image))
+
 
 class TestHlsToRgb(BaseTester):
     def test_smoke(self, device, dtype):
@@ -223,12 +277,12 @@ class TestHlsToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.hls_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.hls_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.hls_to_rgb(img)
 
     def test_unit(self, device, dtype):

@@ -142,7 +142,8 @@ class TestCheckEnvironment:
         problems = check_environment("2.6.0+cpu", CPU_WHEEL_REQUIRES, installed, "pinned", "2.6.0", LINUX_PY311)
 
         assert len(problems) == 1
-        assert "sympy" in problems[0] and "not installed" in problems[0]
+        assert "sympy" in problems[0]
+        assert "not installed" in problems[0]
 
     def test_flags_a_requirement_left_at_the_locked_version(self):
         # The failure mode option 1 of #4199 addresses: a dependency the pin step did not move.
@@ -193,8 +194,10 @@ def test_scan_installed_finds_no_duplicates_after_setuptools_adds_its_vendor_pat
         [
             sys.executable,
             "-c",
-            f"import sys; sys.path.insert(0, {str(script_dir)!r}); import setuptools; "
-            "from check_torch_env import scan_installed; assert scan_installed()[1] == {}",
+            (
+                f"import sys; sys.path.insert(0, {str(script_dir)!r}); import setuptools; "
+                "from check_torch_env import scan_installed; assert scan_installed()[1] == {}"
+            ),
         ],
         check=False,
         capture_output=True,

@@ -77,9 +77,7 @@ class KimiVLProjector(nn.Module):
         x = x.view(B, new_height * new_width, ratio * ratio * D)
 
         # MLP
-        x = self.mlp(x)
-
-        return x
+        return self.mlp(x)
 
 
 class KimiVLModel(nn.Module):
@@ -120,6 +118,4 @@ class KimiVLModel(nn.Module):
         patch_size = self.patch_size
         h_patches = H // patch_size
         w_patches = W // patch_size
-        projected_features = self.projector(vision_features, h_patches, w_patches)
-
-        return projected_features
+        return self.projector(vision_features, h_patches, w_patches)

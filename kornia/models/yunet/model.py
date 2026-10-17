@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-# based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
+# based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py
 from typing import Dict, List, Union
 
 import torch
@@ -66,7 +66,8 @@ class YuNet(nn.Module):
 
     Args:
         phase: the phase of the model, either "train" or "test".
-        pretrained: if True, loads pretrained weights from the official repository.
+        pretrained: if True, loads pretrained weights from the official repository and returns the model in
+            evaluation mode; otherwise the random weights stay in training mode.
 
     Example:
         >>> model = YuNet("test", pretrained=True)
@@ -111,7 +112,7 @@ class YuNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(_url, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Run YuNet face detection heads over an input image batch.

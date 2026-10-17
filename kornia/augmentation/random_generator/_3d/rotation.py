@@ -27,8 +27,13 @@ from kornia.core.utils import _extract_device_dtype
 class RotationGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ``rotate`` for a random 3D rotate transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomRotation3D`.
+
     Args:
-        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from. The three
+            slots are sampled independently and form one axis-angle vector, not per-axis Euler
+            rotations; see the Convention block on
+            :class:`~kornia.augmentation.RandomRotation3D`.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -63,8 +68,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.degrees = degrees
 
     def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}"
-        return repr
+        return f"degrees={self.degrees}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype, "degrees", (-360, 360))

@@ -37,6 +37,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the drawn ``channels`` index the source, not the destination: output channel ``c`` of sample
           ``b`` is input channel ``channels[b][c]``.
         - the permutation is drawn independently per sample; ``same_on_batch=True`` shares one

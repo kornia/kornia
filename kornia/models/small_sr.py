@@ -62,7 +62,7 @@ class SmallSRNet(nn.Module):
         model_path = CachedDownloader.download_to_cache(
             path_file, "small_sr.pth", download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
         )
-        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"))
+        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -82,8 +82,7 @@ class SmallSRNet(nn.Module):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
-        x = self.pixel_shuffle(self.conv4(x))
-        return x
+        return self.pixel_shuffle(self.conv4(x))
 
 
 def weight_init(module: nn.Module) -> None:

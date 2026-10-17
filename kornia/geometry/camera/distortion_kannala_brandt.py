@@ -27,6 +27,7 @@ def _distort_points_kannala_brandt_impl(
     projected_points_in_camera_z1_plane: torch.Tensor,
     params: torch.Tensor,
     radius_sq: torch.Tensor,
+    nonlinear_mask: torch.Tensor,
 ) -> torch.Tensor:
     # https://github.com/farm-ng/sophus-rs/blob/20f6cac68f17fe1ac41d0aa8a27489e2b886806f/
     # src/sensor/kannala_brandt.rs#L51-L67
@@ -41,9 +42,13 @@ def _distort_points_kannala_brandt_impl(
     k2 = params[..., 6]
     k3 = params[..., 7]
 
-    radius = radius_sq.sqrt()
-    radius_inverse = 1.0 / radius
-    theta = radius.atan2(torch.ones_like(radius))
+    # Keep the lanes the caller discards finite: torch.where still differentiates both branch tensors.
+    # Their radius is moved to about 1 and their angle zeroed. The active lanes add 0 and multiply by 1,
+    # so they are unchanged, and this avoids two torch.where calls (slow on MPS).
+    radius = (radius_sq + ~nonlinear_mask).sqrt()
+    # The reciprocal's backward squares its value, which can overflow float16.
+    radius_inverse = (1.0 / radius.float()).to(radius.dtype) if radius.dtype == torch.float16 else 1.0 / radius
+    theta = radius.atan2(torch.ones_like(radius)) * nonlinear_mask
     theta2 = theta**2
     theta4 = theta2**2
     theta6 = theta2 * theta4
@@ -66,8 +71,8 @@ def distort_points_kannala_brandt(
 
     Convention:
         - ``projected_points_in_camera_z1_plane`` is a point on the **normalized** :math:`z = 1` plane, not a
-          pixel, and the result is in pixels.
-          Pixel centres lie at integer coordinates: the top-left centre is ``(0, 0)``.
+          pixel, and the result is in pixels (integer pixel centres; see
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
         - ``params`` is the flat vector ``[fx, fy, cx, cy, k0, k1, k2, k3]``: the first four are the affine
           part that :func:`~kornia.geometry.camera.distort_points_affine` takes on its own, and ``k0`` to
           ``k3`` multiply :math:`\theta^2`, :math:`\theta^4`, :math:`\theta^6` and :math:`\theta^8` in the
@@ -95,18 +100,18 @@ def distort_points_kannala_brandt(
     y = projected_points_in_camera_z1_plane[..., 1]
 
     radius_sq = x**2 + y**2
+    nonlinear_mask = radius_sq > 1e-8
 
-    distorted_points = torch.where(
-        radius_sq[..., None] > 1e-8,
+    return torch.where(
+        nonlinear_mask[..., None],
         _distort_points_kannala_brandt_impl(
             projected_points_in_camera_z1_plane,
             params,
             radius_sq,
+            nonlinear_mask,
         ),
         distort_points_affine(projected_points_in_camera_z1_plane, params[..., :4]),
     )
-
-    return distorted_points
 
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
@@ -116,13 +121,10 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
         - ``distorted_points_in_camera`` is a **pixel** coordinate and the result is a point on the normalized
           :math:`z = 1` plane; ``params`` is the same 8-element vector documented on
           :func:`distort_points_kannala_brandt`.
-        - the inverse is a fixed number of Gauss-Newton steps rather than a closed form: the step count is not
-          a parameter and there is no convergence test, so the round trip through
-          :func:`distort_points_kannala_brandt` closes only to the accuracy that iteration has reached. The
-          step count cannot be raised by a caller. :func:`~kornia.geometry.camera.undistort_points_affine` is the
-          closed-form contrast.
-        - an exact zero distorted radius is handled structurally and maps to the origin. Nonzero radii use the
-          radius itself for the final radial rescale, without an additive epsilon.
+        - the inverse is a fixed number of Gauss-Newton steps with no convergence test and no caller-visible
+          step count, so the round trip through :func:`distort_points_kannala_brandt` closes only to the
+          accuracy that iteration reaches.
+        - a zero distorted radius maps to the origin.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
@@ -204,9 +206,8 @@ def dx_distort_points_kannala_brandt(
         - the result has shape :math:`(..., 2, 2)` and is laid out like the Jacobian that
           :func:`~kornia.geometry.camera.dx_distort_points_affine` returns: rows are the output components
           ``(u, v)``, columns the input components ``(x, y)``.
-        - the Jacobian matches :func:`distort_points_kannala_brandt` with respect to the input point.
-          For squared radii less than or equal to ``1e-8``, the forward function uses its affine branch,
-          so the Jacobian is ``diag(fx, fy)``.
+        - for squared radii ``<= 1e-8`` the forward function uses its affine branch, so the Jacobian there is
+          ``diag(fx, fy)``.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).

@@ -10,6 +10,7 @@ Descriptor matching
 .. autofunction:: match_mnn
 .. autofunction:: match_snn
 .. autofunction:: match_smnn
+.. autofunction:: match_smnn_batched
 .. autofunction:: match_fginn
 .. autofunction:: match_adalam
 
@@ -35,4 +36,4 @@ Learned matchers
    :members: forward
 
 .. autoclass:: LoFTR
-   :members: forward
+   :members: forward, extract_features
