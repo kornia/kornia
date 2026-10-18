@@ -222,6 +222,17 @@ def _device_literal(
     costs no copy at run time and which Inductor folds into its consumer, where filled values would add kernels. Both
     round the same Python numbers to ``dtype``, so the values are the same.
     """
-    if is_compiling():
+    if is_compiling() or (dtype == torch.float16 and not _fits_float16(data)):
         return torch.tensor(data, device=device, dtype=dtype)
     return _constant_tensor(data, device=device, dtype=dtype)
+
+
+def _fits_float16(data: Union[float, List[Any], Tuple[Any, ...]]) -> bool:
+    """Whether every finite number in ``data`` is within the float16 range.
+
+    ``torch.full`` raises for a finite value beyond it on CUDA (and on the CPU in torch 2.5.1), where ``torch.tensor``
+    rounds it to 65504 or to infinity, so such a literal keeps ``torch.tensor``.
+    """
+    leaves: List[Any] = []
+    _flatten_constant(data, [], leaves)
+    return all(not isinstance(v, (int, float)) or not math.isfinite(v) or abs(v) <= 65504.0 for v in leaves)

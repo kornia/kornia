@@ -32,13 +32,14 @@ requires_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs 
 _SLEEP_CYCLES = 5_000_000
 
 
-def _source(shape: tuple[int, ...], device: torch.device) -> torch.Tensor:
-    # float64 values that round differently in every narrower dtype, including exact ties of float16 and bfloat16.
+def _source(shape: tuple[int, ...], device: torch.device, dtype: torch.dtype = torch.float64) -> torch.Tensor:
+    # Values that round differently in every narrower dtype, including exact ties of float16 and bfloat16. MPS has no
+    # float64, so its tests pass ``dtype=torch.float32`` (the ties are exact in float32 too).
     values = torch.randn(shape, dtype=torch.float64) * 1000.0
     if values.numel():
         values.view(-1)[0] = 1.0 + 2.0**-11  # a float16 tie
         values.view(-1)[-1] = 1.0 + 2.0**-8  # a bfloat16 tie
-    return values.to(device)
+    return values.to(dtype).to(device)
 
 
 class TestToDeviceNonblocking(BaseTester):
@@ -51,7 +52,7 @@ class TestToDeviceNonblocking(BaseTester):
             "device_to_host": (device, cpu),
             "same_device": (device, device),
         }[direction]
-        src = _source(shape, src_device)
+        src = _source(shape, src_device, torch.float32 if device.type == "mps" else torch.float64)
         for target_dtype in (dtype, None):
             out = _to_device_nonblocking(src, dst_device, target_dtype)
             expected = src.to(dst_device, target_dtype) if target_dtype is not None else src.to(dst_device)
@@ -188,3 +189,15 @@ class TestConstantTensorUnderAutocast(BaseTester):
 def test_constant_tensor_import_paths() -> None:
     assert augmentation_helpers._constant_tensor is core_ops._constant_tensor
     assert augmentation_helpers._flatten_constant is core_ops._flatten_constant
+
+
+class TestDeviceLiteral(BaseTester):
+    def test_float16_out_of_range_matches_torch_tensor(self, device) -> None:
+        # torch.tensor rounds a finite literal beyond the float16 range to 65504 or to inf; torch.full raises on CUDA.
+        data = [[65505.0, 70000.0, -1.0e6], [1.0, 0.1, float("inf")]]
+        expected = torch.tensor(data, device=device, dtype=torch.float16)
+        assert torch.equal(core_ops._device_literal(data, device=device, dtype=torch.float16), expected)
+        assert torch.equal(
+            core_ops._device_literal(65505.0, device=device, dtype=torch.float16),
+            torch.tensor(65505.0, device=device, dtype=torch.float16),
+        )

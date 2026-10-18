@@ -1287,3 +1287,27 @@ class TestDefaultQuantizationTables(BaseTester):
         img.requires_grad_(True)
         kornia.enhance.jpeg_codec_differentiable(img, quality).sum().backward()
         assert img.grad is not None
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA streams")
+    def test_cached_tables_are_complete_on_another_stream(self):
+        # The caches are shared by every stream. A call on a second stream must not read tables whose fill kernels
+        # are still queued behind other work on the stream that built them.
+        from kornia.enhance import jpeg
+
+        cuda = torch.device("cuda")
+        img = torch.rand(4, 3, 64, 64, device=cuda)
+        quality = torch.tensor([50.0, 60.0, 70.0, 80.0])
+        expected = jpeg.jpeg_codec_differentiable(img, quality)
+        first, second = torch.cuda.Stream(), torch.cuda.Stream()
+        for _ in range(5):
+            jpeg._DEFAULT_QT_CACHE.clear()
+            jpeg._DCT8_CACHE.clear()
+            jpeg._get_dct8_basis_scale(img.dtype, img.device)
+            torch.cuda.synchronize()
+            with torch.cuda.stream(first):
+                torch.cuda._sleep(50_000_000)
+                jpeg.jpeg_codec_differentiable(img, quality)
+            with torch.cuda.stream(second):
+                out = jpeg.jpeg_codec_differentiable(img, quality)
+            torch.cuda.synchronize()
+            assert torch.equal(out, expected)

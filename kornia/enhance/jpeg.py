@@ -154,7 +154,12 @@ def _default_quantization_tables(
     key = (dtype, device)
     if key not in _DEFAULT_QT_CACHE:
         with torch.inference_mode(False):
-            _DEFAULT_QT_CACHE[key] = (_get_default_qt_y(device, dtype), _get_default_qt_c(device, dtype))
+            tables = (_get_default_qt_y(device, dtype), _get_default_qt_c(device, dtype))
+        if tables[0].is_cuda:
+            # The cache is read from every stream, and the tables are filled on this one: wait for them once, so that
+            # a call on another stream cannot read them before they are written.
+            torch.cuda.current_stream(tables[0].device).synchronize()
+        _DEFAULT_QT_CACHE[key] = tables
     return _DEFAULT_QT_CACHE[key]
 
 
@@ -695,7 +700,11 @@ def _get_dct8_basis_scale(
         # Build outside inference mode: an inference tensor in the cache would make later calls in which autograd
         # tracks the input fail, since autograd cannot save it for backward.
         with torch.inference_mode(False):
-            _DCT8_CACHE[key] = _build_dct8_basis_scale(dtype, device)
+            basis = _build_dct8_basis_scale(dtype, device)
+        if basis[0].is_cuda:
+            # Read from every stream: wait once for the kernels that build it, as for the quantization tables.
+            torch.cuda.current_stream(basis[0].device).synchronize()
+        _DCT8_CACHE[key] = basis
     return _DCT8_CACHE[key]
 
 

@@ -2056,10 +2056,14 @@ def normal_transform_pixel(
                     torch.stack([zero, zero, anchor]),
                 ]
             )
-        else:
+        elif dtype is None or dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
             # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for every
             # queued kernel before it returns. The values round from the same doubles to ``dtype`` either way.
             tr_mat = _constant_tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        else:
+            # Complex and float8 dtypes keep the host literal: ``torch.full`` has no float8 fill on torch 2.5.1 (CPU)
+            # or on MPS.
+            tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
     else:
         # Low-precision floating types cannot represent every practical image size exactly
         # (e.g. bfloat16 rounds 257 to 256). Keep symbolic size arithmetic in at least
@@ -2200,9 +2204,16 @@ def normal_transform_pixel3d(
                     torch.stack([zero, zero, zero, anchor]),
                 ]
             )
-        else:
+        elif dtype is None or dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
             # As in 2-D: filled on the device, without a host copy that waits for the queue.
             tr_mat = _constant_tensor(
+                [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
+                device=device,
+                dtype=dtype,
+            )
+        else:
+            # As in 2-D: complex and float8 dtypes keep the host literal.
+            tr_mat = torch.tensor(
                 [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
                 device=device,
                 dtype=dtype,
@@ -2312,8 +2323,9 @@ def denormalize_homography(
         dtype=normalization_dtype,
         align_corners=align_corners,
     ).to(dst_pix_trans_src_pix)
-    # A floating pixel normalization has nonzero diagonal scales and is triangular, so it is always invertible. An
-    # integer one is not (its scales truncate to 0, kornia#3959) and keeps the error check.
+    # A floating pixel normalization is triangular with diagonal scales 2 / (size - 1), so it is invertible unless a
+    # scale underflows to 0, which in float16 takes an axis longer than 2**26 pixels; that matrix gives non-finite
+    # values instead of an error. An integer one truncates its scales to 0 (kornia#3959) and keeps the error check.
     dst_denorm_trans_dst_pix = _torch_inverse_cast(
         dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
     )
@@ -2385,7 +2397,8 @@ def normalize_homography3d(
         src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
 
-    # A floating pixel normalization is always invertible; an integer one keeps the error check (kornia#3959).
+    # A floating pixel normalization is invertible unless a scale underflows (see `denormalize_homography`); an
+    # integer one keeps the error check (kornia#3959).
     src_pix_trans_src_norm = _torch_inverse_cast(
         src_norm_trans_src_pix, check_errors=not _is_floating_or_complex(src_norm_trans_src_pix)
     )
@@ -2471,7 +2484,8 @@ def denormalize_homography3d(
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
-    # A floating pixel normalization is always invertible; an integer one keeps the error check (kornia#3959).
+    # A floating pixel normalization is invertible unless a scale underflows (see `denormalize_homography`); an
+    # integer one keeps the error check (kornia#3959).
     dst_pix_trans_dst_norm = _torch_inverse_cast(
         dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
     )
