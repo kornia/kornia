@@ -53,10 +53,12 @@ _EXPORTERS = [
 
 
 def _detections(batch: int, count: int) -> torch.Tensor:
+    """Create repeatable CPU detections for comparisons with ONNX Runtime."""
     return torch.rand(batch, count, 6, generator=torch.Generator().manual_seed(0))
 
 
 def _session(exported):
+    """Validate the exported graph and load it with ONNX Runtime's CPU provider."""
     onnx = pytest.importorskip("onnx")
     ort = pytest.importorskip("onnxruntime")
     onnx.checker.check_model(exported)
@@ -64,10 +66,13 @@ def _session(exported):
 
 
 class TestBoxFilteringONNX(BaseTester):
+    """Check batch contracts and runtime results for both BoxFiltering output modes."""
+
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("dynamo", _EXPORTERS)
     @pytest.mark.parametrize("pseudo_shape", [None, [5, 20, 6]], ids=["default_pseudo", "pseudo_batch_5"])
     def test_default_list_export_fixes_the_batch_6077(self, dynamo, pseudo_shape):
+        """Keep the default batch at one while allowing detection counts and empty results to vary."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
         ort = pytest.importorskip("onnxruntime")
@@ -98,6 +103,7 @@ class TestBoxFilteringONNX(BaseTester):
 
     @pytest.mark.parametrize("input_shape", [[-1, -1, 6], [-1, 20, 6]])
     def test_list_export_rejects_an_explicit_dynamic_batch_6077(self, input_shape):
+        """Direct callers requesting a variable-length output list to the tensor-output mode."""
         with pytest.raises(ValueError, match="filter_as_zero=True"):
             BoxFiltering(confidence_threshold=0.5).to_onnx(save=False, input_shape=input_shape)
 
@@ -119,9 +125,12 @@ class TestBoxFilteringONNX(BaseTester):
     def test_list_export_rejects_a_dynamic_batch_from_exporter_keywords_6077(
         self, export_kwargs, monkeypatch, tmp_path
     ):
+        """Reject batch overrides before invoking the exporter or creating a saved model."""
+
         # ``dynamic_axes`` and ``dynamic_shapes`` replace what ``input_shape`` generates, so they could otherwise bring
         # back a graph that declares a dynamic batch and returns one list for the traced batch only.
         def must_not_export(*args, **kwargs):
+            """Fail if an invalid batch request reaches torch.onnx.export."""
             raise AssertionError("A dynamic batch must be rejected before exporting")
 
         monkeypatch.setattr(torch.onnx, "export", must_not_export)
@@ -132,6 +141,7 @@ class TestBoxFilteringONNX(BaseTester):
 
     @pytest.mark.timeout(120)
     def test_list_export_accepts_exporter_keywords_that_keep_the_batch_fixed_6077(self):
+        """Allow custom dynamic detection axes without changing the fixed input batch."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
 
@@ -151,6 +161,7 @@ class TestBoxFilteringONNX(BaseTester):
     @pytest.mark.parametrize("batch", [None, 1, torch.export.Dim.STATIC], ids=["none", "integer", "static"])
     @pytest.mark.parametrize("per_axis", [False, True], ids=["axes_mapping", "axes_list"])
     def test_list_export_accepts_static_batch_in_dynamic_shapes_6077(self, batch, per_axis):
+        """Accept each supported static batch declaration and run it with a new detection count."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
 
@@ -169,6 +180,7 @@ class TestBoxFilteringONNX(BaseTester):
 
     @pytest.mark.timeout(120)
     def test_filter_as_zero_accepts_a_dynamic_batch_from_exporter_keywords_6077(self):
+        """Allow tensor-output exports to run a batch declared dynamic by caller-supplied axes."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
 
@@ -185,6 +197,7 @@ class TestBoxFilteringONNX(BaseTester):
     @pytest.mark.parametrize("dynamo", _EXPORTERS)
     @pytest.mark.parametrize("pseudo_shape", [None, [3, 20, 6]])
     def test_list_export_preserves_an_explicit_fixed_batch_6077(self, dynamo, pseudo_shape):
+        """Preserve a requested batch of three, including images with different retained detection counts."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
 
@@ -203,12 +216,14 @@ class TestBoxFilteringONNX(BaseTester):
             self.assert_close(torch.from_numpy(got), want)
 
     def test_explicit_shapes_must_agree(self):
+        """Reject a pseudo batch that conflicts with an explicitly fixed input batch."""
         with pytest.raises(ValueError, match="input_shape"):
             BoxFiltering(confidence_threshold=0.5).to_onnx(save=False, input_shape=[3, -1, 6], pseudo_shape=[5, 20, 6])
 
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("dynamo", _EXPORTERS)
     def test_filter_as_zero_keeps_a_dynamic_batch_6077(self, dynamo):
+        """Match eager tensor outputs at batches both smaller and larger than the traced batch."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
 
