@@ -101,6 +101,86 @@ class TestBoxFilteringONNX(BaseTester):
         with pytest.raises(ValueError, match="filter_as_zero=True"):
             BoxFiltering(confidence_threshold=0.5).to_onnx(save=False, input_shape=input_shape)
 
+    @pytest.mark.parametrize(
+        "export_kwargs",
+        [
+            pytest.param({"dynamic_axes": {"input": {0: "batch"}}}, id="axes_mapping"),
+            pytest.param({"dynamic_axes": {"input": [0, 1]}}, id="axes_list"),
+            pytest.param(
+                {"dynamic_axes": {"images": {0: "batch"}}, "input_names": ["images"]}, id="axes_renamed_input"
+            ),
+            pytest.param({"dynamic_shapes": ({0: "batch"},)}, id="shapes_tuple"),
+            pytest.param({"dynamic_shapes": {"boxes": {0: "batch"}}}, id="shapes_mapping"),
+            pytest.param({"dynamic_shapes": (["batch", None, None],)}, id="shapes_per_axis_list"),
+            pytest.param({"dynamic_shapes": ({0: torch.export.Dim("batch")},)}, id="shapes_named_dim"),
+            pytest.param({"dynamic_shapes": ({0: torch.export.Dim.AUTO},)}, id="shapes_auto"),
+        ],
+    )
+    def test_list_export_rejects_a_dynamic_batch_from_exporter_keywords_6077(
+        self, export_kwargs, monkeypatch, tmp_path
+    ):
+        # ``dynamic_axes`` and ``dynamic_shapes`` replace what ``input_shape`` generates, so they could otherwise bring
+        # back a graph that declares a dynamic batch and returns one list for the traced batch only.
+        def must_not_export(*args, **kwargs):
+            raise AssertionError("A dynamic batch must be rejected before exporting")
+
+        monkeypatch.setattr(torch.onnx, "export", must_not_export)
+        path = tmp_path / "boxes.onnx"
+        with pytest.raises(ValueError, match="filter_as_zero=True"):
+            BoxFiltering(confidence_threshold=0.5).to_onnx(onnx_name=str(path), **export_kwargs)
+        assert not path.exists()
+
+    @pytest.mark.timeout(120)
+    def test_list_export_accepts_exporter_keywords_that_keep_the_batch_fixed_6077(self):
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+
+        module = BoxFiltering(confidence_threshold=0.5)
+        exported = module.to_onnx(
+            save=False, dynamo=False, dynamic_axes={"input": {1: "detections"}, "output": {0: "kept"}}
+        )
+        assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+
+        boxes = _detections(1, 7)
+        (actual,) = _session(exported).run(None, {"input": boxes.numpy()})
+        self.assert_close(torch.from_numpy(actual), module(boxes)[0])
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.skipif(torch_version_lt(2, 9, 0), reason="to_onnx uses dynamic_shapes from torch 2.9")
+    @pytest.mark.parametrize("batch", [None, 1, torch.export.Dim.STATIC], ids=["none", "integer", "static"])
+    @pytest.mark.parametrize("per_axis", [False, True], ids=["axes_mapping", "axes_list"])
+    def test_list_export_accepts_static_batch_in_dynamic_shapes_6077(self, batch, per_axis):
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+
+        # A class filter avoids torch 2.14's unrelated aten.mul.Scalar failure in the all-classes mask.
+        module = BoxFiltering(confidence_threshold=0.5, classes_to_keep=[0])
+        shape = (
+            [batch, torch.export.Dim("detections"), 6] if per_axis else {0: batch, 1: torch.export.Dim("detections")}
+        )
+        exported = module.to_onnx(save=False, dynamo=True, dynamic_shapes=(shape,))
+        assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+
+        boxes = _detections(1, 7)
+        boxes[..., 0] = 0
+        (actual,) = _session(exported).run(None, {"input": boxes.numpy()})
+        self.assert_close(torch.from_numpy(actual), module(boxes)[0])
+
+    @pytest.mark.timeout(120)
+    def test_filter_as_zero_accepts_a_dynamic_batch_from_exporter_keywords_6077(self):
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+
+        module = BoxFiltering(confidence_threshold=0.5, filter_as_zero=True)
+        axes = {0: "batch", 1: "detections"}
+        exported = module.to_onnx(save=False, dynamo=False, dynamic_axes={"input": axes, "output": axes})
+        assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_param == "batch"
+
+        boxes = _detections(3, 9)
+        (actual,) = _session(exported).run(None, {"input": boxes.numpy()})
+        self.assert_close(torch.from_numpy(actual), module(boxes))
+
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("dynamo", _EXPORTERS)
     @pytest.mark.parametrize("pseudo_shape", [None, [3, 20, 6]])
