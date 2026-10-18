@@ -299,7 +299,9 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             kwargs.setdefault("output_names", list(output_names))
             if not _uses_dynamic_shapes(kwargs) and "dynamic_axes" not in kwargs and "dynamic_shapes" not in kwargs:
                 input_axes = {i: f"dim_{i}" for i, dim in enumerate(input_shape) if dim == -1}
-                kwargs["dynamic_axes"] = {"input": input_axes, **{name: {0: "dim_0"} for name in output_names}}
+                # Keyed by the names the graph gets, the caller's if given.
+                output_axes = {name: {0: "dim_0"} for name in kwargs["output_names"]}
+                kwargs["dynamic_axes"] = {"input": input_axes, **output_axes}
 
         return ONNXExportMixin.to_onnx(
             self,

@@ -224,6 +224,20 @@ def test_resize_preprocessor_onnx_dynamic_sizes():
 
 
 @pytest.mark.timeout(120)
+def test_detector_model_only_legacy_onnx_ties_the_callers_output_names_to_the_input_batch():
+    """A caller's ``output_names`` win over ``ONNX_OUTPUT_NAMES``, and each still gets the input's dynamic batch."""
+    _importorskip_exporter({"dynamo": False})
+    detector = ObjectDetector(_small_rtdetr(), ResizePreProcessor(96, 96), _post_processor())
+    op = detector.to_onnx(
+        image_size=None, include_pre_and_post_processor=False, save=False, dynamo=False, output_names=["a", "b"]
+    )
+
+    assert [o.name for o in op.graph.output] == ["a", "b"]
+    batch = _dims(op.graph.input[0])[0]
+    assert [_dims(output)[0] for output in op.graph.output] == [batch, batch]
+
+
+@pytest.mark.timeout(120)
 def test_detector_model_only_onnx_without_declared_names_keeps_output():
     """A model that declares no ``ONNX_OUTPUT_NAMES`` keeps the mixin's single ``output`` name."""
     _importorskip_exporter({})
