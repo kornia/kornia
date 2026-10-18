@@ -61,12 +61,6 @@ def _torch_grid_sample(
     return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
-@torch.compiler.assume_constant_result
-def _is_pinned(tensor: torch.Tensor) -> bool:
-    """Whether ``tensor`` is in page-locked memory; constant for ``torch.compile``, which cannot trace the query."""
-    return tensor.is_pinned()
-
-
 def _to_device_nonblocking(
     tensor: torch.Tensor, device: torch.device, dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
@@ -78,10 +72,15 @@ def _to_device_nonblocking(
     on the host before the copy, as the blocking copy makes it, so the copied bits are the same, NaN payloads
     included.
 
-    Only a copy from pageable CPU memory to CUDA is non-blocking. A pinned source is copied asynchronously by a
-    non-blocking copy and could be changed by its owner before the copy lands, so it keeps the blocking copy. A
-    copy to the CPU stays blocking, because the host could otherwise read it before it arrives, and MPS and other
-    targets keep the blocking copy, since they may read the source after the call returns.
+    Only an eager copy from pageable CPU memory to CUDA is non-blocking:
+
+    - A pinned source is copied asynchronously by a non-blocking copy and could be changed by its owner before the
+      copy lands, so it keeps the blocking copy.
+    - Under ``torch.compile`` and ``torch.export`` the copy stays blocking, as it was: Inductor (torch 2.14)
+      miscompiles a non-blocking copy of a CPU tensor computed inside the graph, such as parameters sampled in a
+      compiled ``forward``, and returns wrong values.
+    - A copy to the CPU stays blocking, because the host could otherwise read it before it arrives, and MPS and
+      other targets keep the blocking copy, since they may read the source after the call returns.
 
     Args:
         tensor: The tensor to move.
@@ -91,7 +90,13 @@ def _to_device_nonblocking(
     Returns:
         ``tensor`` itself when it already has the target device and dtype, a copy otherwise.
     """
-    if tensor.device.type == "cpu" and device.type == "cuda" and not _is_pinned(tensor):
+    if torch.jit.is_scripting():
+        non_blocking = tensor.device.type == "cpu" and device.type == "cuda" and not tensor.is_pinned()
+    else:
+        non_blocking = (
+            tensor.device.type == "cpu" and device.type == "cuda" and not is_compiling() and not tensor.is_pinned()
+        )
+    if non_blocking:
         if dtype is not None and dtype != tensor.dtype:
             tensor = tensor.to(dtype=dtype)
         return tensor.to(device=device, non_blocking=True)
