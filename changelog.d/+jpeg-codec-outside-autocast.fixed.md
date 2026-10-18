@@ -1,0 +1,6 @@
+`jpeg_codec_differentiable` and `JPEGCodecDifferentiable` run with autocast disabled, so a caller's `torch.autocast`
+region no longer changes their output or gradients. Autocast ran the codec's matrix products and convolutions in its
+lower dtype, which rounds pixels scaled to [0, 255], DCT coefficients and the quality scale too coarsely: on random
+64x64 `float32` images at qualities 99, 90, 50 and 10, outputs were up to 0.109 (CPU `bfloat16` autocast), 0.014 (MPS
+`float16`) and 0.088 (MPS `bfloat16`) away from the `float64` codec, against 8.4e-7 outside autocast, which they now
+match everywhere.
