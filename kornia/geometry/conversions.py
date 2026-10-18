@@ -2653,6 +2653,25 @@ def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
     return R, t
 
 
+def _integer_safe_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    # ``a @ b`` for the frame and pose functions that accept integer input (see the Rt_to_matrix4x4 Note).
+    # CUDA has no integer matmul kernels ("baddbmm_cuda" not implemented for 'Long'), so a pair of one integer
+    # dtype is multiplied out and summed instead, on every device so that CPU covers this branch too. Integer
+    # products and sums wrap the same way in either form, so the result is bitwise CPU's integer ``a @ b``.
+    # Every other pair (floating, complex, bool, the unsigned dtypes CPU matmul lacks, mixed dtypes) keeps
+    # ``a @ b``, its rounding and its errors. So does a pair whose inner sizes differ, which only reaches here
+    # with checks disabled: broadcasting would stretch a size-1 inner dimension where ``a @ b`` raises.
+    if (
+        a.dtype == b.dtype
+        and a.dtype in [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64]
+        and a.dim() > 1
+        and b.dim() > 1
+        and a.shape[-1] == b.shape[-2]
+    ):
+        return (a.unsqueeze(-1) * b.unsqueeze(-3)).sum(-2, dtype=a.dtype)
+    return a @ b
+
+
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torch.Tensor:
     r"""Convert a camera-to-world pose from the graphics frame (e.g. OpenGL) to the vision frame (e.g. OpenCV).
 
@@ -2694,7 +2713,8 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
 
     .. warning::
         Integer input is not guarded: this function returns ``int64`` for an
-        ``int64`` matrix (on backends with integer batched matmul), while
+        ``int64`` matrix on every device, CUDA (which has no integer matmul)
+        included, while
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
         raises ``ValueError`` naming the unsupported dtype; see
         :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`.
@@ -2720,7 +2740,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
         dtype=extrinsics_graphics.dtype,
         device=extrinsics_graphics.device,
     )
-    return extrinsics_graphics @ invert_yz
+    return _integer_safe_matmul(extrinsics_graphics, invert_yz)
 
 
 def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -2813,7 +2833,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
         dtype=extrinsics_vision.dtype,
         device=extrinsics_vision.device,
     )
-    return extrinsics_vision @ invert_yz
+    return _integer_safe_matmul(extrinsics_vision, invert_yz)
 
 
 def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -2932,6 +2952,10 @@ def camtoworld_to_worldtocam_Rt(
           returns ``R`` exactly and ``t`` to rounding
         - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`, and ``R`` and ``t``
           must carry the same batch size: a mismatched pair raises ``ShapeError``
+        - an ``R`` and ``t`` of one integer dtype (``uint8``, ``int8``, ``int16``,
+          ``int32`` or ``int64``) are accepted on every device, CUDA (which has
+          no integer matmul) included, and the result keeps that dtype, wrapping
+          on overflow; ``check_rotation=True`` checks such an ``R`` in ``float32``
 
     .. warning::
         ``R`` is **assumed** to be a rotation and by default this is not
@@ -2971,7 +2995,7 @@ def camtoworld_to_worldtocam_Rt(
         _check_is_rotation(R, "camtoworld_to_worldtocam_Rt")
 
     R_inv = R.transpose(1, 2)
-    new_t: torch.Tensor = -R_inv @ t
+    new_t: torch.Tensor = _integer_safe_matmul(-R_inv, t)
 
     return (R_inv, new_t)
 
@@ -3025,7 +3049,7 @@ def worldtocam_to_camtoworld_Rt(
         _check_is_rotation(R, "worldtocam_to_camtoworld_Rt")
 
     R_inv = R.transpose(1, 2)
-    new_t: torch.Tensor = -R_inv @ t
+    new_t: torch.Tensor = _integer_safe_matmul(-R_inv, t)
 
     return (R_inv, new_t)
 
