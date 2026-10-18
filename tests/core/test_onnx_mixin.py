@@ -284,6 +284,34 @@ class TestONNXRuntimeMixin(BaseTester):
             assert runtime(b, a)[0].tolist() == [97.0]
             with pytest.raises(ValueError, match="Expected 2 ONNX inputs, got 3"):
                 runtime(a, b, a)
+            # torch tensors on the CPU and numpy arrays mix
+            assert runtime(torch.tensor([2.0]), b)[0].tolist() == [-97.0]
+
+    def test_runtime_takes_cpu_torch_tensors(self, op):
+        import numpy as np
+
+        from kornia.onnx import ONNXModule, ONNXSequential
+
+        x = torch.rand(2, 3, 5, 4)
+        inputs = [
+            x,
+            x.clone().requires_grad_(True),
+            torch.rand(2, 3, 4, 5).transpose(-1, -2),  # not contiguous
+        ]
+        for runtime in (ONNXSequential(op), ONNXModule(op)):
+            for value in inputs:
+                (out,) = runtime(value)
+                assert isinstance(out, np.ndarray)
+                assert out.tolist() == runtime(np.ascontiguousarray(value.detach().numpy()))[0].tolist()
+                self.assert_close(torch.from_numpy(out), value.detach().sigmoid())
+
+    def test_runtime_rejects_tensors_off_the_cpu(self, op):
+        from kornia.onnx import ONNXModule, ONNXSequential
+
+        x = torch.empty(1, 3, 4, 5, device="meta")
+        for runtime in (ONNXSequential(op), ONNXModule(op)):
+            with pytest.raises(ValueError, match=r"input 0 is a torch tensor on meta.*Move it to the CPU"):
+                runtime(x)
 
     def test_add_metadata_overwrites_existing_keys(self, op):
         keys = [prop.key for prop in op.metadata_props]

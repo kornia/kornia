@@ -147,8 +147,9 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         name: Optional human-readable model name used for export filenames.
         auto_ir_version_conversion: Whether to allow automatic ONNX IR version
             conversion when composing the sequence.
-        io_maps: Optional list of input/output name mappings used when connecting the
-            ONNX graphs together.
+        io_maps: Optional list with one list of ``(output, input)`` name pairs per joint between
+            consecutive graphs (pre-processor, model, post-processor, of those given), as for
+            :class:`~kornia.onnx.sequential.ONNXSequential`.
         resize: Optional torch module that resizes an image before the ONNX graphs, for a
             resize whose output size depends on the input size and so cannot be part of a
             graph with dynamic height and width. It is kept as ``self.resize``; the subclass
@@ -165,7 +166,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         post_processor: Optional[onnx.ModelProto] = None,
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
-        io_maps: Optional[list[tuple[str, str]]] = None,
+        io_maps: Optional[list[list[tuple[str, str]]]] = None,
         resize: Optional[nn.Module] = None,
     ) -> None:
         model_list = [] if pre_processor is None else [pre_processor]

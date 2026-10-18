@@ -393,6 +393,29 @@ class TestONNXLoader:
             "hub/https/b.invalid/preprocessor_config.json",
         ]
 
+    @pytest.mark.parametrize("download", [True, False])
+    def test_load_config_reads_a_local_file(self, download, tmp_path):
+        # #6119: an existing local file was reported "not found", with "You may set `download=True`"
+        import json
+        from unittest import mock
+
+        config = tmp_path / "preprocessor_config.json"
+        config.write_text(json.dumps({"do_resize": True, "size": {"height": 518}}))
+
+        with mock.patch("kornia.core.download._download_url_to_file") as mock_download:
+            assert ONNXLoader.load_config(str(config), download=download) == {
+                "do_resize": True,
+                "size": {"height": 518},
+            }
+        mock_download.assert_not_called()
+
+    @pytest.mark.parametrize("download", [True, False])
+    def test_load_config_names_what_it_accepts(self, download, tmp_path):
+        missing = str(tmp_path / "missing.json")
+        with pytest.raises(RuntimeError, match=r"neither an HTTP\(S\) URL nor an existing local file") as info:
+            ONNXLoader.load_config(missing, download=download)
+        assert "download=True" not in str(info.value)
+
     @pytest.mark.parametrize(
         "url", ["https://example.invalid", "https://example.invalid/", "https://example.invalid/d/"]
     )
@@ -565,6 +588,40 @@ def test_io_name_conversion():
         assert converted_model.graph.output[0].name == "output"
         assert converted_model.graph.node[0].input[0] == "input"
         assert converted_model.graph.node[0].output[0] == "output"
+
+
+def test_io_name_conversion_on_a_real_model_runs_in_onnxruntime():
+    # the names a model from onnx-community carries, renamed to the ones ONNXSequential connects by default
+    import numpy as np
+
+    ort = pytest.importorskip("onnxruntime")
+    from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
+
+    from kornia.onnx import ONNXSequential
+    from kornia.onnx.utils import io_name_conversion
+
+    def _vector(name):
+        return make_tensor_value_info(name, onnx.TensorProto.FLOAT, [2])
+
+    graph = make_graph(
+        [make_node("Neg", ["pixel_values"], ["mid"]), make_node("Relu", ["mid"], ["predicted_depth"])],
+        "g",
+        [_vector("pixel_values")],
+        [_vector("predicted_depth")],
+    )
+    model = make_model(graph, opset_imports=[make_opsetid("", 18)], ir_version=9)
+
+    converted = io_name_conversion(model, {"pixel_values": "input", "predicted_depth": "output", "absent": "x"})
+
+    assert converted is model  # in place
+    assert [v.name for v in model.graph.input] == ["input"]
+    assert [v.name for v in model.graph.output] == ["output"]
+    assert [list(node.input) for node in model.graph.node] == [["input"], ["mid"]]
+    onnx.checker.check_model(model)
+    x = np.array([-1.0, 2.0], dtype=np.float32)
+    session = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+    assert session.run(None, {"input": x})[0].tolist() == [1.0, 0.0]
+    assert ONNXSequential(model, model)(x)[0].tolist() == [0.0, 0.0]
 
 
 def test_add_metadata():

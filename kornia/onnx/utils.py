@@ -103,11 +103,13 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def load_config(cls, url: str, download: bool = True, **kwargs: Any) -> dict[str, Any]:
-        """Load JSON config from the specified URL.
+        """Load JSON config from the specified URL or local file.
 
         Args:
-            url: The URL of the preprocessor config to load.
-            download: If True, the config will be downloaded if it's not already in the local cache.
+            url: The HTTP(S) URL of the preprocessor config to load, or the path of a local JSON file, which is read
+                as it is.
+            download: If True, the config will be downloaded if it's not already in the local cache. A local file
+                is read either way.
             kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
                 the config is stored under, at ``<scheme>/<host>/<directories of the URL's path>/<file name>``, with a
                 ``%3F<hash>`` directory before the file name when the URL has a query, as for ``load_model``. ``None``
@@ -117,6 +119,9 @@ class ONNXLoader(CachedDownloader):
         Returns:
             dict[str, Any]: The loaded preprocessor config.
 
+        Raises:
+            RuntimeError: If ``url`` is neither an HTTP(S) URL nor an existing local file.
+
         """
         _check_keywords("ONNXLoader.load_config", kwargs)
         if url.startswith(("http:", "https:")):
@@ -125,10 +130,13 @@ class ONNXLoader(CachedDownloader):
             with open(file_path) as f:
                 return json.load(f)
 
-        if not download:
-            raise RuntimeError(f"File `{url}` not found. You may set `download=True`.")
+        if os.path.isfile(url):
+            with open(url) as f:
+                return json.load(f)
 
-        raise RuntimeError(f"File `{url}` not found.")
+        raise RuntimeError(
+            f"`{url}` is neither an HTTP(S) URL nor an existing local file: ONNXLoader.load_config reads only those."
+        )
 
     @classmethod
     def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:
@@ -231,11 +239,19 @@ def io_name_conversion(
     onnx_model: onnx.ModelProto,
     io_name_mapping: dict[str, str],
 ) -> onnx.ModelProto:
-    """Convert the input and output names of an ONNX model to 'input' and 'output'.
+    """Rename the inputs and outputs of an ONNX model in place, as ``io_name_mapping`` maps them.
+
+    Any mapping applies, such as ``{"pixel_values": "input", "predicted_depth": "output"}`` for the default names that
+    :class:`~kornia.onnx.sequential.ONNXSequential` connects. The graph's inputs and outputs and every input and
+    output of its nodes with a mapped name are renamed; names absent from the model are ignored. The nodes of
+    subgraphs (the branches of an ``If``, the body of a ``Loop``) and the ``value_info`` entries are not renamed.
 
     Args:
-        onnx_model: The ONNX model to convert.
+        onnx_model: The ONNX model to rename, modified in place.
         io_name_mapping: A dictionary mapping the original input and output names to the new ones.
+
+    Returns:
+        The same ``onnx_model`` object, renamed.
 
     """
     # Convert I/O nodes

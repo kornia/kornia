@@ -35,6 +35,7 @@ from torch import nn
 
 import kornia
 from kornia.core._compat import torch_version_ge
+from kornia.core.check import KORNIA_CHECK
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
@@ -42,6 +43,58 @@ from kornia.core.external import onnxruntime as ort
 # The opset ``ONNXExportMixin.to_onnx`` requests: the one the dynamo exporter (the ``torch.onnx.export`` default from
 # torch 2.9) builds natively, so no version conversion runs. The legacy TorchScript exporter emits it directly as well.
 _ONNX_EXPORT_OPSET = 18
+
+
+def _host_array(value: Any, index: int) -> Any:
+    """Return ``value`` for an ONNX Runtime session: a torch tensor on the CPU as a numpy array sharing its memory."""
+    if not isinstance(value, torch.Tensor):
+        return value
+    if value.device.type != "cpu":
+        raise ValueError(
+            f"ONNX input {index} is a torch tensor on {value.device}, but the ONNX Runtime session is run on arrays "
+            "in host memory, whatever its execution provider. Move it to the CPU first, with .cpu()."
+        )
+    return value.detach().numpy()
+
+
+def _prefix(index: int) -> str:
+    """Return the prefix that ``ONNXMixin._combine`` gives the names of the model at ``index``."""
+    return f"K{str(index).zfill(2)}-"
+
+
+def _is_list_of_name_pairs(entry: Any) -> bool:
+    """Return whether ``entry`` is a list (or tuple) of ``(output, input)`` pairs, as one joint of ``io_maps``."""
+    return isinstance(entry, (list, tuple)) and all(
+        isinstance(pair, (list, tuple)) and len(pair) == 2 for pair in entry
+    )
+
+
+def _check_joint_element_types(
+    combined: onnx.ModelProto, following: onnx.ModelProto, pairs: list[tuple[str, str]], joint: int
+) -> None:
+    """Raise ``ValueError`` if an output of model ``joint`` and the input of the next model it feeds differ in type.
+
+    ``merge_models`` drops the declared inputs it connects, so ONNX Runtime no longer checks them: a type that differs
+    either fails later with ONNX Runtime's own message or, through an operator that takes any type, runs. The declared
+    dimensions are not compared, since a graph can declare fixed sizes where it accepts others.
+    """
+    outputs = {value.name: value.type for value in combined.graph.output}
+    inputs = {value.name: value.type for value in following.graph.input}
+    for output_name, input_name in pairs:
+        output_type = outputs.get(f"{_prefix(joint)}{output_name}")
+        input_type = inputs.get(f"{_prefix(joint + 1)}{input_name}")
+        if output_type is None or input_type is None:  # merge_models names the missing one
+            continue
+        if not (output_type.HasField("tensor_type") and input_type.HasField("tensor_type")):
+            continue
+        output_elem, input_elem = output_type.tensor_type.elem_type, input_type.tensor_type.elem_type
+        if output_elem and input_elem and output_elem != input_elem:
+            raise ValueError(
+                f"The output {output_name!r} of model {joint} is {onnx.TensorProto.DataType.Name(output_elem)}, but "
+                f"it feeds the input {input_name!r} of model {joint + 1}, which is "
+                f"{onnx.TensorProto.DataType.Name(input_elem)}. The element types at each joint must agree: convert "
+                "one of the models."
+            )
 
 
 def _first_floating_tensor(module: Any) -> Optional[torch.Tensor]:
@@ -390,23 +443,30 @@ class ONNXRuntimeMixin:
             ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
         )
 
-    def __call__(self, *inputs: np.ndarray) -> list[np.ndarray]:
+    def __call__(self, *inputs: Union[np.ndarray, torch.Tensor]) -> list[np.ndarray]:
         """Perform inference using the combined ONNX model.
 
         Args:
-            *inputs: Inputs to the ONNX model. The number of inputs must match the expected inputs of the session.
+            *inputs: Inputs to the ONNX model, in the order of ``get_session().get_inputs()``: numpy arrays, or
+                torch tensors on the CPU. A tensor is passed as ``tensor.detach().numpy()``, which shares its memory.
+                The number of inputs must match the expected inputs of the session.
 
         Returns:
-            list: The outputs from the ONNX model inference.
+            list: The outputs from the ONNX model inference, as numpy arrays for numpy and torch inputs alike.
 
         Raises:
-            ValueError: If the number of inputs differs from the length of ``get_session().get_inputs()``.
+            ValueError: If the number of inputs differs from the length of ``get_session().get_inputs()``, or an
+                input is a torch tensor on another device than the CPU: the session is run on arrays in host memory,
+                whatever its execution provider, so move such a tensor with ``.cpu()`` first.
 
         """
         ort_inputs = self._session.get_inputs()
         if len(inputs) != len(ort_inputs):
             raise ValueError(f"Expected {len(ort_inputs)} ONNX inputs, got {len(inputs)}.")
-        ort_input_values = {ort_input.name: input_value for ort_input, input_value in zip(ort_inputs, inputs)}
+        ort_input_values = {
+            ort_input.name: _host_array(input_value, index)
+            for index, (ort_input, input_value) in enumerate(zip(ort_inputs, inputs))
+        }
         return self._session.run(None, ort_input_values)
 
 
@@ -415,36 +475,43 @@ class ONNXMixin:
 
     def _load_op(
         self,
-        arg: Union[onnx.ModelProto, str],
+        arg: Union[onnx.ModelProto, str, os.PathLike[str]],
         cache_dir: Optional[str] = None,
     ) -> onnx.ModelProto:
         """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
-            arg: Either an ONNX ModelProto object or a file path to an ONNX model.
+            arg: Either an ONNX ModelProto object, or a file path (a ``str`` or an :class:`os.PathLike`), an
+                ``hf://`` name or a URL of an ONNX model.
             cache_dir: Where to read onnx objects from if stored on disk.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
 
+        Raises:
+            TypeError: If ``arg`` is of another type.
+
         """
-        if isinstance(arg, str):
-            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
         if isinstance(arg, onnx.ModelProto):
             return arg
-        raise ValueError(f"Invalid argument type. Got {type(arg)}")
+        if isinstance(arg, (str, os.PathLike)):
+            return kornia.onnx.utils.ONNXLoader.load_model(os.fsdecode(arg), cache_dir=cache_dir)
+        raise TypeError(
+            "Expected an onnx.ModelProto, a str or an os.PathLike (a file path, an 'hf://' name or a URL), "
+            f"got {type(arg).__name__}."
+        )
 
     def _load_ops(
         self,
-        *args: Union[onnx.ModelProto, str],
+        *args: Union[onnx.ModelProto, str, os.PathLike[str]],
         cache_dir: Optional[str] = None,
     ) -> list[onnx.ModelProto]:
         """Load multiple ONNX models or operators and returns them as a list.
 
         Args:
-            *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
-                For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
-                https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+            *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths, as ``str`` or
+                :class:`os.PathLike`). For Hugging Face-hosted models, use the format 'hf://model_name'. Valid
+                `model_name` can be found on https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
             cache_dir: Where to read operations from if stored on disk.
 
         Returns:
@@ -458,37 +525,68 @@ class ONNXMixin:
 
     def _combine(
         self,
-        *args: list[onnx.ModelProto],
-        io_maps: Optional[list[tuple[str, str]]] = None,
+        *args: onnx.ModelProto,
+        io_maps: Optional[list[list[tuple[str, str]]]] = None,
     ) -> onnx.ModelProto:
         """Combine the provided ONNX models into a single ONNX graph.
 
-        Optionally, map inputs and outputs between operators using the `io_map`.
+        The names in model ``i`` are prefixed with ``K<i>-`` (``K00-``, ``K01-``, ...) in the combined graph. The
+        metadata of the models are merged into one entry per key, which keeps its first position and takes the value
+        of the last model that sets it, as :func:`kornia.onnx.utils.add_metadata` overwrites a key. The models passed
+        in are not modified.
 
         Args:
-            args: list of onnx operations.
+            args: The ONNX models, in the order they run.
             io_maps:
-                A list of list of tuples representing input-output mappings for combining the models.
-                Example: [[(model1_output_name, model2_input_name)], [(model2_output_name, model3_input_name)]].
+                One list of ``(output, input)`` name pairs per joint: ``io_maps[i]`` connects outputs of model ``i``
+                to inputs of model ``i + 1``. Example: ``[[(model1_output_name, model2_input_name)],
+                [(model2_output_name, model3_input_name)]]``. Entries past the last joint are not used. If None,
+                each joint connects ``"output"`` to ``"input"``.
 
         Returns:
             onnx.ModelProto: The combined ONNX model as a single ONNX graph.
 
+        Raises:
+            ValueError: If no model is given, or if an output and the input it feeds have different element types.
+            BaseError: If ``io_maps`` has no entry for a joint, or an entry is not a list of name pairs.
+
         """
         if len(args) == 0:
             raise ValueError("No operators found.")
+        joints = len(args) - 1
+        if io_maps is not None:
+            malformed = next((i for i, entry in enumerate(io_maps[:joints]) if not _is_list_of_name_pairs(entry)), None)
+            KORNIA_CHECK(
+                malformed is None,
+                lambda: (
+                    f"io_maps[{malformed}] must be a list of (output, input) name pairs: io_maps holds one such "
+                    f"list per joint between consecutive models, as in [[('output', 'input')]] for two models. Got "
+                    f"{io_maps[malformed]!r}."
+                ),
+            )
+            KORNIA_CHECK(
+                len(io_maps) >= joints,
+                lambda: (
+                    f"io_maps needs one list of (output, input) name pairs per joint: {joints} for {len(args)} "
+                    f"models, got {len(io_maps)}."
+                ),
+            )
 
-        combined_op = args[0]
-        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")
+        # merge_models refuses models whose metadata differ for a key, such as the "version" every kornia export
+        # carries. The metadata are merged here instead, and cleared on the prefixed copies that add_prefix returns.
+        metadata = {entry.key: entry.value for op in args for entry in op.metadata_props}
 
+        combined_op = onnx.compose.add_prefix(args[0], prefix=_prefix(0))
+        del combined_op.metadata_props[:]
         for i, op in enumerate(args[1:]):
-            next_op = onnx.compose.add_prefix(op, prefix=f"K{str(i + 1).zfill(2)}-")
-            if io_maps is None:
-                io_map = [(f"K{str(i).zfill(2)}-output", f"K{str(i + 1).zfill(2)}-input")]
-            else:
-                io_map = [(f"K{str(i).zfill(2)}-{it[0]}", f"K{str(i + 1).zfill(2)}-{it[1]}") for it in io_maps[i]]
+            next_op = onnx.compose.add_prefix(op, prefix=_prefix(i + 1))
+            del next_op.metadata_props[:]
+            pairs = [("output", "input")] if io_maps is None else [(pair[0], pair[1]) for pair in io_maps[i]]
+            _check_joint_element_types(combined_op, next_op, pairs, i)
+            io_map = [(f"{_prefix(i)}{output}", f"{_prefix(i + 1)}{input_}") for output, input_ in pairs]
             combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)
 
+        onnx.helper.set_model_props(combined_op, metadata)
         return combined_op
 
     def _export(
