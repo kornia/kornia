@@ -52,7 +52,7 @@ class PinholeCamera:
           as the Euclidean ray length.
         - the class owns copies of the tensors it is constructed from: :meth:`scale_` and the ``tx`` / ``ty`` /
           ``tz`` setters update only the camera, and :meth:`scale` and :meth:`clone` return independent cameras.
-        - The constructor accepts only :math:`(B, 4, 4)` ``intrinsics`` and ``extrinsics`` matrices. Use
+        - The constructor accepts rank-4 matrices for camera-list storage. Use
           :class:`~kornia.geometry.camera.pinhole.PinholeCamerasList` to store a camera list with matrices of shape
           :math:`(B, N, 4, 4)`.
 
@@ -67,9 +67,9 @@ class PinholeCamera:
         :math:`3 \times 3` block, so a zero-padded ``K`` behaves like its homogeneous embedding.
 
     Args:
-        intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
+        intrinsics: torch.Tensor with shape :math:`(B, 4, 4)` or :math:`(B, N, 4, 4)`
           containing the full 4x4 camera calibration matrix.
-        extrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
+        extrinsics: torch.Tensor with shape :math:`(B, 4, 4)` or :math:`(B, N, 4, 4)`
           containing the full 4x4 rotation-translation matrix, checked by the same predicate.
         height: torch.Tensor with shape :math:`(B)` containing the image height.
         width: torch.Tensor with shape :math:`(B)` containing the image width.
@@ -105,8 +105,8 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
-        if len(data.shape) != 3 or data.shape[-2:] != (4, 4):
-            raise ValueError(f"Argument {data_name} shape must be in the following shape Bx4x4. Got {data.shape}")
+        if len(data.shape) not in (3, 4) or data.shape[-2:] != (4, 4):
+            raise ValueError(f"{data_name} must be Bx4x4 or BxNx4x4; got {data.shape}")
         return True
 
     @staticmethod
@@ -580,6 +580,18 @@ class PinholeCamerasList(PinholeCamera):
 
     def scale(self, scale_factor: torch.Tensor) -> "PinholeCamerasList":
         return PinholeCamerasList([self.get_pinhole(index).scale(scale_factor) for index in range(self.num_cameras)])
+
+    def scale_(self, scale_factor: Union[float, torch.Tensor]) -> "PinholeCamerasList":
+        r"""Scale the cameras in place, applying a vector factor along the batch dimension."""
+        if isinstance(scale_factor, torch.Tensor) and scale_factor.ndim == 1:
+            scale_factor = scale_factor[..., None]
+        self.intrinsics[..., 0, 0] *= scale_factor
+        self.intrinsics[..., 1, 1] *= scale_factor
+        self.intrinsics[..., 0, 2] *= scale_factor
+        self.intrinsics[..., 1, 2] *= scale_factor
+        self.height = self.height * scale_factor
+        self.width = self.width * scale_factor
+        return self
 
     @property
     def num_cameras(self) -> int:
