@@ -860,7 +860,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize(
-        "shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 2, 4, 4), (1, 1, 1, 4, 4)]
+        "shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)]
     )
     @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])
     def test_invalid_parameter_shape_4266(self, shape, parameter, device, dtype):
@@ -874,6 +874,29 @@ class TestPinholeCamera(BaseTester):
         params[parameter] = torch.ones(shape, device=device, dtype=dtype)
         with pytest.raises(ValueError, match=f"Argument {parameter} shape must be"):
             kornia.geometry.camera.PinholeCamera(**params)
+
+    def test_pinhole_camera_preserves_rank_four_constructor_support(self, device, dtype):
+        intrinsics = _k44(device, dtype).unsqueeze(1).expand(1, 2, 4, 4).clone()
+        extrinsics = _e44(device, dtype, tx=1.0).unsqueeze(1).expand(1, 2, 4, 4).clone()
+        camera = kornia.geometry.camera.PinholeCamera(
+            intrinsics, extrinsics, torch.tensor([6], device=device), torch.tensor([8], device=device)
+        )
+
+        assert camera.intrinsics.shape == (1, 2, 4, 4)
+        assert camera.extrinsics.shape == (1, 2, 4, 4)
+        self.assert_close(camera.fx, torch.tensor([[100.0, 100.0]], device=device, dtype=dtype))
+        self.assert_close(camera.fy, torch.tensor([[100.0, 100.0]], device=device, dtype=dtype))
+        self.assert_close(camera.cx, torch.tensor([[4.0, 4.0]], device=device, dtype=dtype))
+        self.assert_close(camera.cy, torch.tensor([[3.0, 3.0]], device=device, dtype=dtype))
+        self.assert_close(camera.tx, torch.tensor([[1.0, 1.0]], device=device, dtype=dtype))
+        assert camera.fx.shape == (1, 2)
+        assert camera.rt_matrix.shape == (1, 2, 3, 4)
+        assert camera.camera_matrix.shape == (1, 2, 3, 3)
+        assert camera.rotation_matrix.shape == (1, 2, 3, 3)
+        assert camera.translation_vector.shape == (1, 2, 3, 1)
+        assert camera.intrinsics_inverse().shape == (1, 2, 4, 4)
+        self.assert_close(camera.clone().intrinsics, intrinsics)
+        self.assert_close(camera.clone().extrinsics, extrinsics)
 
     def test_camera_list_preserves_rank_four_parameters(self, device, dtype):
         first = kornia.geometry.camera.PinholeCamera(
@@ -932,6 +955,47 @@ class TestPinholeCamera(BaseTester):
         ]
         for index, expected in enumerate(expected_scaled_projections):
             self.assert_close(scaled.get_pinhole(index).project(points), expected)
+
+    def test_camera_list_scale_per_batch_factor_with_two_batches_and_cameras(self, device, dtype):
+        first_intrinsics = _k44(device, dtype).expand(2, -1, -1).clone()
+        second_intrinsics = _k44(device, dtype, fx=200.0, fy=200.0).expand(2, -1, -1).clone()
+        first = kornia.geometry.camera.PinholeCamera(
+            first_intrinsics,
+            _e44(device, dtype).expand(2, -1, -1).clone(),
+            torch.tensor([10, 20], device=device),
+            torch.tensor([30, 40], device=device),
+        )
+        second = kornia.geometry.camera.PinholeCamera(
+            second_intrinsics,
+            _e44(device, dtype, tx=1.0).expand(2, -1, -1).clone(),
+            torch.tensor([50, 60], device=device),
+            torch.tensor([70, 80], device=device),
+        )
+        cameras = PinholeCamerasList([first, second])
+        factor = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+
+        scaled = cameras.scale(factor)
+        expected_fx = torch.tensor([[200.0, 400.0], [300.0, 600.0]], device=device, dtype=dtype)
+        expected_cx = torch.tensor([[8.0, 8.0], [12.0, 12.0]], device=device, dtype=dtype)
+        expected_cy = torch.tensor([[6.0, 6.0], [9.0, 9.0]], device=device, dtype=dtype)
+        expected_heights = torch.tensor([[20.0, 100.0], [60.0, 180.0]], device=device, dtype=dtype)
+        expected_widths = torch.tensor([[60.0, 140.0], [120.0, 240.0]], device=device, dtype=dtype)
+        self.assert_close(scaled.fx, expected_fx)
+        self.assert_close(scaled.fy, expected_fx)
+        self.assert_close(scaled.cx, expected_cx)
+        self.assert_close(scaled.cy, expected_cy)
+        self.assert_close(scaled.height, expected_heights)
+        self.assert_close(scaled.width, expected_widths)
+
+        inplace = cameras.clone()
+        assert inplace.scale_(factor) is inplace
+        self.assert_close(inplace.fx, expected_fx)
+        self.assert_close(inplace.fy, expected_fx)
+        self.assert_close(inplace.cx, expected_cx)
+        self.assert_close(inplace.cy, expected_cy)
+        self.assert_close(inplace.height, expected_heights)
+        self.assert_close(inplace.width, expected_widths)
+        self.assert_close(inplace.extrinsics, cameras.extrinsics)
 
     def test_project_and_unproject_reject_rank_one_points_4266(self, device, dtype):
         cam = kornia.geometry.camera.PinholeCamera(
