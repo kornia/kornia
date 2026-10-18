@@ -59,6 +59,94 @@ def _post_processor() -> DETRPostProcessor:
     return DETRPostProcessor(confidence_threshold=0.0, num_classes=2, num_top_queries=1, confidence_filtering=False)
 
 
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9, the TorchScript exporter before it.
+_EXPORTERS = [pytest.param({}, id="default"), pytest.param({"dynamo": False}, id="legacy")]
+
+
+def _importorskip_exporter(export_kwargs: dict) -> None:
+    pytest.importorskip("onnx")
+    if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+        pytest.importorskip("onnxscript")
+
+
+def _small_rtdetr() -> RTDETR:
+    """A randomly initialised RT-DETR-R18 with 10 queries, which runs on 96 x 128 images (252 anchors)."""
+    torch.manual_seed(0)
+    return RTDETR.from_config(RTDETRConfig("resnet18d", num_classes=4, head_num_queries=10)).eval()
+
+
+def _images(shapes: list[tuple[int, int, int]]) -> list[torch.Tensor]:
+    # Seed 38 keeps the queries of ``_small_rtdetr`` apart on these shapes, see ``_eager_with_distinct_queries``.
+    generator = torch.Generator().manual_seed(38)
+    return [torch.rand(batch, 3, height, width, generator=generator) for batch, height, width in shapes]
+
+
+def _eager_with_distinct_queries(model: RTDETR, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """The model's eager ``(logits, boxes)``, after checking that its query selection has no near tie.
+
+    RT-DETR keeps the queries with the highest encoder scores, in score order. Where two scores nearly tie, a
+    difference of 1e-6 between ONNX Runtime and eager swaps two queries, and the outputs then differ by whole boxes
+    although the export is right. A random init on random images ties easily, so the inputs are drawn with a seed
+    whose scores stay at least 1e-4 apart; a change to the model's initialisation that breaks this fails here.
+    """
+    scores: list[torch.Tensor] = []
+    handle = model.decoder.enc_score_head.register_forward_hook(lambda m, i, out: scores.append(out.max(-1).values))
+    try:
+        with torch.no_grad():
+            logits, boxes = model(images)
+    finally:
+        handle.remove()
+    kept = scores[0].topk(model.decoder.num_queries + 1, dim=1).values
+    gap = (kept[:, :-1] - kept[:, 1:]).min().item()
+    assert gap > 1e-4, f"near tie between kept encoder scores ({gap:.1e}): pick another seed in _images"
+    return logits, boxes
+
+
+def _check_onnx_against_eager(op, model: RTDETR, images: torch.Tensor) -> None:
+    ort = pytest.importorskip("onnxruntime")
+    session = ort.InferenceSession(op.SerializeToString(), providers=["CPUExecutionProvider"])
+    logits, boxes = session.run(None, {session.get_inputs()[0].name: images.numpy()})
+    expected_logits, expected_boxes = _eager_with_distinct_queries(model, images)
+    assert_close(torch.from_numpy(logits), expected_logits, rtol=1e-4, atol=1e-4)
+    assert_close(torch.from_numpy(boxes), expected_boxes, rtol=1e-4, atol=1e-4)
+
+
+def _dims(value_info) -> list:
+    return [d.dim_param or d.dim_value for d in value_info.type.tensor_type.shape.dim]
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
+def test_rtdetr_onnx_matches_eager_at_other_batches(export_kwargs):
+    """``RTDETR.to_onnx`` keeps the batch dynamic: batches 1 and 3 match eager on a graph traced at 2, H != W."""
+    _importorskip_exporter(export_kwargs)
+    model = _small_rtdetr()
+    op = model.to_onnx(save=False, pseudo_shape=[1, 3, 96, 128], **export_kwargs)
+
+    assert [o.name for o in op.graph.output] == ["pred_logits", "pred_boxes"]
+    for images in _images([(1, 96, 128), (3, 96, 128)]):
+        _check_onnx_against_eager(op, model, images)
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("export_kwargs", _EXPORTERS)
+def test_detector_model_only_onnx_names_both_outputs(export_kwargs):
+    """Without pre- and post-processing, the detector exports RT-DETR's two outputs by name, at a dynamic size."""
+    _importorskip_exporter(export_kwargs)
+    model = _small_rtdetr()
+    detector = ObjectDetector(model, ResizePreProcessor(96, 96), _post_processor())
+    op = detector.to_onnx(image_size=None, include_pre_and_post_processor=False, save=False, **export_kwargs)
+
+    assert [o.name for o in op.graph.output] == ["pred_logits", "pred_boxes"]
+    # each output's batch is the input's dynamic batch
+    batch = _dims(op.graph.input[0])[0]
+    assert isinstance(batch, str)
+    assert [_dims(output)[0] for output in op.graph.output] == [batch, batch]
+    # two sizes, multiples of 32 with H != W, at batches other than the traced 2
+    for images in _images([(1, 96, 128), (3, 96, 128), (1, 128, 96), (3, 128, 96)]):
+        _check_onnx_against_eager(op, model, images)
+
+
 @pytest.mark.timeout(120)
 @pytest.mark.parametrize("sizes_dtype", [torch.float32, torch.int64])
 def test_postprocessor_onnx_per_image_sizes(tmp_path, sizes_dtype):
@@ -133,6 +221,18 @@ def test_resize_preprocessor_onnx_dynamic_sizes():
         # xywh of the normalised box (0.5, 0.5, 0.25, 0.25) in this image's pixels
         expected = torch.tensor([[[0.375 * width, 0.375 * height, 0.25 * width, 0.25 * height]]]).expand(batch, -1, -1)
         assert_close(detections[..., 2:], expected)
+
+
+@pytest.mark.timeout(120)
+def test_detector_model_only_onnx_without_declared_names_keeps_output():
+    """A model that declares no ``ONNX_OUTPUT_NAMES`` keeps the mixin's single ``output`` name."""
+    _importorskip_exporter({})
+    detector = ObjectDetector(_FixedDetections(), ResizePreProcessor(32, 32), _post_processor())
+    assert not hasattr(detector.model, "ONNX_OUTPUT_NAMES")
+
+    op = detector.to_onnx(image_size=None, include_pre_and_post_processor=False, save=False)
+
+    assert op.graph.output[0].name == "output"
 
 
 class _ScoredDetections(nn.Module):

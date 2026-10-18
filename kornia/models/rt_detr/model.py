@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 import torch
 
@@ -148,6 +148,10 @@ class RTDETRConfig:
 
 class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
     """RT-DETR Object Detection model, as described in https://arxiv.org/abs/2304.08069."""
+
+    # The names of the ONNX outputs, in the order :meth:`forward` returns them. ``to_onnx`` and
+    # :meth:`kornia.contrib.object_detection.ObjectDetector.to_onnx` without pre- and post-processing use them.
+    ONNX_OUTPUT_NAMES: ClassVar[tuple[str, ...]] = ("pred_logits", "pred_boxes")
 
     def __init__(self, backbone: ResNetD | PPHGNetV2, encoder: HybridEncoder, decoder: RTDETRHead):
         """Construct RT-DETR Object Detection model.
@@ -352,14 +356,10 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             ``onnx.ModelProto`` of the exported model.
 
         """
-        kwargs.setdefault("output_names", ["pred_logits", "pred_boxes"])
+        kwargs.setdefault("output_names", list(self.ONNX_OUTPUT_NAMES))
         kwargs.setdefault(
             "dynamic_axes",
-            {
-                "input": {0: "batch"},
-                "pred_logits": {0: "batch"},
-                "pred_boxes": {0: "batch"},
-            },
+            {"input": {0: "batch"}, **{name: {0: "batch"} for name in self.ONNX_OUTPUT_NAMES}},
         )
         if pseudo_shape is None:
             pseudo_shape = [1, 3, 640, 640]

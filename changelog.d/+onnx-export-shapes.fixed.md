@@ -9,3 +9,8 @@ unchanged. (#6120)
 dynamic dimensions are traced at 2 or more, that graph declared a dynamic batch but ran at batch 2 only, so a
 batch-1 call with the default `pseudo_shape` failed in ONNX Runtime. Other encoders, and the dynamo exporter, keep
 a dynamic batch. (#6125)
+`ObjectDetector.to_onnx(include_pre_and_post_processor=False)` names both outputs of an RT-DETR model,
+`pred_logits` and `pred_boxes` (now declared once as `RTDETR.ONNX_OUTPUT_NAMES`), each with the input's dynamic
+batch, and keeps the detector's dynamic height and width for `image_size=None`. Only the logits were named
+(`output`), and the boxes came out under an exporter-generated name such as `select_27`. A model that declares no
+output names keeps the single `output`. (#6126)

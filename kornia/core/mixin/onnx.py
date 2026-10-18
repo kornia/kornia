@@ -63,6 +63,14 @@ def _to_floating(value: Any, reference: torch.Tensor) -> Any:
     return value
 
 
+def _uses_dynamic_shapes(export_kwargs: dict[str, Any]) -> bool:
+    """Whether ``ONNXExportMixin.to_onnx`` declares its dynamic dimensions with ``dynamic_shapes``.
+
+    It does on the dynamo exporter from torch 2.9, which warns on ``dynamic_axes``, and uses ``dynamic_axes`` otherwise.
+    """
+    return torch_version_ge(2, 9, 0) and export_kwargs.get("dynamo", True)
+
+
 @contextlib.contextmanager
 def _eval_mode(module: Any) -> Iterator[None]:
     """Put ``module`` in eval mode for the block, then restore the training flag of each of its submodules."""
@@ -230,8 +238,7 @@ class ONNXExportMixin:
             "output_names": ["output"],
         }
         if "dynamic_axes" not in kwargs and "dynamic_shapes" not in kwargs:
-            # The dynamo exporter (the default from torch 2.9) takes ``dynamic_shapes`` and warns on ``dynamic_axes``.
-            if torch_version_ge(2, 9, 0) and kwargs.get("dynamo", True):
+            if _uses_dynamic_shapes(kwargs):
                 default_args["dynamic_shapes"] = self._create_dynamic_shapes(input_shape, dummy_input)
             else:
                 default_args["dynamic_axes"] = self._create_dynamic_axes(input_shape, output_shape)
