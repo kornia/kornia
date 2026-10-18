@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
@@ -77,4 +78,4 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         # a Python loop over the batch (which launched a kernel per sample and blocked
         # torch.compile). `channels` is (B, C); indexing input[(B,1), (B,C)] gives (B, C, H, W).
         batch_index = torch.arange(input.shape[0], device=input.device).view(-1, 1)
-        return input[batch_index, params["channels"]]
+        return input[batch_index, _to_device_nonblocking(params["channels"], input.device)]

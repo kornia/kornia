@@ -342,7 +342,8 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             onnx_name: Path for the saved ``.onnx`` file. Defaults to
                 ``"Kornia-RTDETR.onnx"``.
             pseudo_shape: Concrete input shape used to trace the model, e.g.
-                ``[1, 3, 640, 640]``.  Defaults to ``[1, 3, 640, 640]``.
+                ``[1, 3, 640, 640]``.  Defaults to ``[1, 3, 640, 640]``. The batch is
+                exported as dynamic, so a batch below 2 is traced at 2.
             save: Whether to write the model to disk. Default ``True``.
             **kwargs: Additional keyword arguments forwarded to
                 :func:`torch.onnx.export`.

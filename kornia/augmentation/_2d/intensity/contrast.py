@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _range_bound
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import adjust_contrast
 
 
@@ -109,5 +110,5 @@ class RandomContrast(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         if self.clip_output:
             input = _clamp_unit_range(input)
-        contrast_factor = params["contrast_factor"].to(input)
+        contrast_factor = _to_device_nonblocking(params["contrast_factor"], input.device, input.dtype)
         return adjust_contrast(input, contrast_factor, self.clip_output)

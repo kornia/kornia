@@ -23,6 +23,8 @@ from typing import Optional
 
 import torch
 
+from kornia.core.utils import _autocast_disabled
+
 __all__ = ["find_affine"]
 
 
@@ -61,7 +63,7 @@ def _fit_affine_components(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Fit ``points2 = A @ points1 + t`` using a guarded weighted normal equation."""
     # Explicit casts alone do not prevent autocast from lowering matrix multiplications again.
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
         x, y = points1.to(work_dtype), points2.to(work_dtype)
         # Weight rescaling leaves the least-squares problem unchanged and avoids
@@ -126,7 +128,7 @@ def _find_affine_linear(points1: torch.Tensor, points2: torch.Tensor) -> torch.T
     NaN under the relative criterion ``det(X^T X) <= eps * trace(X^T X)**2``.
     """
     _check_points(points1, points2, 1, batched=False)
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
         x, y = points1.to(work_dtype), points2.to(work_dtype)
         normal = x.transpose(-1, -2) @ x
@@ -150,7 +152,7 @@ def _find_affine_linear_pair(points1: torch.Tensor, points2: torch.Tensor) -> to
     _check_points(points1, points2, 2, batched=False)
     if points1.shape[-2] != 2:
         raise ValueError(f"Exactly 2 correspondences are required. Got {points1.shape[-2]}.")
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
         x, y = points1.to(work_dtype), points2.to(work_dtype)
         a, b, c, d = x[..., 0, 0], x[..., 0, 1], x[..., 1, 0], x[..., 1, 1]
@@ -176,7 +178,7 @@ def _find_affine_triplet(
     _check_points(points1, points2, 3, batched=True)
     if points1.shape[-2] != 3:
         raise ValueError(f"Exactly 3 correspondences are required. Got {points1.shape[-2]}.")
-    with torch.autocast(device_type=points1.device.type, enabled=False):
+    with _autocast_disabled(points1.device.type):
         work_dtype = torch.float32 if points1.dtype in (torch.float16, torch.bfloat16) else points1.dtype
         x, y = points1.to(work_dtype), points2.to(work_dtype)
         origin1, origin2 = x[:, :1], y[:, :1]

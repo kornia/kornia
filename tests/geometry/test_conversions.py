@@ -28,6 +28,7 @@ from types import TracebackType
 import numpy as np
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, are_checks_enabled, disable_checks, enable_checks
@@ -316,6 +317,24 @@ def _asymmetric_pose(device: torch.device, dtype: torch.dtype) -> tuple[torch.Te
         torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype),
         torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype),
     )
+
+
+_MATMUL_OPS = frozenset({"mm", "bmm", "baddbmm", "addmm", "addbmm", "matmul", "mv", "dot"})
+
+
+class _RecordMatmulOps(TorchDispatchMode):
+    # Records the matmul-family aten ops dispatched under it. CUDA has no integer kernel for any of them, so an
+    # integer pose that reaches one raises there; recording the dispatch lets a CPU run, which has the kernels and
+    # returns the right values regardless, see the same defect.
+    def __init__(self) -> None:
+        super().__init__()
+        self.matmul_ops: set[str] = set()
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        name = func.overloadpacket.__name__
+        if name in _MATMUL_OPS:
+            self.matmul_ops.add(name)
+        return func(*args, **(kwargs or {}))
 
 
 # Shared inputs for the same reason as _ASYMMETRIC_R above: pins cross-reference each other as
@@ -4644,9 +4663,9 @@ class TestRt2Extrinsics(BaseTester):
     def test_wart_int64_Rt_raises_while_4x4_and_pose_forms_accept_3959(self, device):
         _skip_if_dtype_unavailable(device, torch.int64)
         # Wart pin for kornia#3959: Rt_to_matrix4x4 and the two frame functions built on it reject an int64
-        # pose in a kornia guard, while the _4x4 forms of the same map and the pose pair return int64 wherever
-        # the backend has integer batched matmul, and fail inside torch elsewhere. Both sides are classified by
-        # _raised_by_a_kornia_guard, so the pin flips when the _4x4 side gains a guard or integers are promoted.
+        # pose in a kornia guard, while the _4x4 forms of the same map and the pose pair return int64 on every
+        # backend, CUDA (no integer matmul kernels) included. The pin flips when the _4x4 side gains a guard
+        # (classified by _raised_by_a_kornia_guard), fails inside torch, or promotes integers.
         rotation = torch.eye(3, device=device, dtype=torch.int64)[None]
         translation = torch.ones(1, 3, 1, device=device, dtype=torch.int64)
         extrinsics = torch.eye(4, device=device, dtype=torch.int64)[None]
@@ -4664,8 +4683,7 @@ class TestRt2Extrinsics(BaseTester):
             (camtoworld_to_worldtocam_Rt, (rotation, translation)),
             (worldtocam_to_camtoworld_Rt, (rotation, translation)),
         ]
-        # Preserve both backend outcomes: an int64 result or a torch error is valid,
-        # while a new Kornia guard must still fail the pin after the except block.
+        # Any raise fails the pin; a kornia guard fails it with the message naming the warning to update.
         for op, args in accepting:
             error: Exception | None = None
             try:
@@ -4676,11 +4694,11 @@ class TestRt2Extrinsics(BaseTester):
                 assert not _raised_by_a_kornia_guard(error), (
                     f"kornia#3959: {op.__name__} now rejects int64 input in a guard of its own -- update the warning"
                 )
-            else:
-                outputs = out if isinstance(out, tuple) else (out,)
-                assert all(o.dtype == torch.int64 for o in outputs), (
-                    f"kornia#3959: {op.__name__} no longer returns int64 for int64 input"
-                )
+                raise AssertionError(f"{op.__name__} no longer accepts int64 input on {device}") from error
+            outputs = out if isinstance(out, tuple) else (out,)
+            assert all(o.dtype == torch.int64 for o in outputs), (
+                f"kornia#3959: {op.__name__} no longer returns int64 for int64 input"
+            )
 
     @pytest.mark.parametrize(
         ("op_name", "shapes"),
@@ -4894,6 +4912,32 @@ class TestCamtoworldGraphicsToVision(BaseTester):
             atol=0.0,
             rtol=0.0,
         )
+
+    @pytest.mark.parametrize("op_name", ["camtoworld_graphics_to_vision_4x4", "camtoworld_vision_to_graphics_4x4"])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64])
+    def test_integer_input_keeps_its_dtype(self, op_name, int_dtype, device):
+        # An integer matrix is flipped in its own dtype on every device. CUDA has no integer matmul kernels, so
+        # extrinsics @ diag(1, -1, -1, 1) used to raise there ("baddbmm_cuda" not implemented for 'Long') while
+        # CPU returned this result. uint8 wraps the negated entries (-2 -> 254, -1 -> 255), like the
+        # int64 -> uint8 cast of the literal below. No matmul kernel may be dispatched, so CPU, which has
+        # integer matmul, fails where CUDA would.
+        # Snippet used to generate expected (torch only, executed on cpu, int64 matmul):
+        #   M = [[1, 2, 0, 1], [0, 1, 1, 2], [3, 0, 1, 3], [0, 0, 0, 1]]
+        #   M @ diag(1, -1, -1, 1) -> [[1, -2, 0, 1], [0, -1, -1, 2], [3, 0, -1, 3], [0, 0, 0, 1]]
+        op = getattr(kornia.geometry.conversions, op_name)
+        extrinsics = torch.tensor([[[1, 2, 0, 1], [0, 1, 1, 2], [3, 0, 1, 3], [0, 0, 0, 1]]], device=device)
+
+        recorder, float_recorder = _RecordMatmulOps(), _RecordMatmulOps()
+        with recorder:
+            flipped = op(extrinsics.to(int_dtype))
+        with float_recorder:  # the recorder sees the matmul that floating point input keeps
+            op(extrinsics.to(torch.float32))
+
+        expected = torch.tensor([[[1, -2, 0, 1], [0, -1, -1, 2], [3, 0, -1, 3], [0, 0, 0, 1]]], device=device)
+        assert recorder.matmul_ops == set()
+        assert float_recorder.matmul_ops != set()
+        assert flipped.dtype == int_dtype
+        assert torch.equal(flipped, expected.to(int_dtype))
 
     @pytest.mark.parametrize(
         ("forward_name", "backward_name"),
@@ -5133,6 +5177,60 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         rotation = 2 * torch.eye(3, device=device, dtype=torch.int64)[None]
         with pytest.raises(ValueError, match="not a rotation matrix"):
             fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64])
+    def test_integer_input_keeps_its_dtype(self, fn, int_dtype, device):
+        # An integer pose is computed in its own dtype on every device. CUDA has no integer matmul kernels, so
+        # -R^T @ t used to raise there ("baddbmm_cuda" not implemented for 'Long') while CPU returned this
+        # result. R is not a permutation, so every row of -R^T @ t sums several products; all values fit int8,
+        # and uint8 wraps -(10, 4, 5) to (246, 252, 251), like the int64 -> uint8 cast of the literal below.
+        # No matmul kernel may be dispatched, so CPU, which has integer matmul, fails where CUDA would.
+        # Snippet used to generate expected (torch only, executed on cpu, int64 matmul):
+        #   R = [[1, 2, 0], [0, 1, 1], [3, 0, 1]], t = (1, 2, 3)
+        #   -R.transpose(1, 2) @ t -> (-10, -4, -5)
+        rotation = torch.tensor([[[1, 2, 0], [0, 1, 1], [3, 0, 1]]], device=device).to(int_dtype)
+        translation = torch.tensor([[[1], [2], [3]]], device=device).to(int_dtype)
+        recorder, float_recorder = _RecordMatmulOps(), _RecordMatmulOps()
+        with recorder:
+            out_R, out_t = fn(rotation, translation)
+        with float_recorder:  # the recorder sees the matmul that floating point input keeps
+            fn(rotation.to(torch.float32), translation.to(torch.float32))
+        assert recorder.matmul_ops == set()
+        assert float_recorder.matmul_ops != set()
+        assert out_R.dtype == int_dtype
+        assert out_t.dtype == int_dtype
+        assert torch.equal(out_R, rotation.transpose(1, 2))
+        assert torch.equal(out_t, torch.tensor([[[-10], [-4], [-5]]], device=device).to(int_dtype))
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize(("r_dtype", "t_dtype"), [(torch.int64, torch.float32), (torch.int32, torch.int64)])
+    def test_mixed_dtype_pair_keeps_the_matmul_error(self, fn, r_dtype, t_dtype, device):
+        # Only a pair of one integer dtype is summed in that dtype. A mixed pair keeps -R^T @ t and the error torch
+        # raises for it, rather than an int64 R truncating a float32 t.
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device).to(r_dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device).to(t_dtype)
+        with pytest.raises(RuntimeError) as excinfo:
+            fn(rotation, translation)
+        assert not _raised_by_a_kornia_guard(excinfo.value)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize("pair_dtype", [torch.int64, torch.float32])
+    def test_row_translation_raises_with_checks_disabled(self, fn, pair_dtype, device):
+        # disable_checks() turns the shape guards off, so a (1, 1, 3) row translation reaches -R^T @ t, whose inner
+        # sizes (3 and 1) do not match. Integer input must raise there like float input does, instead of
+        # broadcasting the size-1 dimension into a (1, 3, 3) "translation".
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device).to(pair_dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device).to(pair_dtype).transpose(1, 2)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError) as excinfo:
+                fn(rotation, translation)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert not _raised_by_a_kornia_guard(excinfo.value)
 
     @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
     @pytest.mark.parametrize(

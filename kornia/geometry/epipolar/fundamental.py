@@ -23,7 +23,7 @@ from typing import Literal, Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
+from kornia.core.utils import _autocast_disabled, _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
 from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
@@ -496,15 +496,17 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
-    # Reference: Hartley and Zisserman, section 11.1.2; the cubic follows OpenCV's run7Point
-    # (https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp).
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
-    A = _epipolar_design_rows(points1_norm, points2_norm)
-    candidates, valid = _seven_point_candidates(A)
-    # F = T2^T F T1
-    fmatrix = normalize_transformation(transform2[:, None].mT @ candidates @ transform1[:, None])
-    return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix))
+    # Autocast would run the matrix products in half precision and return half-precision candidates.
+    with _autocast_disabled(points1.device.type):
+        # Reference: Hartley and Zisserman, section 11.1.2; the cubic follows OpenCV's run7Point
+        # (https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp).
+        points1_norm, transform1 = normalize_points(points1)
+        points2_norm, transform2 = normalize_points(points2)
+        A = _epipolar_design_rows(points1_norm, points2_norm)
+        candidates, valid = _seven_point_candidates(A)
+        # F = T2^T F T1
+        fmatrix = normalize_transformation(transform2[:, None].mT @ candidates @ transform1[:, None])
+        return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix))
 
 
 def run_8point(
@@ -533,51 +535,58 @@ def run_8point(
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         if weights.shape[1] != points1.shape[1]:
             raise AssertionError(weights.shape)
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(points1.dtype)
 
-    # Use the same correspondences for Hartley statistics and the weighted DLT system.
-    pts1n, T1 = normalize_points(points1, weights=weights)
-    pts2n, T2 = normalize_points(points2, weights=weights)
+    # Autocast would run the matrix products in half precision, where CUDA's eigh has no kernel.
+    with _autocast_disabled(points1.device.type):
+        # Use the same correspondences for Hartley statistics and the weighted DLT system.
+        pts1n, T1 = normalize_points(points1, weights=weights)
+        pts2n, T2 = normalize_points(points2, weights=weights)
 
-    # Design matrix rows A_i = [x2*x1, x2*y1, x2, y2*x1, y2*y1, y2, x1, y1, 1]
-    # Shape: A ∈ (B, N, 9)
-    A = _epipolar_design_rows(pts1n, pts2n)
+        # Design matrix rows A_i = [x2*x1, x2*y1, x2, y2*x1, y2*y1, y2, x1, y1, 1]
+        # Shape: A ∈ (B, N, 9)
+        A = _epipolar_design_rows(pts1n, pts2n)
 
-    B, N, _ = A.shape
+        B, N, _ = A.shape
 
-    if weights is None and N == 8:
-        # A minimal sample has an exact null vector.
-        h = _eight_point_null_vector(A)
-    else:
-        # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
-        if weights is None:
-            if N < use_einsum_at_more_than_points:
-                # Use GEMM on tall A: (B,9,N) @ (B,N,9)
-                M = A.transpose(-2, -1).contiguous() @ A
-            else:
-                # Accumulate via einsum (saves bandwidth for huge N)
-                M = torch.einsum("bni,bnj->bij", A, A)
+        if weights is None and N == 8:
+            # A minimal sample has an exact null vector.
+            h = _eight_point_null_vector(A)
         else:
-            # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence,
-            # and its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient
-            # through at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on
-            # every version.
-            w = torch.where(weights < 0, 0.0, weights)
-            if N < use_einsum_at_more_than_points:
-                # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the
-                # derivative of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in
-                # w, like the einsum branch below.
-                Aw = A * w.unsqueeze(-1)
-                M = Aw.transpose(-2, -1).contiguous() @ A
+            # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
+            if weights is None:
+                if N < use_einsum_at_more_than_points:
+                    # Use GEMM on tall A: (B,9,N) @ (B,N,9)
+                    M = A.transpose(-2, -1).contiguous() @ A
+                else:
+                    # Accumulate via einsum (saves bandwidth for huge N)
+                    M = torch.einsum("bni,bnj->bij", A, A)
             else:
-                # Weighted einsum
-                M = torch.einsum("bni,bnj,bn->bij", A, A, w)
+                # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence,
+                # and its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient
+                # through at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on
+                # every version.
+                w = torch.where(weights < 0, 0.0, weights)
+                if N < use_einsum_at_more_than_points:
+                    # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the
+                    # derivative of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in
+                    # w, like the einsum branch below.
+                    Aw = A * w.unsqueeze(-1)
+                    M = Aw.transpose(-2, -1).contiguous() @ A
+                else:
+                    # Weighted einsum
+                    M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-        _evals, evecs = torch.linalg.eigh(M)  # ascending order
-        h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
-    F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
-    F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
+            # No device has a half-precision eigh kernel; CPU autocast used to promote this one to float32.
+            half = M.dtype in (torch.float16, torch.bfloat16)
+            _evals, evecs = torch.linalg.eigh(M.float() if half else M)  # ascending order
+            h = evecs[..., 0].to(M.dtype)  # (B,9), eigenvector for smallest λ
+        F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
+        F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 
-    return normalize_transformation(F)
+        return normalize_transformation(F)
 
 
 def find_fundamental(
@@ -598,6 +607,7 @@ def find_fundamental(
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.
         - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
+        - A caller's autocast region does not change the fit.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for

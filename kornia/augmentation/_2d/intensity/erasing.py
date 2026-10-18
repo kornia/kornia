@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
@@ -113,7 +114,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         _, _, h, w = input.size()
-        values = params["values"].view(-1, 1, 1, 1).to(input)
+        values = _to_device_nonblocking(params["values"].view(-1, 1, 1, 1), input.device, input.dtype)
 
         if self.same_on_batch:
             # Every sample shares one rectangle, so write that single region directly instead of
@@ -136,7 +137,10 @@ class RandomErasing(IntensityAugmentationBase2D):
         # `where` broadcasts to the input shape, so the result is identical while allocating two
         # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)
 
     def apply_transform_mask(
@@ -154,5 +158,8 @@ class RandomErasing(IntensityAugmentationBase2D):
         values = torch.zeros((), dtype=input.dtype, device=input.device)
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)

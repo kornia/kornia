@@ -180,9 +180,12 @@ class TestSuperResolutionBuilders(BaseTester):
 
     def test_onnx_export_shape_matches_the_real_forward(self):
         """The static size handed to ``to_onnx`` must be the one the graph produces."""
-        pytest.importorskip("onnx")
+        onnx = pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
         model = SmallSRBuilder.build(pretrained=False, upscale_factor=2, image_size=32)
         exported = model.to_onnx(save=False)
-        out_dim = exported.graph.output[0].type.tensor_type.shape.dim[-1]
+        # The legacy TorchScript exporter (the default before torch 2.9) declares the dimensions after a resize of the
+        # dynamic batch as symbolic; shape inference with data propagation reads the size either exporter's graph makes.
+        inferred = onnx.shape_inference.infer_shapes(exported, data_prop=True)
+        out_dim = inferred.graph.output[0].type.tensor_type.shape.dim[-1]
         assert out_dim.dim_value == model.output_image_size
