@@ -28,6 +28,7 @@ from kornia.augmentation._2d.intensity.base import (
 )
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 def _apply_gaussian_illumination(
@@ -39,7 +40,7 @@ def _apply_gaussian_illumination(
     """Apply a sampled illumination pattern through a picklable, compilable callable."""
     # The gradient comes from the generator on CPU.
     # We must explicitly move it to the input's device before adding.
-    gradient = params["gradient"].to(input.device, input.dtype)
+    gradient = _to_device_nonblocking(params["gradient"], input.device, input.dtype)
 
     # Out-of-place add: in-place would mutate the caller's tensor and corrupt
     # the non-transformed branch, which shares the same input.

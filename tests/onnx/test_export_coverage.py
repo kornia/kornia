@@ -191,6 +191,15 @@ def test_onnx_export_matches_eager(module, inputs):
     _assert_same(eager, ort_out)
 
 
+@pytest.mark.parametrize("reduction", ["mean", "sum"])
+def test_focal_loss_export(reduction):
+    # The CPU label check's aminmax must lower through ONNX, not only through torch.export.
+    logits = torch.linspace(-2.0, 2.0, 24).reshape(2, 3, 4)
+    labels = torch.tensor([[0, 1, 2, -100], [2, 0, 1, 2]])
+    eager, ort_out = _export_and_run(kornia.losses.FocalLoss(alpha=0.25, reduction=reduction), (logits, labels))
+    _assert_same(eager, ort_out)
+
+
 def test_boxes_to_mask_export():
     boxes = kornia.geometry.boxes.Boxes(torch.tensor([[[[1.0, 1.0], [5.0, 1.0], [5.0, 4.0], [1.0, 4.0]]]]))
 

@@ -21,7 +21,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.core.ops import eye_like
+from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
 
@@ -67,8 +67,11 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    center: torch.Tensor = torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
-    return center
+    # Filled on the device in eager mode: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued
+    # kernels. TorchScript, which cannot compile ``_device_literal``, keeps the host literal.
+    if torch.jit.is_scripting():
+        return torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
+    return _device_literal([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
@@ -79,8 +82,10 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
     center_z: float = float(depth - 1) / 2
-    center: torch.Tensor = torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
-    return center
+    # Filled on the device in eager mode, as in ``_compute_tensor_center``.
+    if torch.jit.is_scripting():
+        return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
+    return _device_literal([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:

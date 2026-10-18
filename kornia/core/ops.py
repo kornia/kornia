@@ -15,13 +15,15 @@
 # limitations under the License.
 #
 
+import math
 import operator
-from typing import Any
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
 
 from kornia.core.check import KORNIA_CHECK, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
+from kornia.core.utils import is_compiling
 
 
 def _is_numpy_bool(n: Any) -> bool:
@@ -133,3 +135,104 @@ def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch
 
     vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
     return vec[None].expand(tensor.shape[0], n, 1) if shared_memory else vec[None].repeat(tensor.shape[0], 1, 1)
+
+
+def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int = 0) -> None:
+    if isinstance(data, (list, tuple)):
+        if depth == len(shape):
+            shape.append(len(data))
+        for value in data:
+            _flatten_constant(value, shape, leaves, depth + 1)
+    else:
+        leaves.append(data)
+
+
+def _constant_tensor(
+    data: Union[float, List[Any], Tuple[Any, ...]],
+    *,
+    device: Union[str, torch.device, None] = None,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Construct small numeric constants inside the graph, without lifting tensor storage.
+
+    Inductor can reuse a lifted CPU tensor in a CUDA kernel without transferring it
+    (https://github.com/pytorch/pytorch/issues/196969). Scalar factories and stacks
+    avoid that path, including for constants returned alongside CUDA tensors. Indexed
+    scalar writes are unsafe too: tracing lifts their right-hand sides.
+
+    Eager execution, Dynamo and ``make_fx`` all run this same construction, which issues
+    no host-device copy. Each distinct Python scalar is filled once and a single stack
+    reuses it, so repeated coordinates such as box corners cost one kernel per value.
+
+    ``data`` contains Python scalars or rectangular nested lists/tuples, never tensors.
+    Other array-likes, such as NumPy arrays, keep ``torch.as_tensor`` semantics. Callers
+    choose dtype explicitly and perform coordinate arithmetic before calling this helper
+    when rounding before versus after casting matters.
+    """
+    if not isinstance(data, (list, tuple)):
+        if isinstance(data, (int, float, torch.SymInt, torch.SymFloat)):
+            return torch.full((), data, device=device, dtype=dtype)
+        return torch.as_tensor(data, device=device, dtype=dtype)
+    shape: List[int] = []
+    leaves: List[Any] = []
+    _flatten_constant(data, shape, leaves)
+    if not leaves:
+        return torch.empty(shape, device=device, dtype=dtype)
+    filled: Dict[Tuple[type, Any], torch.Tensor] = {}
+    values: List[torch.Tensor] = []
+    for leaf in leaves:
+        # Symbolic sizes stay unmerged because comparing them adds guards. The float key carries
+        # the sign because -0.0 == 0.0; NaN is filled per leaf because NaN != NaN.
+        if type(leaf) in (int, bool) or (type(leaf) is float and not math.isnan(leaf)):
+            key = (type(leaf), leaf, math.copysign(1.0, leaf))
+            if key not in filled:
+                filled[key] = torch.full((), leaf, device=device, dtype=dtype)
+            values.append(filled[key])
+        else:
+            values.append(torch.full((), leaf, device=device, dtype=dtype))
+    return _stack_without_autocast(values).view(shape)
+
+
+# The device types whose autocast state torch can report; ``torch.is_autocast_enabled("meta")`` raises.
+_AUTOCAST_DEVICE_TYPES = ("cpu", "cuda", "mps", "xpu", "xla", "hpu")
+
+
+def _stack_without_autocast(values: List[torch.Tensor]) -> torch.Tensor:
+    """Stack ``values`` in their own dtype, also inside an autocast region.
+
+    ``torch.stack`` is on autocast's promote list, which rejects a half dtype other than the region's own (a
+    ``float16`` stack inside CPU autocast, whose lower precision is ``bfloat16``). A literal keeps the dtype it was
+    asked for, as ``torch.tensor`` does, so autocast is switched off for the stack.
+    """
+    device_type = values[0].device.type
+    if device_type in _AUTOCAST_DEVICE_TYPES and torch.is_autocast_enabled(device_type):
+        with torch.autocast(device_type, enabled=False):
+            return torch.stack(values)
+    return torch.stack(values)
+
+
+def _device_literal(
+    data: Union[float, List[Any], Tuple[Any, ...]], *, device: Union[str, torch.device, None], dtype: torch.dtype
+) -> torch.Tensor:
+    """Return ``torch.tensor(data, device=device, dtype=dtype)`` for a literal of Python numbers, without a host sync.
+
+    An eager call fills the literal on the device with :func:`_constant_tensor`: ``torch.tensor(..., device=cuda)``
+    copies it from the host and waits for every queued kernel. Under ``torch.compile`` and ``torch.export`` the literal
+    stays ``torch.tensor(..., device=device)``, as before: capture makes it a constant of the graph on ``device``, which
+    costs no copy at run time and which Inductor folds into its consumer, where filled values would add kernels. Both
+    round the same Python numbers to ``dtype``, so the values are the same.
+    """
+    if is_compiling() or (dtype == torch.float16 and not _fits_float16(data)):
+        return torch.tensor(data, device=device, dtype=dtype)
+    return _constant_tensor(data, device=device, dtype=dtype)
+
+
+def _fits_float16(data: Union[float, List[Any], Tuple[Any, ...]]) -> bool:
+    """Whether every finite number in ``data`` is within the float16 range.
+
+    ``torch.full`` raises for a finite value beyond it on CUDA (and on the CPU in torch 2.5.1), where ``torch.tensor``
+    rounds it to 65504 or to infinity, so such a literal keeps ``torch.tensor``.
+    """
+    leaves: List[Any] = []
+    _flatten_constant(data, [], leaves)
+    return all(not isinstance(v, (int, float)) or not math.isfinite(v) or abs(v) <= 65504.0 for v in leaves)

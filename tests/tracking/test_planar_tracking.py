@@ -733,8 +733,8 @@ class TestHomographyTrackerHalfKeypointsAndAutocast:
         assert torch.equal(results[0], results[1])
 
     def test_autocast_does_not_reach_ransac(self, device):
-        # find_homography_dlt runs its matrix products in the caller's autocast dtype: with local_optimization="dlt",
-        # a bfloat16 fit moved the frame corners by up to 3.1 px here. The tracker fits with autocast off.
+        # With local_optimization="dlt", a bfloat16 fit moved the frame corners by up to 3.1 px here. RANSAC keeps
+        # autocast out of its fit; the tracker also fits with autocast off, for a ``ransac`` module that does not.
         if device.type == "mps":
             pytest.skip("MPS autocast is not exercised here")
         results = []

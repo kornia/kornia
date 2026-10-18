@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomGaussianNoise(IntensityAugmentationBase2D):
@@ -72,7 +73,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        gaussian_noise = params["gaussian_noise"].to(input)
+        gaussian_noise = _to_device_nonblocking(params["gaussian_noise"], input.device, input.dtype)
         # When same_on_batch=True the generator produces shape (1, C, H, W); expand to full batch.
         if gaussian_noise.shape[0] != input.shape[0]:
             gaussian_noise = gaussian_noise.expand_as(input)
