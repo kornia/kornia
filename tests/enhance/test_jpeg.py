@@ -1211,7 +1211,11 @@ class TestDiffJPEG(BaseTester):
             assert actual.dtype == torch.float32
             assert torch.equal(actual, expected)
             for grad, expected_grad in zip(actual_grads, expected_grads):
-                assert torch.equal(grad, expected_grad)
+                if device.type == "cuda":
+                    # CUDA's interpolation backward accumulates with atomics, so two backward passes may round apart.
+                    self.assert_close(grad, expected_grad)
+                else:
+                    assert torch.equal(grad, expected_grad)
 
     def test_half_precision_backward(self, device, dtype) -> None:
         if dtype not in (torch.float16, torch.bfloat16):
