@@ -1197,7 +1197,9 @@ class TestDiffJPEG(BaseTester):
         # the test has no "autocast" in its name, which conftest would skip on MPS.
         if device.type not in ("cpu", "cuda", "mps"):
             pytest.skip("CPU, CUDA and MPS autocast")
-        autocast_dtype = torch.float16 if device.type == "mps" else torch.bfloat16
+        # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
+        bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
+        autocast_dtype = torch.bfloat16 if bfloat16_ok else torch.float16
         img = torch.rand(4, 3, 32, 32, device=device, requires_grad=True)
         jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, requires_grad=True)
         qt_y = 1.0 + 254.0 * torch.rand(8, 8, device=device)
