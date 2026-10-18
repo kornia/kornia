@@ -69,7 +69,6 @@ call	builtins.AssertionError	tests/color/test_luv.py::TestRgbToLuv::test_unit[cp
 call	builtins.AssertionError	tests/color/test_rgb.py::TestRgb255Normals::test_back_and_forth[cpu-bfloat16]
 call	builtins.AssertionError	tests/contrib/test_hist_match.py::TestHistMatch::test_histmatch[cpu-bfloat16]
 call	builtins.AssertionError	tests/core/test_helpers.py::TestSvdCast::test_smoke[cpu-bfloat16]
-call	builtins.AssertionError	tests/enhance/test_jpeg.py::TestDiffJPEG::test_cardinality[cpu-bfloat16]
 call	builtins.AssertionError	tests/enhance/test_zca.py::TestZCA::test_dim_args[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/filters/test_canny.py::TestCanny::test_magnitude_hyst[cpu-bfloat16]
 call	builtins.AssertionError	tests/filters/test_canny.py::TestCanny::test_magnitude_hyst_false[cpu-bfloat16]

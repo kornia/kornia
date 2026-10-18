@@ -498,6 +498,9 @@ def jpeg_codec_differentiable(
         jpeg_quality is a one-dimensional (1,) shared quality or (N,) per-image quality; a 0-D
         scalar is rejected. The codec pads on the bottom and right internally and crops back to
         the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
+        float16 and bfloat16 inputs are computed in float32, quality and tables included, and the
+        output is rounded once to the input dtype. Inside a ``torch.autocast`` region the output keeps
+        the input dtype too, but autocast still runs part of the codec in its own lower dtype.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
@@ -578,8 +581,13 @@ def jpeg_codec_differentiable(
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(jpeg_quality)
     # Get device and dtype
-    dtype: Union[torch.dtype, None] = input.dtype
+    out_dtype: torch.dtype = input.dtype
     device: Union[str, torch.device, None] = input.device
+    # The codec scales pixels to [0, 255], and its DCT coefficients reach about 1000 and its quality scale 2500, where
+    # bfloat16's 8-bit significand rounds by 1 to 16: coarser than the quantization step of 1 at quality 99. Compute
+    # float16 and bfloat16 inputs in float32 and round once, to the input dtype, at the end.
+    dtype: torch.dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+    input = input.to(dtype)
     # Use default QT if QT is not given
     quantization_table_y = _get_default_qt_y(device, dtype) if quantization_table_y is None else quantization_table_y
     quantization_table_c = _get_default_qt_c(device, dtype) if quantization_table_c is None else quantization_table_c
@@ -650,7 +658,7 @@ def jpeg_codec_differentiable(
     # Clip coded image
     image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
-    return image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
+    return image_rgb_jpeg[..., : H - h_pad, : W - w_pad].to(out_dtype)
 
 
 def _get_dct8_basis_scale(
@@ -786,8 +794,8 @@ class JPEGCodecDifferentiable(nn.Module):
 
         The method runs an RGB image through the internal JPEG codec pipeline
         using the module's quantization tables, then reconstructs an RGB tensor.
-        Quantization tables are moved to the input device and dtype before
-        encoding/decoding.
+        Quantization tables are moved to the input device and to the dtype
+        the codec computes in before encoding/decoding.
 
         Args:
             image_rgb: Input RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -797,17 +805,13 @@ class JPEGCodecDifferentiable(nn.Module):
             Reconstructed RGB tensor after differentiable JPEG processing, with
             the same shape as ``image_rgb``.
         """
-        device = image_rgb.device
-        dtype = image_rgb.dtype
-        # Move quantization tables to the same device and dtype as input
-        # and store it in the local variables created in init
-        quantization_table_y = self.quantization_table_y.to(device, dtype)
-        quantization_table_c = self.quantization_table_c.to(device, dtype)
-        # Perform encoding-decoding
+        # The codec moves the tables to the input device and casts them to the dtype it computes in, float32 for a
+        # half-precision image, in one step. Casting them to the image dtype here would round them, and a device-only
+        # move first would try to put float64 tables on MPS, which has no float64.
         image_rgb_jpeg: torch.Tensor = jpeg_codec_differentiable(
             image_rgb,
             jpeg_quality=jpeg_quality,
-            quantization_table_c=quantization_table_c,
-            quantization_table_y=quantization_table_y,
+            quantization_table_c=self.quantization_table_c,
+            quantization_table_y=self.quantization_table_y,
         )
         return image_rgb_jpeg

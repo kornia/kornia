@@ -1171,6 +1171,44 @@ class TestDiffJPEG(BaseTester):
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img_jpeg, img_jpeg_ref, rtol=0.01, atol=0.01)
 
+    def test_half_precision_rounds_float32_once(self, device, dtype) -> None:
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
+        # Computed in the input dtype, the codec rounded pixels scaled to [0, 255], DCT coefficients of about 1000 and a
+        # quantization scale of 2500 to an 8-bit (bfloat16) or 11-bit (float16) significand, and its outputs were up to
+        # 0.2 away from float64's on these qualities.
+        img = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        wide = kornia.enhance.jpeg_codec_differentiable(img.float(), jpeg_quality.float())
+        assert img_jpeg.dtype == dtype
+        assert torch.equal(img_jpeg, wide.to(dtype))
+        # The module hands its float32 tables to the codec as they are, not rounded to the image dtype first.
+        qt_y = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        qt_c = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        img_jpeg = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)(img, jpeg_quality)
+        wide = kornia.enhance.jpeg_codec_differentiable(img.float(), jpeg_quality.float(), qt_y, qt_c)
+        assert img_jpeg.dtype == dtype
+        assert torch.equal(img_jpeg, wide.to(dtype))
+
+    def test_half_precision_backward(self, device, dtype) -> None:
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
+        img = torch.rand(4, 3, 32, 32, device=device, dtype=dtype, requires_grad=True)
+        jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, dtype=dtype, requires_grad=True)
+        img32 = img.detach().float().requires_grad_(True)
+        jpeg_quality32 = jpeg_quality.detach().float().requires_grad_(True)
+        for x, q in ((img, jpeg_quality), (img32, jpeg_quality32)):
+            kornia.enhance.jpeg_codec_differentiable(x, q).sum().backward()
+        # The half-precision gradients are the float32 ones rounded once. CUDA's interpolation backward accumulates
+        # with atomics, so that rounding may land one step either way: allow one rounding at the largest magnitude.
+        # Computed in the input dtype, the image gradient was off by its own magnitude (relative L2 error 0.5 to 0.9).
+        eps = torch.finfo(dtype).eps
+        for grad, grad32 in ((img.grad, img32.grad), (jpeg_quality.grad, jpeg_quality32.grad)):
+            assert grad.dtype == dtype
+            assert bool(torch.isfinite(grad).all())
+            self.assert_close(grad, grad32.to(dtype), rtol=eps, atol=eps * grad32.abs().max().item())
+
     def test_module(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
@@ -1181,6 +1219,18 @@ class TestDiffJPEG(BaseTester):
         img_jpeg = diff_jpeg_module(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
+
+    def test_module_float64_tables_on_cpu(self, device, dtype) -> None:
+        # The tables may stay float64 on the CPU while the image lives on a device without float64 (MPS): the codec
+        # converts them to the image device and its compute dtype in one step.
+        qt_y = 1.0 + 254.0 * torch.rand(8, 8, dtype=torch.float64)
+        qt_c = 1.0 + 254.0 * torch.rand(8, 8, dtype=torch.float64)
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([50.0], device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)(img, jpeg_quality)
+        assert img_jpeg.dtype == dtype
+        assert img_jpeg.device == img.device
+        assert torch.equal(img_jpeg, kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c))
 
     def test_module_with_param(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
