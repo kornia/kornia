@@ -1524,7 +1524,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     from_origin_mat[..., :3, -1] += center
 
     to_origin_mat = from_origin_mat.clone()
-    to_origin_mat = _torch_inverse_cast(from_origin_mat)
+    # An identity plus a translation column is unit triangular, so it is always invertible.
+    to_origin_mat = _torch_inverse_cast(from_origin_mat, check_errors=False)
 
     # append translation with torch.zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
@@ -1999,7 +2000,8 @@ def homography_warp3d(
     # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
     # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
     # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
-    grid = grid[..., [1, 2, 0]]
+    # Stacked rather than indexed with a list, which is copied to the device with a blocking transfer.
+    grid = torch.stack((grid[..., 1], grid[..., 2], grid[..., 0]), -1)
     warped_grid = warp_grid3d(grid, src_homo_dst)
 
     return _torch_grid_sample(

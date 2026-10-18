@@ -34,7 +34,8 @@ from kornia.core.check import (
     are_checks_enabled,
 )
 from kornia.core.exceptions import TypeCheckError
-from kornia.core.utils import _normalize_to_float32_or_float64, is_compiling
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking, is_compiling
 from kornia.image.utils import _to_bcdhw, _to_bchw
 
 
@@ -139,7 +140,7 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -200,7 +201,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -264,7 +265,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     if isinstance(factor, float):
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     else:
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
     if factor.shape[-3] != 1:
@@ -305,7 +306,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     if isinstance(factor, float):
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
 
-    factor = factor.to(image.device, image.dtype)
+    factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -535,7 +536,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -593,7 +594,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -665,7 +666,7 @@ def adjust_brightness(
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -723,7 +724,7 @@ def adjust_brightness_accumulative(
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -837,7 +838,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
             raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # Reshape the per-sample threshold to broadcast over (C, H, W) rather than iterating the
         # tensor (`for x in thresholds` breaks torch.compile); the `where` below broadcasts identically.
-        thresholds = thresholds.to(input.device).to(input.dtype)
+        thresholds = _to_device_nonblocking(thresholds, input.device).to(input.dtype)
         thresholds = thresholds.view([-1] + [1] * (input.ndim - 1))
 
     return torch.where(input < thresholds, input, 1.0 - input)
@@ -926,7 +927,7 @@ def solarize(
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
             # Broadcast the per-sample scalar over (C, H, W) by reshaping instead of iterating the
             # tensor (`for x in additions` breaks the graph); numerically identical.
-            additions = additions.to(input.device).to(input.dtype)
+            additions = _to_device_nonblocking(additions, input.device).to(input.dtype)
             additions = additions.view([-1] + [1] * (input.ndim - 1))
         input = input + additions
         input = input.clamp(0.0, 1.0)
@@ -1085,12 +1086,16 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     input_shape = input.shape
     input = batched_input
 
-    if not isinstance(factor, torch.Tensor):
+    if isinstance(factor, (int, float)):
+        # Filled on the device: ``torch.as_tensor(..., device=cuda)`` copies from the host and waits for every
+        # queued kernel.
+        factor = _device_literal(factor, device=input.device, dtype=input.dtype)
+    elif not isinstance(factor, torch.Tensor):
         factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
     else:
         # Match the input's device/dtype (as adjust_brightness/contrast do). Augmentation
         # generators may sample the factor on a different device (e.g. CPU) than the image.
-        factor = factor.to(device=input.device, dtype=input.dtype)
+        factor = _to_device_nonblocking(factor, input.device, input.dtype)
 
     if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
         raise AssertionError(
@@ -1099,7 +1104,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         )
 
     kernel = (
-        torch.as_tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
+        _device_literal([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
         .view(1, 1, 3, 3)
         .repeat(input.size(1), 1, 1, 1)
         / 13

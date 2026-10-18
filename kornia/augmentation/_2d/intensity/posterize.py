@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance import posterize
 
 
@@ -98,4 +99,4 @@ class RandomPosterize(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         input = _clamp_unit_range(input)
-        return posterize(input, params["bits_factor"].to(input.device))
+        return posterize(input, _to_device_nonblocking(params["bits_factor"], input.device))

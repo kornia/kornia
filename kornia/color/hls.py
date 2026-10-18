@@ -23,6 +23,8 @@ from typing import ClassVar
 import torch
 from torch import nn
 
+from kornia.core.ops import _device_literal
+
 
 def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert an RGB image to HLS.
@@ -57,7 +59,12 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
+    # 3x1x1. Filled on the device in eager mode: ``torch.tensor(..., device=cuda)`` copies from the host and waits
+    # for every queued kernel. TorchScript, which cannot compile ``_constant_tensor``, keeps the host literal.
+    if torch.jit.is_scripting():
+        _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)
+    else:
+        _RGB2HSL_IDX = _device_literal([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)
 
     _img_max: tuple[torch.Tensor, torch.Tensor] = image.max(-3)
     maxc = _img_max[0]
@@ -123,7 +130,11 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
+    # 3x1x1, filled on the device in eager mode as in ``rgb_to_hls``.
+    if torch.jit.is_scripting():
+        _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)
+    else:
+        _HLS2RGB = _device_literal([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)
 
     im: torch.Tensor = image.unsqueeze(-4)
     h_ch: torch.Tensor = im[..., 0, :, :]

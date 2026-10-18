@@ -25,7 +25,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core.utils import is_compiling
+from kornia.core.utils import _to_device_nonblocking, is_compiling
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 from kornia.geometry.transform._crop import (
     _compiled_slice_resize,
@@ -41,7 +41,7 @@ def _one_pixel_axes(box: torch.Tensor, device: torch.device) -> torch.Tensor:
     Read from the box in its stored dtype: cast to a half-precision input's dtype first, neighbouring coordinates
     above 256 can round to one value in bfloat16 and make a two-pixel box look one pixel wide.
     """
-    box = box.to(device)
+    box = _to_device_nonblocking(box, device)
     return (box[:, 2] - box[:, 0]) == 0
 
 
@@ -165,11 +165,12 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             flags["resample"] == Resample.NEAREST
             or (not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC))
         ):
-            return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
-                input.shape[0], -1, -1
-            )
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            return _half_pixel_resize_transform(src, dst).expand(input.shape[0], -1, -1)
         if flags["cropping_mode"] in ("resample", "slice"):
-            src, dst = params["src"].to(input), params["dst"].to(input)
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
             transform: torch.Tensor = get_perspective_transform(src, dst)
             # A one-pixel crop or output axis makes the box vertices collinear, and the solve returns NaN or a
             # singular matrix. Corner-aligned resizing samples the crop's first pixel along that axis, which the
@@ -233,9 +234,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         # onto the canvas pixels after it. With zero padding, everything outside the crop is zero.
         if kwargs.get("padding_mode", flags["padding_mode"]) != "zeros" or output.shape[0] == 0:
             return output
-        one_pixel = _one_pixel_axes(params["src"], output.device) & self._gate(params).to(output.device)[:, None]
+        gate = _to_device_nonblocking(self._gate(params), output.device)
+        one_pixel = _one_pixel_axes(params["src"], output.device) & gate[:, None]
         # Integer pixel indices: in bfloat16 neighbouring indices above 256 round to the same value.
-        start = params["src"][:, 0].to(output.device).round().long()
+        start = _to_device_nonblocking(params["src"][:, 0], output.device).round().long()
         columns = torch.arange(output.shape[-1], device=output.device)
         rows = torch.arange(output.shape[-2], device=output.device)
         keep_columns = ~one_pixel[:, :1] | (columns == start[:, :1])

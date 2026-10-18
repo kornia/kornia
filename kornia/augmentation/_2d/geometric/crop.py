@@ -26,7 +26,7 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.base import _mixed_gate_shape_error
 from kornia.augmentation.utils.helpers import _constant_tensor, _pad_with_fill
 from kornia.constants import Resample
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat
@@ -223,7 +223,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         if is_exporting() or not isinstance(padding, torch.Tensor):
             # Recompute the canvas from the module flags, as ``precrop_padding`` does for the pixels.
             padding = _constant_tensor(tuple(self.compute_padding(tuple(input.shape))), dtype=torch.long)[None]
-        return padding[:, ::2].to(input)
+        return _to_device_nonblocking(padding[:, ::2], input.device, input.dtype)
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
@@ -238,8 +238,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            src = params["src"].to(input)
-            dst = params["dst"].to(input)
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
             transform = _crop_translation(src, dst)
 
             # Scale against the canvas represented by the effective replay parameters.
@@ -264,12 +264,12 @@ class RandomCrop(GeometricAugmentationBase2D):
                     transform[:, 1, 1] *= h_out / h
                 return transform
 
-            padding_size = padding_size.to(device=input.device)
+            padding_size = _to_device_nonblocking(padding_size, input.device)
             canvas = params.get("forward_input_shape")
             if isinstance(canvas, torch.Tensor) and input.shape[0] > 0:
                 # The recorded padded canvas: an inverse passes the crop output as ``input``, and its shape would
                 # lose the scale of an oversized crop. A forward call records the canvas it is given, so it agrees.
-                canvas = canvas.to(device=input.device)
+                canvas = _to_device_nonblocking(canvas, input.device)
                 padded_h = canvas[-2].expand(input.shape[0])
                 padded_w = canvas[-1].expand(input.shape[0])
             else:
@@ -337,7 +337,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             offset = self._padding_offset(input, params).to(transform)
             if not (self.p == 1.0 and self.p_batch == 1.0):
                 # Only selected matrices include padding. Keep skipped rows as identity.
-                applied = torch.atleast_1d(params["batch_prob"] > 0.5).to(offset)
+                applied = _to_device_nonblocking(
+                    torch.atleast_1d(params["batch_prob"] > 0.5), offset.device, offset.dtype
+                )
                 applied = applied if applied.shape[0] == transform.shape[0] else applied.any()
                 offset = offset * applied.reshape(-1, 1)
             transform = transform.clone()
@@ -413,7 +415,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             # The inverse matrix returns original coordinates. The image inverse still renders
             # onto forward_input_shape (the padded canvas), then removes its border below.
             transform = transform.clone()
-            transform[:, :2, 2] += params["padding_size"][:, ::2].to(transform)
+            transform[:, :2, 2] += _to_device_nonblocking(
+                params["padding_size"][:, ::2], transform.device, transform.dtype
+            )
         to_apply = self._gate(params)
         if not to_apply.any():
             return super().inverse_inputs(input, params, flags, transform, **kwargs)

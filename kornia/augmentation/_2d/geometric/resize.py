@@ -23,7 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core.utils import is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_exporting
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
 from kornia.geometry.transform._crop import _half_pixel_resize_transform
 from kornia.geometry.transform.affwarp import _side_to_image_size
@@ -90,17 +90,17 @@ class Resize(GeometricAugmentationBase2D):
         if flags["resample"] == Resample.NEAREST or (
             not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
         ):
-            return _half_pixel_resize_transform(params["src"].to(input), params["dst"].to(input)).expand(
-                input.shape[0], -1, -1
-            )
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            return _half_pixel_resize_transform(src, dst).expand(input.shape[0], -1, -1)
         # NOTE: a former `if params["output_size"] == input.shape[-2:]: return eye_like(...)`
         # short-circuit was dead code — comparing a tensor to a ``torch.Size`` falls back to
         # identity ``==`` and is *always* Python ``False``, so the branch never ran. It also
         # graph-broke torch.compile (a Python ``if`` on a would-be tensor). Dropped; the
         # perspective transform below already yields identity when src == dst, so behaviour is
         # byte-identical.
-        transform: torch.Tensor = torch.as_tensor(
-            get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
+        transform: torch.Tensor = _to_device_nonblocking(
+            get_perspective_transform(params["src"], params["dst"]), input.device, input.dtype
         )
         return transform.expand(input.shape[0], -1, -1)
 
