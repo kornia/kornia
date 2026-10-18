@@ -89,6 +89,21 @@ class TestDexiNed(BaseTester):
         # kornia.filters.dexined re-exports the network instead of keeping a second copy of it.
         assert FilterDexiNed is DexiNed
 
+    def test_a_model_pickled_from_the_filters_path_loads(self):
+        import pickle
+
+        import kornia.filters.dexined
+
+        # A whole model pickled from the old module names its classes there, the private blocks included: pickling
+        # every class under that module name and loading it back resolves each name in kornia.filters.dexined.
+        model = DexiNed(pretrained=False).eval()
+        classes = {type(m) for m in model.modules() if type(m).__module__ == "kornia.models.dexined"}
+        assert {cls.__name__ for cls in classes} >= {"DexiNed", "_DenseBlock", "_DenseLayer"}
+        for cls in classes:
+            # Protocol 0 writes the module name as a text line, so it can be rewritten in place.
+            pickled = pickle.dumps(cls, protocol=0).replace(b"kornia.models.dexined", b"kornia.filters.dexined")
+            assert pickle.loads(pickled) is cls
+
 
 class TestDexiNedLoadFromFile:
     """``load_from_file`` reads a local file itself; the hub cache is keyed by base name (#5477)."""

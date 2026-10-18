@@ -18,7 +18,8 @@
 """DexiNed under its old import path.
 
 The network lives in :mod:`kornia.models.dexined`. This module re-exports it and its building blocks, so
-``kornia.filters.dexined.DexiNed`` is the same class as :class:`kornia.models.dexined.DexiNed`.
+``kornia.filters.dexined.DexiNed`` is the same class as :class:`kornia.models.dexined.DexiNed`. The private blocks
+are re-exported too: a whole model pickled with ``torch.save`` from this module names them.
 """
 
 from kornia.models.dexined import (  # noqa: F401
@@ -27,6 +28,8 @@ from kornia.models.dexined import (  # noqa: F401
     DoubleConvBlock,
     SingleConvBlock,
     UpConvBlock,
+    _DenseBlock,
+    _DenseLayer,
     weight_init,
 )
 from kornia.models.dexined import _url as url  # noqa: F401
