@@ -21,7 +21,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.core.ops import _stack_without_autocast, eye_like
+from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
 
@@ -68,16 +68,10 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
     # Filled on the device in eager mode: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued
-    # kernels; TorchScript keeps the host literal. One fill per value rather than ``_constant_tensor``: the centres come
-    # from the sizes and stay symbolic under a dynamic ``torch.compile``, where merging equal values would add guards.
+    # kernels. TorchScript, which cannot compile ``_device_literal``, keeps the host literal.
     if torch.jit.is_scripting():
         return torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
-    return _stack_without_autocast(
-        [
-            torch.full((), center_x, device=tensor.device, dtype=tensor.dtype),
-            torch.full((), center_y, device=tensor.device, dtype=tensor.dtype),
-        ]
-    )
+    return _device_literal([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
@@ -91,9 +85,7 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     # Filled on the device in eager mode, as in ``_compute_tensor_center``.
     if torch.jit.is_scripting():
         return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
-    return _stack_without_autocast(
-        [torch.full((), c, device=tensor.device, dtype=tensor.dtype) for c in (center_x, center_y, center_z)]
-    )
+    return _device_literal([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:

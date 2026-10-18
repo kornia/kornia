@@ -21,7 +21,7 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core.ops import _constant_tensor
+from kornia.core.ops import _device_literal
 from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance import invert
 
@@ -87,5 +87,5 @@ class RandomInvert(IntensityAugmentationBase2D):
             return invert(input, _to_device_nonblocking(max_val, input.device, input.dtype))
         if isinstance(max_val, (int, float)):
             # Filled on the device: ``torch.as_tensor(..., device=cuda)`` copies from the host and waits.
-            return invert(input, _constant_tensor(max_val, device=input.device, dtype=input.dtype))
+            return invert(input, _device_literal(max_val, device=input.device, dtype=input.dtype))
         return invert(input, torch.as_tensor(max_val, device=input.device, dtype=input.dtype))

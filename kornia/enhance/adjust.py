@@ -34,7 +34,7 @@ from kornia.core.check import (
     are_checks_enabled,
 )
 from kornia.core.exceptions import TypeCheckError
-from kornia.core.ops import _constant_tensor
+from kornia.core.ops import _device_literal
 from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking, is_compiling
 from kornia.image.utils import _to_bcdhw, _to_bchw
 
@@ -1089,7 +1089,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     if isinstance(factor, (int, float)):
         # Filled on the device: ``torch.as_tensor(..., device=cuda)`` copies from the host and waits for every
         # queued kernel.
-        factor = _constant_tensor(factor, device=input.device, dtype=input.dtype)
+        factor = _device_literal(factor, device=input.device, dtype=input.dtype)
     elif not isinstance(factor, torch.Tensor):
         factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
     else:
@@ -1104,7 +1104,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         )
 
     kernel = (
-        _constant_tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
+        _device_literal([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
         .view(1, 1, 3, 3)
         .repeat(input.size(1), 1, 1, 1)
         / 13

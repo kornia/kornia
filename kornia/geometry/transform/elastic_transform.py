@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.ops import _constant_tensor
+from kornia.core.ops import _device_literal
 from kornia.core.utils import _torch_grid_sample
 from kornia.filters import filter2d_separable
 from kornia.filters.kernels import get_gaussian_kernel1d
@@ -103,7 +103,7 @@ def elastic_transform2d(
     if isinstance(sigma, torch.Tensor):
         sigma = sigma.expand(2)[None, ...]
     elif all(isinstance(s, (int, float)) for s in sigma):
-        sigma = _constant_tensor([sigma], device=device, dtype=dtype)
+        sigma = _device_literal([sigma], device=device, dtype=dtype)
     else:
         sigma = torch.tensor([sigma], device=device, dtype=dtype)
     ksize_y, ksize_x = kernel_size
@@ -119,8 +119,8 @@ def elastic_transform2d(
         alpha_x = alpha[0]
         alpha_y = alpha[1]
     elif all(isinstance(a, (int, float)) for a in alpha):
-        alpha_x = _constant_tensor(alpha[0], device=device, dtype=dtype)
-        alpha_y = _constant_tensor(alpha[1], device=device, dtype=dtype)
+        alpha_x = _device_literal(alpha[0], device=device, dtype=dtype)
+        alpha_y = _device_literal(alpha[1], device=device, dtype=dtype)
     else:
         alpha_x = torch.tensor(alpha[0], device=device, dtype=dtype)
         alpha_y = torch.tensor(alpha[1], device=device, dtype=dtype)

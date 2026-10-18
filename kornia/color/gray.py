@@ -24,7 +24,7 @@ from torch import nn
 
 from kornia.color.rgb import bgr_to_rgb
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
-from kornia.core.ops import _constant_tensor
+from kornia.core.ops import _device_literal
 from kornia.core.utils import _to_device_nonblocking
 
 
@@ -112,7 +112,7 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
             if torch.jit.is_scripting():
                 rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
             else:
-                rgb_weights = _constant_tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+                rgb_weights = _device_literal([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")
     else:

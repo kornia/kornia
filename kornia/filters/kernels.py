@@ -23,6 +23,7 @@ from typing import Optional, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
 
 
 def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False) -> None:
@@ -183,9 +184,8 @@ def gaussian(
 
     mean = float(window_size // 2) if mean is None else mean
     if isinstance(mean, (int, float)):
-        # Filled on the device, so a CUDA ``sigma`` gets no host copy that waits for queued work. ``torch.full`` takes
-        # the window centre as it is, also while it is a symbolic size under a dynamic ``torch.compile``.
-        mean = torch.full((1, 1), float(mean), device=sigma.device, dtype=sigma.dtype)
+        # Filled on the device in eager mode, so a CUDA ``sigma`` gets no host copy that waits for queued work.
+        mean = _device_literal([[float(mean)]], device=sigma.device, dtype=sigma.dtype)
 
     KORNIA_CHECK_IS_TENSOR(mean)
     KORNIA_CHECK_SHAPE(mean, ["B", "1"])

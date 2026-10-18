@@ -237,3 +237,19 @@ def test_dynamo_shape_derived_literals_compile_once(name, device, torch_optimize
         x = torch.rand(2, 3, size, size + 2, size + 4, device=device)
         assert torch.equal(compiled(x), op(x))
     assert counter.frame_count == 1
+
+
+def test_dynamo_literals_stay_graph_constants(device, torch_optimizer, optimizer_backend) -> None:
+    # Under torch.compile a literal stays a constant of the graph, which Inductor folds into its consumer: the
+    # compiled grayscale is one kernel, as before. Filling the weights on the device would add a stack kernel per call.
+    if optimizer_backend != "inductor" or device.type != "cuda":
+        pytest.skip("counts the CUDA kernels of an Inductor graph")
+    x = torch.rand(8, 3, 64, 64, device=device)
+    compiled = torch_optimizer(K.RandomGrayscale(p=1.0))
+    compiled(x)
+    torch.cuda.synchronize()
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]) as prof:
+        compiled(x)
+        torch.cuda.synchronize()
+    kernels = [e.name for e in prof.events() if e.device_type == torch.autograd.DeviceType.CUDA]
+    assert len(kernels) == 1, kernels

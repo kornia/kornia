@@ -27,7 +27,7 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.ops import _constant_tensor
+from kornia.core.ops import _device_literal
 from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -45,7 +45,7 @@ def _patch_indices(indices: Union[List[int], torch.Tensor], device: torch.device
 
     Indexing a CUDA tensor with a Python list copies the list to the device and waits for every queued kernel.
     ``forward_parameters`` stores evenly spaced indices, which ``torch.arange`` builds on the device; any other list is
-    filled there value by value. Both index exactly the patches the list names.
+    a device literal. Both index exactly the patches the list names.
     """
     if isinstance(indices, torch.Tensor):
         return _to_device_nonblocking(indices, device)
@@ -54,7 +54,7 @@ def _patch_indices(indices: Union[List[int], torch.Tensor], device: torch.device
         step = values[1] - values[0]
         if step > 0 and all(v == values[0] + k * step for k, v in enumerate(values)):
             return torch.arange(values[0], values[-1] + 1, step, device=device)
-    return _constant_tensor(values, device=device, dtype=torch.long)
+    return _device_literal(values, device=device, dtype=torch.long)
 
 
 class PatchSequential(ImageSequential):

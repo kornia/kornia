@@ -23,6 +23,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
+from kornia.core.utils import is_compiling
 
 
 def _is_numpy_bool(n: Any) -> bool:
@@ -208,3 +209,19 @@ def _stack_without_autocast(values: List[torch.Tensor]) -> torch.Tensor:
         with torch.autocast(device_type, enabled=False):
             return torch.stack(values)
     return torch.stack(values)
+
+
+def _device_literal(
+    data: Union[float, List[Any], Tuple[Any, ...]], *, device: Union[str, torch.device, None], dtype: torch.dtype
+) -> torch.Tensor:
+    """Return ``torch.tensor(data, device=device, dtype=dtype)`` for a literal of Python numbers, without a host sync.
+
+    An eager call fills the literal on the device with :func:`_constant_tensor`: ``torch.tensor(..., device=cuda)``
+    copies it from the host and waits for every queued kernel. Under ``torch.compile`` and ``torch.export`` the literal
+    stays ``torch.tensor(..., device=device)``, as before: capture makes it a constant of the graph on ``device``, which
+    costs no copy at run time and which Inductor folds into its consumer, where filled values would add kernels. Both
+    round the same Python numbers to ``dtype``, so the values are the same.
+    """
+    if is_compiling():
+        return torch.tensor(data, device=device, dtype=dtype)
+    return _constant_tensor(data, device=device, dtype=dtype)
