@@ -371,6 +371,9 @@ class TestConventionImageSequential(BaseTester):
             ([7.0, 2.0, 1.0], True, False, False),
             ([7, 2, 1, 4], True, True, False),
             ([2.0, 1.0, 1.0, 1.0], 4, True, False),
+            ([7, 0, 3, 1], 3, True, False),
+            ([7, 0, 3, 1], True, True, True),
+            ([7, 2, 1, 4], 5, True, True),
             ([0.7, 0.2, 0.1], 2, False, True),
         ],
     )
@@ -379,7 +382,8 @@ class TestConventionImageSequential(BaseTester):
         self, weights, random_apply, with_mix, repeats, container, device, dtype
     ):
         # A count the nonzero weights can fill is drawn without repetition, also when a mix augmentation is certain to
-        # take the last place, as with random_apply=True; only a count above the sum of the weights repeats.
+        # take the last place, as with random_apply=True; a count they cannot fill, or one above the sum of the weights,
+        # repeats. A mix augmentation is applied at most once either way.
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         members = [K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), K.RandomInvert(p=1.0)]
         if with_mix:
@@ -392,8 +396,32 @@ class TestConventionImageSequential(BaseTester):
             seq(x)
             names = [p.name for p in seq._params]
             assert len(names) == count
+            assert sum(name.startswith("RandomMixUpV2") for name in names) <= 1
             repeated += len(set(names)) < len(names)
         assert (repeated > 0) == repeats
+
+    def test_random_apply_uncertain_mix_insertion_draws_no_member_of_weight_0_6069(self):
+        # Three places from four ordinary members and a mix are not certain to include the mix, so a draw from two
+        # nonzero weights repeats them; when no mix is inserted, no member of weight 0 fills the third place.
+        seq = K.ImageSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomInvert(p=1.0),
+            K.RandomGrayscale(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=3,
+            random_apply_weights=[7.0, 0.0, 0.0, 3.0, 1.0],
+        )
+        without_mix = 0
+        for seed in range(40):
+            torch.manual_seed(seed)
+            children, mix_added = seq.get_random_forward_sequence()
+            names = [name for name, _ in children]
+            assert len(names) == 3
+            if not mix_added:
+                without_mix += 1
+                assert set(names) <= {"RandomHorizontalFlip_0", "RandomGrayscale_3"}
+        assert without_mix > 0
 
     def test_random_apply_without_mix_never_draws_a_mix_member_6069(self):
         # Four places from three nonzero ordinary weights summing to 10 were filled with the mix member, whose weight
