@@ -17,9 +17,6 @@
 from __future__ import annotations
 
 import math
-import sys
-import warnings
-from types import FrameType
 from typing import Callable, Optional, Union
 
 import torch
@@ -28,7 +25,7 @@ from torch.nn import functional as F
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.utils import _in_torch_or_kornia, is_compiling
+from kornia.core.utils import _warn_at_caller, is_compiling
 
 __all__ = ["NaFlex"]
 
@@ -210,16 +207,3 @@ class NaFlex(nn.Module):
                 "NaFlex (which also silences this warning), or make the patch embedding return (B, C, h, w)."
             )
         return side, side
-
-
-def _warn_at_caller(message: str) -> None:
-    """Warn with a ``UserWarning`` attributed to the first frame outside kornia and torch.
-
-    NaFlex warns from inside its ``forward``, which ``nn.Module.__call__`` reaches through torch frames and which may
-    run inside another kornia model, so no fixed ``stacklevel`` names the line that needs ``patch_size``.
-    """
-    level = 2  # warnings.warn's stacklevel for the frame that called this function
-    frame: Optional[FrameType] = sys._getframe(1)
-    while frame is not None and _in_torch_or_kornia(frame):
-        frame, level = frame.f_back, level + 1
-    warnings.warn(message, UserWarning, stacklevel=level if frame is not None else 2)

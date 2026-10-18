@@ -21,9 +21,7 @@ import contextlib
 import io
 import itertools
 import os
-import sys
 import tempfile
-import warnings
 from typing import (
     Any,
     ClassVar,
@@ -41,6 +39,7 @@ from kornia.core.exceptions import ValueCheckError
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
+from kornia.core.utils import _warn_at_caller
 
 # The opset ``ONNXExportMixin.to_onnx`` requests: the one the dynamo exporter (the ``torch.onnx.export`` default from
 # torch 2.9) builds natively, so no version conversion runs. The legacy TorchScript exporter emits it directly as well.
@@ -118,19 +117,6 @@ def _io_map_pairs(io_maps: Any, joints: int, models: int) -> list[list[tuple[Any
             )
         pairs_per_joint.append(pairs)
     return pairs_per_joint
-
-
-def _warn_at_caller(message: str) -> None:
-    """Warn with a ``UserWarning`` attributed to the first frame outside kornia.
-
-    ``ONNXSequential`` is built directly and through ``HFONNXComunnityModel`` and its subclasses, so no fixed
-    ``stacklevel`` names the caller's line.
-    """
-    level = 2  # warnings.warn's stacklevel for the frame that called this function
-    frame = sys._getframe(1)
-    while frame is not None and frame.f_globals.get("__name__", "").partition(".")[0] == "kornia":
-        frame, level = frame.f_back, level + 1
-    warnings.warn(message, UserWarning, stacklevel=level if frame is not None else 2)
 
 
 def _warn_on_joint_element_types(
