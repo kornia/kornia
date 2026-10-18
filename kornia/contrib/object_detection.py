@@ -323,6 +323,11 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         classes_to_keep: a 1-d list of classes to keep. If None, keep all classes.
         filter_as_zero: whether to filter boxes as zero.
 
+    Note:
+        Without ``filter_as_zero``, ONNX export produces one output tensor per image, so the batch must be fixed.
+        :meth:`to_onnx` defaults to a batch of one image. Use ``filter_as_zero=True`` to export a dynamic batch
+        as one ``(B, D, 6)`` tensor.
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
@@ -407,6 +412,69 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             filtered_boxes_list.append(valid_boxes)
 
         return filtered_boxes_list
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        input_shape: Optional[list[int]] = None,
+        output_shape: Optional[list[int]] = None,
+        pseudo_shape: Optional[list[int]] = None,
+        model: Optional[nn.Module] = None,
+        save: bool = True,
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
+        **kwargs: Any,
+    ) -> onnx.ModelProto:
+        """Export the filter with a fixed batch for per-image list outputs.
+
+        Args:
+            onnx_name: The output file name. Defaults to ``Kornia-BoxFiltering.onnx``.
+            input_shape: The ``[B, D, 6]`` input shape, with ``-1`` for a dynamic dimension. Defaults to
+                ``[1, -1, 6]`` without ``filter_as_zero`` and ``[-1, -1, 6]`` with it.
+            output_shape: The output shape used by the legacy TorchScript exporter. Defaults to ``[-1, 6]``
+                without ``filter_as_zero`` and ``[-1, -1, 6]`` with it. The dynamo exporter infers output shapes.
+            pseudo_shape: The dummy input shape used for tracing. When ``input_shape`` is omitted, its batch
+                is set to 1 for per-image list outputs. Explicit input and pseudo shapes must agree on fixed dimensions.
+            model: The model to export. Defaults to this filter.
+            save: Whether to save the exported model to ``onnx_name``.
+            additional_metadata: Additional metadata to add to the ONNX model.
+            **kwargs: Additional arguments to :func:`torch.onnx.export`.
+
+        Returns:
+            The exported ONNX model.
+
+        Raises:
+            ValueError: If ``input_shape`` requests a dynamic batch without ``filter_as_zero``.
+
+        Note:
+            The exporters flatten the Python list into a fixed number of graph outputs. Without ``filter_as_zero``,
+            the batch is therefore fixed at 1 by default, or at the batch specified in ``input_shape``. ONNX Runtime
+            rejects other batch sizes. Each image's number of retained detections remains dynamic.
+            Use ``filter_as_zero=True`` for one ``(B, D, 6)`` output with a dynamic batch.
+
+        """
+        if not self.filter_as_zero:
+            if input_shape is None:
+                input_shape = [1, *self.ONNX_DEFAULT_INPUTSHAPE[1:]]
+                if pseudo_shape is not None and len(pseudo_shape) == len(input_shape):
+                    # An example batch must not override the default fixed batch or conflict with it in the mixin.
+                    pseudo_shape = [1, *pseudo_shape[1:]]
+            elif input_shape and input_shape[0] == -1:
+                raise ValueError(
+                    "BoxFiltering returns one ONNX output per image without filter_as_zero and requires a fixed batch. "
+                    "Fix the batch in input_shape, or use filter_as_zero=True to export a dynamic batch."
+                )
+            if output_shape is None:
+                output_shape = [-1, 6]
+        return super().to_onnx(
+            onnx_name=onnx_name,
+            input_shape=input_shape,
+            output_shape=output_shape,
+            pseudo_shape=pseudo_shape,
+            model=model,
+            save=save,
+            additional_metadata=additional_metadata,
+            **kwargs,
+        )
 
     def _create_dummy_input(
         self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
