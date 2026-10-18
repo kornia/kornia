@@ -334,6 +334,58 @@ def test_detector_with_a_custom_per_image_post_processor_exports_one_image():
     assert_close(torch.from_numpy(detections), detector(images)[0])
 
 
+class _BatchedDetections(nn.Module):
+    """``_PerImageDetections`` as one ``(B, Q, 6)`` tensor, which follows any batch."""
+
+    def forward(self, logits: torch.Tensor, boxes: torch.Tensor, sizes: torch.Tensor) -> torch.Tensor:
+        scores, labels = logits.max(-1, keepdim=True)
+        return torch.cat([labels.to(boxes), scores, boxes], -1)
+
+
+_DYNAMIC_BATCH = [
+    pytest.param({"dynamo": False, "dynamic_axes": {"input": {0: "batch"}}}, id="torchscript"),
+    pytest.param(
+        {"dynamo": True, "dynamic_shapes": ({0: "batch"},)},
+        # conftest.py deselects IDs containing "dynamo" unless KORNIA_TEST_OPTIMIZER is set.
+        id="torch_export",
+        marks=[
+            pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+            pytest.mark.skipif(torch_version_lt(2, 9, 0), reason="to_onnx uses dynamic_shapes from torch 2.9"),
+        ],
+    ),
+]
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("override", _DYNAMIC_BATCH)
+def test_detector_with_per_image_detections_rejects_a_dynamic_batch_override_6111(override):
+    """A caller's dynamic batch cannot reach a per-image list export, which would return one image's detections."""
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxscript")
+
+    detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), _PerImageDetections())
+    with pytest.raises(ValueError, match="confidence_filtering=False"):
+        detector.to_onnx(image_size=32, save=False, **override)
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("override", _DYNAMIC_BATCH)
+def test_detector_with_batched_detections_accepts_a_dynamic_batch_override_6111(override):
+    """A detector whose output is one tensor exports the caller's dynamic batch and runs at another batch size."""
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    pytest.importorskip("onnxscript")
+
+    detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), _BatchedDetections())
+    exported = detector.to_onnx(image_size=32, save=False, **override)
+    assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_param
+
+    images = torch.rand(3, 3, 32, 32, generator=torch.Generator().manual_seed(0))
+    session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
+    (detections,) = session.run(None, {"input": images.numpy()})
+    assert_close(torch.from_numpy(detections), detector(images))
+
+
 class _NormalisedDetections(_ScoredDetections):
     """``_ScoredDetections`` behind a batch norm, whose statistics a forward pass in training mode would update."""
 

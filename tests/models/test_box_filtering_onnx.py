@@ -137,3 +137,80 @@ class TestBoxFilteringONNX(BaseTester):
             boxes = _detections(batch, count)
             (actual,) = session.run(None, {"input": boxes.numpy()})
             self.assert_close(torch.from_numpy(actual), module(boxes))
+
+
+# A caller's batch override, by exporter: the TorchScript exporter reads ``dynamic_axes``, the dynamo exporter
+# ``dynamic_shapes``. The ``Dim`` hints are built in the test, since ``Dim.AUTO`` is missing from older torch releases.
+_DYNAMO_MARKS = [
+    pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+    pytest.mark.skipif(torch_version_lt(2, 9, 0), reason="to_onnx uses dynamic_shapes from torch 2.9"),
+]
+_BATCH_OVERRIDES = [
+    pytest.param(False, {"input": {0: "batch"}}, id="torchscript_axes_mapping"),
+    pytest.param(False, {"input": [0]}, id="torchscript_axes_list"),
+    pytest.param(True, ({0: "batch"},), id="torch_export_shapes_tuple", marks=_DYNAMO_MARKS),
+    pytest.param(True, {"boxes": {0: "batch"}}, id="torch_export_shapes_mapping", marks=_DYNAMO_MARKS),
+    pytest.param(True, (["batch", None, None],), id="torch_export_shapes_per_axis", marks=_DYNAMO_MARKS),
+    pytest.param(True, "AUTO", id="torch_export_dim_auto", marks=_DYNAMO_MARKS),
+    pytest.param(True, "DYNAMIC", id="torch_export_dim_dynamic", marks=_DYNAMO_MARKS),
+]
+
+
+def _override(dynamo, spec):
+    if dynamo:
+        if isinstance(spec, str):
+            spec = ({0: getattr(torch.export.Dim, spec)},)
+        return {"dynamo": True, "dynamic_shapes": spec}
+    return {"dynamo": False, "dynamic_axes": spec}
+
+
+class TestBoxFilteringONNXBatchOverride(BaseTester):
+    """A caller's dynamic_axes or dynamic_shapes cannot give a per-image list export a dynamic batch (#6111)."""
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(("dynamo", "spec"), _BATCH_OVERRIDES)
+    def test_list_export_rejects_a_dynamic_batch_override_6111(self, dynamo, spec, tmp_path):
+        """Each form of the override raises after the export, before the file is written."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        # Classes to keep avoid the class mask that torch 2.14's dynamo exporter cannot translate (#6112).
+        module = BoxFiltering(confidence_threshold=0.5, classes_to_keep=[0, 1, 2])
+        path = tmp_path / "filter.onnx"
+
+        with pytest.raises(ValueError, match="filter_as_zero=True"):
+            module.to_onnx(onnx_name=str(path), **_override(dynamo, spec))
+        assert not path.exists()
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(("dynamo", "spec"), _BATCH_OVERRIDES)
+    def test_filter_as_zero_accepts_a_dynamic_batch_override_6111(self, dynamo, spec):
+        """The tensor output follows any batch, so the same override exports a dynamic batch."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        module = BoxFiltering(confidence_threshold=0.5, classes_to_keep=[0, 1, 2], filter_as_zero=True)
+
+        exported = module.to_onnx(save=False, **_override(dynamo, spec))
+
+        assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_param
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        ("dynamo", "spec"),
+        [
+            pytest.param(False, {"input": {1: "detections"}}, id="torchscript_detections_only"),
+            pytest.param(True, "STATIC", id="torch_export_dim_static", marks=_DYNAMO_MARKS),
+        ],
+    )
+    def test_list_export_accepts_an_override_with_a_fixed_batch_6111(self, dynamo, spec):
+        """An override that keeps the batch fixed is not rejected: the graph decides, not the keyword's form."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        if dynamo:
+            spec = ({0: torch.export.Dim.STATIC(), 1: torch.export.Dim("detections")},)
+        module = BoxFiltering(confidence_threshold=0.5, classes_to_keep=[0, 1, 2])
+
+        exported = module.to_onnx(save=False, **_override(dynamo, spec))
+
+        dims = exported.graph.input[0].type.tensor_type.shape.dim
+        assert dims[0].dim_value == 1
+        assert dims[1].dim_param

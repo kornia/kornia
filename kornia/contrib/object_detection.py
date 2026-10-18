@@ -279,7 +279,9 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
             exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
             the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
-            Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size.
+            Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size. A
+            ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a
+            ``ValueError`` after the export, before anything is saved.
 
             Without the pre- and post-processor, a model that declares ``ONNX_OUTPUT_NAMES``, as
             :class:`~kornia.models.rt_detr.RTDETR` does (``pred_logits`` and ``pred_boxes``), has its outputs exported
@@ -319,6 +321,11 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             additional_metadata=additional_metadata,
             **kwargs,
         )
+
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        if module is not self or not _returns_detections_per_image(self, dummy_input):
+            return None
+        return "Build an RT-DETR detector with confidence_filtering=False to export a dynamic batch."
 
     def compile(
         self,
@@ -470,7 +477,8 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             The exported ONNX model.
 
         Raises:
-            ValueError: If ``input_shape`` marks the batch ``-1`` without ``filter_as_zero``.
+            ValueError: If ``input_shape`` marks the batch ``-1`` without ``filter_as_zero``, or a ``dynamic_axes``
+                or ``dynamic_shapes`` argument makes the exported batch dynamic without it.
 
         Note:
             The exporters flatten the Python list into a fixed number of graph outputs. Without ``filter_as_zero``,
@@ -499,6 +507,11 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             additional_metadata=additional_metadata,
             **kwargs,
         )
+
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        if not isinstance(module, BoxFiltering) or module.filter_as_zero:
+            return None
+        return "Use filter_as_zero=True to export a dynamic batch as one (B, D, 6) output."
 
     def _create_dummy_input(
         self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
