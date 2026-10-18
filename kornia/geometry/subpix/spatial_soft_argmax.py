@@ -694,13 +694,23 @@ def _scale_to_unit_hessian(
     callers' masks, which then spreads to every pixel. Scaled, the largest Hessian magnitude is about 1. Cramer's shifts
     do not change when H and the right-hand side are scaled together, and a power of two scales every product exactly,
     so wherever the unscaled solve neither underflows nor overflows, the shifts and the ``solved`` mask stay the same,
-    bit for bit.
+    bit for bit. The factor is capped so that the right-hand side stays below ``2**64``: a tiny Hessian next to a
+    large finite right-hand side would otherwise scale it to inf.
     """
-    magnitude = torch.stack((dxx.abs(), dyy.abs(), dss.abs(), dxy.abs(), dxs.abs(), dys.abs())).amax(0).detach()
-    usable = torch.isfinite(magnitude) & (magnitude > 0)
+
+    def _exponent(*entries: torch.Tensor) -> torch.Tensor:
+        magnitude = torch.stack([t.abs() for t in entries]).amax(0).detach()
+        usable = torch.isfinite(magnitude) & (magnitude > 0)
+        exponent = torch.floor(torch.log2(torch.where(usable, magnitude, torch.ones_like(magnitude))))
+        # An unusable magnitude imposes no cap on the right-hand side.
+        return torch.where(usable, exponent, torch.full_like(exponent, -math.inf))
+
     # The largest exponent whose power of two and its reciprocal are both normal numbers: 126 in float32.
-    limit = -math.log2(torch.finfo(magnitude.dtype).tiny)
-    exponent = torch.floor(torch.log2(torch.where(usable, magnitude, torch.ones_like(magnitude)))).clamp(-limit, limit)
+    limit = -math.log2(torch.finfo(dxx.dtype).tiny)
+    hessian = _exponent(dxx, dyy, dss, dxy, dxs, dys)
+    hessian = torch.where(torch.isfinite(hessian), hessian, torch.zeros_like(hessian))
+    # 2**-exponent scales max |H| to [1, 2), and 2**(63 - exponent_r) keeps max |r| below 2**64.
+    exponent = torch.maximum(hessian, _exponent(r0, r1, r2) - 63).clamp(-limit, limit)
     # 2**-exponent. exp2 of a negative integer is one ulp below its power of two on MPS, and exp2 of a non-negative
     # integer and its reciprocal are exact: build the factor from those.
     power = torch.exp2(exponent.abs())
@@ -747,6 +757,8 @@ def _solve_cramer_sym3x3_cuda(
     scale = system[:, :6].abs().amax(1, keepdim=True)
     solved = det.abs() > eps * scale * scale * scale
     shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
+    # An unsolved shift is 0, as in the scalar solve.
+    shifts = torch.where(solved, shifts, torch.zeros_like(shifts))
     sx, sy, ss = shifts.unbind(1)
     return sx, sy, ss, solved[:, 0]
 
@@ -799,8 +811,7 @@ def _solve_cramer_sym3x3(
 
     Returns:
         (sx, sy, ss, solved) where ``solved`` is a bool mask for well-conditioned
-        systems (``|det| > eps * m**3``).  Outputs for unsolved entries are numerically
-        meaningless and should be discarded by the caller.
+        systems (``|det| > eps * m**3``). The shifts of an unsolved system are 0.
     """
     # The packed solve indexes one batch dimension, while the scalar code below
     # is rank-agnostic. Dispatch only where the two agree, so a wider caller
@@ -832,6 +843,9 @@ def _solve_cramer_sym3x3(
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
     sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
     ss = (dxx * (dyy * r2 - r1 * dys) - dxy * (dxy * r2 - r1 * dxs) + r0 * cf02) / safe_det
+    # An unsolved shift is 0, not the numerator: on the scaled system that can exceed float16's range, and the callers
+    # multiply it by the gradient before masking, where an inf would make the backward NaN.
+    sx, sy, ss = (torch.where(solved, t, torch.zeros_like(t)) for t in (sx, sy, ss))
 
     if in_dtype == torch.float16:
         sx, sy, ss = sx.to(in_dtype), sy.to(in_dtype), ss.to(in_dtype)

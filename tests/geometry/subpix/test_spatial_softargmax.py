@@ -1343,6 +1343,39 @@ class TestPackedQuadraticFit(BaseTester):
         assert bool(torch.isfinite(grad).all())
         self.assert_close(grad, grad_ref * 2.0**50, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    @pytest.mark.parametrize(
+        ("system", "solve_dtype"),
+        [
+            # A tiny Hessian next to a large finite right-hand side: scaling H to about 1 would take r0 = 2**70 to
+            # 2**130, inf in float32, so the factor is capped by the right-hand side.
+            ((0.0, 2.0**-60, 2.0**-60, 0.0, 0.0, 0.0, 2.0**70, 0.0, 0.0), torch.float32),
+            # Singular in float16: on the scaled system the numerator is -2**19, beyond float16's range, where the
+            # unscaled one rounded to 0, so an unsolved shift is returned as 0.
+            ((0.0, 2.0**-19, 2.0**-19, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0), torch.float16),
+        ],
+        ids=["large-rhs-float32", "singular-float16"],
+    )
+    def test_cramer_unsolved_system_is_zero_with_a_finite_backward(self, device, system, solve_dtype, solver):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if solver == "_solve_cramer_sym3x3_cuda" and solve_dtype != torch.float32:
+            pytest.skip("the packed solve is dispatched only for float32/float64")
+        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
+            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
+        if solve_dtype == torch.float16 and device.type == "mps":
+            pytest.skip("checked on CPU and CUDA")
+        entries = [torch.tensor([v], device=device, dtype=solve_dtype, requires_grad=True) for v in system]
+        sx, sy, ss, solved = getattr(subpix, solver)(*entries)
+        assert not bool(solved.any())
+        assert torch.stack([sx, sy, ss]).eq(0).all()
+        # The callers form gradient * shift for every row before they keep the solved ones (``gds_u`` in
+        # conv_quad_interp3d): a non-finite unsolved shift would turn the zero gradient of the dropped row into NaN.
+        gradient = torch.ones(1, device=device, dtype=solve_dtype, requires_grad=True)
+        kept = torch.where(solved, gradient * sx, torch.zeros_like(sx))
+        grads = torch.autograd.grad(kept.sum() + sy.sum() + ss.sum(), [*entries, gradient])
+        assert all(bool(torch.isfinite(g).all()) for g in grads)
+
     @pytest.mark.parametrize("count", [0, 19])
     def test_patch_derivatives(self, device, dtype, count):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
