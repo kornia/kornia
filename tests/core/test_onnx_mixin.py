@@ -85,6 +85,56 @@ class TestONNXExportMixin(BaseTester):
             model.to_onnx(save=False, **_RGB)
         assert [m.training for m in (model, *model)] == [True, False, True]
 
+    @staticmethod
+    def _cached_tree():
+        # Every image module caches its last output for ``show()`` / ``save()``: a nested ``ImageModule`` through
+        # ``_store_output_image``, an ``AugmentationSequential`` by writing the attribute itself.
+        import kornia.augmentation as K
+        from kornia.core import ImageModule
+
+        class _Child(ImageModule):
+            def __init__(self):
+                super().__init__()
+                self.conv = nn.Conv2d(3, 3, 1)
+
+            def forward(self, x):
+                return self.conv(x)
+
+        child, aug = _Child(), K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0))
+        model = ImageSequential(child, aug, nn.Identity())
+        model(torch.rand(1, 3, 8, 8))
+        fresh = ImageSequential(nn.Identity())  # never called: its cache is None
+        return ImageSequential(model, fresh), [model, child, aug, fresh]
+
+    # Not "dynamo" in the ids: conftest deselects every test whose name contains it unless an optimizer is set.
+    @pytest.mark.parametrize("dynamo", [True, False], ids=["default-exporter", "legacy-exporter"])
+    def test_export_keeps_every_output_cache(self, dynamo):
+        # The legacy exporter runs the module on the dummy input outside ``is_exporting()``: each image module in the
+        # tree used to cache the dummy's (2, 3, 4, 4) output, so ``show()`` rendered noise after an export.
+        if dynamo and not torch_version_ge(2, 9, 0):
+            pytest.skip("the default exporter below torch 2.9 is the legacy one")
+        outer, modules = self._cached_tree()
+        before = [m.__dict__["_output_image"] for m in modules]
+        outer.to_onnx(save=False, pseudo_shape=[1, 3, 4, 4], dynamo=dynamo, **_RGB)
+        assert all(m.__dict__["_output_image"] is cache for m, cache in zip(modules, before))
+
+    def test_failed_export_keeps_every_output_cache(self, monkeypatch):
+        outer, modules = self._cached_tree()
+        before = [m.__dict__["_output_image"] for m in modules]
+        bare = nn.Identity()  # a module without the attribute must not get one
+        outer.append(bare)
+
+        def _run_then_fail(module, args, *rest, **kwargs):
+            module(*args) if isinstance(args, tuple) else module(args)
+            bare._output_image = "written by the export"
+            raise RuntimeError("export failed")
+
+        monkeypatch.setattr(torch.onnx, "export", _run_then_fail)
+        with pytest.raises(RuntimeError, match="export failed"):
+            outer.to_onnx(save=False, pseudo_shape=[1, 3, 4, 4], **_RGB)
+        assert all(m.__dict__["_output_image"] is cache for m, cache in zip(modules, before))
+        assert "_output_image" not in bare.__dict__
+
     def test_explicit_training_mode_is_the_legacy_exporters_opt_out(self):
         # The documented opt-out from the eval-mode export: an explicit ``training=TRAINING`` reaches the legacy
         # exporter, which traces the training graph. The flags still come back exactly.
