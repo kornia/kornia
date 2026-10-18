@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import adjust_gamma
 
 
@@ -104,6 +105,6 @@ class RandomGamma(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         input = _clamp_unit_range(input)
-        gamma_factor = params["gamma_factor"].to(input)
-        gain_factor = params["gain_factor"].to(input)
+        gamma_factor = _to_device_nonblocking(params["gamma_factor"], input.device, input.dtype)
+        gain_factor = _to_device_nonblocking(params["gain_factor"], input.device, input.dtype)
         return adjust_gamma(input, gamma_factor, gain_factor)

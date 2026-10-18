@@ -1313,3 +1313,51 @@ class TestDiffJPEG(BaseTester):
         assert type(img_jpeg) is torch.Tensor
         kornia.enhance.jpeg._DCT8_CACHE.clear()
         self.assert_close(img_jpeg, module(img, jpeg_quality))
+
+
+class TestDefaultQuantizationTables(BaseTester):
+    def test_tables_are_built_once_per_device_and_dtype(self, device, dtype):
+        from kornia.enhance.jpeg import _default_quantization_tables, _get_default_qt_c, _get_default_qt_y
+
+        first = _default_quantization_tables(device, dtype)
+        second = _default_quantization_tables(device, dtype)
+        assert first[0] is second[0]
+        assert first[1] is second[1]
+        assert torch.equal(first[0], _get_default_qt_y(device, dtype))
+        assert torch.equal(first[1], _get_default_qt_c(device, dtype))
+
+    def test_tables_cached_in_inference_mode_still_take_gradients(self, device):
+        from kornia.enhance.jpeg import _DEFAULT_QT_CACHE
+
+        _DEFAULT_QT_CACHE.clear()
+        img = torch.rand(1, 3, 16, 16, device=device, dtype=torch.float32)
+        quality = torch.tensor([50.0], device=device)
+        with torch.inference_mode():
+            kornia.enhance.jpeg_codec_differentiable(img, quality)
+        img.requires_grad_(True)
+        kornia.enhance.jpeg_codec_differentiable(img, quality).sum().backward()
+        assert img.grad is not None
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA streams")
+    def test_cached_tables_are_complete_on_another_stream(self):
+        # The caches are shared by every stream. A call on a second stream must not read tables whose fill kernels
+        # are still queued behind other work on the stream that built them.
+        from kornia.enhance import jpeg
+
+        cuda = torch.device("cuda")
+        img = torch.rand(4, 3, 64, 64, device=cuda)
+        quality = torch.tensor([50.0, 60.0, 70.0, 80.0])
+        expected = jpeg.jpeg_codec_differentiable(img, quality)
+        first, second = torch.cuda.Stream(), torch.cuda.Stream()
+        for _ in range(5):
+            jpeg._DEFAULT_QT_CACHE.clear()
+            jpeg._DCT8_CACHE.clear()
+            jpeg._get_dct8_basis_scale(img.dtype, img.device)
+            torch.cuda.synchronize()
+            with torch.cuda.stream(first):
+                torch.cuda._sleep(50_000_000)
+                jpeg.jpeg_codec_differentiable(img, quality)
+            with torch.cuda.stream(second):
+                out = jpeg.jpeg_codec_differentiable(img, quality)
+            torch.cuda.synchronize()
+            assert torch.equal(out, expected)

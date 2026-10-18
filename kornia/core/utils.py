@@ -62,6 +62,60 @@ def _torch_grid_sample(
     return F.grid_sample(input, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
+def _to_device_nonblocking(
+    tensor: torch.Tensor, device: torch.device, dtype: Optional[torch.dtype] = None
+) -> torch.Tensor:
+    """Move ``tensor`` to ``device`` (and ``dtype``), without waiting for queued work on a CUDA target.
+
+    A blocking host-to-device copy from pageable memory ends in ``cudaStreamSynchronize``, so the host waits
+    until the GPU has finished everything queued before it. With ``non_blocking=True`` CUDA stages a pageable
+    source before the call returns, so the source may be changed or freed straight away. A dtype change is made
+    on the host before the copy, as the blocking copy makes it, so the copied bits are the same, NaN payloads
+    included.
+
+    Only an eager copy from pageable CPU memory to CUDA is non-blocking:
+
+    - A pinned source is copied asynchronously by a non-blocking copy and could be changed by its owner before the
+      copy lands, so it keeps the blocking copy.
+    - Under ``torch.compile`` and ``torch.export`` the copy stays blocking, as it was: Inductor (torch 2.14)
+      miscompiles a non-blocking copy of a CPU tensor computed inside the graph, such as parameters sampled in a
+      compiled ``forward``, and returns wrong values.
+    - A copy to the CPU stays blocking, because the host could otherwise read it before it arrives, and MPS and
+      other targets keep the blocking copy, since they may read the source after the call returns.
+
+    Args:
+        tensor: The tensor to move.
+        device: The target device.
+        dtype: The target dtype, or ``None`` to keep the dtype of ``tensor``.
+
+    Returns:
+        ``tensor`` itself when it already has the target device and dtype, a copy otherwise.
+    """
+    if torch.jit.is_scripting():
+        non_blocking = tensor.device.type == "cpu" and device.type == "cuda" and not tensor.is_pinned()
+    else:
+        non_blocking = (
+            tensor.device.type == "cpu" and device.type == "cuda" and not is_compiling() and not tensor.is_pinned()
+        )
+    if non_blocking:
+        if dtype is not None and dtype != tensor.dtype:
+            tensor = tensor.to(dtype=dtype)
+        return tensor.to(device=device, non_blocking=True)
+    return tensor.to(device=device, dtype=dtype)
+
+
+def _as_tensor_nonblocking(data: Any, device: torch.device, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+    """Return ``torch.as_tensor(data, device=device, dtype=dtype)``, moving a tensor without waiting for the GPU.
+
+    ``torch.as_tensor`` of a tensor is ``tensor.to(device, dtype)``, a blocking copy for a CPU tensor and a CUDA
+    ``device``. A tensor is moved without waiting for queued work instead, with the same values; any other ``data``
+    goes through ``torch.as_tensor`` unchanged.
+    """
+    if isinstance(data, torch.Tensor):
+        return _to_device_nonblocking(data, device, dtype)
+    return torch.as_tensor(data, device=device, dtype=dtype)
+
+
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
     return importlib.util.find_spec("torch_xla") is not None
@@ -339,7 +393,7 @@ def _times_power_of_two(x: torch.Tensor, exponent: torch.Tensor) -> torch.Tensor
     return x * scale * scale * powers[(exponent - 2 * step + largest).to(torch.int64)]
 
 
-def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
+def _torch_inverse_cast(input: torch.Tensor, check_errors: bool = True) -> torch.Tensor:
     """Make torch.inverse work with other than fp32/64.
 
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
@@ -357,11 +411,18 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     non-finite or large values. Which near-singular matrices raise, and which return large values, depends
     on the torch version, the device and the capture mode. Callers that need a verdict use
     :func:`safe_inverse_with_mask`, whose mask follows one rule everywhere.
+
+    ``torch.linalg.inv`` reads its factorization status back on the host to raise for a singular matrix, which on
+    CUDA waits for every queued kernel. ``check_errors=False`` uses ``torch.linalg.inv_ex`` instead: the same
+    factorization and the same bits, without the read. Pass it only for a matrix that cannot be singular, such as a
+    pixel normalization kornia builds itself; a singular matrix then returns non-finite values instead of raising.
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
     if _is_tracing_or_exporting() and _has_closed_form_inverse(input):
         return _closed_form_inverse(input.to(dtype)).to(input.dtype)
+    if not check_errors:
+        return inv_ex(input.to(dtype)).inverse.to(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 

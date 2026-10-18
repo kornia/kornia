@@ -85,13 +85,14 @@ class PatchMix(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], extra_args: Dict[str, Any]
     ) -> torch.Tensor:
         B, _, _, _ = input.shape
-        idx = params["mix_pairs"].to(input.device)
-        patch_coords = params["patch_coords"].to(input.device)
+        # The pairs and corners index Python slices, so read them where they were drawn: on the CPU that costs no
+        # device synchronization, while reading them from the GPU would cost one per sample.
+        idx = params["mix_pairs"].tolist()
+        patch_coords = params["patch_coords"].tolist()
 
         out = input.clone()
         for i in range(B):
-            x, y = patch_coords[i]
-            x, y = int(x.item()), int(y.item())
+            x, y = int(patch_coords[i][0]), int(patch_coords[i][1])
             out[i, :, y : y + self.patch_size, x : x + self.patch_size] = input[
                 idx[i], :, y : y + self.patch_size, x : x + self.patch_size
             ]

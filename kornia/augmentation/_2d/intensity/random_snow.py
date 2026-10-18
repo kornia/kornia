@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.color import hls_to_rgb, rgb_to_hls
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomSnow(IntensityAugmentationBase2D):
@@ -95,8 +96,8 @@ class RandomSnow(IntensityAugmentationBase2D):
 
         mask = torch.zeros_like(input_HLS)
         # Retrieve generated parameters
-        snow_coefficient = params["snow_coefficient"].to(input)
-        brightness = params["brightness"].to(input)
+        snow_coefficient = _to_device_nonblocking(params["snow_coefficient"], input.device, input.dtype)
+        brightness = _to_device_nonblocking(params["brightness"], input.device, input.dtype)
         snow_coefficient = snow_coefficient[:, None, None, None]
         brightness = brightness[:, None, None, None]
 
