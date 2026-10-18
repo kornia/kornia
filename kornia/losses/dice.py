@@ -135,7 +135,9 @@ def _dice_loss_cpu(
             target_mass = valid
         else:
             # A gather, not weight[target]: the indexing backward accumulates in a nondeterministic order on the CPU.
-            weight_target = weight.expand(batch, num_classes).gather(1, target.flatten(1)).view(target.shape)
+            # In float64: the gather's backward is a CPU scatter_add, one running sum per class over the pixels.
+            weight_target = weight.reshape(-1).to(torch.float64).expand(batch, num_classes).gather(1, target.flatten(1))
+            weight_target = weight_target.view(target.shape).to(pred.dtype)
             target_mass = weight_target * valid
         intersection = (prob_target * target_mass).sum((1, 2))
         cardinality = mass + target_mass.sum((1, 2))
@@ -146,9 +148,11 @@ def _dice_loss_cpu(
         # over the one-hot path, against 1.04x for the selection).
         prob_target = _target_probability(pred_soft, target, fused=False) * valid
         index = target.flatten(1)
-        bins = pred_soft.new_zeros(batch, num_classes)
-        intersection = bins.scatter_add(1, index, prob_target.flatten(1))
-        target_count = bins.scatter_add(1, index, valid.flatten(1))
+        # Float64 bins: a CPU scatter_add adds each class's pixels into one running sum, and a float32 one rounds
+        # a target probability near 1 up to 1 once the sum passes a few thousand, so a class's Dice could exceed 1.
+        bins = pred_soft.new_zeros(batch, num_classes, dtype=torch.float64)
+        intersection = bins.scatter_add(1, index, prob_target.flatten(1).to(torch.float64)).to(pred.dtype)
+        target_count = bins.scatter_add(1, index, valid.flatten(1).to(torch.float64)).to(pred.dtype)
         cardinality = class_mass + target_count
         present = target_count > 0
 

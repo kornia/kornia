@@ -16,6 +16,7 @@
 #
 
 import importlib
+import math
 import subprocess
 import sys
 import warnings
@@ -26,6 +27,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge
+from kornia.core.utils import is_exporting
 from kornia.losses import DiceLoss, dice_loss
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
@@ -120,6 +122,8 @@ class TestDiceLossCpu(BaseTester):
         logits, labels = _inputs((1, 21, 32, 32) if case == "small" else LARGE, device, dtype)
         weight = None
         if case == "float32-pred-float64-weight":
+            if device.type == "mps":
+                pytest.skip("MPS has no float64")
             logits, weight = logits.float(), torch.ones(LARGE[1], device=device, dtype=torch.float64)
         if case == "trace":
             torch.jit.trace(lambda x: dice_loss(x, labels), (logits,), check_trace=False)
@@ -146,6 +150,37 @@ class TestDiceLossCpu(BaseTester):
         actual = _value_and_grads(logits, labels, average, eps, **kwargs)
         for actual_value, expected_value in zip(actual, expected):
             self.assert_close_scaled(actual_value, expected_value)
+
+    @pytest.mark.parametrize("average", ["micro", "macro"])
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_large_homogeneous_target_matches_one_hot_target(self, monkeypatch, average, weighted, device, dtype):
+        # A CPU scatter_add adds every pixel of a class into one running sum: the macro bins, and the backward of the
+        # gather of the class weights. In float32, adding p_t = 0.9 to it 2**18 times gave an intersection of 236,496
+        # instead of 235,930, a 4 % loss error.
+        _require_native_cpu(device, dtype)
+        calls = _count_calls(monkeypatch)
+        logits = torch.zeros(1, 2, 512, 512, device=device, dtype=dtype)
+        logits[:, 0] = math.log(9.0)
+        labels = torch.zeros(1, 512, 512, device=device, dtype=torch.long)
+        weight = torch.tensor([0.5, 1.5], device=device, dtype=dtype) if weighted else None
+        expected = _reference(monkeypatch, logits, labels, average, weight=weight, ignore_index=None)
+        actual = _value_and_grads(logits, labels, average, weight=weight, ignore_index=None)
+        for actual_value, expected_value in zip(actual, expected):
+            self.assert_close_scaled(actual_value, expected_value)
+        assert calls
+
+    @pytest.mark.parametrize("shape", [(21, 1), (21, 1, 1)])
+    def test_column_weight_matches_one_hot_target(self, monkeypatch, shape, device, dtype):
+        # The weight check accepts one value per class along dim 0 in any shape, and the one-hot micro Dice uses it.
+        _require_native_cpu(device, dtype)
+        calls = _count_calls(monkeypatch)
+        logits, labels = _inputs(LARGE, device, dtype)
+        weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype).reshape(shape)
+        expected = _reference(monkeypatch, logits, labels, "micro", weight=weight)
+        actual = _value_and_grads(logits, labels, "micro", weight=weight)
+        for actual_value, expected_value in zip(actual, expected):
+            self.assert_close_scaled(actual_value, expected_value)
+        assert calls
 
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("weighted", [False, True])
@@ -371,6 +406,13 @@ else:
 """
 
 
+def _compiled_calls_keep_the_one_hot_target() -> bool:
+    # Some releases (2.5.1 and 2.9.1 checked) also report a torch.compile capture as an export, and an exported call
+    # keeps the one-hot target.
+    probe = torch.compile(lambda x: x + float(is_exporting()), backend="eager", fullgraph=True)
+    return bool(probe(torch.zeros(())) > 0)
+
+
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 class TestDiceLossCpuCompiledLabels(BaseTester):
     @pytest.mark.parametrize("average, weighted", [("micro", False), ("micro", True), ("macro", False)])
@@ -379,9 +421,8 @@ class TestDiceLossCpuCompiledLabels(BaseTester):
         _require_native_cpu(device, dtype)
         if dtype != torch.float32 or optimizer_backend != "inductor":
             pytest.skip("one fresh-process inductor compile per case, in float32")
-        if not torch_version_ge(2, 6):
-            # Compiled calls keep the one-hot target there (is_exporting() is is_compiling()), unchecked by Inductor.
-            pytest.skip("torch 2.5.1 compiles the one-hot path, which does not check labels")
+        if _compiled_calls_keep_the_one_hot_target():
+            pytest.skip("this torch release compiles the one-hot path, which does not check labels")
         # The checkout under test, which "-c" imports first from the working directory.
         root = Path(dice_module.__file__).resolve().parents[2]
         result = subprocess.run(  # noqa: S603 - this interpreter and a literal program; no shell or external input.
