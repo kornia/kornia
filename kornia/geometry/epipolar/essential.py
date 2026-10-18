@@ -195,10 +195,12 @@ class _NullSpaceBasis(torch.autograd.Function):
     the subspace :math:`S`, by
     :math:`dv_i = \sum_{j \notin S} v_j \, v_j^\top d(X^\top X) \, v_i / (\lambda_i - \lambda_j)`.
     That needs a gap between the fourth and fifth smallest singular values. Without one the subspace
-    itself is not unique, and a nonzero incoming gradient gives a gradient that is not finite, as for
-    ``torch.linalg.svd``; a zero incoming gradient, as from a sample whose candidates were discarded,
-    gives zero. The forward pass is the same ``_torch_svd_cast`` call as before, so its result is
-    unchanged.
+    itself is not unique, and a nonzero incoming gradient gives no usable gradient, as for
+    ``torch.linalg.svd``: one that is not finite where the SVD returns the missing gap as exactly zero,
+    as LAPACK does, and a finite one many orders of magnitude past ``1 / eps`` where it leaves the gap at
+    rounding level, as cuSOLVER's Jacobi SVD, torch's default on CUDA, does. A zero incoming gradient, as
+    from a sample whose candidates were discarded, gives zero. The forward pass is the same
+    ``_torch_svd_cast`` call as before, so its result is unchanged.
     """
 
     # forward and setup_context are separate, so torch.func transforms (grad, vjp, jacrev) accept it

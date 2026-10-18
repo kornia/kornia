@@ -24,7 +24,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.losses.one_hot import one_hot
+from kornia.losses.one_hot import _check_class_labels, one_hot
 
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py
@@ -124,6 +124,8 @@ def focal_loss(
     if reduced:
         KORNIA_CHECK(target.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {target.dtype}")
         KORNIA_CHECK(pred.shape[1] >= 1, f"The number of classes must be >= 1. Got pred of shape {pred.shape}")
+        # one_hot's errors before the gather below, whose compiled CPU kernel aborts on a label outside the classes.
+        target = _check_class_labels(target, pred.shape[1])
     else:
         target_one_hot = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 

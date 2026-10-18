@@ -160,7 +160,13 @@ class TestFindAffine(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=3e-4)
         self.assert_close(refit, expected[:, :2, :2], rtol=0, atol=1e-5)
         self.assert_close(pair, expected[:, :2, :2], rtol=0, atol=1e-5)
-        self.assert_close(triplet, expected, rtol=0, atol=2e-4)
+        # The three-point fit extrapolates its translation to the origin, 350 px from points 32 px apart, which
+        # amplifies the input rounding 23 to 58 times: the float32 rounding of its inputs alone puts the exact fit
+        # 1.7e-4 from expected on the CPU and 3.5e-4 on CUDA, whose float32 sin(pi / 4) is one ulp above the CPU's.
+        # Its float32 accuracy is therefore measured against a float64 solve of the same inputs, on the CPU because
+        # MPS has no float64.
+        triplet64 = _find_affine_triplet(points[:, :3].cpu().double(), target[:, :3].cpu().double())
+        self.assert_close(triplet.cpu().double(), triplet64, rtol=0, atol=2e-4)
 
     def test_invalid_batches_are_nan(self, device, dtype):
         good, target, _ = self._points(device, dtype)
