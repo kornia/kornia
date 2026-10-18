@@ -43,6 +43,8 @@ def _focal_loss_cpu_eligible(pred: torch.Tensor) -> bool:
     """Select large native-precision CPU logits, whose full-size log-softmax buffers are fresh memory on every call."""
     # Keep log_softmax where it is what the caller captures or transforms: the exporters and the legacy tracer record
     # it, functorch transforms (vmap, grad, jvp) need no custom function, and autocast chooses its precision.
+    # Forward-mode AD keeps it too: Dynamo cannot capture an autograd function that defines a jvp, so a jvp would
+    # break every compiled training graph, and a jvp built on the saved statistics is not differentiable again.
     return (
         pred.device.type == "cpu"
         and pred.dtype in (torch.float32, torch.float64)
@@ -54,6 +56,7 @@ def _focal_loss_cpu_eligible(pred: torch.Tensor) -> bool:
         and pred.numel() >= _CPU_MIN_NUMEL
         and not torch._C._are_functorch_transforms_active()
         and not is_autocast_enabled()
+        and torch.autograd.forward_ad.unpack_dual(pred).tangent is None
     )
 
 
@@ -96,7 +99,7 @@ class _TargetLogSoftmax(torch.autograd.Function):
     The logits are masked as ``log_softmax``'s input was, so NaN and infinity positions are the same, and the gradient
     at a position that is not ``valid`` is exactly 0, as ``masked_fill``'s backward made it. ``torch.compile`` and
     functorch get the same arithmetic out of place and unchunked; a double backward differentiates a softmax
-    recomputed from ``pred``, and forward-mode AD uses :meth:`jvp`.
+    recomputed from ``pred``. Forward-mode AD never reaches it (see :func:`_focal_loss_cpu_eligible`).
     """
 
     @staticmethod
@@ -112,7 +115,6 @@ class _TargetLogSoftmax(torch.autograd.Function):
             else:
                 log_prob, x_max, log_sum = (torch.cat([part[i] for part in parts]) for i in range(3))
         ctx.save_for_backward(pred, target, valid, x_max, log_sum)
-        ctx.save_for_forward(pred, target, valid, x_max, log_sum)
         return log_prob
 
     @staticmethod
@@ -124,7 +126,14 @@ class _TargetLogSoftmax(torch.autograd.Function):
             x = pred if valid is None else torch.where(valid, pred, 0.0)
             grad = (x.softmax(1) * -grad_output).scatter_add(1, target, grad_output)
             return (grad if valid is None else torch.where(valid, grad, 0.0)), None, None
-        if is_compiling() or torch._C._are_functorch_transforms_active():
+        # Out of place under compile and functorch, and for a batched (autograd.grad(is_grads_batched=True), legacy
+        # vmap) or dual (forward-over-reverse) incoming gradient, which cannot be written into one plain buffer.
+        if (
+            is_compiling()
+            or torch._C._are_functorch_transforms_active()
+            or torch._C._functorch.is_legacy_batchedtensor(grad_output)
+            or torch.autograd.forward_ad.unpack_dual(grad_output).tangent is not None
+        ):
             grad = (((pred - x_max) - log_sum).exp() * -grad_output).scatter_add(1, target, grad_output)
             return (grad if valid is None else torch.where(valid, grad, 0.0)), None, None
         # Contiguous for any layout of pred, as the gather backward of the log_softmax path makes its gradient.
@@ -138,13 +147,6 @@ class _TargetLogSoftmax(torch.autograd.Function):
             if v is not None:
                 g.masked_fill_(~v, 0.0)
         return grad, None, None
-
-    @staticmethod
-    def jvp(ctx: Any, pred_t: torch.Tensor, _target_t: Any, _valid_t: Any) -> torch.Tensor:
-        pred, target, valid, x_max, log_sum = ctx.saved_tensors
-        x = pred if valid is None else torch.where(valid, pred, 0.0)
-        x_t = pred_t if valid is None else torch.where(valid, pred_t, 0.0)
-        return x_t.gather(1, target) - (((x - x_max) - log_sum).exp() * x_t).sum(1, keepdim=True)
 
 
 def _masked_log_softmax(
@@ -207,8 +209,8 @@ def focal_loss(
           or a number in ``[0, 1]``, of float32 or float64 logits with at least :math:`2^{19}` values compute the
           target-class log-probability with a custom autograd function, a batch chunk at a time, instead of a
           full-size ``log_softmax``, unless ``torch.export`` or ``torch.jit.trace`` captures the call, a functorch
-          transform runs or autocast is on. It agrees with ``log_softmax`` to rounding, with the same NaN and infinity
-          positions and a zero gradient at ignored pixels, and supports double backward and forward-mode AD.
+          transform or forward-mode AD runs, or autocast is on. It agrees with ``log_softmax`` to rounding, with the
+          same NaN and infinity positions and a zero gradient at ignored pixels, and supports double backward.
 
     Args:
         pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.

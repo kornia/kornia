@@ -274,24 +274,53 @@ class TestFocalLossCpu(BaseTester):
         self.assert_close_scaled(actual[0], expected[0])
         self.assert_close_scaled(actual[1], expected[1])
 
-    def test_forward_mode_ad_matches_log_softmax(self, monkeypatch, device, dtype):
+    @pytest.mark.parametrize("mode", ["jvp", "forward_over_reverse"])
+    def test_forward_mode_ad_keeps_log_softmax(self, monkeypatch, mode, device, dtype):
+        # A custom jvp breaks every compiled training graph (Dynamo cannot capture it), and a jvp built on the saved
+        # statistics gives wrong reverse-over-forward derivatives, so dual logits keep log_softmax.
         _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype)
         tangent = torch.randn_like(logits)
 
-        def jvp():
+        def run():
+            x = logits.detach().clone().requires_grad_()
             with torch.autograd.forward_ad.dual_level():
-                dual = torch.autograd.forward_ad.make_dual(logits, tangent)
-                return torch.autograd.forward_ad.unpack_dual(focal_loss(dual, labels, 0.25, 2.0, "mean"))
+                dual = torch.autograd.forward_ad.make_dual(x, tangent)
+                loss = focal_loss(dual, labels, 0.25, 2.0, "mean")
+                if mode == "jvp":
+                    return torch.autograd.forward_ad.unpack_dual(loss)
+                (grad,) = torch.autograd.grad(loss, dual)
+                return torch.autograd.forward_ad.unpack_dual(grad)
 
         calls = _count_calls(monkeypatch)
-        actual = jvp()
-        assert calls
+        actual = run()
+        assert calls == []
         with monkeypatch.context() as patch:
             patch.setattr(focal_module, "_focal_loss_cpu_eligible", lambda pred: False)
-            expected = jvp()
-        self.assert_close(actual.primal, expected.primal)
-        self.assert_close_scaled(actual.tangent, expected.tangent)
+            expected = run()
+        assert torch.equal(actual.primal, expected.primal)
+        assert torch.equal(actual.tangent, expected.tangent)
+
+    def test_dual_and_batched_incoming_gradients(self, monkeypatch, device, dtype):
+        # Gradients that cannot be written into one plain buffer: a dual cotangent (forward-over-reverse) and the
+        # batched cotangents of is_grads_batched (legacy vmap, used by gradcheck and autograd.functional).
+        _require_native_cpu(device, dtype)
+        logits, labels = _inputs(LARGE, device, dtype)
+        monkeypatch.setattr(focal_module, "_CPU_CHUNK_BYTES", 1)  # one sample per chunk
+        calls = _count_calls(monkeypatch)
+        _, grad = _reference(monkeypatch, logits, labels, 0.25, 2.0, "sum")
+        x = logits.detach().clone().requires_grad_()
+        with torch.autograd.forward_ad.dual_level():
+            cotangent = torch.autograd.forward_ad.make_dual(
+                torch.ones((), device=device, dtype=dtype), torch.full((), 3.0, device=device, dtype=dtype)
+            )
+            (dual,) = torch.autograd.grad(focal_loss(x, labels, 0.25, 2.0, "sum"), x, cotangent)
+            self.assert_close_scaled(torch.autograd.forward_ad.unpack_dual(dual).tangent, 3 * grad)
+        x = logits.detach().clone().requires_grad_()
+        cotangents = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        (batched,) = torch.autograd.grad(focal_loss(x, labels, 0.25, 2.0, "sum"), x, cotangents, is_grads_batched=True)
+        self.assert_close_scaled(batched, torch.stack([grad, 2 * grad]))
+        assert len(calls) == 2
 
     def test_retain_graph_second_backward(self, device, dtype):
         _require_native_cpu(device, dtype)
@@ -330,6 +359,21 @@ class TestFocalLossCpu(BaseTester):
             warnings.simplefilter("ignore", FutureWarning)
             scripted = torch.jit.script(focal_loss)
         self.assert_close(scripted(logits, labels, 0.25, 2.0, "mean"), focal_loss(logits, labels, 0.25, 2.0, "mean"))
+
+    # The name keeps "compile" and "dynamo" out, so the ordinary jobs run it.
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_training_call_traces_in_one_graph(self, device, dtype):
+        # Logits that require grad: Dynamo rejects an autograd function that defines a jvp ("Unsupported custom jvp").
+        _require_native_cpu(device, dtype)
+        logits, labels = _inputs(LARGE, device, dtype)
+        expected, expected_grad = _value_and_grad(logits, labels, 0.25, 2.0, "mean")
+        torch._dynamo.reset()
+        compiled = torch.compile(focal_loss, backend="eager", fullgraph=True)
+        x = logits.detach().clone().requires_grad_()
+        actual = compiled(x, labels, 0.25, 2.0, "mean")
+        (grad,) = torch.autograd.grad(actual, x)
+        self.assert_close(actual, expected)
+        self.assert_close_scaled(grad, expected_grad)
 
     def test_dynamo_on_an_eligible_input(self, device, dtype, torch_optimizer):
         _require_native_cpu(device, dtype)
