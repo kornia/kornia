@@ -15,13 +15,21 @@
 # limitations under the License.
 #
 
+import importlib
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 import torch
 import torch.nn.functional as F
 
 import kornia
+from kornia.core.utils import is_exporting
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+
+one_hot_module = importlib.import_module("kornia.losses.one_hot")
 
 
 class TestBinaryFocalLossWithLogits(BaseTester):
@@ -524,6 +532,57 @@ class TestFocalLoss(BaseTester):
         self.assert_close(values[off_class], torch.zeros_like(values[off_class]), rtol=0, atol=0)
         assert (values[~off_class] > 0).all()
 
+    @pytest.mark.parametrize("reduction, weighted", [("mean", False), ("sum", False), ("mean", True), ("none", False)])
+    @pytest.mark.parametrize("ignore_index", [-100, None])
+    def test_exception_labels_outside_the_classes(self, device, dtype, reduction, weighted, ignore_index):
+        # Unweighted 'mean' and 'sum' gather the target class, the others build a one-hot target: both raise
+        # one_hot's errors. The gather used to raise its own "index ... is out of bounds".
+        if device.type != "cpu":
+            pytest.skip("an out-of-range index fails a device-side assert off the CPU, which ends the CUDA context")
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 4, device=device, dtype=dtype)
+        weight = torch.ones(num_classes, device=device, dtype=dtype) if weighted else None
+        for value, message in ((num_classes, "smaller than num_classes"), (-3, "non-negative")):
+            labels = torch.randint(num_classes, (2, 4), device=device)
+            labels[0, 1] = value
+            with pytest.raises(RuntimeError, match=f"Class values must be {message}"):
+                kornia.losses.focal_loss(logits, labels, 0.25, 2.0, reduction, weight, ignore_index)
+
+    # The name keeps "compile" and "dynamo" out, so the ordinary jobs run it.
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    def test_reduced_label_check_traces_in_one_graph(self, device, dtype, reduction):
+        # The label check of the gather path is captured with the loss, in one graph, and raises when it runs.
+        if device.type != "cpu":
+            pytest.skip("the label check runs on the CPU only")
+        graphs = []
+
+        def backend(gm, example_inputs):
+            graphs.append(gm)
+            return gm.forward
+
+        logits = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        labels = torch.randint(3, (2, 4), device=device)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.losses.focal_loss, backend=backend, fullgraph=True)
+        expected = kornia.losses.focal_loss(logits, labels, 0.25, 2.0, reduction)
+        self.assert_close(compiled(logits, labels, 0.25, 2.0, reduction), expected)
+        assert len(graphs) == 1
+        nodes = graphs[0].graph.nodes
+        assert sum(node.target is torch._assert_async for node in nodes) == 2
+        # Compiled from torch 2.9 on, the gather reads clamped labels, in bounds in whatever order Inductor runs the
+        # asserts. They stay unclamped where a torch.compile capture also reports an export (torch 2.9.1).
+        index = next(node for node in nodes if node.target == "gather").args[2]
+        while index.target == "unsqueeze":
+            index = index.args[0]
+        assert (index.target == "clamp") == (
+            one_hot_module._INDUCTOR_KEEPS_ASSERT_ASYNC and not _compile_reports_export()
+        )
+        labels[0, 1] = 3
+        with pytest.raises(RuntimeError, match="Class values must be smaller than num_classes"):
+            compiled(logits, labels, 0.25, 2.0, reduction)
+        assert len(graphs) == 1
+
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     def test_dynamo(self, device, dtype, torch_optimizer, reduction):
         num_classes = 3
@@ -571,6 +630,76 @@ class TestFocalLoss(BaseTester):
         op = kornia.losses.focal_loss
         op_module = kornia.losses.FocalLoss(*args)
         self.assert_close(op_module(logits, labels), op(logits, labels, *args))
+
+
+def _compile_reports_export() -> bool:
+    # Some releases (2.5.1 and 2.9.1 checked) also report a torch.compile capture as an export.
+    probe = torch.compile(lambda x: x + float(is_exporting()), backend="eager", fullgraph=True)
+    return bool(probe(torch.zeros(())) > 0)
+
+
+# Run in a fresh interpreter: an index check that fails inside an Inductor CPU kernel aborts the whole process.
+_COMPILED_INVALID_LABEL = """
+import sys, warnings
+warnings.filterwarnings("ignore")
+import torch, kornia
+reduction, ignore_index, value, requires_grad = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4] == "1"
+generator = torch.Generator().manual_seed(0)
+pred = torch.randn(2, 21, 128, 128, generator=generator).requires_grad_(requires_grad)
+target = torch.randint(0, 21, (2, 128, 128), generator=generator)
+target[0, 5, 7] = value
+loss = torch.compile(kornia.losses.focal_loss, fullgraph=True)
+try:
+    out = loss(pred, target, 0.25, 2.0, reduction, None, None if ignore_index == "None" else int(ignore_index))
+    if requires_grad:
+        out.backward()
+except RuntimeError as error:
+    print("RuntimeError:", error)
+else:
+    print("no error")
+"""
+
+
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+class TestFocalLossCompiledLabels(BaseTester):
+    @pytest.mark.parametrize(
+        "reduction, ignore_index, requires_grad", [("mean", -100, False), ("mean", -100, True), ("sum", None, False)]
+    )
+    @pytest.mark.parametrize("value, message", [(21, "smaller than num_classes"), (-3, "non-negative")])
+    def test_dynamo_invalid_label_raises(
+        self, reduction, ignore_index, requires_grad, value, message, device, dtype, optimizer_backend
+    ):
+        # Compiled, the target-class gather of 'mean' and 'sum' terminated the process (exit code 134, "index out of
+        # bounds") where eager raises: for a label past the classes on torch 2.5.1, 2.9.1 and 2.14, and for a
+        # negative one on 2.14; 2.5.1 and 2.9.1 returned a loss for it without gradients. The check does not depend
+        # on is_exporting(), which a torch.compile capture also reports on 2.5.1 and 2.9.1, so 2.9.1 runs it too.
+        if device.type != "cpu" or dtype != torch.float32 or optimizer_backend != "inductor":
+            pytest.skip("one fresh-process inductor compile per case, on the CPU in float32")
+        from torch._inductor.decomposition import decompositions
+
+        if torch.ops.aten._assert_async.msg in decompositions:
+            pytest.skip("this torch release's Inductor compiles torch._assert_async to nothing (before torch 2.9)")
+        # The checkout under test, which "-c" imports first from the working directory.
+        root = Path(kornia.__file__).resolve().parents[1]
+        result = subprocess.run(  # noqa: S603 - this interpreter and a literal program; no shell or external input.
+            [
+                sys.executable,
+                "-c",
+                _COMPILED_INVALID_LABEL,
+                reduction,
+                str(ignore_index),
+                str(value),
+                str(int(requires_grad)),
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        assert result.stdout.startswith("RuntimeError:"), result.stdout
+        assert f"Class values must be {message}" in result.stdout
 
 
 class TestConventionsFocalLoss(BaseTester):
