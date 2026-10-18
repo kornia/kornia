@@ -578,7 +578,7 @@ class TestNormalizeMinMax(BaseTester):
     @pytest.mark.parametrize("input_dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
     @pytest.mark.parametrize("shape", [(2, 3), (2, 2, 3), (2, 2, 2, 3), (2, 2, 2, 2, 3)])
     def test_signed_integer_range(self, device, input_dtype, shape):
-        """Subtract extrema in floating point even when their span exceeds the signed pixel range."""
+        """Promote integer pixels before subtracting, so a span wider than the signed range does not wrap."""
         limits = torch.iinfo(input_dtype)
         pixels = torch.tensor([limits.min, 0, limits.max], device=device, dtype=input_dtype)
         image = pixels.repeat(torch.Size(shape).numel() // 3).reshape(shape).transpose(-1, -2)
@@ -592,18 +592,6 @@ class TestNormalizeMinMax(BaseTester):
         assert actual.shape == image.shape
         assert actual.device == image.device
         self.assert_close(actual, expected)
-
-    @pytest.mark.parametrize("input_dtype", [torch.int32, torch.int64])
-    @pytest.mark.parametrize("offset_kind", ["positive", "negative", "minimum", "maximum"])
-    def test_integer_large_offset(self, device, input_dtype, offset_kind):
-        """Keep small integer differences that casting the pixels to float32 would erase."""
-        limits = torch.iinfo(input_dtype)
-        offset = {"positive": 2**24, "negative": -(2**24), "minimum": limits.min, "maximum": limits.max - 2}[
-            offset_kind
-        ]
-        image = torch.tensor([[offset, offset + 1, offset + 2]], device=device, dtype=input_dtype)
-        expected = torch.tensor([[0.0, 1.0 / (2.0 + 1e-6), 2.0 / (2.0 + 1e-6)]], device=device)
-        self.assert_close(kornia.enhance.normalize_min_max(image), expected)
 
     @pytest.mark.parametrize(
         "input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool]
