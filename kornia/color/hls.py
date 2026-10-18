@@ -73,7 +73,6 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     # Use unit divisors when chroma or the lightness denominator is zero.
     # Preserve the epsilon-adjusted calculation for nonzero denominators.
     chroma_denominator = torch.where(s == 0, torch.ones_like(s), s + eps)
-    im = image / chroma_denominator.unsqueeze(-3)
 
     lightness_denominator = torch.where(l_ < 1.0, l_, 2.0 - l_)
     saturation_denominator = torch.where(
@@ -82,15 +81,13 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     s /= saturation_denominator  # saturation
     l_ /= 2  # luminance
 
-    # note that r,g and b were previously div by (max - min)
-    r, g, b = im[..., 0, :, :], im[..., 1, :, :], im[..., 2, :, :]
-    # h[imax == 0] = (((g - b) / (max - min)) % 6)[imax == 0]
-    # h[imax == 1] = (((b - r) / (max - min)) + 2)[imax == 1]
-    # h[imax == 2] = (((r - g) / (max - min)) + 4)[imax == 2]
+    # Subtract before dividing: RGB / chroma has overflowing float16 gradients near gray,
+    # even when the hue and its gradient are representable.
+    r, g, b = image[..., 0, :, :], image[..., 1, :, :], image[..., 2, :, :]
     cond = imax[..., None, :, :] == _RGB2HSL_IDX
-    h = ((g - b) % 6) * cond[..., 0, :, :]
-    h += (b - r + 2) * cond[..., 1, :, :]
-    h += (r - g + 4) * cond[..., 2, :, :]
+    h = (((g - b) / chroma_denominator) % 6) * cond[..., 0, :, :]
+    h += ((b - r) / chroma_denominator + 2) * cond[..., 1, :, :]
+    h += ((r - g) / chroma_denominator + 4) * cond[..., 2, :, :]
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= math.pi / 3.0  # hue [0, 2*pi]
     h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
