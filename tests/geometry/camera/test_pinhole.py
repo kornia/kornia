@@ -859,9 +859,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(K, _k44(device, dtype), atol=0.0, rtol=0.0)
         self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize(
-        "shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)]
-    )
+    @pytest.mark.parametrize("shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)])
     @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])
     def test_invalid_parameter_shape_4266(self, shape, parameter, device, dtype):
         batch_size = shape[0]
