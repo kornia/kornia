@@ -72,6 +72,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from kornia.contrib import super_resolution
 from kornia.feature import affine_shape, defmo, hardnet, hynet, keynet, mkd, orientation, sosnet, tfeat, xfeat
 from kornia.feature import lightglue as lightglue_mod
 from kornia.feature.aliked import aliked
@@ -83,7 +84,7 @@ from kornia.feature.loftr import loftr
 from kornia.feature.sold2 import sold2, sold2_detector
 from kornia.filters import dexined
 from kornia.models import dexined as dexined_model
-from kornia.models import tiny_vit, vit
+from kornia.models import small_sr, tiny_vit, vit
 from kornia.models.efficient_vit import model as efficient_vit
 from kornia.models.rt_detr import model as rt_detr
 from kornia.models.sam import model as sam
@@ -145,6 +146,8 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "rt_detr": (rt_detr, rt_detr.URLs),
     "keynet": (keynet, {"keynet": keynet.KeyNet_URL}),
     "yunet": (yunet, {"yunet": yunet._url}),
+    "small_sr": (small_sr, {"small_sr": small_sr.url}),
+    "super_resolution": (super_resolution, super_resolution._URLs),
     # Two independent registries, identical today, both loading the same cache
     # name -- which is what hides the models copy from the coverage check: the
     # filters copy accounts for the name either way. Holding both to MODELS also
@@ -290,6 +293,11 @@ NOT_PREFETCHED: dict[str, str] = {
     "vit_s-16.pth": "no test or doctest selects this ViT variant",
     "vit_ti-16.pth": "no test or doctest selects this ViT variant",
     "vit_b-32.pth": "no test or doctest selects this ViT variant",
+    # Real-ESRGAN: the tests build RRDBNetBuilder random or monkeypatch its loader, and models.rst only shows the call.
+    "RealESRGAN_x4plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRNet_x4plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRGAN_x4plus_anime_6B.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRGAN_x2plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
 }
 
 

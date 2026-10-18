@@ -315,12 +315,13 @@ class TestSmallSRNetWeights:
         calls = []
 
         def _load(url, **kwargs):
-            calls.append(url)
+            calls.append((url, kwargs.get("model_dir")))
             return source.state_dict()
 
         monkeypatch.setattr(small_sr, "load_state_dict_from_url", _load)
         model = SmallSRNet(upscale_factor=3, pretrained=True)
-        assert calls == [small_sr.url]
+        # The torch hub cache: no ``model_dir`` overrides it.
+        assert calls == [(small_sr.url, None)]
         assert all(torch.equal(v, source.state_dict()[k]) for k, v in model.state_dict().items())
         # Not cached under the working directory, where each new one downloaded the weights again.
         assert not any(tmp_path.iterdir())

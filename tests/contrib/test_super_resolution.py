@@ -224,5 +224,6 @@ class TestRRDBNetBuilderWeights:
             "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
         ]
         # The weights go to the torch hub cache, as every other kornia checkpoint does, not under the working
-        # directory, where each new one downloaded them again.
+        # directory, where each new one downloaded them again: no ``model_dir`` overrides the hub's.
+        assert calls[0][1].get("model_dir") is None
         assert not any(tmp_path.iterdir())
