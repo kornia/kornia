@@ -46,7 +46,7 @@ def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
-    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     # Extract coords; support 2D (w=1) and 3D homogeneous
@@ -275,7 +275,7 @@ def _symmetrical_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: 
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
-    if (len(Fm.shape) < 3) or Fm.shape[-2:] != (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     # Extract coords; support 2D (w=1) and 3D homogeneous
@@ -391,7 +391,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     KORNIA_CHECK_IS_TENSOR(pts2)
     KORNIA_CHECK_IS_TENSOR(Fm)
 
-    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts1.shape[-1] == 2:
@@ -426,7 +426,7 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     KORNIA_CHECK_IS_TENSOR(pts2)
     KORNIA_CHECK_IS_TENSOR(Fm)
 
-    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts2.shape[-1] == 2:

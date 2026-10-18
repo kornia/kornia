@@ -465,10 +465,8 @@ class TestSampsonSharedPoints(BaseTester):
             self.assert_close(out, expected, rtol=1e-3, atol=1e-3 * float(expected.abs().median()))
 
     def test_single_matrix_without_batch_dimension(self, device, dtype):
-        if device.type != "cuda":
-            pytest.skip("the manual implementation, used on CPU, has always required a batch dimension on Fm")
-        # The CUDA matmul implementation broadcasts a single (3, 3) matrix; the shared-point dispatch must not reject
-        # it.
+        # Every implementation broadcasts a single (3, 3) matrix, and the shared-point dispatch must not reject it.
+        # The CPU manual implementation used to require a batch dimension on Fm (#6108).
         pts1 = torch.rand(1, 9, 2, device=device, dtype=dtype)
         pts2 = torch.rand(1, 9, 2, device=device, dtype=dtype)
         Fm = create_random_fundamental_matrix(1, dtype=dtype, device=device)
@@ -604,3 +602,59 @@ class TestSampsonSharedPoints(BaseTester):
         pts2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64)
         Fm = create_random_fundamental_matrix(3, dtype=torch.float64, device=device)
         self.gradcheck(lambda a, b, F: _sampson_epipolar_distance_shared_impl_(a, b, F, True), (pts1, pts2, Fm))
+
+
+class TestUnbatchedFundamentalMatrix(BaseTester):
+    """A single (3, 3) ``Fm`` with unbatched points, as documented by the ``(*, 3, 3)`` shapes (#6108)."""
+
+    METRICS = (
+        epi.sampson_epipolar_distance,
+        epi.symmetrical_epipolar_distance,
+        epi.left_to_right_epipolar_distance,
+        epi.right_to_left_epipolar_distance,
+    )
+
+    @pytest.mark.parametrize("metric", METRICS, ids=lambda fn: fn.__name__)
+    @pytest.mark.parametrize("homogeneous", [False, True])
+    def test_unbatched_fm_matches_the_batched_call_6108(self, metric, homogeneous, device, dtype):
+        # A (3, 3) Fm raised "Fm must be a (*, 3, 3) tensor" on the CPU, although (3, 3) is such a shape.
+        generator = torch.Generator().manual_seed(6108)
+        pts1 = torch.rand(7, 2, generator=generator).to(device, dtype)
+        pts2 = torch.rand(7, 2, generator=generator).to(device, dtype)
+        if homogeneous:
+            pts1 = torch.cat([pts1, torch.ones_like(pts1[:, :1])], dim=-1)
+            pts2 = torch.cat([pts2, torch.ones_like(pts2[:, :1])], dim=-1)
+        Fm = create_random_fundamental_matrix(1, dtype=dtype, device=device)
+
+        out = metric(pts1, pts2, Fm[0])
+
+        assert out.shape == (7,)
+        self.assert_close(out, metric(pts1[None], pts2[None], Fm)[0], rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("metric", METRICS, ids=lambda fn: fn.__name__)
+    def test_unbatched_fm_with_batched_points_6108(self, metric, device, dtype):
+        # One matrix shared by several point sets broadcasts like any other (*, 3, 3) Fm.
+        generator = torch.Generator().manual_seed(6108)
+        pts1 = torch.rand(3, 7, 2, generator=generator).to(device, dtype)
+        pts2 = torch.rand(3, 7, 2, generator=generator).to(device, dtype)
+        Fm = create_random_fundamental_matrix(1, dtype=dtype, device=device)
+
+        out = metric(pts1, pts2, Fm[0])
+
+        assert out.shape == (3, 7)
+        self.assert_close(out, metric(pts1, pts2, Fm.expand(3, 3, 3)), rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("metric", METRICS, ids=lambda fn: fn.__name__)
+    @pytest.mark.parametrize("shape", [(3,), (4, 4), (2, 3)])
+    def test_fm_without_a_3x3_matrix_still_raises_6108(self, metric, shape, device, dtype):
+        pts = torch.rand(7, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"Fm must be a \(\*, 3, 3\) tensor"):
+            metric(pts, pts, torch.rand(*shape, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("metric", METRICS, ids=lambda fn: fn.__name__)
+    def test_unbatched_fm_gradcheck_6108(self, metric, device):
+        generator = torch.Generator().manual_seed(6108)
+        pts1 = torch.rand(5, 2, generator=generator, dtype=torch.float64).to(device)
+        pts2 = torch.rand(5, 2, generator=generator, dtype=torch.float64).to(device)
+        Fm = create_random_fundamental_matrix(1, dtype=torch.float64, device=device)[0]
+        self.gradcheck(metric, (pts1, pts2, Fm))
