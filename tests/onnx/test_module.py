@@ -55,17 +55,23 @@ class TestONNXModule:
         ("targets", "expected"),
         [
             ({"target_ir_version": 9}, ({18}, 9)),
-            ({"target_opset_version": 17}, ({17}, 10)),
-            ({"target_ir_version": 8, "target_opset_version": 17}, ({17}, 8)),
+            ({"target_opset_version": 17}, ({17}, None)),  # None: the IR version of the export
+            ({"target_ir_version": 9, "target_opset_version": 17}, ({17}, 9)),
         ],
     )
     def test_target_versions(self, sigmoid, op, targets, expected):
-        assert (_opsets(op), op.ir_version) == ({18}, 10)
+        # IR 10 from the dynamo exporter, 8 from the legacy one (the default before torch 2.9): 9 converts both
+        versions = (_opsets(op), op.ir_version)
+        assert versions[0] == {18}
+        assert versions[1] != 9
+        opsets, ir_version = expected
+        if ir_version is None:
+            ir_version = op.ir_version
 
         module = ONNXModule(op, **targets)
 
-        assert (_opsets(module.op), module.op.ir_version) == expected
-        assert (_opsets(op), op.ir_version) == ({18}, 10)  # the caller's graph is converted on a copy
+        assert (_opsets(module.op), module.op.ir_version) == (opsets, ir_version)
+        assert (_opsets(op), op.ir_version) == versions  # the caller's graph is converted on a copy
         x = torch.rand(2, 3, 4, 5)
         assert_close(torch.from_numpy(module(x.numpy())[0]), sigmoid(x))
 

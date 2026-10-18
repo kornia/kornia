@@ -200,19 +200,22 @@ class TestONNXSequentialOfKorniaExports:
 
         sigmoid = ImageSequential(torch.nn.Sigmoid())
         op = sigmoid.to_onnx(save=False, **_RGB)
-        assert (_opsets(op), op.ir_version) == ({18}, 10)
+        # IR 10 from the dynamo exporter, 8 from the legacy one (the default before torch 2.9): 9 converts both
+        versions = (_opsets(op), op.ir_version)
+        assert versions[0] == {18}
+        assert versions[1] != 9
 
         seq = ONNXSequential(
             op,
             op,
             target_opset_version=17,
-            target_ir_version=8,
+            target_ir_version=9,
             auto_ir_version_conversion=auto_ir_version_conversion,
         )
 
         for graph in [*seq.operators, seq._combined_op]:
-            assert (_opsets(graph), graph.ir_version) == ({17}, 8)
-        assert (_opsets(op), op.ir_version) == ({18}, 10)  # the caller's graph is converted on a copy
+            assert (_opsets(graph), graph.ir_version) == ({17}, 9)
+        assert (_opsets(op), op.ir_version) == versions  # the caller's graph is converted on a copy
         x = torch.rand(2, 3, 4, 5)
         assert_close(torch.from_numpy(seq(x.numpy())[0]), sigmoid(sigmoid(x)))
 
@@ -221,12 +224,13 @@ class TestONNXSequentialOfKorniaExports:
         from kornia.core import ImageSequential
 
         op = ImageSequential(torch.nn.Sigmoid()).to_onnx(save=False, **_RGB)
+        assert op.ir_version != 9  # 10 from the dynamo exporter, 8 from the legacy one
 
         ir_only = ONNXSequential(op, op, target_ir_version=9)._combined_op
         opset_only = ONNXSequential(op, op, target_opset_version=17)._combined_op
 
         assert (_opsets(ir_only), ir_only.ir_version) == ({18}, 9)
-        assert (_opsets(opset_only), opset_only.ir_version) == ({17}, 10)
+        assert (_opsets(opset_only), opset_only.ir_version) == ({17}, op.ir_version)
 
     def test_takes_file_paths_as_path_objects(self, tmp_path):
         from kornia.core import ImageSequential
