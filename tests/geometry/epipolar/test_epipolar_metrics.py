@@ -629,7 +629,8 @@ class TestUnbatchedFundamentalMatrix(BaseTester):
         out = metric(pts1, pts2, Fm[0])
 
         assert out.shape == (7,)
-        self.assert_close(out, metric(pts1[None], pts2[None], Fm)[0], rtol=0.0, atol=0.0)
+        # The unbatched matmul may round differently from the batched one, so compare to rounding, not bitwise.
+        self.assert_close(out, metric(pts1[None], pts2[None], Fm)[0])
 
     @pytest.mark.parametrize("metric", METRICS, ids=lambda fn: fn.__name__)
     def test_unbatched_fm_with_batched_points_6108(self, metric, device, dtype):
