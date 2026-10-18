@@ -26,7 +26,7 @@ import torch
 
 import kornia
 import kornia.models.siglip2.builder as siglip2_builder
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.models.siglip2 import SigLip2Builder, SigLip2Config, SigLip2Model, SigLip2Result
 from kornia.models.siglip2.attention import SigLip2Attention
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
@@ -889,6 +889,30 @@ class TestSigLip2Components(BaseTester):
         # rounding, which is the same order as the default half-precision tolerance.
         tol = {"rtol": 5e-2, "atol": 5e-2} if dtype in (torch.float16, torch.bfloat16) else {}
         self.assert_close(output, output_without_mask, **tol)
+
+    @pytest.mark.parametrize("mask_shape", [(2, 1), (2, 10, 1), (2, 1, 10, 1), (2, 1, 1, 1), (2, 3, 10)])
+    def test_attention_mask_covers_every_token(self, device, dtype, mask_shape):
+        # A key dimension of 1 broadcast one value over all tokens: on the CPU and in CUDA float64 such a mask was the
+        # same as no mask, and in CUDA float32 and half it raised SDPA's "last dimension must be contiguous". A query
+        # dimension that is neither 1 nor the sequence length raised SDPA's broadcasting error.
+        attention = SigLip2Attention(hidden_size=32, num_heads=4).to(device, dtype).eval()
+        hidden_states = torch.randn(2, 10, 32, device=device, dtype=dtype)
+        mask = torch.ones(mask_shape, dtype=torch.bool, device=device)
+
+        with torch.no_grad(), pytest.raises(ShapeError, match=r"10 tokens"):
+            attention(hidden_states, attention_mask=mask)
+
+    def test_attention_three_dim_mask_broadcasts_over_the_queries(self, device, dtype):
+        # A (B, 1, N) mask is a per-sample key mask shared by every query, the 3-D form of a (B, N) padding mask.
+        attention = SigLip2Attention(hidden_size=32, num_heads=4).to(device, dtype).eval()
+        hidden_states = torch.randn(2, 10, 32, device=device, dtype=dtype)
+        mask = torch.ones(2, 10, dtype=torch.bool, device=device)
+        mask[1, 5:] = False
+
+        with torch.no_grad():
+            self.assert_close(
+                attention(hidden_states, attention_mask=mask[:, None]), attention(hidden_states, attention_mask=mask)
+            )
 
     @pytest.mark.parametrize(
         ("batch_size", "input_size"),

@@ -660,7 +660,14 @@ def KORNIA_CHECK_SAME_SIZE(
     x_shape, y_shape = x.shape, y.shape
     x_ndim, y_ndim = len(x_shape), len(y_shape)
     in_range = -x_ndim <= dim < x_ndim and -y_ndim <= dim < y_ndim
-    if not in_range or not (x_shape[dim] == y_shape[dim] or (allow_one and x_shape[dim] == 1)):
+    # A plain 1 passes before it is compared with the other size: under a size-oblivious torch.export, which the
+    # Dynamo ONNX exporter of torch 2.9.1 runs, ``1 == s`` guards a dynamic ``s`` against 1, and an export whose
+    # dynamic batch admits 1 then fails.
+    if not in_range or not (
+        (allow_one and isinstance(x_shape[dim], int) and x_shape[dim] == 1)
+        or x_shape[dim] == y_shape[dim]
+        or (allow_one and x_shape[dim] == 1)
+    ):
         if raises:
             msg = _resolve_msg(msg)
             x_shape_list = list(x_shape)
