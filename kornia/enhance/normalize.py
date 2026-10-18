@@ -22,6 +22,8 @@ from typing import List, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core.utils import _as_tensor_nonblocking
+
 __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_min_max"]
 
 
@@ -203,8 +205,8 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
             raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+        std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     mean = mean[..., None]
     std = std[..., None]
@@ -374,8 +376,8 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
             raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+        std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     if mean.dim() == 1:
         mean = mean.view(1, -1, *([1] * (data.dim() - 2)))

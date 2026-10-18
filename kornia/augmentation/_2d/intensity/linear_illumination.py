@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomLinearIllumination(IntensityAugmentationBase2D):
@@ -141,7 +142,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
@@ -261,4 +262,4 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         input = _clamp_unit_range(input)
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
