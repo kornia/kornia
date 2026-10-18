@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.losses.one_hot import one_hot
+from kornia.losses.one_hot import _check_class_labels, one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
@@ -111,10 +111,8 @@ def _dice_loss_cpu(
     target, target_mask = mask_ignore_pixels(target, ignore_index)
     KORNIA_CHECK(target.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {target.dtype}")
     # one_hot's checks and messages, before any gather, scatter or selection: compiled, a label outside the classes
-    # would be dropped silently by the selection, and an Inductor gather's bounds check aborts the process. The
-    # asynchronous assert raises at once on the CPU and inside a compiled graph alike.
-    torch._assert_async((target >= 0).all(), "Class values must be non-negative.")
-    torch._assert_async((target < num_classes).all(), "Class values must be smaller than num_classes.")
+    # would be dropped silently by the selection, and an Inductor gather's bounds check aborts the process.
+    target = _check_class_labels(target, num_classes)
     if weight is not None:
         _check_weight(pred, weight)
 
@@ -220,7 +218,9 @@ def dice_loss(
           takes the probability mass of each class from a batched matrix-vector product and adds the per-class sums
           into ``(B, C)`` bins, so no full-size product with a one-hot target is formed. The result agrees with the
           one-hot sums to rounding, with the same NaN positions; a label outside ``[0, C)`` that is not
-          ``ignore_index`` raises the same ``RuntimeError`` as ``one_hot``, also under ``torch.compile``.
+          ``ignore_index`` raises the same ``RuntimeError`` as ``one_hot``, also under ``torch.compile``. Some torch
+          releases (2.5.1 and 2.9.1 among them) report a ``torch.compile`` capture as an export: a compiled call keeps
+          the one-hot target there, and its compiled ``one_hot`` does not check the labels.
 
     Args:
         pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
