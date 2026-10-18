@@ -112,7 +112,9 @@ class TestONNXExportMixin(BaseTester):
         model = ImageSequential(child, aug, nn.Identity())
         model(torch.rand(1, 3, 8, 8))
         fresh = ImageSequential(nn.Identity())  # never called: its cache is None
-        return ImageSequential(model, fresh), [model, child, aug, fresh]
+        outer = ImageSequential(model, fresh)
+        outer._output_image = torch.rand(1, 3, 8, 8)  # the exported module's own cache, set as a call would
+        return outer, [outer, model, child, aug, fresh]
 
     # Not "dynamo" in the ids: conftest deselects every test whose name contains it unless an optimizer is set.
     @pytest.mark.parametrize("dynamo", [True, False], ids=["default-exporter", "legacy-exporter"])
