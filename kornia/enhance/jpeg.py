@@ -499,7 +499,8 @@ def jpeg_codec_differentiable(
         scalar is rejected. The codec pads on the bottom and right internally and crops back to
         the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
         float16 and bfloat16 inputs are computed in float32, quality and tables included, and the
-        output is rounded once to the input dtype.
+        output is rounded once to the input dtype. Inside a ``torch.autocast`` region the output keeps
+        the input dtype too, but autocast still runs part of the codec in its own lower dtype.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
@@ -804,16 +805,13 @@ class JPEGCodecDifferentiable(nn.Module):
             Reconstructed RGB tensor after differentiable JPEG processing, with
             the same shape as ``image_rgb``.
         """
-        device = image_rgb.device
-        # Move quantization tables to the same device as input. The codec casts them to the dtype it computes in,
-        # which is float32 for a half-precision image: rounding them to the image dtype here would lose precision.
-        quantization_table_y = self.quantization_table_y.to(device)
-        quantization_table_c = self.quantization_table_c.to(device)
-        # Perform encoding-decoding
+        # The codec moves the tables to the input device and casts them to the dtype it computes in, float32 for a
+        # half-precision image, in one step. Casting them to the image dtype here would round them, and a device-only
+        # move first would try to put float64 tables on MPS, which has no float64.
         image_rgb_jpeg: torch.Tensor = jpeg_codec_differentiable(
             image_rgb,
             jpeg_quality=jpeg_quality,
-            quantization_table_c=quantization_table_c,
-            quantization_table_y=quantization_table_y,
+            quantization_table_c=self.quantization_table_c,
+            quantization_table_y=self.quantization_table_y,
         )
         return image_rgb_jpeg

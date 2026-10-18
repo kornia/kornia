@@ -1220,6 +1220,18 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
+    def test_module_float64_tables_on_cpu(self, device, dtype) -> None:
+        # The tables may stay float64 on the CPU while the image lives on a device without float64 (MPS): the codec
+        # converts them to the image device and its compute dtype in one step.
+        qt_y = 1.0 + 254.0 * torch.rand(8, 8, dtype=torch.float64)
+        qt_c = 1.0 + 254.0 * torch.rand(8, 8, dtype=torch.float64)
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([50.0], device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)(img, jpeg_quality)
+        assert img_jpeg.dtype == dtype
+        assert img_jpeg.device == img.device
+        assert torch.equal(img_jpeg, kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c))
+
     def test_module_with_param(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
