@@ -167,6 +167,49 @@ class TestDistortionAffine(BaseTester):
             analytic, torch.tensor([[100.0, 0.0], [0.0, 100.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
         )
 
+    def test_dx_distort_points_batched_points_shared_params_6090(self, device, dtype):
+        # The Jacobian's shape followed the params only, so N points with one set of params returned a single (2, 2).
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.tensor([600.0, 610.0, 319.5, 239.5], device=device, dtype=dtype)
+
+        jacobian = dx_distort_points_affine(points, params)
+
+        assert jacobian.shape == (5, 2, 2)
+        expected = torch.tensor([[600.0, 0.0], [0.0, 610.0]], device=device, dtype=dtype).expand(5, 2, 2)
+        self.assert_close(jacobian, expected, atol=0.0, rtol=0.0)
+        autograd = torch.stack(
+            [torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, params), point) for point in points]
+        )
+        self.assert_close(jacobian, autograd, atol=0.0, rtol=0.0)
+
+    def test_dx_distort_points_broadcasts_points_and_params_6090(self, device, dtype):
+        points = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        params = torch.tensor(
+            [[[600.0, 610.0, 319.5, 239.5]], [[300.0, 310.0, 159.5, 119.5]]], device=device, dtype=dtype
+        )  # (2, 1, 4)
+
+        jacobian = dx_distort_points_affine(points, params)
+
+        assert jacobian.shape == (2, 5, 2, 2)
+        self.assert_close(jacobian[:, :, 0, 0], params[..., 0].expand(2, 5), atol=0.0, rtol=0.0)
+        self.assert_close(jacobian[:, :, 1, 1], params[..., 1].expand(2, 5), atol=0.0, rtol=0.0)
+        assert (jacobian[..., 0, 1] == 0).all()
+        assert (jacobian[..., 1, 0] == 0).all()
+        assert distort_points_affine(points, params).shape[:-1] == jacobian.shape[:-2]
+
+    def test_dx_distort_points_rejects_mismatched_batches_6090(self, device, dtype):
+        # The points' batch used to be ignored, so a params batch that does not match it went unnoticed.
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.rand(3, 4, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            dx_distort_points_affine(points, params)
+
+    def test_dx_distort_points_jit_batched_6090(self, device, dtype):
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.tensor([600.0, 610.0, 319.5, 239.5], device=device, dtype=dtype)
+        op_script = torch.jit.script(dx_distort_points_affine)
+        self.assert_close(op_script(points, params), dx_distort_points_affine(points, params))
+
 
 class TestDistortionKannalaBrandt(BaseTester):
     def test_smoke(self, device, dtype) -> None:
