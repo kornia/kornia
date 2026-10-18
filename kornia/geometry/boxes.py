@@ -1235,9 +1235,7 @@ class Boxes3D:
         export trap `#4009 <https://github.com/kornia/kornia/issues/4009>`_. The integer-input split is
         `#4012 <https://github.com/kornia/kornia/issues/4012>`_ and the validator split with
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
-        Boxes from :func:`~kornia.geometry.bbox.bbox_generator3d` measure one larger than requested:
-        `#4018 <https://github.com/kornia/kornia/issues/4018>`_. The :meth:`to_tensor` default differs from
-        :meth:`Boxes.to_tensor`, which defaults to the stored mode:
+        The :meth:`to_tensor` default differs from :meth:`Boxes.to_tensor`, which defaults to the stored mode:
         `#4251 <https://github.com/kornia/kornia/issues/4251>`_.
 
     """

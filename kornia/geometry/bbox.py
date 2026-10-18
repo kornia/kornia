@@ -154,8 +154,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Convention:
         Vertices are **inclusive**: a box covering pixels ``0..9`` has corners at ``0`` and ``9`` and width
-        ``10``. The vertex-based helpers of this module share it, except :func:`bbox_generator3d`
-        (`#4018 <https://github.com/kornia/kornia/issues/4018>`_); :func:`nms` takes exclusive ``xyxy`` and
+        ``10``. The vertex-based helpers of this module share it; :func:`nms` takes exclusive ``xyxy`` and
         :func:`transform_bbox` converts ``'xywh'`` exclusively (``xmax = xmin + width``).
         The order is clockwise top-left, top-right, bottom-right, bottom-left. The result is
         ``(heights, widths)``, read from fixed vertex indices, ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
@@ -463,10 +462,6 @@ def bbox_generator(
         the start. A scalar input gives a batch of one. The four tensors must share dtype and device, otherwise
         ``AssertionError``; the output keeps a gradient path.
 
-    .. warning::
-        :func:`bbox_generator3d` places its far corner at ``start + size`` instead:
-        `#4018 <https://github.com/kornia/kornia/issues/4018>`_.
-
     Args:
         x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
             tensor or :math:`(B,)`.
@@ -543,10 +538,8 @@ def bbox_generator3d(
         The four front vertices precede the four back vertices. A scalar input gives a batch of one. The six
         tensors must share dtype and device, otherwise ``AssertionError``; the output keeps a gradient path.
 
-    .. warning::
-        The far corner is at ``start + size``, one further than :func:`bbox_generator`, so
-        :func:`infer_bbox_shape3d` reads back ``size + 1`` on every axis:
-        `#4018 <https://github.com/kornia/kornia/issues/4018>`_.
+        The far corner is at ``start + size - 1`` (inclusive, see :func:`infer_bbox_shape3d`), so
+        :func:`infer_bbox_shape3d` reads back ``size`` on every axis, matching :func:`bbox_generator`.
 
     Args:
         x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
@@ -571,22 +564,22 @@ def bbox_generator3d(
         >>> depth = torch.tensor([30, 60])
         >>> bbox_generator3d(x_start, y_start, z_start, width, height, depth)
         tensor([[[ 0,  1,  2],
-                 [10,  1,  2],
-                 [10, 21,  2],
-                 [ 0, 21,  2],
-                 [ 0,  1, 32],
-                 [10,  1, 32],
-                 [10, 21, 32],
-                 [ 0, 21, 32]],
+                 [ 9,  1,  2],
+                 [ 9, 20,  2],
+                 [ 0, 20,  2],
+                 [ 0,  1, 31],
+                 [ 9,  1, 31],
+                 [ 9, 20, 31],
+                 [ 0, 20, 31]],
         <BLANKLINE>
                 [[ 3,  4,  5],
-                 [43,  4,  5],
-                 [43, 54,  5],
-                 [ 3, 54,  5],
-                 [ 3,  4, 65],
-                 [43,  4, 65],
-                 [43, 54, 65],
-                 [ 3, 54, 65]]])
+                 [42,  4,  5],
+                 [42, 53,  5],
+                 [ 3, 53,  5],
+                 [ 3,  4, 64],
+                 [42,  4, 64],
+                 [42, 53, 64],
+                 [ 3, 53, 64]]])
 
     """
     if not (x_start.shape == y_start.shape == z_start.shape and x_start.dim() in [0, 1]):
@@ -614,16 +607,14 @@ def bbox_generator3d(
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)
     bbox[:, :, 2] += z_start.view(-1, 1)
-    # Far corner is at start + size, not start + size - 1: see the warning in this function's docstring (#4018).
-    bbox[:, 1, 0] += width.view(-1)
-    bbox[:, 2, 0] += width.view(-1)
-    bbox[:, 2, 1] += height.view(-1)
-    bbox[:, 3, 1] += height.view(-1)
+    bbox[:, 1, 0] += width.view(-1) - 1
+    bbox[:, 2, 0] += width.view(-1) - 1
+    bbox[:, 2, 1] += height.view(-1) - 1
+    bbox[:, 3, 1] += height.view(-1) - 1
 
     # back
     bbox_back = bbox.clone()
-    # Far corner is at start + size, not start + size - 1: see the warning in this function's docstring (#4018).
-    bbox_back[:, :, -1] += depth.view(-1, 1).expand(-1, 4)
+    bbox_back[:, :, -1] += (depth.view(-1, 1) - 1).expand(-1, 4)
     return torch.cat([bbox, bbox_back], dim=1)
 
 

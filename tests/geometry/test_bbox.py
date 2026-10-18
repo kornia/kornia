@@ -589,7 +589,7 @@ class TestBbox3D(BaseTester):
         boxes = bbox_generator3d(*args)
         assert boxes.shape == (1, 8, 3)
         self.assert_close(boxes[0, 0], torch.tensor([1, 2, 3], device=device, dtype=dtype))
-        self.assert_close(boxes[0, 6], torch.tensor([5, 7, 9], device=device, dtype=dtype))
+        self.assert_close(boxes[0, 6], torch.tensor([4, 6, 8], device=device, dtype=dtype))
 
     def test_smoke(self, device, dtype):
         # Sample two points of the 3d rect
@@ -757,25 +757,16 @@ class TestBbox3D(BaseTester):
             with pytest.raises(ShapeError):
                 call()
 
-    def test_wart_bbox_generator3d_extent_is_one_larger_than_requested_4018(self, device, dtype):
-        # Wart pin for kornia#4018: the 3D generator places the far corner at start + size, so
-        # width 3 from x=1 spans x=1..4 and infer_bbox_shape3d reads 4 on every axis, where the
-        # 2D generator with the same arguments spans x=1..3 and reads 3.
+    def test_bbox_generator3d_matches_bbox_generator_extent_4018(self, device, dtype):
+        # kornia#4018: 3D sizes are inclusive, just like the 2D generator. A size of 3 from x=1 spans x=1..3.
         start = torch.tensor([1.0], device=device, dtype=dtype)
         size = torch.tensor([3.0], device=device, dtype=dtype)
         boxes = bbox_generator3d(start, start, start, size, size, size)
-        expected_x = torch.tensor([[1.0, 4.0, 4.0, 1.0, 1.0, 4.0, 4.0, 1.0]], device=device, dtype=dtype)
+        expected_x = torch.tensor([[1.0, 3.0, 3.0, 1.0, 1.0, 3.0, 3.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(boxes[..., 0], expected_x, atol=0.0, rtol=0.0)
         for extent in infer_bbox_shape3d(boxes):
-            self.assert_close(extent, size + 1, atol=0.0, rtol=0.0)
-        for extent in infer_bbox_shape(bbox_generator(start, start, size, size)):
             self.assert_close(extent, size, atol=0.0, rtol=0.0)
-
-    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="kornia#4018: bbox_generator3d extent is size + 1")
-    def test_convention_bbox_generator3d_matches_bbox_generator_extent_4018(self, device, dtype):
-        start = torch.tensor([1.0], device=device, dtype=dtype)
-        size = torch.tensor([3.0], device=device, dtype=dtype)
-        for extent in infer_bbox_shape3d(bbox_generator3d(start, start, start, size, size, size)):
+        for extent in infer_bbox_shape(bbox_generator(start, start, size, size)):
             self.assert_close(extent, size, atol=0.0, rtol=0.0)
 
     def test_wart_bbox_to_mask3d_truncates_fractional_coordinates_4015(self, device, dtype):
