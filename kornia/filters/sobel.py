@@ -99,16 +99,16 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
         - The border is always replicated, so for ``order=1`` with ``normalized=True``, a linear ramp's derivative
           is half its slope on the first and last pixel along that axis. There is no ``border_type``, unlike
           :func:`~kornia.filters.filter2d` and :func:`~kornia.filters.laplacian`, whose default is ``'reflect'``.
-        - On the CPU, the first-order Sobel derivative of a float32 or float64 input (an integer input is converted
-          to float32 first) with at least 128 x 128 pixels per image and ``3 * 128 * 128`` values in all is computed
-          from shifted slices instead of a convolution, which avoids the convolution's large buffers, unless its
-          gradient is recorded, autocast is on, or ``torch.export`` or ``torch.jit.trace`` captures the call, so an
-          exported program keeps the convolution for every input size. It agrees with the convolution to
-          rounding and has a direct convolution's NaN and infinity positions; with ``normalized=False``, results
-          that overflow can overflow at other pixels. On macOS arm64, PyTorch computes the float32 convolution with
-          a Winograd transform, which also returns NaN at some pixels next to an infinity and overflows on finite
-          inputs near the float32 maximum, so there the slices return fewer NaN than the convolution that smaller
-          inputs keep.
+        - On the CPU, the first-order Sobel derivative of a float32 or float64 input (an integer input is converted to
+          float32 first) with at least 128 x 128 pixels per image and ``3 * 128 * 128`` values in all is computed from
+          shifted slices instead of a convolution, which avoids the convolution's large buffers, unless its gradient is
+          recorded, autocast is on, or ``torch.export`` or ``torch.jit.trace`` captures the call, so an exported program
+          keeps the convolution for every input size. On torch releases that also report a ``torch.compile`` capture as
+          an export (2.5.1 and 2.9.1 checked), compiled calls keep the convolution too. It agrees with the convolution
+          to rounding and has a direct convolution's NaN and infinity positions; with ``normalized=False``, results that
+          overflow can overflow at other pixels. On macOS arm64, PyTorch computes the float32 convolution with a
+          Winograd transform, which also returns NaN at some pixels next to an infinity and overflows on finite inputs
+          near the float32 maximum, so there the slices return fewer NaN than the convolution that smaller inputs keep.
 
     Args:
         input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
