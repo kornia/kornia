@@ -3180,3 +3180,42 @@ class TestCrop3DShapePropagation(BaseTester):
                 actual = _get_new_batch_shape(params, image.shape, op)
             assert [type(dim) for dim in actual] == [int] * 5
             assert actual == (batch, 1, 4, 5, 6)
+
+
+class TestPadToMosaicShapePropagation(BaseTester):
+    @pytest.mark.parametrize(
+        "make_first",
+        [lambda: K.PadTo((40, 48)), lambda: K.RandomMosaic(output_size=(20, 30), p=1.0)],
+        ids=["PadTo", "RandomMosaic"],
+    )
+    @pytest.mark.parametrize(
+        "make_second",
+        [lambda: K.Resize(16), lambda: K.CenterCrop(8, cropping_mode="resample")],
+        ids=["Resize-int", "CenterCrop-resample"],
+    )
+    def test_next_child_sees_the_new_canvas_6043(self, make_first, make_second, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("2D bilinear grid sampling is unsupported for this device/dtype.")
+        image = torch.rand(2, 3, 24, 40).to(device, dtype)
+        seq = K.AugmentationSequential(make_first(), make_second())
+        actual = seq(image)
+        canvas = seq[0](image, params=seq._params[0].data)
+        assert tuple(seq._params[1].data["forward_input_shape"].tolist()) == tuple(canvas.shape)
+        self.assert_close(actual, make_second()(canvas))
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    @pytest.mark.parametrize("exporting", [False, True])
+    def test_tracked_size_6043(self, batch, exporting):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        shape = torch.Size((batch, 3, 24, 40))
+        # RandomMosaic resizes to ``output_size`` also when the mosaic is skipped, and keeps the size without one.
+        cases = [
+            (K.PadTo((40, 48)), (40, 48)),
+            (K.RandomMosaic(output_size=(20, 30), p=0.0), (20, 30)),
+            (K.RandomMosaic(p=1.0), (24, 40)),
+        ]
+        for op, size in cases:
+            params = ParamItem("op", op.forward_parameters(shape))
+            with patch("kornia.augmentation.container.image.is_exporting", return_value=exporting):
+                assert _get_new_batch_shape(params, shape, op) == (batch, 3, *size)
