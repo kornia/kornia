@@ -26,6 +26,45 @@ from testing.base import BaseTester
 
 
 class TestDepthSmoothnessLoss(BaseTester):
+    @pytest.mark.parametrize("shape", [(1, 5), (5, 1), (1, 1)])
+    @pytest.mark.parametrize("constant_depth", [False, True])
+    def test_singleton_spatial_axes(self, device, dtype, shape, constant_depth):
+        """Axes without adjacent pixels contribute zero to the smoothness penalty."""
+        height, width = shape
+        depth = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width)
+        if constant_depth:
+            depth = torch.ones_like(depth)
+        image = torch.zeros(1, 3, height, width, device=device, dtype=dtype)
+        expected = torch.tensor(0.0 if constant_depth or shape == (1, 1) else 1.0, device=device, dtype=dtype)
+
+        actual = kornia.losses.inverse_depth_smoothness_loss(depth, image)
+
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("shape", [(1, 5), (5, 1), (1, 1)])
+    def test_singleton_spatial_axes_backward(self, device, dtype, shape):
+        """The surviving direction keeps its gradient and an isolated pixel has zero gradients."""
+        height, width = shape
+        depth = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width).requires_grad_()
+        image = torch.zeros(1, 3, height, width, device=device, dtype=dtype, requires_grad=True)
+        expected = torch.zeros_like(depth).reshape(-1)
+        if height * width > 1:
+            expected[0], expected[-1] = -0.25, 0.25
+
+        kornia.losses.InverseDepthSmoothnessLoss()(depth, image).backward()
+
+        self.assert_close(depth.grad, expected.reshape_as(depth))
+        self.assert_close(image.grad, torch.zeros_like(image))
+
+    @pytest.mark.parametrize("shape", [(1, 4), (4, 1), (1, 1)])
+    def test_singleton_spatial_axes_gradcheck(self, device, shape):
+        """Singleton axes retain differentiability in both depth and image inputs."""
+        height, width = shape
+        depth = torch.rand(1, 1, height, width, device=device, dtype=torch.float64)
+        image = torch.rand(1, 3, height, width, device=device, dtype=torch.float64)
+
+        self.gradcheck(kornia.losses.inverse_depth_smoothness_loss, (depth, image))
+
     @pytest.mark.parametrize("data_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
     def test_smoke(self, device, dtype, data_shape):
         image = torch.rand(data_shape, device=device, dtype=dtype)

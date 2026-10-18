@@ -1,0 +1,1 @@
+`inverse_depth_smoothness_loss` and `InverseDepthSmoothnessLoss` now return finite losses for singleton spatial axes instead of NaN. A direction without adjacent pixels contributes zero, while the other direction retains its smoothness penalty and gradients.

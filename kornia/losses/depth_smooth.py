@@ -57,6 +57,7 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
           :ref:`Losses and metrics <losses-metrics-conventions>` shows how to port a normalised smoothness term.
         - Only the rank, :math:`(H, W)`, device and dtype are validated: the channel counts are not, a batch of one
           broadcasts against the other argument, and swapped arguments return a value.
+        - A spatial axis of length one has no adjacent pixels and contributes zero. A single-pixel map has loss zero.
 
     Args:
         idepth: tensor with the inverse depth with shape :math:`(N, 1, H, W)`.
@@ -106,7 +107,9 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
     smoothness_x: torch.Tensor = torch.abs(idepth_dx * weights_x)
     smoothness_y: torch.Tensor = torch.abs(idepth_dy * weights_y)
 
-    return torch.mean(smoothness_x) + torch.mean(smoothness_y)
+    mean_x = smoothness_x.mean() if smoothness_x.shape[-1] > 0 else smoothness_x.sum()
+    mean_y = smoothness_y.mean() if smoothness_y.shape[-2] > 0 else smoothness_y.sum()
+    return mean_x + mean_y
 
 
 class InverseDepthSmoothnessLoss(nn.Module):
