@@ -646,7 +646,11 @@ def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
     ``meta``. Every device type torch has an autocast region for is covered, ``xla``, ``hpu`` and a PrivateUse1 backend
     too.
     """
-    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1.
+    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
+    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
+    # instead of passing it to the ``except``.
+    if device_type == "meta":
+        return nullcontext()
     try:
         enabled = torch.is_autocast_enabled(device_type)
     except RuntimeError:  # a device type without autocast, such as ``meta``

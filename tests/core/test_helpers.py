@@ -1012,3 +1012,16 @@ def test_autocast_disabled_covers_other_autocast_device_types(device_type):
     # find_affine turned off the autocast region of any device type before it used this helper.
     with torch.autocast(device_type, dtype=torch.bfloat16), _autocast_disabled(device_type):
         assert not torch.is_autocast_enabled(device_type)
+
+
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+def test_eager_backend_traces_autocast_disabled_on_meta():
+    # torch.is_autocast_enabled("meta") raises, and under torch.compile Dynamo reports that as its own internal error
+    # instead of routing it to an ``except`` in the traced function.
+    def fit(x):
+        with _autocast_disabled(x.device.type):
+            return x @ x.mT
+
+    torch._dynamo.reset()
+    x = torch.empty(2, 3, 3, device="meta")
+    assert torch.compile(fit, backend="eager", fullgraph=True)(x).shape == (2, 3, 3)

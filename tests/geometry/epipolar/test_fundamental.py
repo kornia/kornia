@@ -34,7 +34,7 @@ from kornia.geometry.epipolar.fundamental import (
 )
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
 from testing.two_view import two_view_scene
 
@@ -418,6 +418,13 @@ class TestFundamentalAutocast(BaseTester):
         points = torch.empty(2, 9, 2, device="meta")
         assert epi.find_fundamental(points, points).shape == (2, 3, 3)
         assert epi.find_fundamental(points[:, :7], points[:, :7], method="7POINT").shape == (2, 3, 3, 3)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_eager_backend_traces_the_meta_device(self):
+        # Compiled shape inference worked on main; the autocast guard must not break it.
+        torch._dynamo.reset()
+        points = torch.empty(2, 9, 2, device="meta")
+        assert torch.compile(epi.find_fundamental, backend="eager", fullgraph=True)(points, points).shape == (2, 3, 3)
 
 
 class TestComputeCorrespondEpilines(BaseTester):
