@@ -151,8 +151,7 @@ def _warn_on_joint_element_types(
         input_type = inputs.get(f"{_prefix(joint + 1)}{input_name}")
         if output_type is None or input_type is None:  # merge_models names the missing one
             continue
-        if not (output_type.HasField("tensor_type") and input_type.HasField("tensor_type")):
-            continue
+        # a type that is not a tensor (a sequence, an optional), or none at all, reads as UNDEFINED (0) here
         output_elem, input_elem = output_type.tensor_type.elem_type, input_type.tensor_type.elem_type
         if output_elem and input_elem and output_elem != input_elem:
             _warn_at_caller(

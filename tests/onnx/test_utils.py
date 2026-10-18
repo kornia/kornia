@@ -423,9 +423,11 @@ class TestONNXLoader:
             ONNXLoader.load_config(url, download=download)
         assert "download=True" not in str(info.value)
 
-    def test_path_like_names_are_local_paths(self, tmp_path):
+    def test_path_like_names_are_local_paths(self, monkeypatch, tmp_path):
         # a PathLike names a local file, never an hf:// model or a URL, whatever its text
         from unittest import mock
+
+        monkeypatch.chdir(tmp_path)  # a default cache directory, if one were reached, is relative to it
 
         class _Name:
             def __init__(self, text):
