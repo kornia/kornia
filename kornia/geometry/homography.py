@@ -519,7 +519,11 @@ def find_homography_dlt(
 
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element whose weighted DLT system is
+        not finite, because a weight or a point is not finite (zero-weight points included) or an entry overflows,
+        is NaN for both solvers and on every device; the other elements are unaffected. If the SVD of
+        ``solver="svd"`` fails to converge on a finite system, the whole batch is NaN and a ``RuntimeWarning`` is
+        issued.
 
     """
     device, dtype = _extract_device_dtype([points1, points2])
@@ -588,6 +592,27 @@ def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
     return torch.where(rank8[:, None], null, torch.full_like(null, float("nan")))
 
 
+def _svd_null_vector(normal: torch.Tensor) -> torch.Tensor:
+    """Right singular vector of the smallest singular value of each ``(B, 9, 9)`` matrix, NaN where it is undefined.
+
+    A matrix with a non-finite entry has no null vector, and the backends disagree on what its SVD returns:
+    CPU ``torch.linalg.svd`` raises for the whole batch, while CUDA can return a finite vector, such as a basis
+    vector, for a matrix with a single NaN entry. Such matrices are decomposed as zeros and their vectors are
+    replaced by NaN, so on every backend the finite matrices keep their vectors and the others are NaN, as with
+    the LU solver (#4770). If the SVD still fails on a finite batch, every vector is NaN and a warning is issued;
+    there is no partial result to keep.
+    """
+    finite = normal.isfinite().flatten(1).all(-1)
+    safe = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
+    try:
+        _, _, V = _torch_svd_cast(safe)
+    except RuntimeError:
+        warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
+        return torch.full_like(normal[..., 0], float("nan"))
+    null = V[..., -1]
+    return torch.where(finite[:, None], null, torch.full_like(null, float("nan")))
+
+
 def _homography_from_dlt_system(
     A: torch.Tensor,
     weights: Optional[torch.Tensor],
@@ -620,12 +645,7 @@ def _homography_from_dlt_system(
         A = A.transpose(-2, -1) @ A if w_full is None else (A.transpose(-2, -1) * w_full) @ A
 
     if solver == "svd":
-        try:
-            _, _, V = _torch_svd_cast(A)
-        except RuntimeError:
-            warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
-            return torch.empty((A.shape[0], 3, 3), device=device, dtype=dtype)
-        H = V[..., -1].view(-1, 3, 3)
+        H = _svd_null_vector(A).view(-1, 3, 3)
     elif solver == "lu":
         if not minimal_lu:
             B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
@@ -706,7 +726,8 @@ def find_homography_dlt_iterated(
         n_iter: number of solves, including the initial one.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`, NaN for a batch element as in
+        :func:`find_homography_dlt`.
 
     """
     device, dtype = _extract_device_dtype([points1, points2])
@@ -794,7 +815,10 @@ def find_homography_lines_dlt(
           Zero-weight segments are excluded from Hartley normalization.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element whose weighted DLT system is
+        not finite, because a weight or an endpoint is not finite (zero-weight segments included) or an entry
+        overflows, is NaN on every device; the other elements are unaffected. If the SVD fails to converge on a
+        finite system, the whole batch is NaN and a ``RuntimeWarning`` is issued.
 
     Raises:
         AssertionError: if fewer than four segments are given, as in :func:`find_homography_dlt`.
@@ -811,7 +835,8 @@ def find_homography_lines_dlt(
     # homography, or NaN for none at all (#5991).
     if N < 4:
         raise AssertionError(f"find_homography_lines_dlt needs at least 4 line segments, got {N}: {ls1.shape}")
-    device, dtype = _extract_device_dtype([ls1, ls2])
+    # Raises unless both segment sets share a device and a dtype.
+    _extract_device_dtype([ls1, ls2])
 
     points1 = ls1.reshape(BS, 2 * N, 2)
     points2 = ls2.reshape(BS, 2 * N, 2)
@@ -856,13 +881,7 @@ def find_homography_lines_dlt(
         w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
         A = (A.transpose(-2, -1) * w_full) @ A
 
-    try:
-        _, _, V = _torch_svd_cast(A)
-    except RuntimeError:
-        warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
-        return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
-
-    H = V[..., -1].view(-1, 3, 3)
+    H = _svd_null_vector(A).view(-1, 3, 3)
     H = _inverse_normalization(transform2) @ (H @ transform1)
     return normalize_transformation(H, eps)
 
@@ -889,7 +908,10 @@ def find_homography_lines_dlt_iterated(
         n_iter: number of solves, including the initial one.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element is NaN when one of its
+        solves is, as in :func:`find_homography_lines_dlt`. In float16, segments with coordinates in the hundreds
+        of pixels overflow the re-weighting distances of :func:`line_segment_transfer_error_one_way` and give NaN
+        this way.
 
     Raises:
         AssertionError: if fewer than four segments are given, as in :func:`find_homography_lines_dlt`.
