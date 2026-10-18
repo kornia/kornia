@@ -106,12 +106,20 @@ def _unpack_3d_ks(kernel_size: tuple[int, int, int] | int) -> tuple[int, int, in
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
-    r"""Normalize both derivative and smoothing kernel."""
+    r"""Normalize both derivative and smoothing kernel.
+
+    Float16 and bfloat16 kernels are normalized in float32 and rounded back to their input dtype, so large sums
+    and intermediate gradients do not overflow in half precision. An all-zero kernel remains undefined.
+    """
     KORNIA_CHECK_SHAPE(input, ["*", "H", "W"])
 
+    output_dtype = input.dtype
+    if output_dtype in (torch.float16, torch.bfloat16):
+        input = input.float()
     norm = input.abs().sum(dim=-1).sum(dim=-1)
 
-    return input / (norm[..., None, None])
+    output = input / norm[..., None, None]
+    return output.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else output
 
 
 def _normalize_kernel2d_2nd_order(input: torch.Tensor) -> torch.Tensor:

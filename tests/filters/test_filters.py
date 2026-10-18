@@ -62,6 +62,7 @@ from kornia.filters import (
     spatial_gradient3d,
 )
 from kornia.filters.blur import _box_blur_pool
+from kornia.filters.kernels import normalize_kernel2d
 
 from testing.base import (
     BaseTester,
@@ -71,6 +72,63 @@ from testing.base import (
     supports_reflect_padding,
     supports_replicate_padding,
 )
+
+
+class TestNormalizeKernel2D(BaseTester):
+    def test_large_box_kernel_has_unit_norm(self, device, dtype):
+        """A 257x257 box kernel retains its unit L1 norm in half precision."""
+        kernel = torch.ones(1, 257, 257, device=device, dtype=dtype)
+        expected = torch.full_like(kernel, 1.0 / (257 * 257))
+
+        actual = normalize_kernel2d(kernel)
+
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        assert actual.dtype == dtype
+
+    def test_normalized_large_filter_preserves_constant_image(self, device, dtype):
+        """Normalizing a large box kernel must not turn a constant image black."""
+        image = torch.ones(1, 1, 257, 257, device=device, dtype=dtype)
+        kernel = torch.ones(1, 257, 257, device=device, dtype=dtype)
+
+        actual = filter2d(image, kernel, normalized=True, padding="valid")
+
+        self.assert_close(actual, torch.ones_like(actual))
+
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    def test_small_kernel_weights_have_finite_gradients(self, device, dtype, noncontiguous):
+        """Representable normalization gradients stay finite for small learned weights."""
+        kernel = torch.full((1, 3, 3), 1e-5, device=device, dtype=dtype)
+        if noncontiguous:
+            kernel = kernel.transpose(-2, -1)
+        kernel.requires_grad_()
+        weights = torch.arange(9, device=device, dtype=dtype).reshape(1, 3, 3)
+        compute_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        reference = kernel.detach().to(compute_dtype).requires_grad_()
+        expected_loss = (normalize_kernel2d(reference) * weights.to(compute_dtype)).sum()
+        expected_gradient = torch.autograd.grad(expected_loss, reference)[0].to(dtype)
+
+        loss = (normalize_kernel2d(kernel) * weights).sum()
+        actual_gradient = torch.autograd.grad(loss, kernel)[0]
+
+        assert torch.isfinite(actual_gradient).all()
+        self.assert_close(actual_gradient, expected_gradient)
+
+    def test_zero_kernel_remains_undefined(self, device, dtype):
+        """An all-zero kernel retains its undefined zero-over-zero normalization."""
+        kernel = torch.zeros(1, 3, 3, device=device, dtype=dtype)
+
+        actual = normalize_kernel2d(kernel)
+
+        assert torch.isnan(actual).all()
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        """Compiled normalization preserves the eager result and output dtype."""
+        kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
+        optimized = torch_optimizer(normalize_kernel2d)
+
+        actual = optimized(kernel)
+
+        self.assert_close(actual, normalize_kernel2d(kernel))
 
 
 class TestFilter2D(BaseTester):

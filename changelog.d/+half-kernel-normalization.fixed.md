@@ -1,0 +1,1 @@
+Half-precision derivative and smoothing kernels now normalize in float32 before returning their original dtype. Large float16 box filters no longer turn constant images black when their kernel sum overflows, and small learned kernel weights retain finite, representable normalization gradients.
