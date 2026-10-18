@@ -80,17 +80,17 @@ class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         w: int = input.shape[-1]
-        # Filled on the device: a ``torch.tensor`` literal copies from the host and waits for queued kernels.
-        # ``torch.jit.trace`` can pass the size as a 0-d tensor, which ``_constant_tensor`` does not take.
-        flip_mat: Tensor = (
-            _constant_tensor(
+        # Filled on the device: a ``torch.tensor`` literal copies from the host and waits for queued kernels. The
+        # size-dependent entry is filled from the size itself, which stays symbolic under a dynamic ``torch.compile``.
+        # ``torch.jit.trace`` can pass the size as a 0-d tensor, which keeps the literal.
+        if not isinstance(w, int):
+            return torch.tensor(
                 [[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
-            )
-            if isinstance(w, int)
-            else torch.tensor(
-                [[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
-            )
+            ).expand(input.shape[0], 4, 4)
+        flip_mat: Tensor = _constant_tensor(
+            [[-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
         )
+        flip_mat[0, 3] = torch.full((), w - 1, device=input.device, dtype=input.dtype)
         return flip_mat.expand(input.shape[0], 4, 4)
 
     def apply_transform(

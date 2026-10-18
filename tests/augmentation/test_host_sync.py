@@ -204,3 +204,36 @@ def test_erasing_copies_box_parameters_not_masks(tmp_path) -> None:
     copied = sum(e.get("args", {}).get("bytes", 0) for e in events if "Memcpy HtoD" in e.get("name", ""))
     mask_bytes = 8 * 64 * 64 * 4
     assert copied < mask_bytes // 4, copied
+
+
+def _shape_literal_cases() -> dict:
+    from kornia.filters import get_gaussian_kernel1d
+    from kornia.geometry.transform.affwarp import _compute_tensor_center, _compute_tensor_center3d
+
+    def flip(cls):
+        return lambda x: cls(p=1.0).compute_transformation(x, {}, {})
+
+    return {
+        "tensor_center": lambda x: _compute_tensor_center(x[:, :, 0]),
+        "tensor_center3d": _compute_tensor_center3d,
+        "gaussian_kernel1d": lambda x: get_gaussian_kernel1d(x.shape[-1], torch.full((1, 1), 1.5, device=x.device)),
+        "RandomHorizontalFlip3D": flip(K.RandomHorizontalFlip3D),
+        "RandomVerticalFlip3D": flip(K.RandomVerticalFlip3D),
+        "RandomDepthicalFlip3D": flip(K.RandomDepthicalFlip3D),
+    }
+
+
+@pytest.mark.parametrize("name", sorted(_shape_literal_cases()))
+def test_dynamo_shape_derived_literals_compile_once(name, device, torch_optimizer, optimizer_backend) -> None:
+    # Literals built from sizes stay symbolic under a dynamic compile: one graph for every size, no guard on a value.
+    from torch._dynamo.testing import CompileCounter
+
+    if optimizer_backend == "jit":
+        pytest.skip("counts the graphs of torch.compile, which torch.jit.script does not build")
+    op = _shape_literal_cases()[name]
+    counter = CompileCounter()
+    compiled = torch_optimizer(op, backend=counter, dynamic=True, fullgraph=True)
+    for size in (9, 11, 13):
+        x = torch.rand(2, 3, size, size + 2, size + 4, device=device)
+        assert torch.equal(compiled(x), op(x))
+    assert counter.frame_count == 1
