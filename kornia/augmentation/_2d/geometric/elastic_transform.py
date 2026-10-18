@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import elastic_transform2d
 
@@ -112,7 +113,7 @@ class RandomElasticTransform(AugmentationBase2D):
     ) -> torch.Tensor:
         return elastic_transform2d(
             input,
-            params["noise"].to(input),
+            _to_device_nonblocking(params["noise"], input.device, input.dtype),
             flags["kernel_size"],
             flags["sigma"],
             flags["alpha"],

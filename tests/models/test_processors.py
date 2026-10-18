@@ -44,6 +44,16 @@ class TestResizePreProcessor(BaseTester):
         assert original_sizes.device == device
         assert original_sizes.tolist() == [list(size) for size in sizes]
 
+    def test_tensor_batch_matches_the_per_image_resize(self, device, dtype):
+        # A tensor batch is resized in one call, which keeps its batch dynamic in an ONNX export.
+        images = torch.rand(3, 3, 13, 17, device=device, dtype=dtype)
+
+        resized, original_sizes = ResizePreProcessor(8, 9)(images)
+        per_image, per_image_sizes = ResizePreProcessor(8, 9)(list(images))
+
+        self.assert_close(resized, per_image)
+        assert original_sizes.tolist() == per_image_sizes.tolist() == [[13, 17]] * 3
+
 
 class TestResizePostProcessor(BaseTester):
     @pytest.mark.parametrize(

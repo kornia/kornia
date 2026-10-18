@@ -15,6 +15,9 @@
 # limitations under the License.
 #
 
+from contextlib import contextmanager
+from typing import Iterator
+
 import pytest
 import torch
 from torch.utils._python_dispatch import TorchDispatchMode
@@ -42,6 +45,24 @@ from testing.base import (
     supports_topk,
 )
 from testing.default_device import default_device
+
+
+@contextmanager
+def _deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
+    # Some CUDA backward kernels accumulate with atomics, so two backward passes of one graph can round differently.
+    # Deterministic algorithms fix the accumulation order (CPU kernels already have one). `warn_only` keeps an op
+    # without a deterministic CUDA kernel running, as it does by default; it only warns. A strict mode the caller
+    # already set is kept.
+    if device.type != "cuda":
+        yield
+        return
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(True, warn_only=warn_only if enabled else True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
 
 
 def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
@@ -174,18 +195,26 @@ class TestScaleSpaceDetector(BaseTester):
             kwargs["max_candidates"] = max_candidates
         joint, separate = subpix_type(**kwargs), SeparateSubpix(**kwargs)
         joint_calls, separate_calls = count_calls(joint), count_calls(separate)
-        actual = detector(joint)(img, mask)
-        expected = detector(separate)(img, mask)
-        assert actual[0].ne(0).any()
-        for a, e in zip(actual, expected):
-            self.assert_close(a, e)
-        # The subclass refines each sign of every octave in its own call. The built-in refiner
-        # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
-        assert len(separate_calls) > 0
-        assert len(separate_calls) % 2 == 0
-        assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
-        actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
-        expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
+        # On CUDA the packed Cramer solve of `conv_quad_interp3d` selects its system entries with a repeated-index
+        # `index_select`, whose backward accumulates with atomics in no fixed order. One keypoint of the batch-1
+        # fixture has an ill-conditioned fit, and the reordering moves the float32 image gradient there by up to
+        # 4.3e-5 -- within that gradient's own float32 error against float64 (5.5e-5), but over the float32
+        # tolerance -- so about a third of the runs failed, the capped variant too, where both detectors take the
+        # same separate path. Deterministic algorithms give both passes one accumulation order: the two detectors
+        # then agree bit for bit on CUDA, as they do on CPU, and the default tolerance stands.
+        with _deterministic_algorithms_on_cuda(device):
+            actual = detector(joint)(img, mask)
+            expected = detector(separate)(img, mask)
+            assert actual[0].ne(0).any()
+            for a, e in zip(actual, expected):
+                self.assert_close(a, e)
+            # The subclass refines each sign of every octave in its own call. The built-in refiner
+            # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
+            assert len(separate_calls) > 0
+            assert len(separate_calls) % 2 == 0
+            assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
+            actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
+            expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
         self.assert_close(actual_grad, expected_grad)
 
     def test_shape(self, device, dtype):
@@ -662,8 +691,11 @@ class TestScaleSpaceDetector(BaseTester):
                 super().__init__()
                 self.response = kornia.feature.BlobHessian()
 
-            def forward(self, x: torch.Tensor, _sigmas: torch.Tensor) -> torch.Tensor:
-                return self.response(x.mean(dim=1, keepdim=True))
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                # Forward the sigmas as the default BlobHessian gets them. Without the sigma**4 normalisation the
+                # response falls with scale, so a candidate needs a noise feature that beats the level below it,
+                # and 8-18% of noise images had none; this seed's CUDA float64 draw was one of them.
+                return self.response(x.mean(dim=1, keepdim=True), sigmas)
 
         torch.manual_seed(3)
         inp = torch.rand(1, 3, 96, 96, device=device, dtype=dtype)
