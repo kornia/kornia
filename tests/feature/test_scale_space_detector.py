@@ -662,8 +662,11 @@ class TestScaleSpaceDetector(BaseTester):
                 super().__init__()
                 self.response = kornia.feature.BlobHessian()
 
-            def forward(self, x: torch.Tensor, _sigmas: torch.Tensor) -> torch.Tensor:
-                return self.response(x.mean(dim=1, keepdim=True))
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                # Forward the sigmas as the default BlobHessian gets them. Without the sigma**4 normalisation the
+                # response falls with scale, so a candidate needs a noise feature that beats the level below it,
+                # and 8-18% of noise images had none; this seed's CUDA float64 draw was one of them.
+                return self.response(x.mean(dim=1, keepdim=True), sigmas)
 
         torch.manual_seed(3)
         inp = torch.rand(1, 3, 96, 96, device=device, dtype=dtype)
