@@ -121,13 +121,9 @@ def _guided_blur_multichannel_guidance(
     subsample: int = 1,
     separable: bool = False,
 ) -> torch.Tensor:
-    # One compute dtype for the whole path. A ``guidance`` narrower than ``input`` -- a float16,
-    # float32 or uint8 guidance next to a float64 input -- used to reach ``mean_I @ a`` with ``a``
-    # solved in ``cov_Ip``'s float64 while ``mean_I`` stayed in the guidance dtype, raising
-    # ``RuntimeError: expected scalar type Float but found Double``. Promote the guidance to the
-    # pair's dtype instead. ``Tensor.to`` is a no-op when the dtypes already match, so an
-    # all-float32 or all-float64 call, and a wider guidance with a narrower input, take exactly the
-    # path they took before (#6046).
+    # One compute dtype for the whole path: ``mean_I @ a`` needs ``mean_I`` in the dtype ``a`` is solved in, so a
+    # guidance narrower than ``input`` (float16, float32 or uint8 next to float64) is promoted to the pair's dtype.
+    # ``Tensor.to`` is a no-op when the dtypes already match, so every other pair is unaffected.
     guidance = guidance.to(torch.promote_types(guidance.dtype, input.dtype))
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
