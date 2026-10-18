@@ -314,17 +314,18 @@ class TestONNXSequentialComposition:
 
     @pytest.mark.parametrize("auto_ir_version_conversion", [False, True])
     def test_metadata_are_merged_with_the_later_value_of_each_key(self, auto_ir_version_conversion):
+        # every pair of models disagrees on a key, the second and third one too
         graphs = [
             _identity(("a", "1"), ("b", "2")),
             _identity(("b", "3"), ("c", "4")),
-            _identity(("a", "5")),
+            _identity(("a", "5"), ("c", "6")),
         ]
         before = [graph.SerializeToString() for graph in graphs]
 
         seq = ONNXSequential(*graphs, auto_ir_version_conversion=auto_ir_version_conversion)
 
         # each key keeps its first position and takes its last value, as add_metadata writes them
-        assert _props(seq._combined_op) == [("a", "5"), ("b", "3"), ("c", "4")]
+        assert _props(seq._combined_op) == [("a", "5"), ("b", "3"), ("c", "6")]
         assert [graph.SerializeToString() for graph in graphs] == before
         onnx.checker.check_model(seq._combined_op)
         assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
@@ -354,6 +355,7 @@ class TestONNXSequentialComposition:
         ("models", "io_maps"),
         [
             (2, [("output", "input")]),  # the pairs of the only joint, not wrapped in a list
+            (2, [("o1", "i1")]),  # the same with two-character names, which have a length of 2 like a pair
             (3, [("output", "input"), ("output", "input")]),  # one pair per joint instead of one list per joint
             (2, ["output"]),
             (2, [None]),
