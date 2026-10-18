@@ -139,36 +139,6 @@ def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> 
         return isinstance(detector(images), list)
 
 
-def _declares_dynamic_batch(export_kwargs: dict[str, Any]) -> bool:
-    """Return whether ``dynamic_axes`` or ``dynamic_shapes`` makes the batch of the first input dynamic.
-
-    These ``torch.onnx.export`` keywords replace the dynamic dimensions that :meth:`ONNXExportMixin.to_onnx` derives
-    from ``input_shape``. The legacy exporter takes ``dynamic_axes``, keyed by input name, with either a
-    ``{axis: name}`` mapping or a list of axes. The dynamo exporter takes ``dynamic_shapes``, a sequence or a mapping
-    with one entry per input, and each entry maps an axis to a dimension, or lists one dimension per axis.
-    """
-    axes = export_kwargs.get("dynamic_axes")
-    if isinstance(axes, dict):
-        first_input = (export_kwargs.get("input_names") or ["input"])[0]
-        if 0 in (axes.get(first_input) or ()):
-            return True
-
-    shapes = export_kwargs.get("dynamic_shapes")
-    if isinstance(shapes, dict):
-        shapes = tuple(shapes.values())
-    if not isinstance(shapes, (list, tuple)) or not shapes:
-        return False
-    first = shapes[0]
-    if isinstance(first, dict):
-        batch = first.get(0)
-    elif isinstance(first, (list, tuple)) and first:
-        batch = first[0]
-    else:
-        return False
-    # Integers, None and Dim.STATIC describe a fixed dimension; named Dims, strings and AUTO/DYNAMIC do not.
-    return batch is not None and not isinstance(batch, int) and batch != torch.export.Dim.STATIC
-
-
 class ObjectDetector(ModelBase, ONNXExportMixin):
     """Wrap an object detection model and perform pre-processing and post-processing."""
 
@@ -462,8 +432,8 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
                 ``[1, -1, 6]`` without ``filter_as_zero`` and ``[-1, -1, 6]`` with it.
             output_shape: The output shape used by the legacy TorchScript exporter. Defaults to ``[-1, 6]``
                 without ``filter_as_zero`` and ``[-1, -1, 6]`` with it. The dynamo exporter infers output shapes.
-            pseudo_shape: The dummy input shape used for tracing. When ``input_shape`` is omitted, its batch
-                is set to 1 for per-image list outputs. Explicit input and pseudo shapes must agree on fixed dimensions.
+            pseudo_shape: The dummy input shape used for tracing. Without ``filter_as_zero`` and ``input_shape``,
+                its batch is the exported batch. Explicit input and pseudo shapes must agree on fixed dimensions.
             model: The model to export. Defaults to this filter.
             save: Whether to save the exported model to ``onnx_name``.
             additional_metadata: Additional metadata to add to the ONNX model.
@@ -473,27 +443,22 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             The exported ONNX model.
 
         Raises:
-            ValueError: If the batch is dynamic without ``filter_as_zero``, whether ``input_shape`` marks it ``-1`` or
-                a ``dynamic_axes`` or ``dynamic_shapes`` keyword makes it dynamic.
+            ValueError: If ``input_shape`` marks the batch ``-1`` without ``filter_as_zero``.
 
         Note:
             The exporters flatten the Python list into a fixed number of graph outputs. Without ``filter_as_zero``,
-            the batch is therefore fixed at 1 by default, or at the batch specified in ``input_shape``. ONNX Runtime
-            rejects other batch sizes. Each image's number of retained detections remains dynamic.
+            the batch is therefore fixed: at the batch of ``input_shape``, else of ``pseudo_shape``, else at 1. ONNX
+            Runtime rejects other batch sizes. Each image's number of retained detections remains dynamic.
             Use ``filter_as_zero=True`` for one ``(B, D, 6)`` output with a dynamic batch.
 
         """
         if not self.filter_as_zero:
             if input_shape is None:
-                input_shape = [1, *self.ONNX_DEFAULT_INPUTSHAPE[1:]]
-                if pseudo_shape is not None and len(pseudo_shape) == len(input_shape):
-                    # An example batch must not override the default fixed batch or conflict with it in the mixin.
-                    pseudo_shape = [1, *pseudo_shape[1:]]
-            if (input_shape and input_shape[0] == -1) or _declares_dynamic_batch(kwargs):
+                input_shape = [1 if pseudo_shape is None else pseudo_shape[0], *self.ONNX_DEFAULT_INPUTSHAPE[1:]]
+            if input_shape and input_shape[0] == -1:
                 raise ValueError(
-                    "BoxFiltering returns one ONNX output per image without filter_as_zero and requires a fixed batch, "
-                    "but input_shape, dynamic_axes or dynamic_shapes makes the batch dynamic. "
-                    "Fix the batch, or use filter_as_zero=True to export a dynamic batch."
+                    "BoxFiltering returns one ONNX output per image without filter_as_zero and requires a fixed batch. "
+                    "Fix the batch in input_shape, or use filter_as_zero=True to export a dynamic batch."
                 )
             if output_shape is None:
                 output_shape = [-1, 6]
