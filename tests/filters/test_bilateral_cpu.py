@@ -481,7 +481,9 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         self.gradcheck(_bilateral_blur_cpu, (image, guidance, 3, sigma_color, sigma_space, "reflect", "l1"))
         self.gradcheck(_bilateral_blur_cpu, (image, None, (3, 5), 0.7, sigma_space, "circular", "l2"))
 
-    def test_dynamo_on_an_eligible_input(self, device, dtype, torch_optimizer):
+    def test_dynamo_on_an_eligible_input(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("passes torch.compile options, which torch.jit.script does not take")
         _require_native_cpu(device, dtype)
         image = torch.rand(2, 3, 148, 150, device=device, dtype=dtype)
         guidance = torch.rand(2, 1, 148, 150, device=device, dtype=dtype)
@@ -497,8 +499,27 @@ class TestBilateralBlurCpuTapLoop(BaseTester):
         expected = op(image, guidance, sigma_color)
         self.assert_close(compiled(image, guidance, sigma_color), expected, rtol=tolerance, atol=tolerance)
 
-    def test_dynamo_dynamic_batch_on_eligible_inputs(self, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("kernel_size", [(7, 7), (5, 7), 9])
+    def test_dynamo_keeps_unfold_for_kernels_above_25_taps(
+        self, kernel_size, monkeypatch, device, dtype, torch_optimizer, optimizer_backend
+    ):
+        # Compiling the tap loop of a 9 x 9 kernel took 56 s against 2.3 s for the unfold path.
+        if optimizer_backend == "jit":
+            pytest.skip("passes torch.compile options, which torch.jit.script does not take")
+        _require_native_cpu(device, dtype)
+        _forbid_tap_loop(monkeypatch)
+        image = torch.rand(*_ELIGIBLE, device=device, dtype=dtype)
+
+        compiled = torch_optimizer(lambda x: bilateral_blur(x, kernel_size, 0.1, (1.5, 1.5)), fullgraph=True)
+
+        tolerance = 1e-5 if dtype == torch.float32 else 1e-12
+        expected = _unfold_reference(image, None, kernel_size, 0.1, (1.5, 1.5))
+        self.assert_close(compiled(image), expected, rtol=tolerance, atol=tolerance)
+
+    def test_dynamo_dynamic_batch_on_eligible_inputs(self, device, dtype, torch_optimizer, optimizer_backend):
         # The compiled tap loop runs over the whole batch, so one dynamic graph serves every eligible batch.
+        if optimizer_backend == "jit":
+            pytest.skip("passes torch.compile options, which torch.jit.script does not take")
         _require_native_cpu(device, dtype)
         from torch._dynamo.testing import CompileCounter
 

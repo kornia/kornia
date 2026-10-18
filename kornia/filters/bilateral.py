@@ -42,6 +42,10 @@ _BILATERAL_CPU_MIN_NUMEL = 65536
 # The eager tap loop works through the batch in chunks of about this many input bytes, so that every tap's temporaries
 # stay in cache: on 256 x 256 images, 2 MB chunks took 0.3x to 0.7x the time of one pass over a batch of 8 or 32.
 _BILATERAL_CPU_CHUNK_BYTES = 2 * 1024 * 1024
+# torch.compile unrolls the tap loop into one graph with a block of operations per tap, so its compile time grows with
+# the tap count: a 9 x 9 kernel took 56 s to compile against 2.3 s for the unfold path. Larger kernels keep the unfold
+# path under compile.
+_BILATERAL_CPU_MAX_COMPILED_TAPS = 25
 
 
 def _records_gradient(
@@ -254,7 +258,9 @@ def _bilateral_blur(
     if guidance is not None and input.is_floating_point() and guidance.is_floating_point():
         guidance = guidance.to(input.dtype)
 
-    if _bilateral_blur_cpu_eligible(input, guidance, sigma_color, sigma_space):
+    if _bilateral_blur_cpu_eligible(input, guidance, sigma_color, sigma_space) and (
+        not is_compiling() or ky * kx <= _BILATERAL_CPU_MAX_COMPILED_TAPS
+    ):
         return _bilateral_blur_cpu(
             input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type
         )
@@ -323,8 +329,9 @@ def bilateral_blur(
           by tap from shifted slices of the padded input instead of from its unfolded windows, which avoids
           temporaries of ``kernel_size`` times the image, unless a reverse-mode gradient is recorded through any
           argument, or ``torch.export`` or ``torch.jit.trace`` captures the call, so an exported program keeps the
-          windows for every input size. Both forms compute the same weights and add up the weighted values in a
-          different order, so they agree to rounding.
+          windows for every input size. Under ``torch.compile``, only kernels of up to 25 taps are filtered tap by
+          tap, since the compiled loop has a block of operations per tap. Both forms compute the same weights and add
+          up the weighted values in a different order, so they agree to rounding.
 
     Arguments:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
