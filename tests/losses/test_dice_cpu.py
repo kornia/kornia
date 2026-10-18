@@ -16,7 +16,10 @@
 #
 
 import importlib
+import subprocess
+import sys
 import warnings
+from pathlib import Path
 from typing import Optional
 
 import pytest
@@ -106,7 +109,9 @@ class TestDiceLossCpu(BaseTester):
         assert calls == [LARGE, LARGE]
 
     @pytest.mark.parametrize(
-        "case", ["small", "float32-pred-float64-weight", "half", "trace", "autocast"], ids=lambda case: case
+        "case",
+        ["small", "float32-pred-float64-weight", "half", "trace", "functorch", "autocast"],
+        ids=lambda case: case,
     )
     def test_other_inputs_keep_the_one_hot_target(self, monkeypatch, case, device, dtype):
         calls = _count_calls(monkeypatch)
@@ -118,6 +123,9 @@ class TestDiceLossCpu(BaseTester):
             logits, weight = logits.float(), torch.ones(LARGE[1], device=device, dtype=torch.float64)
         if case == "trace":
             torch.jit.trace(lambda x: dice_loss(x, labels), (logits,), check_trace=False)
+        elif case == "functorch":
+            torch.vmap(lambda x, y: dice_loss(x[None], y[None]))(logits, labels)
+            torch.func.grad(lambda x: dice_loss(x, labels))(logits)
         elif case == "autocast":
             with torch.autocast(device.type, dtype=torch.bfloat16):
                 dice_loss(logits, labels)
@@ -248,18 +256,22 @@ class TestDiceLossCpu(BaseTester):
             for actual_value, expected_value in zip(_value_and_grads(logits, labels, average, weight=weight), first):
                 assert torch.equal(actual_value, expected_value)
 
-    def test_invalid_labels_raise(self, device, dtype):
+    @pytest.mark.parametrize("one_hot_path", [False, True])
+    def test_invalid_labels_raise(self, monkeypatch, one_hot_path, device, dtype):
+        # The same errors as one_hot's on the one-hot path: negative labels first, then labels past the classes.
         _require_native_cpu(device, dtype)
+        if one_hot_path:
+            monkeypatch.setattr(dice_module, "_dice_loss_cpu_eligible", lambda pred, weight: False)
         logits, labels = _inputs(LARGE, device, dtype, ignore_index=None)
         with pytest.raises(Exception, match=r"labels must be of dtype torch\.int64"):
             dice_loss(logits, labels.float())
         weight = torch.ones(LARGE[1], device=device, dtype=dtype)
-        for value in (LARGE[1], -3):
+        for value, message in ((LARGE[1], "Class values must be smaller than num_classes"), (-3, "non-negative")):
             bad = labels.clone()
             bad[0, 0, 0] = value
             for average in ("micro", "macro"):
                 for w in (None, weight):
-                    with pytest.raises(RuntimeError):
+                    with pytest.raises(RuntimeError, match=message):
                         dice_loss(logits, bad, average, weight=w)
 
     @pytest.mark.parametrize("average", ["micro", "macro"])
@@ -298,6 +310,7 @@ class TestDiceLossCpu(BaseTester):
 
     @pytest.mark.parametrize("average", ["micro", "macro"])
     def test_vmap_has_no_user_warning(self, monkeypatch, average, device, dtype):
+        # vmap keeps the one-hot target, as on main: the label check has no batching rule.
         _require_native_cpu(device, dtype)
         logits, labels = _inputs(LARGE, device, dtype)
         with warnings.catch_warnings(record=True) as recorded:
@@ -336,6 +349,52 @@ class TestDiceLossCpu(BaseTester):
         (grad,) = torch.autograd.grad(actual, x)
         self.assert_close(actual, expected[0])
         self.assert_close_scaled(grad, expected[1])
+
+
+# Run in a fresh interpreter: an index check that fails inside an Inductor CPU kernel can abort the whole process.
+_COMPILED_INVALID_LABEL = """
+import sys, warnings
+warnings.filterwarnings("ignore")
+import torch, kornia
+average, weighted, value = sys.argv[1], sys.argv[2] == "1", int(sys.argv[3])
+pred = torch.randn(2, 21, 64, 64)
+target = torch.randint(0, 21, (2, 64, 64))
+target[0, 0, 0] = value
+weight = torch.linspace(0.5, 1.5, 21) if weighted else None
+loss = torch.compile(kornia.losses.dice_loss, fullgraph=True)
+try:
+    loss(pred, target, average, 1e-8, weight)
+except RuntimeError as error:
+    print("RuntimeError:", error)
+else:
+    print("no error")
+"""
+
+
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+class TestDiceLossCpuCompiledLabels(BaseTester):
+    @pytest.mark.parametrize("average, weighted", [("micro", False), ("micro", True), ("macro", False)])
+    @pytest.mark.parametrize("value, message", [(21, "smaller than num_classes"), (-3, "non-negative")])
+    def test_dynamo_invalid_label_raises(self, average, weighted, value, message, device, dtype, optimizer_backend):
+        _require_native_cpu(device, dtype)
+        if dtype != torch.float32 or optimizer_backend != "inductor":
+            pytest.skip("one fresh-process inductor compile per case, in float32")
+        if not torch_version_ge(2, 6):
+            # Compiled calls keep the one-hot target there (is_exporting() is is_compiling()), unchecked by Inductor.
+            pytest.skip("torch 2.5.1 compiles the one-hot path, which does not check labels")
+        # The checkout under test, which "-c" imports first from the working directory.
+        root = Path(dice_module.__file__).resolve().parents[2]
+        result = subprocess.run(  # noqa: S603 - this interpreter and a literal program; no shell or external input.
+            [sys.executable, "-c", _COMPILED_INVALID_LABEL, average, str(int(weighted)), str(value)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        assert result.stdout.startswith("RuntimeError:"), result.stdout
+        assert message in result.stdout
 
 
 class _Exportable(torch.nn.Module):

@@ -44,8 +44,9 @@ _CPU_MIN_NUMEL = 1 << 15
 def _dice_loss_cpu_eligible(pred: torch.Tensor, weight: Optional[torch.Tensor]) -> bool:
     """Select native-precision CPU logits, whose one-hot target and full-size products are fresh memory every call."""
     # Keep the one-hot path where it is what the caller captures or asked for: the exporters and the legacy tracer
-    # record it, autocast would lower the batched matrix-vector product below to bfloat16, and it computes a float32
-    # pred with a float64 weight in float64.
+    # record it, functorch transforms (vmap, grad) have no batching rule for the label check below, autocast would
+    # lower the batched matrix-vector product below to bfloat16, and it computes a float32 pred with a float64 weight
+    # in float64.
     return (
         pred.device.type == "cpu"
         and pred.dtype in (torch.float32, torch.float64)
@@ -56,6 +57,7 @@ def _dice_loss_cpu_eligible(pred: torch.Tensor, weight: Optional[torch.Tensor]) 
         and not is_exporting()
         and not torch.jit.is_tracing()
         and pred.numel() >= _CPU_MIN_NUMEL
+        and not torch._C._are_functorch_transforms_active()
         and not is_autocast_enabled()
     )
 
@@ -108,6 +110,11 @@ def _dice_loss_cpu(
     batch, num_classes = pred.shape[:2]
     target, target_mask = mask_ignore_pixels(target, ignore_index)
     KORNIA_CHECK(target.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {target.dtype}")
+    # one_hot's checks and messages, before any gather, scatter or selection: compiled, a label outside the classes
+    # would be dropped silently by the selection, and an Inductor gather's bounds check aborts the process. The
+    # asynchronous assert raises at once on the CPU and inside a compiled graph alike.
+    torch._assert_async((target >= 0).all(), "Class values must be non-negative.")
+    torch._assert_async((target < num_classes).all(), "Class values must be smaller than num_classes.")
     if weight is not None:
         _check_weight(pred, weight)
 
@@ -121,7 +128,6 @@ def _dice_loss_cpu(
             mass = (pred_soft.sum(1) * valid).sum((1, 2))
         else:
             mass = ((pred_soft * weight.view(1, -1, 1, 1)).sum(1) * valid).sum((1, 2))
-        # Before indexing the weights: the gather raises a RuntimeError for a label outside [0, C), as one_hot did.
         # Measured compiled on the CPU, the micro sums fuse with the selection (1.15x over the one-hot path at batch 8
         # and 32) and not with the gather (0.98x).
         prob_target = _target_probability(pred_soft, target, fused=is_compiling())
@@ -205,12 +211,12 @@ def dice_loss(
           zero gradient, at ``eps=0`` as well.
         - On the CPU, float32 or float64 logits with at least :math:`2^{15}` values and a ``weight`` that is
           ``None`` or of their dtype skip the one-hot target, unless ``torch.export`` or ``torch.jit.trace`` captures
-          the call or autocast is on: the intersection takes each pixel's target-class probability, ``'micro'`` sums
-          the (weighted) probabilities of each pixel over the classes, and ``'macro'`` takes the probability mass of
-          each class from a batched matrix-vector product and adds the per-class sums into ``(B, C)`` bins, so no
-          full-size product with a one-hot target is formed. The result agrees with the one-hot sums to rounding,
-          with the same NaN positions; a label outside ``[0, C)`` that is not ``ignore_index`` still raises a
-          ``RuntimeError``, from the gather.
+          the call, a functorch transform runs or autocast is on: the intersection takes each pixel's target-class
+          probability, ``'micro'`` sums the (weighted) probabilities of each pixel over the classes, and ``'macro'``
+          takes the probability mass of each class from a batched matrix-vector product and adds the per-class sums
+          into ``(B, C)`` bins, so no full-size product with a one-hot target is formed. The result agrees with the
+          one-hot sums to rounding, with the same NaN positions; a label outside ``[0, C)`` that is not
+          ``ignore_index`` raises the same ``RuntimeError`` as ``one_hot``, also under ``torch.compile``.
 
     Args:
         pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
