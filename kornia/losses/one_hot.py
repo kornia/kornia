@@ -126,9 +126,9 @@ def _check_class_labels(labels: torch.Tensor, num_classes: int) -> torch.Tensor:
         if torch._C._are_functorch_transforms_active():
             return labels
         # One pass for both bounds (a quarter of the eager cost of two comparisons and two all()); aminmax rejects an
-        # empty tensor, which holds no label to check.
+        # empty tensor, which holds no label to check. An explicit dimension lets ONNX lower the reduction too.
         if labels.numel() > 0:
-            low, high = torch.aminmax(labels)
+            low, high = torch.aminmax(labels.reshape(-1), dim=0)
             torch._assert_async(low >= 0, "Class values must be non-negative.")
             torch._assert_async(high < num_classes, "Class values must be smaller than num_classes.")
         if _INDUCTOR_KEEPS_ASSERT_ASYNC and is_compiling() and not is_exporting():
