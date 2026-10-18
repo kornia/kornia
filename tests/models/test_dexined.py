@@ -92,8 +92,6 @@ class TestDexiNed(BaseTester):
     def test_a_model_pickled_from_the_filters_path_loads(self):
         import pickle
 
-        import kornia.filters.dexined
-
         # A whole model pickled from the old module names its classes there, the private blocks included: pickling
         # every class under that module name and loading it back resolves each name in kornia.filters.dexined.
         model = DexiNed(pretrained=False).eval()
