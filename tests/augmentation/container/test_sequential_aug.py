@@ -348,8 +348,8 @@ class TestConventionImageSequential(BaseTester):
 
     @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
     def test_random_apply_count_above_nonzero_weights_skips_zero_weight_members_6069(self, container, device, dtype):
-        # Three draws from two nonzero weights summing to 10 raised the same error; they now repeat the two members
-        # with a nonzero weight and never select the member with weight 0.
+        # Three draws without replacement from two nonzero weights summing to 10 filled the third place with the
+        # member of weight 0; they now repeat the two members with a nonzero weight and never select it.
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         seq = container(
             K.RandomHorizontalFlip(p=1.0),
@@ -364,6 +364,55 @@ class TestConventionImageSequential(BaseTester):
             names = [p.name for p in seq._params]
             assert len(names) == 3
             assert set(names) <= {"RandomHorizontalFlip_0", "RandomInvert_2"}
+
+    @pytest.mark.parametrize(
+        ("weights", "random_apply", "with_mix", "repeats"),
+        [
+            ([7.0, 2.0, 1.0], True, False, False),
+            ([7, 2, 1, 4], True, True, False),
+            ([2.0, 1.0, 1.0, 1.0], 4, True, False),
+            ([0.7, 0.2, 0.1], 2, False, True),
+        ],
+    )
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_repeats_only_past_the_weights_6069(
+        self, weights, random_apply, with_mix, repeats, container, device, dtype
+    ):
+        # A count the nonzero weights can fill is drawn without repetition, also when a mix augmentation is certain to
+        # take the last place, as with random_apply=True; only a count above the sum of the weights repeats.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        members = [K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), K.RandomInvert(p=1.0)]
+        if with_mix:
+            members.append(K.RandomMixUpV2(p=1.0))
+        seq = container(*members, random_apply=random_apply, random_apply_weights=weights)
+        count = len(members) if random_apply is True else random_apply
+        repeated = 0
+        for seed in range(20):
+            torch.manual_seed(seed)
+            seq(x)
+            names = [p.name for p in seq._params]
+            assert len(names) == count
+            repeated += len(set(names)) < len(names)
+        assert (repeated > 0) == repeats
+
+    def test_random_apply_without_mix_never_draws_a_mix_member_6069(self):
+        # Four places from three nonzero ordinary weights summing to 10 were filled with the mix member, whose weight
+        # is zeroed for this draw, although with_mix=False asks for no mix augmentation.
+        seq = K.ImageSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomInvert(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=4,
+            random_apply_weights=[7.0, 2.0, 1.0, 1.0],
+        )
+        for seed in range(20):
+            torch.manual_seed(seed)
+            children, mix_added = seq.get_random_forward_sequence(with_mix=False)
+            names = [name for name, _ in children]
+            assert not mix_added
+            assert len(names) == 4
+            assert "RandomMixUpV2_3" not in names
 
     def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
         # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,
