@@ -864,6 +864,7 @@ class TestNMS(BaseTester):
             (torch.int8, 100, -100),
             (torch.int16, 200, 0),
             (torch.int32, 200, 2**24),
+            (torch.int32, 50_000, 0),  # each area exceeds 2**31 - 1
             (torch.int64, 200, 2**40),
         ],
     )
@@ -876,6 +877,14 @@ class TestNMS(BaseTester):
         )
         scores = torch.tensor([0.875, 0.75, 0.5], device=device)
         expected = torch.tensor([0, 2], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+
+    def test_iou_just_above_threshold(self, device, dtype):
+        # The exact IoU is 8479 / 16793 = 0.5049, so 0.5 suppresses the second box. Computed in bfloat16, the areas,
+        # intersection and union round to an IoU of exactly 0.5, which kept it. The coordinates are exact in any dtype.
+        boxes = torch.tensor([[0, 0, 153, 162], [14, 40, 173, 202]], device=device, dtype=dtype)
+        scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
+        expected = torch.tensor([0], device=device, dtype=torch.long)
         self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
 
     def test_convention_nms_uses_exclusive_xyxy_iou_4008(self, device, dtype):
