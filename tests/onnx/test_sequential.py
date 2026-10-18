@@ -258,6 +258,12 @@ def _vector(name, elem_type=None):
     return make_tensor_value_info(name, onnx.TensorProto.FLOAT if elem_type is None else elem_type, [2])
 
 
+def _untyped(name):
+    value = onnx.ValueInfoProto()
+    value.name = name
+    return value
+
+
 def _model(nodes, inputs, outputs, initializers=(), metadata=()):
     from onnx.helper import make_graph, make_model, make_opsetid
 
@@ -268,15 +274,54 @@ def _model(nodes, inputs, outputs, initializers=(), metadata=()):
     return model
 
 
-def _identity(*metadata, elem_type=None):
+def _identity(*metadata, elem_type=None, input_type=None, output_type=None):
     from onnx.helper import make_node
 
     return _model(
         [make_node("Identity", ["input"], ["output"])],
-        [_vector("input", elem_type)],
-        [_vector("output", elem_type)],
+        [_vector("input", elem_type if input_type is None else input_type)],
+        [_vector("output", elem_type if output_type is None else output_type)],
         metadata=metadata,
     )
+
+
+def _joint_types_that_are_not_compared():
+    """Joints whose output or input carries no tensor element type to compare, as main merged them."""
+    from onnx.helper import make_node, make_optional_type_proto, make_tensor_type_proto, make_value_info
+    from onnx.helper import make_tensor_sequence_value_info as sequence
+    from onnx.numpy_helper import from_array
+
+    undefined = onnx.TensorProto.UNDEFINED
+    index = from_array(torch.tensor(0).numpy(), "index")
+    sequence_out = _model(
+        [make_node("SequenceConstruct", ["input"], ["output"])],
+        [_vector("input")],
+        [sequence("output", onnx.TensorProto.FLOAT, [2])],
+    )
+    sequence_in = _model(
+        [make_node("SequenceAt", ["input", "index"], ["output"])],
+        [sequence("input", onnx.TensorProto.FLOAT, [2])],
+        [_vector("output")],
+        initializers=[index],
+    )
+    optional = make_optional_type_proto(make_tensor_type_proto(onnx.TensorProto.FLOAT, [2]))
+    optional_out = _model(
+        [make_node("Optional", ["input"], ["output"])], [_vector("input")], [make_value_info("output", optional)]
+    )
+    optional_in = _model(
+        [make_node("OptionalGetElement", ["input"], ["output"])],
+        [make_value_info("input", optional)],
+        [_vector("output")],
+    )
+    identity = make_node("Identity", ["input"], ["output"])
+    return {
+        "untyped output": (_model([identity], [_vector("input")], [_untyped("output")]), _identity()),
+        "untyped input": (_identity(), _model([identity], [_untyped("input")], [_vector("output")])),
+        "UNDEFINED output": (_identity(output_type=undefined), _identity()),
+        "UNDEFINED input": (_identity(), _identity(input_type=undefined)),
+        "sequence": (sequence_out, sequence_in),
+        "optional": (optional_out, optional_in),
+    }
 
 
 class TestONNXSequentialComposition:
@@ -334,14 +379,32 @@ class TestONNXSequentialComposition:
         onnx.checker.check_model(seq._combined_op)
         assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
 
-    def test_element_type_mismatch_at_a_joint_raises(self):
-        # The merged graph drops the later model's declared input, so nothing compared the two types any more.
-        graphs = [_identity(), _identity(elem_type=onnx.TensorProto.DOUBLE)]
+    def test_element_type_mismatch_at_a_joint_warns_and_the_chain_runs(self):
+        # The merged graph drops the later model's declared input, so ONNX Runtime no longer checks its type. A model
+        # whose first node takes any type (a Cast here) runs as it did on main, with the same result: [2.25, 5.0625].
+        from onnx.helper import make_node
 
-        with pytest.raises(
-            ValueError, match=r"output 'output' of model 0 is FLOAT.*input 'input' of model 1, which is DOUBLE"
-        ):
-            ONNXSequential(*graphs)
+        casts_first = _model(
+            [make_node("Cast", ["input"], ["c"], to=onnx.TensorProto.FLOAT), make_node("Mul", ["c", "c"], ["output"])],
+            [_vector("input", onnx.TensorProto.DOUBLE)],
+            [_vector("output")],
+        )
+        message = (
+            r"output 'output' of model 0 is FLOAT.*input 'input' of model 1, which is DOUBLE.*tensor element types"
+        )
+
+        with pytest.warns(UserWarning, match=message) as record:
+            seq = ONNXSequential(_identity(), casts_first)
+
+        assert [w.filename for w in record if "tensor element types" in str(w.message)] == [__file__]
+        assert seq(torch.tensor([1.5, -2.25]).numpy())[0].tolist() == [2.25, 5.0625]
+
+    def test_element_type_mismatch_at_a_later_joint_warns(self):
+        # main and this branch both fail in ONNX Runtime afterwards: the Identity's declared output is DOUBLE
+        message = r"output 'output' of model 1 is FLOAT.*input 'input' of model 2, which is DOUBLE"
+
+        with pytest.warns(UserWarning, match=message), pytest.raises(Exception, match="Type Error"):
+            ONNXSequential(_identity(), _identity(), _identity(elem_type=onnx.TensorProto.DOUBLE))
 
     def test_element_types_are_compared_through_io_maps(self, three_graphs):
         from onnx.helper import make_node
@@ -352,8 +415,29 @@ class TestONNXSequentialComposition:
             [_vector("p", onnx.TensorProto.INT64)],
             [_vector("diff")],
         )
-        with pytest.raises(ValueError, match=r"output 'abs' of model 0 is FLOAT.*input 'p' of model 1, which is INT64"):
-            ONNXSequential(first, second, third, io_maps=[[("abs", "p")], [("diff", "d")]])
+        with pytest.warns(UserWarning, match=r"output 'abs' of model 0 is FLOAT.*input 'p' of model 1, which is INT64"):
+            seq = ONNXSequential(first, second, third, io_maps=[[("abs", "p")], [("diff", "d")]])
+
+        # the unconnected neg(x), then 2 * abs(x), as main computed them
+        assert [out.tolist() for out in seq(torch.tensor([1.0, -2.0]).numpy())] == [[-1.0, 2.0], [2.0, 4.0]]
+
+    @pytest.mark.parametrize("joint", list(_joint_types_that_are_not_compared()))
+    def test_joints_without_two_tensor_element_types_do_not_warn(self, joint):
+        import contextlib
+        import warnings
+
+        models = _joint_types_that_are_not_compared()[joint]
+        # ONNX Runtime refuses a graph with an UNDEFINED type, on main as on this branch
+        refused = None
+        if joint == "UNDEFINED output":
+            refused = pytest.raises(Exception, match="Invalid tensor data type 0")
+        with warnings.catch_warnings(record=True) as record, refused or contextlib.nullcontext():
+            warnings.simplefilter("always")
+            seq = ONNXSequential(*models)
+
+        assert not [w for w in record if "tensor element types" in str(w.message)]
+        if refused is None:
+            assert seq(torch.tensor([1.5, -2.25]).numpy())[0].tolist() == [1.5, -2.25]
 
     @pytest.mark.parametrize(
         ("models", "io_maps"),
@@ -362,28 +446,91 @@ class TestONNXSequentialComposition:
             (2, [("o1", "i1")]),  # the same with two-character names, which have a length of 2 like a pair
             (3, [("output", "input"), ("output", "input")]),  # one pair per joint instead of one list per joint
             (2, ["output"]),
+            (2, [b"output"]),
             (2, [None]),
+            (2, [[None]]),
             (2, [[("output",)]]),
-            (2, [[("output", "input", "input")]]),
+            (2, [[("output", "input", "input")]]),  # extra names used to be ignored
             (2, [["output", "input"]]),
         ],
     )
     def test_malformed_io_maps_raise_a_corrective_message(self, models, io_maps):
-        from kornia.core.exceptions import BaseError
+        from kornia.core.exceptions import ValueCheckError
 
-        with pytest.raises(BaseError, match=r"io_maps\[0\] must be a list of \(output, input\) name pairs"):
+        # a ValueError, as the merge's own "Output K00-o is not present in g1" was for the flat form
+        with pytest.raises(ValueCheckError, match=r"io_maps\[0\] must be a list of \(output, input\) name pairs"):
             ONNXSequential(*[_identity() for _ in range(models)], io_maps=io_maps)
 
-    def test_io_maps_without_an_entry_for_every_joint_raise(self):
-        from kornia.core.exceptions import BaseError
+    @pytest.mark.parametrize("io_maps", [[[("output", "input")]], {0: [("output", "input")]}], ids=["list", "dict"])
+    def test_io_maps_without_an_entry_for_every_joint_raise(self, io_maps):
+        from kornia.core.exceptions import ValueCheckError
 
-        with pytest.raises(
-            BaseError, match=r"one list of \(output, input\) name pairs per joint: 2 for 3 models, got 1"
-        ):
-            ONNXSequential(_identity(), _identity(), _identity(), io_maps=[[("output", "input")]])
+        message = r"one list of \(output, input\) name pairs per joint, 2 for 3 models, and has no entry for joint 1"
+        with pytest.raises(ValueCheckError, match=message):
+            ONNXSequential(_identity(), _identity(), _identity(), io_maps=io_maps)
 
     def test_io_maps_entries_past_the_last_joint_are_not_used(self):
         # they were never read, and a chain built with them stays as it was
-        seq = ONNXSequential(_identity(), _identity(), io_maps=[[["output", "input"]], [("unused", "unused")]])
+        seq = ONNXSequential(_identity(), _identity(), io_maps=[[["output", "input"]], None])
 
         assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
+
+    @pytest.mark.parametrize(
+        "form",
+        ["zip", "set", "items", "generator", "ndarray", "ndarray entry", "keyed by joint"],
+    )
+    def test_io_maps_entries_of_any_iterable_of_pairs_keep_working(self, form):
+        # main indexed io_maps[i] and iterated the entry, so each of these ran: 2-output model -> Sub -> [-2.0, 0.0]
+        import numpy as np
+        from onnx.helper import make_node
+
+        first = _model(
+            [make_node("Neg", ["x"], ["o0"]), make_node("Abs", ["x"], ["o1"])],
+            [_vector("x")],
+            [_vector("o0"), _vector("o1")],
+        )
+        second = _model([make_node("Sub", ["i0", "i1"], ["y"])], [_vector("i0"), _vector("i1")], [_vector("y")])
+        outputs, inputs = ["o0", "o1"], ["i0", "i1"]
+        io_maps = {
+            "zip": lambda: [zip(outputs, inputs)],
+            "set": lambda: [{("o0", "i0"), ("o1", "i1")}],
+            "items": lambda: [dict(zip(outputs, inputs)).items()],
+            "generator": lambda: [((o, i) for o, i in zip(outputs, inputs))],
+            "ndarray": lambda: np.array([list(zip(outputs, inputs))]),
+            "ndarray entry": lambda: [np.array(list(zip(outputs, inputs)))],
+            "keyed by joint": lambda: {0: list(zip(outputs, inputs))},
+        }[form]()
+
+        seq = ONNXSequential(first, second, io_maps=io_maps)
+
+        assert seq(torch.tensor([1.0, -2.0]).numpy())[0].tolist() == [-2.0, 0.0]
+
+    def test_targets_without_a_converter_adapter_raise_the_converters_error(self):
+        # Breaking: main ignored target_opset_version here and returned the opset-18 graph, which ran.
+        import numpy as np
+        from onnx.helper import make_node
+        from onnx.numpy_helper import from_array
+
+        scales = from_array(np.array([1.0, 1.0, 2.0, 2.0], dtype=np.float32), "scales")
+        resize = _model(
+            [make_node("Resize", ["input", "", "scales"], ["output"], mode="linear")],
+            [_vector("input")],
+            [_vector("output")],
+            initializers=[scales],
+        )
+        for value in (*resize.graph.input, *resize.graph.output):
+            value.type.tensor_type.ClearField("shape")  # any rank
+
+        assert ONNXSequential(resize)(np.ones((1, 1, 2, 2), dtype=np.float32))[0].shape == (1, 1, 4, 4)
+        with pytest.raises(RuntimeError, match=r"No Adapter To Version \$17 for Resize"):
+            ONNXSequential(resize, target_opset_version=17)
+
+    def test_a_target_the_model_already_has_is_not_converted_again(self):
+        # Converting re-checks the model, which rejects the duplicate metadata keys earlier kornia versions wrote;
+        # an IR 9 model with target_ir_version=9 runs as on main, with its metadata merged into one entry per key.
+        model = _identity(("k", "1"), ("k", "2"))
+
+        seq = ONNXSequential(model, target_ir_version=9)
+
+        assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
+        assert _props(seq._combined_op) == [("k", "2")]

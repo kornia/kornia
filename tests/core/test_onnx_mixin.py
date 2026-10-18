@@ -313,6 +313,38 @@ class TestONNXRuntimeMixin(BaseTester):
             with pytest.raises(ValueError, match=r"input 0 is a torch tensor on meta.*Move it to the CPU"):
                 runtime(x)
 
+    @pytest.fixture
+    def subtract(self):
+        from kornia.onnx import ONNXModule
+
+        def _value(name):
+            return onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, [2])
+
+        node = onnx.helper.make_node("Sub", ["x", "y"], ["output"])
+        graph = onnx.helper.make_graph([node], "sub", [_value("x"), _value("y")], [_value("output")])
+        return ONNXModule(onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 17)], ir_version=9))
+
+    def test_runtime_names_the_input_off_the_cpu(self, subtract):
+        with pytest.raises(ValueError, match=r"ONNX input 1 is a torch tensor on meta"):
+            subtract(torch.tensor([3.0, 1.0]), torch.empty(2, device="meta"))
+
+    def test_runtime_rejects_bfloat16_tensors_naming_the_input(self, subtract):
+        # numpy has no bfloat16
+        a = torch.tensor([3.0, 1.0])
+        with pytest.raises(TypeError, match=r"ONNX input 1 is a torch.bfloat16 tensor, and numpy has no bfloat16"):
+            subtract(a.numpy(), a.bfloat16())
+
+    def test_runtime_rejects_sparse_tensors_naming_the_input(self, subtract):
+        a = torch.tensor([3.0, 0.0])
+        with pytest.raises(TypeError, match=r"ONNX input 0 is a torch.sparse_coo tensor.*\.to_dense\(\)"):
+            subtract(a.to_sparse(), a)
+
+    def test_runtime_reads_a_negative_bit_view(self, subtract):
+        # .conj().imag returns a view with the negative bit set, which .numpy() refuses: [3, 1] - [-2, 1]
+        negative_view = torch.tensor([1 + 2j, 3 - 1j]).conj().imag
+        assert negative_view.is_neg()
+        assert subtract(torch.tensor([3.0, 1.0]), negative_view)[0].tolist() == [5.0, 0.0]
+
     def test_add_metadata_overwrites_existing_keys(self, op):
         keys = [prop.key for prop in op.metadata_props]
         assert sorted(keys) == ["source", "version"]

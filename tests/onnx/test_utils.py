@@ -393,28 +393,77 @@ class TestONNXLoader:
             "hub/https/b.invalid/preprocessor_config.json",
         ]
 
+    @pytest.mark.parametrize("form", ["str", "Path", "bytes", "~"])
     @pytest.mark.parametrize("download", [True, False])
-    def test_load_config_reads_a_local_file(self, download, tmp_path):
+    def test_load_config_reads_a_local_file(self, download, form, monkeypatch, tmp_path):
         # #6119: an existing local file was reported "not found", with "You may set `download=True`"
         import json
         from unittest import mock
 
         config = tmp_path / "preprocessor_config.json"
         config.write_text(json.dumps({"do_resize": True, "size": {"height": 518}}))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what os.path.expanduser reads on Windows
+        url = {
+            "str": str(config),
+            "Path": config,
+            "bytes": os.fsencode(config),
+            "~": os.path.join("~", "preprocessor_config.json"),
+        }[form]
 
         with mock.patch("kornia.core.download._download_url_to_file") as mock_download:
-            assert ONNXLoader.load_config(str(config), download=download) == {
-                "do_resize": True,
-                "size": {"height": 518},
-            }
+            assert ONNXLoader.load_config(url, download=download) == {"do_resize": True, "size": {"height": 518}}
         mock_download.assert_not_called()
 
+    @pytest.mark.parametrize("what", ["missing file", "directory"])
     @pytest.mark.parametrize("download", [True, False])
-    def test_load_config_names_what_it_accepts(self, download, tmp_path):
-        missing = str(tmp_path / "missing.json")
+    def test_load_config_names_what_it_accepts(self, download, what, tmp_path):
+        url = str(tmp_path / "missing.json") if what == "missing file" else str(tmp_path)
         with pytest.raises(RuntimeError, match=r"neither an HTTP\(S\) URL nor an existing local file") as info:
-            ONNXLoader.load_config(missing, download=download)
+            ONNXLoader.load_config(url, download=download)
         assert "download=True" not in str(info.value)
+
+    def test_path_like_names_are_local_paths(self, tmp_path):
+        # a PathLike names a local file, never an hf:// model or a URL, whatever its text
+        from unittest import mock
+
+        class _Name:
+            def __init__(self, text):
+                self.text = text
+
+            def __fspath__(self):
+                return self.text
+
+        with (
+            mock.patch.object(ONNXLoader, "download") as mock_download,
+            mock.patch("kornia.core.download._download_url_to_file") as mock_fetch,
+        ):
+            with pytest.raises(ValueError, match=r"File hf://operators/some_model not found"):
+                ONNXLoader.load_model(_Name("hf://operators/some_model"))
+            with pytest.raises(ValueError, match=r"File https://example\.invalid/m\.onnx not found"):
+                ONNXLoader.load_model(_Name("https://example.invalid/m.onnx"))
+            with pytest.raises(RuntimeError, match="neither an HTTP"):
+                ONNXLoader.load_config(_Name("https://example.invalid/cfg.json"))
+        mock_download.assert_not_called()
+        mock_fetch.assert_not_called()
+
+    @pytest.mark.parametrize("form", ["Path", "bytes", "~"])
+    def test_load_model_reads_a_local_path_object_bytes_and_a_tilde(self, form, monkeypatch, tmp_path):
+        from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+
+        graph = make_graph(
+            [make_node("Identity", ["input"], ["output"])],
+            "identity",
+            [make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1])],
+            [make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1])],
+        )
+        path = tmp_path / "identity.onnx"
+        onnx.save(make_model(graph), str(path))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        name = {"Path": path, "bytes": os.fsencode(path), "~": os.path.join("~", "identity.onnx")}[form]
+
+        assert [node.op_type for node in ONNXLoader.load_model(name).graph.node] == ["Identity"]
 
     @pytest.mark.parametrize(
         "url", ["https://example.invalid", "https://example.invalid/", "https://example.invalid/d/"]

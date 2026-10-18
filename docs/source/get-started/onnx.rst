@@ -12,7 +12,7 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
   feed the inputs of the next.
 - **Export**: save the combined model as a single ONNX file.
 - **PyTorch-like interface**: call the sequence directly, like an ``nn.Sequential``, on numpy arrays or CPU torch
-  tensors. It returns numpy arrays.
+  tensors of a dtype numpy has (not bfloat16). It returns numpy arrays.
 - **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
   session options.
 
@@ -106,6 +106,9 @@ Quickstart
       # one joint, which feeds two outputs of model1 to two inputs of model2
       io_maps = [[("model1_output_0", "model2_input_0"), ("model1_output_1", "model2_input_1")]]
       onnx_seq = ONNXSequential("model1.onnx", "model2.onnx", io_maps=io_maps)
+
+   The merged graph does not check a later model's declared input types: ``ONNXSequential`` warns when the tensor
+   element types of an output and the input it feeds differ at a joint.
 
 5. **Export the combined model**
 

@@ -75,17 +75,25 @@ class TestONNXModule:
         x = torch.rand(2, 3, 4, 5)
         assert_close(torch.from_numpy(module(x.numpy())[0]), sigmoid(x))
 
-    def test_takes_file_paths_as_path_objects(self, sigmoid, tmp_path):
+    @pytest.mark.parametrize("form", ["Path", "bytes", "~"])
+    def test_takes_file_paths_as_path_objects_bytes_and_with_a_tilde(self, sigmoid, form, monkeypatch, tmp_path):
+        import os
+
         path = tmp_path / "sigmoid.onnx"
         sigmoid.to_onnx(str(path), **_RGB)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what os.path.expanduser reads on Windows
+        model = {"Path": path, "bytes": os.fsencode(path), "~": os.path.join("~", "sigmoid.onnx")}[form]
 
         x = torch.rand(1, 3, 4, 5)
-        for runtime in (ONNXModule(path), load(path)):
+        for runtime in (ONNXModule(model), load(model), ONNXSequential(model)):
             assert_close(torch.from_numpy(runtime(x.numpy())[0]), sigmoid(x))
 
-    @pytest.mark.parametrize("model", [1, b"model.onnx", None])
+    @pytest.mark.parametrize("model", [1, None, {"model": "m.onnx"}])
     def test_other_argument_types_raise_type_error(self, model):
-        message = r"an onnx.ModelProto, a str or an os.PathLike"
+        message = (
+            r"an onnx.ModelProto, a str or bytes \(a file path, an 'hf://' name or a URL\), or an os.PathLike file"
+        )
         with pytest.raises(TypeError, match=message):
             ONNXModule(model)
         with pytest.raises(TypeError, match=message):

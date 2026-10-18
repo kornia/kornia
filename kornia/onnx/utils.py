@@ -24,7 +24,7 @@ import os
 import posixpath
 import pprint
 import urllib.error
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from urllib.parse import quote, urlsplit, urlunsplit
 from urllib.request import urlopen
 
@@ -102,12 +102,13 @@ class ONNXLoader(CachedDownloader):
     """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models."""
 
     @classmethod
-    def load_config(cls, url: str, download: bool = True, **kwargs: Any) -> dict[str, Any]:
+    def load_config(cls, url: Union[str, bytes, os.PathLike], download: bool = True, **kwargs: Any) -> dict[str, Any]:
         """Load JSON config from the specified URL or local file.
 
         Args:
             url: The HTTP(S) URL of the preprocessor config to load, or the path of a local JSON file, which is read
-                as it is.
+                as it is: a ``str`` or ``bytes``, or an :class:`os.PathLike`, which always names a local file. A local
+                path may start with ``~``.
             download: If True, the config will be downloaded if it's not already in the local cache. A local file
                 is read either way.
             kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
@@ -124,14 +125,17 @@ class ONNXLoader(CachedDownloader):
 
         """
         _check_keywords("ONNXLoader.load_config", kwargs)
-        if url.startswith(("http:", "https:")):
+        local = isinstance(url, os.PathLike)  # a path object names a local file, whatever its text
+        url = os.fsdecode(url)
+        if not local and url.startswith(("http:", "https:")):
             kwargs["cache_dir"] = kwargs.get("cache_dir") or None  # "" is the default directory, as for load_model
             file_path = cls.download_to_cache(url, _url_cache_name(url), download=download, suffix=".json", **kwargs)
             with open(file_path) as f:
                 return json.load(f)
 
-        if os.path.isfile(url):
-            with open(url) as f:
+        path = os.path.expanduser(url)
+        if os.path.isfile(path):
+            with open(path) as f:
                 return json.load(f)
 
         raise RuntimeError(
@@ -139,14 +143,17 @@ class ONNXLoader(CachedDownloader):
         )
 
     @classmethod
-    def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:
+    def load_model(
+        cls, model_name: Union[str, bytes, os.PathLike], download: bool = True, with_data: bool = False, **kwargs
+    ) -> onnx.ModelProto:
         """Load an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
             model_name: The name of the ONNX model or operator. For Hugging Face-hosted models,
                 use the format 'hf://model_name'. Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models.
-                Or a URL to the ONNX model.
+                Or a URL to the ONNX model, or the path of a local file. A ``str`` or ``bytes`` can be any of
+                those; an :class:`os.PathLike` always names a local file. A local path may start with ``~``.
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
             cache_dir: The root of the cache. An ``hf://`` model is stored under it at the path of its name after
                 the folder (``<cache_dir>/a/b.onnx`` for ``hf://models/a/b``): the kornia/ONNX_models names are fully
@@ -168,7 +175,9 @@ class ONNXLoader(CachedDownloader):
 
         """
         _check_keywords("ONNXLoader.load_model", kwargs)
-        if model_name.startswith("hf://"):
+        local = isinstance(model_name, os.PathLike)  # a path object names a local file, whatever its text
+        model_name = os.fsdecode(model_name)
+        if not local and model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
             if kwargs.get("cache_dir"):
@@ -182,7 +191,7 @@ class ONNXLoader(CachedDownloader):
                 cls.download_to_cache(url_data, name, download=download, suffix=".onnx_data", **kwargs)
             return onnx.load(file_path)
 
-        if model_name.startswith(("http://", "https://")):
+        if not local and model_name.startswith(("http://", "https://")):
             name = _url_cache_name(model_name)
             kwargs["cache_dir"] = kwargs.get("cache_dir") or kornia_config.hub_onnx_dir  # "" is the default too
             file_path = cls.download_to_cache(model_name, name, download=download, suffix=".onnx", **kwargs)
@@ -192,8 +201,9 @@ class ONNXLoader(CachedDownloader):
                 cls.download_to_cache(url_data, _onnx_data_name(name), download=download, suffix=".onnx_data", **kwargs)
             return onnx.load(file_path)
 
-        if os.path.exists(model_name):
-            return onnx.load(model_name)
+        path = os.path.expanduser(model_name)
+        if os.path.exists(path):
+            return onnx.load(path)
 
         raise ValueError(f"File {model_name} not found")
 
@@ -243,8 +253,9 @@ def io_name_conversion(
 
     Any mapping applies, such as ``{"pixel_values": "input", "predicted_depth": "output"}`` for the default names that
     :class:`~kornia.onnx.sequential.ONNXSequential` connects. The graph's inputs and outputs and every input and
-    output of its nodes with a mapped name are renamed; names absent from the model are ignored. The nodes of
-    subgraphs (the branches of an ``If``, the body of a ``Loop``) and the ``value_info`` entries are not renamed.
+    output of its nodes with a mapped name are renamed; names absent from the model are ignored. The initializers,
+    the ``value_info`` entries and the nodes of subgraphs (the branches of an ``If``, the body of a ``Loop``) are not
+    renamed, so a mapped name that is also an initializer leaves its consumers reading a name that no longer exists.
 
     Args:
         onnx_model: The ONNX model to rename, modified in place.
