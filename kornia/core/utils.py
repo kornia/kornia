@@ -20,6 +20,7 @@ import importlib.util
 import platform
 import sys
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, fields, is_dataclass
 from types import FrameType, UnionType
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union, get_args, get_origin, get_type_hints
@@ -635,6 +636,28 @@ def is_autocast_enabled(both: bool = True) -> bool:
         return any(torch.is_autocast_enabled(device_type) for device_type in ("cpu", "cuda", "mps", "xpu"))
 
     return torch.is_autocast_enabled()
+
+
+def _autocast_disabled(device_type: str) -> AbstractContextManager[Any]:
+    """Return a context that turns off the caller's autocast region for ``device_type``, if one is on.
+
+    Outside autocast it returns a ``nullcontext``: entering ``torch.autocast(enabled=False)`` anyway costs a few
+    microseconds per call, a few percent of a small solve, and raises for a device type without autocast, such as
+    ``meta``. Every device type torch has an autocast region for is covered, ``xla``, ``hpu`` and a PrivateUse1 backend
+    too.
+    """
+    # ``torch.amp.is_autocast_available`` would ask first, but Dynamo cannot trace it on torch 2.5.1. ``meta`` is
+    # answered before asking: under torch.compile, Dynamo turns the RuntimeError below into its own internal error
+    # instead of passing it to the ``except``.
+    if device_type == "meta":
+        return nullcontext()
+    try:
+        enabled = torch.is_autocast_enabled(device_type)
+    except RuntimeError:  # a device type without autocast, such as ``meta``
+        enabled = False
+    if enabled:
+        return torch.autocast(device_type=device_type, enabled=False)
+    return nullcontext()
 
 
 # These helpers moved into ``torch.compiler`` over time; resolve them once at import.
