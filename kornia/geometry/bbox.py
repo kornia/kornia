@@ -705,6 +705,10 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
     Returns:
         Indices of the boxes kept from the input set, ordered by descending score.
 
+    Note:
+        Coordinates in float16 or bfloat16 are computed in float32, and uint8, int8,
+        int16 or int32 coordinates in int64, to avoid overflow in areas and unions.
+
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other
         :mod:`kornia.geometry.bbox` operations and is documented in
@@ -729,6 +733,11 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     if boxes.shape[0] != scores.shape[0]:
         raise ValueError(f"boxes and scores mus have same shape. Got: {boxes.shape, scores.shape}.")
+
+    if boxes.dtype in (torch.float16, torch.bfloat16):
+        boxes = boxes.float()
+    elif boxes.dtype in (torch.uint8, torch.int8, torch.int16, torch.int32):
+        boxes = boxes.to(torch.int64)
 
     x1, y1, x2, y2 = boxes.unbind(-1)
     areas = (x2 - x1) * (y2 - y1)

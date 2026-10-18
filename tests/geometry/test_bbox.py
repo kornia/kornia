@@ -838,6 +838,46 @@ class TestBbox3D(BaseTester):
 
 
 class TestNMS(BaseTester):
+    @pytest.mark.parametrize(
+        ("side", "offset", "expected"),
+        [(200, 0, [0, 2]), (512, 128, [0, 1, 2])],
+    )
+    def test_image_sized_boxes(self, device, dtype, side, offset, expected):
+        # Identical boxes have IoU 1; offset 512-pixel boxes have IoU 9/23.
+        boxes = torch.tensor(
+            [[0, 0, side, side], [offset, offset, side + offset, side + offset], [600, 0, 640, 40]],
+            device=device,
+            dtype=dtype,
+        )
+        scores = torch.tensor([0.875, 0.75, 0.5], device=device, dtype=dtype)
+        original = boxes.clone()
+        expected = torch.tensor(expected, device=device, dtype=torch.long)
+
+        for _ in range(2):
+            self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+        self.assert_close(boxes, original, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        ("box_dtype", "side", "origin"),
+        [
+            (torch.uint8, 100, 0),
+            (torch.int8, 100, -100),
+            (torch.int16, 200, 0),
+            (torch.int32, 200, 2**24),
+            (torch.int64, 200, 2**40),
+        ],
+    )
+    def test_integer_boxes(self, device, box_dtype, side, origin):
+        boxes = torch.tensor(
+            [[origin, origin, origin + side, origin + side]] * 2
+            + [[origin + side - 20, origin + side - 20, origin + side - 10, origin + side - 10]],
+            device=device,
+            dtype=box_dtype,
+        )
+        scores = torch.tensor([0.875, 0.75, 0.5], device=device)
+        expected = torch.tensor([0, 2], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+
     def test_convention_nms_uses_exclusive_xyxy_iou_4008(self, device, dtype):
         # The boxes overlap by 1 / 4 under exclusive xyxy arithmetic. At 0.3, NMS
         # keeps both; inclusive corner arithmetic would compute 4 / 9 and suppress

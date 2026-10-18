@@ -1,0 +1,1 @@
+`geometry.bbox.nms` computes half-precision and narrow-integer box areas in a wider dtype, preventing duplicate boxes from surviving or distinct boxes from being suppressed because areas or unions overflow on image-sized coordinates.
