@@ -1309,6 +1309,40 @@ class TestPackedQuadraticFit(BaseTester):
         solved = getattr(subpix, solver)(*system)[3]
         assert solved.tolist() == [True] + [False] * 8
 
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    def test_cramer_backward_of_a_tiny_system_is_finite(self, device, dtype, solver):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
+            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
+        # On a flat float32 image the Hessian entries of a BlobHessian response are rounding noise of about 1e-15.
+        # Their determinants reach float32's smallest subnormal, 1.4e-45, and the relative floor 1e-7 * m**3
+        # underflows to 0: the shifts were inaccurate, and the backward of num / det, (num / det) / det, was inf. The
+        # first rows sit just above the floor; the rest are well conditioned. The solve scales the system by a power
+        # of two first, so the same system scaled by 2**-50 gives the same shifts and mask bit for bit and gradients
+        # 2**50 times larger.
+        generator = torch.Generator().manual_seed(0)
+        system = torch.randn(9, 64, generator=generator)
+        system[:3] -= 4.0
+        system[:, :4] = 0.0
+        system[0:2, :4] = -1.0
+        system[2, :4] = torch.tensor([-2e-7, -4e-7, -1e-6, -1e-5])
+        system[6:, :4] = 1.0
+        system = system.to(device, dtype).requires_grad_()
+        tiny = (system.detach() * 2.0**-50).requires_grad_()
+        expected = getattr(subpix, solver)(*system)
+        actual = getattr(subpix, solver)(*tiny)
+        assert bool(expected[3].all())
+        for got, want in zip(actual, expected):
+            self.assert_close(got, want, atol=0, rtol=0)
+        weights = torch.linspace(0.1, 0.9, 64, device=device, dtype=dtype)
+        grad = torch.autograd.grad(sum((v * weights).sum() for v in actual[:3]), tiny)[0]
+        grad_ref = torch.autograd.grad(sum((v * weights).sum() for v in expected[:3]), system)[0]
+        assert bool(torch.isfinite(grad).all())
+        self.assert_close(grad, grad_ref * 2.0**50, atol=0, rtol=0)
+
     @pytest.mark.parametrize("count", [0, 19])
     def test_patch_derivatives(self, device, dtype, count):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix

@@ -286,6 +286,27 @@ class TestScaleSpaceDetector(BaseTester):
         # An image without candidates has no gradient to give.
         assert torch.count_nonzero(img.grad) == 0
 
+    @pytest.mark.parametrize("subpix_type", [IterativeQuadInterp3d, ConvQuadInterp3d])
+    @pytest.mark.parametrize("image", ["flat", "ramp", "near-flat"])
+    def test_a_flat_image_has_a_finite_gradient(self, device, dtype, subpix_type, image):
+        # On a flat float32 image the Hessian entries of the sub-pixel fit are rounding noise of about 1e-15. Their
+        # determinants reach float32's smallest subnormal, under a relative floor that underflowed to 0, and the
+        # backward of the Cramer solve divided by them twice: the inf times a later mask's zero gradient made every
+        # pixel's gradient NaN.
+        _skip_without_half_padding(device, dtype)
+        generator = torch.Generator().manual_seed(0)
+        if image == "flat":
+            img = torch.full((1, 1, 64, 80), 0.5)
+        elif image == "ramp":
+            img = torch.linspace(0, 1, 80).expand(1, 1, 64, 80).clone()
+        else:
+            img = 0.5 + 1e-6 * torch.rand(1, 1, 64, 80, generator=generator)
+        img = img.to(device, dtype).requires_grad_()
+        det = ScaleSpaceDetector(10, subpix_module=subpix_type()).to(device, dtype)
+        lafs, resps = det(img)
+        (lafs.sum() + resps.sum()).backward()
+        assert bool(torch.isfinite(img.grad).all())
+
     @pytest.mark.parametrize(
         "img_tail, mask_shape, error",
         [
