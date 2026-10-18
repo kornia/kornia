@@ -26,7 +26,7 @@ import torch
 
 import kornia
 import kornia.models.siglip2.builder as siglip2_builder
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.models.siglip2 import SigLip2Builder, SigLip2Config, SigLip2Model, SigLip2Result
 from kornia.models.siglip2.attention import SigLip2Attention
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
@@ -75,6 +75,14 @@ def model(device, dtype, config):
 def _create_input_ids(batch_size, seq_len, config, device):
     """Create input_ids with smaller range to avoid memory issues with large vocab."""
     return torch.randint(0, min(100, config.text_config.vocab_size), (batch_size, seq_len), device=device)
+
+
+def _from_name_or_error(model_name):
+    """``SigLip2Config.from_name(model_name)``, or the type of the error it raises, to compare two names' readings."""
+    try:
+        return SigLip2Config.from_name(model_name)
+    except ValueError as error:
+        return type(error)
 
 
 def _tiny_vision_config():
@@ -199,12 +207,19 @@ class TestSigLip2Builder:
             ("x/siglip2-base-patch16-224-ckpt2560", (256000, 768, 12, 12, 224, 16, 512)),
             # the owner part counts when the repository part has no size
             ("siglip384/finetune", (256000, 768, 12, 12, 384, 16, 512)),
+            # names are read in any case, and what the owner part says about the architecture does not count
+            ("someone/SigLIP2-Large-Patch16-256", (256000, 1024, 24, 16, 256, 16, 512)),
+            ("giantlab/siglip2-base-patch16-224-ft", (256000, 768, 12, 12, 224, 16, 512)),
+            ("patch14ai/siglip2-base-patch16-224", (256000, 768, 12, 12, 224, 16, 512)),
+            # a fine-tune or mirror of the supported SigLIP 1 checkpoint has its 32000-token vocabulary
+            ("someone/siglip-base-patch16-224-finetuned", (32000, 768, 12, 12, 224, 16, 512)),
+            ("someone/SigLIP-Base-Patch16-224", (32000, 768, 12, 12, 224, 16, 512)),
         ],
     )
     def test_from_name_reads_an_unlisted_name_from_its_parts(self, model_name, expected):
-        # A fine-tune or mirror of a supported checkpoint under another name: base unless the name says "large", the
-        # image size the name contains (224 if none), patch 16, the SigLIP 2 vocabulary, 512 text positions (which
-        # from_pretrained_hf adapts to the checkpoint). Config only: no model is built.
+        # A fine-tune or mirror of a supported checkpoint under another name: base unless a word of the repository
+        # part is "large", the image size the name contains (224 if none), patch 16, the SigLIP 2 vocabulary, 512 text
+        # positions (which from_pretrained_hf adapts to the checkpoint). Config only: no model is built.
         config = SigLip2Config.from_name(model_name)
         vision, text = config.vision_config, config.text_config
         actual = (
@@ -218,6 +233,105 @@ class TestSigLip2Builder:
         )
         assert actual == expected
         assert (text.hidden_size, text.num_hidden_layers, text.num_attention_heads) == expected[1:4]
+
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            # #6004: so400m has hidden size 1152 and patch 14, giant is wider still, and the SigLIP 1 checkpoints have
+            # the 32000-token vocabulary; the name parser would build a base patch-16 SigLIP 2 model for each.
+            "google/siglip2-so400m-patch14-384",
+            "google/siglip2-giant-opt-patch16-384",
+            "google/siglip-large-patch16-256",
+            "google/siglip-base-patch16-384",
+            "google/siglip2-base-patch32-256",
+            "google/siglip2-base-patch16-naflex",
+            # the same architectures under another owner
+            "someone/siglip2-so400m-patch14-384-finetuned",
+            "someone/siglip2-giant-opt-patch16-256-mirror",
+            "someone/siglip2-base-patch32-256-mirror",
+            "someone/siglip2-base-patch16-naflex-ft",
+            # SigLIP 1 checkpoints other than the supported base 224 one, under another owner
+            "someone/siglip-large-patch16-256",
+            "someone/siglip-base-patch16-384",
+            "someone/siglip-base-patch16-256-multilingual",
+            "Someone/SigLIP-Large-Patch16-256-mirror",
+        ],
+    )
+    def test_from_name_rejects_a_name_it_cannot_read(self, model_name):
+        # A google/ checkpoint outside the table, or a repository part with the word so400m, giant, naflex or a patch
+        # size other than 16, names an architecture the parts reading cannot build: it raises rather than return a
+        # model of the wrong shape. Neither call builds a model.
+        with pytest.raises(ValueError, match=r"cannot build .* Supported names: google/siglip-base-patch16-224, "):
+            SigLip2Config.from_name(model_name)
+        with pytest.raises(ValueError, match="cannot build"):
+            SigLip2Builder.from_name(model_name)
+
+    @pytest.mark.parametrize(
+        "repository",
+        [
+            "siglip2-base-patch16-224-finetuned",
+            "siglip2-large-patch16-384-mirror",
+            "my-siglip",
+            "siglip-base-patch16-224-finetuned",
+            "siglip2-so400m-patch14-384-finetuned",
+            "siglip2-base-patch32-256-mirror",
+            "siglip-large-patch16-256",
+        ],
+    )
+    @pytest.mark.parametrize("owner", ["LargeCorp", "large-models", "giantlab", "so400m-fans", "naflex", "patch14ai"])
+    def test_from_name_reads_the_architecture_from_the_repository_part_only(self, repository, owner):
+        # An owner that says large, giant, so400m, naflex or a patch size gets the reading of a neutral owner, for a
+        # name that reads and for one that raises alike ("LargeCorp/siglip2-base-..." was the large architecture).
+        assert _from_name_or_error(f"{owner}/{repository}") == _from_name_or_error(f"someone/{repository}")
+
+    @pytest.mark.parametrize(
+        ("model_name", "expected"),
+        [
+            # (hidden_size, image_size), and patch size 16 and the SigLIP 2 vocabulary throughout: a marker inside a
+            # longer word of the repository part is not the marker
+            ("someone/siglip2-base-patch16-224-enlarged", (768, 224)),
+            ("someone/siglip2-base-patch16-224-giantdata", (768, 224)),
+            ("someone/siglip2-base-patch16-224-naflexible", (768, 224)),
+            ("someone/siglip2-base-patch16-224-so400mx", (768, 224)),
+            ("someone/dispatch2-siglip2-base-patch16-224", (768, 224)),
+            ("someone/notsiglip-large-patch16-256", (1024, 256)),
+            # words are separated by any character that is not a letter or a digit
+            ("someone/siglip2_large_patch16_384", (1024, 384)),
+            ("someone/SigLIP2.Large.Patch16.512", (1024, 512)),
+        ],
+    )
+    def test_from_name_reads_whole_words(self, model_name, expected):
+        config = SigLip2Config.from_name(model_name)
+        assert (config.vision_config.hidden_size, config.vision_config.image_size) == expected
+        assert (config.vision_config.patch_size, config.text_config.vocab_size) == (16, 256000)
+
+    @pytest.mark.parametrize(
+        "model_name", ["someone/siglip2_so400m_patch14_384", "someone/siglip2-base.patch32", "someone/siglip_large_ft"]
+    )
+    def test_from_name_rejects_whole_words_after_any_separator(self, model_name):
+        with pytest.raises(ValueError, match="cannot build"):
+            SigLip2Config.from_name(model_name)
+
+    @pytest.mark.parametrize(
+        "model_name",
+        [
+            "someone/siglip2-base-patch16-224-finetuned",
+            "someone/siglip2-large-patch16-384-mirror",
+            "someone/siglip-base-patch16-224-finetuned",
+            "org-256/siglip2-finetune",
+            "someone/siglip2-so400m-patch14-384",
+            "someone/siglip-large-patch16-256",
+        ],
+    )
+    def test_from_name_reads_an_unlisted_name_in_any_case(self, model_name):
+        expected = _from_name_or_error(model_name)
+        assert _from_name_or_error(model_name.upper()) == expected
+        assert _from_name_or_error(model_name.swapcase().replace("SOMEONE", "Someone")) == expected
+
+    @pytest.mark.parametrize("model_name", ["Google/SigLIP2-Large-Patch16-384", "GOOGLE/siglip-base-patch16-224"])
+    def test_from_name_table_ignores_case(self, model_name):
+        # A supported checkpoint named in another case is that checkpoint, with its 64 text positions.
+        assert SigLip2Config.from_name(model_name) == SigLip2Config.from_name(model_name.lower())
 
     def test_from_pretrained_hf_loads_an_unlisted_name_that_fits(self, monkeypatch, config):
         # The tiny config stands in for the configuration read from the name, and its own weights for a fine-tune's.
@@ -247,10 +361,38 @@ class TestSigLip2Builder:
 
         with pytest.raises(RuntimeError, match=r"Supported names: google/siglip-base-patch16-224, ") as error:
             SigLip2Builder.from_pretrained_hf("someone/my-siglip")
-        assert "base (hidden size 768, 12 layers, 12 heads)" in str(error.value)
+        # The message reports the configuration actually read from the name, here the tiny stand-in.
+        assert "hidden size 32, 2 layers, 4 heads, patch size 4, image size 32, vocabulary 100" in str(error.value)
         assert "size mismatch" in str(error.value.__cause__)
 
-    def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config):
+    @pytest.mark.parametrize(
+        ("model_name", "downloaded"),
+        [
+            # a listed name in another case is downloaded, and so cached, under its listed spelling, not as a second
+            # copy (the Hub redirects the case variant to the same repository)
+            ("Google/SigLIP2-Base-Patch16-224", "google/siglip2-base-patch16-224"),
+            ("GOOGLE/siglip-base-patch16-224", "google/siglip-base-patch16-224"),
+            # an unlisted name keeps the caller's spelling: kornia does not know its repository's
+            ("Someone/SigLIP2-Base-Patch16-224-ft", "Someone/SigLIP2-Base-Patch16-224-ft"),
+        ],
+    )
+    def test_from_pretrained_hf_downloads_a_listed_name_under_its_listed_spelling(
+        self, monkeypatch, config, model_name, downloaded
+    ):
+        monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
+        state_dict = SigLip2Model(config).state_dict()
+        repositories = []
+
+        def download(model_name, cache_dir):
+            repositories.append(model_name)
+            return state_dict
+
+        monkeypatch.setattr(siglip2_builder, "_download_weights", download)
+        SigLip2Builder.from_pretrained_hf(model_name)
+        assert repositories == [downloaded]
+
+    @pytest.mark.parametrize("model_name", ["google/siglip2-base-patch16-224", "Google/SigLIP2-Base-Patch16-224"])
+    def test_from_pretrained_hf_passes_on_a_listed_checkpoints_load_error(self, monkeypatch, config, model_name):
         # A listed name's checkpoint that does not fit is not a naming question: load_state_dict's own error surfaces.
         monkeypatch.setattr(SigLip2Config, "from_name", staticmethod(lambda model_name: config))
         wider = SigLip2Config(
@@ -262,7 +404,7 @@ class TestSigLip2Builder:
         monkeypatch.setattr(siglip2_builder, "_download_weights", lambda model_name, cache_dir: state_dict)
 
         with pytest.raises(RuntimeError, match="size mismatch") as error:
-            SigLip2Builder.from_pretrained_hf("google/siglip2-base-patch16-224")
+            SigLip2Builder.from_pretrained_hf(model_name)
         assert "outside that list" not in str(error.value)
         assert error.value.__cause__ is None
 
@@ -465,6 +607,25 @@ class TestSigLip2Model(BaseTester):
         assert output.logits_per_text.shape == (1, 3)
         assert output.loss is None
 
+    def test_pixel_attention_mask_reaches_the_image_embeddings_and_the_loss(self, device, dtype, model, config):
+        # transformers' Siglip2Model.forward takes a pixel_attention_mask for the vision tower (modeling_siglip2.py
+        # v4.51.0). Here it reaches get_image_features, so the pixels of masked patches change neither the image
+        # embeddings nor the loss.
+        pixel_values = torch.randn(2, 3, 32, 32, device=device, dtype=dtype)
+        changed = pixel_values.clone()
+        changed[..., 16:, :] = torch.randn(2, 3, 16, 32, device=device, dtype=dtype)
+        mask = _patch_rows_4_to_7_masked(device).expand(2, -1)
+        input_ids = _create_input_ids(2, 10, config, device)
+
+        with torch.no_grad():
+            output = model(pixel_values, input_ids, return_loss=True, pixel_attention_mask=mask)
+            output_changed = model(changed, input_ids, return_loss=True, pixel_attention_mask=mask)
+            features = model.get_image_features(pixel_values, attention_mask=mask)
+
+        self.assert_close(output.image_embeds, features)
+        self.assert_close(output_changed.image_embeds, output.image_embeds)
+        self.assert_close(output_changed.loss, output.loss)
+
     def test_gradcheck(self, device, dtype, config):
         """Test gradient computation correctness."""
         # Convert model to float64 for gradcheck
@@ -500,6 +661,23 @@ class TestSigLip2Model(BaseTester):
 
         self.assert_close(actual.image_embeds, expected.image_embeds)
         self.assert_close(actual.text_embeds, expected.text_embeds)
+
+    def test_dynamo_return_loss_check_is_dynamic(self, device, dtype, torch_optimizer, model, config):
+        # The equal-batches check of return_loss formats the batch sizes only when it fails: an f-string evaluated on
+        # every call made Dynamo specialize the batch size, so every new batch compiled a graph of its own.
+        from torch._dynamo.testing import CompileCounter
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(model, backend=counter, fullgraph=True, dynamic=True)
+        # no batch equals another axis (3 channels, 4 heads, 8 head dims, 10 tokens), so duck sizing cannot tie it
+        for batch_size in (5, 6, 7):
+            pixel_values = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
+            input_ids = _create_input_ids(batch_size, 10, config, device)
+            with torch.no_grad():
+                actual = compiled(pixel_values=pixel_values, input_ids=input_ids, return_loss=True)
+                expected = model(pixel_values=pixel_values, input_ids=input_ids, return_loss=True)
+            self.assert_close(actual.loss, expected.loss, low_tolerance=True)
+        assert counter.frame_count == 1
 
     def test_dynamo_fullgraph_masked_vision_model(self, device, dtype, torch_optimizer):
         """The vision attention mask reaches the encoder and the pooling head inside one compiled graph."""
@@ -537,6 +715,49 @@ class TestSigLip2Components(BaseTester):
 
         num_patches = (config.image_size // config.patch_size) ** 2
         assert output.shape == (batch_size, num_patches, config.hidden_size)
+
+    @pytest.mark.parametrize(
+        "size",
+        [(16, 64), (8, 128), (33, 39), (32, 39), (39, 32), (40, 40)],
+        ids=["2x8-grid", "1x16-grid", "33x39", "32x39", "39x32", "40x40"],
+    )
+    def test_vision_embeddings_reject_other_sizes(self, device, dtype, size):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        config = SigLip2VisionConfig(
+            image_size=32,
+            patch_size=8,
+            hidden_size=32,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            intermediate_size=64,
+        )
+        embeddings = SigLip2VisionEmbeddings(config).to(device, dtype)
+        model = SigLip2VisionModel(config).to(device, dtype)
+
+        with torch.no_grad():
+            assert embeddings(torch.rand(1, 3, 32, 32, device=device, dtype=dtype)).shape == (1, 16, 32)
+            # The position table is the (32 // 8) ** 2 = 16 cells of a 4 x 4 grid. The patch grids 2 x 8 of 16 x 64,
+            # 1 x 16 of 8 x 128 and 4 x 4 of 33 x 39, 32 x 39 and 39 x 32 (remainders dropped) also have 16 cells;
+            # 40 x 40 gives 5 x 5. 32 x 39 and 39 x 32 have one side right, so the check must test both.
+            pixel_values = torch.rand(1, 3, *size, device=device, dtype=dtype)
+            with pytest.raises(ValueError, match="32"):
+                embeddings(pixel_values)
+            # SigLip2VisionModel, and through it SigLip2Model and PaliGemma, embed the image first.
+            with pytest.raises(ValueError, match="32"):
+                model(pixel_values)
+
+    def test_dynamo_fullgraph_vision_embeddings(self, device, dtype, torch_optimizer):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        # The size check reads static shapes: it must compile without a graph break.
+        embeddings = SigLip2VisionEmbeddings(_tiny_vision_config()).to(device, dtype).eval()
+        pixel_values = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
+
+        embeddings_optimized = torch_optimizer(embeddings, fullgraph=True)
+
+        with torch.no_grad():
+            self.assert_close(embeddings_optimized(pixel_values), embeddings(pixel_values))
 
     def test_vision_encoder(self, device, dtype):
         """Test SigLip2VisionEncoder."""
@@ -669,6 +890,30 @@ class TestSigLip2Components(BaseTester):
         tol = {"rtol": 5e-2, "atol": 5e-2} if dtype in (torch.float16, torch.bfloat16) else {}
         self.assert_close(output, output_without_mask, **tol)
 
+    @pytest.mark.parametrize("mask_shape", [(2, 1), (2, 10, 1), (2, 1, 10, 1), (2, 1, 1, 1), (2, 3, 10)])
+    def test_attention_mask_covers_every_token(self, device, dtype, mask_shape):
+        # A key dimension of 1 broadcast one value over all tokens: on the CPU and in CUDA float64 such a mask was the
+        # same as no mask, and in CUDA float32 and half it raised SDPA's "last dimension must be contiguous". A query
+        # dimension that is neither 1 nor the sequence length raised SDPA's broadcasting error.
+        attention = SigLip2Attention(hidden_size=32, num_heads=4).to(device, dtype).eval()
+        hidden_states = torch.randn(2, 10, 32, device=device, dtype=dtype)
+        mask = torch.ones(mask_shape, dtype=torch.bool, device=device)
+
+        with torch.no_grad(), pytest.raises(ShapeError, match=r"10 tokens"):
+            attention(hidden_states, attention_mask=mask)
+
+    def test_attention_three_dim_mask_broadcasts_over_the_queries(self, device, dtype):
+        # A (B, 1, N) mask is a per-sample key mask shared by every query, the 3-D form of a (B, N) padding mask.
+        attention = SigLip2Attention(hidden_size=32, num_heads=4).to(device, dtype).eval()
+        hidden_states = torch.randn(2, 10, 32, device=device, dtype=dtype)
+        mask = torch.ones(2, 10, dtype=torch.bool, device=device)
+        mask[1, 5:] = False
+
+        with torch.no_grad():
+            self.assert_close(
+                attention(hidden_states, attention_mask=mask[:, None]), attention(hidden_states, attention_mask=mask)
+            )
+
     @pytest.mark.parametrize(
         ("batch_size", "input_size"),
         [
@@ -765,6 +1010,89 @@ class TestSigLip2Components(BaseTester):
         assert torch.isfinite(pooled).all()
         self.assert_close(pooled[1:], uniform)
         self.assert_close(pooled[:1], pooled_alone)
+
+    @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
+    def test_pooling_head_all_masked_sample_pools_uniformly_under_autocast(self, device, dtype, autocast_dtype):
+        # Under autocast the hidden state stays float32 while nn.MultiheadAttention computes the scores in the
+        # autocast dtype, where float32's finfo.min rounds to -inf: the fill has to be finite in the autocast dtype,
+        # or a sample with every key masked pools to nan.
+        if dtype != torch.float32:
+            pytest.skip("autocast casts float32 inputs only")
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
+        hidden_state = torch.randn(2, 64, config.hidden_size, device=device, dtype=dtype)
+        mask = torch.ones(2, 64, dtype=torch.bool, device=device)
+        mask[0, 32:] = False  # sample 0 partly masked
+        mask[1] = False  # sample 1 entirely masked
+
+        with torch.no_grad():
+            expected = head(hidden_state, attention_mask=mask)
+            with torch.autocast(device.type, dtype=autocast_dtype):
+                pooled = head(hidden_state, attention_mask=mask)
+
+        assert torch.isfinite(pooled).all()
+        # the autocast run rounds the projections to the autocast dtype
+        self.assert_close(pooled.to(dtype), expected, rtol=5e-2, atol=5e-2)
+
+    @pytest.mark.parametrize(
+        ("param_dtype", "autocast_dtype"), [(torch.bfloat16, torch.float16), (torch.float64, torch.float16)]
+    )
+    def test_pooling_head_all_masked_sample_pools_uniformly_in_the_score_dtype(
+        self, device, dtype, param_dtype, autocast_dtype
+    ):
+        # The scores are computed in the autocast dtype for a float16, bfloat16 or float32 input and in float64 for a
+        # float64 one, which autocast leaves alone. A bfloat16 mask filled with float16's minimum held -65536, which
+        # overflows to -inf in float16 (nan); a float64 mask filled with it kept the score differences (not uniform).
+        if dtype != torch.float32:
+            pytest.skip("one run per device: the dtypes are the parameters")
+        if param_dtype == torch.float64 and device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        if param_dtype == torch.bfloat16 and device.type == "cpu":
+            pytest.skip("CPU float16 autocast rejects the bfloat16 parameters of layer_norm")
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, param_dtype).eval()
+        hidden_state = torch.randn(1, 64, config.hidden_size, device=device, dtype=param_dtype)
+        mask = torch.zeros(1, 64, dtype=torch.bool, device=device)
+        captured = {}
+        forward = head.attention.forward
+        head.attention.forward = lambda *args, **kwargs: captured.setdefault("out", forward(*args, **kwargs))
+
+        with torch.no_grad(), torch.autocast(device.type, dtype=autocast_dtype):
+            pooled = head(hidden_state, attention_mask=mask)
+
+        assert torch.isfinite(pooled).all()
+        weights = captured["out"][1].float()
+        self.assert_close(weights, torch.full_like(weights, 1 / 64), rtol=0.0, atol=0.0)
+
+    def test_dynamo_fullgraph_pooling_head_under_autocast(self, device, dtype, torch_optimizer):
+        # The autocast fill is chosen inside the compiled graph too. torch.amp.is_autocast_available cannot be traced
+        # before torch 2.6 (a graph break, so fullgraph raised on torch 2.5.1), so the head asks it in eager mode only.
+        if dtype != torch.float32:
+            pytest.skip("autocast casts float32 inputs only")
+        autocast_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to(device, dtype).eval()
+        hidden_state = torch.randn(2, 64, config.hidden_size, device=device, dtype=dtype)
+        mask = torch.ones(2, 64, dtype=torch.bool, device=device)
+        mask[1] = False  # sample 1 entirely masked: nan with the float32 fill under autocast
+
+        compiled = torch_optimizer(head, fullgraph=True)
+        with torch.no_grad(), torch.autocast(device.type, dtype=autocast_dtype):
+            pooled = compiled(hidden_state, attention_mask=mask)
+            expected = head(hidden_state, attention_mask=mask)
+
+        assert torch.isfinite(pooled).all()
+        self.assert_close(pooled, expected, low_tolerance=True)
+
+    def test_pooling_head_masked_on_the_meta_device(self):
+        # torch.is_autocast_enabled raises for a device type without autocast, such as meta, which shape inference and
+        # deferred initialization use: the head asks torch.amp.is_autocast_available first in eager mode.
+        config = _tiny_vision_config()
+        head = SigLip2MultiheadAttentionPoolingHead(config).to("meta").eval()
+        hidden_state = torch.empty(2, 64, config.hidden_size, device="meta")
+        mask = torch.ones(2, 64, dtype=torch.bool, device="meta")
+
+        assert head(hidden_state, attention_mask=mask).shape == (2, config.hidden_size)
 
     def test_activation_follows_hidden_act(self):
         # transformers' SiglipTextConfig and SiglipVisionConfig default hidden_act is "gelu_pytorch_tanh"

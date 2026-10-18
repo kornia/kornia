@@ -193,7 +193,7 @@ def canny(
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
-    KORNIA_CHECK_IS_COLOR_OR_GRAY(input, f"canny expects 1 or 3 channels. Got: {input.shape[1]}")
+    KORNIA_CHECK_IS_COLOR_OR_GRAY(input, "canny expects 1 or 3 channels.")
     _check_thresholds(low_threshold, high_threshold)
 
     # an integer image is processed in float32, so both outputs are float32 (#5155); promoting before the grayscale

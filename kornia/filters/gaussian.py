@@ -21,8 +21,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_autocast_enabled, is_compiling
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_compiling
 
 from .filter import _to_floating, filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
@@ -158,26 +159,34 @@ def gaussian_blur2d(
     # promote before casting sigma and the kernel to the input's dtype, where an integer dtype truncates them (#5155)
     input = _to_floating(input)
 
-    if isinstance(sigma, tuple):
+    # The positivity check below reads ``host_sigma``: the Python numbers, or ``sigma`` in the input dtype on the
+    # device it came on, so that a CPU sigma, as the augmentations pass it, is checked without reading the GPU.
+    host_sigma: tuple[float, float] | torch.Tensor
+    if isinstance(sigma, tuple) and all(isinstance(s, (int, float)) for s in sigma):
+        host_sigma = sigma
+        # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for every queued
+        # kernel. The values round from the same Python numbers either way.
+        sigma = _device_literal([sigma], device=input.device, dtype=input.dtype)
+    elif isinstance(sigma, tuple):
         sigma = torch.tensor([sigma], device=input.device, dtype=input.dtype)
+        host_sigma = sigma
     else:
         KORNIA_CHECK_IS_TENSOR(sigma)
-        sigma = sigma.to(device=input.device, dtype=input.dtype)
+        # Cast where it lives and then move: the blocking ``sigma.to(device, dtype)`` also casts on the host.
+        host_sigma = sigma.to(dtype=input.dtype)
+        sigma = _to_device_nonblocking(host_sigma, input.device)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
-    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size.
-    if sigma.shape[0] not in (1, input.shape[0]):
-        KORNIA_CHECK(
-            False,
-            "sigma must have a batch of 1 or the input batch. "
-            f"Got a sigma batch of {sigma.shape[0]} for an input batch of {input.shape[0]}",
-        )
+    KORNIA_CHECK_SAME_SIZE(sigma, input, allow_one=True, msg="sigma must have a batch of 1 or the input batch.")
     # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
     if not is_compiling():
         # Only interpolate `sigma` into the message when the check actually fails: a plain
         # f-string here would format the whole `sigma` tensor (a costly tensor->str) on every
         # eager call even when it passes — which dominated the eager Gaussian-blur runtime.
-        positive = bool((sigma > 0).all())
+        if not isinstance(host_sigma, torch.Tensor):
+            # The same rounding to the input dtype as the device tensor, on the host.
+            host_sigma = torch.tensor([host_sigma], dtype=input.dtype)
+        positive = bool((host_sigma > 0).all())
         KORNIA_CHECK(positive, "sigma must be positive" if positive else f"sigma must be positive, got {sigma}")
 
     if separable:

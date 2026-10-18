@@ -25,6 +25,7 @@ from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.utils import _validate_input_dtype
 from kornia.constants import DataKey
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 __all__ = ["RandomTransplantation"]
 
@@ -234,16 +235,17 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def transform_input(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:
         # Expand selection to the channel dimension
-        selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
-        acceptor[selection] = donor[selection]
-        return acceptor
+        selection = _to_device_nonblocking(selection, acceptor.device).unsqueeze(dim=self._channel_dim).expand_as(donor)
+        # The same values as ``acceptor[selection] = donor[selection]``, without the ``nonzero`` that boolean indexing
+        # runs, which reads the selection back on the host.
+        return torch.where(selection, donor, acceptor)
 
     def transform_mask(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:
         if acceptor.ndim == selection.ndim + 1:
             # A mask with a singleton channel axis, ``(B, 1, *spatial)``, as a container hands it on (#4707).
             selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
-        acceptor[selection] = donor[selection]
-        return acceptor
+        # As in ``transform_input``: a ``where`` instead of boolean indexing, which reads the selection on the host.
+        return torch.where(_to_device_nonblocking(selection, acceptor.device), donor, acceptor)
 
     def _check_mask_given(self, input: Sequence[torch.Tensor], data_keys: list[DataKey]) -> None:
         # The parameters are drawn from the mask, so name it before any lookup fails on its absence.
@@ -371,8 +373,10 @@ class RandomTransplantation(MixAugmentationBaseV2):
             )
             KORNIA_CHECK(
                 len(selected_labels) <= len(params["acceptor_indices"]),
-                f"There cannot be more selected labels ({len(selected_labels)}) than images where this "
-                f"augmentation should be applied ({len(params['acceptor_indices'])}).",
+                lambda: (
+                    f"There cannot be more selected labels ({len(selected_labels)}) than images where this "
+                    f"augmentation should be applied ({len(params['acceptor_indices'])})."
+                ),
             )
 
             for d, selected_label in zip(range(len(params["donor_indices"])), selected_labels):
@@ -405,8 +409,10 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         outputs: list[torch.Tensor] = []
         for dcate, _input in zip(keys, input):
-            acceptor = _input[self._params["acceptor_indices"]].clone()
-            donor = _input[self._params["donor_indices"]]
+            # The indices are drawn on the CPU; indexing device data with them would copy them with a blocking transfer.
+            acceptor_indices = _to_device_nonblocking(self._params["acceptor_indices"], _input.device)
+            acceptor = _input[acceptor_indices].clone()
+            donor = _input[_to_device_nonblocking(self._params["donor_indices"], _input.device)]
 
             output: torch.Tensor
             if dcate == DataKey.INPUT:
@@ -417,14 +423,14 @@ class RandomTransplantation(MixAugmentationBaseV2):
                 applied = self.transform_input(acceptor, donor, self._params["selection"])
                 output = self.apply_non_transform(_input, self._params, self.flags)
                 output = output.index_put(
-                    (self._params["acceptor_indices"],),
+                    (acceptor_indices,),
                     self.apply_non_transform_mask(applied, self._params, self.flags),
                 )
             elif dcate == DataKey.MASK:
                 applied = self.transform_mask(acceptor, donor, self._params["selection"])
                 output = self.apply_non_transform_mask(_input, self._params, self.flags)
                 output = output.index_put(
-                    (self._params["acceptor_indices"],),
+                    (acceptor_indices,),
                     self.apply_non_transform_mask(applied, self._params, self.flags),
                 )
             else:

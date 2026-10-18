@@ -21,6 +21,7 @@ import torch
 from torch import nn
 
 from kornia.augmentation.base import _AugmentationBase
+from kornia.core.utils import _to_device_nonblocking
 
 T = TypeVar("T", bound="OperationBase")
 
@@ -182,8 +183,8 @@ class OperationBase(nn.Module):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))].to(
-            device=input.device, dtype=input.dtype
+        batch_prob = _to_device_nonblocking(
+            params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))], input.device, input.dtype
         )
 
         # The wrapped augmentation transforms every row the blend gives a weight, so a fractional gate is not

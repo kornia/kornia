@@ -23,6 +23,7 @@ from torch import Tensor
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import rgb_to_grayscale
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomGrayscale(IntensityAugmentationBase2D):
@@ -112,9 +113,9 @@ class RandomGrayscale(IntensityAugmentationBase2D):
             else:
                 KORNIA_CHECK(
                     weights.numel() == num_channels,
-                    f"rgb_weights needs one weight per channel: got {weights.numel()} for {num_channels}.",
+                    lambda: f"rgb_weights needs one weight per channel: got {weights.numel()} for {num_channels}.",
                 )
-                weights = weights.to(input)
+                weights = _to_device_nonblocking(weights, input.device, input.dtype)
             gray = (input * weights.view(*lead, num_channels, 1, 1)).sum(-3, keepdim=True)
         # Broadcast the single grayscale channel back to the input channel count (a contiguous copy).
         return gray.repeat(*lead, num_channels, 1, 1)

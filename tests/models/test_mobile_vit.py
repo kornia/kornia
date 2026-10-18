@@ -38,3 +38,8 @@ class TestMobileViT(BaseTester):
         out = mvit(img)
         assert isinstance(out, torch.Tensor)
         assert out.shape == (B, channel[mode], 4, 4)
+
+    @pytest.mark.device_agnostic
+    def test_unknown_mode_raises(self):
+        with pytest.raises(ValueError, match="'xxs', 'xs' or 's'"):
+            MobileViT(mode="m")

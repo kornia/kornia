@@ -23,6 +23,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -60,11 +61,14 @@ def _apply_order_cond(
 ) -> torch.Tensor:
     # Every step runs, and torch.where keeps its output only when a factor in the batch is not neutral. There is
     # no data-dependent Python branch, so eager and compiled mode run this same code path, and fullgraph
-    # compilation holds. A step runs even when it is skipped, so this path needs an RGB input.
+    # compilation holds. A step runs even when it is skipped, so this path needs an RGB input. The condition is
+    # computed from the CPU factors and moved without waiting for the queued kernels, as a CPU condition in
+    # ``torch.where`` would be copied with a blocking transfer.
     for idx in order:
         factor = factors[idx]
         output = branches[idx](input, factor)
-        input = torch.where((factor != neutral[idx]).any(), output, input)
+        apply = _to_device_nonblocking((factor != neutral[idx]).any(), input.device)
+        input = torch.where(apply, output, input)
     return input
 
 

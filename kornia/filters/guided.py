@@ -31,8 +31,10 @@ from .kernels import _unpack_2d_ks
 
 
 def _check_subsample(subsample: int) -> None:
-    msg = f"`subsample` must be a positive integer. Got: {subsample!r}"
-    KORNIA_CHECK_TYPE(subsample, Integral, f"{msg} ({type(subsample).__name__})")
+    def msg() -> str:
+        return f"`subsample` must be a positive integer. Got: {subsample!r}"
+
+    KORNIA_CHECK_TYPE(subsample, Integral, lambda: f"{msg()} ({type(subsample).__name__})")
     # ``bool`` is an ``int``, and ``subsample=True`` would otherwise run as 1.
     KORNIA_CHECK(not isinstance(subsample, bool) and subsample >= 1, msg)
 

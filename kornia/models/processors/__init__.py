@@ -71,11 +71,18 @@ class ResizePreProcessor(nn.Module):
                 - original_sizes: Original image sizes of shape :math:`(B, 2)` containing (height, width), as
                   ``int64`` on the images' device.
         """
-        resized_imgs: List[Tensor] = []
+        # int64: a half-precision image dtype cannot hold every size (bfloat16 rounds 667 to 668). Filled in rather
+        # than built with ``torch.tensor``, which the TorchScript ONNX exporter bakes in as constants.
+        if isinstance(imgs, Tensor):
+            # One resize for the whole batch, whose images share a size: a loop over the batch would unroll at the
+            # traced batch size in an ONNX export and fix the exported model to that batch.
+            original_sizes = imgs.new_zeros((imgs.shape[0], 2), dtype=torch.long)
+            original_sizes[:, 0] = imgs.shape[-2]  # Height
+            original_sizes[:, 1] = imgs.shape[-1]  # Width
+            return resize(imgs, size=self.size, interpolation=self.interpolation_mode), original_sizes
 
-        iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
-        # int64: a half-precision image dtype cannot hold every size (bfloat16 rounds 667 to 668). Filled per image
-        # rather than built with ``torch.tensor``, which the TorchScript ONNX exporter bakes in as constants.
+        resized_imgs: List[Tensor] = []
+        iters = len(imgs)
         original_sizes = imgs[0].new_zeros((iters, 2), dtype=torch.long)
 
         for i in range(iters):

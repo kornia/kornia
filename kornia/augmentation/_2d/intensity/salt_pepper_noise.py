@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
@@ -153,8 +154,12 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
 
         noisy_image = input.clone()
 
-        # Apply noise masks using indexing.
-        noisy_image[params["mask_salt"].to(input.device)] = 1.0
-        noisy_image[params["mask_pepper"].to(input.device)] = 0.0
-
-        return noisy_image
+        mask_salt = _to_device_nonblocking(params["mask_salt"], input.device)
+        mask_pepper = _to_device_nonblocking(params["mask_pepper"], input.device)
+        if mask_salt.shape != noisy_image.shape or mask_pepper.shape != noisy_image.shape:
+            # Boolean indexing raises for a mask of another shape, where ``masked_fill`` would broadcast it.
+            noisy_image[mask_salt] = 1.0
+            noisy_image[mask_pepper] = 0.0
+            return noisy_image
+        # The same writes as boolean indexing, salt first, without the ``nonzero`` that reads the masks on the host.
+        return noisy_image.masked_fill(mask_salt, 1.0).masked_fill(mask_pepper, 0.0)

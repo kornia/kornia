@@ -30,7 +30,7 @@ from kornia.augmentation.utils import (
     override_parameters,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.core.utils import is_autocast_enabled, is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -405,7 +405,9 @@ class _AugmentationBase(_BasicAugmentationBase):
         rows raises ``ValueError`` instead of transforming the skipped rows too.
         """
         if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1))).to(transformed.device)
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (len(transformed.shape) - 1))), transformed.device
+            )
             return torch.where(to_apply_expanded, transformed, not_transformed)
         apply_any = bool(to_apply.any())
         if apply_any and not bool(to_apply.all()) and transformed.shape[1:] != not_transformed.shape[1:]:
@@ -453,7 +455,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
             transform_input = in_tensor
             if self.SUBSTITUTE_SKIPPED_SAMPLES:
-                gate = to_apply.view(-1, *([1] * (in_tensor.ndim - 1))).to(in_tensor.device)
+                gate = _to_device_nonblocking(to_apply.view(-1, *([1] * (in_tensor.ndim - 1))), in_tensor.device)
                 transform_input = torch.where(gate, in_tensor, 0.5)
             output_transformed = self.apply_transform(transform_input, params, flags, transform=transform)
             output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
