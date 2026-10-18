@@ -189,3 +189,40 @@ class TestSuperResolutionBuilders(BaseTester):
         inferred = onnx.shape_inference.infer_shapes(exported, data_prop=True)
         out_dim = inferred.graph.output[0].type.tensor_type.shape.dim[-1]
         assert out_dim.dim_value == model.output_image_size
+
+
+class TestRRDBNetBuilderWeights:
+    """Pretrained Real-ESRGAN weights load like every other kornia checkpoint, with no download here."""
+
+    @staticmethod
+    def _fake_loader(monkeypatch, checkpoint):
+        import kornia.contrib.super_resolution as sr
+
+        calls = []
+
+        def _load(url, **kwargs):
+            calls.append((url, kwargs))
+            return checkpoint
+
+        monkeypatch.setattr(sr, "load_state_dict_from_url", _load)
+        return calls
+
+    @pytest.mark.parametrize("keys", [("params_ema",), ("params",), ("params", "params_ema")])
+    def test_loads_the_ema_weights_and_falls_back_to_params(self, monkeypatch, tmp_path, keys):
+        # Real-ESRGAN's RealESRGANer prefers ``params_ema`` and falls back to ``params``; kornia read ``params_ema``
+        # only, so a checkpoint without it raised ``KeyError``.
+        monkeypatch.chdir(tmp_path)
+        reference = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=False).model.state_dict()
+        checkpoint = {key: {k: torch.full_like(v, i + 1.0) for k, v in reference.items()} for i, key in enumerate(keys)}
+        calls = self._fake_loader(monkeypatch, checkpoint)
+
+        model = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=True).model
+
+        expected = checkpoint["params_ema" if "params_ema" in keys else "params"]
+        assert all(torch.equal(v, expected[k]) for k, v in model.state_dict().items())
+        assert [url for url, _ in calls] == [
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
+        ]
+        # The weights go to the torch hub cache, as every other kornia checkpoint does, not under the working
+        # directory, where each new one downloaded them again.
+        assert not any(tmp_path.iterdir())

@@ -15,12 +15,13 @@
 # limitations under the License.
 #
 
+import os
+
 import torch
 from torch import nn
 
 from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb
-from kornia.config import kornia_config
-from kornia.onnx.download import CachedDownloader
+from kornia.core.download import load_state_dict_from_url
 
 url = "https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth"
 
@@ -55,18 +56,20 @@ class SmallSRNet(nn.Module):
                 weight_init(self)
 
     def load_from_file(self, path_file: str) -> None:
-        """Load pretrained super-resolution weights from the model cache.
+        """Load pretrained super-resolution weights and switch the module to evaluation mode.
 
         Args:
-            path_file: Checkpoint URL or path passed to the cached downloader.
-                The downloaded state dictionary is loaded strictly and the
-                module is switched to evaluation mode.
+            path_file: path of a local checkpoint file, or a URL accepted by
+                :func:`kornia.core.download.load_state_dict_from_url`. A string naming an existing file (a leading
+                ``~`` is expanded) is read with :func:`torch.load` and ``weights_only=True``; anything else goes
+                through the torch hub cache. The state dictionary is loaded strictly.
         """
-        # use torch.hub to load pretrained model
-        model_path = CachedDownloader.download_to_cache(
-            path_file, "small_sr.pth", download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
-        )
-        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
+        local = os.path.expanduser(path_file)
+        if os.path.isfile(local):
+            with open(local, "rb") as f:
+                pretrained_dict = torch.load(f, map_location=torch.device("cpu"), weights_only=True)
+        else:
+            pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

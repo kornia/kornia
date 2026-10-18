@@ -20,8 +20,8 @@ import os
 import pytest
 import torch
 
-from kornia.config import kornia_config
 from kornia.models.small_sr import SmallSRNet, SmallSRNetWrapper
+from kornia.models.small_sr import url as small_sr_url
 
 from testing.base import BaseTester
 
@@ -98,7 +98,7 @@ class TestSmallSRNet(BaseTester):
         """Test that pretrained weights can be loaded (only upscale_factor=3 has pretrained weights)."""
         if upscale_factor == 3:
             # Check if pretrained weights are cached to avoid network download attempts in offline CI
-            cache_path = os.path.join(kornia_config.hub_onnx_dir, "small_sr.pth")
+            cache_path = os.path.join(torch.hub.get_dir(), "checkpoints", os.path.basename(small_sr_url))
             if not os.path.exists(cache_path):
                 pytest.skip(f"Pretrained weights not cached at {cache_path}. Skipping to avoid network download.")
 
@@ -210,7 +210,7 @@ class TestSmallSRNetWrapper(BaseTester):
     def test_feature_pretrained_upscale_3x(self, device, dtype):
         """Test upscaling with pretrained weights (only available for upscale_factor=3)."""
         # Check if pretrained weights are cached to avoid network download attempts in offline CI
-        cache_path = os.path.join(kornia_config.hub_onnx_dir, "small_sr.pth")
+        cache_path = os.path.join(torch.hub.get_dir(), "checkpoints", os.path.basename(small_sr_url))
         if not os.path.exists(cache_path):
             pytest.skip(f"Pretrained weights not cached at {cache_path}. Skipping to avoid network download.")
 
@@ -293,3 +293,34 @@ class TestSmallSRNetWrapper(BaseTester):
         # Individual processing should match batch processing
         self.assert_close(output1, output_batch[0:1], rtol=1e-4, atol=1e-4)
         self.assert_close(output2, output_batch[1:2], rtol=1e-4, atol=1e-4)
+
+
+class TestSmallSRNetWeights:
+    """``load_from_file`` reads a local checkpoint itself and sends a URL through the hub cache."""
+
+    def test_a_local_checkpoint_is_read(self, tmp_path):
+        source = SmallSRNet(upscale_factor=3, pretrained=False)
+        path = tmp_path / "weights.pth"
+        torch.save(source.state_dict(), path)
+        model = SmallSRNet(upscale_factor=3, pretrained=False).train()
+        model.load_from_file(str(path))
+        assert all(torch.equal(v, source.state_dict()[k]) for k, v in model.state_dict().items())
+        assert not model.training
+
+    def test_a_url_goes_through_the_hub_cache(self, monkeypatch, tmp_path):
+        from kornia.models import small_sr
+
+        monkeypatch.chdir(tmp_path)
+        source = SmallSRNet(upscale_factor=3, pretrained=False)
+        calls = []
+
+        def _load(url, **kwargs):
+            calls.append(url)
+            return source.state_dict()
+
+        monkeypatch.setattr(small_sr, "load_state_dict_from_url", _load)
+        model = SmallSRNet(upscale_factor=3, pretrained=True)
+        assert calls == [small_sr.url]
+        assert all(torch.equal(v, source.state_dict()[k]) for k, v in model.state_dict().items())
+        # Not cached under the working directory, where each new one downloaded the weights again.
+        assert not any(tmp_path.iterdir())

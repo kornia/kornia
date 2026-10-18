@@ -1,0 +1,3 @@
+- The pretrained Real-ESRGAN weights of `RRDBNetBuilder` / `SuperResolutionBuilder` and the `SmallSRNet` weights are cached in the torch hub directory through `kornia.core.download.load_state_dict_from_url`, as every other kornia checkpoint is. They were cached under `.kornia_hub/onnx_models` relative to the working directory, so each new working directory downloaded them again; existing users download them once more.
+- A Real-ESRGAN checkpoint without `params_ema` loads its `params`, the fallback of Real-ESRGAN's own loader; it raised `KeyError: 'params_ema'`.
+- `SmallSRNet.load_from_file` reads a local checkpoint file, as its docstring said; a path raised `ValueError: URL must start with 'http:' or 'https:'`.
