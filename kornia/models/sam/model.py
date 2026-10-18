@@ -307,18 +307,13 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
             pseudo_shape = [1, 3, 1024, 1024]
         kwargs.setdefault("output_names", ["image_embeddings"])
         input_shape = [-1, 3, -1, -1]
+        dynamic_axes: dict[str, dict[int, str]] = {"input": {0: "batch"}, "image_embeddings": {0: "batch"}}
         if isinstance(self.image_encoder, TinyViT) and not kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
             # The TorchScript exporter keeps the traced batch in TinyViT's attention reshapes, so the graph runs at
             # that batch only: a fixed batch is traced at the pseudo shape's size rather than at 2, and declared.
             input_shape = [pseudo_shape[0], 3, -1, -1]
-            kwargs.setdefault("dynamic_axes", {})
-        kwargs.setdefault(
-            "dynamic_axes",
-            {
-                "input": {0: "batch"},
-                "image_embeddings": {0: "batch"},
-            },
-        )
+            dynamic_axes = {}
+        kwargs.setdefault("dynamic_axes", dynamic_axes)
         return super().to_onnx(
             onnx_name=onnx_name,
             input_shape=input_shape,

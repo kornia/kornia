@@ -201,7 +201,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         :py:class:`~kornia.models.processors.ResizePostProcessor`, it returns the edge maps of the batch as one
         :math:`(B, 1, H, W)` tensor at the input's size: the ``torch.cat`` of the list that :meth:`forward` returns.
         Export through this method rather than ``torch.onnx.export(detector, ...)``: below torch 2.9, a direct
-        ``torch.onnx.export(..., dynamo=True)`` exports the maps at the pre-processor's size.
+        ``torch.onnx.export(..., dynamo=True)`` traces the eager per-image list instead.
 
         Args:
             onnx_name:
