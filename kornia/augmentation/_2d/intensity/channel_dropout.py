@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
@@ -131,8 +132,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         )
 
         out = input.clone()
-        out[params["batch_idx"], params["channel_idx"], ...] = self.fill_value.to(
-            device=input.device, dtype=input.dtype
-        )
+        batch_idx = _to_device_nonblocking(params["batch_idx"], input.device)
+        channel_idx = _to_device_nonblocking(params["channel_idx"], input.device)
+        out[batch_idx, channel_idx, ...] = _to_device_nonblocking(self.fill_value, input.device, input.dtype)
 
         return out

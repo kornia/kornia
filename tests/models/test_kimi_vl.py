@@ -21,7 +21,7 @@ import pytest
 import torch
 
 import kornia.models.kimi_vl.builder as kimi_vl_builder
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.models.kimi_vl import KimiVLBuilder, KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 from kornia.models.kimi_vl.model import KimiVLProjector
@@ -411,6 +411,33 @@ class TestKimiVLComponents(BaseTester):
 
         with torch.no_grad(), pytest.raises(BaseError, match=r"leading dimension .* pass it as 4-D"):
             attention(x, cos, sin, attention_mask=mask)
+
+    @pytest.mark.parametrize("module", ["attention", "encoder"])
+    @pytest.mark.parametrize("mask_shape", [(2, 1), (2, 16, 1), (2, 1, 16, 1), (2, 1, 1, 1), (2, 3, 16)])
+    def test_moonvit_mask_covers_every_patch(self, device, dtype, config, module, mask_shape):
+        # A key dimension of 1 broadcast one value over all N patches: on the CPU and in CUDA float64 such a mask was
+        # the same as no mask, and in CUDA float32 and half it raised SDPA's "last dimension must be contiguous". A
+        # query dimension that is neither 1 nor N raised SDPA's broadcasting error. Both raise naming the patch count.
+        net = (MoonViTAttention if module == "attention" else MoonViTEncoder)(config.vision_config)
+        net = net.to(device, dtype).eval()
+        x, cos, sin = _moonvit_attention_inputs(config, 2, 16, device, dtype)
+        mask = torch.ones(mask_shape, dtype=torch.bool, device=device)
+
+        with torch.no_grad(), pytest.raises(ShapeError, match=r"16 patches"):
+            net(x, cos, sin, attention_mask=mask)
+
+    def test_moonvit_attention_three_dim_mask_broadcasts_over_the_queries(self, device, dtype, config):
+        # A (B, 1, N) mask is a per-sample key mask shared by every query, the 3-D form of a (B, N) padding mask.
+        attention = MoonViTAttention(config.vision_config).to(device, dtype).eval()
+        n = 16
+        x, cos, sin = _moonvit_attention_inputs(config, 2, n, device, dtype)
+        mask = torch.ones(2, n, dtype=torch.bool, device=device)
+        mask[1, n // 2 :] = False
+
+        with torch.no_grad():
+            self.assert_close(
+                attention(x, cos, sin, attention_mask=mask[:, None]), attention(x, cos, sin, attention_mask=mask)
+            )
 
     def test_moonvit_attention_four_dim_per_head_mask(self, device, dtype, config):
         # A per-head mask goes in as (1, H, N, N) or (B, H, N, N), which scaled_dot_product_attention broadcasts against

@@ -27,6 +27,8 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -36,6 +38,23 @@ from .ops import InputSequentialOps
 from .params import ParamItem, PatchParamItem
 
 __all__ = ["PatchSequential"]
+
+
+def _patch_indices(indices: Union[List[int], torch.Tensor], device: torch.device) -> torch.Tensor:
+    """Return the patch ``indices`` as a long tensor on ``device``, without a host-to-device copy that waits.
+
+    Indexing a CUDA tensor with a Python list copies the list to the device and waits for every queued kernel.
+    ``forward_parameters`` stores evenly spaced indices, which ``torch.arange`` builds on the device; any other list is
+    a device literal. Both index exactly the patches the list names.
+    """
+    if isinstance(indices, torch.Tensor):
+        return _to_device_nonblocking(indices, device)
+    values = [int(i) for i in indices]
+    if len(values) > 1:
+        step = values[1] - values[0]
+        if step > 0 and all(v == values[0] + k * step for k, v in enumerate(values)):
+            return torch.arange(values[0], values[-1] + 1, step, device=device)
+    return _device_literal(values, device=device, dtype=torch.long)
 
 
 class PatchSequential(ImageSequential):
@@ -435,10 +454,11 @@ class PatchSequential(ImageSequential):
         for patch_param in params:
             # input, out_param = self.apply_by_param(input, params=patch_param)
             module = self.get_submodule(patch_param.param.name)
-            _input = input[patch_param.indices]
+            indices = _patch_indices(patch_param.indices, input.device)
+            _input = input[indices]
             output = InputSequentialOps.transform(_input, module, patch_param.param, extra_args={})
             # Mix operations may promote to their parameter dtype; the patch buffer retains the image dtype.
-            input[patch_param.indices] = output.to(input)
+            input[indices] = output.to(input)
 
         return input.reshape(in_shape)
 

@@ -26,7 +26,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SIZES
 
 __all__ = ["SigLip2Attention"]
 
@@ -93,6 +93,8 @@ class SigLip2Attention(nn.Module):
                 - (batch_size, 1, seq_len, seq_len): already in the layout
                   ``torch.nn.functional.scaled_dot_product_attention`` expects.
 
+                The last dimension of every form is the ``seq_len`` keys, and in a 3-D or 4-D mask the one before
+                it is the ``seq_len`` queries or 1, which shares the key mask across the queries; other sizes raise.
                 A query row whose mask is entirely ``0`` follows the behavior of
                 ``scaled_dot_product_attention`` for a fully masked row: ``0`` on PyTorch 2.5 and later,
                 ``nan`` before it.
@@ -135,6 +137,20 @@ class SigLip2Attention(nn.Module):
                 attn_mask = attention_mask.bool()
             else:
                 raise ValueError(f"Unsupported attention_mask dimension: {attention_mask.dim()}")
+            # A key dimension of 1 would broadcast one value over every token: the same as no mask on the CPU, and
+            # SDPA's unrelated "last dimension must be contiguous" error in CUDA float32 and half.
+            sizes: list[Optional[int]] = [None] * attention_mask.dim()
+            sizes[-1] = seq_len
+            if attention_mask.dim() > 2:
+                sizes[-2] = 1 if attention_mask.shape[-2] == 1 else seq_len
+            KORNIA_CHECK_SIZES(
+                attention_mask,
+                sizes,
+                lambda: (
+                    f"SigLip2Attention reads an attention mask over the {seq_len} tokens: the keys are its last "
+                    f"dimension, and in a 3-D or 4-D mask the queries, {seq_len} or 1, the one before it."
+                ),
+            )
 
         dropout_p = self.dropout.p if self.training and self.dropout.p > 0.0 else 0.0
         attention_output = F.scaled_dot_product_attention(
