@@ -876,18 +876,62 @@ class TestPinholeCamera(BaseTester):
             kornia.geometry.camera.PinholeCamera(**params)
 
     def test_camera_list_preserves_rank_four_parameters(self, device, dtype):
-        cam = kornia.geometry.camera.PinholeCamera(
-            _k44(device, dtype), _e44(device, dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
+        first = kornia.geometry.camera.PinholeCamera(
+            _k44(device, dtype),
+            _e44(device, dtype),
+            torch.tensor([6], device=device),
+            torch.tensor([8], device=device),
         )
-        cameras = PinholeCamerasList([cam, cam.clone()])
+        second = kornia.geometry.camera.PinholeCamera(
+            _k44(device, dtype, fx=2.0, fy=3.0, cx=5.0, cy=6.0),
+            _e44(device, dtype, tx=1.0),
+            torch.tensor([7], device=device),
+            torch.tensor([9], device=device),
+        )
+        cameras = PinholeCamerasList([first, second])
         assert cameras.intrinsics.shape == (1, 2, 4, 4)
         assert cameras.extrinsics.shape == (1, 2, 4, 4)
         assert cameras.num_cameras == 2
-        assert cameras.clone().intrinsics.shape == (1, 2, 4, 4)
+        original_extrinsics = cameras.extrinsics.clone()
+        cloned = cameras.clone()
+        assert cloned.intrinsics.shape == (1, 2, 4, 4)
+        self.assert_close(cloned.intrinsics, cameras.intrinsics)
+        self.assert_close(cloned.extrinsics, cameras.extrinsics)
+        self.assert_close(cloned.height, cameras.height)
+        self.assert_close(cloned.width, cameras.width)
+
+        points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
+        expected_projections = [
+            torch.tensor([[29.0, 53.0]], device=device, dtype=dtype),
+            torch.tensor([[6.0, 7.5]], device=device, dtype=dtype),
+        ]
+        for index, expected in enumerate(expected_projections):
+            self.assert_close(cameras.get_pinhole(index).project(points), expected)
+            self.assert_close(cloned.get_pinhole(index).project(points), expected)
+
+        cloned.extrinsics[0, 0, 0, 3] = 9.0
+        self.assert_close(cameras.extrinsics, original_extrinsics)
+
         scaled = cameras.scale(torch.tensor([2.0], device=device, dtype=dtype))
         assert scaled.intrinsics.shape == (1, 2, 4, 4)
-        points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
-        self.assert_close(cameras.get_pinhole(1).project(points), cam.project(points))
+        expected_intrinsics = torch.stack(
+            [
+                _k44(device, dtype, fx=200.0, fy=200.0, cx=8.0, cy=6.0),
+                _k44(device, dtype, fx=4.0, fy=6.0, cx=10.0, cy=12.0),
+            ],
+            dim=1,
+        )
+        expected_extrinsics = torch.stack([_e44(device, dtype), _e44(device, dtype, tx=1.0)], dim=1)
+        self.assert_close(scaled.intrinsics, expected_intrinsics)
+        self.assert_close(scaled.extrinsics, expected_extrinsics)
+        self.assert_close(scaled.height, torch.tensor([[12.0, 14.0]], device=device, dtype=dtype))
+        self.assert_close(scaled.width, torch.tensor([[16.0, 18.0]], device=device, dtype=dtype))
+        expected_scaled_projections = [
+            torch.tensor([[58.0, 106.0]], device=device, dtype=dtype),
+            torch.tensor([[12.0, 15.0]], device=device, dtype=dtype),
+        ]
+        for index, expected in enumerate(expected_scaled_projections):
+            self.assert_close(scaled.get_pinhole(index).project(points), expected)
 
     def test_project_and_unproject_reject_rank_one_points_4266(self, device, dtype):
         cam = kornia.geometry.camera.PinholeCamera(
