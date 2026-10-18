@@ -2659,8 +2659,15 @@ def _integer_safe_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     # dtype is multiplied out and summed instead, on every device so that CPU covers this branch too. Integer
     # products and sums wrap the same way in either form, so the result is bitwise CPU's integer ``a @ b``.
     # Every other pair (floating, complex, bool, the unsigned dtypes CPU matmul lacks, mixed dtypes) keeps
-    # ``a @ b``, its rounding and its errors.
-    if a.dtype == b.dtype and a.dtype in [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64]:
+    # ``a @ b``, its rounding and its errors. So does a pair whose inner sizes differ, which only reaches here
+    # with checks disabled: broadcasting would stretch a size-1 inner dimension where ``a @ b`` raises.
+    if (
+        a.dtype == b.dtype
+        and a.dtype in [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64]
+        and a.dim() > 1
+        and b.dim() > 1
+        and a.shape[-1] == b.shape[-2]
+    ):
         return (a.unsqueeze(-1) * b.unsqueeze(-3)).sum(-2, dtype=a.dtype)
     return a @ b
 
@@ -2945,9 +2952,10 @@ def camtoworld_to_worldtocam_Rt(
           returns ``R`` exactly and ``t`` to rounding
         - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`, and ``R`` and ``t``
           must carry the same batch size: a mismatched pair raises ``ShapeError``
-        - an integer ``R`` and ``t`` of one dtype are accepted on every device,
-          CUDA (which has no integer matmul) included, and the result keeps that
-          dtype; ``check_rotation=True`` checks such an ``R`` in ``float32``
+        - an ``R`` and ``t`` of one integer dtype (``uint8``, ``int8``, ``int16``,
+          ``int32`` or ``int64``) are accepted on every device, CUDA (which has
+          no integer matmul) included, and the result keeps that dtype, wrapping
+          on overflow; ``check_rotation=True`` checks such an ``R`` in ``float32``
 
     .. warning::
         ``R`` is **assumed** to be a rotation and by default this is not

@@ -5204,6 +5204,35 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         assert torch.equal(out_t, torch.tensor([[[-10], [-4], [-5]]], device=device).to(int_dtype))
 
     @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize(("r_dtype", "t_dtype"), [(torch.int64, torch.float32), (torch.int32, torch.int64)])
+    def test_mixed_dtype_pair_keeps_the_matmul_error(self, fn, r_dtype, t_dtype, device):
+        # Only a pair of one integer dtype is summed in that dtype. A mixed pair keeps -R^T @ t and the error torch
+        # raises for it, rather than an int64 R truncating a float32 t.
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device).to(r_dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device).to(t_dtype)
+        with pytest.raises(RuntimeError) as excinfo:
+            fn(rotation, translation)
+        assert not _raised_by_a_kornia_guard(excinfo.value)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize("pair_dtype", [torch.int64, torch.float32])
+    def test_row_translation_raises_with_checks_disabled(self, fn, pair_dtype, device):
+        # disable_checks() turns the shape guards off, so a (1, 1, 3) row translation reaches -R^T @ t, whose inner
+        # sizes (3 and 1) do not match. Integer input must raise there like float input does, instead of
+        # broadcasting the size-1 dimension into a (1, 3, 3) "translation".
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device).to(pair_dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device).to(pair_dtype).transpose(1, 2)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError) as excinfo:
+                fn(rotation, translation)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert not _raised_by_a_kornia_guard(excinfo.value)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
     @pytest.mark.parametrize(
         "matrix",
         [
