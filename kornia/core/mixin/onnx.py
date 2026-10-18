@@ -68,7 +68,7 @@ def _uses_dynamic_shapes(export_kwargs: dict[str, Any]) -> bool:
 
     It does on the dynamo exporter from torch 2.9, which warns on ``dynamic_axes``, and uses ``dynamic_axes`` otherwise.
     """
-    return torch_version_ge(2, 9, 0) and export_kwargs.get("dynamo", True)
+    return bool(torch_version_ge(2, 9, 0) and export_kwargs.get("dynamo", True))
 
 
 @contextlib.contextmanager

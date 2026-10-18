@@ -292,7 +292,8 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
                 exported as dynamic, so a batch below 2 is traced at 2. A TinyViT image encoder
                 (MobileSAM) on the legacy TorchScript exporter (the default before torch 2.9, or
                 ``dynamo=False``) is the exception: that graph runs at the traced batch only, so it is
-                traced at this shape's batch and declares it static.
+                traced at this shape's batch and declares it static. With a caller's ``dynamic_axes``, such an
+                encoder is still traced at this shape's batch and runs at that batch only.
             save: Whether to write the model to disk.  Default ``True``.
             **kwargs: Additional keyword arguments forwarded to
                 :func:`torch.onnx.export`.
