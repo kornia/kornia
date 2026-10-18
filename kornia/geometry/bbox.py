@@ -706,8 +706,10 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         Indices of the boxes kept from the input set, ordered by descending score.
 
     Note:
-        Coordinates in float16 or bfloat16 are computed in float32, and uint8, int8,
-        int16 or int32 coordinates in int64, to avoid overflow in areas and unions.
+        Coordinates in ``float16`` or ``bfloat16`` are computed in ``float32``, and ``uint8``, ``int8``, ``int16``
+        or ``int32`` coordinates in ``int64``. In their own dtype the sum of two areas overflows: two 181-pixel
+        squares exceed the ``float16`` maximum of 65504, and two 32768-pixel squares exceed ``int32``.
+        ``bfloat16`` does not overflow, but its rounding can move an IoU across ``iou_threshold``.
 
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other
