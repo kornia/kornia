@@ -1319,9 +1319,12 @@ def get_hanning_kernel1d(
     """
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
-    # A floating ramp: the integers are exact, and an int64 ramp times a float is an ``aten.mul.Scalar`` that the
-    # torch 2.14 dynamo ONNX exporter cannot translate with onnxscript 0.7.1.
-    x = torch.arange(kernel_size, device=device, dtype=dtype if dtype is not None else torch.get_default_dtype())
+    x = torch.arange(kernel_size, device=device, dtype=dtype)
+    if dtype is None:
+        # The int64 ramp is converted to the default dtype explicitly, as the multiplication below promoted it: the
+        # same values, without the int64-tensor-times-float ``aten.mul.Scalar`` that the torch 2.14 dynamo ONNX exporter
+        # cannot translate with onnxscript 0.7.1.
+        x = x.to(torch.get_default_dtype())
     return 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
 
 
