@@ -56,8 +56,9 @@ class PinholeCamera:
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` (the half-pixel rule),
         which disagrees with the integer pixel centres above:
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
-        validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. ``PinholeCamera`` accepts only
+        :math:`(B, 4, 4)` matrices. Use :class:`~kornia.geometry.camera.pinhole.PinholeCamerasList` to store a
+        camera list, then call :meth:`PinholeCamerasList.get_pinhole` to access each camera:
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated, but
         :meth:`project`, :meth:`unproject`, :meth:`intrinsics_inverse` and
         :class:`~kornia.geometry.depth.DepthWarper` read only the top-left :math:`3 \times 3` block, so a
@@ -65,9 +66,7 @@ class PinholeCamera:
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
-          containing the full 4x4 camera calibration matrix. The shared shape validator also accepts
-          :math:`(B, N, 4, 4)` for ``PinholeCamerasList``, while :meth:`project` requires
-          the documented :math:`(B, 4, 4)` layout.
+          containing the full 4x4 camera calibration matrix.
         extrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 rotation-translation matrix, checked by the same predicate.
         height: torch.Tensor with shape :math:`(B)` containing the image height.
@@ -104,10 +103,8 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
-        if len(data.shape) not in (3, 4) or data.shape[-2:] != (4, 4):
-            raise ValueError(
-                f"Argument {data_name} shape must be in the following shape Bx4x4 or BxNx4x4. Got {data.shape}"
-            )
+        if len(data.shape) != 3 or data.shape[-2:] != (4, 4):
+            raise ValueError(f"Argument {data_name} shape must be in the following shape Bx4x4. Got {data.shape}")
         return True
 
     @staticmethod
@@ -550,6 +547,12 @@ class PinholeCamerasList(PinholeCamera):
     def __init__(self, pinholes_list: Iterable[PinholeCamera]) -> None:
         self._initialize_parameters(pinholes_list)
 
+    @staticmethod
+    def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
+        if len(data.shape) != 4 or data.shape[-2:] != (4, 4):
+            raise ValueError(f"Argument {data_name} shape must be in the following shape BxNx4x4. Got {data.shape}")
+        return True
+
     def _initialize_parameters(self, pinholes: Iterable[PinholeCamera]) -> "PinholeCamerasList":
         r"""Initialise the class attributes given a cameras list."""
         if not isinstance(pinholes, (list, tuple)):
@@ -569,6 +572,12 @@ class PinholeCamerasList(PinholeCamera):
         self._intrinsics: torch.Tensor = torch.stack(intrinsics, dim=1)
         self._extrinsics: torch.Tensor = torch.stack(extrinsics, dim=1)
         return self
+
+    def clone(self) -> "PinholeCamerasList":
+        return PinholeCamerasList([self.get_pinhole(index).clone() for index in range(self.num_cameras)])
+
+    def scale(self, scale_factor: torch.Tensor) -> "PinholeCamerasList":
+        return PinholeCamerasList([self.get_pinhole(index).scale(scale_factor) for index in range(self.num_cameras)])
 
     @property
     def num_cameras(self) -> int:

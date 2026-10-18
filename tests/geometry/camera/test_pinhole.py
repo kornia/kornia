@@ -859,7 +859,9 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(K, _k44(device, dtype), atol=0.0, rtol=0.0)
         self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize("shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)])
+    @pytest.mark.parametrize(
+        "shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 2, 4, 4), (1, 1, 1, 4, 4)]
+    )
     @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])
     def test_invalid_parameter_shape_4266(self, shape, parameter, device, dtype):
         batch_size = shape[0]
@@ -881,6 +883,9 @@ class TestPinholeCamera(BaseTester):
         assert cameras.intrinsics.shape == (1, 2, 4, 4)
         assert cameras.extrinsics.shape == (1, 2, 4, 4)
         assert cameras.num_cameras == 2
+        assert cameras.clone().intrinsics.shape == (1, 2, 4, 4)
+        scaled = cameras.scale(torch.tensor([2.0], device=device, dtype=dtype))
+        assert scaled.intrinsics.shape == (1, 2, 4, 4)
         points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(cameras.get_pinhole(1).project(points), cam.project(points))
 
