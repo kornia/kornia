@@ -110,7 +110,8 @@ class _DenseLayer(nn.Sequential):
         super().__init__(
             OrderedDict(
                 [
-                    ("relu1", nn.ReLU(inplace=True)),
+                    # Out of place: a dense block's input is also read by a side branch, which saved it for backward.
+                    ("relu1", nn.ReLU()),
                     ("conv1", nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)),
                     ("norm1", nn.BatchNorm2d(out_features)),
                     ("relu2", nn.ReLU(inplace=True)),
@@ -301,9 +302,12 @@ class DoubleConvBlock(nn.Sequential):
 class DexiNed(nn.Module):
     r"""Definition of the DXtrem network from :cite:`xsoria2020dexined`.
 
+    The input is a BGR image with pixel values in :math:`[0, 255]` minus the BGR mean ``[103.939, 116.779, 123.68]``:
+    the pretrained weights were trained on images read with ``cv2.imread`` and shifted by that mean
+    (xavysp/DexiNed@d944b70).
+
     Return:
-        A list of torch.Tensor with the intermediate features which the last element
-        is the edges map with shape :math:`(B,1,H,W)`.
+        The fused edge logits, one tensor with shape :math:`(B,1,H,W)`.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320)
@@ -387,13 +391,12 @@ class DexiNed(nn.Module):
         produces a feature map at a different semantic depth and spatial scale;
         the corresponding side branch upsamples it back to the original image
         resolution. The returned list is later concatenated and fused by
-        ``CoFusion``.
+        a 1x1 convolution (``block_cat``).
 
         Args:
-            x: Input image tensor with shape :math:`(B, 3, H, W)`, where
-                :math:`B` is the batch size, ``3`` is the RGB channel count,
-                :math:`H` is the image height, and :math:`W` is the image
-                width.
+            x: Input BGR image tensor in :math:`[0, 255]` minus the BGR mean ``[103.939, 116.779, 123.68]``, with
+                shape :math:`(B, 3, H, W)`, where :math:`B` is the batch size, :math:`H` is the image height, and
+                :math:`W` is the image width.
 
         Returns:
             List of six tensors, each aligned to the input spatial size. Every
@@ -446,7 +449,7 @@ class DexiNed(nn.Module):
         return [out_1, out_2, out_3, out_4, out_5, out_6]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Predict a fused edge map from an RGB image batch.
+        """Predict a fused edge map from a BGR image batch.
 
         The forward pass collects six multi-scale side outputs, concatenates
         them along the channel dimension, and applies the fusion block to
@@ -454,14 +457,13 @@ class DexiNed(nn.Module):
         and deeper semantic boundary information in the prediction.
 
         Args:
-            x: Input image tensor with shape :math:`(B, 3, H, W)`, where
-                :math:`B` is the batch size, ``3`` is the RGB channel count,
-                :math:`H` is the image height, and :math:`W` is the image
-                width.
+            x: Input BGR image tensor in :math:`[0, 255]` minus the BGR mean ``[103.939, 116.779, 123.68]``, with
+                shape :math:`(B, 3, H, W)`, where :math:`B` is the batch size, :math:`H` is the image height, and
+                :math:`W` is the image width.
 
         Returns:
             Tensor with shape :math:`(B, 1, H, W)` containing the fused edge
-            probability-style response for each image in the batch.
+            logits for each image in the batch.
         """
         features = self.get_features(x)
 

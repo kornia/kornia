@@ -28,7 +28,7 @@ from kornia.constants import _get_by_name
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import ONNXExportMixin
+from kornia.core.mixin.onnx import ONNXExportMixin, _eval_mode, _first_floating_tensor, _to_floating
 from kornia.image.draw import draw_rectangle
 from kornia.models.base import ModelBase
 from kornia.models.processors import ResizePreProcessor
@@ -126,6 +126,19 @@ def results_from_detections(
     return results
 
 
+def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> bool:
+    """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
+
+    The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
+    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered.
+    """
+    reference = _first_floating_tensor(detector)
+    if reference is not None:
+        images = _to_floating(images, reference)
+    with _eval_mode(detector), torch.no_grad():
+        return isinstance(detector(images), list)
+
+
 class ObjectDetector(ModelBase, ONNXExportMixin):
     """Wrap an object detection model and perform pre-processing and post-processing."""
 
@@ -160,7 +173,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         """
         raise NotImplementedError(
             "ObjectDetector.from_config() is not implemented. "
-            "Use kornia.contrib.object_detection.RtdetrBuilder.build() or instantiate ObjectDetector directly."
+            "Use kornia.contrib.object_detection.RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly."
         )
 
     @torch.inference_mode()
@@ -233,8 +246,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
     ) -> onnx.ModelProto:
         """Export an RT-DETR object detection model to ONNX format.
 
-        Either `model_name` or `config` must be provided. If neither is provided,
-        a default pretrained model (`rtdetr_r18vd`) will be built.
+        Exports this detector, as built by :meth:`RTDETRDetectorBuilder.build` or the constructor.
 
         Args:
             onnx_name:
@@ -252,16 +264,29 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
                 Additional metadata to add to the ONNX model.
             kwargs: Additional arguments to convert to onnx.
 
+        Note:
+            With a post-processor that returns a list of per-image detections, as a
+            ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
+            exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
+            the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
+            Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size.
+
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
+        pseudo_shape = [1, 3, image_size or 352, image_size or 352]
+        # Exported for a dynamic batch, a per-image list comes out as the traced batch's detections, or the export
+        # fails: such a detector is exported for one image.
+        batch = -1
+        if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
+            batch = 1
 
         return ONNXExportMixin.to_onnx(
             self,
             onnx_name,
-            input_shape=[-1, 3, image_size or -1, image_size or -1],
+            input_shape=[batch, 3, image_size or -1, image_size or -1],
             output_shape=[-1, -1, 6],
-            pseudo_shape=[1, 3, image_size or 352, image_size or 352],
+            pseudo_shape=pseudo_shape,
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,
@@ -431,11 +456,12 @@ class RTDETRDetectorBuilder:
             pretrained:
                 Whether to load a pretrained version of the model (applies when `model_name` is provided).
             image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, no resizing will be inferred from config file. Recommended scales include
+                The size to which input images will be resized during preprocessing, used only with `config`. If
+                None, `config.input_size` is used. With `model_name`, or without either, it is ignored: the input is
+                resized to the 640 px the published weights were trained for. Recommended scales include
                 [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
             confidence_threshold: Threshold to filter results based on confidence scores.
-            confidence_filtering: Whether to filter results based on confidence scores.
+            confidence_filtering: Whether to filter results based on confidence scores. None filters.
 
 
         Returns:
@@ -474,7 +500,7 @@ class RTDETRDetectorBuilder:
             ResizePreProcessor(image_size, image_size),
             DETRPostProcessor(
                 confidence_threshold=confidence_threshold,
-                confidence_filtering=confidence_filtering or not torch.onnx.is_in_onnx_export(),
+                confidence_filtering=True if confidence_filtering is None else confidence_filtering,
                 num_classes=model.decoder.num_classes,
                 num_top_queries=model.decoder.num_queries,
             ),

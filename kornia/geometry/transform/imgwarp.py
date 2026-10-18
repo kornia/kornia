@@ -204,7 +204,14 @@ def _empty_warp_output_2d(
     if padding_mode == "fill" and allow_fill:
         if fill_value is None:
             fill_value = torch.zeros(sample_channels, device=src.device, dtype=src.dtype)
-        sampled = _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+        sampled = _fill_and_warp(
+            sample_src,
+            grid,
+            align_corners=align_corners,
+            mode=mode,
+            fill_value=fill_value,
+            out_shape=[src_batch, src.shape[1], dsize[0], dsize[1]],
+        )
     else:
         sampled = _torch_grid_sample(
             sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode
@@ -280,7 +287,9 @@ def warp_perspective(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+            fill. Defaults to zeros.
 
     Returns:
         the warped input image :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
@@ -310,13 +319,6 @@ def warp_perspective(
 
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 torch.Tensor. Got {M.shape}")
-
-    # fill padding is only supported for 3 channels because we can't set fill_value default
-    # to None as this gives jit issues.
-    if fill_value is None:
-        fill_value = torch.zeros(3)
-    if padding_mode == "fill" and fill_value.shape != torch.Size([3]):
-        raise ValueError(f"Padding_tensor only supported for 3 channels. Got {fill_value.shape}")
 
     B, _, H, W = src.size()
     h_out, w_out = dsize
@@ -366,6 +368,10 @@ def warp_perspective(
         grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
 
     if padding_mode == "fill":
+        # One zero per channel, as in warp_affine. It is built here, not before the empty-destination return, whose
+        # helper builds its own default for its stand-in channels (#6021).
+        if fill_value is None:
+            fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
     return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
         out_dtype
@@ -411,7 +417,9 @@ def warp_affine(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners : mode for grid_generation.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+            fill.
 
     Returns:
         the warped torch.Tensor with shape :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
@@ -523,7 +531,12 @@ def warp_affine(
 
 
 def _fill_and_warp(
-    src: torch.Tensor, grid: torch.Tensor, mode: str, align_corners: bool, fill_value: torch.Tensor
+    src: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str,
+    align_corners: bool,
+    fill_value: torch.Tensor,
+    out_shape: Optional[list[int]] = None,
 ) -> torch.Tensor:
     r"""Warp a mask of torch.ones, then multiply with fill_value and add to default warp.
 
@@ -532,11 +545,37 @@ def _fill_and_warp(
         grid: grid torch.Tensor from `transform_points`.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, H, W)` without changing it, such as :math:`(B, C, 1, 1)`.
+        out_shape: the output shape ``fill_value`` is checked against, when ``src`` and ``grid`` stand in for an
+            empty destination; the fill is then reduced to one value. Defaults to the shape sampled from ``src``
+            and ``grid``.
 
     Returns:
         the warped and filled torch.Tensor with shape :math:`(B, C, H, W)`.
     """
+    stand_in = out_shape is not None
+    if out_shape is None:
+        out_shape = [src.shape[0], src.shape[1], grid.shape[1], grid.shape[2]]
+    # 0-d and 1-D fills are per channel; any other fill broadcasts as given. Either way it must leave the output
+    # shape unchanged: a fill that broadcast to more channels turned a one-channel image into three (#6021).
+    fill_shape = list(fill_value.shape)
+    if len(fill_shape) == 1:
+        fill_shape = [1, fill_shape[0], 1, 1]
+    fits = len(fill_shape) <= 4
+    for i in range(1, min(len(fill_shape), 4) + 1):
+        if fill_shape[-i] != 1 and fill_shape[-i] != out_shape[-i]:
+            fits = False
+    if not fits:
+        raise ValueError(
+            f"fill_value of shape {list(fill_value.shape)} does not broadcast to the warped image of shape "
+            f"{out_shape} without changing it; use one value, one per channel ({out_shape[1]}), or a shape such as "
+            "(B, C, 1, 1) or (B, C, H, W)."
+        )
+    if stand_in:
+        # The stand-ins' result is discarded: a constant-size fill, still connected to autograd, keeps a spatial fill
+        # from broadcasting the 1x1 stand-ins up to its own size.
+        fill_value = fill_value.sum().reshape(1)
     ones_mask = torch.ones_like(src)
     fill_value = fill_value.to(ones_mask)
 
@@ -1485,7 +1524,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     from_origin_mat[..., :3, -1] += center
 
     to_origin_mat = from_origin_mat.clone()
-    to_origin_mat = _torch_inverse_cast(from_origin_mat)
+    # An identity plus a translation column is unit triangular, so it is always invertible.
+    to_origin_mat = _torch_inverse_cast(from_origin_mat, check_errors=False)
 
     # append translation with torch.zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
@@ -1960,7 +2000,8 @@ def homography_warp3d(
     # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
     # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
     # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
-    grid = grid[..., [1, 2, 0]]
+    # Stacked rather than indexed with a list, which is copied to the device with a blocking transfer.
+    grid = torch.stack((grid[..., 1], grid[..., 2], grid[..., 0]), -1)
     warped_grid = warp_grid3d(grid, src_homo_dst)
 
     return _torch_grid_sample(

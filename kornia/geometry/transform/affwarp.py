@@ -21,7 +21,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.core.ops import eye_like
+from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
 
@@ -67,8 +67,11 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    center: torch.Tensor = torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
-    return center
+    # Filled on the device in eager mode: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued
+    # kernels. TorchScript, which cannot compile ``_device_literal``, keeps the host literal.
+    if torch.jit.is_scripting():
+        return torch.tensor([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
+    return _device_literal([center_x, center_y], device=tensor.device, dtype=tensor.dtype)
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
@@ -79,8 +82,10 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
     center_z: float = float(depth - 1) / 2
-    center: torch.Tensor = torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
-    return center
+    # Filled on the device in eager mode, as in ``_compute_tensor_center``.
+    if torch.jit.is_scripting():
+        return torch.tensor([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
+    return _device_literal([center_x, center_y, center_z], device=tensor.device, dtype=tensor.dtype)
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
@@ -285,7 +290,7 @@ def rotate(
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        tensor: The image tensor to be warped in shapes of :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         angle: The angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
@@ -332,7 +337,7 @@ def rotate(
     # A singleton angle and center describe one transform shared by all images. Keep
     # it singleton through affine so warp_affine can reuse its sampling grid. Trainable
     # parameters keep the original reduction order, which matters for half-precision gradients.
-    batch = tensor.shape[0]
+    batch = tensor.shape[0] if tensor.dim() == 4 else 1
     if (
         tensor.dim() == 4
         and batch > 0
@@ -378,7 +383,7 @@ def rotate3d(
         - align_corners: ``False`` by default (the 2D :func:`rotate` defaults to ``True``)
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
+        tensor: The image tensor to be warped in shapes of :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`.
         yaw: The ``rx`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
         pitch: The ``ry`` component of the axis-angle vector. The tensor
@@ -422,10 +427,11 @@ def rotate3d(
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
-    yaw = yaw.expand(tensor.shape[0])
-    pitch = pitch.expand(tensor.shape[0])
-    roll = roll.expand(tensor.shape[0])
-    center = center.expand(tensor.shape[0], -1)
+    batch = tensor.shape[0] if tensor.dim() == 5 else 1
+    yaw = yaw.expand(batch)
+    pitch = pitch.expand(batch)
+    roll = roll.expand(batch)
+    center = center.expand(batch, -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center)
 
     # warp using the affine transform
@@ -500,7 +506,7 @@ def scale(
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        tensor: The image tensor to be warped in shapes of :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         scale_factor: The scale factor apply. The tensor
           must have a shape of (B) or (B, 2), where B is batch size.
           If (B), isotropic scaling will perform.
@@ -533,7 +539,7 @@ def scale(
 
     if len(scale_factor.shape) == 1:
         # convert isotropic scaling to x-y direction
-        scale_factor = scale_factor.repeat(1, 2)
+        scale_factor = scale_factor.unsqueeze(-1)
 
     # compute the tensor center
     if center is None:
@@ -541,8 +547,9 @@ def scale(
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
-    center = center.expand(tensor.shape[0], -1)
-    scale_factor = scale_factor.expand(tensor.shape[0], 2)
+    batch = tensor.shape[0] if tensor.dim() == 4 else 1
+    center = center.expand(batch, -1)
+    scale_factor = scale_factor.expand(batch, 2)
     scaling_matrix: torch.Tensor = _compute_scaling_matrix(scale_factor, center)
 
     # warp using the affine transform
@@ -648,8 +655,8 @@ def resize(
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'linear'`` |
-            ``'bilinear'`` | 'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
             or ``'horz'``.
@@ -671,6 +678,12 @@ def resize(
 
     if len(input.shape) < 2:
         raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
+    # Every input is resampled as a 4-D (B, C, H, W) batch, for which F.interpolate rejects the 1-D and 3-D modes.
+    if interpolation in ("linear", "trilinear"):
+        raise ValueError(
+            f"interpolation={interpolation!r} is not supported: resize resamples (H, W), so use 'nearest', "
+            "'nearest-exact', 'bilinear', 'bicubic' or 'area'."
+        )
 
     original_shape = input.shape
     h, w = input.shape[-2:]
@@ -812,8 +825,8 @@ def rescale(
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -872,8 +885,8 @@ class Resize(nn.Module):
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
             or ``'horz'``.
@@ -1045,7 +1058,8 @@ class Affine(nn.Module):
         else:
             sx, sy = self.shear[..., 0], self.shear[..., 1]
 
-        center = _compute_tensor_center(input).expand(input.size()[0], -1) if self.center is None else self.center
+        batch = input.shape[0] if input.dim() == 4 else 1
+        center = _compute_tensor_center(input).expand(batch, -1) if self.center is None else self.center
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
         return affine(input, matrix[..., :2, :3], self.mode, self.padding_mode, self.align_corners)
@@ -1056,14 +1070,17 @@ class Rescale(nn.Module):
 
     Convention:
         - align_corners: ``True`` by default (differs from function :func:`rescale`, whose default
-          is ``None``)
+          is ``None``). It applies to the ``'bilinear'`` and ``'bicubic'`` modes only. ``'nearest'``,
+          ``'nearest-exact'`` and ``'area'`` ignore it, an explicit ``align_corners=True`` included, because
+          ``torch.nn.functional.interpolate`` accepts no value but ``None`` for them; the function
+          :func:`rescale` raises ``ValueError`` for such a call.
         - See the convention block of :func:`rescale`.
 
     Args:
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -1104,9 +1121,12 @@ class Rescale(nn.Module):
             Tensor with the same leading and channel dimensions as ``input``.
             The output height and width are computed from ``self.factor``.
         """
-        return rescale(
-            input, self.factor, self.interpolation, align_corners=self.align_corners, antialias=self.antialias
+        # ``align_corners`` only applies to the interpolating modes: ``F.interpolate`` rejects any value but ``None``
+        # for ``nearest``, ``nearest-exact`` and ``area``, which the default ``True`` would otherwise make unusable.
+        align_corners = (
+            self.align_corners if self.interpolation in ("linear", "bilinear", "bicubic", "trilinear") else None
         )
+        return rescale(input, self.factor, self.interpolation, align_corners=align_corners, antialias=self.antialias)
 
 
 class Rotate(nn.Module):

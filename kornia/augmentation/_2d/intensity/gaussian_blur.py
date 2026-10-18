@@ -53,6 +53,7 @@ class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.gaussian_blur2d`. An
           even entry is not rounded up: the forward pass raises that function's odd-size error.
         - ``sigma`` is drawn once per sample, as a single scalar used for both axes, and a drawn ``0`` raises on

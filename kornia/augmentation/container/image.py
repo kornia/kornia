@@ -15,7 +15,8 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
+import operator
+from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -72,8 +73,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
-        random_apply_weights: a list of selection weights for each operation. The length shall be as
-            same as the number of operations. By default, operations are sampled uniformly.
+        random_apply_weights: a one-dimensional sequence or tensor of selection weights for each operation. The
+            length shall be as same as the number of operations. Integer and boolean weights are converted to floating
+            point. By default, operations are sampled uniformly.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, which has no inverse:
             ``'raise'`` raises ``NotImplementedError`` naming it, before anything is inverted, and ``'skip'``
             leaves it applied and inverts the other members. Any other value raises ``ValueError``.
@@ -149,7 +151,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         if_unsupported_ops: str = "raise",
         disable_item_features: bool = True,
         disable_sequential_features: bool = False,
@@ -168,7 +170,14 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 "The length of `random_apply_weights` must be as same as the number of operations."
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
-        self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
+        # ``torch.multinomial`` samples floating-point weights only, so integer or boolean weights are converted; a
+        # tensor argument is tested against ``None`` rather than for its truth value, which is ambiguous.
+        weights = torch.as_tensor(random_apply_weights) if random_apply_weights is not None else torch.ones(len(self))
+        if weights.dim() != 1:
+            raise ValueError(f"`random_apply_weights` must be one-dimensional. Got shape {tuple(weights.shape)}.")
+        if not weights.is_floating_point():
+            weights = weights.to(torch.get_default_dtype())
+        self.random_apply_weights = weights
         self.if_unsupported_ops = if_unsupported_ops
         self._output_image = None
 
@@ -181,6 +190,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
     ) -> Union[Tuple[int, int], bool]:
         """Process the scenarios for random apply."""
+        requested = random_apply
         if isinstance(random_apply, bool) and random_apply is False:
             random_apply = False
         elif isinstance(random_apply, bool) and random_apply is True:
@@ -205,6 +215,13 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             and isinstance(random_apply[1], int)
         ):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
+        # The stored upper bound is exclusive. A negative count or an upper bound below the lower one used to fail
+        # only at call time, in torch.multinomial or torch.randint.
+        if random_apply is not False and (random_apply[0] < 0 or random_apply[1] <= random_apply[0]):
+            raise ValueError(
+                "random_apply must select a non-negative number of transformations, with the lower bound not above "
+                f"the upper one. Got {requested}."
+            )
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
@@ -229,7 +246,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights[mix_indices] = 0
 
         total_weight = multinomial_weights.sum()
-        if total_weight == 0:
+        # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
+        if total_weight == 0 or num_samples == 0:
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
             indices = torch.multinomial(
@@ -239,9 +257,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )
 
         mix_added = False
-        # Make the selection fair.
+        # Make the selection fair. A mix member takes one of the drawn places, so a drawn count of 0 adds none.
         if (
             with_mix
+            and num_samples > 0
             and len(mix_indices) != 0
             and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
         ):
@@ -472,8 +491,8 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
     """Get the new batch shape if the augmentation changes the image size.
 
     Note:
-       Augmentations that change the image size must provide the parameter `output_size`.
-       Empty RandomCrop, CenterCrop, RandomResizedCrop and Resize batches have no sampled
+       Augmentations that change the spatial size provide `output_size` with shape (B, spatial_dims).
+       Empty crops and resizes have no sampled
        output-size rows, so their configured size is used only when the image forward path
        always applies the transform. Other probability branches retain the current empty-gate
        fallback tracked in #4429.
@@ -508,31 +527,48 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
             batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
 
-    if batch_shape[0] == 0 and isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)):
+    if (
+        batch_shape[0] == 0
+        and isinstance(module, _AugmentationBase)
+        and ("output_size" in data or isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)))
+    ):
         # Match the image forward's unconditional path. An empty gate selects the original
         # canvas in the other probability branches, including Resize's p_batch setting (#4429).
-        if module.p != 1.0 or module.p_batch != 1.0:
+        size = module.flags.get("size")
+        if module.p != 1.0 or module.p_batch != 1.0 or size is None:
             return batch_shape
-        size = module.flags["size"]
         if isinstance(module, K.Resize) and isinstance(size, int):
             size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = size
+        new_batch_shape[-len(size) :] = [operator.index(dim) for dim in size]
         return torch.Size(new_batch_shape)
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        if is_exporting():
+        size = getattr(module, "flags", {}).get("size") if module is not None else None
+        # Fixed, always-applied 3D crops also use this static path in eager/compile:
+        # reading their gate and output-size tensors would add needless device synchronization.
+        static_crop3d = (
+            isinstance(module, (K.CenterCrop3D, K.RandomCrop3D))
+            and module.p == 1.0
+            and module.p_batch == 1.0
+            and size is not None
+            and all(isinstance(dim, int) for dim in size)
+        )
+        if is_exporting() or static_crop3d:
             # The sampled ``output_size`` is an unbacked tensor under export (no python int for
             # ``torch.Size``). Use the module's static ``flags["size"]`` — known at construction —
             # so the tracked shape stays correct for a *subsequent* shape-dependent child (e.g. a
             # resample-mode crop after a resize). Fall back to leaving the shape unchanged when the
             # size isn't statically available.
-            size = getattr(module, "flags", {}).get("size") if module is not None else None
-            if size is None:
+            # Export must not propagate the cropped canvas of a statically skipped 3D crop.
+            # Intermediate probabilities still require data-dependent control flow in forward.
+            if size is None or (isinstance(module, (K.CenterCrop3D, K.RandomCrop3D)) and module.p_batch == 0.0):
                 return batch_shape
+            if isinstance(module, K.Resize) and isinstance(size, int):
+                size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])
             new_batch_shape = list(batch_shape)
-            new_batch_shape[-2:] = size
+            new_batch_shape[-data["output_size"].shape[-1] :] = [operator.index(dim) for dim in size]
             return torch.Size(new_batch_shape)
         # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
@@ -543,9 +579,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
         if prob <= 0.5:
             return batch_shape
-        # Mutate only last two dims
+        # The generator declares how many spatial axes it changes (H/W or D/H/W).
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = data["output_size"][0]
+        new_batch_shape[-data["output_size"].shape[-1] :] = data["output_size"][0]
         return torch.Size(new_batch_shape)
 
     return batch_shape

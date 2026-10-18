@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.feature import KeyNet
+from kornia.feature.keynet import keynet_default_config
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
@@ -47,6 +48,31 @@ class TestKeyNet(BaseTester):
         keynet = KeyNet(pretrained=False).to(device, dtype).eval()
         out = keynet(inp)
         assert out.shape == inp.shape
+
+    @pytest.mark.parametrize("num_filters", [4, 16])
+    def test_non_default_num_filters(self, num_filters, device, dtype):
+        # The learnable block used to produce 8 channels per level whatever ``num_filters`` said, while
+        # ``last_conv`` expects ``num_filters * num_levels``, so any other value crashed in ``forward`` (#6015).
+        keynet_conf = {**keynet_default_config, "num_filters": num_filters}
+        keynet = KeyNet(pretrained=False, keynet_conf=keynet_conf).to(device, dtype).eval()
+        # As in the reference Key.Net, every learnable block is ``num_filters`` wide, not only the first and last.
+        widths = [(m.in_channels, m.out_channels) for m in keynet.modules() if isinstance(m, torch.nn.Conv2d)]
+        last_in = num_filters * keynet_default_config["num_levels"]
+        assert widths == [(10, num_filters), (num_filters, num_filters), (num_filters, num_filters), (last_in, 1)]
+        inp = torch.rand(1, 1, 40, 56, device=device, dtype=dtype)
+        out = keynet(inp)
+        assert out.shape == inp.shape
+
+    @pytest.mark.device_agnostic
+    def test_pretrained_rejects_non_default_num_filters(self, monkeypatch):
+        # The checkpoint has 8 filters per level, so a non-default ``num_filters`` must still fail the strict load.
+        state_dict = KeyNet(pretrained=False).state_dict()
+        monkeypatch.setattr(
+            "kornia.feature.keynet.load_state_dict_from_url", lambda *args, **kwargs: {"state_dict": state_dict}
+        )
+        KeyNet(pretrained=True)
+        with pytest.raises(RuntimeError, match="size mismatch"):
+            KeyNet(pretrained=True, keynet_conf={**keynet_default_config, "num_filters": 4})
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 16, 16, device=device, dtype=torch.float64)

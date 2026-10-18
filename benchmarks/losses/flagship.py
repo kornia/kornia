@@ -26,6 +26,8 @@ kornia.losses                      torchvision                             task
 ``binary_focal_loss_with_logits``  ``ops.sigmoid_focal_loss``              dense binary detection
 ``focal_loss``                     —                                       21-class segmentation
 ``dice_loss``                      —                                       21-class segmentation
+``dice_loss_macro``                —                                       per-class Dice, present classes
+``dice_loss_weighted``             —                                       class-weighted micro Dice
 ``ssim_loss``                      —                                       image reconstruction
 ``total_variation``                —                                       image regularization
 =================================  ======================================  ============================
@@ -35,7 +37,9 @@ device, so every column is the same regime. Classification losses score ``(B, 21
 against ``(B, H, W)`` labels; the binary focal loss scores ``(B, 1, H, W)`` logits against
 ``{0, 1}`` targets with ``alpha=0.25, gamma=2`` and mean reduction in both libraries. ``ssim_loss``
 uses an 11x11 window; ``total_variation`` sums over each image and the batch is summed before the
-backward. ``--compile`` compiles the loss function; the backward then runs through AOTAutograd,
+backward. Dice rows cover default micro, macro, and micro with class weights linearly spaced
+from 0.5 to 1.5; all use the same logits and labels. ``--compile`` compiles the loss function;
+the backward then runs through AOTAutograd,
 and both are compiled during the untimed warmup. Other libraries' losses are thin wrappers over the
 same PyTorch ops and are left out rather than timed as look-alikes. Throughput is img/s.
 
@@ -73,7 +77,15 @@ from common import (
 
 import kornia.losses as KL
 
-OPS = ("binary_focal_loss_with_logits", "focal_loss", "dice_loss", "ssim_loss", "total_variation")
+OPS = (
+    "binary_focal_loss_with_logits",
+    "focal_loss",
+    "dice_loss",
+    "dice_loss_macro",
+    "dice_loss_weighted",
+    "ssim_loss",
+    "total_variation",
+)
 NUM_CLASSES, ALPHA, GAMMA, WINDOW = 21, 0.25, 2.0, 11
 
 
@@ -135,6 +147,15 @@ def build_ops(
 
     if include("dice_loss"):
         ops["dice_loss"] = kornia_row("dice_loss", logits, KL.dice_loss, logits, labels)
+
+    if include("dice_loss_macro"):
+        ops["dice_loss_macro"] = kornia_row("dice_loss_macro", logits, KL.dice_loss, logits, labels, "macro")
+
+    if include("dice_loss_weighted"):
+        weights = torch.linspace(0.5, 1.5, NUM_CLASSES, device=device, dtype=dtype)
+        ops["dice_loss_weighted"] = kornia_row(
+            "dice_loss_weighted", logits, KL.dice_loss, logits, labels, "micro", 1e-8, weights
+        )
 
     if include("ssim_loss"):
         ops["ssim_loss"] = kornia_row("ssim_loss", recon, KL.ssim_loss, recon, batch_f, WINDOW)

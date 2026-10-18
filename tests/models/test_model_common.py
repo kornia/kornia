@@ -17,9 +17,23 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from kornia.models.common import MLP, ConvNormAct, DropPath, LayerNorm2d, window_partition, window_unpartition
+
+from testing.base import assert_close
+
+
+def _layer_norm_2d_case(device: torch.device, dtype: torch.dtype) -> tuple[LayerNorm2d, torch.Tensor]:
+    """A 256-channel LayerNorm2d with seeded affine parameters, and a seeded input spread over +-600."""
+    generator = torch.Generator().manual_seed(0)
+    layer = LayerNorm2d(256)
+    with torch.no_grad():
+        layer.weight.copy_(torch.rand(256, generator=generator) + 0.5)
+        layer.bias.copy_(torch.rand(256, generator=generator) * 2 - 1)
+    x = (torch.rand(2, 256, 4, 5, generator=generator) * 2 - 1) * 600
+    return layer.to(device=device, dtype=dtype), x.to(device=device, dtype=dtype)
 
 
 class TestConvNormAct:
@@ -142,6 +156,44 @@ class TestLayerNorm2d:
         out = layer(x)
         # Mean of out along channel dim should be ~0 for uniform input
         assert out.abs().max() < 1e-5
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
+    def test_half_input_is_normalised_in_float32(self, device, half):
+        # MobileSAM's neck feeds its last LayerNorm2d deviations from the channel mean of up to about 560. In float16
+        # their square overflows above 255.9 (sqrt(65504)), so a variance computed in float16 is inf.
+        layer, x = _layer_norm_2d_case(device, half)
+        reference_layer, _ = _layer_norm_2d_case(device, torch.float32)
+
+        out = layer(x)
+
+        assert out.dtype == half
+        assert torch.isfinite(out).all()
+        # The float32 result on the same (half-rounded) input and parameters, cast to the half dtype.
+        assert_close(out, reference_layer(x.float()).to(half))
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
+    def test_half_input_with_float32_weights_gives_float32(self, device, half):
+        # As ``weight * x`` promotes: a float32 model under autocast feeds the neck a half input and keeps float32.
+        layer, x = _layer_norm_2d_case(device, torch.float32)
+        x = x.to(half)
+
+        out = layer(x)
+
+        assert out.dtype == torch.float32
+        assert torch.equal(out, layer(x.float()))
+
+    @pytest.mark.parametrize("full", [torch.float32, torch.float64], ids=["float32", "float64"])
+    def test_full_precision_formula_is_unchanged(self, device, full):
+        if device.type == "mps" and full == torch.float64:
+            pytest.skip("MPS does not support float64")
+        layer, x = _layer_norm_2d_case(device, full)
+
+        # The formula of Meta's LayerNorm2d (segment-anything@3518c86, modeling/common.py), bit for bit.
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        expected = layer.weight[:, None, None] * ((x - u) / (s + layer.eps).sqrt()) + layer.bias[:, None, None]
+
+        assert torch.equal(layer(x), expected)
 
 
 class TestWindowPartition:

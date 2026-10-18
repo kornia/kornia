@@ -60,7 +60,12 @@ class SuperResolutionConfig:
             the lightweight variant is ``"small_sr"``.
         pretrained: If ``True``, load pretrained weights for the selected variant.
         upscale_factor: Integer scale used by the lightweight variant. Ignored by
-            the RRDB variants, whose scale is fixed by ``model_name``.
+            the RRDB variants, whose scale is fixed by ``model_name``. The lightweight
+            variant resizes every input to 224 x 224 first, discarding its aspect ratio,
+            so its output is ``224 * upscale_factor`` square (672 x 672 for 3, from a
+            100 x 50 input as from a 480 x 640 one). Its pretrained weights exist only
+            for 3: another factor with ``pretrained=True`` raises a size-mismatch
+            :class:`RuntimeError`.
         image_size: Optional fixed input size for the lightweight variant. It declares
             the size fed to the wrapper; it does not change the pre-processor, which
             always resizes to 224, so the output side stays ``224 * upscale_factor``.
@@ -155,7 +160,8 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         """
         output = self.pre_processor(images)
-        images = output[0] if isinstance(output, (list, tuple)) else output
+        # ``ResizePreProcessor`` returns an ``(images, sizes)`` tuple; a list of images goes through one at a time
+        images = output[0] if isinstance(output, tuple) else output
         if isinstance(images, list):
             out_images = [self.model(image[None])[0] for image in images]
         else:
@@ -172,7 +178,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         Args:
             images: input torch.Tensor.
-            edge_maps: detected edges.
+            edge_maps: super-resolved images; computed with :meth:`forward` when None.
             output_type: type of the output.
 
         Returns:
@@ -198,13 +204,9 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         Args:
             images: input torch.Tensor.
-            edge_maps: detected edges.
-            output_type: type of the output.
+            edge_maps: super-resolved images; computed with :meth:`forward` when None.
             directory: where to save outputs.
-            output_type: backend used to generate outputs.
-
-        Returns:
-            output torch.Tensor.
+            output_type: "torch" or "pil", passed to :meth:`visualize`; the files hold the same pixels either way.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)
@@ -225,9 +227,6 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
             onnx_name:
                 The name of the output ONNX file. If not provided, a default name in the
                 format "Kornia-<ClassName>.onnx" will be used.
-            image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, image_size will be dynamic. For DexiNed, recommended scale is 352.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
@@ -326,9 +325,12 @@ class SmallSRBuilder:
             model_name: Name of the model variant to build. Currently only
                 ``"small_sr"`` is supported.
             pretrained: If ``True``, load pretrained weights for the selected model.
-            upscale_factor: Integer scale used by ``SmallSRNetWrapper``.
-                For example, ``3`` maps an input image of size ``H x W`` to an
-                output image of approximately ``3H x 3W``.
+            upscale_factor: Integer scale used by ``SmallSRNetWrapper``. The pre-processor
+                first resizes every input to 224 x 224, discarding its aspect ratio, so the
+                output is ``224 * upscale_factor`` square: with ``3``, a 100 x 50 and a
+                480 x 640 input both give 672 x 672. Pretrained weights exist only for
+                ``3``; another factor with ``pretrained=True`` raises a size-mismatch
+                :class:`RuntimeError`.
             image_size: Optional fixed input size. It declares the size fed to the
                 wrapper and does not change the pre-processor, which always resizes to
                 224; the output side is therefore ``224 * upscale_factor``.

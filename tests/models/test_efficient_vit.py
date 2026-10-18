@@ -221,3 +221,16 @@ class TestEfficientViT:
         config = EfficientViTConfig.from_pretrained(model_type, resolution)
         assert model_type in config.checkpoint
         assert str(resolution) in config.checkpoint
+
+    def test_forward_returns_a_dict(self, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        model = EfficientViT(backbone=vit.efficientvit_backbone_b0()).to(device, dtype).eval()
+        image = torch.rand(1, 3, 64, 96, device=device, dtype=dtype)
+
+        with torch.no_grad():
+            out = model(image)
+
+        assert isinstance(out, dict)
+        # stride 32: (64 // 32, 96 // 32)
+        assert out["stage_final"].shape[-2:] == (2, 3)

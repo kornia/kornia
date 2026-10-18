@@ -34,6 +34,12 @@ class TestVisualPrompter(BaseTester):
         prompter.set_image(data)
         assert prompter.is_image_set
 
+        keypoints = torch.tensor([[[40.0, 30.0]]], device=device, dtype=dtype)
+        labels = torch.ones(1, 1, device=device, dtype=dtype)
+        out = prompter.predict(keypoints, labels)
+        assert out.logits.dtype == dtype
+        assert out.logits.shape == (1, 3, 256, 256)
+
         prompter.reset_image()
         assert not prompter.is_image_set
 

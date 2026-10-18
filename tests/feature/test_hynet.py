@@ -45,6 +45,34 @@ class TestHyNet(BaseTester):
         with pytest.raises(ShapeError):
             HyNet(pretrained=False).to(device).eval()(torch.ones(*shape, device=device))
 
+    @pytest.mark.device_agnostic
+    def test_pretrained_rejects_is_bias_frn_false_6016(self, monkeypatch):
+        # ``is_bias_FRN=False`` used to load the checkpoint and silently skip its trained FRN biases.
+        state_dict = HyNet(pretrained=False).state_dict()
+        downloads = []
+
+        def fake_load_state_dict_from_url(*args, **kwargs):
+            downloads.append(args)
+            return state_dict
+
+        monkeypatch.setattr("kornia.feature.hynet.load_state_dict_from_url", fake_load_state_dict_from_url)
+        with pytest.raises(ValueError, match="is_bias_FRN"):
+            HyNet(pretrained=True, is_bias_FRN=False)
+        assert downloads == []
+
+        HyNet(pretrained=True)
+        assert len(downloads) == 1
+        HyNet(pretrained=False, is_bias_FRN=False)
+
+    def test_empty_batch(self, device, dtype):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        model = HyNet(pretrained=False).to(device, dtype).eval()
+        one = model(torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        out = model(torch.zeros(0, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (0, one.shape[1])
+        assert out.dtype == one.dtype
+        assert out.device == one.device
+
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)
         hynet = HyNet(pretrained=False).to(device).eval()

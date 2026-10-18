@@ -43,6 +43,7 @@ from kornia.core.ops import (
     vec_like as _vec_like,
 )
 from kornia.core.utils import T as _T
+from kornia.core.utils import _in_torch_or_kornia
 from kornia.core.utils import (
     batched_forward as _batched_forward,
 )
@@ -357,10 +358,6 @@ def torch_meshgrid(tensors: List[torch.Tensor], indexing: str):  # the 0.8.2 sig
             " This compatibility wrapper predates torch 1.10; call `torch.meshgrid(tensors, indexing=...)`.",
         )
     return torch.meshgrid(tensors, indexing=indexing)
-
-
-def _in_torch_or_kornia(frame: FrameType) -> bool:
-    return str(frame.f_globals.get("__name__", "")).split(".", 1)[0] in ("torch", "kornia")
 
 
 def _warn_map_location_to_cpu() -> None:

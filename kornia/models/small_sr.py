@@ -32,6 +32,10 @@ class SmallSRNet(nn.Module):
     "Real-Time Single Image and Video Super-Resolution Using an Efficient Sub-Pixel Convolutional Neural Network"
     - Shi et al for increasing the resolution of an image by an upscale factor.
     Taken from https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html.
+
+    The pretrained weights are that tutorial's, trained for ``upscale_factor=3``; with ``pretrained=True`` any other
+    factor raises a size-mismatch :class:`RuntimeError`. Through :class:`~kornia.contrib.SmallSRBuilder` every input
+    is first resized to 224 x 224, so the output there is ``224 * upscale_factor`` square.
     """
 
     def __init__(self, upscale_factor: int, inplace: bool = False, pretrained: bool = True) -> None:

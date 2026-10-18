@@ -485,8 +485,8 @@ def crop_by_indices(
         size: output size. An auto resize or F.pad will be performed according to ``shape_compensation``
             if the cropped slice sizes are not exactly align `size`.
             If None, will auto-infer from src_box.
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -514,7 +514,10 @@ def crop_by_indices(
     KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
 
     B, C, _, _ = input_tensor.shape
-    src = torch.as_tensor(src_box, device=input_tensor.device, dtype=torch.long)
+    # Kept on the device ``src_box`` lives on: the coordinates are read back to Python below, which costs no device
+    # synchronization for the CPU boxes the augmentations pass. A float box truncates to the same integers either way:
+    # the former copy to a CUDA input's device also cast on the host.
+    src = torch.as_tensor(src_box, dtype=torch.long)
     x1 = src[:, 0, 0]
     x2 = src[:, 1, 0] + 1
     y1 = src[:, 0, 1]

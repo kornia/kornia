@@ -64,8 +64,12 @@ class Image:
           data: ``bit_depth`` is the storage size, ``8 * data.element_size()``, and the color space must fit the
           channel count, 1 for ``GRAY``, 3 for ``RGB`` and ``BGR``, any for ``UNKNOWN``.
         - :meth:`from_numpy`, :meth:`to_numpy`, :meth:`from_dlpack` and :meth:`to_dlpack` share memory with the
-          array or capsule of a CPU image. :meth:`to_numpy` returns the stored layout, so an image from
-          :meth:`from_file` gives :math:`(C, H, W)`.
+          array or capsule of a CPU image. :meth:`to_numpy` and :meth:`to_dlpack` return the stored layout, so an
+          image from :meth:`from_file` gives :math:`(C, H, W)`. Neither the array nor the capsule carries the layout
+          or the color space: :meth:`from_numpy` reads :math:`(H, W, C)` and :meth:`from_dlpack` reads
+          :math:`(C, H, W)` unless ``channels_order`` says otherwise, and both label the color space by channel count
+          unless ``color_space`` is given. Pass ``img.pixel_format.color_space`` and ``img.channels_order`` to read an
+          exported image back.
         - :meth:`to_gray`, :meth:`to_rgb` and :meth:`to_bgr` return the image itself when it is already in that color
           space, an image with new data when it is in another of the three, and raise ``ValueError`` for
           ``UNKNOWN``. Converting RGB or BGR to gray requires ``uint8`` or a floating dtype supported by
@@ -376,14 +380,28 @@ class Image:
         return self.data.cpu().detach().numpy()
 
     @classmethod
-    def from_dlpack(cls, data: DLPack) -> Image:
+    def from_dlpack(
+        cls,
+        data: DLPack,
+        color_space: Optional[ColorSpace] = None,
+        channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_FIRST,
+    ) -> Image:
         """Construct an ``Image`` from a DLPack capsule, sharing its memory.
 
+        A capsule carries neither the layout nor the color space, so read ``img.to_dlpack()`` back with
+        ``Image.from_dlpack(capsule, img.pixel_format.color_space, img.channels_order)``.
+
         Args:
-            data: a DLPack capsule from numpy, tvm or jax. The capsule must hold a ``(C, H, W)`` image; it is
-                labelled ``GRAY`` for 1 channel, ``RGB`` for 3 and ``UNKNOWN`` otherwise.
+            data: a DLPack capsule from numpy, tvm or jax, holding a ``(C, H, W)`` image, or ``(H, W, C)`` with
+                ``channels_order=CHANNELS_LAST``.
+            color_space: the color space of the image. If ``None``, a 1-channel image is ``GRAY``, a 3-channel
+                image is ``RGB`` and any other channel count is ``UNKNOWN``. An explicit color space that does not
+                match the channel count raises.
+            channels_order: the layout of the capsule.
 
         Raises:
+            ValueError: if ``channels_order`` is neither ``CHANNELS_LAST`` nor ``CHANNELS_FIRST``.
+            ValueCheckError: if an explicit ``color_space`` does not match the channel count (also a ``ValueError``).
             ShapeError: if the capsule has more than three dimensions. It is also a ``ValueError``.
             IndexError: if the capsule has fewer than three dimensions.
 
@@ -392,23 +410,40 @@ class Image:
             >>> img = Image.from_dlpack(x.__dlpack__())
             >>> img.channels, img.height, img.width
             (3, 4, 5)
+            >>> hwc = Image.from_numpy(np.ones((4, 5, 3), dtype=np.uint8))  # (H, W, C), CHANNELS_LAST
+            >>> back = Image.from_dlpack(hwc.to_dlpack(), hwc.pixel_format.color_space, hwc.channels_order)
+            >>> back.channels, back.height, back.width
+            (3, 4, 5)
 
         """
+        # check before consuming the capsule, which can be read only once
+        if channels_order not in (ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST):
+            raise ValueError("channels_order must be either `CHANNELS_LAST` or `CHANNELS_FIRST`")
         _data: torch.Tensor = from_dlpack(data)
 
-        pixel_format = PixelFormat(color_space=_default_color_space(_data.shape[0]), bit_depth=_data.element_size() * 8)
+        if channels_order == ChannelsOrder.CHANNELS_FIRST:
+            image_size = ImageSize(height=_data.shape[1], width=_data.shape[2])
+            channels = _data.shape[0]
+        else:
+            image_size = ImageSize(height=_data.shape[0], width=_data.shape[1])
+            channels = _data.shape[2]
+
+        if color_space is None:
+            color_space = _default_color_space(channels)
+        pixel_format = PixelFormat(color_space=color_space, bit_depth=_data.element_size() * 8)
 
         # create the image layout based on the input data
-        layout = ImageLayout(
-            image_size=ImageSize(height=_data.shape[1], width=_data.shape[2]),
-            channels=_data.shape[0],
-            channels_order=ChannelsOrder.CHANNELS_FIRST,
-        )
+        layout = ImageLayout(image_size=image_size, channels=channels, channels_order=channels_order)
 
         return cls(_data, pixel_format, layout)
 
     def to_dlpack(self) -> DLPack:
-        """Return a DLPack capsule from the image torch.Tensor."""
+        """Return a DLPack capsule from the image torch.Tensor, sharing its memory.
+
+        The capsule holds the data in the image's own :attr:`channels_order`, ``(C, H, W)`` or ``(H, W, C)``, and
+        carries no color space; read it back with
+        ``Image.from_dlpack(capsule, img.pixel_format.color_space, img.channels_order)``.
+        """
         return to_dlpack(self.data)
 
     @classmethod

@@ -22,7 +22,7 @@ from typing import Any, Optional
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance.equalization import _equalize_clahe
 
 
@@ -49,10 +49,10 @@ class RandomClahe(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
-        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming :func:`kornia.enhance.equalize_clahe` and
-          that range, as :class:`RandomEqualize` does. The check guards a 256-entry lookup indexed with
-          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted, up
-          to the rounding of ``input * 255`` in the input's dtype.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the wrapper clamps before calling :func:`kornia.enhance.equalize_clahe`; the functional
+          API retains its strict range check.
         - ``grid_size`` tiles the two axes independently, and a grid that does not divide the image pads it, so
           ``grid_size=(3, 3)`` works on a ``10 x 10`` image. Each axis must be larger than its grid size, so a
           grid as large as the image, or larger, raises a ``ValueError`` naming the smallest image it admits.
@@ -104,4 +104,5 @@ class RandomClahe(IntensityAugmentationBase2D):
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = _clamp_unit_range(input)
         return _equalize_clahe(input, params["clip_limit_factor"], flags["grid_size"], flags["slow_and_differentiable"])

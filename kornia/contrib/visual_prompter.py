@@ -22,9 +22,10 @@ from typing import Any, Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.augmentation import LongestMaxSize
+from kornia.augmentation import Resize
 from kornia.augmentation.container.augment import AugmentationSequential
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import BaseError
 from kornia.enhance import normalize as kornia_normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -32,16 +33,68 @@ from kornia.models.sam import Sam, SamConfig
 from kornia.models.structures import Prompts, SegmentationResults
 
 
+def _resize_like_sam(image: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
+    """Resize as SAM's reference does: bilinear on the half-pixel grid, with torch's antialiasing.
+
+    This is ``ResizeLongestSide.apply_image_torch`` of ``segment-anything@3518c86``. It runs in at least float32, as
+    torch has no half-precision antialiased kernel on the CPU, and the result is cast back to the dtype of ``image``.
+    """
+    x = image.to(torch.promote_types(image.dtype, torch.float32))
+    try:
+        out = F.interpolate(x, size=size, mode="bilinear", align_corners=False, antialias=True)
+    except NotImplementedError:
+        if x.device.type != "mps":
+            raise
+        # torch 2.5.1 has no MPS kernel for the antialiased bilinear resize (``_upsample_bilinear2d_aa``).
+        out = F.interpolate(x.cpu(), size=size, mode="bilinear", align_corners=False, antialias=True).to(x.device)
+    return out.to(image.dtype)
+
+
 class VisualPrompter:
-    r"""Allow the user to run multiple query with multiple prompts for a model.
+    r"""Allow the user to run multiple queries with multiple prompts on one image.
 
     At the moment, we just support the SAM model. The model is loaded based on the given config.
 
-    For default the images are transformed to have their long side with size of the `image_encoder.img_size`. This
-    Prompter class ensure to transform the images and the prompts before prediction. Also, the image is passed
-    automatically for the method `preprocess_image`, which is responsible for F.normalize the image and F.pad it to have
-    the right size for the SAM model :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For
-    default the image is normalized by the mean and standard deviation of the SAM dataset values.
+    The prompter holds one image at a time: :meth:`set_image` takes a :math:`(3, H, W)` or :math:`(1, 3, H, W)` image,
+    and :meth:`predict` then answers prompts on it. To segment a batch of images, each with its own prompts, use
+    :meth:`kornia.models.sam.Sam.forward`.
+
+    The image is resized so that its long side equals ``image_encoder.img_size``. The output size :math:`(h, w)` comes
+    from ``transforms``, an :class:`~kornia.augmentation.AugmentationSequential` that must hold exactly one stage,
+    ``kornia.augmentation.Resize(img_size, side="long", align_corners=False, antialias=True)``. The image itself is
+    resized as SAM's reference resizes it (``ResizeLongestSide.apply_image_torch``), with
+    ``torch.nn.functional.interpolate(image, size, mode="bilinear", align_corners=False, antialias=True)``, computed in
+    float32 (float64 for a float64 image) and cast back. The image is then passed to the method `preprocess_image`,
+    which normalizes it and pads it to the size the SAM model takes,
+    :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For default the image is normalized by the
+    mean and standard deviation of the SAM dataset values.
+
+    The prompts follow the per-axis scales :math:`s_x = w / W` and :math:`s_y = h / H` of an :math:`H \times W` image,
+    computed in float32 (float64 for a float64 model), and come out in that dtype. A keypoint marks a pixel centre and
+    follows the half-pixel map :math:`x \mapsto (x + 0.5)\,s_x - 0.5` (likewise for :math:`y`), the map this resize
+    samples on. A box marks pixel edges, kornia's ``xyxy`` convention (``width = x2 - x1``), and both its corners follow
+    :math:`x \mapsto x\,s_x`, as in the reference's ``apply_boxes``: at :math:`s = 8` the box (10, 20, 60, 50) goes to
+    (80, 160, 480, 400), and :math:`(0, 0, W, H)` to the whole resized image :math:`(0, 0, w, h)`.
+
+    The image does not go through kornia's own antialiased :func:`~kornia.geometry.transform.resize`, which blurs with a
+    Gaussian of standard deviation :math:`(f - 1) / 2` before downscaling by :math:`f`, a weaker low-pass than the
+    antialiased bilinear filter of SAM's preprocessing. On a 1380 x 2076 image, against a transcription of Meta's
+    ``SamPredictor`` driving the same MobileSAM weights, the three masks of a point prompt reach IoU 0.962, 0.967 and
+    0.956 with kornia's filter and 0.969, 0.969 and 0.968 with SAM's.
+
+    Two details depart on purpose from Meta's ``SamPredictor`` (``segment-anything@3518c86``):
+
+    - The resized short side is truncated, where the reference rounds it (a 1380 x 2076 image becomes 680 x 1024
+      here and 681 x 1024 there). Truncation is the rule of :class:`kornia.augmentation.Resize`, and the masks are
+      resized back through the same recorded input size.
+    - Keypoints follow the half-pixel map :math:`x \mapsto (x + 0.5)\,s - 0.5`, kornia's pixel-centre convention and
+      the map the image resize samples on, where the reference's ``apply_coords`` uses :math:`x \mapsto x\,s` for
+      points too. With the scale :math:`s = 8`, the keypoint (40, 30) goes to (323.5, 243.5) here and to (320, 240) in
+      the reference.
+
+    The held model follows the mode rule of :ref:`pretrained-models-conventions`: a config that loads weights gives a
+    model in evaluation mode, and a randomly initialised one stays in training mode, where MobileSAM's BatchNorm
+    normalises with the statistics of the batch. Call ``prompter.model.eval()`` before inference on random weights.
 
     Args:
         config: A model config to generate the model. Now just the SAM model is supported.
@@ -54,13 +107,9 @@ class VisualPrompter:
         >>> prompter = VisualPrompter(SamConfig('vit_b'))
         >>> image = torch.rand(3, 25, 30)
         >>> prompter.set_image(image)
-        >>> boxes = Boxes(
-        ...    torch.tensor(
-        ...         [[[[0, 0], [0, 10], [10, 0], [10, 10]]]],
-        ...         device=prompter.device,
-        ...         dtype=torch.float32
-        ...    ),
-        ...    mode='xyxy'
+        >>> # The K box prompts of the image, as a (1, K, 4) xyxy tensor; here K = 1.
+        >>> boxes = Boxes.from_tensor(
+        ...     torch.tensor([[[0.0, 0.0, 10.0, 10.0]]], device=prompter.device, dtype=torch.float32), mode='xyxy'
         ... )
         >>> prediction = prompter.predict(boxes=boxes)
         >>> prediction.logits.shape
@@ -80,7 +129,7 @@ class VisualPrompter:
 
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
-            transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
+            transforms = (Resize(self.model.image_encoder.img_size, side="long", align_corners=False, antialias=True),)
             self.pixel_mean: Optional[torch.Tensor] = (
                 torch.tensor([123.675, 116.28, 103.53], device=device, dtype=dtype) / 255
             )
@@ -98,6 +147,7 @@ class VisualPrompter:
         self._original_image_size: tuple[int, int] | None = None
         self._input_image_size: tuple[int, int] | None = None
         self._input_encoder_size: tuple[int, int] | None = None
+        self._prompt_scale: Optional[torch.Tensor] = None
         self.reset_image()
 
     def preprocess_image(
@@ -138,28 +188,65 @@ class VisualPrompter:
     ) -> None:
         """Set the embeddings from the given image with `image_decoder` of the model.
 
-        Prepare the given image with the selected transforms and the preprocess method.
+        Resize the image to the size given by ``transforms``, with SAM's filter (see the class docstring), and prepare
+        it with the preprocess method.
 
         Args:
-            image: RGB image. Normally images with range of [0-1], the model preprocess F.normalize the
-                   pixel values with the mean and std defined in its initialization. Expected to be into a float32
-                   dtype. Shape :math:`(3, H, W)`.
+            image: One RGB image, shape :math:`(3, H, W)` or :math:`(1, 3, H, W)`, in the dtype of the model. Normally
+                   images with range of [0-1], the model preprocess F.normalize the pixel values with the mean and std
+                   defined in its initialization. A batch of more than one image raises; use
+                   :meth:`kornia.models.sam.Sam.forward` for batches.
             mean: mean value of dataset for normalization.
             std: standard deviation of dataset for normalization.
 
         """
+        KORNIA_CHECK(
+            image.is_floating_point(),
+            f"VisualPrompter takes a floating-point image with values in [0, 1]; got {image.dtype}.",
+        )
         if image.ndim == 3:
             KORNIA_CHECK_SHAPE(image, ["3", "H", "W"])
             image = image.unsqueeze(0)
         else:
             KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
+            KORNIA_CHECK_SHAPE(
+                image,
+                ["1", "3", "H", "W"],
+                "VisualPrompter takes one image, (3, H, W) or (1, 3, H, W). "
+                "Use `Sam.forward` to segment a batch of images with per-image prompts.",
+            )
 
         self.reset_image()
 
         self._original_image_size = (image.shape[-2], image.shape[-1])
 
-        image = self.transforms(image, data_keys=["input"])
-        self._tfs_params = self.transforms._params
+        # The Resize augmentation gives the output size; the image itself is resized with the filter of SAM's
+        # reference, and the prompts with the per-axis scales (see the class docstring).
+        stages = list(self.transforms.children())
+        KORNIA_CHECK(
+            len(stages) == 1 and isinstance(stages[0], Resize),
+            "VisualPrompter.transforms must hold exactly one stage, kornia.augmentation.Resize, which gives the size "
+            f"of the resized image; got {[type(stage).__name__ for stage in stages]}.",
+        )
+        self._tfs_params = self.transforms.forward_parameters(image.shape)
+        resize_params = self._tfs_params[0].data
+        if not isinstance(resize_params, dict):
+            raise TypeError(f"Expected the parameters of the Resize augmentation. Got {type(resize_params)}.")
+        height, width = (int(side) for side in resize_params["output_size"][0])
+        encoder_size = self.model.image_encoder.img_size
+        KORNIA_CHECK(
+            max(height, width) <= encoder_size,
+            lambda: (
+                f"VisualPrompter.transforms resizes the image to {height} x {width}, larger than the image "
+                f"encoder's input size {encoder_size}: the padding to {encoder_size} would crop the image while the "
+                "prompts are scaled for all of it."
+            ),
+        )
+        prompt_dtype = torch.promote_types(self.model.prompt_encoder.point_embeddings[0].weight.dtype, torch.float32)
+        self._prompt_scale = torch.tensor(
+            [width / image.shape[-1], height / image.shape[-2]], device=image.device, dtype=prompt_dtype
+        )
+        image = _resize_like_sam(image, (height, width))
         self._input_image_size = (image.shape[-2], image.shape[-1])
 
         image = self.preprocess_image(image, mean, std)
@@ -180,34 +267,62 @@ class VisualPrompter:
 
         return keypoints
 
-    def _valid_boxes(self, boxes: Boxes | torch.Tensor) -> Boxes:
-        """Validate the boxes shape and ensure to be a Boxes into xyxy mode."""
+    def _valid_boxes(self, boxes: Boxes | torch.Tensor) -> torch.Tensor:
+        """Validate the box prompts and return them as a ``(K, 4)`` xyxy tensor.
+
+        The boxes are the ``K`` box prompts of the one image set. A ``(K, 4)`` or ``(1, K, 4)`` xyxy tensor is taken
+        as given. A :class:`~kornia.geometry.boxes.Boxes` holding ``(K, 4, 2)`` or ``(1, K, 4, 2)`` vertices is read
+        through ``to_tensor(mode="xyxy")``.
+        """
         if isinstance(boxes, torch.Tensor):
             if boxes.ndim == 2:
                 KORNIA_CHECK_SHAPE(boxes.data, ["K", "4"])
             else:
                 KORNIA_CHECK_SHAPE(boxes.data, ["B", "K", "4"])
+            # ``Boxes.from_tensor`` checks the values (finite, positive extents). Its vertices are not used: their
+            # round trip widens a sub-pixel box ([10, 20, 10.5, 20.5] comes back as [9.5, 19.5, 11, 21]) and, in
+            # bfloat16, rounds the -1 offset away ([256, 256, 258, 258] comes back as [256, 256, 256, 256]).
+            Boxes.from_tensor(boxes, mode="xyxy")
+            images = boxes.shape[0] if boxes.ndim == 3 else 1
+            xyxy = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
+        else:
+            images = boxes.data.shape[0] if boxes.data.ndim == 4 else 1
+            exported = boxes.to_tensor(mode="xyxy")
+            if not isinstance(exported, torch.Tensor):
+                raise TypeError(f"Expected the boxes as a tensor. Got {type(exported)}.")
+            xyxy = exported
 
-            boxes = Boxes.from_tensor(boxes, mode="xyxy")
+        KORNIA_CHECK(
+            images == 1,
+            lambda: (
+                f"VisualPrompter takes the boxes of its one image, (K, 4) or (1, K, 4); got boxes for {images} "
+                "images. Use `Sam.forward` to prompt a batch of images."
+            ),
+        )
 
-        return boxes if boxes.mode == "xyxy" else Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
+        return xyxy.reshape(-1, 4)
 
     def _valid_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Validate the input masks shape."""
         KORNIA_CHECK_SHAPE(masks, ["K", "1", "256", "256"])
         return masks
 
-    def _transform_prompts(
-        self, *prompts: torch.Tensor | Boxes | Keypoints, data_keys: Optional[list[str]] = None
-    ) -> dict[str, torch.Tensor | Boxes | Keypoints]:
-        transformed_prompts = self.transforms(*prompts, data_keys=data_keys, params=self._tfs_params)
-        if data_keys is None:
-            data_keys = []
+    def _scale(self, like: torch.Tensor) -> torch.Tensor:
+        """The per-axis scales ``(s_x, s_y)`` recorded by ``set_image``, on the device of ``like``."""
+        scale = self._prompt_scale
+        if scale is None:
+            raise BaseError("An image must be set with `self.set_image(...)` before its prompts can be mapped.")
+        return scale.to(like.device)
 
-        # prevent unpacking torch.Tensor when creating the output dict (issue #2627)
-        if not isinstance(transformed_prompts, (list, tuple)):
-            transformed_prompts = [transformed_prompts]
-        return {key: transformed_prompts[idx] for idx, key in enumerate(data_keys)}
+    def _map_keypoints(self, keypoints: torch.Tensor) -> torch.Tensor:
+        """Map pixel-centre keypoints ``(..., 2)`` of the original image with the half-pixel map, in float32 or more."""
+        scale = self._scale(keypoints)
+        return (keypoints.to(scale.dtype) + 0.5) * scale - 0.5
+
+    def _map_box_edges(self, boxes: torch.Tensor) -> torch.Tensor:
+        """Map xyxy boxes ``(K, 4)`` of the original image, whose corners are pixel edges, in float32 or wider."""
+        scale = self._scale(boxes)
+        return (boxes.to(scale.dtype).reshape(-1, 2, 2) * scale).reshape(-1, 4)
 
     def preprocess_prompts(
         self,
@@ -216,40 +331,33 @@ class VisualPrompter:
         boxes: Optional[Boxes | torch.Tensor] = None,
         masks: Optional[torch.Tensor] = None,
     ) -> Prompts:
-        """Validate and preprocess the given prompts to be aligned with the input image."""
-        data_keys = []
-        to_transform: list[Keypoints | Boxes | torch.Tensor] = []
+        r"""Validate and preprocess the given prompts to be aligned with the input image.
 
+        Keypoints follow the half-pixel map :math:`(x + 0.5)\,s - 0.5` of a pixel centre, and both corners of each
+        xyxy box the edge map :math:`x\,s`, as the reference's ``apply_boxes`` does, with the per-axis scales recorded
+        by :meth:`set_image`. They are computed, and returned, in float32 (float64 for a float64 model). A tensor box
+        is taken as given; a :class:`~kornia.geometry.boxes.Boxes` is read through ``to_tensor(mode="xyxy")``.
+        """
+        points: Optional[tuple[torch.Tensor, torch.Tensor]] = None
         if isinstance(keypoints, (Keypoints, torch.Tensor)) and isinstance(keypoints_labels, torch.Tensor):
             keypoints = self._valid_keypoints(keypoints, keypoints_labels)
-            data_keys.append("keypoints")
-            to_transform.append(keypoints)
+            keypoints_tensor = keypoints.to_tensor()
+            if not isinstance(keypoints_tensor, torch.Tensor):
+                raise TypeError(f"Expected the keypoints as a tensor. Got {type(keypoints_tensor)}.")
+            points = (self._map_keypoints(keypoints_tensor), keypoints_labels)
+        elif keypoints is not None:
+            KORNIA_CHECK(
+                False,
+                "keypoints_labels must be given with keypoints: a (K, N) tensor, 1 for a foreground point and 0 for "
+                "a background point.",
+            )
 
+        bbox: Optional[torch.Tensor] = None
         if isinstance(boxes, (Boxes, torch.Tensor)):
-            self._valid_boxes(boxes)
-            data_keys.append("bbox_xyxy")
-            to_transform.append(boxes)
+            bbox = self._map_box_edges(self._valid_boxes(boxes))
 
         if isinstance(masks, torch.Tensor):
             self._valid_masks(masks)
-
-        # No prompt at all is a valid query (SAM then predicts from the image embedding alone); the
-        # augmentation container cannot be called with nothing to transform.
-        data = self._transform_prompts(*to_transform, data_keys=data_keys) if to_transform else {}
-
-        if "keypoints" in data and isinstance(data["keypoints"], Keypoints):
-            kpts_tensor = data["keypoints"].to_tensor()
-            if KORNIA_CHECK_IS_TENSOR(kpts_tensor) and KORNIA_CHECK_IS_TENSOR(keypoints_labels):
-                points = (kpts_tensor, keypoints_labels)
-        else:
-            points = None
-
-        if "bbox_xyxy" in data and isinstance(data["bbox_xyxy"], Boxes):
-            _bbox = data["bbox_xyxy"].to_tensor(mode="xyxy")
-            if KORNIA_CHECK_IS_TENSOR(_bbox):
-                bbox = _bbox
-        else:
-            bbox = None
 
         return Prompts(points=points, boxes=bbox, masks=masks)
 
@@ -270,8 +378,11 @@ class VisualPrompter:
                        `N` is the number of points and `K` the number of prompts.
             keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
                              point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
-                             prompts.
-            boxes: A box prompt to the model. If a torch.Tensor, should be in a xyxy mode. Shape :math:`(K, 4)`
+                             prompts. Required with `keypoints`.
+            boxes: Box prompts to the model, one per prompt: a torch.Tensor in xyxy mode, shape :math:`(K, 4)` or
+                   :math:`(1, K, 4)`, whose corners are taken as given, or a :class:`~kornia.geometry.boxes.Boxes` of
+                   shape :math:`(K, 4, 2)` or :math:`(1, K, 4, 2)`, read through ``to_tensor(mode="xyxy")``. `K` is
+                   the number of prompts.
             masks: A low resolution mask input to the model, typically coming from a previous prediction
                    iteration. Has shape :math:`(K, 1, H, W)`, where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a
@@ -324,12 +435,13 @@ class VisualPrompter:
         clean state.
 
         In practice, this resets:
-        - transformed-image parameters,
+        - transformed-image parameters and the prompt scales,
         - original/input/encoder spatial sizes,
         - cached image embeddings,
         - ``is_image_set`` status flag.
         """
         self._tfs_params = None
+        self._prompt_scale = None
         self._original_image_size = None
         self._input_image_size = None
         self._input_encoder_size = None

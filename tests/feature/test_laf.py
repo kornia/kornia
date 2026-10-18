@@ -1086,6 +1086,23 @@ class TestExtractPatchesSimple(BaseTester):
         self.assert_close(torch.compile(kornia.feature.extract_patches_simple, fullgraph=True)(img, laf, 10), expected)
 
 
+class TestEmptyPatchesAreLinked(BaseTester):
+    @pytest.mark.parametrize(
+        "extract", [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid]
+    )
+    @pytest.mark.parametrize("batch, n_lafs", [(0, 5), (2, 0), (0, 0)])
+    def test_zero_patches_keep_the_links_to_the_inputs(self, device, dtype, extract, batch, n_lafs):
+        img = torch.rand(batch, 2, 48, 64, device=device, dtype=dtype, requires_grad=True)
+        laf = torch.rand(batch, n_lafs, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        patches = extract(img, laf, 16)
+        assert patches.shape == (batch, n_lafs, 2, 16, 16)
+        assert patches.dtype == dtype
+        assert patches.requires_grad
+        patches.sum().backward()
+        self.assert_close(img.grad, torch.zeros_like(img))
+        self.assert_close(laf.grad, torch.zeros_like(laf))
+
+
 class TestExtractPatchesPyr(BaseTester):
     def test_shape(self, device):
         laf = torch.rand(5, 4, 2, 3, device=device)

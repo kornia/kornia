@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -138,7 +138,7 @@ class VideoSequential(ImageSequential):
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         if_unsupported_ops: str = "raise",
     ) -> None:
         super().__init__(

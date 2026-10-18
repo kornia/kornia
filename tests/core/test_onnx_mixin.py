@@ -164,6 +164,30 @@ class TestONNXExportMixin(BaseTester):
         with pytest.raises(FileNotFoundError, match="no_such_dir"):
             ImageSequential(nn.Identity()).to_onnx(onnx_name=str(tmp_path / "no_such_dir" / "x.onnx"), **_RGB)
 
+    @pytest.mark.parametrize(
+        "input_shape, pseudo_shape, traced",
+        [
+            ([-1, 3, -1, -1], [1, 3, 1, 32], [2, 3, 2, 32]),
+            ([-1, 3, 16, -1], [0, 3, 16, 5], [2, 3, 16, 5]),
+            ([1, 3, 16, 16], [1, 3, 16, 16], [1, 3, 16, 16]),
+        ],
+        ids=["sizes_of_one", "size_of_zero", "fixed_dimensions"],
+    )
+    def test_dynamic_dimensions_are_traced_at_two_or_more_6066(self, monkeypatch, input_shape, pseudo_shape, traced):
+        # torch.export specializes an example size of 0 or 1. On torch 2.9, DexiNed exported from a batch of 1 kept
+        # that batch inside its Resize nodes and failed in ONNX Runtime at any other batch size. Fixed dimensions keep
+        # theirs.
+        traced_shapes = []
+
+        def _capture(model, args, *rest, **kwargs):
+            traced_shapes.append(list(args.shape))
+            raise RuntimeError("captured")
+
+        monkeypatch.setattr(torch.onnx, "export", _capture)
+        with pytest.raises(RuntimeError, match="captured"):
+            ImageSequential(nn.Identity()).to_onnx(save=False, input_shape=input_shape, pseudo_shape=pseudo_shape)
+        assert traced_shapes == [traced]
+
 
 class _ChannelAffine(nn.Module):
     """A per-channel affine map, with its weights as parameters or as buffers.

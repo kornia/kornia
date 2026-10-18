@@ -1531,6 +1531,28 @@ class TestRANSACBoundedLO(BaseTester):
         assert not torch.equal(subsets[0][0], subsets[0][1])
 
 
+class TestRANSACAutocast(BaseTester):
+    @pytest.mark.parametrize("model_type", ["homography", "fundamental"])
+    @pytest.mark.parametrize("local_optimization", ["lm", "dlt"])
+    def test_autocast_does_not_reach_the_estimate(self, device, model_type, local_optimization):
+        # Under a caller's bfloat16 autocast, local_optimization="dlt" fitted in bfloat16 and returned a bfloat16
+        # model (CUDA "fundamental" raised in eigh), and "lm" solved and scored its minimal samples in bfloat16, which
+        # changed its estimate. Noise at half the threshold puts many inliers where bfloat16 scores flip them.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        kp1, kp2, _, _, _ = create_dominant_plane_scene(500, 0.9, 0.5, 0, noise=1.0, device=device)
+        results = []
+        for enabled in (False, True):
+            ransac = RANSAC(model_type, inl_th=2.0, seed=0, local_optimization=local_optimization)
+            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=enabled):
+                results.append(ransac(kp1, kp2))
+        (expected, expected_inliers), (actual, actual_inliers) = results
+        assert actual.dtype == torch.float32
+        assert expected_inliers.any()
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(actual_inliers, expected_inliers, atol=0, rtol=0)
+
+
 class TestRANSACValidation(BaseTester):
     @pytest.mark.parametrize(
         "kwargs",

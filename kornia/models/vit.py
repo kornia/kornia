@@ -162,23 +162,33 @@ class PatchEmbedding(nn.Module):
         self.patch_size = patch_size
 
         # logic needed in case a backbone is passed
+        self.custom_backbone = backbone is not None
         self.backbone = backbone or nn.Conv2d(in_channels, out_channels, kernel_size=patch_size, stride=patch_size)
+        # The token grid the position embeddings are built for: the backbone's output grid for an ``image_size``
+        # input, or the patch grid of that input.
+        self.grid_size: tuple[int, int]
         if backbone is not None:
-            out_channels, feat_size = self._compute_feats_dims((in_channels, image_size, image_size))
+            out_channels, self.grid_size = self._compute_feats_dims((in_channels, image_size, image_size))
             self.out_channels = out_channels
         else:
-            feat_size = (image_size // patch_size) ** 2
+            self.grid_size = (image_size // patch_size, image_size // patch_size)
+        feat_size = self.grid_size[0] * self.grid_size[1]
 
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
         self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
 
-    def _compute_feats_dims(self, image_size: tuple[int, int, int]) -> tuple[int, int]:
+    def _compute_feats_dims(self, image_size: tuple[int, int, int]) -> tuple[int, tuple[int, int]]:
         out = self.backbone(torch.zeros(1, *image_size)).detach()
-        return out.shape[-3], out.shape[-2] * out.shape[-1]
+        return out.shape[-3], (out.shape[-2], out.shape[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.backbone(x)
-        B, N, _, _ = x.shape
+        B, N, height, width = x.shape
+        if (height, width) != self.grid_size:
+            raise ValueError(
+                f"The patch embedding gives a {height}x{width} token grid, but the position embeddings are built for "
+                f"the {self.grid_size[0]}x{self.grid_size[1]} grid of an image_size input."
+            )
         x = x.view(B, N, -1).permute(0, 2, 1)  # BxNxE
         cls_tokens = self.cls_token.repeat(B, 1, 1)  # Bx1xE
         # prepend the cls token to the input
@@ -195,6 +205,13 @@ class VisionTransformer(nn.Module):
 
     The method is inspired from existing implementations of the paper :cite:`dosovitskiy2020vit`.
 
+    Without a ``backbone``, the input must be ``image_size`` square with ``in_channels`` channels. With one, the
+    backbone's token grid must be the one it gives for an ``image_size`` input, which the position embeddings are
+    built for; a backbone that ends in adaptive pooling, for example, gives that grid at any input size. The AugReg
+    weights that :meth:`from_config` loads were trained on images normalized with mean = std = 0.5 per channel, so a
+    :math:`[0, 1]` image goes in as
+    ``kornia.enhance.normalize(image, torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]))``.
+
     .. warning::
         This is an experimental API subject to changes in favor of flexibility.
 
@@ -207,7 +224,8 @@ class VisionTransformer(nn.Module):
         num_heads: the number of attention heads.
         dropout_rate: dropout rate.
         dropout_attn: attention dropout rate.
-        backbone: an nn.Module to compute the image patches embeddings.
+        backbone: an nn.Module to compute the image patches embeddings, as a :math:`(B, D, h, w)` map. The position
+            embeddings are sized from its output for an ``image_size`` input.
 
     Example:
         >>> img = torch.rand(1, 3, 224, 224)
@@ -256,20 +274,31 @@ class VisionTransformer(nn.Module):
         """Encode an image batch into Vision Transformer token embeddings.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`, where
-                :math:`B` is batch size, :math:`C` must match
-                ``self.in_channels``, and :math:`H` and :math:`W` are expected
-                to match ``self.image_size``.
+            x: Image tensor with shape :math:`(B, C, H, W)`. Without a
+                ``backbone``, :math:`C` must equal ``self.in_channels`` and
+                :math:`H` and :math:`W` must both equal ``self.image_size``;
+                with one, the backbone's token grid must be the one it gives
+                for an ``image_size`` input. The position embeddings are a
+                fixed table, one row per token of that grid.
 
         Returns:
             Normalized token embedding tensor produced by patch embedding and
             the transformer encoder. The output shape follows the encoder
             layout, usually :math:`(B, N, D)`.
+
+        Raises:
+            ValueError: without a ``backbone``, if :math:`C` is not ``in_channels`` or :math:`(H, W)` is not
+                ``(image_size, image_size)``; with one, if the backbone's token grid is not the one it gives for an
+                ``image_size`` input.
         """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input x type is not a torch.Tensor. Got: {type(x)}")
 
-        if self.image_size not in (*x.shape[-2:],) and x.shape[-3] != self.in_channels:
+        # A backbone's token grid is checked once it has run (PatchEmbedding.forward): an adaptive one gives the grid
+        # of an image_size input at other sizes too.
+        if not self.patch_embedding.custom_backbone and (
+            x.shape[-3] != self.in_channels or tuple(x.shape[-2:]) != (self.image_size, self.image_size)
+        ):
             raise ValueError(
                 f"Input image shape must be Bx{self.in_channels}x{self.image_size}x{self.image_size}. Got: {x.shape}"
             )

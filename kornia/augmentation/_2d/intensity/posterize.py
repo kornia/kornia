@@ -20,7 +20,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance import posterize
 
 
@@ -47,19 +48,15 @@ class RandomPosterize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - ``bits=(k, k)`` with ``k < 8`` leaves at most ``2 ** k`` distinct values, so ``0`` gives a constant
           image; the reduction is a ``uint8`` round trip inside :func:`kornia.enhance.posterize`. A sample that
-          draws ``8`` is returned unchanged, without the round trip.
+          draws ``8`` returns the clamped input, without the round trip.
         - the round trip is a step function: the output still has ``requires_grad=True``, but its gradient with
-          respect to the input is identically ``0`` below ``bits=8``, and the identity at ``8``.
+          respect to the input is identically ``0`` below ``bits=8``, and follows the input clamp at ``8``.
         - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
           from :class:`RandomSharpness`, whose scalar argument is an upper bound.
-
-    .. warning::
-        Outside ``[0, 1]`` the output is the posterized ``uint8`` conversion of the raw float, not of the clamped
-        input, and that conversion of an out-of-range float is undefined. A
-        sample that draws ``bits=8`` skips the conversion and keeps its out-of-range values. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.
@@ -101,4 +98,5 @@ class RandomPosterize(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        return posterize(input, params["bits_factor"].to(input.device))
+        input = _clamp_unit_range(input)
+        return posterize(input, _to_device_nonblocking(params["bits_factor"], input.device))
