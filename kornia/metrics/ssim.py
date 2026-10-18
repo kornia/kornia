@@ -47,6 +47,8 @@ def _ssim_cpu_eligible(img1: torch.Tensor, img2: torch.Tensor) -> bool:
         img1.device.type == "cpu"
         and img1.dtype == torch.float32
         and _HAS_MKLDNN
+        # Switched off, oneDNN leaves conv2d to a native kernel that is about 3x slower channels-last.
+        and torch.backends.mkldnn.enabled
         # Before the layout checks, which could otherwise guard the sizes of an exported program.
         and not is_exporting()
         and not torch.jit.is_tracing()
@@ -162,10 +164,11 @@ def ssim(
         Half-precision inputs are evaluated in float32 for numerical stability.
         A float32/float64 pair is filtered in float64, with the Gaussian window built in that dtype.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
-        On the CPU, when no gradient is recorded, two contiguous images computed in float32 are filtered in
-        channels-last layout, which oneDNN convolves without first copying the image into blocks of 8 or 16 channels.
-        The map agrees with the NCHW convolutions to rounding and is returned contiguous. Exported and traced graphs
-        keep the NCHW convolutions.
+        On the CPU with oneDNN, when no gradient is recorded, two contiguous images computed in float32 are filtered
+        in channels-last layout, which oneDNN convolves without first copying the image into blocks of 8 or 16
+        channels. The map agrees with the NCHW convolutions to rounding and is returned contiguous. Builds without
+        oneDNN, such as the macOS arm64 wheels, oneDNN switched off with ``torch.backends.mkldnn``, ``torch.func``
+        transforms, and exported and traced graphs keep the NCHW convolutions.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)

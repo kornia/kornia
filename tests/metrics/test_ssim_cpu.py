@@ -92,6 +92,31 @@ def _forbid_helper(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestSsimCpu(BaseTester):
+    @pytest.fixture(autouse=True)
+    def _open_onednn_gate(self, monkeypatch):
+        # The path needs oneDNN, which torch's macOS arm64 CPU wheels lack. Open the gate, as the blur and Laplacian
+        # dispatch tests do, so the dispatch and value tests run on every build; the test below closes it.
+        monkeypatch.setattr(ssim_module, "_HAS_MKLDNN", True)
+
+    def test_builds_without_onednn_keep_the_nchw_path(self, monkeypatch, device, dtype):
+        _require_cpu_float32(device, dtype)
+        monkeypatch.setattr(ssim_module, "_HAS_MKLDNN", False)
+        _forbid_helper(monkeypatch)
+        img1, img2 = _pair((2, 3, 32, 32))
+        assert not _ssim_cpu_eligible(img1, img2)
+
+        self.assert_close(ssim(img1, img2, 11), _nchw_reference(img1, img2, 11))
+
+    def test_disabled_onednn_keeps_the_nchw_path(self, monkeypatch, device, dtype):
+        _require_cpu_float32(device, dtype)
+        _forbid_helper(monkeypatch)
+        img1, img2 = _pair((2, 3, 32, 32))
+        with torch.backends.mkldnn.flags(enabled=False):
+            assert not _ssim_cpu_eligible(img1, img2)
+            actual = ssim(img1, img2, 11)
+
+        self.assert_close(actual, _nchw_reference(img1, img2, 11))
+
     def test_contiguous_float32_dispatches_once(self, monkeypatch, device, dtype):
         _require_cpu_float32(device, dtype)
         calls = _count_helper_calls(monkeypatch)
@@ -316,7 +341,7 @@ class TestSsimCpu(BaseTester):
             pytest.skip("ssim is not scriptable")
         img1, img2 = _pair((2, 3, 32, 40))
         assert _ssim_cpu_eligible(img1, img2)
-        optimized = torch_optimizer(ssim)
+        optimized = torch_optimizer(ssim, fullgraph=True)
         for padding in ("same", "valid"):
             actual = optimized(img1, img2, 11, padding=padding)
             assert actual.is_contiguous()
