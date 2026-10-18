@@ -68,7 +68,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select children to apply in random order. The selection probability aligns to the
             ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum or
-            than the number of children with a nonzero weight.
+            than the number of children with a nonzero weight, mix augmentations not counted.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
