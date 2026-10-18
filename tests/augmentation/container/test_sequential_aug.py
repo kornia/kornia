@@ -215,6 +215,28 @@ class TestConventionImageSequential(BaseTester):
                 self.assert_close(out, x, rtol=0.0, atol=0.0)
         assert selected == {(), ("RandomMixUpV2_2",)}
 
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_mix_insertion_draws_among_every_mix_member_6068(self, container, device, dtype):
+        # The insertion draws uniformly among the mix members and does not honor their own weights, as on main: both
+        # mix members are inserted although their weights are 0.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=2,
+            random_apply_weights=[1.0, 1.0, 0.0, 0.0],
+        )
+        mixes = set()
+        for seed in range(30):
+            torch.manual_seed(seed)
+            seq(x)
+            names = [p.name for p in seq._params]
+            assert len(names) == 2
+            mixes.update(name for name in names if name.startswith("RandomMixUpV2"))
+        assert mixes == {"RandomMixUpV2_2", "RandomMixUpV2_3"}
+
     def test_convention_slice_crop_inverse_restores_the_canvas(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
