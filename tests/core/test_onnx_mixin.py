@@ -50,6 +50,14 @@ def _input_dims(op):
     return [d.dim_param or d.dim_value for d in op.graph.input[0].type.tensor_type.shape.dim]
 
 
+_NO_CACHE = object()
+
+
+def _cache_of(module):
+    # The ``show()`` / ``save()`` output cache as stored on the module, or a sentinel when it has none.
+    return module.__dict__.get("_output_image", _NO_CACHE)
+
+
 def _run(op, x):
     session = ort.InferenceSession(op.SerializeToString(), providers=["CPUExecutionProvider"])
     return torch.from_numpy(session.run(None, {session.get_inputs()[0].name: x.numpy()})[0])
@@ -114,13 +122,13 @@ class TestONNXExportMixin(BaseTester):
         if dynamo and not torch_version_ge(2, 9, 0):
             pytest.skip("the default exporter below torch 2.9 is the legacy one")
         outer, modules = self._cached_tree()
-        before = [m.__dict__["_output_image"] for m in modules]
+        before = [_cache_of(m) for m in modules]
         outer.to_onnx(save=False, pseudo_shape=[1, 3, 4, 4], dynamo=dynamo, **_RGB)
-        assert all(m.__dict__["_output_image"] is cache for m, cache in zip(modules, before))
+        assert all(_cache_of(m) is cache for m, cache in zip(modules, before))
 
     def test_failed_export_keeps_every_output_cache(self, monkeypatch):
         outer, modules = self._cached_tree()
-        before = [m.__dict__["_output_image"] for m in modules]
+        before = [_cache_of(m) for m in modules]
         bare = nn.Identity()  # a module without the attribute must not get one
         outer.append(bare)
 
@@ -132,8 +140,8 @@ class TestONNXExportMixin(BaseTester):
         monkeypatch.setattr(torch.onnx, "export", _run_then_fail)
         with pytest.raises(RuntimeError, match="export failed"):
             outer.to_onnx(save=False, pseudo_shape=[1, 3, 4, 4], **_RGB)
-        assert all(m.__dict__["_output_image"] is cache for m, cache in zip(modules, before))
-        assert "_output_image" not in bare.__dict__
+        assert all(_cache_of(m) is cache for m, cache in zip(modules, before))
+        assert _cache_of(bare) is _NO_CACHE
 
     def test_explicit_training_mode_is_the_legacy_exporters_opt_out(self):
         # The documented opt-out from the eval-mode export: an explicit ``training=TRAINING`` reaches the legacy
