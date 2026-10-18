@@ -108,6 +108,12 @@ def _cases():
             id="warp_perspective",
         ),
         pytest.param(kornia.filters.MedianBlur((3, 3)), (img,), id="MedianBlur"),
+        # A kernel factory has no tensor input: add it to one. The ramp was an int64 arange times a float, an
+        # ``aten.mul.Scalar`` the 2.14 dynamo exporter has no translation for with onnxscript 0.7.1.
+        pytest.param(_Fn(lambda x: kornia.filters.get_hanning_kernel1d(9) + x), (torch.zeros(9),), id="hanning1d"),
+        pytest.param(
+            _Fn(lambda x: kornia.filters.get_hanning_kernel2d((5, 7)) + x), (torch.zeros(5, 7),), id="hanning2d"
+        ),
         pytest.param(_Fn(kornia.contrib.distance_transform), ((gray > 0.7).float(),), id="distance_transform"),
         pytest.param(
             kornia.losses.HausdorffERLoss(),
