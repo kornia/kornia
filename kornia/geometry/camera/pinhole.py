@@ -106,7 +106,7 @@ class PinholeCamera:
     @staticmethod
     def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
         if len(data.shape) not in (3, 4) or data.shape[-2:] != (4, 4):
-            raise ValueError(f"{data_name} must be Bx4x4 or BxNx4x4; got {data.shape}")
+            raise ValueError(f"Argument {data_name} shape must be Bx4x4 or BxNx4x4. Got {data.shape}")
         return True
 
     @staticmethod
