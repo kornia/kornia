@@ -56,9 +56,8 @@ class TestDexiNed(BaseTester):
         out = model(img)
         self.assert_close(out, expect, atol=1e-3, rtol=1e-2)
 
-    @pytest.mark.parametrize("cls", [DexiNed, FilterDexiNed], ids=["models", "filters"])
-    def test_backward(self, cls, device, dtype):
-        net = cls(pretrained=False).to(device, dtype)
+    def test_backward(self, device, dtype):
+        net = DexiNed(pretrained=False).to(device, dtype)
         # The in-place error does not depend on the size. At 24x36 the smallest training-mode BatchNorm maps are 2x3.
         # 16x24 reaches 1x2, where BatchNorm normalises two values and the float16 input gradient overflows for some
         # seeds; 8x12 reaches 1x1, which raises.
@@ -75,20 +74,22 @@ class TestDexiNed(BaseTester):
         assert torch.isfinite(img.grad).all()
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("cls", [DexiNed, FilterDexiNed], ids=["models", "filters"])
-    def test_gradcheck(self, cls, device):
+    def test_gradcheck(self, device):
         # A full gradcheck: fast mode checks one random projection of the Jacobian and passes a dense layer whose input
         # is detached from the graph. 8x12 keeps it to about 16 s per class; in evaluation mode BatchNorm accepts the
         # 1x1 deepest maps.
-        net = cls(pretrained=False).to(device, torch.float64).eval()
+        net = DexiNed(pretrained=False).to(device, torch.float64).eval()
         img = torch.rand(1, 3, 8, 12, device=device, dtype=torch.float64)
         self.gradcheck(net, (img,), fast_mode=False)
 
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer): ...
 
+    def test_the_filters_path_is_the_same_class(self):
+        # kornia.filters.dexined re-exports the network instead of keeping a second copy of it.
+        assert FilterDexiNed is DexiNed
 
-@pytest.mark.parametrize("cls", [FilterDexiNed, DexiNed], ids=["filters", "models"])
+
 class TestDexiNedLoadFromFile:
     """``load_from_file`` reads a local file itself; the hub cache is keyed by base name (#5477)."""
 
@@ -108,7 +109,7 @@ class TestDexiNedLoadFromFile:
         return loaded
 
     @pytest.mark.parametrize("spelling", ["absolute", "home"])
-    def test_a_local_file_is_loaded_even_when_the_cache_holds_its_name(self, cls, spelling, tmp_path, monkeypatch):
+    def test_a_local_file_is_loaded_even_when_the_cache_holds_its_name(self, spelling, tmp_path, monkeypatch):
         self._hub_with_a_cached_decoy(tmp_path, monkeypatch, "dexined.pth")
         local = tmp_path / "weights" / "dexined.pth"
         local.parent.mkdir()
@@ -119,7 +120,7 @@ class TestDexiNedLoadFromFile:
             path_file = "~/weights/dexined.pth"
         else:
             path_file = str(local)
-        model = cls(pretrained=False).train()
+        model = DexiNed(pretrained=False).train()
         loaded = self._record_load_state_dict(model, monkeypatch)
 
         model.load_from_file(path_file)
@@ -130,9 +131,9 @@ class TestDexiNedLoadFromFile:
         assert torch.equal(state_dict["w"], torch.ones(3))
         assert not model.training
 
-    def test_a_string_that_names_no_file_is_still_treated_as_a_url(self, cls, tmp_path, monkeypatch):
+    def test_a_string_that_names_no_file_is_still_treated_as_a_url(self, tmp_path, monkeypatch):
         self._hub_with_a_cached_decoy(tmp_path, monkeypatch, "dexined.pth")
-        model = cls(pretrained=False)
+        model = DexiNed(pretrained=False)
         loaded = self._record_load_state_dict(model, monkeypatch)
 
         with pytest.raises(ValueError, match="scheme"):
@@ -140,12 +141,12 @@ class TestDexiNedLoadFromFile:
 
         assert loaded == []
 
-    def test_a_pickled_callable_in_a_local_file_is_refused_and_never_run(self, cls, tmp_path, monkeypatch):
+    def test_a_pickled_callable_in_a_local_file_is_refused_and_never_run(self, tmp_path, monkeypatch):
         # The local branch loads with ``weights_only=True``, as the hub branch does.
         marker = tmp_path / "marker"
         path = tmp_path / "dexined.pth"
         torch.save({"w": torch.ones(3), "extra": CreatesMarkerOnLoad(marker)}, path)
-        model = cls(pretrained=False)
+        model = DexiNed(pretrained=False)
         loaded = self._record_load_state_dict(model, monkeypatch)
 
         with pytest.raises(pickle.UnpicklingError):
