@@ -100,7 +100,7 @@ class TestDexiNed(BaseTester):
         for cls in classes:
             # Protocol 0 writes the module name as a text line, so it can be rewritten in place.
             pickled = pickle.dumps(cls, protocol=0).replace(b"kornia.models.dexined", b"kornia.filters.dexined")
-            assert pickle.loads(pickled) is cls
+            assert pickle.loads(pickled) is cls  # noqa: S301
 
 
 class TestDexiNedLoadFromFile:
