@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Optional, Union
 
 from kornia.core.external import onnx
@@ -29,8 +30,12 @@ __all__ = ["ONNXModule", "load"]
 class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     """ONNXModule to wrap an ONNX operator.
 
+    Calling the object runs the graph on numpy arrays or CPU torch tensors of a dtype numpy has (not bfloat16 or
+    float8) and returns a list of numpy arrays; see ``ONNXRuntimeMixin.__call__``.
+
     Args:
-        arg: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
+        op: One ONNX model: an ONNX ModelProto object, or a file path as ``str`` or :class:`os.PathLike` (a path
+            object always names a local file).
             For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
         providers: A list of execution providers for ONNXRuntime
@@ -38,14 +43,14 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         session_options: Optional ONNXRuntime session options for optimizing the session.
         cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
-        target_ir_version: The target IR version to convert to.
-        target_opset_version: The target OPSET version to convert to.
+        target_ir_version: The IR version to convert the model to. If None, the model keeps its IR version.
+        target_opset_version: The OPSET version to convert the model to. If None, the model keeps its OPSET version.
 
     """
 
     def __init__(
         self,
-        op: Union[onnx.ModelProto, str],
+        op: Union[onnx.ModelProto, str, os.PathLike],
         providers: Optional[list[str]] = None,
         session_options: Optional[ort.SessionOptions] = None,
         cache_dir: Optional[str] = None,
@@ -103,14 +108,15 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: Union[onnx.ModelProto, str]) -> ONNXModule:
+def load(model_name: Union[onnx.ModelProto, str, os.PathLike]) -> ONNXModule:
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with
     the `__call__` method, with less boilerplate.
 
     Args:
-        model_name: The name of the model to load. For Hugging Face-hosted models,
+        model_name: The name of the model to load: a file path as ``str`` or :class:`os.PathLike` (a path object
+            always names a local file), or an ONNX ModelProto object. For Hugging Face-hosted models,
             use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
 

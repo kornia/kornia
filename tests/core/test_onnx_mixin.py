@@ -344,6 +344,66 @@ class TestONNXRuntimeMixin(BaseTester):
             assert runtime(b, a)[0].tolist() == [97.0]
             with pytest.raises(ValueError, match="Expected 2 ONNX inputs, got 3"):
                 runtime(a, b, a)
+            # torch tensors on the CPU and numpy arrays mix
+            assert runtime(torch.tensor([2.0]), b)[0].tolist() == [-97.0]
+
+    def test_runtime_takes_cpu_torch_tensors(self, op):
+        import numpy as np
+
+        from kornia.onnx import ONNXModule, ONNXSequential
+
+        x = torch.rand(2, 3, 5, 4)
+        inputs = [
+            x,
+            x.clone().requires_grad_(True),
+            torch.rand(2, 3, 4, 5).transpose(-1, -2),  # not contiguous
+        ]
+        for runtime in (ONNXSequential(op), ONNXModule(op)):
+            for value in inputs:
+                (out,) = runtime(value)
+                assert isinstance(out, np.ndarray)
+                assert out.tolist() == runtime(np.ascontiguousarray(value.detach().numpy()))[0].tolist()
+                self.assert_close(torch.from_numpy(out), value.detach().sigmoid())
+
+    def test_runtime_rejects_tensors_off_the_cpu(self, op):
+        from kornia.onnx import ONNXModule, ONNXSequential
+
+        x = torch.empty(1, 3, 4, 5, device="meta")
+        for runtime in (ONNXSequential(op), ONNXModule(op)):
+            with pytest.raises(ValueError, match=r"input 0 is a torch tensor on meta.*Move it to the CPU"):
+                runtime(x)
+
+    @pytest.fixture
+    def subtract(self):
+        from kornia.onnx import ONNXModule
+
+        def _value(name):
+            return onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, [2])
+
+        node = onnx.helper.make_node("Sub", ["x", "y"], ["output"])
+        graph = onnx.helper.make_graph([node], "sub", [_value("x"), _value("y")], [_value("output")])
+        return ONNXModule(onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 17)], ir_version=9))
+
+    def test_runtime_names_the_input_off_the_cpu(self, subtract):
+        with pytest.raises(ValueError, match=r"ONNX input 1 is a torch tensor on meta"):
+            subtract(torch.tensor([3.0, 1.0]), torch.empty(2, device="meta"))
+
+    @pytest.mark.parametrize("dtype_numpy_lacks", [torch.bfloat16, torch.float8_e4m3fn])
+    def test_runtime_rejects_tensors_of_a_dtype_numpy_lacks_naming_the_input(self, subtract, dtype_numpy_lacks):
+        a = torch.tensor([3.0, 1.0])
+        with pytest.raises(TypeError, match=rf"ONNX input 1 is a {dtype_numpy_lacks} tensor, a dtype numpy has no"):
+            subtract(a.numpy(), a.to(dtype_numpy_lacks))
+
+    def test_runtime_rejects_sparse_tensors_naming_the_input(self, subtract):
+        a = torch.tensor([3.0, 0.0])
+        with pytest.raises(TypeError, match=r"ONNX input 0 is a torch.sparse_coo tensor.*\.to_dense\(\)"):
+            subtract(a.to_sparse(), a)
+
+    def test_runtime_reads_a_negative_bit_view(self, subtract):
+        # .conj().imag returns a view with the negative bit set, which .numpy() refuses: [3, 1] - [-2, 1]
+        negative_view = torch.tensor([1 + 2j, 3 - 1j]).conj().imag
+        assert negative_view.is_neg()
+        assert subtract(torch.tensor([3.0, 1.0]), negative_view)[0].tolist() == [5.0, 0.0]
 
     def test_add_metadata_overwrites_existing_keys(self, op):
         keys = [prop.key for prop in op.metadata_props]

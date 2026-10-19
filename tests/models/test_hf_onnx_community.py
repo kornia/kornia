@@ -68,6 +68,25 @@ def test_to_onnx_keeps_one_metadata_entry_per_key(include_pre_and_post_processor
     onnx.checker.check_model(exported)
 
 
+def test_model_with_its_own_source_chains_with_a_kornia_pre_processor():
+    # #6117: the model's "source" differs from the one kornia writes into the pre-processor, which merge_models
+    # refused: "Can't merge models with different values for the same model metadata property".
+    import numpy as np
+
+    model = _identity_model(("source", "optimum"))
+    pre_processor = _identity_model(("source", "kornia"), ("version", kornia.__version__))
+
+    hf_model = HFONNXComunnityModel(model, pre_processor=pre_processor)
+
+    assert hf_model(np.array([3.0], dtype=np.float32))[0].tolist() == [3.0]
+    # the later model's value wins; the caller's graphs keep their own
+    assert [(prop.key, prop.value) for prop in hf_model._combined_op.metadata_props] == [
+        ("source", "optimum"),
+        ("version", kornia.__version__),
+    ]
+    assert [(prop.key, prop.value) for prop in model.metadata_props] == [("source", "optimum")]
+
+
 @pytest.mark.parametrize("include_pre_and_post_processor", [False, True])
 def test_to_onnx_leaves_the_stored_and_the_callers_graphs_unchanged(include_pre_and_post_processor):
     # Each export carries that call's metadata on a copy: the keys of one call used to be written into the stored
