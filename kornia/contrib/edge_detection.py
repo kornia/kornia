@@ -249,7 +249,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
                 If True, write the model to ``onnx_name``; it is returned either way.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
-            kwargs: Additional arguments to convert to onnx.
+            kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
         Raises:
             ValueError: With the pre- and post-processor, if the ``ResizePostProcessor`` resizes with ``"area"``:

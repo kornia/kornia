@@ -93,8 +93,10 @@ Kornia augmentations are plain ``nn.Module`` s and are exportable for deployment
   ``AugmentationSequential`` fuses the pointwise chain end to end. See the per-op ``test_dynamo``
   tests for the compile-clean set.
 
-- **ONNX.** Export a pipeline with :class:`kornia.onnx.ONNXSequential`; pre-built ONNX models are
-  published under the ``kornia/ONNX_models`` Hugging Face repo.
+- **ONNX.** :class:`kornia.onnx.ONNXSequential` chains ONNX graphs; it does not take an augmentation
+  module. Export the pipeline with ``torch.onnx.export(..., dynamo=True)`` as the
+  :doc:`ONNX guide </get-started/onnx>` shows, then chain the file with ``ONNXSequential``. Pre-built ONNX
+  models are published under the ``kornia/ONNX_models`` Hugging Face repo.
 
 .. currentmodule:: kornia.augmentation
 

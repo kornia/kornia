@@ -39,12 +39,20 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
         providers: A list of execution providers for ONNXRuntime
-            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
+            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']). A provider that the installed onnxruntime
+            build does not offer is skipped with onnxruntime's ``UserWarning``; the session runs on the CPU if none
+            is left. If None, the CPU.
         session_options: Optional ONNXRuntime session options for optimizing the session.
         cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         target_ir_version: The IR version to convert the model to. If None, the model keeps its IR version.
         target_opset_version: The OPSET version to convert the model to. If None, the model keeps its OPSET version.
+
+    Note:
+        Given an ``onnx.ModelProto``, the module holds that object itself, not a copy, unless a target version
+        converts it: with no target, or with a target the model already has, ``module.op is op``. Whatever edits the
+        wrapped graph in place, such as :meth:`add_metadata`, then changes the caller's model too. Pass a copy
+        (``copy.deepcopy(op)``) to keep the original unchanged.
 
     """
 
@@ -97,6 +105,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
     def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:
         """Attach metadata entries to the wrapped ONNX model graph.
+
+        The metadata is written into the wrapped graph in place. When the module was built from an
+        ``onnx.ModelProto``, that can be the caller's own object; see the note of :class:`ONNXModule`.
 
         Args:
             additional_metadata: Optional list of ``(key, value)`` string pairs
