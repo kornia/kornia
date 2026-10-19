@@ -80,6 +80,14 @@ _MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
 
 
 class TestMS_SSIMLoss(BaseTester):
+    def test_shape_mismatch_raises(self, device, dtype):
+        # GH#6157 a batch-2 input against a batch-1 target used to broadcast
+        # silently and return a wrong loss; mismatched shapes must raise.
+        img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        img2 = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="same shape"):
+            kornia.losses.MS_SSIMLoss()(img1, img2)
+
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_high_pixel_values_use_float32_moments(self, device, dtype):
         # The float64 reference is computed on the CPU, so the device leg needs no float64 support.
@@ -165,9 +173,8 @@ class TestMS_SSIMLoss(BaseTester):
             criterion(torch.rand(1), 2)
         assert "Output type is not a torch.Tensor. Got" in str(errinfo)
 
-        with pytest.raises(ValueError) as errinfo:
+        with pytest.raises(ValueError, match="same shape"):
             criterion(torch.rand(1), torch.rand(1, 2))
-        assert "Input shapes should be same. Got" in str(errinfo)
 
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
     @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
