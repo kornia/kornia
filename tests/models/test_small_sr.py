@@ -298,14 +298,22 @@ class TestSmallSRNetWrapper(BaseTester):
 class TestSmallSRNetWeights:
     """``load_from_file`` reads a local checkpoint itself and sends a URL through the hub cache."""
 
-    def test_a_local_checkpoint_is_read(self, tmp_path):
+    @pytest.mark.parametrize("spelling", ["absolute", "home"])
+    def test_a_local_checkpoint_is_read(self, monkeypatch, tmp_path, spelling):
         source = SmallSRNet(upscale_factor=3, pretrained=False)
         path = tmp_path / "weights.pth"
         torch.save(source.state_dict(), path)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        loads = []
+        real_load = torch.load
+        monkeypatch.setattr(torch, "load", lambda *a, **kw: loads.append(kw.get("weights_only")) or real_load(*a, **kw))
         model = SmallSRNet(upscale_factor=3, pretrained=False).train()
-        model.load_from_file(str(path))
+        model.load_from_file(str(path) if spelling == "absolute" else "~/weights.pth")
         assert all(torch.equal(v, source.state_dict()[k]) for k, v in model.state_dict().items())
         assert not model.training
+        # A local checkpoint is unpickled with weights_only=True, as the hub path does.
+        assert loads == [True]
 
     def test_a_url_goes_through_the_hub_cache(self, monkeypatch, tmp_path):
         from kornia.models import small_sr
@@ -315,13 +323,15 @@ class TestSmallSRNetWeights:
         calls = []
 
         def _load(url, **kwargs):
-            calls.append((url, kwargs.get("model_dir")))
+            # No model_dir and no file_name: the torch hub cache, under the URL's base name, which is the key
+            # .github/download-models-weights.py prefetches it by.
+            calls.append((url, kwargs.get("model_dir"), kwargs.get("file_name")))
             return source.state_dict()
 
         monkeypatch.setattr(small_sr, "load_state_dict_from_url", _load)
         model = SmallSRNet(upscale_factor=3, pretrained=True)
         # The torch hub cache: no ``model_dir`` overrides it.
-        assert calls == [(small_sr.url, None)]
+        assert calls == [(small_sr.url, None, None)]
         assert all(torch.equal(v, source.state_dict()[k]) for k, v in model.state_dict().items())
         # Not cached under the working directory, where each new one downloaded the weights again.
         assert not any(tmp_path.iterdir())

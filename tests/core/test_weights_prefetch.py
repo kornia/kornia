@@ -38,9 +38,8 @@ enumerated in :data:`WEIGHT_REGISTRIES`). Two other download paths live in
 as the vision-language builders (``kornia/models/{kimi_vl,siglip2}/builder.py``)
 call it, to fetch a ``model.safetensors``, and as ``kornia/feature/lightglue_onnx/utils/download.py``
 calls it, to fetch the LightGlue ONNX models -- and ``CachedDownloader`` into
-``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
-``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR matrix
-downloads through either today; a test that did would fetch live from every
+``.kornia_hub/`` (``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR
+matrix downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
 
 Those builders' checkpoints could in principle be prefetched as the reference

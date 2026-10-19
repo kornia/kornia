@@ -226,4 +226,5 @@ class TestRRDBNetBuilderWeights:
         # The weights go to the torch hub cache, as every other kornia checkpoint does, not under the working
         # directory, where each new one downloaded them again: no ``model_dir`` overrides the hub's.
         assert calls[0][1].get("model_dir") is None
+        assert calls[0][1].get("file_name") is None
         assert not any(tmp_path.iterdir())

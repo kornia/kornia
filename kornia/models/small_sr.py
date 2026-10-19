@@ -61,13 +61,19 @@ class SmallSRNet(nn.Module):
         Args:
             path_file: path of a local checkpoint file, or a URL accepted by
                 :func:`kornia.core.download.load_state_dict_from_url`. A string naming an existing file (a leading
-                ``~`` is expanded) is read with :func:`torch.load` and ``weights_only=True``; anything else goes
-                through the torch hub cache. The state dictionary is loaded strictly.
+                ``~`` is expanded) is read with :func:`torch.load` and ``weights_only=True``; a URL (a string with
+                ``://``) goes through the torch hub cache. The state dictionary is loaded strictly.
+
+        Raises:
+            FileNotFoundError: If ``path_file`` is neither an existing file nor a URL.
         """
         local = os.path.expanduser(path_file)
         if os.path.isfile(local):
             with open(local, "rb") as f:
                 pretrained_dict = torch.load(f, map_location=torch.device("cpu"), weights_only=True)
+        elif "://" not in str(path_file):
+            # Not a URL either: name the missing file instead of load_state_dict_from_url's "not a URL" error.
+            raise FileNotFoundError(f"No checkpoint file at {local!r}.")
         else:
             pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
