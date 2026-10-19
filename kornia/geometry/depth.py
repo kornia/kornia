@@ -241,6 +241,9 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
           the columns tilts it towards ``-x``, one growing along the rows towards ``-y``.
         - the arguments mean what they mean for :func:`~kornia.geometry.depth.depth_to_3d`, and the result
           has its :math:`(B, 3, H, W)` layout.
+        - float16 and bfloat16 inputs are computed in float32. The result has the promoted dtype of ``depth`` and
+          ``camera_matrix``, or the default floating dtype when both are integer, and it does not follow an
+          enclosing autocast region: its dtype and values are the same inside autocast as outside.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`, with
