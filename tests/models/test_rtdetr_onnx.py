@@ -386,6 +386,25 @@ def test_detector_with_batched_detections_accepts_a_dynamic_batch_override_6111(
     assert_close(torch.from_numpy(detections), detector(images))
 
 
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("override", [pytest.param({}, id="default"), *_DYNAMIC_BATCH])
+def test_detector_model_only_onnx_of_a_per_image_detector_keeps_a_dynamic_batch_6111(override):
+    """Without the post-processor, the model's tensor outputs follow any batch, whatever the post-processor returns."""
+    _importorskip_exporter(override)
+    ort = pytest.importorskip("onnxruntime")
+
+    detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), _PerImageDetections())
+    exported = detector.to_onnx(image_size=32, include_pre_and_post_processor=False, save=False, **override)
+    assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_param
+
+    images = torch.rand(3, 3, 32, 32, generator=torch.Generator().manual_seed(0))
+    session = ort.InferenceSession(exported.SerializeToString(), providers=["CPUExecutionProvider"])
+    scores, boxes = session.run(None, {"input": images.numpy()})
+    expected_scores, expected_boxes = detector.model(images)
+    assert_close(torch.from_numpy(scores), expected_scores)
+    assert_close(torch.from_numpy(boxes), expected_boxes)
+
+
 class _NormalisedDetections(_ScoredDetections):
     """``_ScoredDetections`` behind a batch norm, whose statistics a forward pass in training mode would update."""
 
