@@ -142,12 +142,8 @@ class TestImageHistogram2d(BaseTester):
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("return_pdf", [False, True])
-    def test_auto_centers_preserve_input_dtype(self, device, dtype, return_pdf):
-        """The float32-centers fix above (test_large_n_bins_float16_centers_not_collapsed)
-        must not itself change the function's public return dtype: before that fix, a
-        float16/bfloat16 image with centers=None returned float16/bfloat16 hist/pdf. Building
-        centers at float32 promotes u/kernel_values through ordinary PyTorch type promotion,
-        so hist/pdf must be explicitly cast back to image.dtype at the return boundary."""
+    def test_auto_centers_use_float32_for_low_precision_counts(self, device, dtype, return_pdf):
+        """Half-precision counts can exceed the dtype's finite range, so keep those counts in float32."""
         if device.type == "mps" and dtype == torch.bfloat16 and torch_version_lt(2, 14, 0):
             pytest.skip("bfloat16 on MPS is only exercised on torch >= 2.14 (the version of the blocking MPS job)")
         torch.manual_seed(0)
@@ -155,8 +151,23 @@ class TestImageHistogram2d(BaseTester):
 
         hist, pdf = TestImageHistogram2d.fcn(image, 0.0, 1.0, 64, kernel="gaussian", return_pdf=return_pdf)
 
-        assert hist.dtype == dtype
-        assert pdf.dtype == dtype
+        assert hist.dtype == torch.float32
+        assert pdf.dtype == torch.float32
+
+    @pytest.mark.parametrize("explicit_centers", [False, True])
+    def test_float16_large_image_counts_and_pdf_are_finite(self, device, explicit_centers):
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 512, 512, device=device, dtype=torch.float16) * 255.0
+        image[..., :256, :] = 0.0
+        centers = torch.arange(256, device=device, dtype=torch.float16) if explicit_centers else None
+
+        hist, pdf = TestImageHistogram2d.fcn(image, 0.0, 255.0, 256, centers=centers, return_pdf=True)
+
+        assert hist.dtype == torch.float32
+        assert pdf.dtype == torch.float32
+        assert torch.isfinite(hist).all()
+        assert torch.isfinite(pdf).all()
+        assert hist[..., 0].max() > 65504
 
     @pytest.mark.parametrize("dtype", [torch.uint8, torch.int32])
     def test_integer_image_is_not_cast_into_an_integer_histogram(self, device, dtype):
@@ -378,6 +389,29 @@ class TestHistogram2d(BaseTester):
 
 class TestHistogram(BaseTester):
     fcn = kornia.enhance.histogram
+
+    @pytest.mark.parametrize("bandwidth_dtype", ["input", "float32"])
+    def test_gradient_of_65536_samples_matches_float64(self, device, dtype, bandwidth_dtype):
+        # The gradient reaches the samples through per-bin kernel terms that scale like 1 / N and fall below the
+        # float16 normal range. A float32 bandwidth tensor, as in the docstring example, must not skip the fix.
+        index = torch.arange(65536, dtype=torch.float64)
+        x = ((index * 0.6180339887498949) % 1)[None].to(device=device, dtype=dtype)
+        bins = torch.linspace(0, 1, 64, device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.01, device=device, dtype=dtype if bandwidth_dtype == "input" else torch.float32)
+        weights = torch.linspace(-1, 1, 64, dtype=torch.float64).to(dtype)
+
+        def grad(x, bins, bandwidth):
+            x = x.detach().requires_grad_()
+            hist = TestHistogram.fcn(x, bins, bandwidth)
+            assert hist.dtype == x.dtype
+            (hist * weights.to(hist)).sum().backward()
+            return x.grad.cpu().double()
+
+        # float64 reference on the CPU, from the same dtype-rounded inputs.
+        expected = grad(x.cpu().double(), bins.cpu().double(), bandwidth.cpu().double())
+        actual = grad(x, bins, bandwidth)
+        tolerance = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        assert ((actual - expected).norm() / expected.norm()).item() < tolerance
 
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 16, device=device, dtype=dtype)

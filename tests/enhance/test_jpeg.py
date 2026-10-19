@@ -1191,6 +1191,34 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.dtype == dtype
         assert torch.equal(img_jpeg, wide.to(dtype))
 
+    def test_a_mixed_precision_region_does_not_reach_the_codec(self, device) -> None:
+        # A caller's autocast ran the codec's matrix products and convolutions in its lower dtype: a float32 image under
+        # CPU bfloat16 autocast came out about 0.1 away from the same call outside autocast. MPS autocasts to float16;
+        # the test has no "autocast" in its name, which conftest would skip on MPS.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
+        bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
+        autocast_dtype = torch.bfloat16 if bfloat16_ok else torch.float16
+        img = torch.rand(4, 3, 32, 32, device=device, requires_grad=True)
+        jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, requires_grad=True)
+        qt_y = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        qt_c = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        for codec in (kornia.enhance.jpeg_codec_differentiable, kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)):
+            expected = codec(img, jpeg_quality)
+            expected_grads = torch.autograd.grad(expected.sum(), (img, jpeg_quality))
+            with torch.autocast(device.type, dtype=autocast_dtype):
+                actual = codec(img, jpeg_quality)
+            actual_grads = torch.autograd.grad(actual.sum(), (img, jpeg_quality))
+            assert actual.dtype == torch.float32
+            assert torch.equal(actual, expected)
+            for grad, expected_grad in zip(actual_grads, expected_grads):
+                if device.type == "cuda":
+                    # CUDA's interpolation backward accumulates with atomics, so two backward passes may round apart.
+                    self.assert_close(grad, expected_grad)
+                else:
+                    assert torch.equal(grad, expected_grad)
+
     def test_half_precision_backward(self, device, dtype) -> None:
         if dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("float32 and float64 gradients are covered by test_gradcheck")

@@ -116,13 +116,12 @@ class Hyperplane(nn.Module):
         """
         return Scalar(self._d)
 
-    def abs_distance(self, p: Vector3) -> Scalar:
+    def abs_distance(self, p: Vector3 | torch.Tensor) -> Scalar:
         """Compute unsigned distances from points to the hyperplane.
 
         Args:
-            p: Point or batch of points wrapped as
-                :class:`~kornia.geometry.vector.Vector3`. The last coordinate
-                dimension represents ``(x, y, z)``.
+            p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
+                or :class:`torch.Tensor`. The last coordinate dimension represents ``(x, y, z)``.
 
         Returns:
             :class:`~kornia.geometry.vector.Scalar` with non-negative distance
@@ -132,8 +131,7 @@ class Hyperplane(nn.Module):
         return Scalar(self.signed_distance(p).abs())
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L145
-    # TODO: tests
-    def signed_distance(self, p: Vector3) -> Scalar:
+    def signed_distance(self, p: Vector3 | torch.Tensor) -> Scalar:
         """Compute signed distances from points to the hyperplane.
 
         The sign is determined by the stored normal vector. Points in the
@@ -141,25 +139,23 @@ class Hyperplane(nn.Module):
         negative values; points on the plane evaluate to zero.
 
         Args:
-            p: Point or batch of points as
-                :class:`~kornia.geometry.vector.Vector3`, or a compatible
-                tensor-like vector accepted by the dot-product routine.
+            p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
+                or :class:`torch.Tensor`. Gradients with respect to the points are preserved for both.
 
         Returns:
             :class:`~kornia.geometry.vector.Scalar` containing signed distance
             values for each input point.
         """
         KORNIA_CHECK(isinstance(p, (Vector3, torch.Tensor)))
-        return self.normal.dot(p) + self.offset
+        return Scalar(batched_dot_product(self.normal.data, _unwrap(p)) + self.offset.data)
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
-    # TODO: tests
-    def projection(self, p: Vector3) -> Vector3:
+    def projection(self, p: Vector3 | torch.Tensor) -> Vector3:
         """Project points onto the hyperplane along the normal direction.
 
         Args:
-            p: Point or batch of points wrapped as
-                :class:`~kornia.geometry.vector.Vector3`.
+            p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
+                or :class:`torch.Tensor`.
 
         Returns:
             :class:`~kornia.geometry.vector.Vector3` containing the closest
