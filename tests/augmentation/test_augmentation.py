@@ -5520,6 +5520,28 @@ class TestPadTo(BaseTester):
         # content is preserved with zeros padded onto the short width dimension
         self.assert_close(out[..., :2], img)
         self.assert_close(out[..., 2:], torch.zeros(1, 1, 6, 3, device=device, dtype=dtype))
+        self.assert_close(aug.inverse(out), img)
+
+    def test_default_crops_larger_input(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        out = PadTo(size=(4, 5))(img)
+        assert out.shape == (1, 1, 4, 5)
+        self.assert_close(out, img[..., :4, :5])
+
+    def test_flags_without_crop_if_exceeds_keep_cropping(self, device, dtype):
+        # A PadTo pickled before ``crop_if_exceeds`` existed unpickles with no such key in ``flags``.
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        del aug.flags["crop_if_exceeds"]
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        self.assert_close(aug(img), img[..., :4, :5])
+
+    @pytest.mark.parametrize("crop_if_exceeds", [True, False])
+    def test_dynamo(self, device, dtype, torch_optimizer, crop_if_exceeds):
+        # The input is taller and narrower than the target: one call crops (or keeps) the height and pads the width.
+        img = torch.rand(2, 3, 6, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=crop_if_exceeds)
+        compiled = torch_optimizer(aug, fullgraph=True)
+        self.assert_close(compiled(img), aug(img))
 
 
 class TestResize:
