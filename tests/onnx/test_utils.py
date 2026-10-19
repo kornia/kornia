@@ -401,7 +401,7 @@ class TestONNXLoader:
         from unittest import mock
 
         # UTF-8 with a non-ASCII value: a text-mode read decodes it by the locale (cp1252 on Windows) and mangles it.
-        expected = {"do_resize": True, "size": {"height": 518}, "processor_class": "Caf\u00e9Processor"}
+        expected = {"do_resize": True, "size": {"height": 518}, "processor_class": "R\u00e9sum\u00e9Processor"}
         config = tmp_path / "preprocessor_config.json"
         config.write_bytes(json.dumps(expected, ensure_ascii=False).encode("utf-8"))
         monkeypatch.setenv("HOME", str(tmp_path))
