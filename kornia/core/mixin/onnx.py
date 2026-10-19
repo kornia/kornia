@@ -157,11 +157,10 @@ def _merge_opset_imports(model: onnx.ModelProto) -> None:
     ``onnx.compose.merge_models`` concatenates the entries of both models after checking that they agree, so a chain
     of ``n`` models lists each domain ``n`` times; the version converter then updates only one of them, and the
     converted graph no longer merges with a model of the target version. Entries that disagree, which the checker and
-    ONNX Runtime accept, keep the first version, the one :meth:`ONNXMixin._opset_version` and the converter read.
+    ONNX Runtime accept, keep the last version, the one both of them read and :meth:`ONNXMixin._opset_version`
+    returns; the version converter refuses such a model.
     """
-    versions: dict[str, int] = {}
-    for entry in model.opset_import:
-        versions.setdefault(entry.domain, entry.version)
+    versions = {entry.domain: entry.version for entry in model.opset_import}
     del model.opset_import[:]
     model.opset_import.extend(onnx.helper.make_opsetid(domain, version) for domain, version in versions.items())
 
@@ -760,8 +759,9 @@ class ONNXMixin:
 
     @staticmethod
     def _opset_version(op: onnx.ModelProto) -> Optional[int]:
-        """Return the version of the default (``ai.onnx``) operator set that ``op`` imports, or None."""
-        for entry in op.opset_import:
-            if entry.domain in ("", "ai.onnx"):
-                return entry.version
-        return None
+        """Return the version of the default (``ai.onnx``) operator set that ``op`` imports, or None.
+
+        Of several entries, the last one is returned, the one ``onnx.checker`` and ONNX Runtime read.
+        """
+        versions = [entry.version for entry in op.opset_import if entry.domain in ("", "ai.onnx")]
+        return versions[-1] if versions else None
