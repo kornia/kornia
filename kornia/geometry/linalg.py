@@ -223,6 +223,11 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
 def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Tensor:
     r"""Apply transformations to a set of points.
 
+    Convention:
+        ``trans_01`` and ``points_1`` must have a floating-point or complex dtype. Homogeneous transforms can
+        produce fractional coordinates even when their inputs contain only integers, so accepting integer or boolean
+        tensors would silently truncate the result.
+
     Args:
         trans_01: tensor for transformations of shape
           :math:`(D+1, D+1)` or :math:`(B, D+1, D+1)`.
@@ -242,6 +247,10 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(points_1)
+    if not (trans_01.is_floating_point() or trans_01.is_complex()):
+        raise ValueError(f"trans_01 must have a floating point or complex dtype. Got {trans_01.dtype}.")
+    if not (points_1.is_floating_point() or points_1.is_complex()):
+        raise ValueError(f"points_1 must have a floating point or complex dtype. Got {points_1.dtype}.")
     if trans_01.ndim == 2:
         trans_01 = trans_01.unsqueeze(0)
     # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a

@@ -59,6 +59,18 @@ class TestTransformPoints(BaseTester):
         with pytest.raises(ValueError, match=r"differ by one unit\. Got torch\.Size\(.*\) and torch\.Size\(\[5, 2\]\)"):
             kgl.transform_points(transform, points)
 
+    @pytest.mark.parametrize("integer_operand", ["transform", "points"])
+    def test_integer_dtypes_are_rejected(self, integer_operand, device, dtype):
+        transform = torch.eye(3, device=device, dtype=dtype)[None]
+        points = torch.tensor([[[0.5, 1.5]]], device=device, dtype=dtype)
+        if integer_operand == "transform":
+            transform = transform.to(torch.int64)
+        else:
+            points = points.to(torch.int64)
+
+        with pytest.raises(ValueError, match="floating point"):
+            kgl.transform_points(transform, points)
+
     @pytest.mark.parametrize("num_points", [2, 3])
     def test_unbatched_points_with_transform_batch_raise(self, num_points, device, dtype):
         # (N, D) points have no batch axis, so N == B must hit the batch check like N != B does
