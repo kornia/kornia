@@ -31,7 +31,7 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
     conv_quad_interp3d,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, deterministic_algorithms_on_cuda
 
 
 class TestStridedSubpixel(BaseTester):
@@ -1338,8 +1338,11 @@ class TestPackedQuadraticFit(BaseTester):
         for got, want in zip(actual, expected):
             self.assert_close(got, want, atol=0, rtol=0)
         weights = torch.linspace(0.1, 0.9, 64, device=device, dtype=dtype)
-        grad = torch.autograd.grad(sum((v * weights).sum() for v in actual[:3]), tiny)[0]
-        grad_ref = torch.autograd.grad(sum((v * weights).sum() for v in expected[:3]), system)[0]
+        # On CUDA the packed solve's repeated-index `index_select` backward accumulates with atomics in no fixed
+        # order, so two backward passes differ in the last bits; deterministic algorithms give both one order.
+        with deterministic_algorithms_on_cuda(device):
+            grad = torch.autograd.grad(sum((v * weights).sum() for v in actual[:3]), tiny)[0]
+            grad_ref = torch.autograd.grad(sum((v * weights).sum() for v in expected[:3]), system)[0]
         assert bool(torch.isfinite(grad).all())
         self.assert_close(grad, grad_ref * 2.0**50, atol=0, rtol=0)
 

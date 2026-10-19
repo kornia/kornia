@@ -15,9 +15,6 @@
 # limitations under the License.
 #
 
-from contextlib import contextmanager
-from typing import Iterator
-
 import pytest
 import torch
 from torch.utils._python_dispatch import TorchDispatchMode
@@ -38,6 +35,7 @@ from kornia.geometry.transform import ScalePyramid
 from testing.base import (
     DYNAMO_UNAVAILABLE_REASON,
     BaseTester,
+    deterministic_algorithms_on_cuda,
     dynamo_is_available,
     supports_conv2d,
     supports_reflect_padding,
@@ -45,24 +43,6 @@ from testing.base import (
     supports_topk,
 )
 from testing.default_device import default_device
-
-
-@contextmanager
-def _deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
-    # Some CUDA backward kernels accumulate with atomics, so two backward passes of one graph can round differently.
-    # Deterministic algorithms fix the accumulation order (CPU kernels already have one). `warn_only` keeps an op
-    # without a deterministic CUDA kernel running, as it does by default; it only warns. A strict mode the caller
-    # already set is kept.
-    if device.type != "cuda":
-        yield
-        return
-    enabled = torch.are_deterministic_algorithms_enabled()
-    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
-    torch.use_deterministic_algorithms(True, warn_only=warn_only if enabled else True)
-    try:
-        yield
-    finally:
-        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
 
 
 def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
@@ -202,7 +182,7 @@ class TestScaleSpaceDetector(BaseTester):
         # tolerance -- so about a third of the runs failed, the capped variant too, where both detectors take the
         # same separate path. Deterministic algorithms give both passes one accumulation order: the two detectors
         # then agree bit for bit on CUDA, as they do on CPU, and the default tolerance stands.
-        with _deterministic_algorithms_on_cuda(device):
+        with deterministic_algorithms_on_cuda(device):
             actual = detector(joint)(img, mask)
             expected = detector(separate)(img, mask)
             assert actual[0].ne(0).any()
