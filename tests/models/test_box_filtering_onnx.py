@@ -162,3 +162,24 @@ class TestBoxFilteringONNX(BaseTester):
         (actual,) = _session(exported).run(None, {"input": boxes.numpy()})
         self.assert_close(torch.from_numpy(actual), module(boxes))
         assert int((torch.from_numpy(actual)[:, :, 1] > 0).sum()) == 50
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("dynamo", _EXPORTERS)
+    def test_list_filter_without_threshold_exports_one_input_6112(self, dynamo):
+        """List mode without a threshold exports one input and matches eager at the eager default, 0.0."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+
+        module = BoxFiltering()
+        exported = module.to_onnx(save=False, input_shape=[2, -1, 6], dynamo=dynamo)
+        assert len(exported.graph.input) == 1
+
+        boxes = torch.zeros(2, 50, 6)
+        boxes[:, :, 1] = torch.linspace(-0.2, 0.99, 50)
+        boxes[:, :, 2:] = 1.0
+        actual = _session(exported).run(None, {"input": boxes.numpy()})
+        expected = module(boxes)
+        assert len(actual) == len(expected) == 2
+        for got, want in zip(actual, expected):
+            self.assert_close(torch.from_numpy(got), want)
+        assert sum(len(w) for w in expected) < 100  # the negative scores are dropped
