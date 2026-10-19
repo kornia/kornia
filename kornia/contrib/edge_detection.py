@@ -242,7 +242,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             image_size:
                 The height and width of the graph's input, which the returned maps have too. If None, both are
                 dynamic. With the pre- and post-processor, the pre-processor resizes the input to the size it was
-                built with, whatever ``image_size`` is; without them, the model runs at ``image_size``.
+                built with, whatever ``image_size`` is; without them, the model runs at the size of its input.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
