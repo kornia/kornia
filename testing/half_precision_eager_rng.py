@@ -172,7 +172,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
                     (f"tests/core/test_check.py::TestCheckShape::{test_name}",),
                     "value-independent",
                 )
-                for test_name, lines in (("test_valid", range(75, 79)), ("test_invalid", range(87, 91)))
+                for test_name, lines in (("test_valid", range(78, 82)), ("test_invalid", range(90, 94)))
                 for line in lines
             ),
             *(

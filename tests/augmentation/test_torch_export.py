@@ -67,12 +67,18 @@ def _pad_to() -> torch.nn.Module:
     return K.PadTo((40, 40))
 
 
+def _pad_to_no_crop() -> torch.nn.Module:
+    # The 32 x 32 input is taller than the target, so its height passes through and its width is padded.
+    return K.PadTo((16, 40), crop_if_exceeds=False)
+
+
 TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
     ("Normalize", _normalize),
     ("Denormalize", _denormalize),
     ("Resize", _resize),
     ("CenterCrop", _center_crop),
     ("PadTo", _pad_to),
+    ("PadTo[no-crop]", _pad_to_no_crop),
 ]
 
 
@@ -187,6 +193,34 @@ def test_torch_export_container_int_size_resize_6024(
     out = exported.module()(x)
     assert out.shape == eager.shape, f"{name}: shape {out.shape} vs {eager.shape}"
     torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)
+
+
+PAD_TO_FOLLOWERS: list[Tuple[str, Callable[[], list[torch.nn.Module]]]] = [
+    ("Resize", lambda: [K.Resize(16)]),
+    ("CenterCrop-resample", lambda: [K.CenterCrop(8, cropping_mode="resample")]),
+    ("Resize,CenterCrop-resample", lambda: [K.Resize(16), K.CenterCrop(8, cropping_mode="resample")]),
+]
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("name,factory", PAD_TO_FOLLOWERS, ids=[n for n, _ in PAD_TO_FOLLOWERS])
+@pytest.mark.device_agnostic
+def test_torch_export_container_pad_to_then_shape_dependent_6043(
+    name: str, factory: Callable[[], list[torch.nn.Module]]
+) -> None:
+    """A shape-dependent child after ``PadTo`` plans for the padded canvas under ``torch.export`` (#6043)."""
+    torch.manual_seed(0)
+    x = torch.randn(2, 3, 24, 40)
+    augs = [K.PadTo((40, 48)), *factory()]
+    expected = x
+    for aug in augs:
+        expected = aug(expected)
+    seq = K.AugmentationSequential(*augs, data_keys=["input"])
+    out = torch.export.export(seq, (x,)).module()(x)
+    assert out.shape == expected.shape, f"{name}: shape {out.shape} vs {expected.shape}"
+    torch.testing.assert_close(out, expected, atol=1e-5, rtol=1e-5)
 
 
 def _mask_export_case(case: str) -> Tuple[torch.nn.Module, tuple, Callable[[object], torch.Tensor], torch.Tensor]:

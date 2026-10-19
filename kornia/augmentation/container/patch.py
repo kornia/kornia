@@ -87,7 +87,8 @@ class PatchSequential(ImageSequential):
             if ``True`` and ``random_apply=False``, the number of args must equal the number of patches.
             if ``False``, the image processing args will be applied as a sequence to all patches.
         random_apply: randomly select children to apply in random order. Selections may repeat when the requested
-            count is larger than the sum of the selection weights.
+            count is larger than the sum of the selection weights or than the number of children with a nonzero
+            weight, mix augmentations not counted.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
@@ -421,10 +422,11 @@ class PatchSequential(ImageSequential):
 
         """
         if self.random_apply:
-            with_mix = False
+            # A mix augmentation may be drawn until one has been added, so at most one is applied in this call.
+            with_mix = True
             for i in range(batch_shape[0]):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
-                with_mix = mix_added
+                with_mix = with_mix and not mix_added
                 for s in seq:
                     if isinstance(s[1], (_AugmentationBase, SequentialBase, K.MixAugmentationBaseV2)):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i

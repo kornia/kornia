@@ -67,7 +67,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select children to apply in random order. The selection probability aligns to the
-            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum.
+            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum or
+            than the number of children with a nonzero weight, mix augmentations not counted.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
@@ -246,6 +247,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights[mix_indices] = 0
 
         total_weight = multinomial_weights.sum()
+        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights. A certain mix
+        # insertion below replaces the last drawn index, where torch.multinomial puts a member of weight 0, so one
+        # place more can then be drawn without replacement. That place is last because the draw keeps the top
+        # weight / Exp(1) scores, and a weight of 0 scores 0, below every positive weight.
+        num_nonzero = int(torch.count_nonzero(multinomial_weights).item())
+        mix_place = int(with_mix and len(mix_indices) != 0 and len(mix_indices) + num_samples >= len(self))
         # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
         if total_weight == 0 or num_samples == 0:
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
@@ -253,7 +260,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             indices = torch.multinomial(
                 multinomial_weights,
                 num_samples,
-                replacement=num_samples > total_weight.item(),
+                replacement=num_samples > total_weight.item() or num_samples > num_nonzero + mix_place,
             )
 
         mix_added = False
@@ -496,6 +503,8 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     Note:
        Augmentations that change the spatial size provide `output_size` with shape (B, spatial_dims).
+       `PadTo` and `RandomMosaic(output_size=...)` provide none, so their configured size is used; with
+       `crop_if_exceeds=False`, `PadTo` keeps a dimension that is already larger.
        Empty crops and resizes have no sampled
        output-size rows, so their configured size is used only when the image forward path
        always applies the transform. Other probability branches retain the current empty-gate
@@ -530,6 +539,20 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         for p in data:
             batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
+
+    # PadTo and RandomMosaic(output_size=...) return their configured size (PadTo(crop_if_exceeds=False): at least
+    # the input size) but emit no ``output_size``.
+    # No branch below matches them, so the final return passes the updated shape on.
+    if isinstance(module, (K.PadTo, K.RandomMosaic)):
+        size = module.flags["size" if isinstance(module, K.PadTo) else "output_size"]
+        if size is not None:
+            new_batch_shape = list(batch_shape)
+            dims = [operator.index(dim) for dim in size]
+            if isinstance(module, K.PadTo) and not module.flags.get("crop_if_exceeds", True):
+                # A dimension already larger than the target is kept, not cropped.
+                dims = [max(old, dim) for old, dim in zip(new_batch_shape[-len(dims) :], dims)]
+            new_batch_shape[-len(dims) :] = dims
+            batch_shape = torch.Size(new_batch_shape)
 
     if (
         batch_shape[0] == 0
