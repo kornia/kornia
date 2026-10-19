@@ -17,12 +17,15 @@
 
 """Export and runtime contract of the ONNX mixins, checked end to end through onnxruntime."""
 
+import ast
 import copy
+from pathlib import Path
 
 import pytest
 import torch
 from torch import nn
 
+import kornia
 from kornia.core import ImageSequential
 from kornia.core._compat import torch_version_ge
 from kornia.core.mixin.onnx import ONNXMixin, ONNXRuntimeMixin
@@ -56,6 +59,99 @@ _NO_CACHE = object()
 def _cache_of(module):
     # The ``show()`` / ``save()`` output cache as stored on the module, or a sentinel when it has none.
     return module.__dict__.get("_output_image", _NO_CACHE)
+
+
+# What a module keeps from its last call and reads back afterwards (#6140): the output cache of ``show()`` / ``save()``;
+# the parameters ``inverse()`` replays; the transformation matrix, built or lazy, and the params dict and values it was
+# computed from, which the containers' annotation handlers match against; a container's per-child matrices; and
+# ``AugmentationSequential``'s input and mask dtypes.
+_CALL_STATE = (
+    "_output_image",
+    "_params",
+    "_transform_matrix",
+    "_lazy_matrix_args",
+    "_transform_matrix_params",
+    "_transform_matrix_params_snapshot",
+    "_transform_matrices",
+    "input_dtype",
+    "mask_dtype",
+)
+
+
+def _call_state_of(module):
+    # Each of those attributes as stored on the module itself; a class-level default is not an entry.
+    return {name: module.__dict__[name] for name in _CALL_STATE if name in module.__dict__}
+
+
+def _same_objects(state, before):
+    return state.keys() == before.keys() and all(state[name] is before[name] for name in state)
+
+
+# The attributes an augmentation or image module writes on itself outside ``__init__`` and ``make_samplers`` that are
+# not state of its last call, so ``to_onnx`` leaves them alone, each with the reason.
+_NOT_CALL_STATE = {
+    "_brightness_fn": "compile() sets the compiled kernel",
+    "_contrast_fn": "compile() sets the compiled kernel",
+    "_saturation_fn": "compile() sets the compiled kernel",
+    "_hue_fn": "compile() sets the compiled kernel",
+    "_cond_fn": "compile() sets the compiled kernel",
+    "_fn": "compile() sets the compiled kernel",
+    "_gaussian_blur2d_fn": "compile() sets the compiled kernel",
+    "_compile_kwargs": "compile() and unpickling record the compile options",
+    "_uncompiled_fns": "compile() and unpickling record the uncompiled kernels",
+    "_data_keys": "AugmentationSequentialOps' data keys, which the container sets back before each call returns",
+    "_disable_features": "a property setter",
+    "_keepdim": "a property setter",
+    "_same_on_batch": "a property setter",
+    "_factor_name": "a constructor helper",
+    "_magnitude": "a constructor helper",
+    "magnitude_range": "a constructor helper",
+    "_transformation_matrix_arg": "a constructor helper",
+    "device": "the sampling device, changed by .to() or set_rng_device_and_dtype(), not by a call",
+    "dtype": "the sampling dtype, changed by .to() or set_rng_device_and_dtype(), not by a call",
+    "excluded_labels": "a constructor argument that a call moves to the mask's device; its values never change",
+    "size": "ResizedCropGenerator's crop sizes, written and read within one call",
+    "p": "ADA's probability, updated only from an explicit real_acc, which the export does not pass",
+    "_num_calls": "ADA's update counter, updated only from an explicit real_acc, which the export does not pass",
+    "real_acc_ema": "ADA's accuracy average, updated only from an explicit real_acc, which the export does not pass",
+}
+
+_SCANNED = ("augmentation", "core/module.py", "core/mixin/image_module.py")
+
+
+def _attributes_written_after_construction():
+    # ``self.<name> = ...`` (also augmented and annotated assignments) in every method of every class in the scanned
+    # sources but ``__init__`` and the generators' ``make_samplers``, mapped to the writers' ``path:line``.
+    root = Path(kornia.__file__).parent
+    writers = {}
+    for scanned in _SCANNED:
+        paths = sorted((root / scanned).rglob("*.py")) if (root / scanned).is_dir() else [root / scanned]
+        for path in paths:
+            for cls in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not isinstance(cls, ast.ClassDef):
+                    continue
+                for method in cls.body:
+                    if not isinstance(method, ast.FunctionDef) or method.name in ("__init__", "make_samplers"):
+                        continue
+                    if not method.args.args or method.args.args[0].arg != "self":
+                        continue  # a static method, a class method or ``__init_subclass__``
+                    for node in ast.walk(method):
+                        if isinstance(node, ast.Assign):
+                            targets = node.targets
+                        elif isinstance(node, ast.AugAssign) or (isinstance(node, ast.AnnAssign) and node.value):
+                            targets = [node.target]
+                        else:
+                            continue
+                        for target in targets:
+                            for item in target.elts if isinstance(target, ast.Tuple) else [target]:
+                                if (
+                                    isinstance(item, ast.Attribute)
+                                    and isinstance(item.value, ast.Name)
+                                    and item.value.id == "self"
+                                ):
+                                    where = f"{path.relative_to(root.parent).as_posix()}:{node.lineno}"
+                                    writers.setdefault(item.attr, []).append(where)
+    return writers
 
 
 def _run(op, x):
@@ -144,6 +240,94 @@ class TestONNXExportMixin(BaseTester):
             outer.to_onnx(save=False, pseudo_shape=[1, 3, 4, 4], **_RGB)
         assert all(_cache_of(m) is cache for m, cache in zip(modules, before))
         assert _cache_of(bare) is _NO_CACHE
+
+    @staticmethod
+    def _augmented(case):
+        # The pipeline of #6140: flips drawn per sample, called on one 8 x 8 image. The export traces a batch of two
+        # 4 x 4 dummies, whose draws then replaced the state ``inverse()`` reads, so it raised or inverted the dummy.
+        # ``exported`` is what ``to_onnx`` exports: the ``ImageSequential`` around a container, or the bare module.
+        import kornia.augmentation as K
+
+        torch.manual_seed(3)
+        if case == "container":
+            aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), K.RandomVerticalFlip(p=0.5))
+            exported = ImageSequential(aug)
+        else:
+            aug = exported = K.RandomHorizontalFlip(p=0.5)
+        y = exported(torch.rand(1, 3, 8, 8))
+        return exported, aug, y, aug.inverse(y)
+
+    @staticmethod
+    def _export(exported, **kwargs):
+        # A bare augmentation module has no ``to_onnx``; it is exported as the ``model`` of an empty receiver.
+        receiver = exported if isinstance(exported, ImageSequential) else ImageSequential()
+        model = None if receiver is exported else exported
+        return receiver.to_onnx(save=False, model=model, pseudo_shape=[1, 3, 4, 4], **_RGB, **kwargs)
+
+    # Not "dynamo" in the ids: conftest deselects every test whose name contains it unless an optimizer is set. The
+    # default exporter is torch.export-based from torch 2.9 and the legacy one before.
+    @pytest.mark.parametrize("case", ["container", "module"], ids=["nested-container", "bare-module"])
+    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    def test_export_keeps_the_state_inverse_reads_6140(self, exporter, case):
+        exported, aug, y, expected = self._augmented(case)
+        modules = list(exported.modules())
+        params = aug._params
+        before = [_call_state_of(m) for m in modules]
+
+        self._export(exported, **exporter)
+
+        assert aug._params is params
+        assert all(_same_objects(_call_state_of(m), state) for m, state in zip(modules, before))
+        self.assert_close(aug.inverse(y), expected)
+
+    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    def test_export_leaves_no_state_on_a_module_never_called_6140(self, exporter):
+        # Several of the attributes are class-level defaults until a call stores them on the instance.
+        import kornia.augmentation as K
+
+        exported = ImageSequential(K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5)))
+        modules = list(exported.modules())
+        before = [_call_state_of(m) for m in modules]
+
+        self._export(exported, **exporter)
+
+        assert all(_same_objects(_call_state_of(m), state) for m, state in zip(modules, before))
+
+    def test_failed_export_keeps_the_state_inverse_reads_6140(self, monkeypatch):
+        exported, aug, y, expected = self._augmented("container")
+        modules = list(exported.modules())
+        before = [_call_state_of(m) for m in modules]
+        bare = nn.Identity()  # a module without the state must not get it
+        exported.append(bare)
+
+        def _run_then_fail(module, args, *rest, **kwargs):
+            module(*args) if isinstance(args, tuple) else module(args)
+            bare._params = "written by the export"
+            raise RuntimeError("export failed")
+
+        monkeypatch.setattr(torch.onnx, "export", _run_then_fail)
+        with pytest.raises(RuntimeError, match="export failed"):
+            self._export(exported)
+        assert all(_same_objects(_call_state_of(m), state) for m, state in zip(modules, before))
+        assert _call_state_of(bare) == {}
+        self.assert_close(aug.inverse(y), expected)
+
+    def test_every_attribute_written_after_construction_is_classified_6140(self):
+        # ``to_onnx`` restores the attributes in ``_PER_CALL_STATE``. An augmentation or image module that starts
+        # writing another attribute on itself outside its constructor must say which kind it is: state of its last
+        # call, which the export's run on the dummy would overwrite, or one of the kinds in ``_NOT_CALL_STATE``.
+        from kornia.core.mixin.onnx import _PER_CALL_STATE
+
+        writers = _attributes_written_after_construction()
+        unclassified = sorted(set(writers) - set(_PER_CALL_STATE) - set(_NOT_CALL_STATE))
+        assert not unclassified, (
+            "Add each to _PER_CALL_STATE in kornia/core/mixin/onnx.py if a later call or inverse() reads what the last "
+            "call stored, else to _NOT_CALL_STATE here with the reason: "
+            + "; ".join(f"{name} ({', '.join(writers[name])})" for name in unclassified)
+        )
+        assert set(_PER_CALL_STATE) == set(_CALL_STATE)
+        stale = sorted((set(_PER_CALL_STATE) | set(_NOT_CALL_STATE)) - set(writers))
+        assert not stale, f"no longer written outside a constructor, remove them: {stale}"
 
     def test_explicit_training_mode_is_the_legacy_exporters_opt_out(self):
         # The documented opt-out from the eval-mode export: an explicit ``training=TRAINING`` reaches the legacy

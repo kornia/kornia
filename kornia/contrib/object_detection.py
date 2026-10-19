@@ -32,7 +32,7 @@ from kornia.core.mixin.onnx import (
     ONNXExportMixin,
     _eval_mode,
     _first_floating_tensor,
-    _preserved_output_caches,
+    _preserved_call_state,
     _to_floating,
     _uses_dynamic_shapes,
 )
@@ -137,15 +137,15 @@ def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> 
     """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
 
     The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
-    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The output
-    cache of every image module inside it is left as it was.
+    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. What every
+    module inside it stored from its last call, such as an image module's output cache, is left as it was.
     """
     reference = _first_floating_tensor(detector)
     if reference is not None:
         images = _to_floating(images, reference)
-    # The run must not leave its output in the cache of an image module inside the detector, as the export's own
-    # run does not.
-    with _eval_mode(detector), _preserved_output_caches(detector), torch.no_grad():
+    # The run must not leave its output or parameters in a module inside the detector, as the export's own run does
+    # not.
+    with _eval_mode(detector), _preserved_call_state(detector), torch.no_grad():
         return isinstance(detector(images), list)
 
 
