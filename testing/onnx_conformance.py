@@ -18,10 +18,10 @@
 """Support for ``tests/onnx/test_conformance.py``: the ONNX promise of #5819, checked with the survey's own cases.
 
 The promised cases are the records of the committed survey snapshot (``docs/source/_data/export_support.json``)
-whose ONNX status is ``ok`` and whose package is in the stable core of
-``docs/source/get-started/stability.rst``, minus the pretrained wrappers of ``kornia.feature`` (section ``models``).
-Each is run through ``docs/export_support/harness.py`` -- the code the survey runs -- by case name, so the test and
-the survey page cannot drift apart.
+whose ONNX status is ``ok`` and whose package is in the stable core of ``docs/source/get-started/stability.rst``,
+minus everything built with pretrained weights (registry tag ``pretrained``): the stable core holds only the
+classical, non-pretrained parts of ``kornia.feature``. Each is run through ``docs/export_support/harness.py`` -- the
+code the survey runs -- by case name, so the test and the survey page cannot drift apart.
 
 The run is opt-in: ``--onnx-conformance=<package>[,<package>...]`` or ``all`` (env
 ``KORNIA_TEST_ONNX_CONFORMANCE``); without it the root ``conftest.py`` deselects every test marked
@@ -31,8 +31,10 @@ The run is opt-in: ``--onnx-conformance=<package>[,<package>...]`` or ``all`` (e
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import functools
+import hashlib
 import importlib
 import io
 import json
@@ -40,7 +42,7 @@ import re
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterable, Iterator, Sequence
 
 import pytest
 import torch
@@ -56,10 +58,6 @@ CASE_TESTS = ("test_export_matches_eager", "test_legacy_export_is_not_wrong")
 MARKER = "onnx_conformance"
 OPTION = "--onnx-conformance"
 ENV_VAR = "KORNIA_TEST_ONNX_CONFORMANCE"
-
-# The registries the promise is joined to. ``cases_models.py`` is never imported: it builds the pretrained models of
-# ``kornia.models``, none of which is promised, and downloads their weights on a cold cache.
-REGISTRIES = ("cases_aug", "cases_feature", "cases_geomA", "cases_geomB", "cases_misc")
 
 # The stable core of docs/source/get-started/stability.rst, as the ``kornia.<package>`` names the snapshot records.
 # tests/scripts/test_onnx_conformance_packages.py checks it against that page and against the CI path mapping.
@@ -78,15 +76,39 @@ STABLE_CORE = (
     "feature",
 )
 
-# What a registry case's skip reason says when the download guard below refused a weights download.
-NOT_CACHED = "weights are not in the cache"
+# The registries that hold each package's promised cases. ``cases_models.py`` is never imported: it builds the
+# pretrained models of ``kornia.models``, none of which is promised, and downloads their weights on a cold cache.
+# A promised case outside its package's registries fails test_promised_cases_are_registered.
+REGISTRIES_OF = {
+    "geometry": ("cases_geomA", "cases_geomB"),
+    "augmentation": ("cases_aug",),
+    "color": ("cases_misc",),
+    "filters": ("cases_misc",),
+    "enhance": ("cases_misc",),
+    "losses": ("cases_misc",),
+    "metrics": ("cases_misc",),
+    "morphology": ("cases_misc",),
+    "io": (),
+    "image": ("cases_misc",),
+    "core": (),
+    "feature": ("cases_feature",),
+}
+REGISTRIES = ("cases_aug", "cases_feature", "cases_geomA", "cases_geomB", "cases_misc")
 
 # Legacy (TorchScript) export statuses that pass: the export worked and matched, or it failed loudly.
 LEGACY_PASSES = ("ok", "export-fail", "checker-fail", "ort-load-fail", "ort-run-fail")
 
+# torch's process-wide module hooks that a failed or (on torch 2.5) a successful non-strict ``torch.export`` trace can
+# leave registered; a later ``torch.compile`` of a module with buffers then fails. ``run_case`` removes what it added.
+REGISTRATION_HOOKS = (
+    "_global_buffer_registration_hooks",
+    "_global_module_registration_hooks",
+    "_global_parameter_registration_hooks",
+)
+
 
 def parse_selection(value: str | None) -> tuple[str, ...]:
-    """Return the packages an ``--onnx-conformance`` value selects; ``()`` when it is unset or blank.
+    """Return the packages an ``--onnx-conformance`` value selects; ``()`` when it is unset (``None`` or ``""``).
 
     Args:
         value: ``all``, or comma-separated package names with or without the ``kornia.`` prefix.
@@ -95,29 +117,60 @@ def parse_selection(value: str | None) -> tuple[str, ...]:
         The selected packages, in ``STABLE_CORE`` order.
 
     Raises:
-        ValueError: when a name is not a stable-core package.
+        ValueError: when a name is empty (a blank value, a stray comma) or not a stable-core package.
     """
-    names = [v.strip().removeprefix("kornia.") for v in (value or "").split(",") if v.strip()]
-    if "all" in names:
-        return STABLE_CORE
-    unknown = sorted(set(names) - set(STABLE_CORE))
+    if value is None or value == "":
+        return ()
+    names = [v.strip().removeprefix("kornia.") for v in value.split(",")]
+    if not all(names):
+        raise ValueError(f"{OPTION}: empty package name in {value!r}; give packages or all")
+    unknown = sorted(set(names) - set(STABLE_CORE) - {"all"})
     if unknown:
         raise ValueError(f"{OPTION}: unknown package(s) {unknown}; choose from {', '.join(STABLE_CORE)} or all")
+    if "all" in names:
+        return STABLE_CORE
     return tuple(p for p in STABLE_CORE if p in names)
+
+
+@functools.cache
+def pretrained_cases() -> frozenset[str]:
+    """Names of the registry cases tagged ``pretrained``, read from the registry sources without importing them."""
+    names: set[str] = set()
+    for registry in REGISTRIES:
+        path = EXPORT_SUPPORT / f"{registry}.py"
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
+            if not isinstance(node, ast.Call):
+                continue
+            tags = next((kw.value for kw in node.keywords if kw.arg == "tags"), None)
+            if not isinstance(tags, (ast.Tuple, ast.List)):
+                continue
+            if not any(isinstance(tag, ast.Constant) and tag.value == "pretrained" for tag in tags.elts):
+                continue
+            first = node.args[0] if node.args else None
+            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+                raise ValueError(f"{path}:{node.lineno}: a case tagged pretrained needs a literal name")
+            names.add(first.value)
+    return frozenset(names)
 
 
 @functools.cache
 def promised_cases() -> dict[str, str]:
     """Map every promised case name to its package (``geometry``, ``color``, ...), in snapshot order."""
+    pretrained = pretrained_cases()
     promised: dict[str, str] = {}
     for record in json.loads(SNAPSHOT.read_text(encoding="utf-8"))["cases"]:
         package = record["package"].removeprefix("kornia.")
-        if record["onnx"] != "ok" or package not in STABLE_CORE:
+        if record["onnx"] != "ok" or package not in STABLE_CORE or record["name"] in pretrained:
             continue
         if package == "feature" and record["section"] == "models":
             continue
         promised[record["name"]] = package
     return promised
+
+
+def promised_digest(names: Iterable[str]) -> str:
+    """SHA-256 of the sorted names, one per line: what ``test_promised_set_is_pinned`` compares."""
+    return hashlib.sha256("\n".join(sorted(names)).encode()).hexdigest()
 
 
 def selected_cases(packages: Sequence[str]) -> list[str]:
@@ -127,7 +180,7 @@ def selected_cases(packages: Sequence[str]) -> list[str]:
 
 @contextlib.contextmanager
 def _no_downloads() -> Iterator[None]:
-    """Make a weights download raise instead, so a pretrained case on a cold cache is skipped, not fetched."""
+    """Make a weights download raise instead: no case the registries build may reach the network here."""
     from testing.doctest_downloads import install_download_guard
 
     undo: list[tuple[Any, str, Any]] = []
@@ -137,7 +190,7 @@ def _no_downloads() -> Iterator[None]:
         setattr(obj, name, value)
 
     def refuse(url: str) -> None:
-        raise RuntimeError(f"{NOT_CACHED} (the conformance test does not download): {url}")
+        raise RuntimeError(f"weights are not in the cache (the conformance test does not download): {url}")
 
     try:
         install_download_guard(set_attribute, refuse)
@@ -151,8 +204,9 @@ def _no_downloads() -> Iterator[None]:
 def import_survey_module(name: str) -> ModuleType:
     """Import ``docs/export_support/<name>.py`` without letting the import touch the process.
 
-    The registries seed the global RNG and build their inputs (and pretrained models) at import, and print the
-    traceback of a model they cannot build: the RNG state is restored, downloads refused and the output dropped.
+    The registries seed the global RNG and build their inputs (and the pretrained models of cases that are not
+    promised) at import, and print the traceback of a model they cannot build: the RNG state is restored, downloads
+    refused and the output dropped.
     """
     path = str(EXPORT_SUPPORT)
     sys.path.insert(0, path)
@@ -169,11 +223,17 @@ def import_survey_module(name: str) -> ModuleType:
         sys.path.remove(path)
 
 
+def registries_of(packages: Sequence[str]) -> tuple[str, ...]:
+    """The registries holding the promised cases of ``packages``, in ``REGISTRIES`` order."""
+    needed = {registry for package in packages for registry in REGISTRIES_OF[package]}
+    return tuple(registry for registry in REGISTRIES if registry in needed)
+
+
 @functools.cache
-def registry_cases() -> dict[str, dict[str, Any]]:
-    """Every case of the five registries by name; a name registered twice is an error."""
+def registry_cases(registries: tuple[str, ...] = REGISTRIES) -> dict[str, dict[str, Any]]:
+    """Every case of ``registries`` by name; a name registered twice is an error."""
     cases: dict[str, dict[str, Any]] = {}
-    for registry in REGISTRIES:
+    for registry in registries:
         for case in import_survey_module(registry).CASES:
             if case["name"] in cases:
                 raise ValueError(f"case {case['name']!r} is registered twice ({registry})")
@@ -181,10 +241,33 @@ def registry_cases() -> dict[str, dict[str, Any]]:
     return cases
 
 
+def registration_hooks() -> dict[str, frozenset[Any]]:
+    """The handles registered in each of torch's process-wide module registration hooks that this torch has."""
+    from torch.nn.modules import module
+
+    return {
+        name: frozenset(hooks) for name in REGISTRATION_HOOKS if isinstance(hooks := getattr(module, name, None), dict)
+    }
+
+
+@contextlib.contextmanager
+def _restore_registration_hooks() -> Iterator[None]:
+    from torch.nn.modules import module
+
+    before = registration_hooks()
+    try:
+        yield
+    finally:
+        for name, handles in before.items():
+            hooks = getattr(module, name)
+            for handle in [handle for handle in hooks if handle not in handles]:
+                del hooks[handle]
+
+
 def run_case(case: dict[str, Any], dynamo: bool) -> dict[str, Any]:
-    """Run one case through the survey harness, leaving the global RNG as it was."""
+    """Run one case through the survey harness, leaving the global RNG and torch's module hooks as they were."""
     harness = import_survey_module("harness")
-    with torch.random.fork_rng(devices=[]):
+    with torch.random.fork_rng(devices=[]), _restore_registration_hooks():
         return harness.run_case(case, dynamo=dynamo)
 
 

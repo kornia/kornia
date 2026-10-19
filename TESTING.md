@@ -76,23 +76,25 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 
 `tests/onnx/test_conformance.py` holds kornia's ONNX promise: every *promised* case -- a record of the survey
 snapshot `docs/source/_data/export_support.json` with ONNX status `ok` in a stable-core package
-(`docs/source/get-started/stability.rst`), without the pretrained wrappers of `kornia.feature` -- must export with
-`torch.onnx.export(..., dynamo=True)` and match eager execution in onnxruntime (the same dtype, values within the
-case's tolerance), and a legacy (TorchScript) export that succeeds must match as well; one that fails loudly passes.
-The cases are the survey's own (`docs/export_support/cases_*.py`, joined by name; `cases_models.py` is never
-imported) and run through `docs/export_support/harness.py`, so the test and the survey page cannot drift apart:
-`test_promised_cases_are_registered` fails when a promised case is missing or skipped in its registry.
+(`docs/source/get-started/stability.rst`), without anything built from pretrained weights (registry tag `pretrained`)
+-- must export with `torch.onnx.export(..., dynamo=True)` and match eager execution in onnxruntime (the same dtype,
+values within the case's tolerance), and a legacy (TorchScript) export that succeeds must match as well; one that
+fails loudly passes. The cases are the survey's own (`docs/export_support/cases_*.py`, joined by name;
+`cases_models.py` is never imported) and run through `docs/export_support/harness.py`, so the test and the survey page
+cannot drift apart: `test_promised_cases_are_registered` fails when a promised case is missing or skipped in its
+registry, and `test_promised_set_is_pinned` when the promised names change.
 
 ```bash
 pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=all
 pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=geometry,color
 ```
 
-The run takes minutes, so it is opt-in. Pull requests run it on torch 2.14.0 for the packages their changes map to
-(`.github/scripts/onnx_conformance_packages.py`: `kornia/<package>/` selects that package; `kornia/core`,
-`kornia/utils`, `kornia/onnx`, the survey, the test and its support, and the dependency pins select `all`); the
-scheduled run on `main` checks `all` on torch 2.9.1 and 2.14.0. Pretrained descriptors load from the weights cache;
-the test never downloads, and a case whose weights are missing is skipped with the reason.
+The run takes minutes, so it is opt-in. Pull requests run it on torch 2.14.0 for the packages their changes reach
+(`.github/scripts/onnx_conformance_packages.py`: a changed module selects its stable-core package and every
+stable-core package with a module that imports it, directly or not; `kornia/core`, `kornia/utils`, `kornia/onnx`, the
+survey and its snapshot, the stability page, the test and its support, and the dependency pins select `all`); the
+scheduled run on `main` checks `all` on torch 2.9.1 and 2.14.0. No promised case needs pretrained weights, and the test
+never downloads.
 
 Known failures are strict xfails in `testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt`, one
 manifest per enforced torch release, in the `<exception>\t<node ID>` format of the other manifests, each entry under

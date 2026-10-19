@@ -36,23 +36,34 @@ import torch
 
 from testing.onnx_conformance import (
     LEGACY_PASSES,
-    NOT_CACHED,
     OPTION,
     describe,
     import_survey_module,
     parse_selection,
+    pretrained_cases,
     promised_cases,
+    promised_digest,
+    registration_hooks,
+    registries_of,
     registry_cases,
     run_case,
     selected_cases,
 )
 
 # Every case runs on CPU tensors and is compared in onnxruntime as numpy, whatever ``--device`` says.
-pytestmark = [pytest.mark.device_agnostic, pytest.mark.filterwarnings("ignore")]
+pytestmark = pytest.mark.device_agnostic
+
+# The exporters warn at length about every graph; the per-case tests keep the session output readable. Not module-wide:
+# test_survey_harness_leaves_process_state_alone must see a filter the harness would add.
+quiet = pytest.mark.filterwarnings("ignore")
 
 pytest.importorskip("onnx")
 pytest.importorskip("onnxruntime")
 pytest.importorskip("onnxscript")  # the dynamo exporter hard-requires it
+
+# The promised set of the 2026-09-02 snapshot: 848 cases of 643 operators.
+PROMISED_COUNT = 848
+PROMISED_DIGEST = "7b8f869f2d8812be750269f7bed6d0b2db499f915c8ddf5c34fb76deb785912d"
 
 
 def _selection(config: pytest.Config) -> tuple[str, ...]:
@@ -70,70 +81,88 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 def _promised_case(case_name: str | None) -> dict:
     if case_name is None:
         pytest.skip("the selected packages have no promised case")
-    case = registry_cases().get(case_name)
-    if case is not None and case["skip"] and NOT_CACHED in case["skip"]:
-        pytest.skip(case["skip"])
+    case = registry_cases(registries_of([promised_cases()[case_name]])).get(case_name)
     if case is None or case["skip"] or not case["check"]:
         pytest.fail(f"{case_name!r} is promised but no registry case runs it; see test_promised_cases_are_registered")
     return case
 
 
 @pytest.mark.onnx_conformance
+@quiet
 def test_export_matches_eager(case_name: str | None) -> None:
     record = run_case(_promised_case(case_name), dynamo=True)
     assert record["status"] == "ok", describe(record)
 
 
 @pytest.mark.onnx_conformance
+@quiet
 def test_legacy_export_is_not_wrong(case_name: str | None) -> None:
     record = run_case(_promised_case(case_name), dynamo=False)
     assert record["status"] in LEGACY_PASSES, describe(record)
 
 
 @pytest.mark.onnx_conformance
+@quiet
 def test_promised_cases_are_registered(request: pytest.FixtureRequest) -> None:
     """Every promised case of the selected packages has a registry case that runs and is compared with eager."""
-    cases = registry_cases()
+    packages = _selection(request.config)
+    registries = registries_of(packages)
+    cases = registry_cases(registries)
     problems = []
-    for name in selected_cases(_selection(request.config)):
+    for name in selected_cases(packages):
         case = cases.get(name)
         if case is None:
-            problems.append(f"{name}: no registry case of that name")
-        elif case["skip"] and NOT_CACHED not in case["skip"]:
+            problems.append(f"{name}: no case of that name in {', '.join(registries) or 'no registry'}")
+        elif case["skip"]:
             problems.append(f"{name}: skipped ({case['skip']})")
         elif not case["check"]:
             problems.append(f"{name}: check=False, the output is not compared with eager")
+    # The promise leaves out pretrained cases by reading the registry sources; the imported registries must agree.
+    tagged = {name for name, case in cases.items() if "pretrained" in case["tags"]}
+    if disagree := tagged ^ (pretrained_cases() & cases.keys()):
+        problems.append(f"registry tags and the static pretrained scan disagree on {sorted(disagree)}")
     assert not problems, "promised cases the registries no longer run:\n" + "\n".join(problems)
 
 
-def test_promised_set_size_is_pinned() -> None:
+def test_promised_set_is_pinned() -> None:
     # The promise is read from the snapshot, so a regeneration that measured a case as failing would quietly drop it.
-    # Pinning the size makes that a reviewed change: 859 cases (651 operators) on the 2026-09-02 snapshot.
+    # Pinning the names makes a change of the promised set a reviewed change of these two constants.
     promised = promised_cases()
-    assert len(promised) == 859
+    assert (len(promised), promised_digest(promised)) == (PROMISED_COUNT, PROMISED_DIGEST), (
+        "the promised set changed; review the snapshot diff, then update PROMISED_COUNT and PROMISED_DIGEST"
+    )
     assert not any(name.startswith(("models.", "contrib.")) for name in promised)
+    assert not promised.keys() & pretrained_cases()
     # The root conftest deselects or skips tests whose id contains these words, which would drop the case silently.
     assert not [name for name in promised if any(word in name.lower() for word in ("dynamo", "compile", "autocast"))]
 
 
+def _process_state() -> dict:
+    return {
+        "threads": torch.get_num_threads(),
+        "logging": logging.root.manager.disable,
+        "filters": list(warnings.filters),
+        "rng": torch.random.get_rng_state(),
+        "hooks": registration_hooks(),
+    }
+
+
 def test_survey_harness_leaves_process_state_alone() -> None:
-    """Importing the harness and a registry and running a case keep threads, logging, warnings and the RNG."""
-    before = (
-        torch.get_num_threads(),
-        logging.root.manager.disable,
-        list(warnings.filters),
-        torch.random.get_rng_state(),
-    )
+    """Importing the harness and a registry changes nothing; running a case leaves only torch's own warning filters."""
+    before = _process_state()
     import_survey_module("harness")
     misc = import_survey_module("cases_misc")
+    after_import = _process_state()
+    assert torch.equal(after_import.pop("rng"), before["rng"])
+    assert after_import == {key: value for key, value in before.items() if key != "rng"}
+
     case = next(c for c in misc.CASES if c["name"] in promised_cases())
     records = [run_case(case, dynamo=dynamo) for dynamo in (True, False)]
-    after = (
-        torch.get_num_threads(),
-        logging.root.manager.disable,
-        list(warnings.filters),
-        torch.random.get_rng_state(),
-    )
-    assert after[:3] == before[:3]
-    assert torch.equal(after[3], before[3])
+    after = _process_state()
     assert all(record["status"] not in ("eager-fail", "skipped") for record in records), records
+    assert torch.equal(after.pop("rng"), before["rng"])
+    # A torch.export trace may add torch's own filters (torch 2.5 adds one for module "torch.distributed"); the
+    # harness used to add a blanket "ignore everything" one. Anything new must name a torch module.
+    added = [f for f in after.pop("filters") if f not in before["filters"]]
+    assert all(f[3] is not None and f[3].pattern.startswith("torch") for f in added), added
+    assert after == {key: value for key, value in before.items() if key not in ("rng", "filters")}
