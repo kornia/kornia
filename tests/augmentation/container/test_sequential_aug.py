@@ -176,27 +176,66 @@ class TestConventionImageSequential(BaseTester):
             assert seq._params == []
             self.assert_close(out, x, rtol=0.0, atol=0.0)
 
-    @pytest.mark.parametrize("random_apply", [1, 2])
     @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
-    def test_random_apply_mix_replacement_never_selects_zero_weight_child(self, random_apply, container, device, dtype):
-        # The mix member replaces a drawn member, so it must come from the mix members and never from a
-        # non-mix child whose weight is 0.
-        x = torch.rand(4, 3, 6, 8, device=device, dtype=dtype)
+    def test_random_apply_mix_insertion_skips_zero_weight_members_6068(self, container, device, dtype):
+        # The mix-insertion step drew among every member whose weight was 0 once the mix weights were zeroed, which
+        # included ordinary members given weight 0, so RandomVerticalFlip was applied in about a third of the calls.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         seq = container(
             K.RandomHorizontalFlip(p=1.0),
-            K.RandomBrightness((0.8, 1.2), p=1.0),
+            K.RandomVerticalFlip(p=1.0),
             K.RandomMixUpV2(p=1.0),
-            random_apply=random_apply,
+            random_apply=1,
             random_apply_weights=[1.0, 0.0, 1.0],
         )
-        mixes = 0
+        selected = set()
         for seed in range(100):
             torch.manual_seed(seed)
             seq(x)
-            selected = [seq.get_submodule(item.name) for item in seq._params]
-            assert not any(isinstance(module, K.RandomBrightness) for module in selected)
-            mixes += any(isinstance(module, K.MixAugmentationBaseV2) for module in selected)
-        assert mixes > 0, "the mix member was never selected, so the replacement path was not exercised"
+            selected.add(tuple(p.name for p in seq._params))
+        assert selected == {("RandomHorizontalFlip_0",), ("RandomMixUpV2_2",)}
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_mix_insertion_with_all_ordinary_weights_zero_6068(self, container, device, dtype):
+        # With every ordinary weight 0, nothing ordinary is drawn, and the insertion step may add only the mix member.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=(1, 2),
+            random_apply_weights=[0.0, 0.0, 1.0],
+        )
+        selected = set()
+        for seed in range(100):
+            torch.manual_seed(seed)
+            out = seq(x)
+            selected.add(tuple(p.name for p in seq._params))
+            if not seq._params:
+                self.assert_close(out, x, rtol=0.0, atol=0.0)
+        assert selected == {(), ("RandomMixUpV2_2",)}
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_mix_insertion_draws_among_every_mix_member_6068(self, container, device, dtype):
+        # The insertion draws uniformly among the mix members and does not honor their own weights, as on main: both
+        # mix members are inserted although their weights are 0.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=2,
+            random_apply_weights=[1.0, 1.0, 0.0, 0.0],
+        )
+        mixes = set()
+        for seed in range(30):
+            torch.manual_seed(seed)
+            seq(x)
+            names = [p.name for p in seq._params]
+            assert len(names) == 2
+            mixes.update(name for name in names if name.startswith("RandomMixUpV2"))
+        assert mixes == {"RandomMixUpV2_2", "RandomMixUpV2_3"}
 
     def test_convention_slice_crop_inverse_restores_the_canvas(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
