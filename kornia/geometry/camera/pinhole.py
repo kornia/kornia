@@ -578,7 +578,7 @@ class PinholeCamerasList(PinholeCamera):
         return PinholeCamerasList([self.get_pinhole(index).clone() for index in range(self.num_cameras)])
 
     def scale(self, scale_factor: torch.Tensor) -> "PinholeCamerasList":
-        return PinholeCamerasList([self.get_pinhole(index).scale(scale_factor) for index in range(self.num_cameras)])
+        return self.clone().scale_(scale_factor)
 
     def scale_(self, scale_factor: Union[float, torch.Tensor]) -> "PinholeCamerasList":
         r"""Scale the cameras in place, applying a vector factor along the batch dimension."""

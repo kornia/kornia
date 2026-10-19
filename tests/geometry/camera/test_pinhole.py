@@ -984,6 +984,8 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(scaled.cy, expected_cy)
         self.assert_close(scaled.height, expected_heights)
         self.assert_close(scaled.width, expected_widths)
+        # a (B, 1) factor broadcasts over the cameras as in scale_
+        self.assert_close(cameras.scale(factor[:, None]).fx, expected_fx)
 
         inplace = cameras.clone()
         assert inplace.scale_(factor) is inplace
