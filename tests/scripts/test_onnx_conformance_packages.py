@@ -130,15 +130,34 @@ def test_select_resolves_each_import_form(tmp_path):
     assert select(["kornia/color/removed.py"], tmp_path) == "color"  # a deleted module stands for its package
 
 
-def test_cli_reads_stdin():
+@pytest.mark.parametrize(
+    "stdin",
+    [
+        "kornia/morphology/morphology.py\nkornia/x/trainer.py\n",  # git diff --name-only
+        "kornia/morphology/morphology.py kornia/x/trainer.py\n",  # echo a b
+    ],
+)
+def test_cli_reads_stdin(stdin):
     result = subprocess.run(  # noqa: S603 -- the current test interpreter on the script under test.
         [sys.executable, str(SCRIPT)],
-        input="kornia/morphology/morphology.py\n",
+        input=stdin,
         capture_output=True,
         text=True,
         check=True,
     )
     assert result.stdout == "morphology\n"
+
+
+def test_cli_reads_whitespace_separated_paths():
+    # One echo line with several paths must select what the paths select one per line.
+    result = subprocess.run(  # noqa: S603 -- the current test interpreter on the script under test.
+        [sys.executable, str(SCRIPT)],
+        input="kornia/morphology/morphology.py kornia/core/check.py\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == "all\n"
 
 
 def test_stable_core_matches_the_test_and_the_stability_page():

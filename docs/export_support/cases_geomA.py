@@ -509,8 +509,10 @@ CASES = [
         "transform.HomographyWarper[pixel]",
         G,
         T.HomographyWarper(H, W, normalized_coordinates=False),
+        # The normal_transform_pixel factor works around #6170 (the pixel grid reaches grid_sample unnormalized, so
+        # a pixel homography samples outside the image and the output is a constant zero); drop it when #6170 is fixed.
         [img, K.geometry.conversions.normal_transform_pixel(H, W) @ homo33_pert],
-        note="the pixel grid goes to grid_sample unnormalized, so the homography normalizes it to sample the image",
+        note="homography includes normal_transform_pixel until #6170 is fixed",
     ),
     case(
         "transform.HomographyWarper[precomputed]",

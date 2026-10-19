@@ -18,7 +18,8 @@
 #
 """Map a pull request's changed paths to the ``--onnx-conformance`` selection of its CI run (#5819).
 
-Reads one changed path per line on stdin and prints ``all``, a comma-separated list of stable-core packages, or
+Reads the changed paths on stdin (one per line, as ``git diff --name-only`` prints them, or separated by any
+whitespace: no kornia path contains a space) and prints ``all``, a comma-separated list of stable-core packages, or
 nothing when no change can affect a promised operator (the conformance job is then skipped).
 
 A changed module under ``kornia/`` selects the stable-core package it belongs to and every stable-core package with a
@@ -212,7 +213,7 @@ def select(paths: Iterable[str], root: Path = REPO) -> str:
 
 def main() -> int:
     """Print the selection for the changed paths read from stdin."""
-    print(select(sys.stdin.read().splitlines()))
+    print(select(sys.stdin.read().split()))
     return 0
 
 
