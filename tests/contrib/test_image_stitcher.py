@@ -114,7 +114,7 @@ class TestImageStitcher(BaseTester):
     @pytest.mark.parametrize("img_dtype", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("shift", [40.0, 40.5, 40.7])
     def test_subpixel_shift_has_no_dark_seam(self, shift, img_dtype, device):
-        # C-12: the mask was warped with nearest and the image bilinearly: s = 40.5 left a dark column (error 0.43),
+        # A mask warped with nearest and an image warped bilinearly: s = 40.5 left a dark column (error 0.43),
         # s = 40.7 an extra dark trailing column (width 97, truth 96). The mask and the image share one warp, so they
         # share the sampling grid in half precision too (on MPS a half image keeps a half grid).
         torch.manual_seed(0)
@@ -141,7 +141,7 @@ class TestImageStitcher(BaseTester):
 
     @pytest.mark.parametrize("img_dtype", [torch.float32, torch.float16])
     def test_image_and_mask_share_one_warp(self, img_dtype, device):
-        # I2: on MPS a half image is sampled on a half grid; a mask warped in a separate (float32) call lands on another
+        # On MPS a half image is sampled on a half grid; a mask warped in a separate (float32) call lands on another
         # grid and marks pixels the image samples outside of as covered. One call keeps both on the same grid.
         left, right = _render(0, 64).to(device, img_dtype), _render(40.5, 56).to(device, img_dtype)
         stitcher = kornia.contrib.ImageStitcher(_ShiftMatcher([40.5]))
@@ -177,7 +177,7 @@ class TestImageStitcher(BaseTester):
             stitcher.estimate_transform(keypoints0=kp, keypoints1=kp, batch_indexes=idx)
 
     def test_unmatched_sample_is_named(self, device):
-        # C-15: one unmatched sample failed the batch with grid_sampler's batch-size error.
+        # One unmatched sample failed the batch with grid_sampler's batch-size error.
         left = torch.cat([_render(0, 64)] * 2).to(device)
         right = torch.cat([_render(40, 56), _render(30, 56)]).to(device)
         with pytest.raises(RuntimeError, match="sample 1"):
@@ -245,10 +245,10 @@ class TestImageStitcher(BaseTester):
 
     @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
     def test_float32_warp_under_autocast_keeps_the_border(self, autocast_dtype, device):
-        # Codex review 5529721894: under autocast the warp's homography matmuls ran in half precision, the coverage of
-        # completely covered border pixels fell below the float32 tolerance, and they were dropped: black pixels in
-        # the new columns and the panorama one column short (66, truth 67). The conftest skips tests named "autocast"
-        # on MPS; the same case failed there and passes with the fix.
+        # Under autocast the warp's homography matmuls ran in half precision, the coverage of completely covered
+        # border pixels fell below the float32 tolerance, and they were dropped: black pixels in the new columns and
+        # the panorama one column short (66, truth 67). The conftest skips tests named "autocast" on MPS, where the
+        # same case applies.
         if not torch.amp.is_autocast_available(device.type):
             pytest.skip(f"autocast is not available on {device.type}")
         left, right = torch.ones(1, 3, 48, 64, device=device), torch.ones(1, 3, 48, 64, device=device)
@@ -400,7 +400,7 @@ class TestImageStitcher(BaseTester):
         sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         # NOTE: This will need to download the pretrained weights.
-        matcher = kornia.feature.LoFTR(None)
+        matcher = kornia.feature.LoFTR(None).eval()
 
         with pytest.raises(NotImplementedError):
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator="random").to(device=device, dtype=dtype)
@@ -408,3 +408,31 @@ class TestImageStitcher(BaseTester):
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             stitcher(sample1, sample2)
+
+    def test_convention_panorama_is_in_the_left_frame_and_the_right_image_wins_the_overlap(self, device, dtype):
+        left, right = _render(0, 64).to(device, dtype), _render(40, 56).to(device, dtype)
+        right[..., :24] = 0.25  # columns 40..63 of the panorama, where the left image also has content
+        with torch.no_grad():
+            out = kornia.contrib.ImageStitcher(_ShiftMatcher([40.0]))(left, right)
+        assert out.shape == (1, 3, 48, 96)  # the left image's height; the empty trailing columns are cropped
+        self.assert_close(out[..., :40], left[..., :40])
+        self.assert_close(out[..., 40:64], torch.full_like(out[..., 40:64], 0.25))
+        self.assert_close(out[..., 64:], right[..., 24:], rtol=2e-2, atol=2e-2)  # resampled through the homography
+
+    def test_convention_a_batch_is_cropped_to_its_widest_sample(self, device):
+        left = torch.cat([_render(0, 64)] * 2).to(device)
+        right = torch.cat([_render(20, 56), _render(40, 56)]).to(device)
+        with torch.no_grad():
+            out = kornia.contrib.ImageStitcher(_ShiftMatcher([20.0, 40.0]))(left, right)
+        assert out.shape == (2, 3, 48, 96)
+        assert (out[0, ..., 76:] == 0).all()  # the narrower sample keeps empty trailing columns
+
+    def test_convention_image_stitcher_postprocess_gap_5971(self, device, dtype):
+        stitcher = kornia.contrib.ImageStitcher(nn.Identity())
+        image = torch.arange(6, device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
+        gap = torch.tensor([1.0, 0, 1, 1, 0, 0], device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
+        # a gap in the coverage is kept: the crop ends at the last covered column
+        assert stitcher.postprocess(image, gap).shape[-1] == 4
+        empty_first = torch.tensor([0.0, 1, 1, 0, 0, 0], device=device, dtype=dtype).view(1, 1, 1, 6).expand(1, 3, 4, 6)
+        # an uncovered first column is kept and the empty suffix is still dropped
+        assert stitcher.postprocess(image, empty_first).shape[-1] == 3

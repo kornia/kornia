@@ -86,12 +86,19 @@ jobs:
       fail-fast: false
       # Each PR leg is here for failures the others do not catch; the full os x dtype x python x
       # torch matrix runs on main twice a day in scheduled_test_cpu.yml. Measured over the PR
-      # runs from 2026-09-03 to 2026-09-24, these six legs plus the half-precision, MPS and
-      # dynamo jobs caught every test failure that the previous 27-leg matrix caught, apart from
-      # one environment-specific `test_check_torch_env` failure.
-      #   - ubuntu 3.13 / torch 2.5.1 (float32, float64): the only place Python 3.13 meets the
-      #     oldest torch -- 2.5.1 has no 3.13 wheels on Windows or macOS -- and the leg that
-      #     caught the most failures nothing else caught.
+      # runs from 2026-09-03 to 2026-09-24, the six legs of the time plus the half-precision, MPS
+      # and dynamo jobs caught every test failure that the previous 27-leg matrix caught, apart
+      # from one environment-specific `test_check_torch_env` failure. Both of that time's torch
+      # 2.5.1 legs ran Python 3.13, and none ran torch 2.9, so tests that need Dynamo on an older
+      # torch failed first on main; the two Python 3.12 legs below close that gap.
+      #   - ubuntu 3.13 / torch 2.5.1 (float32): the only place Python 3.13 meets the oldest torch
+      #     -- 2.5.1 has no 3.13 wheels on Windows or macOS -- and the leg that caught the most
+      #     failures nothing else caught.
+      #   - ubuntu 3.12 / torch 2.5.1 (float64): the oldest torch with Dynamo, which 2.5.1 lacks on
+      #     Python 3.13, so its torch.export and dynamo ONNX exporter tests run before merge.
+      #   - ubuntu 3.12 / torch 2.9.1 (float32): the first release on which `torch.onnx.export`,
+      #     and with it `to_onnx`, defaults to the dynamo exporter. Its torch.export specializes
+      #     differently from 2.14's: a DexiNed export ran only at the traced batch size (#6066).
       #   - ubuntu 3.11 / torch 2.14.0 (float32, float64): the oldest Python on the newest torch,
       #     so every Python and torch pin still gets a full-suite run in both dtypes on Linux.
       #   - windows-latest float64: Windows-only failures (path handling, the eager RNG audit)
@@ -108,8 +115,12 @@ jobs:
             pytorch-version: "2.5.1"
           - os: ubuntu-latest
             pytorch-dtype: "float64"
-            python-version: "3.13"
+            python-version: "3.12"
             pytorch-version: "2.5.1"
+          - os: ubuntu-latest
+            pytorch-dtype: "float32"
+            python-version: "3.12"
+            pytorch-version: "2.9.1"
           - os: ubuntu-latest
             pytorch-dtype: "float32"
             python-version: "3.11"

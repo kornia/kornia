@@ -113,6 +113,18 @@ class TestObjectDetector(BaseTester):
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("confidence_filtering", "expected"), [(False, False), (None, True), (True, True)])
+    def test_builder_honours_confidence_filtering_false(self, confidence_filtering, expected):
+        detector = kornia.contrib.object_detection.RTDETRDetectorBuilder.build(
+            "rtdetr_r18vd", pretrained=False, confidence_filtering=confidence_filtering
+        )
+        assert detector.post_processor.confidence_filtering is expected
+
+        # Without filtering the post-processor returns the (B, Q, 6) tensor, with it a list of (D, 6) tensors.
+        out = detector.post_processor(torch.zeros(1, 300, 80), torch.zeros(1, 300, 4), torch.tensor([[640, 640]]))
+        assert isinstance(out, list) is expected
+
     @pytest.mark.slow
     @pytest.mark.timeout(120)
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
@@ -155,6 +167,35 @@ class TestObjectDetector(BaseTester):
             )
 
         assert model_path.is_file()
+
+    def test_output_check_keeps_an_image_module_cache(self):
+        # ObjectDetector.to_onnx first runs the detector once to tell a per-image list from one tensor. That run, like
+        # the export's own, leaves the show()/save() cache of an image module inside the detector as it was.
+        from kornia.contrib.object_detection import _returns_detections_per_image
+
+        class _Pre(kornia.core.ImageModule):
+            def forward(self, x):
+                return x, torch.tensor([[x.shape[-2], x.shape[-1]]] * x.shape[0])
+
+        class _Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(3, 6, 1)
+
+            def forward(self, x):
+                y = self.conv(x).mean((-2, -1))
+                return y[:, None, :2], y[:, None, 2:]
+
+        class _Post(torch.nn.Module):
+            def forward(self, logits, boxes, sizes):
+                return torch.cat([logits, boxes], -1)
+
+        pre = _Pre()
+        detector = kornia.contrib.object_detection.ObjectDetector(_Model(), pre, _Post())
+        pre(torch.rand(1, 3, 8, 8))
+        cache = pre.__dict__["_output_image"]
+        assert not _returns_detections_per_image(detector, torch.rand(2, 3, 16, 16))
+        assert pre.__dict__["_output_image"] is cache
 
     def test_results_from_detections_misspelt_format_5907(self, device, dtype):
         detections = torch.zeros(1, 6, device=device, dtype=dtype)

@@ -26,6 +26,7 @@ from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation.utils.helpers import _pad_with_fill
 from kornia.augmentation.utils.random import _with_generator
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import crop_by_transform_mat3d
 
 
@@ -189,7 +190,9 @@ class RandomCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+        dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+        transform = _crop_translation3d(src, dst)
         for padding in self._compute_padding(tuple(input.shape), flags):
             transform[:, 0, 3] += padding[0]
             transform[:, 1, 3] += padding[2]

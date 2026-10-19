@@ -18,7 +18,12 @@
 import torch
 import torch.nn.functional as F
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.core.utils import is_compiling, is_exporting
+
+# Inductor lowers torch._assert_async to a runtime check from torch 2.9.0; up to 2.8 it decomposes it to nothing.
+_INDUCTOR_KEEPS_ASSERT_ASYNC = torch_version_ge(2, 9)
 
 
 def one_hot(
@@ -84,3 +89,48 @@ def one_hot(
 
     # Optional smoothing floor: the zeros become eps and the ones stay 1
     return one_hot_tensor * (1.0 - eps) + eps
+
+
+def _check_class_labels(labels: torch.Tensor, num_classes: int) -> torch.Tensor:
+    """Raise :func:`one_hot`'s errors for CPU labels outside ``[0, num_classes)``, eager and compiled alike.
+
+    For a loss that gathers, scatters or indexes with the labels instead of building a one-hot target: index with the
+    labels it returns. Inductor's CPU kernel for such an op checks each index inside an OpenMP parallel region, where a
+    failed check cannot propagate, so an out-of-range label terminates the process (``index out of bounds``, exit code
+    134) instead of raising the eager op's ``RuntimeError``. ``torch._assert_async`` raises a ``RuntimeError`` on the
+    CPU, at once in eager code and from the compiled kernel that evaluates it, without a graph break.
+
+    Inductor may fuse the asserts into the index op's kernel and evaluate them after its parallel loop, so under
+    ``torch.compile`` the labels come back clamped into range: the index op stays in bounds until the asserts raise.
+    They stay unclamped where the asserts may not survive, so that the index op fails instead of a wrong loss being
+    returned: before torch 2.9, whose Inductor compiles the assert to nothing, and in an exported graph, which ONNX
+    translates without it. torch 2.9.1 reports a ``torch.compile`` capture as an export too; its Inductor ran the
+    asserts first in every case checked.
+
+    Only CPU labels are checked: on CUDA the index kernels fail an out-of-range label with a device-side assert in
+    eager and compiled code alike, and so would this assert. Functorch transforms skip it, since ``vmap`` has no
+    batching rule for the assert, and so does TorchScript, whose scripted and traced graphs drop the assert anyway;
+    the index op raises its own ``RuntimeError`` there.
+
+    Args:
+        labels: int64 class labels of any shape; labels to ignore must already be replaced by a valid class.
+        num_classes: the number of classes.
+
+    Returns:
+        ``labels``, clamped to ``[0, num_classes - 1]`` in a CPU ``torch.compile`` capture that is not an export,
+        from torch 2.9 on.
+    """
+    if labels.device.type != "cpu":
+        return labels
+    if not torch.jit.is_scripting():  # TorchScript only skips a bare is_scripting() guard
+        if torch._C._are_functorch_transforms_active():
+            return labels
+        # One pass for both bounds (a quarter of the eager cost of two comparisons and two all()); aminmax rejects an
+        # empty tensor, which holds no label to check. An explicit dimension lets ONNX lower the reduction too.
+        if labels.numel() > 0:
+            low, high = torch.aminmax(labels.reshape(-1), dim=0)
+            torch._assert_async(low >= 0, "Class values must be non-negative.")
+            torch._assert_async(high < num_classes, "Class values must be smaller than num_classes.")
+        if _INDUCTOR_KEEPS_ASSERT_ASYNC and is_compiling() and not is_exporting():
+            return labels.clamp(0, num_classes - 1)
+    return labels

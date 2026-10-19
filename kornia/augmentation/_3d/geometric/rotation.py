@@ -23,6 +23,7 @@ import kornia
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import affine3d
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 
@@ -124,9 +125,9 @@ class RandomRotation3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        yaw: torch.Tensor = params["yaw"].to(input)
-        pitch: torch.Tensor = params["pitch"].to(input)
-        roll: torch.Tensor = params["roll"].to(input)
+        yaw: torch.Tensor = _to_device_nonblocking(params["yaw"], input.device, input.dtype)
+        pitch: torch.Tensor = _to_device_nonblocking(params["pitch"], input.device, input.dtype)
+        roll: torch.Tensor = _to_device_nonblocking(params["roll"], input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center3d(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))

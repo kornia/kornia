@@ -23,6 +23,7 @@ from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.augmentation.utils.random import _sample_distribution
 from kornia.constants import SamplePadding
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 
@@ -128,8 +129,8 @@ class RandomThinPlateSpline(AugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        src = params["src"].to(input)
-        dst = params["dst"].to(input)
+        src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+        dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
         # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
         return warp_image_tps(input, src, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())

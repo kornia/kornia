@@ -59,6 +59,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - a positive ``angle`` turns the blur line counter-clockwise as the image is displayed, as in
           :func:`kornia.filters.motion_blur` and :func:`kornia.filters.get_motion_kernel2d`.
         - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight evenly, and

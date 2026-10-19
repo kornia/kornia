@@ -22,6 +22,7 @@ import os
 from typing import Any, Optional
 
 import torch
+from torch import nn
 
 from kornia.config import kornia_config
 from kornia.core import ImageSequential
@@ -148,6 +149,11 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
             conversion when composing the sequence.
         io_maps: Optional list of input/output name mappings used when connecting the
             ONNX graphs together.
+        resize: Optional torch module that resizes an image before the ONNX graphs, for a
+            resize whose output size depends on the input size and so cannot be part of a
+            graph with dynamic height and width. It is kept as ``self.resize``; the subclass
+            that runs the graphs applies it (:class:`~kornia.models.depth_estimation.DepthEstimation`
+            does), and it is not part of the graph :meth:`to_onnx` exports.
     """
 
     name: str = "onnx_community_model"
@@ -160,6 +166,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
         io_maps: Optional[list[tuple[str, str]]] = None,
+        resize: Optional[nn.Module] = None,
     ) -> None:
         model_list = [] if pre_processor is None else [pre_processor]
         model_list.append(model)
@@ -171,21 +178,25 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         self.model = model
         self.pre_processor = pre_processor
         self.post_processor = post_processor
+        self.resize = resize
 
     def resize_back(self, images: torch.Tensor, target_images: torch.Tensor) -> torch.Tensor:
         """Resize the input images back to the original size of target images.
 
         Args:
-            images: The input images to be resized.
-            target_images: The target images whose size is used as the reference for resizing.
+            images: The images to be resized, of shape :math:`(B, C, h, w)`.
+            target_images: The target images whose size ``(H, W)`` is used as the reference for resizing.
 
         Returns:
             The resized images.
 
+        Raises:
+            TypeError: if ``target_images`` is not a tensor.
+
         """
         if isinstance(target_images, torch.Tensor):
             return resize(images, target_images.shape[-2:])
-        raise RuntimeError
+        raise TypeError(f"target_images must be a torch.Tensor, got {type(target_images).__name__}.")
 
     def to_onnx(
         self,
@@ -195,31 +206,35 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:
-        """Export a depth estimation model to ONNX format.
+        """Export the ONNX model, alone or combined with its pre- and post-processing graphs, to ONNX format.
 
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"kornia_<name>.onnx"`` is used, with the
+                model's ``name``.
             include_pre_and_post_processor:
-                Whether to include the pre-processor and post-processor in the exported model.
+                Whether to include the pre-processor and post-processor graphs in the exported model. The
+                ``resize`` stage runs in torch and is in neither graph: for a model that has one, the exported
+                graph takes an image that is already resized, such as ``model.resize(image)``.
             save:
                 If to save the model or load it.
             additional_metadata:
-                Additional metadata to add to the ONNX model.
+                Additional metadata to add to the exported model. It goes on a copy: the stored graphs, and a
+                ``ModelProto`` the model was built from, are left as they are.
             kwargs: Additional arguments to convert to onnx.
+
+        Returns:
+            A copy of the model or of the combined graph, with ``source``, ``version`` and ``additional_metadata``.
 
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
-        if not include_pre_and_post_processor:
-            self._add_metadata(self.model, additional_metadata)
-            if save:
-                self._export(self.model, onnx_name, **kwargs)
-            return self.model
-
-        self._add_metadata(self._combined_op, additional_metadata)
+        # The metadata goes on a copy: written into the stored graph, which is the caller's ModelProto, one call's keys
+        # would reach every later export.
+        op = onnx.ModelProto()
+        op.CopyFrom(self._combined_op if include_pre_and_post_processor else self.model)
+        self._add_metadata(op, additional_metadata)
         if save:
-            self._export(self._combined_op, onnx_name, **kwargs)
-        return self._combined_op
+            self._export(op, onnx_name, **kwargs)
+        return op

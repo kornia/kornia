@@ -219,7 +219,7 @@ class SemanticSegmentation(ModelBase):
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
             semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
-            output_type: The type of output, can be "torch" or "PIL".
+            output_type: The type of output, can be "torch" or "pil".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
 
@@ -267,12 +267,14 @@ class SemanticSegmentation(ModelBase):
             semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
             directory: The directory to save the results.
-            output_type: The type of output, can be "torch" or "PIL".
+            output_type: "torch" or "pil", as in :meth:`visualize`; it does not change the files written.
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
 
         """
-        colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
+        self._check_output_type(output_type)
+        # The overlay and the files are made from the tensors, whatever output type was asked for.
+        colored_masks = self.visualize(images, semantic_masks, "torch", colormap=colormap, manual_seed=manual_seed)
         overlaid: Union[torch.Tensor, list[torch.Tensor]]
         if isinstance(images, torch.Tensor) and isinstance(colored_masks, torch.Tensor):
             overlaid = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)

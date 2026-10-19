@@ -301,11 +301,10 @@ class XFeat(nn.Module):
 
     Convention:
         - XFeat defines no ``forward``: call :meth:`detectAndCompute` or :meth:`detectAndComputeDense`.
-        - ``XFeat()`` starts in evaluation mode, like :meth:`from_pretrained` and the reference implementation. The
-          inference methods are run under ``torch.inference_mode``; in training mode BatchNorm would normalise with
-          the statistics of the batch, so a keypoint or match would depend on the rest of the batch, update its
-          running statistics on every call, and raise on a single match. Call ``.train()`` to opt in explicitly; the
-          methods then behave as torch's training-mode BatchNorm does.
+        - ``XFeat()`` builds random weights in training mode, where BatchNorm normalises with the batch, updates its
+          running statistics on every call, and matching a single small image pair raises; call ``.eval()`` for
+          inference. :meth:`from_pretrained` returns the trained model in evaluation mode. The inference methods
+          run under ``torch.inference_mode``.
         - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
           bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
@@ -352,7 +351,7 @@ class XFeat(nn.Module):
         every candidate of the reference that kornia leaves out lies in that border strip.
 
     Example:
-        >>> model = XFeat()
+        >>> model = XFeat.from_pretrained()
         >>> img = torch.rand(1, 3, 256, 256)
         >>> out = model.detectAndCompute(img)
         >>> out[0]['keypoints'].shape
@@ -369,8 +368,6 @@ class XFeat(nn.Module):
         self.interpolator = InterpolateSparse2d("bicubic")
         self._nearest = InterpolateSparse2d("nearest")
         self._bilinear = InterpolateSparse2d("bilinear")
-        # like :meth:`from_pretrained` and the reference: the inference methods must not run BatchNorm in training mode
-        self.eval()
 
     @classmethod
     def from_pretrained(cls, top_k: int = 4096, detection_threshold: float = 0.05) -> XFeat:

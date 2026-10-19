@@ -736,7 +736,7 @@ class TestGaussianBlur2d(BaseTester):
         # a torch reshape error
         for rows in (2, 3):
             sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
-            with pytest.raises(BaseError, match=f"sigma batch of {rows} for an input batch of 4"):
+            with pytest.raises(BaseError, match=rf"(?s)expected 4 or 1, got {rows}\..*sigma must have a batch of 1 or"):
                 gaussian_blur2d(sample, (3, 3), sigma, separable=separable)
         # one row for the whole batch and one row per sample run
         for rows in (1, 4):

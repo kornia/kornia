@@ -23,10 +23,10 @@ from typing import Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.core.utils import _normalize_to_float32_or_float64
+from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking
 from kornia.image.utils import perform_keep_shape_image
 
-from .adjust import _lookup_value_check
+from .adjust import _check_floating_image, _lookup_value_check
 from .histogram import histogram
 
 
@@ -168,7 +168,7 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
         bins: number of bins.
 
     Returns:
-        Per-tile counts in the dtype of ``tiles``. (T, bins)
+        Per-tile counts in float32, or float64 for float64 ``tiles``. (T, bins)
 
     """
     num_tiles = tiles.shape[0]
@@ -180,7 +180,7 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     idx = torch.where(in_range, idx, bins)
     counts = torch.zeros(num_tiles, bins + 1, dtype=x.dtype, device=x.device)
     counts.scatter_add_(1, idx, torch.ones_like(x))
-    return counts[:, :bins].to(tiles.dtype)
+    return counts[:, :bins]
 
 
 def _spread_residual(residual: torch.Tensor, num_bins: int) -> torch.Tensor:
@@ -232,6 +232,8 @@ def _compute_luts(
     pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
     if not diff:
+        # Counted, clipped and accumulated in float32 (float64 for float64 tiles); only the finished LUT is cast back.
+        # In float16 the clipped total of a 256 x 256 tile overflows to inf, and bfloat16 rounds counts above 256.
         histos = _tiles_histc(tiles, num_bins)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
@@ -246,13 +248,18 @@ def _compute_luts(
         # then cast: a single clip.to("cpu", torch.float64) from MPS raises on torch 2.5.1 and returns zeros on 2.14.
         limits = clip.cpu().double() if clip.device.type == "mps" else clip.double()
         max_vals = (limits * pixels).div(num_bins, rounding_mode="floor").clamp(min=1)
-        max_vals = max_vals.to(histos).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        max_vals = (
+            _to_device_nonblocking(max_vals, histos.device, histos.dtype)
+            .view(b, 1)
+            .expand(b, gh * gw * c)
+            .reshape(-1, 1)
+        )
         limited = histos.clamp(max=max_vals)
         clipped_tensor = torch.relu(histos - max_vals).sum(1) if diff else pixels - limited.sum(1)
         residual_tensor = torch.remainder(clipped_tensor, num_bins)
         limited = limited + ((clipped_tensor - residual_tensor) / num_bins).unsqueeze(1)
         limited = limited + _spread_residual(residual_tensor, num_bins)
-        enabled = (clip > 0).to(device=histos.device).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        enabled = _to_device_nonblocking(clip > 0, histos.device).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
         histos = torch.where(enabled, limited, histos)
     elif clip > 0.0:
         max_val: float = max(clip * pixels // num_bins, 1)
@@ -270,7 +277,8 @@ def _compute_luts(
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
     luts = luts.clamp(0, num_bins - 1)
     if not diff:
-        luts = luts.round()  # match OpenCV's round-to-nearest LUT quantization
+        # match OpenCV's round-to-nearest LUT quantization; the integers 0..255 are exact in every float dtype
+        luts = luts.round().to(tiles_x_im.dtype)
     return luts.view((b, gh, gw, c, num_bins))
 
 
@@ -307,6 +315,10 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
         i_floor = torch.arange(1, gw - 1).view(gw - 2, 1).div(2, rounding_mode="trunc")
         i_idxs = torch.tensor([[0, 1, 0, 1], [-1, 0, -1, 0]] * ((gw - 2) // 2))  # reminder + i_idxs[:, [0, 2]] -= 1
         i_idxs += i_floor
+
+    # The index tensors are built on the CPU; indexing CUDA LUTs with them would copy them with a blocking transfer.
+    j_idxs = _to_device_nonblocking(j_idxs, luts.device)
+    i_idxs = _to_device_nonblocking(i_idxs, luts.device)
 
     # selection of luts to interpolate each patch
     # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
@@ -506,13 +518,16 @@ def equalize_clahe(
         torch.Size([2, 3, 10, 20])
 
     .. note::
-       The input is expected in :math:`[0, 1]`; each tile is equalized from a 256-bin lookup table.
-       Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch
-       ``2.13``; on an older MPS release the condition is read on the host instead, one device sync per
-       call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
+       The input is expected as a floating-point image in :math:`[0, 1]`; each tile is equalized from a
+       256-bin lookup table. An integer or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError`
+       (a :exc:`TypeError`); convert 8-bit data with ``image.float() / 255`` first, as for
+       :func:`kornia.enhance.equalize`. Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise
+       a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel
+       from torch ``2.13``; on an older MPS release the condition is read on the host instead, one device
+       sync per call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
 
     """
+    _check_floating_image(input, "equalize_clahe")
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
 

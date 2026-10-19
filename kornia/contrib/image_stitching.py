@@ -28,26 +28,44 @@ from kornia.geometry.transform import warp_perspective
 
 
 class ImageStitcher(nn.Module):
-    """Stitch two images with overlapping fields of view.
+    """Stitch images with overlapping fields of view.
+
+    Convention:
+        - The images are RGB, :math:`(B, 3, H, W)`, all of one height, ordered left to right. ``matcher`` is a
+          :class:`~kornia.feature.LoFTR` or a :class:`~kornia.feature.LocalFeatureMatcher`, which gets grayscale
+          copies; any other matcher raises ``NotImplementedError``.
+        - The panorama is in the first image's pixel frame and has its height: content that maps left of its first
+          column, or above or below its rows, is lost. Each next image is warped onto the panorama so far with a
+          homography from their matches; every sample needs 4 matches, or a ``RuntimeError`` names the sample.
+        - ``"naive"`` blending keeps the warped image wherever it covers a pixel completely, so in an overlap the right
+          image replaces the left one; a pixel it covers only in part keeps the panorama's value.
+        - The result drops the empty trailing columns, those after the last column that any sample covers; an
+          uncovered column before it, the first one included, is kept. A batch shares one crop, so it is cropped to its
+          widest sample and a narrower sample keeps zero columns on its right.
+        - ``estimator="ransac"`` uses ``RANSAC("homography")`` (``inl_th=2.0``); ``"vanilla"`` fits every match with
+          iterated DLT.
 
     Args:
-        matcher: image feature matching module.
+        matcher: image feature matching module, :class:`~kornia.feature.LoFTR` or
+            :class:`~kornia.feature.LocalFeatureMatcher`.
         estimator: method to compute homography, either "vanilla" or "ransac".
             "ransac" is slower with a better accuracy.
         blending_method: method to blend two images together.
             Only "naive" is currently supported.
 
-    Note:
-        Current implementation requires strict image ordering from left to right.
-
     .. code-block:: python
 
-        IS = ImageStitcher(KF.LoFTR(pretrained='outdoor'), estimator='ransac').cuda()
-        # Compute the stitched result with less GPU memory cost.
+        import torch
+        import kornia.feature as KF
+        from kornia.contrib import ImageStitcher
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        stitcher = ImageStitcher(KF.LoFTR(pretrained="outdoor"), estimator="ransac").to(device)
+        # img_left and img_right: (1, 3, H, W) RGB images of one height on `device`
         with torch.inference_mode():
-            out = IS(img_left, img_right)
-        # Show the result
-        plt.imshow(K.tensor_to_image(out))
+            panorama = stitcher(img_left, img_right)
+
+    See :doc:`/applications/image_stitching` for a complete example.
 
     """
 
@@ -148,11 +166,11 @@ class ImageStitcher(nn.Module):
                 pixels covered by at least one input view.
 
         Returns:
-            The stitched image cropped to remove trailing invalid columns
-            (columns that contain no valid pixels in the mask).
-            If no redundant area is found, the original ``image`` is returned.
+            The stitched image without its empty trailing columns, those after the last column that has a valid pixel
+            in any sample of the mask. Uncovered columns before it are kept, and a mask without any valid pixel returns
+            the original ``image``.
         """
-        # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
+        # One crop for the whole batch: a column is valid if any sample has a valid pixel in it.
         mask_ = mask.sum((0, 1))
         index = int(mask_.bool().any(0).flip(0).long().argmax().item())
         if index == 0:  # If no redundant space
@@ -240,11 +258,11 @@ class ImageStitcher(nn.Module):
         Args:
             *imgs: Ordered image tensors from left to right. Each tensor is expected
                 to share a common height and overlap with the next image.
-                Each tensor typically follows :math:`(B, C, H, W)`.
+                Each tensor is RGB, :math:`(B, 3, H, W)`.
 
         Returns:
             A single panorama tensor obtained by stitching all provided images
-            in order and cropping trailing empty space.
+            in order and cropping it as :meth:`postprocess` does.
         """
         img_out = imgs[0]
         mask_left = torch.ones_like(img_out)

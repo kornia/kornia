@@ -63,14 +63,14 @@ class TFeat(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> tfeat = TFeat()
+        >>> tfeat = TFeat(pretrained=False).eval()
         >>> descs = tfeat(input) # 16x128
 
     """
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
@@ -85,7 +85,7 @@ class TFeat(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Compute TFeat descriptors for grayscale 32x32 patches.
@@ -98,5 +98,5 @@ class TFeat(nn.Module):
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
-        x = x.view(x.size(0), -1)
+        x = x.flatten(1)
         return self.descr(x)

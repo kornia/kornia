@@ -286,31 +286,6 @@ for tagname, mdl, err in (("mobile_sam", sam_mobile, _e_sm), ("vit_b,random", sa
         )
     )
 
-# ============================================================================= kornia.models.sam3
-from kornia.models.sam3 import ImageEncoderHiera  # noqa: E402
-
-A(
-    mcase(
-        "models.sam3.ImageEncoderHiera[tiny,random]",
-        "models.sam3",
-        lambda: ev(ImageEncoderHiera(img_size=64, patch_size=16, embed_dim=64, depth=2, num_heads=2)),
-        lambda m: m,
-        [torch.rand(1, 3, 64, 64)],
-        note="random init, img_size=64 (square, pos_embed fixed to img_size)",
-        tags=("model",),
-    )
-)
-A(
-    case(
-        "models.sam3.ImageEncoderHiera[default 1024]",
-        "models.sam3",
-        None,
-        [],
-        skip="default config = ViT-B at 1024x1024 random init; no weights loader exists in kornia; "
-        "tiny variant exported",
-    )
-)
-
 # ============================================================================= kornia.models.yunet
 from kornia.models.yunet import YuNet  # noqa: E402
 from kornia.models.yunet.processors import PriorBox, decode  # noqa: E402
@@ -748,14 +723,14 @@ A(
         "models.processors",
         NaFlex(_pe_conv, torch.randn(16, 8)),
         [torch.rand(1, 3, 32, 32)],
-        note="num_patches == pos rows -> plain add",
+        note="4x4 patch grid == the 4x4 pos-embed grid -> plain add, no resize",
     )
 )
 
 # ============================================================================= VLM re-implementations (pure PyTorch)
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel, KimiVLProjectorConfig, MoonViT, MoonViTConfig  # noqa: E402
 from kornia.models.paligemma import PaliGemma, PaliGemmaConfig  # noqa: E402
-from kornia.models.qwen25 import Qwen2VLVisionTransformer  # noqa: E402
+from kornia.models.qwen25 import Qwen25VisionConfig, Qwen25VisionTransformer  # noqa: E402
 from kornia.models.siglip2 import SigLip2Config, SigLip2ImagePreprocessor, SigLip2Model  # noqa: E402
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig  # noqa: E402
 from kornia.models.smolvlm2 import SmolVLM2  # noqa: E402
@@ -808,7 +783,7 @@ A(
         "models.vlm",
         SigLip2ImagePreprocessor((32, 40)),
         [torch.rand(1, 3, 48, 64) * 255],
-        note="Rescale(1/255) + Resize bicubic antialias + Normalize; size baked",
+        note="Rescale(1/255) + Resize bilinear antialias (default; bicubic via interpolation=) + Normalize; size baked",
     )
 )
 A(
@@ -876,12 +851,24 @@ A(
 )
 A(
     mcase(
-        "models.qwen25.Qwen2VLVisionTransformer[tiny,random]",
+        "models.qwen25.Qwen25VisionTransformer[tiny,random]",
         "models.vlm",
-        lambda: ev(Qwen2VLVisionTransformer(embed_dim=32, depth=1, num_heads=2)),
+        lambda: ev(
+            Qwen25VisionTransformer(
+                Qwen25VisionConfig(
+                    depth=2,
+                    hidden_size=32,
+                    intermediate_size=48,
+                    num_heads=2,
+                    out_hidden_size=16,
+                    window_size=56,
+                    fullatt_block_indexes=(1,),
+                )
+            )
+        ),
         lambda m: m,
-        [torch.rand(1, 3, 28, 42)],
-        note="pure-PyTorch skeleton; conv14 patch embed + rotary attention blocks",
+        [torch.rand(1, 3, 112, 84)],
+        note="pure-PyTorch Qwen2.5-VL tower; conv3d patch embed, 2D RoPE, windowed + full attention, 2x2 merger",
         tags=("model",),
     )
 )
@@ -1173,9 +1160,7 @@ A(
             -1,
         ),
         [torch.rand(15) * 60],
-        note="property accessors on a (15,) detection vector; __init__ requires len(data) >= 15 "
-        "(message says 14) so a (N,15) "
-        "batch with N<15 is rejected",
+        note="property accessors on a (15,) detection vector; __init__ requires a last dimension of at least 15",
     )
 )
 A(case("contrib.FaceKeypoint", "contrib.wrappers", None, [], skip="enum"))
@@ -1188,8 +1173,8 @@ A(
         reuse(edge, _e_ed),
         lambda m: m,
         [torch.rand(1, 3, 48, 80) * 255],
-        note="Normalize -> DexiNed -> Sigmoid with ResizePreProcessor(64,64) and ResizePostProcessor (numpy tolist); "
-        "image_size=64 baked",
+        note="RgbToBgr + Normalize -> DexiNed -> Sigmoid with ResizePreProcessor(64,64) and ResizePostProcessor "
+        "(numpy tolist); image_size=64 baked",
         tags=("model", "pretrained"),
     )
 )
@@ -1200,7 +1185,7 @@ A(
         reuse(edge, _e_ed),
         lambda m: m.model,
         [torch.rand(1, 3, 64, 64)],
-        note="core nn.Sequential(Normalize, DexiNed, Sigmoid) without pre/post processors",
+        note="core nn.Sequential(nn.Sequential(RgbToBgr, Normalize), DexiNed, Sigmoid) without pre/post processors",
         tags=("model", "pretrained"),
     )
 )
@@ -1217,10 +1202,8 @@ A(
         reuse(od, _e_od),
         lambda m: m,
         [torch.rand(1, 3, 200, 320)],
-        note="ObjectDetector = ResizePreProcessor(256,256) + RTDETR + DETRPostProcessor; threshold 0 "
-        "-> all 300 boxes (1,300,6). "
-        "KORNIA BUG: builder passes `confidence_filtering or not is_in_onnx_export()` so confidence_filtering=False "
-        "is ignored at build time (list output); forward is @torch.inference_mode()",
+        note="ObjectDetector = ResizePreProcessor(640,640) + RTDETR + DETRPostProcessor (image_size=256 is ignored "
+        "with a model_name); threshold 0 -> all 300 boxes (1,300,6). forward is @torch.inference_mode()",
         tags=("model", "pretrained"),
     )
 )
@@ -1236,7 +1219,7 @@ A(
         reuse(od_f, _e_odf),
         lambda m: m,
         [torch.rand(1, 3, 200, 320)],
-        note="default confidence_filtering=True unless is_in_onnx_export(); list of (Di,6) tensors",
+        note="default confidence_filtering=True; list of (Di,6) tensors",
         tags=("model", "pretrained"),
     )
 )

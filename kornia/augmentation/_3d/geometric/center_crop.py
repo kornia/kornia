@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation._3d.geometric.crop import _crop_translation3d
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import crop_by_transform_mat3d
 
 
@@ -110,7 +111,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
             self.size = (size, size, size)
         else:
             raise TypeError(f"Invalid `size` type. Expected int or tuple[int, int, int] (D, H, W). Got {size!r}.")
-        self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
+        self.flags = {"size": self.size, "align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator3d(
@@ -120,7 +121,9 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+        dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+        transform = _crop_translation3d(src, dst)
         return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(

@@ -207,6 +207,24 @@ class TestRgbToHls(BaseTester):
         actual = kornia.color.rgb_to_hls(image, eps=eps)
         self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))
 
+    @pytest.mark.parametrize("max_channel", [0, 1, 2])
+    @pytest.mark.parametrize("eps", [0.0, 1e-8, 0.1])
+    def test_near_gray_gradients(self, device, dtype, max_channel, eps):
+        # Adjacent 8-bit values near white overflow the backward of RGB / chroma in float16.
+        image = torch.full((2, 3, 2, 3), 250 / 255, device=device, dtype=dtype)
+        image[:, max_channel] = 251 / 255
+        image.requires_grad_()
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        reference = image.detach().to(reference_dtype).requires_grad_()
+
+        actual = kornia.color.rgb_to_hls(image, eps)[..., 0, :, :]
+        expected = kornia.color.rgb_to_hls(reference, eps)[..., 0, :, :]
+        actual.sum().backward()
+        expected.sum().backward()
+
+        self.assert_close(actual, expected.to(dtype))
+        self.assert_close(image.grad, reference.grad.to(dtype))
+
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)

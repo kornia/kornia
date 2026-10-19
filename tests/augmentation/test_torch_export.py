@@ -147,6 +147,76 @@ def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module
     torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)
 
 
+def _resize_int() -> torch.nn.Module:
+    return K.Resize(16)
+
+
+def _longest_max_size() -> torch.nn.Module:
+    return K.LongestMaxSize(16)
+
+
+def _smallest_max_size() -> torch.nn.Module:
+    return K.SmallestMaxSize(16)
+
+
+INT_SIZE_RESIZES: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
+    ("Resize", _resize_int),
+    ("LongestMaxSize", _longest_max_size),
+    ("SmallestMaxSize", _smallest_max_size),
+]
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("name,factory", INT_SIZE_RESIZES, ids=[n for n, _ in INT_SIZE_RESIZES])
+@pytest.mark.parametrize("then_crop", [False, True], ids=["alone", "then_resample_crop"])
+@pytest.mark.device_agnostic
+def test_torch_export_container_int_size_resize_6024(
+    name: str, factory: Callable[[], torch.nn.Module], then_crop: bool
+) -> None:
+    """An integer-size resize tracks its aspect-preserving output shape under ``torch.export`` (#6024)."""
+    torch.manual_seed(0)
+    x = torch.randn(2, 3, 24, 40)
+    augs = [factory()]
+    if then_crop:
+        augs.append(K.CenterCrop(8, cropping_mode="resample"))
+    seq = K.AugmentationSequential(*augs, data_keys=["input"])
+    eager = seq(x)
+    exported = torch.export.export(seq, (x,))
+    out = exported.module()(x)
+    assert out.shape == eager.shape, f"{name}: shape {out.shape} vs {eager.shape}"
+    torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)
+
+
+PAD_TO_FOLLOWERS: list[Tuple[str, Callable[[], list[torch.nn.Module]]]] = [
+    ("Resize", lambda: [K.Resize(16)]),
+    ("CenterCrop-resample", lambda: [K.CenterCrop(8, cropping_mode="resample")]),
+    ("Resize,CenterCrop-resample", lambda: [K.Resize(16), K.CenterCrop(8, cropping_mode="resample")]),
+]
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("name,factory", PAD_TO_FOLLOWERS, ids=[n for n, _ in PAD_TO_FOLLOWERS])
+@pytest.mark.device_agnostic
+def test_torch_export_container_pad_to_then_shape_dependent_6043(
+    name: str, factory: Callable[[], list[torch.nn.Module]]
+) -> None:
+    """A shape-dependent child after ``PadTo`` plans for the padded canvas under ``torch.export`` (#6043)."""
+    torch.manual_seed(0)
+    x = torch.randn(2, 3, 24, 40)
+    augs = [K.PadTo((40, 48)), *factory()]
+    expected = x
+    for aug in augs:
+        expected = aug(expected)
+    seq = K.AugmentationSequential(*augs, data_keys=["input"])
+    out = torch.export.export(seq, (x,)).module()(x)
+    assert out.shape == expected.shape, f"{name}: shape {out.shape} vs {expected.shape}"
+    torch.testing.assert_close(out, expected, atol=1e-5, rtol=1e-5)
+
+
 def _mask_export_case(case: str) -> Tuple[torch.nn.Module, tuple, Callable[[object], torch.Tensor], torch.Tensor]:
     """Build a float64 image/mask pipeline for ``case``: the module, its arguments, a mask getter, the expected mask."""
     image = torch.zeros(1, 1, 1, 2, dtype=torch.float64)

@@ -786,6 +786,16 @@ def _extract_patches_from_pyramid_levelwise(
     return out
 
 
+def _empty_patches(img: torch.Tensor, laf: torch.Tensor, B: int, N: int, PS: int) -> torch.Tensor:
+    r"""Zero patches ``(B, N, CH, PS, PS)`` of an empty batch or an empty LAF set, linked to ``img`` and ``laf``.
+
+    The sum of a zero-width slice is a zero that autograd traces back to both inputs, so a loss on the
+    patches backpropagates (a zero gradient) instead of raising on a tensor with no graph.
+    """
+    link = img.flatten()[:0].sum() + laf.flatten()[:0].sum().to(img.dtype)
+    return torch.zeros(B, N, img.shape[1], PS, PS, device=img.device, dtype=img.dtype) + link
+
+
 def extract_patches_simple(
     img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
 ) -> torch.Tensor:
@@ -818,7 +828,7 @@ def extract_patches_simple(
     _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
     if B == 0 or N == 0:
-        return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
+        return _empty_patches(img, laf, B, N, PS)
     # See `extract_patches_from_pyramid`: a non-finite value anywhere in a training-time LAF
     # frame, including only its center, would reach `grid_sample` as an invalid grid, and the CPU
     # border-padding backward kernel can segfault on it. Mark the whole frame invalid and
@@ -884,7 +894,7 @@ def extract_patches_from_pyramid(
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     if B == 0 or N == 0:
-        return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
+        return _empty_patches(img, laf, B, N, PS)
     # max_level is a compile-time constant for static image shapes.
     max_level = min(h, w) // PS
     # Build exactly the pyramid that can provide a PS-sized patch. ``pyrdown`` defines its output

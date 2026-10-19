@@ -22,8 +22,9 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import crop_by_transform_mat
-from kornia.geometry.transform.crop2d import _crop_translation
+from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat, _crop_translation
 
 
 class CenterCrop(GeometricAugmentationBase2D):
@@ -58,9 +59,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         :class:`RandomCrop` and :class:`RandomResizedCrop` (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
 
         ``cropping_mode="slice"`` indexes the input and returns a copy, so writing to the result leaves the input
-        unchanged. ``cropping_mode="resample"`` warps with the configured ``resample`` and ``align_corners``. Only
-        resample mode supports :meth:`inverse`, which resamples onto the original canvas (zero padding unless the
-        call passes ``padding_mode``) and cannot restore discarded data.
+        unchanged. ``cropping_mode="resample"`` warps with the configured ``resample`` and ``align_corners``. Both
+        modes support :meth:`inverse`, which warps the crop back onto the original canvas with the inverse of
+        ``transform_matrix`` (zero padding unless the call passes ``padding_mode``) and cannot restore discarded
+        data.
 
     Examples:
         >>> import torch
@@ -124,7 +126,9 @@ class CenterCrop(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform = _crop_translation(params["src"].to(input), params["dst"].to(input))
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            transform = _crop_translation(src, dst)
             return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
@@ -171,34 +175,15 @@ class CenterCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
         if size is None:
             size = self.size
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
-        return crop_by_transform_mat(
+        return _crop_inverse_by_transform_mat(
             input,
-            transform[:, :2, :],
+            transform,
             size,
             flags["resample"].name.lower(),
             flags["padding_mode"],
             flags["align_corners"],
         )
-
-    def inverse_inputs(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-        **kwargs: Any,
-    ) -> torch.Tensor:
-        # Check the mode before the gate: an empty or unapplied batch never reaches inverse_transform, so a
-        # slice-mode inverse succeeded for it and raised for any other batch. A keyword overrides the flag.
-        cropping_mode = kwargs.get("cropping_mode", flags["cropping_mode"])
-        if cropping_mode != "resample":
-            raise NotImplementedError(f"`inverse` is only applicable for resample cropping mode. Got {cropping_mode}.")
-        return super().inverse_inputs(input, params, flags, transform, **kwargs)

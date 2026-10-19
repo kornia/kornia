@@ -35,7 +35,16 @@ from kornia.models.common import ConvNormAct
 def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> nn.Module:
     return (
         nn.Sequential(
-            OrderedDict([("pool", nn.AvgPool2d(2, 2)), ("conv", ConvNormAct(in_channels, out_channels, 1, act="none"))])
+            OrderedDict(
+                [
+                    # ``ceil_mode`` as in the reference ``presnet.py``: an odd input keeps the size of the strided
+                    # conv branch, ceil(H / 2). ``count_include_pad=False`` is the same in eager, with no padding;
+                    # in ONNX it makes onnxruntime <= 1.28 average a partial window over the pixels inside it, as
+                    # eager and Paddle's ``exclusive=True`` do, instead of dividing it by 4
+                    ("pool", nn.AvgPool2d(2, 2, 0, ceil_mode=True, count_include_pad=False)),
+                    ("conv", ConvNormAct(in_channels, out_channels, 1, act="none")),
+                ]
+            )
         )
         if stride == 2
         else ConvNormAct(in_channels, out_channels, 1, act="none")

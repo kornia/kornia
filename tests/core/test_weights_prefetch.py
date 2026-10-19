@@ -38,9 +38,8 @@ enumerated in :data:`WEIGHT_REGISTRIES`). Two other download paths live in
 as the vision-language builders (``kornia/models/{kimi_vl,siglip2}/builder.py``)
 call it, to fetch a ``model.safetensors``, and as ``kornia/feature/lightglue_onnx/utils/download.py``
 calls it, to fetch the LightGlue ONNX models -- and ``CachedDownloader`` into
-``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
-``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR matrix
-downloads through either today; a test that did would fetch live from every
+``.kornia_hub/`` (``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR
+matrix downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
 
 Those builders' checkpoints could in principle be prefetched as the reference
@@ -72,6 +71,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from kornia.contrib import super_resolution
 from kornia.feature import affine_shape, defmo, hardnet, hynet, keynet, mkd, orientation, sosnet, tfeat, xfeat
 from kornia.feature import lightglue as lightglue_mod
 from kornia.feature.aliked import aliked
@@ -83,7 +83,7 @@ from kornia.feature.loftr import loftr
 from kornia.feature.sold2 import sold2, sold2_detector
 from kornia.filters import dexined
 from kornia.models import dexined as dexined_model
-from kornia.models import tiny_vit, vit
+from kornia.models import small_sr, tiny_vit, vit
 from kornia.models.efficient_vit import model as efficient_vit
 from kornia.models.rt_detr import model as rt_detr
 from kornia.models.sam import model as sam
@@ -145,10 +145,11 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "rt_detr": (rt_detr, rt_detr.URLs),
     "keynet": (keynet, {"keynet": keynet.KeyNet_URL}),
     "yunet": (yunet, {"yunet": yunet._url}),
-    # Two independent registries, identical today, both loading the same cache
-    # name -- which is what hides the models copy from the coverage check: the
-    # filters copy accounts for the name either way. Holding both to MODELS also
-    # holds the two copies equal to each other.
+    "small_sr": (small_sr, {"small_sr": small_sr.url}),
+    "super_resolution": (super_resolution, super_resolution._URLs),
+    # kornia.filters.dexined re-exports kornia.models.dexined, so both entries
+    # read one list; the filters entry keeps the old import path's ``url`` alias,
+    # which testing/reference_data.py reads, under the same guard.
     "dexined": (dexined, {"dexined": dexined.url}),
     "dexined_model": (dexined_model, {"dexined": dexined_model._url}),
     "xfeat": (xfeat, {"xfeat": xfeat.XFeat.weights_url}),
@@ -215,7 +216,6 @@ _DOWNLOAD_CALL_ALLOWLIST = {
 NOT_PREFETCHED: dict[str, str] = {
     # Alternative training sets -- tests only ever build the liberty variants.
     "HardNetPP.pth": "HardNet++ weights; no test or doctest requests them",
-    "hardnet8v2.pt": "HardNet8(pretrained=True); tests build HardNet8() untrained",
     "HyNet_ND.pth": "notredame variant; tests use the liberty default",
     "HyNet_YOS.pth": "yosemite variant; tests use the liberty default",
     "sosnet_32x32_hpatches_a.pth": "hpatches variant; tests use the liberty default",
@@ -223,7 +223,9 @@ NOT_PREFETCHED: dict[str, str] = {
     "tfeat-yosemite.params": "yosemite variant; tests use the liberty default",
     # Model variants no test selects.
     "loftr_indoor_ds_new.ckpt": "tests instantiate LoFTR('indoor') and LoFTR('outdoor') only",
-    "sold2_wireframe.tar": "every SOLD2_detector in the suite passes pretrained=False",
+    "sold2_wireframe.tar": (
+        "the suite builds SOLD2_detector random, or weighted through the prefetched, byte-identical sold2_wireframe.pth"
+    ),
     "epipolar-save.pth": "tests call DISK.from_pretrained(checkpoint='depth')",
     # LightGlue heads: tests build the disk and doghardnet matchers, and the
     # suite also reaches the superpoint head. The rest are unused.
@@ -289,6 +291,11 @@ NOT_PREFETCHED: dict[str, str] = {
     "vit_s-16.pth": "no test or doctest selects this ViT variant",
     "vit_ti-16.pth": "no test or doctest selects this ViT variant",
     "vit_b-32.pth": "no test or doctest selects this ViT variant",
+    # Real-ESRGAN: the tests build RRDBNetBuilder random or monkeypatch its loader, and models.rst only shows the call.
+    "RealESRGAN_x4plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRNet_x4plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRGAN_x4plus_anime_6B.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRGAN_x2plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
 }
 
 

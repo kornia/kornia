@@ -28,12 +28,14 @@ def decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> t
     """Decode locations from predictions using priors to undo the encoding for offset regression at train time.
 
     Args:
-        loc: location predictions for loc layers. Shape: [num_priors,4].
+        loc: location predictions for loc layers: the box offsets and five landmark offsets.
+            Shape: [num_priors,14].
         priors: Prior boxes in center-offset form. Shape: [num_priors,4].
         variances: (list[float]) Variances of priorboxes.
 
     Return:
-        torch.Tensor containing decoded bounding box predictions.
+        torch.Tensor containing the decoded box ``xmin, ymin, xmax, ymax`` and the five ``(x, y)`` landmarks, in the
+        normalized coordinates of the priors. Shape: [num_priors,14].
 
     """
     boxes = torch.cat(

@@ -79,6 +79,52 @@ class TestGetLAFDescriptors(BaseTester):
         self.assert_close(descs_test_from_rgb, descs_reference)
         self.assert_close(descs_test_from_gray, descs_reference)
 
+    def test_empty_batch(self, device, dtype):
+        # Zero images with a (0, N) LAF set: N > 0 slots per image, none of which exists.
+        PS = 16
+        sift = SIFTDescriptor(PS).to(device, dtype)
+        img = torch.zeros(0, 1, 48, 64, device=device, dtype=dtype)
+        lafs = torch.zeros(0, 5, 2, 3, device=device, dtype=dtype)
+        descs = get_laf_descriptors(img, lafs, sift, PS)
+        assert descs.shape == (0, 5, 128)
+        assert descs.dtype == dtype
+
+    def test_empty_batch_gradients_reach_both_inputs(self, device, dtype):
+        # The patches of an empty batch are linked to the image and the LAFs, so a loss on the descriptors alone
+        # backpropagates (a zero gradient), also through a descriptor with no parameters.
+        PS = 16
+        sift = SIFTDescriptor(PS).to(device, dtype)
+        img = torch.zeros(0, 1, 48, 64, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.zeros(0, 5, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        get_laf_descriptors(img, lafs, sift, PS).sum().backward()
+        assert img.grad is not None
+        assert lafs.grad is not None
+        assert img.grad.shape == img.shape
+        assert lafs.grad.shape == lafs.shape
+
+    @pytest.mark.parametrize("n_lafs", [0, 4])
+    @pytest.mark.parametrize("n_images", [0, 2])
+    @pytest.mark.parametrize("shape", [(64, 1), (), (3, 5)])
+    def test_the_width_is_everything_a_patch_descriptor_returns(self, device, dtype, shape, n_images, n_lafs):
+        # The descriptor width is the numel of what one patch yields, whatever the rank of the output, also when
+        # the batch of patches is empty and `-1` could not infer it.
+        class Stub(torch.nn.Module):
+            def forward(self, patches):
+                return patches.new_ones(patches.shape[0], *shape)
+
+        PS = 8
+        img = torch.rand(n_images, 1, 48, 64, device=device, dtype=dtype)
+        lafs = torch.zeros(n_images, n_lafs, 2, 3, device=device, dtype=dtype)
+        lafs[..., 0, 0] = 8.0
+        lafs[..., 1, 1] = 8.0
+        lafs[..., 0, 2] = 24.0
+        lafs[..., 1, 2] = 24.0
+        width = torch.Size(shape).numel()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # the empty-LAF warning
+            descs = get_laf_descriptors(img, lafs, Stub(), PS)
+        assert descs.shape == (n_images, n_lafs, width)
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         B, C, H, W = 1, 1, 32, 32
@@ -445,7 +491,7 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         # device than the image (a device cast)
         image_dtype = torch.float64 if torch.device(device).type == "cpu" else torch.float32
         img, lafs = self._inputs(device, image_dtype)
-        plain = HardNet(False)
+        plain = HardNet(False).eval()
         scripted = torch.jit.script(copy.deepcopy(plain))
         before = self._state(scripted)
         get_laf_descriptors(img, lafs, plain, 32).sum().backward()
@@ -500,6 +546,26 @@ class TestLocalFeature(BaseTester):
     def test_non_positive_scaling_coef_message_5724(self, coef):
         with pytest.raises(ValueError, match="should be > 0"):
             LocalFeature(ScaleSpaceDetector(10), SIFTDescriptor(32), coef)
+
+    def test_empty_batch(self, device, dtype):
+        # H != W; the detector and the descriptor both accept a batch of zero images.
+        PS, n = 16, 7
+        local_feature = LocalFeature(ScaleSpaceDetector(n), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device, dtype)
+        one = local_feature(torch.rand(1, 1, 48, 64, device=device, dtype=dtype))
+        lafs, responses, descs = local_feature(torch.zeros(0, 1, 48, 64, device=device, dtype=dtype))
+        assert lafs.shape == (0, n, 2, 3)
+        assert responses.shape == (0, n)
+        assert descs.shape == (0, n, 128)
+        for actual, expected in zip((lafs, responses, descs), one):
+            assert actual.dtype == expected.dtype
+            assert actual.device == expected.device
+
+    def test_empty_batch_sift_feature_scale_space(self, device, dtype):
+        feature = kornia.feature.SIFTFeatureScaleSpace(7).to(device, dtype)
+        lafs, responses, descs = feature(torch.zeros(0, 1, 48, 64, device=device, dtype=dtype))
+        assert lafs.shape == (0, 7, 2, 3)
+        assert responses.shape == (0, 7)
+        assert descs.shape == (0, 7, 128)
 
     def test_smoke(self, device, dtype):
         det = ScaleSpaceDetector(10)
@@ -693,14 +759,14 @@ class TestDoGHardNet(BaseTester):
         from kornia.feature import HardNet, LAFAffNetShapeEstimator
 
         def affnet(pretrained=False, preserve_orientation=True):
-            module = LAFAffNetShapeEstimator(False, preserve_orientation)
+            module = LAFAffNetShapeEstimator(False, preserve_orientation).eval()
             head = module.features[-3]
             with torch.no_grad():
                 head.weight.zero_()
                 head.bias.copy_(torch.tensor([0.5, 0.3, -0.3]))
             return module
 
-        monkeypatch.setattr("kornia.feature.integrated.HardNet", lambda pretrained=False: HardNet(False))
+        monkeypatch.setattr("kornia.feature.integrated.HardNet", lambda pretrained=False: HardNet(False).eval())
         monkeypatch.setattr("kornia.feature.integrated.LAFAffNetShapeEstimator", affnet)
 
     @staticmethod
@@ -1246,13 +1312,17 @@ class TestConventionsLocalFeature(BaseTester):
         from kornia.feature import KeyNetDetector, LAFAffNetShapeEstimator, OriNet
 
         integrated = "kornia.feature.integrated"
-        monkeypatch.setattr(f"{integrated}.HardNet", lambda pretrained=False: HardNet(False))
+        monkeypatch.setattr(f"{integrated}.HardNet", lambda pretrained=False: HardNet(False).eval())
         monkeypatch.setattr(
             f"{integrated}.LAFAffNetShapeEstimator",
-            lambda pretrained=False, preserve_orientation=True: LAFAffNetShapeEstimator(False, preserve_orientation),
+            lambda pretrained=False, preserve_orientation=True: LAFAffNetShapeEstimator(
+                False, preserve_orientation
+            ).eval(),
         )
-        monkeypatch.setattr(f"{integrated}.OriNet", lambda pretrained=False, eps=1e-8: OriNet(False))
-        monkeypatch.setattr(f"{integrated}.KeyNetDetector", lambda pretrained=False, **kw: KeyNetDetector(False, **kw))
+        monkeypatch.setattr(f"{integrated}.OriNet", lambda pretrained=False, eps=1e-8: OriNet(False).eval())
+        monkeypatch.setattr(
+            f"{integrated}.KeyNetDetector", lambda pretrained=False, **kw: KeyNetDetector(False, **kw).eval()
+        )
         spec = self._PRESETS[preset]
         detector, num_features, mr_size, response, orienter, orienter_size, affine, descriptor, patch_size = spec
         cls = getattr(kornia.feature, preset)

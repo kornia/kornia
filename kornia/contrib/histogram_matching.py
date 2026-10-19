@@ -22,22 +22,33 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     """Adjust the pixel values of an image to match its histogram towards a target image.
 
     `Histogram matching <https://en.wikipedia.org/wiki/Histogram_matching>`_ is the transformation
-    of an image so that its histogram matches a specified histogram. In this implementation, the
-    histogram is computed over the flattened image array. Code referred to
+    of an image so that its histogram matches a specified histogram. Code referred to
     `here <https://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x>`_.
+
+    Convention:
+        - One histogram of every element of ``source``, all batch items and channels together, is matched to one
+          histogram of every element of ``template``, which can have any shape. This is
+          ``skimage.exposure.match_histograms(source, template, channel_axis=None)``, which needs both inputs to have
+          the same number of dimensions (flatten them otherwise); to match each sample or channel on its own, call the
+          function on each slice.
+        - A source value maps to the template value at its quantile, interpolated linearly between template values
+          with :func:`interp`. The result stays inside the template's range once that range is rounded to the output
+          dtype, so with a ``float64`` template and a ``float32`` source it can pass the unrounded ends by that
+          rounding. It can also fall between template values: a ``uint8`` template gives fractional values, as in
+          skimage.
+        - A floating source keeps its dtype; an integer or ``bool`` source returns ``float32``. The quantiles are
+          computed in ``float32`` (``float64`` for a ``float64`` source).
+        - It is not differentiable: with a non-empty ``source``, no gradient reaches it and a backward pass into
+          ``template`` raises.
+        - An empty ``source`` with a non-empty ``template`` returns an empty tensor, still attached to its autograd
+          graph; an empty ``template`` raises ``ValueError``, even when ``source`` is empty too.
 
     Args:
         source: Image to transform.
         template: Template image. It can have different dimensions to source.
 
     Returns:
-        The transformed output image as the same shape as the source image. A floating source keeps its dtype; an
-        integer source returns ``float32``. The values come from the template, on its scale. The quantiles are
-        computed in ``float32`` (``float64`` for a ``float64`` source), so ``uint8``, ``float16`` and ``bfloat16``
-        images of any size work.
-
-    Note:
-        This function does not matches histograms element-wisely if input a batched tensor.
+        The transformed output image, with the shape of the source image.
 
     """
     oldshape = source.shape
@@ -83,8 +94,20 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     Returns the one-dimensional piecewise linear interpolant to a function with
     given discrete data points :math:`(xp, fp)`, evaluated at :math:`x`.
 
-    This is confirmed to be a correct implementation.
-    See https://github.com/pytorch/pytorch/issues/1552#issuecomment-979998307
+    Convention:
+        - Outside ``[xp[0], xp[-1]]`` the end segments are extrapolated linearly, where :func:`numpy.interp` clamps to
+          ``fp[0]`` and ``fp[-1]``; SciPy's ``interp1d(xp, fp, fill_value="extrapolate")`` makes the same choice. At a
+          knot the result is that knot's ``fp``.
+        - ``xp`` and ``fp`` are 1-D; ``x`` can have any shape, which the output keeps. ``xp`` must be increasing, which
+          is not checked. The output dtype is the promoted dtype of ``x``, ``xp`` and ``fp``, or the default float
+          dtype when all three are integer.
+        - A ``float16`` or ``bfloat16`` result is computed in ``float32`` and cast to the output dtype once, so
+          coordinate differences above 65504 do not overflow the weight and a segment whose ``fp`` difference overflows
+          the output dtype stays finite. Inside a segment the result is within about half an ulp of the segment's
+          larger end value, and the knots are exact. ``float32`` and ``float64`` results are computed in their own
+          dtype. An integer ``x`` or ``xp`` mixed with floating coordinates is converted to the dtype the result is
+          computed in, so in ``float32`` it is exact only up to :math:`2^{24}`: larger integer knots can merge and
+          larger integer queries are rounded.
 
     Args:
         x: the :math:`x`-coordinates at which to evaluate the interpolated
@@ -111,17 +134,22 @@ def _interp_real(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.T
         # All-integer inputs interpolate in the default float dtype (read from a factory: TorchScript has no
         # torch.get_default_dtype).
         dtype = torch.empty(0, device=fp.device).dtype
+    # Half-precision values (float16, bfloat16) are interpolated in float32 and cast to the output dtype once: their
+    # coordinate differences and weights overflow or lose bits in half precision (65504 in float16). float32 and
+    # float64 values are interpolated in their own dtype.
     # Integer coordinates are searched, compared and subtracted in int64 (as float32 they round past 2**24, and uint8
     # differences wrap); only the two differences that form each weight are converted. Floating coordinates are
-    # converted to the value dtype, which never narrows them.
-    coord_dtype = dtype if float_coords else torch.int64
-    x, xp, fp = x.to(coord_dtype), xp.to(coord_dtype), fp.to(dtype)
+    # converted to the working dtype, which never narrows them. An integer coordinate mixed with floating ones is
+    # converted too, so it is exact only up to 2**24 in float32.
+    cdtype = torch.promote_types(dtype, torch.float32)
+    coord_dtype = cdtype if float_coords else torch.int64
+    x, xp, fp = x.to(coord_dtype), xp.to(coord_dtype), fp.to(cdtype)
     i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
     x0, x1, f0, f1 = xp[i - 1], xp[i], fp[i - 1], fp[i]
     dx = x1 - x0
     zero_width = dx == 0
-    dx = torch.where(zero_width, torch.ones_like(dx), dx).to(dtype)
-    w = (x - x0).to(dtype) / dx
+    dx = torch.where(zero_width, torch.ones_like(dx), dx).to(cdtype)
+    w = (x - x0).to(cdtype) / dx
     d = f1 - f0
     # f1 - f0 can overflow while both ends are finite. The value is then the weighted sum of the two ends, with each
     # weight divided by dx on its own, so that d/dx is the slope wherever the slope is representable. The other
@@ -147,9 +175,9 @@ def _interp_real(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.T
         torch.where(x == x1, torch.where(torch.isnan(b), f1, b), out),
     )
     # The weighted sum is exact at the knots too: its weights are 1 and 0 there.
-    out = torch.where(overflow, f0 * ((x1 - x).to(dtype) / dx) + f1 * w, out)
+    out = torch.where(overflow, f0 * ((x1 - x).to(cdtype) / dx) + f1 * w, out)
     # A zero-width (repeated) segment is reached only at a clipped end: below a repeated first knot the value is
     # fp[0], at or above a repeated last knot fp[-1].
     out = torch.where(zero_width, torch.where(x < x0, f0, f1), out)
     # A NaN query is NaN, also on a flat or zero-width segment (np.interp).
-    return torch.where(torch.isnan(x), torch.full_like(out, float("nan")), out)
+    return torch.where(torch.isnan(x), torch.full_like(out, float("nan")), out).to(dtype)

@@ -34,7 +34,7 @@ from kornia.feature.lightglue import (
     rotate_half,
 )
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester, assert_close, dynamo_is_available
 
 # ---------------------------------------------------------------------------
 # Pure function tests
@@ -206,6 +206,109 @@ def test_attention_allow_flash_matches_on_cpu():
 # ---------------------------------------------------------------------------
 # Module tests
 # ---------------------------------------------------------------------------
+
+
+class TestAttention(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("legacy_windows", [False, True])
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_cpu_attention_matches_explicit_softmax_5992(self, device, dtype, batch_size, legacy_windows, masked):
+        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("regression for Windows CPU float64, with float32 as a control")
+        g = torch.Generator().manual_seed(0)
+        q, k, v = [torch.randn(batch_size, 4, 16, 64, generator=g, device=device, dtype=dtype) for _ in range(3)]
+        mask = None
+        logits = (q @ k.transpose(-2, -1)) / 8
+        if masked:
+            mask = torch.ones(16, 16, device=device, dtype=torch.bool).tril()
+            mask[0] = False  # Fully masked rows must still return zeros.
+            if batch_size > 1:
+                mask = mask.expand(batch_size, 1, -1, -1).clone()
+                mask[1, :, :, ::2] = False  # Different masks per pair, broadcast across heads.
+            logits = logits.masked_fill(~mask, -torch.inf)
+        expected = logits.softmax(-1).nan_to_num() @ v
+
+        sdpa = torch.nn.functional.scaled_dot_product_attention
+
+        def legacy_sdpa(q, k, v, **kwargs):
+            # Reproduce the broken 4D float64 kernel even on healthy hosts. This makes removing the workaround
+            # fail deterministically, while the native-platform case still exercises the installed torch kernel.
+            if legacy_windows and q.dtype == torch.float64 and q.ndim == 4:
+                return torch.full_like(q, float("nan"))
+            return sdpa(q, k, v, **kwargs)
+
+        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
+        try:
+            attention = Attention(allow_flash=True)
+            if legacy_windows:
+                # Exercise the real fallback on every host, as well as the native platform selection above.
+                attention._windows_old_torch = True
+            backend_flags = (
+                torch.backends.cuda.flash_sdp_enabled(),
+                torch.backends.cuda.math_sdp_enabled(),
+                torch.backends.cuda.mem_efficient_sdp_enabled(),
+                torch.backends.cuda.cudnn_sdp_enabled(),
+            )
+            with unittest.mock.patch(
+                "kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa
+            ):
+                actual = attention(q, k, v, mask)
+            assert actual.isfinite().all()
+            self.assert_close(actual, expected)
+            assert backend_flags == (
+                torch.backends.cuda.flash_sdp_enabled(),
+                torch.backends.cuda.math_sdp_enabled(),
+                torch.backends.cuda.mem_efficient_sdp_enabled(),
+                torch.backends.cuda.cudnn_sdp_enabled(),
+            )
+        finally:
+            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_windows_float64_fallback_gradcheck(self, device, masked):
+        if device.type != "cpu":
+            pytest.skip("the fallback is CPU-only")
+        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
+        try:
+            attention = Attention(allow_flash=True)
+            attention._windows_old_torch = True
+            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
+            mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
+            self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
+        finally:
+            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+
+    def test_dynamo_windows_float64_fallback(self, device, torch_optimizer, optimizer_backend):
+        if device.type != "cpu" or not optimizer_backend or optimizer_backend == "jit":
+            pytest.skip("the fallback needs CPU torch.compile coverage")
+        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
+        try:
+            attention = Attention(allow_flash=True)
+            attention._windows_old_torch = True
+            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+            mask = torch.tensor([[False, False], [True, True]], device=device)
+            compiled = torch_optimizer(attention, fullgraph=True)
+            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
+        finally:
+            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
+    def test_eager_backend_traces_windows_float64_fallback(self, device):
+        # conftest deselects *dynamo* and *compile* tests unless KORNIA_TEST_OPTIMIZER is set, which CI does only on
+        # torch 2.14. This name also runs on the scheduled torch 2.5.1 legs, where the fallback is live on Windows.
+        if device.type != "cpu":
+            pytest.skip("the fallback is CPU-only")
+        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
+        try:
+            attention = Attention(allow_flash=True)
+            attention._windows_old_torch = True
+            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+            mask = torch.tensor([[False, False], [True, True]], device=device)
+            torch._dynamo.reset()
+            compiled = torch.compile(attention, backend="eager", fullgraph=True)
+            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
+        finally:
+            torch.backends.cuda.enable_flash_sdp(flash_enabled)
 
 
 class TestLearnableFourierPositionalEncoding(BaseTester):

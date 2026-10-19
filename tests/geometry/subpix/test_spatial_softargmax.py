@@ -31,7 +31,7 @@ from kornia.geometry.subpix.spatial_soft_argmax import (
     conv_quad_interp3d,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, deterministic_algorithms_on_cuda
 
 
 class TestStridedSubpixel(BaseTester):
@@ -1308,6 +1308,96 @@ class TestPackedQuadraticFit(BaseTester):
         system = torch.tensor([h + (10.0, 10.0, 10.0) for h in hessians], device=device, dtype=dtype).T * amplitude
         solved = getattr(subpix, solver)(*system)[3]
         assert solved.tolist() == [True] + [False] * 8
+
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    def test_cramer_backward_of_a_tiny_system_is_finite(self, device, dtype, solver):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
+            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
+        # On a flat float32 image the Hessian entries of a BlobHessian response are rounding noise of about 1e-15.
+        # Their determinants reach float32's smallest subnormal, 1.4e-45, and the relative floor 1e-7 * m**3
+        # underflows to 0: the shifts were inaccurate, and the backward of num / det, (num / det) / det, was inf. The
+        # first rows sit just above the floor; the rest are well conditioned. The solve scales the system by a power
+        # of two first, so the same system scaled by 2**-50 gives the same shifts and mask bit for bit and gradients
+        # 2**50 times larger.
+        generator = torch.Generator().manual_seed(0)
+        system = torch.randn(9, 64, generator=generator)
+        system[:3] -= 4.0
+        system[:, :4] = 0.0
+        system[0:2, :4] = -1.0
+        system[2, :4] = torch.tensor([-2e-7, -4e-7, -1e-6, -1e-5])
+        system[6:, :4] = 1.0
+        system = system.to(device, dtype).requires_grad_()
+        tiny = (system.detach() * 2.0**-50).requires_grad_()
+        expected = getattr(subpix, solver)(*system)
+        actual = getattr(subpix, solver)(*tiny)
+        assert bool(expected[3].all())
+        for got, want in zip(actual, expected):
+            self.assert_close(got, want, atol=0, rtol=0)
+        weights = torch.linspace(0.1, 0.9, 64, device=device, dtype=dtype)
+        # On CUDA the packed solve's repeated-index `index_select` backward accumulates with atomics in no fixed
+        # order, so two backward passes differ in the last bits; deterministic algorithms give both one order.
+        with deterministic_algorithms_on_cuda(device):
+            grad = torch.autograd.grad(sum((v * weights).sum() for v in actual[:3]), tiny)[0]
+            grad_ref = torch.autograd.grad(sum((v * weights).sum() for v in expected[:3]), system)[0]
+        assert bool(torch.isfinite(grad).all())
+        self.assert_close(grad, grad_ref * 2.0**50, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    @pytest.mark.parametrize("power", [64, 100, 120])
+    def test_cramer_large_right_hand_side_is_not_rescaled(self, device, dtype, solver, power):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype != torch.float32:
+            pytest.skip("float32 only: there a scaled-down determinant underflows")
+        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
+            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
+        # A well-conditioned Hessian of order 1 needs no scaling. A large right-hand side must not scale it down:
+        # 2**-57 would take det = 1e-6 to 2**-171 * 1e-6, which underflows to 0 and rejects a solvable system.
+        system = torch.tensor([1.0, 1.0, 1e-6, 0.0, 0.0, 0.0, 2.0**power, 0.0, 0.0], device=device, dtype=dtype)
+        sx, sy, ss, solved = getattr(subpix, solver)(*system[:, None])
+        assert bool(solved.all())
+        self.assert_close(sx, system[6:7], atol=0, rtol=0)
+        assert torch.stack([sy, ss]).eq(0).all()
+
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    @pytest.mark.parametrize(
+        ("system", "solve_dtype"),
+        [
+            # A tiny Hessian next to a large finite right-hand side: scaling H to about 1 would take r0 = 2**70 to
+            # 2**130, inf in float32, so the factor is capped by the right-hand side.
+            ((0.0, 2.0**-60, 2.0**-60, 0.0, 0.0, 0.0, 2.0**70, 0.0, 0.0), torch.float32),
+            # Singular in float16: on the scaled system the numerator is -2**19, beyond float16's range, where the
+            # unscaled one rounded to 0, so an unsolved shift is returned as 0.
+            ((0.0, 2.0**-19, 2.0**-19, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0), torch.float16),
+            # A subnormal Hessian: its exponent, -133, is clamped to -126, or the factor 2**133 would be inf in float32
+            # and the backward of the scaling NaN.
+            ((1e-40, 1e-40, 0.0, 0.0, 0.0, 0.0, 1e-40, 0.0, 0.0), torch.float32),
+        ],
+        ids=["large-rhs-float32", "singular-float16", "subnormal-hessian-float32"],
+    )
+    def test_cramer_unsolved_system_is_zero_with_a_finite_backward(self, device, system, solve_dtype, solver):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if solver == "_solve_cramer_sym3x3_cuda" and solve_dtype != torch.float32:
+            pytest.skip("the packed solve is dispatched only for float32/float64")
+        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
+            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
+        if solve_dtype == torch.float16 and device.type == "mps":
+            pytest.skip("checked on CPU and CUDA")
+        entries = [torch.tensor([v], device=device, dtype=solve_dtype, requires_grad=True) for v in system]
+        sx, sy, ss, solved = getattr(subpix, solver)(*entries)
+        assert not bool(solved.any())
+        assert torch.stack([sx, sy, ss]).eq(0).all()
+        # The callers form gradient * shift for every row before they keep the solved ones (``gds_u`` in
+        # conv_quad_interp3d): a non-finite unsolved shift would turn the zero gradient of the dropped row into NaN.
+        gradient = torch.ones(1, device=device, dtype=solve_dtype, requires_grad=True)
+        kept = torch.where(solved, gradient * sx, torch.zeros_like(sx))
+        grads = torch.autograd.grad(kept.sum() + sy.sum() + ss.sum(), [*entries, gradient])
+        assert all(bool(torch.isfinite(g).all()) for g in grads)
 
     @pytest.mark.parametrize("count", [0, 19])
     def test_patch_derivatives(self, device, dtype, count):

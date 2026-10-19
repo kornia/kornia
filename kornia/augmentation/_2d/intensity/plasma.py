@@ -21,8 +21,9 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.contrib import diamond_square
+from kornia.core.utils import _to_device_nonblocking
 
 
 def _generate_plasma(
@@ -54,7 +55,7 @@ def _generate_plasma(
 
 
 def _plasma_for_input(plasma: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
-    return plasma[..., : image.shape[-2], : image.shape[-1]].to(image)
+    return _to_device_nonblocking(plasma[..., : image.shape[-2], : image.shape[-1]], image.device, image.dtype)
 
 
 class RandomPlasmaBrightness(IntensityAugmentationBase2D):
@@ -79,15 +80,13 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the sampled fractal map is recorded as ``_params["plasma"]``, so a forward replayed with ``params=``
           reproduces the first output bitwise.
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
-
-    .. warning::
-        An all-negative input can come back as an all-zero image when the sampled brightness map does not raise
-        it above zero. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -127,7 +126,8 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        intensity = params["intensity"].to(image).view(-1, 1, 1, 1)
+        image = _clamp_unit_range(image)
+        intensity = _to_device_nonblocking(params["intensity"], image.device, image.dtype).view(-1, 1, 1, 1)
         brightness_map = 2 * _plasma_for_input(params["plasma"], image) - 1
         brightness_map = brightness_map * intensity
         return (image + brightness_map).clamp_(0, 1)
@@ -154,15 +154,13 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the sampled fractal map is recorded as ``_params["plasma"]``, so a forward replayed with ``params=``
           reproduces the first output bitwise.
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
-
-    .. warning::
-        An all-negative input can come back as an all-zero image, depending on the sampled contrast map.
-        Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -199,6 +197,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        image = _clamp_unit_range(image)
         contrast_map = 4 * _plasma_for_input(params["plasma"], image)
         return ((image - 0.5) * contrast_map + 0.5).clamp_(0, 1)
 
@@ -226,16 +225,14 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the sampled fractal map is recorded as ``_params["plasma"]`` with a single channel, ``(B, 1, H, W)``: one
           shade mask is applied to every channel of a sample. A forward replayed with ``params=`` reproduces the
           first output bitwise.
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
-
-    .. warning::
-        At the default non-positive ``shade_intensity``, an input whose values are all negative comes back as
-        an all-zero image. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -284,8 +281,9 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        shade_intensity = params["shade_intensity"].to(image).view(-1, 1, 1, 1)
-        shade_quantity = params["shade_quantity"].to(image).view(-1, 1, 1, 1)
+        image = _clamp_unit_range(image)
+        shade_intensity = _to_device_nonblocking(params["shade_intensity"], image.device, image.dtype).view(-1, 1, 1, 1)
+        shade_quantity = _to_device_nonblocking(params["shade_quantity"], image.device, image.dtype).view(-1, 1, 1, 1)
         shade_map = _plasma_for_input(params["plasma"], image)
         shade_map = (shade_map < shade_quantity).to(image.dtype) * shade_intensity
         return (image + shade_map).clamp_(0, 1)

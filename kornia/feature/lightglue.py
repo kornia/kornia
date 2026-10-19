@@ -16,6 +16,7 @@
 #
 
 import math
+import sys
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +26,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import is_exporting
@@ -139,6 +141,7 @@ class Attention(nn.Module):
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
         self.allow_flash = allow_flash
+        self._windows_old_torch = sys.platform == "win32" and torch_version_lt(2, 6, 0)
         torch.backends.cuda.enable_flash_sdp(allow_flash)
 
     def forward(
@@ -165,7 +168,14 @@ class Attention(nn.Module):
             v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
             return v if mask is None else v.nan_to_num()
         args = [x.contiguous() for x in [q, k, v]]
-        v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+        if self._windows_old_torch and q.device.type == "cpu" and q.dtype == torch.float64 and q.ndim == 4:
+            # The Windows torch 2.5 CPU flash kernel can return NaNs or corrupt finite values for valid float64
+            # inputs. It only accepts 4D inputs: a singleton batch dimension selects math attention without changing
+            # process-global backend flags or using a context manager that torch 2.5 cannot compile.
+            q_, k_, v_ = (x.unsqueeze(0) for x in args)
+            v = F.scaled_dot_product_attention(q_, k_, v_, attn_mask=mask).squeeze(0)
+        else:
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
         return v if mask is None else v.nan_to_num()
 
 
@@ -475,6 +485,8 @@ class LightGlue(nn.Module):
     using a series of transformer layers and an adaptive pruning mechanism.
 
     Convention:
+        - Complete learned weights return the model in evaluation mode, even if derived buffers are absent from
+          the checkpoint. Random or partially loaded learned weights leave it in training mode.
         - The ``keypoints`` of each image are ``(x, y)`` pixels and ``image_size`` is ``(W, H)``; an ``image``
           tensor gives the size from its last two dimensions instead. ``forward`` normalises the keypoints to
           ``(k - size / 2) / (max(size) / 2)``, as the reference implementation does, and raises for a keypoint
@@ -688,7 +700,11 @@ class LightGlue(nn.Module):
                 state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
                 pattern = f"cross_attn.{i}", f"transformers.{i}.cross_attn"
                 state_dict = {k.replace(*pattern): v for k, v in state_dict.items()}
-            self.load_state_dict(state_dict, strict=False)
+            incompatible = self.load_state_dict(state_dict, strict=False)
+            # Missing derived buffers are harmless, but partial learned weights leave a model to train.
+            parameters = dict(self.named_parameters())
+            if not any(name in parameters for name in incompatible.missing_keys):
+                self.eval()
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
