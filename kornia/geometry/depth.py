@@ -275,11 +275,16 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
             expected_shape=["B", "1", "H >= 2", "W >= 2"],
         )
 
+    dtype = torch.promote_types(depth.dtype, camera_matrix.dtype)
+    # Small pixel tangents can have a cross product below the float16 range, even at ordinary depth and focal length.
+    if dtype in (torch.float16, torch.bfloat16):
+        depth, camera_matrix = depth.float(), camera_matrix.float()
+
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW
 
     # compute the pointcloud spatial gradients
-    gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
+    gradients: torch.Tensor = spatial_gradient(xyz).to(xyz.dtype)  # Bx3x2xHxW
 
     # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
     # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides
@@ -288,7 +293,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     b: torch.Tensor = gradients[:, :, 1].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
 
     normals: torch.Tensor = torch.linalg.cross(a, b, dim=-1)  # BxHxWx3
-    return F.normalize(normals, dim=-1, p=2).permute(0, 3, 1, 2)  # Bx3xHxW
+    return F.normalize(normals, dim=-1, p=2).to(dtype).permute(0, 3, 1, 2)  # Bx3xHxW
 
 
 def depth_from_plane_equation(

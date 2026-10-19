@@ -336,6 +336,25 @@ class TestUnprojectMeshgrid(BaseTester):
 
 
 class TestDepthToNormals(BaseTester):
+    @pytest.mark.parametrize("depth_value", [0.125, 0.25])
+    def test_small_depth_plane(self, depth_value, device, dtype):
+        depth = torch.full((1, 1, 16, 16), depth_value, device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[1000.0, 0.0, 7.5], [0.0, 1000.0, 7.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+
+        normals = depth_to_normals(depth, camera_matrix)
+
+        expected = torch.zeros_like(normals)
+        expected[:, 2] = 1.0
+        assert normals.dtype == dtype
+        assert normals.device == device
+        self.assert_close(normals, expected)
+
+    def test_autocast_small_depth_plane(self, device, dtype):
+        with torch.autocast(device.type):
+            self.test_small_depth_plane(0.125, device, dtype)
+
     @pytest.mark.parametrize(("height", "width"), [(1, 3), (3, 1), (1, 1), (0, 3), (3, 0), (0, 0)])
     @pytest.mark.parametrize("normalize_points", [False, True])
     def test_convention_normals_require_two_spatial_axes_4398(self, height, width, normalize_points, device, dtype):
