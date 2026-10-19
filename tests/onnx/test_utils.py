@@ -813,8 +813,8 @@ class TestONNXLoaderForceDownload:
     def test_load_config_reads_a_utf8_config_whatever_the_locale(self, fake_hub, tmp_path):
         # the cached bytes are decoded by json, not by the locale's encoding (cp1252 on Windows)
         contents, _ = fake_hub
-        contents[_CONFIG_URL] = json.dumps({"name": "caf\u00e9"}, ensure_ascii=False).encode("utf-8")
-        assert ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path)) == {"name": "caf\u00e9"}
+        contents[_CONFIG_URL] = json.dumps({"name": "r\u00e9sum\u00e9"}, ensure_ascii=False).encode("utf-8")
+        assert ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path)) == {"name": "r\u00e9sum\u00e9"}
 
     def test_load_config_force_download_without_download_raises(self, fake_hub, tmp_path):
         with pytest.raises(ValueError, match=r"force_download=True.*download=True"):
