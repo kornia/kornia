@@ -209,6 +209,12 @@ class MS_SSIMLoss(nn.Module):
         if not isinstance(img2, torch.Tensor):
             raise TypeError(f"Output type is not a torch.Tensor. Got {type(img2)}")
 
+        if not len(img1.shape) == 4:
+            raise ValueError(f"Invalid img1 shape, we expect BxCxHxW. Got: {img1.shape}")
+
+        if not len(img2.shape) == 4:
+            raise ValueError(f"Invalid img2 shape, we expect BxCxHxW. Got: {img2.shape}")
+
         KORNIA_CHECK_SAME_SHAPE(img1, img2)
 
         mask_dtype = self._g_masks.dtype
