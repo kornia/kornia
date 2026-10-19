@@ -321,7 +321,8 @@ class PaliGemma(nn.Module):
         Args:
             input_ids: Text tokens only (batch, input_seq_len), without ``<image>`` placeholder tokens: the image
                 tokens are prepended to them, not substituted for placeholders.
-            pixel_values: Images (batch, channels, height, width)
+            pixel_values: Images (batch, channels, height, width), with height and width both equal to
+                ``config.vision_config.image_size``: the vision tower raises ``ValueError`` for any other size.
             attention_mask: Optional attention mask over the image and text positions together, in a form
                 :func:`~torch.nn.functional.scaled_dot_product_attention` broadcasts against the
                 (batch, heads, total_seq_len, total_seq_len) scores, e.g. (batch, 1, total_seq_len, total_seq_len).

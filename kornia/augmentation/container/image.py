@@ -67,7 +67,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select children to apply in random order. The selection probability aligns to the
-            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum.
+            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum or
+            than the number of children with a nonzero weight, mix augmentations not counted.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
@@ -246,6 +247,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights[mix_indices] = 0
 
         total_weight = multinomial_weights.sum()
+        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights. A certain mix
+        # insertion below replaces the last drawn index, where torch.multinomial puts a member of weight 0, so one
+        # place more can then be drawn without replacement. That place is last because the draw keeps the top
+        # weight / Exp(1) scores, and a weight of 0 scores 0, below every positive weight.
+        num_nonzero = int(torch.count_nonzero(multinomial_weights).item())
+        mix_place = int(with_mix and len(mix_indices) != 0 and len(mix_indices) + num_samples >= len(self))
         # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
         if total_weight == 0 or num_samples == 0:
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
@@ -253,7 +260,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             indices = torch.multinomial(
                 multinomial_weights,
                 num_samples,
-                replacement=num_samples > total_weight.item(),
+                replacement=num_samples > total_weight.item() or num_samples > num_nonzero + mix_place,
             )
 
         mix_added = False

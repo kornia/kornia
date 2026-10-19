@@ -219,21 +219,22 @@ class TestTinyViT(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
-        ("img_size", "key", "window", "pretrained_values", "num_classes"),
+        ("img_size", "key", "window", "drop_path", "pretrained_values", "num_classes"),
         [
             # True picks in1k below 384 px; the in22k checkpoint has a 21841-class head and is only reached by name.
-            (224, "in1k", 7, (True, "in1k"), 1000),
-            (224, "in22k", 7, ("in22k",), 21841),
-            (384, "in1k_384", 12, (True, "in1k_384"), 1000),
-            (512, "in1k_512", 16, (True, "in1k_512"), 1000),
+            (224, "in1k", 7, 0.2, (True, "in1k"), 1000),
+            (224, "in22k", 7, 0.2, ("in22k",), 21841),
+            (384, "in1k_384", 12, 0.1, (True, "in1k_384"), 1000),
+            (512, "in1k_512", 16, 0.1, (True, "in1k_512"), 1000),
         ],
     )
     def test_21m_checkpoints_keep_their_windows(
-        self, monkeypatch, img_size, key, window, pretrained_values, num_classes
+        self, monkeypatch, img_size, key, window, drop_path, pretrained_values, num_classes
     ):
         # Cream builds tiny_vit_21m_224 with window_sizes [7, 7, 14, 7], tiny_vit_21m_384 with [12, 12, 24, 12] and
         # tiny_vit_21m_512 with [16, 16, 32, 16] (microsoft/Cream@8dc3882, TinyViT/models/tiny_vit.py); each checkpoint
-        # holds the attention biases of its windows. The stand-in has that shape and N(0, 1) biases.
+        # holds the attention biases of its windows. The stand-in has that shape and N(0, 1) biases. The same builders
+        # set drop_path_rate 0.2, 0.1 and 0.1, the rate of the 384 and 512 fine-tuning configurations.
         windows = [window, window, 2 * window, window]
         stand_in = TinyViT(img_size=img_size, window_sizes=windows, num_classes=num_classes, **_21M_LAYOUT)
         checkpoint = _random_biases(stand_in).state_dict()
@@ -250,18 +251,28 @@ class TestTinyViT(BaseTester):
             model = TinyViT.from_config("21m", pretrained=pretrained, img_size=img_size, num_classes=num_classes)
             assert fetched[-1] == urls["21m"][key]
             assert _windows(model) == windows[1:]
+            # The stochastic depth rate rises linearly to drop_path_rate at the last block.
+            assert model.layers[-1].blocks[-1].drop_path1.drop_prob == pytest.approx(drop_path)
             # Loaded as they are: interpolating them to other windows would change their shape.
             state_dict = model.state_dict()
             for name, bias in biases.items():
                 assert torch.equal(state_dict[name], bias), name
 
-        # An explicit ``window_sizes`` wins; the biases are then interpolated to it.
+        # An explicit ``window_sizes`` or ``drop_path_rate`` wins; the biases are then interpolated to the windows.
         model = TinyViT.from_config(
-            "21m", pretrained=key, img_size=img_size, num_classes=num_classes, window_sizes=[8, 8, 16, 8]
+            "21m",
+            pretrained=key,
+            img_size=img_size,
+            num_classes=num_classes,
+            window_sizes=[8, 8, 16, 8],
+            drop_path_rate=0.3,
         )
         assert _windows(model) == [8, 16, 8]
-        # Random init has no checkpoint to follow and keeps the 224-px windows.
-        assert _windows(TinyViT.from_config("21m", img_size=img_size)) == [7, 14, 7]
+        assert model.layers[-1].blocks[-1].drop_path1.drop_prob == pytest.approx(0.3)
+        # Random init has no checkpoint to follow and keeps the 224-px windows and rate.
+        model = TinyViT.from_config("21m", img_size=img_size)
+        assert _windows(model) == [7, 14, 7]
+        assert model.layers[-1].blocks[-1].drop_path1.drop_prob == pytest.approx(0.2)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(
