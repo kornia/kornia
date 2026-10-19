@@ -328,6 +328,29 @@ class TestPatchSequentialRegression(BaseTester):
         assert max(mix_counts) == 1, f"expected a mix member in some calls and at most one per call, got {mix_counts}"
 
     @pytest.mark.parametrize("patchwise_apply", [True, False])
+    def test_random_apply_mix_replacement_never_selects_zero_weight_child(self, patchwise_apply, device, dtype):
+        # The mix member replaces a drawn member, so it must come from the mix members and never from a
+        # non-mix child whose weight is 0.
+        seq = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomBrightness((0.8, 1.2), p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            grid_size=(2, 2),
+            random_apply=True if patchwise_apply else 1,
+            random_apply_weights=[1.0, 0.0, 1.0],
+            patchwise_apply=patchwise_apply,
+        )
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mixes = 0
+        for seed in range(100):
+            torch.manual_seed(seed)
+            seq(x)
+            selected = [seq.get_submodule(item.param.name) for item in seq._params]
+            assert not any(isinstance(module, K.RandomBrightness) for module in selected)
+            mixes += any(isinstance(module, K.MixAugmentationBaseV2) for module in selected)
+        assert mixes > 0, "the mix member was never selected, so the replacement path was not exercised"
+
+    @pytest.mark.parametrize("patchwise_apply", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_random_parameter_replay(self, patchwise_apply, same_on_batch, padding, device, dtype, monkeypatch):

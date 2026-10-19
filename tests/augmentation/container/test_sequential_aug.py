@@ -176,6 +176,28 @@ class TestConventionImageSequential(BaseTester):
             assert seq._params == []
             self.assert_close(out, x, rtol=0.0, atol=0.0)
 
+    @pytest.mark.parametrize("random_apply", [1, 2])
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_mix_replacement_never_selects_zero_weight_child(self, random_apply, container, device, dtype):
+        # The mix member replaces a drawn member, so it must come from the mix members and never from a
+        # non-mix child whose weight is 0.
+        x = torch.rand(4, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomBrightness((0.8, 1.2), p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=random_apply,
+            random_apply_weights=[1.0, 0.0, 1.0],
+        )
+        mixes = 0
+        for seed in range(100):
+            torch.manual_seed(seed)
+            seq(x)
+            selected = [seq.get_submodule(item.name) for item in seq._params]
+            assert not any(isinstance(module, K.RandomBrightness) for module in selected)
+            mixes += any(isinstance(module, K.MixAugmentationBaseV2) for module in selected)
+        assert mixes > 0, "the mix member was never selected, so the replacement path was not exercised"
+
     def test_convention_slice_crop_inverse_restores_the_canvas(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))

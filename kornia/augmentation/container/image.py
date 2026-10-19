@@ -264,7 +264,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             and len(mix_indices) != 0
             and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
         ):
-            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            # Draw from the mix members only: a non-mix child with weight 0 must stay unselected.
+            mix_weights = torch.zeros_like(multinomial_weights, dtype=torch.float32)
+            mix_weights[mix_indices] = 1.0
+            mix_idx = torch.multinomial(mix_weights, 1)
             if len(indices) == 0:
                 indices = mix_idx
             else:
