@@ -312,3 +312,37 @@ def test_loader_force_download_without_download_raises(fake_repository, tmp_path
     with pytest.raises(ValueError, match=r"force_download=True.*download=True"):
         loader.load_model(download=False, force_download=True)
     assert fetched == ["model.onnx"]
+
+
+def test_loader_config_that_is_json_but_not_a_processor_config_names_force_download(fake_repository, tmp_path):
+    from kornia.models._hf_models import HFONNXComunnityModelLoader
+
+    _, fetched = fake_repository
+    loader = HFONNXComunnityModelLoader("depth-anything-v2-small", cache_dir=str(tmp_path))
+    loader.load_preprocessing()
+    config = tmp_path / "depth-anything-v2-small" / "preprocessor_config.json"
+    config.write_text("{}")  # parses, but lacks what a processor config has
+
+    with pytest.raises(KeyError) as exc_info:
+        loader.load_preprocessing()
+    (note,) = exc_info.value.__notes__
+    assert "force_download=True" in note
+    assert str(config) in note
+    assert fetched == ["preprocessor_config.json"]
+
+    loader.load_preprocessing(force_download=True)
+    assert fetched == ["preprocessor_config.json"] * 2
+    loader.load_preprocessing()
+
+
+def test_loader_unsupported_processor_type_is_not_called_a_damaged_file(fake_repository, tmp_path):
+    # a config the loader does not support is not a damaged one: force_download would fetch the same config again
+    from kornia.models._hf_models import HFONNXComunnityModelLoader
+
+    loader = HFONNXComunnityModelLoader("depth-anything-v2-small", cache_dir=str(tmp_path))
+    loader.load_preprocessing()
+    (tmp_path / "depth-anything-v2-small" / "preprocessor_config.json").write_text('{"image_processor_type": "Other"}')
+
+    with pytest.raises(RuntimeError, match="Unsupported image processor type") as exc_info:
+        loader.load_preprocessing()
+    assert not hasattr(exc_info.value, "__notes__")

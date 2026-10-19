@@ -30,7 +30,7 @@ from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
 from kornia.onnx import ONNXSequential
 from kornia.onnx.download import _relative_path_components
-from kornia.onnx.utils import ONNXLoader, _load_cached_json, _load_cached_onnx, io_name_conversion
+from kornia.onnx.utils import ONNXLoader, _cached_file_hint, _load_cached_json, _load_cached_onnx, io_name_conversion
 
 from .preprocessor import PreprocessingLoader
 
@@ -149,7 +149,12 @@ class HFONNXComunnityModelLoader:
         file_path = ONNXLoader.download_to_cache(
             self.config_url, "preprocessor_config.json", cache_dir=self.cache_dir, force_download=force_download
         )
-        return PreprocessingLoader.from_json(_load_cached_json(file_path))
+        config = _load_cached_json(file_path)
+        try:
+            return PreprocessingLoader.from_json(config)
+        except KeyError as exc:  # valid JSON that lacks what a processor config has: a file that is not the hub's
+            exc.add_note(_cached_file_hint(file_path))
+            raise
 
 
 class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):

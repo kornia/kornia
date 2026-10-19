@@ -45,6 +45,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         target_ir_version: The IR version to convert the model to. If None, the model keeps its IR version.
         target_opset_version: The OPSET version to convert the model to. If None, the model keeps its OPSET version.
+        force_download: If True, an ``hf://`` name or a URL is downloaded again, and replaces the cached file, even
+            when it is cached. By default a cached file is used as it is, however old, and one that does not load
+            fails every time until it is deleted. It has no effect on a model object or a path to a local file.
 
     """
 
@@ -110,7 +113,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: Union[onnx.ModelProto, str, os.PathLike]) -> ONNXModule:
+def load(model_name: Union[onnx.ModelProto, str, os.PathLike], *, force_download: bool = False) -> ONNXModule:
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with

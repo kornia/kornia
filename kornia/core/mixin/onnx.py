@@ -606,7 +606,7 @@ class ONNXMixin:
         if isinstance(arg, onnx.ModelProto):
             return arg
         if isinstance(arg, (str, os.PathLike)):
-            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
+            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir, force_download=force_download)
         hint = " For a serialized model, pass onnx.load_model_from_string(data)." if isinstance(arg, bytes) else ""
         raise TypeError(
             "Expected an onnx.ModelProto, a str (a file path, an 'hf://' name or a URL), or an os.PathLike file path, "

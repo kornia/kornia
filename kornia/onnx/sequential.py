@@ -66,6 +66,9 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             error: the ONNX version converter's where it has no adapter for an operator (for example ``Resize`` or
             ``Pad`` from opset 18 to 17), ``onnx.checker``'s where the converted graph is invalid (for example a
             ``ReduceMean`` from opset 18 to 17), or ONNX Runtime's where it does not support the target IR version.
+        force_download: If True, every ``hf://`` name and URL is downloaded again, and replaces the cached file, even
+            when it is cached. By default a cached file is used as it is, however old, and one that does not load
+            fails every time until it is deleted. It has no effect on a model object or a path to a local file.
 
     """
 

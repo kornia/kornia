@@ -152,7 +152,9 @@ class ONNXLoader(CachedDownloader):
     """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models."""
 
     @classmethod
-    def load_config(cls, url: Union[str, os.PathLike], download: bool = True, **kwargs: Any) -> dict[str, Any]:
+    def load_config(
+        cls, url: Union[str, os.PathLike], download: bool = True, *, force_download: bool = False, **kwargs: Any
+    ) -> dict[str, Any]:
         """Load JSON config from the specified URL or local file.
 
         A config that is in the cache is used as it is, however old: pass ``force_download=True`` to fetch it again.
@@ -163,6 +165,8 @@ class ONNXLoader(CachedDownloader):
                 start with ``~``.
             download: If True, the config will be downloaded if it's not already in the local cache. A local file
                 is read either way.
+            force_download: If True, fetch an HTTP(S) config again and replace the cached file, even when it is
+                cached. Needs ``download=True``. It has no effect on a local file. Defaults to False.
             kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
                 the config is stored under, at ``<scheme>/<host>/<directories of the URL's path>/<file name>``, with a
                 ``%3F<hash>`` directory before the file name when the URL has a query, as for ``load_model``. ``None``
@@ -198,7 +202,13 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def load_model(
-        cls, model_name: Union[str, os.PathLike], download: bool = True, with_data: bool = False, **kwargs
+        cls,
+        model_name: Union[str, os.PathLike],
+        download: bool = True,
+        with_data: bool = False,
+        *,
+        force_download: bool = False,
+        **kwargs,
     ) -> onnx.ModelProto:
         """Load an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 

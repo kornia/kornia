@@ -589,3 +589,98 @@ class TestONNXSequentialComposition:
 
         assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
         assert _props(seq._combined_op) == [("k", "2")]
+
+
+class TestForceDownloadReachesTheLoader:
+    @pytest.fixture
+    def model(self):
+        input_info = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 2])
+        output_info = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 2])
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Identity", ["input"], ["output"])], "g", [input_info], [output_info]
+        )
+        return onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 17)], ir_version=9)
+
+    @pytest.mark.parametrize("force_download", [False, True])
+    def test_sequential(self, model, force_download):
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            ONNXSequential("https://example.com/a.onnx", cache_dir="cache", force_download=force_download)
+
+        load_model.assert_called_once_with(
+            "https://example.com/a.onnx", cache_dir="cache", force_download=force_download
+        )
+
+    def test_sequential_downloads_nothing_again_by_default(self, model):
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            ONNXSequential("hf://operators/a")
+
+        load_model.assert_called_once_with("hf://operators/a", cache_dir=None, force_download=False)
+
+    def test_sequential_does_not_load_a_model_object(self, model):
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model") as load_model:
+            ONNXSequential(model, force_download=True)
+
+        load_model.assert_not_called()
+
+    @pytest.mark.parametrize("force_download", [False, True])
+    def test_module(self, model, force_download):
+        from unittest import mock
+
+        from kornia.onnx.module import ONNXModule
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            ONNXModule("https://example.com/a.onnx", cache_dir="cache", force_download=force_download)
+
+        load_model.assert_called_once_with(
+            "https://example.com/a.onnx", cache_dir="cache", force_download=force_download
+        )
+
+    @pytest.mark.parametrize("force_download", [False, True])
+    def test_load(self, model, force_download):
+        from unittest import mock
+
+        from kornia.onnx.module import load
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            load("https://example.com/a.onnx", force_download=force_download)
+
+        load_model.assert_called_once_with("https://example.com/a.onnx", cache_dir=None, force_download=force_download)
+
+    @pytest.fixture
+    def fetched(self, model):
+        """Serve ``model`` for any URL, and list the URLs that were fetched."""
+        from pathlib import Path
+        from unittest import mock
+
+        urls = []
+
+        def serve(url, dst, **kwargs):
+            urls.append(url)
+            Path(dst).write_bytes(model.SerializeToString())
+
+        with mock.patch("kornia.core.download._download_url_to_file", side_effect=serve):
+            yield urls
+
+    @pytest.mark.parametrize("wrapper", ["module", "sequential"])
+    def test_a_cached_model_is_fetched_again_only_when_forced(self, fetched, tmp_path, wrapper):
+        # the flag is not dropped between the wrapper and the download: the cached file is replaced, not reused
+        from kornia.onnx.module import ONNXModule
+
+        build = ONNXModule if wrapper == "module" else ONNXSequential
+        url = "https://example.com/m.onnx"
+
+        build(url, cache_dir=str(tmp_path))
+        build(url, cache_dir=str(tmp_path))
+        assert fetched == [url]
+
+        build(url, cache_dir=str(tmp_path), force_download=True)
+        assert fetched == [url, url]
+
+        build(url, cache_dir=str(tmp_path))
+        assert fetched == [url, url]
