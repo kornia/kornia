@@ -59,9 +59,9 @@ from kornia.enhance.adjust import (
     AdjustSaturationWithGraySubtraction,
 )
 from kornia.filters.canny import Canny
-from kornia.filters.dexined import DexiNed
 from kornia.filters.motion import MotionBlur3D
 from kornia.filters.sobel import SpatialGradient, SpatialGradient3d
+from kornia.models.dexined import DexiNed
 from kornia.models.segmentation.base import SemanticSegmentation
 
 # Every tensor here is created device-free and fed to onnxruntime as numpy, so the accelerator legs must not
@@ -77,8 +77,14 @@ if torch_version_lt(2, 5, 0):
     # ``ONNXProgram`` used below from torch 2.5, and 2.5.1 is a blocking PR leg.
     pytest.skip("the dynamo ONNX exporter needs torch >= 2.5", allow_module_level=True)
 
-# The packages whose classes declare ``ONNX_EXPORTABLE`` / ``ONNX_DEFAULT_INPUTSHAPE`` (#5215).
-_DECLARING_PACKAGES = ("kornia.color", "kornia.enhance", "kornia.filters", "kornia.models.segmentation")
+# The packages and modules whose classes declare ``ONNX_EXPORTABLE`` / ``ONNX_DEFAULT_INPUTSHAPE`` (#5215).
+_DECLARING_PACKAGES = (
+    "kornia.color",
+    "kornia.enhance",
+    "kornia.filters",
+    "kornia.models.dexined",
+    "kornia.models.segmentation",
+)
 
 # A class that keeps ``ONNX_EXPORTABLE = False`` needs a tracking issue: its case is a strict xfail that must
 # fail inside the exporter, so it turns red once the class exports and the marker can go.
@@ -100,10 +106,13 @@ def _declaring_classes() -> set[str]:
     found = set()
     for package_name in _DECLARING_PACKAGES:
         package = importlib.import_module(package_name)
-        for info in pkgutil.walk_packages(package.__path__, package_name + "."):
-            module = importlib.import_module(info.name)
+        names = [package_name]
+        if hasattr(package, "__path__"):  # a package, not a single module
+            names += [info.name for info in pkgutil.walk_packages(package.__path__, package_name + ".")]
+        for name in names:
+            module = importlib.import_module(name)
             for _, cls in inspect.getmembers(module, inspect.isclass):
-                if cls.__module__ == info.name and {"ONNX_DEFAULT_INPUTSHAPE", "ONNX_EXPORTABLE"} & set(cls.__dict__):
+                if cls.__module__ == name and {"ONNX_DEFAULT_INPUTSHAPE", "ONNX_EXPORTABLE"} & set(cls.__dict__):
                     found.add(cls.__qualname__)
     return found
 

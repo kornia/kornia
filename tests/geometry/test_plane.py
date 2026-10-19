@@ -486,6 +486,40 @@ class TestHyperplane(BaseTester):
         self.assert_close(projected_distance, torch.zeros_like(projected_distance), low_tolerance=half)
         self.assert_close(pl1.abs_distance(p1 + pl1.normal * s1[..., None]), s1, low_tolerance=half)
 
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("shape", [(), (2,), (2, 1)])
+    @pytest.mark.parametrize(
+        "method, point_z, expected_value, expected_gradient",
+        [
+            ("signed_distance", 5.0, 3.0, [0.0, 0.0, 1.0]),
+            ("abs_distance", -1.0, 3.0, [0.0, 0.0, -1.0]),
+            ("projection", 5.0, [1.0, 2.0, 2.0], [1.0, 1.0, 0.0]),
+        ],
+    )
+    def test_point_gradients(self, device, dtype, wrapped, shape, method, point_z, expected_value, expected_gradient):
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane(Vector3(normal), Scalar(normal.new_tensor(-2.0)))
+        point = normal.new_tensor([1.0, 2.0, point_z]).expand(*shape, 3).clone().requires_grad_()
+
+        result = getattr(plane, method)(Vector3(point) if wrapped else point).data
+        self.assert_close(result, result.new_tensor(expected_value).expand_as(result))
+        result.sum().backward()
+
+        assert point.grad is not None
+        self.assert_close(point.grad, point.new_tensor(expected_gradient).expand_as(point))
+
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("method", ["signed_distance", "abs_distance", "projection"])
+    def test_point_gradcheck(self, device, wrapped, method):
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float64)
+        plane = Hyperplane(Vector3(normal), Scalar(normal.new_tensor(-2.0)))
+        point = normal.new_tensor([[1.0, 2.0, 5.0], [4.0, 3.0, -1.0]])
+
+        def evaluate(p):
+            return getattr(plane, method)(Vector3(p) if wrapped else p).data
+
+        self.gradcheck(evaluate, (point,))
+
     def test_projection(self, device, dtype):
         v0 = Vector3.from_coords(0.0, 0.0, 0.0, device=device, dtype=dtype)
         v1 = Vector3.from_coords(0.0, 1.0, 0.0, device=device, dtype=dtype)

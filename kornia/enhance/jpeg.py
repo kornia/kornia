@@ -27,7 +27,7 @@ from torch import nn
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _to_device_nonblocking, is_compiling, is_exporting
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling, is_exporting
 from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
@@ -531,8 +531,11 @@ def jpeg_codec_differentiable(
         scalar is rejected. The codec pads on the bottom and right internally and crops back to
         the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
         float16 and bfloat16 inputs are computed in float32, quality and tables included, and the
-        output is rounded once to the input dtype. Inside a ``torch.autocast`` region the output keeps
-        the input dtype too, but autocast still runs part of the codec in its own lower dtype.
+        output is rounded once to the input dtype. The codec runs with autocast disabled, so inside a
+        ``torch.autocast`` region it gives the same output as outside it, and the same gradients when the
+        backward pass runs after the region (on CUDA, up to the run-to-run spread of its atomic accumulation
+        unless deterministic algorithms are enabled). A backward pass inside the region, which
+        ``torch.compile`` assumes by default, still computes part of the gradient in the autocast dtype.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
@@ -672,25 +675,29 @@ def jpeg_codec_differentiable(
     # Quantization tables to same device and dtype as input image
     quantization_table_y = _to_device_nonblocking(quantization_table_y, device, dtype)
     quantization_table_c = _to_device_nonblocking(quantization_table_c, device, dtype)
-    # Perform encoding
-    y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
-        image_rgb=input,
-        jpeg_quality=jpeg_quality,
-        quantization_table_c=quantization_table_c,
-        quantization_table_y=quantization_table_y,
-    )
-    image_rgb_jpeg: torch.Tensor = _jpeg_decode(
-        input_y=y_encoded,
-        input_cb=cb_encoded,
-        input_cr=cr_encoded,
-        jpeg_quality=jpeg_quality,
-        H=H,
-        W=W,
-        quantization_table_c=quantization_table_c,
-        quantization_table_y=quantization_table_y,
-    )
-    # Clip coded image
-    image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
+    # A caller's autocast would run the codec's matrix products and convolutions in its lower dtype, which rounds the
+    # [0, 255] pixels, DCT coefficients and quality scale as coarsely as computing them in half precision would:
+    # compute it in dtype.
+    with _autocast_disabled(input.device.type):
+        # Perform encoding
+        y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
+            image_rgb=input,
+            jpeg_quality=jpeg_quality,
+            quantization_table_c=quantization_table_c,
+            quantization_table_y=quantization_table_y,
+        )
+        image_rgb_jpeg: torch.Tensor = _jpeg_decode(
+            input_y=y_encoded,
+            input_cb=cb_encoded,
+            input_cr=cr_encoded,
+            jpeg_quality=jpeg_quality,
+            H=H,
+            W=W,
+            quantization_table_c=quantization_table_c,
+            quantization_table_y=quantization_table_y,
+        )
+        # Clip coded image
+        image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
     return image_rgb_jpeg[..., : H - h_pad, : W - w_pad].to(out_dtype)
 
