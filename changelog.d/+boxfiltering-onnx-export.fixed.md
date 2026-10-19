@@ -1,0 +1,1 @@
+`BoxFiltering.to_onnx()` and the detectors that contain it export on PyTorch 2.14's default (dynamo) exporter, which failed to translate the keep-all class mask. A filter built without a confidence threshold now exports a graph that filters at the eager default of `0.0`, where the old export baked in `0.1` as a second input.

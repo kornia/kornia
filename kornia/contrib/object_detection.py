@@ -351,6 +351,10 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         filter_as_zero: whether to filter boxes as zero.
 
     Note:
+        The exported graph has the single input ``boxes``. It filters at ``confidence_threshold``, held as a
+        constant, and at the eager default of ``0.0`` (keep boxes with a positive confidence) when none was given.
+
+    Note:
         Without ``filter_as_zero``, ONNX export produces one output tensor per image, so the batch must be fixed.
         :meth:`to_onnx` defaults to a batch of one image. Use ``filter_as_zero=True`` to export a dynamic batch
         as one ``(B, D, 6)`` tensor.
@@ -423,7 +427,7 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             class_mask = (class_ids == classes_to_keep).any(dim=-1)  # [B, D]
         else:
             # If no class filtering is needed, just use a mask of all `True`
-            class_mask = (confidence_mask * 0 + 1).bool()
+            class_mask = torch.ones_like(confidence_mask)
 
         # Combine the confidence and class masks
         combined_mask = confidence_mask & class_mask  # [B, D]
@@ -473,6 +477,10 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             ValueError: If ``input_shape`` marks the batch ``-1`` without ``filter_as_zero``.
 
         Note:
+            The exported graph takes the boxes as its only input and filters at the threshold given to the
+            constructor, or at ``0.0`` when there is none, as eager does.
+
+        Note:
             The exporters flatten the Python list into a fixed number of graph outputs. Without ``filter_as_zero``,
             the batch is therefore fixed: at the batch of ``input_shape``, else of ``pseudo_shape``, else at 1. ONNX
             Runtime rejects other batch sizes. Each image's number of retained detections remains dynamic.
@@ -503,15 +511,12 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
     def _create_dummy_input(
         self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
     ) -> Union[Tuple[Any, ...], torch.Tensor]:
-        pseudo_input = torch.rand(
+        return torch.rand(
             *[
                 ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
                 for i, dim in enumerate(input_shape)
             ]
         )
-        if self.confidence_threshold is None:
-            return pseudo_input, 0.1
-        return pseudo_input
 
 
 class RTDETRDetectorBuilder:

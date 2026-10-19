@@ -21,7 +21,7 @@ import pytest
 import torch
 
 from kornia.contrib.object_detection import BoxFiltering
-from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core._compat import torch_version_lt
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -37,16 +37,6 @@ _EXPORTERS = [
         marks=[
             pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
             pytest.mark.skipif(torch_version_lt(2, 9, 0), reason="to_onnx uses dynamic_shapes from torch 2.9"),
-            pytest.mark.xfail(
-                torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
-                reason=(
-                    "torch 2.14's CPU ONNX exporter cannot translate aten.mul.Scalar in the class mask: "
-                    "No decompositions registered for the real-valued input; "
-                    "also affects test_sam_onnx.py::test_sam_encoder_to_onnx"
-                ),
-                raises=torch.onnx.OnnxExporterError,
-                strict=torch.version.cuda is None,
-            ),
         ],
     ),
 ]
@@ -137,3 +127,38 @@ class TestBoxFilteringONNX(BaseTester):
             boxes = _detections(batch, count)
             (actual,) = session.run(None, {"input": boxes.numpy()})
             self.assert_close(torch.from_numpy(actual), module(boxes))
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("dynamo", _EXPORTERS)
+    def test_filter_without_threshold_exports_one_input_6112(self, dynamo):
+        """A filter without a threshold exports one input and filters at the eager default, 0.0."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+
+        module = BoxFiltering(filter_as_zero=True)
+        exported = module.to_onnx(save=False, dynamo=dynamo)
+        assert len(exported.graph.input) == 1
+
+        session = _session(exported)
+        boxes = torch.zeros(2, 50, 6)
+        boxes[:, :, 1] = torch.linspace(0.01, 0.99, 50)
+        boxes[:, :, 2:] = 1.0
+        (actual,) = session.run(None, {"input": boxes.numpy()})
+        assert int((torch.from_numpy(actual)[:, :, 1] > 0).sum()) == int((module(boxes)[:, :, 1] > 0).sum()) == 100
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("dynamo", _EXPORTERS)
+    def test_filter_with_threshold_keeps_it_as_a_constant_6112(self, dynamo):
+        """A thresholded filter still filters at its threshold, from one input."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+
+        module = BoxFiltering(confidence_threshold=0.5, filter_as_zero=True)
+        exported = module.to_onnx(save=False, dynamo=dynamo)
+        assert len(exported.graph.input) == 1
+
+        boxes = torch.zeros(2, 50, 6)
+        boxes[:, :, 1] = torch.linspace(0.01, 0.99, 50)
+        (actual,) = _session(exported).run(None, {"input": boxes.numpy()})
+        self.assert_close(torch.from_numpy(actual), module(boxes))
+        assert int((torch.from_numpy(actual)[:, :, 1] > 0).sum()) == 50
