@@ -1482,3 +1482,31 @@ class TestInvertAffineTransform(BaseTester):
         actual = op_script(matrix)
         expected = op(matrix)
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+
+class TestGetPerspectiveTransformAutocast(BaseTester):
+    """A caller's autocast region does not reach get_perspective_transform (#6168)."""
+
+    def test_autocast_does_not_change_the_result_6168(self, device):
+        # Under bfloat16 autocast the closed form ran its products in bfloat16: the homography between the corners of
+        # a 640 x 480 image and four targets mapped those corners about 1.4 px off.
+        if device.type == "cuda" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        src = torch.tensor([[[0.0, 0.0], [639.0, 0.0], [639.0, 479.0], [0.0, 479.0]]], device=device)
+        dst = torch.tensor([[[12.0, 7.0], [630.0, 15.0], [610.0, 470.0], [-5.0, 460.0]]], device=device)
+        expected = kornia.geometry.transform.get_perspective_transform(src, dst)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = kornia.geometry.transform.get_perspective_transform(src, dst)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        mapped = kornia.geometry.linalg.transform_points(actual, src)
+        self.assert_close(mapped, dst, atol=1e-3, rtol=0)
+
+    def test_still_scriptable_6168(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        src = torch.tensor([[[0.0, 0.0], [10.0, 0.0], [10.0, 8.0], [0.0, 8.0]]], device=device, dtype=dtype)
+        dst = torch.tensor([[[1.0, 0.5], [11.0, 1.0], [9.5, 8.5], [-0.5, 7.5]]], device=device, dtype=dtype)
+        scripted = torch.jit.script(kornia.geometry.transform.get_perspective_transform)
+        self.assert_close(scripted(src, dst), kornia.geometry.transform.get_perspective_transform(src, dst))
