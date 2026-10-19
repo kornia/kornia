@@ -52,24 +52,23 @@ class PinholeCamera:
           as the Euclidean ray length.
         - the class owns copies of the tensors it is constructed from: :meth:`scale_` and the ``tx`` / ``ty`` /
           ``tz`` setters update only the camera, and :meth:`scale` and :meth:`clone` return independent cameras.
-        - The constructor accepts rank-4 matrices for camera-list storage. Use
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamerasList` to store a camera list with matrices of shape
-          :math:`(B, N, 4, 4)`.
 
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` (the half-pixel rule),
         which disagrees with the integer pixel centres above:
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
-
-        The shapes of ``intrinsics`` and ``extrinsics`` are validated, but their matrix contents are not (see
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_). :meth:`project`, :meth:`unproject`,
-        :meth:`intrinsics_inverse` and :class:`~kornia.geometry.depth.DepthWarper` read only the top-left
-        :math:`3 \times 3` block, so a zero-padded ``K`` behaves like its homogeneous embedding.
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
+        validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated, but
+        :meth:`project`, :meth:`unproject`, :meth:`intrinsics_inverse` and
+        :class:`~kornia.geometry.depth.DepthWarper` read only the top-left :math:`3 \times 3` block, so a
+        zero-padded ``K`` behaves like its homogeneous embedding.
 
     Args:
-        intrinsics: torch.Tensor with shape :math:`(B, 4, 4)` or :math:`(B, N, 4, 4)`
-          containing the full 4x4 camera calibration matrix.
-        extrinsics: torch.Tensor with shape :math:`(B, 4, 4)` or :math:`(B, N, 4, 4)`
+        intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
+          containing the full 4x4 camera calibration matrix. The shared shape validator also accepts
+          :math:`(B, N, 4, 4)` for ``PinholeCamerasList``, while :meth:`project` requires
+          the documented :math:`(B, 4, 4)` layout.
+        extrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 rotation-translation matrix, checked by the same predicate.
         height: torch.Tensor with shape :math:`(B)` containing the image height.
         width: torch.Tensor with shape :math:`(B)` containing the image width.
