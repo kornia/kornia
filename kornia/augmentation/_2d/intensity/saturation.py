@@ -20,17 +20,22 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _range_bound
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import adjust_saturation
 
 
 class RandomSaturation(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the saturation of a torch.Tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The factor scales the HSV saturation. torchvision's and PIL's saturation blends the image with its
+    grayscale instead (``factor * input + (1 - factor) * gray``); :class:`ColorJitter`'s saturation step is
+    that formula.
 
     .. image:: _static/img/RandomSaturation.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         p: probability of applying the transformation.
@@ -41,6 +46,15 @@ class RandomSaturation(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the input must have three channels: the scaling is defined on the HSV saturation, and any other
+          channel count raises a ``ValueError`` on the forward pass.
+        - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged, and ``1.0`` is the
+          identity, up to rounding, for a pixel in ``[0, 1]``.
+        - the HSV saturation is also clamped into ``[0, 1]`` before converting back to RGB.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_saturation`
@@ -89,5 +103,6 @@ class RandomSaturation(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        saturation_factor = params["saturation_factor"].to(input)
-        return adjust_saturation(input, saturation_factor)
+        input = _clamp_unit_range(input)
+        saturation_factor = _to_device_nonblocking(params["saturation_factor"], input.device, input.dtype)
+        return _clamp_unit_range(adjust_saturation(input, saturation_factor))

@@ -28,7 +28,7 @@ class DeDoDeDetector(nn.Module):
         decoder: The decoder module for probability map generation.
     """
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.encoder = encoder
         self.decoder = decoder
@@ -39,15 +39,11 @@ class DeDoDeDetector(nn.Module):
     ) -> torch.Tensor:
         """Run this DeDoDe module forward.
 
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
-
         Args:
-            images: Input value used by this method.
+            images: Input image batch with shape :math:`(B, C, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Keypoint detection logits with shape :math:`(B, 1, H, W)`.
         """
         dtype = images.dtype
         features, sizes = self.encoder(images)
@@ -56,12 +52,10 @@ class DeDoDeDetector(nn.Module):
         scales = ["8", "4", "2", "1"]
         for idx, (feature_map, scale) in enumerate(zip(reversed(features), scales)):
             delta_logits, context = self.decoder(feature_map, context=context, scale=scale)
-            if logits is None:
-                logits = delta_logits
-            else:
-                logits = logits + delta_logits.float()  # ensure float (need bf16 doesn't have f.interpolate)
+            # ensure float (need bf16 doesn't have f.interpolate)
+            logits = delta_logits if logits is None else logits + delta_logits.float()
             if idx < len(scales) - 1:
                 size = sizes[-(idx + 2)]
                 logits = F.interpolate(logits, size=size, mode="bicubic", align_corners=False)
-                context = F.interpolate(context.float(), size=size, mode="bilinear", align_corners=False)
-        return logits.to(dtype)  # type: ignore
+                context = F.interpolate(context.float(), size=size, mode="bilinear", align_corners=False).to(dtype)
+        return logits.to(dtype)

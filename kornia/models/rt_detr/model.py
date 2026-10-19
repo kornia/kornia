@@ -83,15 +83,27 @@ class RTDETRConfig:
             - ResNetD-101: ``3``, ``'resnet101d'`` or :attr:`RTDETRModelType.resnet101d`
             - HGNetV2-L: ``4``, ``'hgnetv2_l'`` or :attr:`RTDETRModelType.hgnetv2_l`
             - HGNetV2-X: ``5``, ``'hgnetv2_x'`` or :attr:`RTDETRModelType.hgnetv2_x`
+            - ResNetD-50-M: ``6``, ``'resnet50d_m'`` or :attr:`RTDETRModelType.resnet50d_m`
 
         num_classes: number of classes.
-        checkpoint: URL or local path of model weights.
+        input_size: size of the square image that
+            :meth:`~kornia.contrib.object_detection.RTDETRDetectorBuilder.build` resizes the input to.
+        checkpoint: URL or local path of a state dict with kornia's parameter names, loaded by
+            :meth:`RTDETR.from_config`. The published RT-DETR checkpoints keep the reference implementation's names and
+            load only through :meth:`RTDETR.from_pretrained`.
         neck_hidden_dim: hidden dim for neck.
         neck_dim_feedforward: feed-forward network dim for neck.
         neck_expansion: expansion ratio for neck.
         head_hidden_dim: hidden dim for head.
         head_num_queries: number of queries for Deformable DETR transformer decoder.
         head_num_decoder_layers: number of decoder layers for Deformable DETR transformer decoder.
+        confidence_threshold: score threshold of the post-processor that
+            :meth:`~kornia.contrib.object_detection.RTDETRDetectorBuilder.build` creates from this config when it is
+            given no ``confidence_threshold``.
+        eval_idx: index of the decoder layer whose predictions the model returns; a negative value counts back from
+            the last layer (``-1``), and the layers after the selected one do not run. ``None`` selects the variant's
+            layer: index 2, the third of six, for ``resnet50d_m``, as in the reference configs of that checkpoint (or
+            the last layer of a decoder with fewer than three), and the last layer for the other variants.
 
     """
 
@@ -107,6 +119,7 @@ class RTDETRConfig:
     head_num_queries: int = 300
     head_num_decoder_layers: Optional[int] = None
     confidence_threshold: float = 0.3
+    eval_idx: Optional[int] = None
 
     @staticmethod
     def from_name(model_name: str, num_classes: int = 80) -> RTDETRConfig:
@@ -154,6 +167,9 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
     def from_config(config: RTDETRConfig) -> RTDETR:
         """Construct RT-DETR Object Detection model from a config object.
 
+        Returns the model in evaluation mode when ``config.checkpoint`` loads weights and in training mode otherwise
+        (see :ref:`pretrained-models-conventions`).
+
         Args:
             config: configuration object for RT-DETR.
 
@@ -170,6 +186,8 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             model_type = getattr(RTDETRModelType, model_type)
 
         backbone: ResNetD | PPHGNetV2
+        # the last decoder layer, except for R50-M below
+        default_eval_idx = -1
 
         if model_type == RTDETRModelType.resnet18d:
             backbone = ResNetD.from_config(18)
@@ -198,6 +216,9 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             neck_dim_feedforward = config.neck_dim_feedforward or 1024
             head_num_decoder_layers = config.head_num_decoder_layers or 6
             neck_expansion = config.neck_expansion or 0.5
+            # R50-M decodes with the third of its six layers: ``eval_idx: 2`` in both reference configs,
+            # ``rtdetr_r50vd_m_6x_coco.yml`` of lyuwenyu/RT-DETR rtdetr_pytorch and rtdetr_paddle
+            default_eval_idx = min(2, head_num_decoder_layers - 1)
 
         elif model_type == RTDETRModelType.resnet101d:
             backbone = ResNetD.from_config(101)
@@ -229,16 +250,21 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
                 num_queries=config.head_num_queries,
                 in_channels=[neck_hidden_dim] * 3,
                 num_decoder_layers=head_num_decoder_layers,
+                eval_idx=config.eval_idx if config.eval_idx is not None else default_eval_idx,
             ),
         )
 
         if config.checkpoint:
             model.load_checkpoint(config.checkpoint)
+            model.eval()
         return model
 
     @staticmethod
     def from_pretrained(model_name: str) -> RTDETR:
         """Load model from pretrained weights.
+
+        Returns the model in evaluation mode, since it always loads weights (see
+        :ref:`pretrained-models-conventions`).
 
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
@@ -247,9 +273,14 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
         if model_name not in URLs:
             raise ValueError(f"No pretrained model for '{model_name}'. Please select from {list(URLs.keys())}.")
 
-        state_dict = load_state_dict_from_url(
-            URLs[model_name], map_location="cuda:0" if torch.cuda.is_available() else "cpu"
-        )
+        # Load weights on CPU and let the caller move the returned model to its
+        # target device with .to(device). Loading straight onto an accelerator is
+        # a wasted round-trip anyway: the model is built on CPU and load_state_dict
+        # copies into existing CPU parameters, so the map_location device is
+        # discarded. Hard-coding "cuda:0" (as before) also forces the state dict
+        # onto CUDA even on machines that expose a different accelerator (e.g.
+        # Ascend NPU or Intel XPU) whose torch build reports no CUDA.
+        state_dict = load_state_dict_from_url(URLs[model_name], map_location="cpu")
 
         def map_name(old_name: str) -> str:
             new_name = old_name
@@ -263,16 +294,14 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             # Backbone renaming
             new_name = re.sub(".branch2b.", ".convs.branch2b.", new_name)
             new_name = re.sub(".branch2a.", ".convs.branch2a.", new_name)
-            new_name = re.sub(".branch2c.", ".convs.branch2c.", new_name)
-
-            return new_name
+            return re.sub(".branch2c.", ".convs.branch2c.", new_name)
 
         def _state_dict_proc(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-            state_dict = state_dict["ema"]["module"]  # type:ignore
+            state_dict = state_dict["ema"]["module"]
             new_state_dict = {}
 
             # Apply the regex-based mapping function to each key
-            for old_name in state_dict.keys():
+            for old_name in state_dict:
                 new_name = map_name(old_name)
                 new_state_dict[new_name] = state_dict[old_name]
 
@@ -281,7 +310,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
         model = RTDETR.from_name(model_name, num_classes=80)
 
         model.load_state_dict(_state_dict_proc(state_dict))
-        return model
+        return model.eval()
 
     @staticmethod
     def from_name(model_name: str, num_classes: int = 80) -> RTDETR:
@@ -292,8 +321,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             num_classes: number of classes to detect.
 
         """
-        model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
-        return model
+        return RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
 
     def to_onnx(
         self,
@@ -314,7 +342,8 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             onnx_name: Path for the saved ``.onnx`` file. Defaults to
                 ``"Kornia-RTDETR.onnx"``.
             pseudo_shape: Concrete input shape used to trace the model, e.g.
-                ``[1, 3, 640, 640]``.  Defaults to ``[1, 3, 640, 640]``.
+                ``[1, 3, 640, 640]``.  Defaults to ``[1, 3, 640, 640]``. The batch is
+                exported as dynamic, so a batch below 2 is traced at 2.
             save: Whether to write the model to disk. Default ``True``.
             **kwargs: Additional keyword arguments forwarded to
                 :func:`torch.onnx.export`.

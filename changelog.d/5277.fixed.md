@@ -1,0 +1,1 @@
+`VisionTransformer.from_config("vit_s/32", pretrained=True)` now loads its weights. The URL pointed at a Hugging Face repository that does not exist, so the download failed with HTTP 401; the checkpoint is hosted at `kornia/vit_s32_i21k_augreg_i21k_r224`.

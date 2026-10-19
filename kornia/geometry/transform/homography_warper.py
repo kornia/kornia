@@ -21,9 +21,9 @@ from abc import abstractmethod
 from typing import Any, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import _torch_grid_sample
 from kornia.geometry.grid import create_meshgrid
 
 from .imgwarp import homography_warp, warp_grid
@@ -82,7 +82,9 @@ class HomographyWarper(BaseWarper):
         X_{src} = H_{src}^{\{dst\}} * X_{dst}
 
     Convention:
-        - align_corners: ``False`` by default, matching :func:`homography_warp`
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
+        coordinates and sampling conventions.
+
         - See the convention block of :func:`homography_warp`.
 
     Args:
@@ -112,8 +114,11 @@ class HomographyWarper(BaseWarper):
         self.padding_mode = padding_mode
         self.normalized_coordinates = normalized_coordinates
         self.align_corners = align_corners
-        # create base grid to compute the flow
-        self.grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
+        # create base grid to compute the flow, under the same normalization convention that
+        # forward() will hand to grid_sample, so the precomputed path matches the direct one
+        self.grid = create_meshgrid(
+            height, width, normalized_coordinates=normalized_coordinates, align_corners=align_corners
+        )
 
         # initialice the warped destination grid
         self._warped_grid = None
@@ -179,7 +184,7 @@ class HomographyWarper(BaseWarper):
                     " precompute_warp_grid() with the correct device for the homograhy"
                     " or change the patch device."
                 )
-            warped_patch = F.grid_sample(
+            warped_patch = _torch_grid_sample(
                 patch_src,
                 _warped_grid,
                 mode=self.mode,

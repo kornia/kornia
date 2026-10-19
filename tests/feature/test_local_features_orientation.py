@@ -15,13 +15,23 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
+import kornia
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+
+
+def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
+    # torch 2.5.1 has no float16 CPU reflection_pad2d or replication_pad2d; these pins blur (reflect) and take
+    # gradients (replicate).
+    if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+        pytest.skip(f"no reflection or replication padding kernel for {dtype} on {device.type}")
 
 
 class TestPassLAF(BaseTester):
@@ -58,6 +68,33 @@ class TestPassLAF(BaseTester):
 
 
 class TestPatchDominantGradientOrientation(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        inp = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
+        model = PatchDominantGradientOrientation(32).to(device, dtype)
+        self.assert_close(torch_optimizer(model)(inp), model(inp))
+
+    @pytest.mark.parametrize(
+        "size,bins,expected",
+        [
+            (13, 8, [-3.7174663347627757e-10, -0.17437093434051, -1.473217788509725, -1.4827622084527432]),
+            (13, 36, [0.0, -1.567342763450159, -1.5818624223852344, -1.5595019149730796]),
+            (32, 36, [0.0, 0.010140574846868589, -1.574052870184957, -1.5575465831257427]),
+        ],
+    )
+    def test_histogram_reference(self, device, dtype, size, bins, expected):
+        # Kornia 601b5a4a reference: one masked adaptive-average-pool per angular bin, using the
+        # deterministic patch generation below in float64. The literals hold in float32 to 8e-7 rad
+        # on CPU and MPS (no peak is a near-tie), so the pin also runs on the MPS gate. Half precision
+        # quantises the histogram bins before the parabolic peak refinement and moves the angle by
+        # several half-precision ulps, so the literals do not apply there.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("float64 reference literals; half precision quantises the histogram bins")
+        t = torch.linspace(-1, 1, size, device=device, dtype=dtype)
+        y, x = torch.meshgrid(t, t, indexing="ij")
+        patches = torch.stack([torch.sin(3 * x + a) * torch.cos(4 * y - a) + 0.3 * x * y for a in [0, 0.4, 1.1, 2]])
+        actual = PatchDominantGradientOrientation(size, bins).to(device, dtype)(patches[:, None])
+        self.assert_close(actual, torch.tensor(expected, device=device, dtype=dtype))
+
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = PatchDominantGradientOrientation(32).to(device)
@@ -88,7 +125,6 @@ class TestPatchDominantGradientOrientation(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(ori, (patches,))
 
-    @pytest.mark.jit()
     @pytest.mark.skip(" Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
@@ -97,11 +133,155 @@ class TestPatchDominantGradientOrientation(BaseTester):
         model_jit = torch.jit.script(PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
 
+    def test_float64_rotation_by_pi_shifts_angle_by_pi_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # Rotating a patch by 180 degrees negates every gradient, so the angular histogram is the same
+        # histogram shifted by half its bins and the two angles differ by exactly pi. The float32 pi
+        # in the angle-to-bin and bin-to-angle scales put that difference about 1e-7 off in float64.
+        patches = torch.rand(6, 1, 32, 32, device=device, dtype=torch.float64)
+        model = PatchDominantGradientOrientation(32, eps=1e-14).to(device, torch.float64)
+        difference = torch.remainder(model(patches) - model(patches.flip(-1, -2)), 2 * torch.pi)
+        self.assert_close(difference, torch.full_like(difference, torch.pi), rtol=0.0, atol=1e-9)
+
+    def test_float64_axis_ramps_give_exact_angles_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        # A ramp along +x puts every gradient at angle 0 and one along +y at pi / 2: both land on bin
+        # centres, so the angles are exact. A common offset in the angle-to-bin or bin-to-angle mapping
+        # cancels in the rotation test above but moves these.
+        axis = torch.arange(32, device=device, dtype=torch.float64)
+        patches = torch.stack([axis.expand(32, 32), axis[:, None].expand(32, 32)]).unsqueeze(1)
+        angles = PatchDominantGradientOrientation(32, eps=1e-14).to(device, torch.float64)(patches)
+        expected = torch.tensor([0.0, -torch.pi / 2], device=device, dtype=torch.float64)
+        self.assert_close(angles, expected, rtol=0.0, atol=1e-12)
+
+
+class TestOrientationHalfPrecisionIsFinite(BaseTester):
+    """A flat patch has a zero gradient; `sqrt(gx*gx + gy*gy + eps)` must not give NaN in float16.
+
+    The 1e-10 guard underflows to zero in float16 and so does a squared float16 gradient, so
+    the descriptor-side helper lifts the step to float32. The orienter took the same expression
+    unguarded and sent a NaN LAF into the descriptor at a *filled* slot.
+    """
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_flat_patch(self, device, half_dtype):
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, half_dtype):
+            # `spatial_gradient` pads with mode="replicate"; torch 2.5.1 has no float16 CPU kernel.
+            pytest.skip(f"no replicate-pad kernel for {half_dtype} on {device.type}")
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=half_dtype)
+        out = PatchDominantGradientOrientation(32).to(device, half_dtype)(patches)
+        assert out.dtype == half_dtype
+        assert torch.isfinite(out).all()
+
+    @pytest.mark.parametrize("ori_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_flat_patch_backward_is_finite(self, device, ori_dtype):
+        # A flat patch has no orientation; `atan2`'s `1 / eps` derivative there is an artefact that
+        # overflowed to `inf` through the float16 cast and reached the patch as NaN (all 1024 pixels).
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, ori_dtype):
+            pytest.skip(f"no replicate-pad kernel for {ori_dtype} on {device.type}")
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=ori_dtype, requires_grad=True)
+        out = PatchDominantGradientOrientation(32).to(device, ori_dtype)(patches)
+        out.sum().backward()
+        assert patches.grad is not None
+        assert torch.isfinite(patches.grad).all()
+        assert bool((patches.grad == 0).all()), patches.grad.abs().max().item()
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_flat_image_laf(self, device, half_dtype):
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, half_dtype):
+            # The orienter differentiates the extracted patches with a replicate pad, which torch
+            # 2.5.1 has no float16 CPU kernel for. Patch extraction itself samples half inputs in
+            # float32 and needs no `grid_sample` gate on any torch version.
+            pytest.skip(f"no replicate-pad kernel for {half_dtype} on {device.type}")
+        img = torch.full((1, 1, 32, 32), 0.5, device=device, dtype=half_dtype)
+        laf = torch.tensor([[[[5.0, 0.0, 16.0], [0.0, 5.0, 16.0]]]], device=device, dtype=half_dtype)
+        out = LAFOrienter(19).to(device, half_dtype)(laf, img)
+        assert out.dtype == half_dtype
+        assert torch.isfinite(out).all()
+
+    def test_half_precision_matches_float32(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, torch.float16):
+            pytest.skip(f"no float16 replicate-pad kernel on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 32, 32).to(device)
+        ref = PatchDominantGradientOrientation(32).to(device)(patches)
+        out = PatchDominantGradientOrientation(32).to(device, torch.float16)(patches.half())
+        self.assert_close(out.float(), ref, atol=5e-2, rtol=0)
+
+
+class TestOrientationKernelBuffer(BaseTester):
+    """`weighting` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""
+
+    def test_to_moves_the_kernel(self, device):
+        """`.to()` must carry the kernel along with the parameters.
+
+        float16 rather than the default float32, or the dtype assertion would hold
+        vacuously; float16 also works on MPS, where float64 is unavailable.
+        """
+        mod = PatchDominantGradientOrientation(32).to(device, torch.float16)
+        assert mod.weighting.dtype == torch.float16
+        assert mod.weighting.device == torch.empty(0, device=device).device
+
+    def test_kernel_stays_out_of_state_dict(self, device):
+        """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
+        assert "weighting" not in PatchDominantGradientOrientation(32).state_dict()
+
+    def test_forward_does_not_mutate_the_module(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        mod = PatchDominantGradientOrientation(32)
+        before = (mod.weighting.dtype, mod.weighting.device)
+        mod(torch.rand(2, 1, 32, 32, dtype=torch.float64))
+        assert (mod.weighting.dtype, mod.weighting.device) == before
+
+    def test_forward_uses_input_dtype_without_mutating_angular_smooth(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
+        mod = PatchDominantGradientOrientation(32).to(device)
+        ref = PatchDominantGradientOrientation(32).to(device, torch.float64)
+        ref.load_state_dict(mod.state_dict())
+
+        out = mod(patches)
+        with torch.no_grad():
+            expected = ref(patches)
+
+        assert out.dtype == torch.float64
+        assert torch.equal(out, expected)
+        assert mod.angular_smooth.weight.dtype == torch.float32
+        assert mod.angular_smooth.weight.device == device
+        out.sum().backward()
+        assert mod.angular_smooth.weight.grad is not None
+
+    def test_forward_uses_input_device_without_mutating_angular_smooth(self, device):
+        if device.type == "cpu":
+            pytest.skip("device mismatch requires a non-CPU test device")
+        if not supports_replicate_padding(device, torch.float32):
+            pytest.skip(f"no float32 replicate-pad kernel on {device.type}")
+        patches = torch.rand(2, 1, 32, 32, device=device)
+        mod = PatchDominantGradientOrientation(32)
+
+        out = mod(patches)
+
+        assert out.device == device
+        assert mod.angular_smooth.weight.device == torch.device("cpu")
+
 
 class TestOriNet(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = OriNet().to(device=device, dtype=inp.dtype).eval()
+        ori = OriNet(pretrained=False).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         assert ang.shape == torch.Size([1])
 
@@ -118,7 +298,7 @@ class TestOriNet(BaseTester):
         assert ang.shape == torch.Size([2])
 
     def test_print(self, device):
-        sift = OriNet(32)
+        sift = OriNet(pretrained=False)
         sift.__repr__()
 
     def test_toy(self, device):
@@ -133,10 +313,9 @@ class TestOriNet(BaseTester):
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 1, 32, 32
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        ori = OriNet().to(device=device, dtype=patches.dtype)
+        ori = OriNet(pretrained=False).to(device=device, dtype=patches.dtype).eval()
         self.gradcheck(ori, (patches,), fast_mode=False)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -180,3 +359,101 @@ class TestLAFOrienter(BaseTester):
         laf[:, :, 0, 1] = 0
         laf[:, :, 1, 0] = 0
         self.gradcheck(LAFOrienter(8).to(device), (laf, patches), rtol=1e-3, atol=1e-3, nondet_tol=1e-3)
+
+
+def _conv_ramp(angle: float, height: int, width: int, x0: float, y0: float) -> torch.Tensor:
+    """Float64 CPU ramp through ``(x0, y0)`` whose gradient is ``angle`` degrees counter-clockwise from +x on screen.
+
+    With y pointing down that direction is ``(cos angle, -sin angle)`` in pixel coordinates.
+    """
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float64), torch.arange(width, dtype=torch.float64), indexing="ij"
+    )
+    t = math.radians(angle)
+    return (0.05 * (math.cos(t) * (xx - x0) - math.sin(t) * (yy - y0))).view(1, 1, height, width)
+
+
+class TestConventionsOrientation(BaseTester):
+    @pytest.mark.parametrize("content_angle", [0.0, 30.0])
+    def test_convention_laf_orienter_turns_the_frame_counter_clockwise_with_the_content(
+        self, device, dtype, content_angle
+    ):
+        # The output orientation is the input orientation plus the patch angle, which turns the LAF's x axis onto the
+        # dominant gradient: content turned +30 degrees counter-clockwise on screen reads +30, the sign of
+        # laf_from_center_scale_ori, whatever the input orientation (0, 40 or -75). Centre and scale are kept.
+        # Measured on CPU float32: at most 0.005 degrees off. Half precision rounds the ramp, its gradients, which vote
+        # into the 10-degree histogram and set the parabolic peak refinement, and the returned angle (bfloat16 spaces
+        # angles near 120 degrees by 0.5); the bound is one histogram bin in bfloat16, 2 degrees in float16.
+        _skip_without_half_padding(device, dtype)
+        tol = {torch.float16: 2.0, torch.bfloat16: 10.0}.get(dtype, 0.05)
+        orienter = LAFOrienter(32).to(device, dtype)
+        img = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).to(device, dtype)
+        centre = torch.tensor([[[47.0, 26.0]]], device=device, dtype=dtype)
+        scale = torch.full((1, 1, 1, 1), 12.0, device=device, dtype=dtype)
+        for input_angle in (0.0, 40.0, -75.0):
+            laf = kornia.feature.laf_from_center_scale_ori(
+                centre, scale, torch.tensor([[[input_angle]]], device=device, dtype=dtype)
+            )
+            out = orienter(laf, img)
+            self.assert_close(
+                kornia.feature.get_laf_orientation(out).flatten(),
+                torch.tensor([content_angle], device=device, dtype=dtype),
+                rtol=0.0,
+                atol=tol,
+            )
+            self.assert_close(out[..., 2], laf[..., 2], rtol=0.0, atol=0.0)
+            self.assert_close(kornia.feature.get_laf_scale(out), scale)
+        # relabelling: transposing the image mirrors the gradient direction a onto -90 - a
+        img_t = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).transpose(-1, -2).contiguous().to(device, dtype)
+        laf_t = kornia.feature.laf_from_center_scale_ori(
+            centre.flip(-1), scale, torch.tensor([[[40.0]]], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            kornia.feature.get_laf_orientation(orienter(laf_t, img_t)).flatten(),
+            torch.tensor([-90.0 - content_angle], device=device, dtype=dtype),
+            rtol=0.0,
+            atol=tol,
+        )
+
+    def test_convention_orinet_offset_cancels_and_gain_acts_through_eps(self, device, dtype):
+        # OriNet subtracts each patch's mean and divides by its standard deviation plus 1e-6 before its layers, so an
+        # offset does not change the angle and a positive gain changes it only through that 1e-6; no pretrained
+        # weights are needed for that. With a standard deviation of 0.29, x and 3 x + 2 are 3.5e-7 rad apart in CPU
+        # float64.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            model = OriNet(pretrained=False).eval()
+        patches = torch.rand(3, 1, 32, 32, generator=torch.Generator().manual_seed(1)).to(device, dtype)
+        model = model.to(device, dtype)
+        # half precision rounds the returned angle: bfloat16 spaces the angles here (-1.78 to -1.94 rad) by 1 / 128
+        atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        self.assert_close(model(3 * patches + 2), model(patches), rtol=0.0, atol=atol)
+        if dtype not in (torch.float32, torch.float64):
+            return
+        # At a standard deviation of 1e-6 the 1e-6 halves the normalised contrast, and a gain of 3 raises that factor
+        # to 3 / 4: each angle moves by 1.65e-2 to 3.44e-2 rad (CPU and MPS float32, CPU float64).
+        low = 1e-6 * (patches - patches.mean(dim=(1, 2, 3), keepdim=True)) / patches.std(dim=(1, 2, 3), keepdim=True)
+        assert ((model(3 * low) - model(low)).abs() > 5e-3).all()
+        if dtype == torch.float64:
+            # The offset still cancels at that contrast (2.7e-12 rad); in float32, rounding 2 + low already changes it.
+            self.assert_close(model(low + 2), model(low), rtol=0.0, atol=1e-9)
+
+    def test_convention_pass_laf_returns_its_input_object(self, device, dtype):
+        # PassLAF returns the very tensor it was given, not a copy: an in-place edit of the output edits the input.
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 2.0, device=device, dtype=dtype),
+            torch.tensor([[[30.0]]], device=device, dtype=dtype),
+        )
+        img = torch.zeros(1, 1, 12, 17, device=device, dtype=dtype)
+        assert PassLAF()(laf, img) is laf
+
+    def test_convention_dominant_gradient_angle_is_not_wrapped_past_pi(self, device, dtype):
+        # The angle is not wrapped into (-pi, pi]: a peak in the bin at pi refines up to half a bin past it, so the
+        # angle can exceed pi by up to pi / num_angular_bins. With 8 bins of 45 degrees, a ramp whose gradient points
+        # 195 degrees counter-clockwise on screen reads 192.8 degrees (CPU float64; 192.8 to 195.2 in every dtype, CPU
+        # and MPS), not -167.2.
+        _skip_without_half_padding(device, dtype)
+        patch = _conv_ramp(195.0, 32, 32, 15.5, 15.5).to(device, dtype)
+        angle = PatchDominantGradientOrientation(32, num_angular_bins=8).to(device, dtype)(patch).item()
+        assert math.pi < angle <= math.pi + math.pi / 8

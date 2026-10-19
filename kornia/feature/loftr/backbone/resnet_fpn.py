@@ -55,18 +55,13 @@ class BasicBlock(nn.Module):
             self.downsample = nn.Sequential(conv1x1(in_planes, planes, stride=stride), nn.BatchNorm2d(planes))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run this LoFTR component forward.
-
-        The method processes coarse or fine matching tensors used by LoFTR. Shape symbols such as `B`, `C`, `H`, `W`,
-        `N`, and `D` refer to batch size, channels, height, width, token count, and feature dimension.
+        r"""Run this LoFTR component forward.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature tensor with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Output feature tensor with shape :math:`(B, \text{planes}, H', W')`.
         """
         y = x
         y = self.relu(self.bn1(self.conv1(y)))
@@ -136,20 +131,16 @@ class ResNetFPN_8_2(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
-        # ResNet Backbone
         """Run this LoFTR component forward.
 
-        The method processes coarse or fine matching tensors used by LoFTR. Shape symbols such as `B`, `C`, `H`, `W`,
-        `N`, and `D` refer to batch size, channels, height, width, token count, and feature dimension.
-
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input grayscale image tensor with shape :math:`(B, 1, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            List containing coarse feature map with shape :math:`(B, C_c, H/8, W/8)`
+            and fine feature map with shape :math:`(B, C_f, H/2, W/2)`.
         """
+        # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))
         x1 = self.layer1(x0)  # 1/2
         x2 = self.layer2(x1)  # 1/4
@@ -158,13 +149,17 @@ class ResNetFPN_8_2(nn.Module):
         # FPN
         x3_out = self.layer3_outconv(x3)
 
+        # Upsample by 2 as the reference does, then crop to the skip size: the 1/4 map is one row / column smaller
+        # than twice the 1/8 map when a side is 1-4 mod 8, the 1/2 map than twice the 1/4 map when it is 1, 2, 5 or
+        # 6 mod 8, neither for 0 or 7. Cell i of the finer map then reads the coarser map at i * (n - 1) / (2n - 1),
+        # the mapping the weights were trained with, for every image size.
         x2_out = self.layer2_outconv(x2)
-        x3_out_2x = F.interpolate(x3_out, size=(x2_out.shape[2:]), mode="bilinear", align_corners=True)
-        x2_out = self.layer2_outconv2(x2_out + x3_out_2x)
+        x3_out_2x = F.interpolate(x3_out, scale_factor=2.0, mode="bilinear", align_corners=True)
+        x2_out = self.layer2_outconv2(x2_out + x3_out_2x[..., : x2_out.shape[2], : x2_out.shape[3]])
 
         x1_out = self.layer1_outconv(x1)
-        x2_out_2x = F.interpolate(x2_out, size=(x1_out.shape[2:]), mode="bilinear", align_corners=True)
-        x1_out = self.layer1_outconv2(x1_out + x2_out_2x)
+        x2_out_2x = F.interpolate(x2_out, scale_factor=2.0, mode="bilinear", align_corners=True)
+        x1_out = self.layer1_outconv2(x1_out + x2_out_2x[..., : x1_out.shape[2], : x1_out.shape[3]])
 
         return [x3_out, x1_out]
 
@@ -229,20 +224,16 @@ class ResNetFPN_16_4(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
-        # ResNet Backbone
         """Run this LoFTR component forward.
 
-        The method processes coarse or fine matching tensors used by LoFTR. Shape symbols such as `B`, `C`, `H`, `W`,
-        `N`, and `D` refer to batch size, channels, height, width, token count, and feature dimension.
-
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input grayscale image tensor with shape :math:`(B, 1, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            List containing coarse feature map with shape :math:`(B, C_c, H/16, W/16)`
+            and fine feature map with shape :math:`(B, C_f, H/4, W/4)`.
         """
+        # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))
         x1 = self.layer1(x0)  # 1/2
         x2 = self.layer2(x1)  # 1/4

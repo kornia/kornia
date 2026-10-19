@@ -40,10 +40,11 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             If None, we assume the default input name and output name are "input" and "output" accordingly, and
             only one input and output node for each graph.
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
-        cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
+        cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
-        auto_ir_version_conversion: If True, automatically convert the model's IR version to 9, and OPSET version to 17.
-            Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
+        auto_ir_version_conversion: If True, convert the models to one IR version and one OPSET version before
+            combining them: IR version 9, and the highest OPSET version among the models, to which the others are
+            converted up. Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.
 
@@ -51,9 +52,9 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
 
     def __init__(
         self,
-        *args: Union[onnx.ModelProto, str],  # type:ignore
+        *args: Union[onnx.ModelProto, str],
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,
         io_maps: Optional[list[tuple[str, str]]] = None,
         cache_dir: Optional[str] = None,
         auto_ir_version_conversion: bool = False,
@@ -71,14 +72,15 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
 
     def _auto_version_conversion(
         self,
-        *args: onnx.ModelProto,  # type:ignore
+        *args: onnx.ModelProto,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
-    ) -> list[onnx.ModelProto]:  # type:ignore
+    ) -> list[onnx.ModelProto]:
         """Automatic conversion of the model's IR/OPSET version to the given target version.
 
         If `target_ir_version` is not provided, the model is converted to 9 by default.
-        If `target_opset_version` is not provided, the model is converted to 17 by default.
+        If `target_opset_version` is not provided, the models are converted to the highest OPSET version among
+        them.
 
         Args:
             args: List of operations to convert.
@@ -86,11 +88,11 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             target_opset_version: The target OPSET version to convert to.
 
         """
-        # TODO: maybe another logic for versioning.
         if target_ir_version is None:
             target_ir_version = 9
         if target_opset_version is None:
-            target_opset_version = 17
+            versions = [version for version in map(self._opset_version, args) if version is not None]
+            target_opset_version = max(versions) if versions else None
 
         op_list = []
         for op in args:
@@ -100,7 +102,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             op_list.append(op)
         return op_list
 
-    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> onnx.ModelProto:  # type: ignore
+    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> onnx.ModelProto:
         """Combine the stored ONNX operators into one executable graph.
 
         Args:
@@ -117,7 +119,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
 
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
-    ) -> ort.InferenceSession:  # type: ignore
+    ) -> ort.InferenceSession:
         """Create an ONNX Runtime session for the combined graph.
 
         Args:
@@ -140,7 +142,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         """
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:
         """Attach metadata entries to the combined ONNX graph.
 
         Args:

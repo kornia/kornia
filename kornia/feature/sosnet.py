@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._normalization import _DescriptorSequential
 
 urls: Dict[str, str | list[str]] = {}
 urls["lib"] = [
@@ -40,6 +41,9 @@ class SOSNet(nn.Module):
     This is based on the original code from paper
     "SOSNet:Second Order Similarity Regularization for Local Descriptor Learning".
 
+    Convention:
+        - See the Convention block on :class:`~kornia.feature.HardNet`.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
 
@@ -47,18 +51,22 @@ class SOSNet(nn.Module):
         - Input: :math:`(B, 1, 32, 32)`
         - Output: :math:`(B, 128)`
 
+    Note:
+        With float16 weights, the final BatchNorm keeps its running statistics in float32.
+        Convert the model to float16 before calling ``torch.jit.script``.
+
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
-        >>> sosnet = SOSNet()
+        >>> sosnet = SOSNet(pretrained=False).eval()
         >>> descs = sosnet(input) # 8x128
 
     """
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
-        self.layers = nn.Sequential(
+        self.layers = _DescriptorSequential(
             nn.InstanceNorm2d(1, affine=False),
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(32, affine=False),
@@ -87,7 +95,7 @@ class SOSNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["lib"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
         """Compute SOSNet descriptors for grayscale 32x32 patches.
@@ -100,6 +108,20 @@ class SOSNet(nn.Module):
             Descriptor tensor with shape :math:`(B, 128)`.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
-        descr = self.desc_norm(self.layers(input) + eps)
-        descr = descr.view(descr.size(0), -1)
-        return descr
+        descr = self.layers(input)
+        # Half precision takes this step in float32 and casts back, for two reasons that between them
+        # cover both half dtypes. (1) `desc_norm` divides by the descriptor's own L2 norm, and `eps` is
+        # what keeps that division defined for a patch the network maps to exactly zero -- every
+        # `Conv2d` here has `bias=False` and every `BatchNorm2d` is `affine=False`, so a constant patch
+        # does. 1e-10 is not representable in float16, where it would flush to 0.0 and leave 0/0;
+        # bfloat16 keeps float32's exponent range, so the guard survives there and this half of the
+        # argument does not apply to it. (2) `F.local_response_norm` routes a 4-D input through
+        # `avg_pool3d`, which has no CPU kernel for *either* half dtype, so the lift is what makes CPU
+        # half work at all. Note the lift is therefore wider than the one `siftdesc.py` gives its own
+        # 1e-10 guards, which is float16-only for reason (1) alone.
+        # float32 and float64 take the original expression unchanged, bit for bit.
+        if descr.dtype in (torch.float16, torch.bfloat16):
+            descr = self.desc_norm(descr.float() + eps).to(descr.dtype)
+        else:
+            descr = self.desc_norm(descr + eps)
+        return descr.flatten(1)

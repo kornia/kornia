@@ -26,6 +26,7 @@ from typing import Optional
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK
 from kornia.models.common import MLP, ConvNormAct
 
 
@@ -158,9 +159,7 @@ class MultiScaleDeformableAttention(nn.Module):
         out = _deformable_attention_kernel(value_buf, value_spatial_shapes, sampling_locations, attention_weights)
 
         # final projection
-        out = self.output_proj(out)
-
-        return out
+        return self.output_proj(out)
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -229,9 +228,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt = self.norm2(tgt + self.dropout2(out))
 
         # ffn
-        out = self.norm3(tgt + self.dropout4(self._ffn(tgt)))
-
-        return out
+        return self.norm3(tgt + self.dropout4(self._ffn(tgt)))
 
 
 class TransformerDecoder(nn.Module):
@@ -243,6 +240,11 @@ class TransformerDecoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
+        KORNIA_CHECK(
+            0 <= self.eval_idx < num_layers,
+            f"eval_idx must index one of the {num_layers} decoder layers ({-num_layers} to {num_layers - 1}), "
+            f"got {eval_idx}.",
+        )
 
     def forward(
         self,
@@ -321,7 +323,11 @@ class TransformerDecoder(nn.Module):
 
 
 class RTDETRHead(nn.Module):
-    """Implement the RT-DETR prediction head for object detection."""
+    """Implement the RT-DETR prediction head for object detection.
+
+    ``eval_idx`` selects the decoder layer whose predictions the head returns; a negative value counts back from the
+    last layer (``-1``), and the layers after the selected one do not run.
+    """
 
     def __init__(
         self,
@@ -335,6 +341,7 @@ class RTDETRHead(nn.Module):
         num_levels: int = 3,
         dropout: float = 0.0,
         num_denoising: int = 100,
+        eval_idx: int = -1,
     ) -> None:
         super().__init__()
         self.num_classes = num_classes
@@ -361,7 +368,7 @@ class RTDETRHead(nn.Module):
         )
 
         self.decoder = TransformerDecoder(
-            hidden_dim=hidden_dim, decoder_layer=decoder_layer, num_layers=num_decoder_layers
+            hidden_dim=hidden_dim, decoder_layer=decoder_layer, num_layers=num_decoder_layers, eval_idx=eval_idx
         )
 
         # denoising part

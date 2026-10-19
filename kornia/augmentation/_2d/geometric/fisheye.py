@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.transform import remap
 
@@ -29,6 +30,15 @@ class RandomFisheye(AugmentationBase2D):
     r"""Add random camera radial distortion.
 
     .. image:: _static/img/RandomFisheye.png
+
+    Convention:
+        Coordinates are normalized to ``[-1, 1]`` with corner pixel centres at the endpoints.
+        At output coordinate ``(x, y)``, let ``r`` be its distance from the sampled centre.
+        The input sampling coordinate is ``(x * (1 + r**gamma), y * (1 + r**gamma))``:
+        the centre changes the distance, but scaling is about the coordinate origin.
+        Sampling is bilinear with zero padding and ``align_corners=True``; these settings are fixed.
+        There is no ``transform_matrix`` or ``inverse``; spatial labels in containers have limitations
+        (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
     Args:
         center_x: Ranges to sample respect to x-coordinate center with shape (2,).
@@ -93,12 +103,12 @@ class RandomFisheye(AugmentationBase2D):
         # create the initial sampling fields
         B, _, H, W = input.shape
         grid = create_meshgrid(H, W, normalized_coordinates=True)
-        field_x = grid[..., 0].to(input)  # 1xHxW
-        field_y = grid[..., 1].to(input)  # 1xHxW
+        field_x = _to_device_nonblocking(grid[..., 0], input.device, input.dtype)  # 1xHxW
+        field_y = _to_device_nonblocking(grid[..., 1], input.device, input.dtype)  # 1xHxW
         # vectorize the random parameters
-        center_x = params["center_x"].view(B, 1, 1).to(input)
-        center_y = params["center_y"].view(B, 1, 1).to(input)
-        gamma = params["gamma"].view(B, 1, 1).to(input)
+        center_x = _to_device_nonblocking(params["center_x"].view(B, 1, 1), input.device, input.dtype)
+        center_y = _to_device_nonblocking(params["center_y"].view(B, 1, 1), input.device, input.dtype)
+        gamma = _to_device_nonblocking(params["gamma"].view(B, 1, 1), input.device, input.dtype)
         # compute and apply the distances respect to the camera optical center
         distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** 0.5
         field_x = field_x + field_x * distance**gamma  # BxHxw

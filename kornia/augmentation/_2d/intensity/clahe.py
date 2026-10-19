@@ -22,8 +22,8 @@ from typing import Any, Optional
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.enhance import equalize_clahe
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.enhance.equalization import _equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
@@ -31,14 +31,32 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. image:: _static/img/equalize_clahe.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
-        clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
+        clip_limit: the ``(low, high)`` range the per-sample contrast-limiting threshold is drawn from.
+            A value is drawn for each image, or once and shared across the batch when ``same_on_batch=True``.
+            Unlike :func:`kornia.enhance.equalize_clahe`'s scalar argument of the same name this must be a
+            two-element tuple -- a scalar raises a ``ValueError`` at construction -- and ``(0.0, 0.0)`` disables
+            clipping. A negative bound is not rejected and behaves like ``0.0``.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
-        slow_and_differentiable: flag to select implementation
+        slow_and_differentiable: selects the implementation. At the default ``False`` the fast path breaks the
+            autograd graph -- the output has ``requires_grad=False`` and no ``grad_fn``, which no other 2D
+            intensity augmentation does -- so set it to ``True`` to keep the class differentiable.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the wrapper clamps before calling :func:`kornia.enhance.equalize_clahe`; the functional
+          API retains its strict range check.
+        - ``grid_size`` tiles the two axes independently, and a grid that does not divide the image pads it, so
+          ``grid_size=(3, 3)`` works on a ``10 x 10`` image. Each axis must be larger than its grid size, so a
+          grid as large as the image, or larger, raises a ``ValueError`` naming the smallest image it admits.
+
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
 
@@ -63,6 +81,8 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(
         self,
         clip_limit: tuple[float, float] = (40.0, 40.0),
@@ -84,5 +104,5 @@ class RandomClahe(IntensityAugmentationBase2D):
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        clip_limit = float(params["clip_limit_factor"][0])
-        return equalize_clahe(input, clip_limit, flags["grid_size"], flags["slow_and_differentiable"])
+        input = _clamp_unit_range(input)
+        return _equalize_clahe(input, params["clip_limit_factor"], flags["grid_size"], flags["slow_and_differentiable"])

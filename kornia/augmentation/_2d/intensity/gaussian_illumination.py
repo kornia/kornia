@@ -15,19 +15,44 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import (
+    IntensityAugmentationBase2D,
+    _clamp_unit_range,
+    _PicklableCompileMixin,
+)
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
-class RandomGaussianIllumination(IntensityAugmentationBase2D):
+def _apply_gaussian_illumination(
+    input: torch.Tensor,
+    params: Dict[str, torch.Tensor],
+    flags: Dict[str, Any],
+    transform: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Apply a sampled illumination pattern through a picklable, compilable callable."""
+    # The gradient comes from the generator on CPU.
+    # We must explicitly move it to the input's device before adding.
+    gradient = _to_device_nonblocking(params["gradient"], input.device, input.dtype)
+
+    # Out-of-place add: in-place would mutate the caller's tensor and corrupt
+    # the non-transformed branch, which shares the same input.
+    return input.add(gradient).clamp_(0, 1)
+
+
+class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBase2D):
     r"""Applies random 2D Gaussian illumination patterns to a batch of images.
 
     .. image:: _static/img/RandomGaussianIllumination.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
@@ -46,6 +71,22 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
+          is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
+          a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample.
+        - ``sigma`` is a fraction of the axis length, not an absolute width: the generator draws it and
+          multiplies by the image's width and height before building the kernel, so the same ``sigma`` is a
+          narrower kernel on a smaller image. Every admitted ``sigma`` gives a finite kernel, ``0`` included.
+        - ``center`` is a fraction of the axis length too, and the peak sits at the pixel-centre position
+          ``center * L - 0.5`` without rounding to a whole pixel: ``center=0.5`` is the middle of any axis, ``0``
+          and ``1`` are the outer edges of the first and last pixel. At ``sigma=0`` the field is an impulse on the
+          pixel nearest that position, split between two pixels when it falls halfway.
+
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
@@ -56,17 +97,17 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomGaussianIllumination(gain=0.5, p=1.)
         >>> aug(input)
-        tensor([[[[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]],
+        tensor([[[[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]],
         <BLANKLINE>
-                 [[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]],
+                 [[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]],
         <BLANKLINE>
-                 [[0.7266, 1.0000, 0.7266],
-                  [0.6621, 0.9121, 0.6621],
-                  [0.5000, 0.6911, 0.5000]]]])
+                 [[0.8675, 1.0000, 0.6834],
+                  [0.7891, 0.9075, 0.6246],
+                  [0.6229, 0.7113, 0.5000]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.rand(1, 3, 32, 32)
@@ -160,21 +201,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         # Generator of random parameters and masks.
         self._param_generator = GaussianIlluminationGenerator(gain, center, sigma, sign)
 
-        def _apply_transform(
-            input: torch.Tensor,
-            params: Dict[str, torch.Tensor],
-            flags: Dict[str, Any],
-            transform: Optional[torch.Tensor] = None,
-        ) -> torch.Tensor:
-            # The gradient comes from the generator on CPU.
-            # We must explicitly move it to the input's device before adding.
-            gradient = params["gradient"].to(input.device, input.dtype)
-
-            # Out-of-place add: in-place would mutate the caller's tensor and corrupt
-            # the non-transformed branch, which shares the same input.
-            return input.add(gradient).clamp_(0, 1)
-
-        self._fn = _apply_transform
+        self._fn = _apply_gaussian_illumination
 
     def apply_transform(
         self,
@@ -184,6 +211,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
+        input = _clamp_unit_range(input)
         return self._fn(input=input, params=params, flags=flags, transform=transform)
 
     def compile(
@@ -195,7 +223,18 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         mode: Optional[str] = None,
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
-    ) -> "RandomGaussianIllumination":
+    ) -> RandomGaussianIllumination:
+        self._record_compile(
+            ["_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         self._fn = torch.compile(
             self._fn,
             fullgraph=fullgraph,

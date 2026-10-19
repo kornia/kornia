@@ -17,10 +17,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Optional
 
 import torch
+from torch import nn
 
 from kornia.config import kornia_config
 from kornia.core import ImageSequential
@@ -28,6 +30,7 @@ from kornia.core.external import onnx
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
 from kornia.onnx import ONNXSequential
+from kornia.onnx.download import _relative_path_components
 from kornia.onnx.utils import ONNXLoader, io_name_conversion
 
 from .preprocessor import PreprocessingLoader
@@ -39,9 +42,14 @@ class HFONNXComunnityModelLoader:
     Args:
         model_name: The name of the model to load.
         model_type: The type of the model to load.
-        cache_dir: The directory where models are cached locally.
+        cache_dir: The directory where models are cached locally. The model, its weights and its preprocessing
+            config are stored in ``<cache_dir>/<model_name>/``.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         with_data: Whether to download the model weights such as `model.onnx_data`.
+
+    Raises:
+        ValueError: If ``model_name`` is absolute, has a drive (on Windows) or has an empty, ``.`` or ``..``
+            component, which would put the cache outside ``cache_dir``.
 
     """
 
@@ -54,6 +62,9 @@ class HFONNXComunnityModelLoader:
 
         if cache_dir is None:
             cache_dir = kornia_config.hub_onnx_dir
+        # the model, its weights and its preprocessing config are cached in <cache_dir>/<model_name>/, so the name must
+        # not leave cache_dir ("../x", an absolute path), where a file already there would be loaded without a download
+        _relative_path_components(model_name, "model_name")
         self.cache_dir = os.path.join(cache_dir, self.model_name)
         self.model_url = (
             f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/onnx/{self.model_type}.onnx"
@@ -64,7 +75,7 @@ class HFONNXComunnityModelLoader:
 
     def load_model(
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
-    ) -> onnx.ModelProto:  # type:ignore
+    ) -> onnx.ModelProto:
         """Load the ONNX model file from the configured onnx-community repository.
 
         Args:
@@ -74,15 +85,27 @@ class HFONNXComunnityModelLoader:
                 output names after loading. This is useful when composing the model
                 with Kornia pre-processing or post-processing graphs that expect
                 specific tensor names.
-            kwargs: Additional keyword arguments forwarded to :class:`ONNXLoader`.
+            kwargs: Not used; any keyword raises ``TypeError``. Kept for compatibility.
 
         Returns:
             The loaded ONNX model graph. If ``io_name_mapping`` is provided, the graph
             is returned after its input and output names have been converted.
         """
-        onnx_model = ONNXLoader.load_model(
-            self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs
+        # <cache_dir>/<model_name>/<model_type>.onnx: the repository's own directory, where earlier releases cached
+        # these models too, so they are not downloaded again
+        file_path = ONNXLoader.download_to_cache(
+            self.model_url, self.model_type, download, cache_dir=self.cache_dir, suffix=".onnx", **kwargs
         )
+        if self.with_data:  # beside the model, under the name the model refers to
+            ONNXLoader.download_to_cache(
+                f"{self.model_url}_data",
+                self.model_type,
+                download,
+                cache_dir=self.cache_dir,
+                suffix=".onnx_data",
+                **kwargs,
+            )
+        onnx_model = onnx.load(file_path)
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)
@@ -103,21 +126,10 @@ class HFONNXComunnityModelLoader:
             Sequential Kornia image preprocessing module built from the repository
             configuration.
         """
-        json_req = ONNXLoader.load_config(self.config_url)
-        return PreprocessingLoader.from_json(json_req)
-
-    def _add_metadata(
-        self,
-        model: onnx.ModelProto,  # type:ignore
-        additional_metadata: Optional[dict[str, Any]] = None,
-    ) -> onnx.ModelProto:  # type:ignore
-        if additional_metadata is None:
-            additional_metadata = {}
-        for key, value in additional_metadata.items():
-            metadata_props = model.metadata_props.add()
-            metadata_props.key = key
-            metadata_props.value = str(value)
-        return model
+        # <cache_dir>/<model_name>/preprocessor_config.json, beside the repository's model
+        file_path = ONNXLoader.download_to_cache(self.config_url, "preprocessor_config.json", cache_dir=self.cache_dir)
+        with open(file_path) as f:
+            return PreprocessingLoader.from_json(json.load(f))
 
 
 class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
@@ -137,18 +149,24 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
             conversion when composing the sequence.
         io_maps: Optional list of input/output name mappings used when connecting the
             ONNX graphs together.
+        resize: Optional torch module that resizes an image before the ONNX graphs, for a
+            resize whose output size depends on the input size and so cannot be part of a
+            graph with dynamic height and width. It is kept as ``self.resize``; the subclass
+            that runs the graphs applies it (:class:`~kornia.models.depth_estimation.DepthEstimation`
+            does), and it is not part of the graph :meth:`to_onnx` exports.
     """
 
     name: str = "onnx_community_model"
 
     def __init__(
         self,
-        model: onnx.ModelProto,  # type: ignore
-        pre_processor: Optional[onnx.ModelProto] = None,  # type: ignore
-        post_processor: Optional[onnx.ModelProto] = None,  # type: ignore
+        model: onnx.ModelProto,
+        pre_processor: Optional[onnx.ModelProto] = None,
+        post_processor: Optional[onnx.ModelProto] = None,
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
         io_maps: Optional[list[tuple[str, str]]] = None,
+        resize: Optional[nn.Module] = None,
     ) -> None:
         model_list = [] if pre_processor is None else [pre_processor]
         model_list.append(model)
@@ -160,21 +178,25 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         self.model = model
         self.pre_processor = pre_processor
         self.post_processor = post_processor
+        self.resize = resize
 
     def resize_back(self, images: torch.Tensor, target_images: torch.Tensor) -> torch.Tensor:
         """Resize the input images back to the original size of target images.
 
         Args:
-            images: The input images to be resized.
-            target_images: The target images whose size is used as the reference for resizing.
+            images: The images to be resized, of shape :math:`(B, C, h, w)`.
+            target_images: The target images whose size ``(H, W)`` is used as the reference for resizing.
 
         Returns:
             The resized images.
 
+        Raises:
+            TypeError: if ``target_images`` is not a tensor.
+
         """
         if isinstance(target_images, torch.Tensor):
             return resize(images, target_images.shape[-2:])
-        raise RuntimeError
+        raise TypeError(f"target_images must be a torch.Tensor, got {type(target_images).__name__}.")
 
     def to_onnx(
         self,
@@ -183,32 +205,36 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type:ignore
-        """Export a depth estimation model to ONNX format.
+    ) -> onnx.ModelProto:
+        """Export the ONNX model, alone or combined with its pre- and post-processing graphs, to ONNX format.
 
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"kornia_<name>.onnx"`` is used, with the
+                model's ``name``.
             include_pre_and_post_processor:
-                Whether to include the pre-processor and post-processor in the exported model.
+                Whether to include the pre-processor and post-processor graphs in the exported model. The
+                ``resize`` stage runs in torch and is in neither graph: for a model that has one, the exported
+                graph takes an image that is already resized, such as ``model.resize(image)``.
             save:
                 If to save the model or load it.
             additional_metadata:
-                Additional metadata to add to the ONNX model.
+                Additional metadata to add to the exported model. It goes on a copy: the stored graphs, and a
+                ``ModelProto`` the model was built from, are left as they are.
             kwargs: Additional arguments to convert to onnx.
+
+        Returns:
+            A copy of the model or of the combined graph, with ``source``, ``version`` and ``additional_metadata``.
 
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
-        if not include_pre_and_post_processor:
-            self._add_metadata(self.model, additional_metadata)
-            if save:
-                self._export(self.model, onnx_name, **kwargs)
-            return self.model
-
-        self._add_metadata(self._combined_op, additional_metadata)
+        # The metadata goes on a copy: written into the stored graph, which is the caller's ModelProto, one call's keys
+        # would reach every later export.
+        op = onnx.ModelProto()
+        op.CopyFrom(self._combined_op if include_pre_and_post_processor else self.model)
+        self._add_metadata(op, additional_metadata)
         if save:
-            self._export(self._combined_op, onnx_name, **kwargs)
-        return self._combined_op
+            self._export(op, onnx_name, **kwargs)
+        return op

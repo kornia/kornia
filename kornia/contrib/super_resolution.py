@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
 import torch
@@ -22,16 +23,21 @@ from torch import nn
 
 from kornia.config import kornia_config
 from kornia.core.external import PILImage as Image
-from kornia.core.external import basicsr, onnx
+from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
+from kornia.models.rrdbnet import RRDBNet
 from kornia.models.small_sr import SmallSRNetWrapper
 from kornia.onnx.download import CachedDownloader
 
-__all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution"]
+__all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution", "SuperResolutionConfig"]
 
-URLs = {
+# `SmallSRBuilder`'s wrapper resizes every input to this before the network, so the
+# pipeline's output side is always this times `upscale_factor`, whatever `image_size` is.
+_SMALL_SR_INPUT_SIZE = 224
+
+_URLs = {
     "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
     "RealESRNet_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth",
     "RealESRGAN_x4plus_anime_6B": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
@@ -40,13 +46,106 @@ URLs = {
 
 
 # TODO: support patching -> SR -> unpatching pipeline
-class SuperResolution(ModelBase, ONNXExportMixin):
+@dataclass
+class SuperResolutionConfig:
+    """Configuration to construct a :class:`SuperResolution` model.
+
+    The fields mirror the arguments accepted by :class:`RRDBNetBuilder` and
+    :class:`SmallSRBuilder`, so a config can drive either builder.
+
+    Args:
+        model_name: Name of the model variant to build. RRDB variants are
+            ``"RealESRGAN_x4plus"``, ``"RealESRNet_x4plus"``,
+            ``"RealESRGAN_x4plus_anime_6B"`` and ``"RealESRGAN_x2plus"``;
+            the lightweight variant is ``"small_sr"``.
+        pretrained: If ``True``, load pretrained weights for the selected variant.
+        upscale_factor: Integer scale used by the lightweight variant. Ignored by
+            the RRDB variants, whose scale is fixed by ``model_name``. The lightweight
+            variant resizes every input to 224 x 224 first, discarding its aspect ratio,
+            so its output is ``224 * upscale_factor`` square (672 x 672 for 3, from a
+            100 x 50 input as from a 480 x 640 one). Its pretrained weights exist only
+            for 3: another factor with ``pretrained=True`` raises a size-mismatch
+            :class:`RuntimeError`.
+        image_size: Optional fixed input size for the lightweight variant. It declares
+            the size fed to the wrapper; it does not change the pre-processor, which
+            always resizes to 224, so the output side stays ``224 * upscale_factor``.
+
+    """
+
+    model_name: str = "small_sr"
+    pretrained: bool = True
+    upscale_factor: int = 3
+    image_size: Optional[int] = None
+
+
+class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
     """SuperResolution is a module that wraps an super resolution model."""
 
     name: str = "super_resolution"
     input_image_size: Optional[int]
     output_image_size: Optional[int]
     pseudo_image_size: Optional[int]
+
+    def __init__(
+        self,
+        model: nn.Module,
+        pre_processor: nn.Module,
+        post_processor: nn.Module,
+        name: Optional[str] = None,
+    ) -> None:
+        """Initialize SuperResolution.
+
+        Args:
+            model: The super-resolution network.
+            pre_processor: Pre-processing module applied to the input images.
+            post_processor: Post-processing module applied to the network output.
+            name: Optional name, used by :meth:`save` for file names.
+
+        """
+        super().__init__()
+        self.model = model.eval()
+        self.pre_processor = pre_processor
+        self.post_processor = post_processor
+        if name is not None:
+            self.name = name
+        # `to_onnx` reads these three; builders overwrite the ones they know.
+        # Without defaults they are annotations only, and export raises
+        # AttributeError.
+        self.input_image_size = None
+        self.output_image_size = None
+        self.pseudo_image_size = None
+
+    @staticmethod
+    def from_config(config: SuperResolutionConfig) -> "SuperResolution":
+        """Build a super-resolution model from a configuration object.
+
+        Dispatches to :class:`SmallSRBuilder` for the lightweight variant and to
+        :class:`RRDBNetBuilder` for the RRDB variants.
+
+        Args:
+            config: Super-resolution configuration. See :class:`SuperResolutionConfig`.
+
+        Returns:
+            A :class:`SuperResolution` wrapper ready for inference.
+
+        Raises:
+            ValueError: If ``config.model_name`` is not a supported variant.
+
+        """
+        if config.model_name.lower() == "small_sr":
+            return SmallSRBuilder.build(
+                model_name=config.model_name,
+                pretrained=config.pretrained,
+                upscale_factor=config.upscale_factor,
+                image_size=config.image_size,
+            )
+        if config.model_name not in _URLs:
+            raise ValueError(
+                f"Model {config.model_name} not found. Please choose from 'small_sr', "
+                "'RealESRGAN_x4plus', 'RealESRNet_x4plus', 'RealESRGAN_x4plus_anime_6B', "
+                "'RealESRGAN_x2plus'."
+            )
+        return RRDBNetBuilder.build(model_name=config.model_name, pretrained=config.pretrained)
 
     @torch.inference_mode()
     def forward(self, images: Union[torch.Tensor, List[torch.Tensor]]) -> Union[torch.Tensor, List[torch.Tensor]]:
@@ -61,10 +160,8 @@ class SuperResolution(ModelBase, ONNXExportMixin):
 
         """
         output = self.pre_processor(images)
-        if isinstance(output, list | tuple):
-            images = output[0]
-        else:
-            images = output
+        # ``ResizePreProcessor`` returns an ``(images, sizes)`` tuple; a list of images goes through one at a time
+        images = output[0] if isinstance(output, tuple) else output
         if isinstance(images, list):
             out_images = [self.model(image[None])[0] for image in images]
         else:
@@ -76,12 +173,12 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         images: Union[torch.Tensor, List[torch.Tensor]],
         edge_maps: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:  # type: ignore
+    ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:
         """Draw the super resolution results.
 
         Args:
             images: input torch.Tensor.
-            edge_maps: detected edges.
+            edge_maps: super-resolved images; computed with :meth:`forward` when None.
             output_type: type of the output.
 
         Returns:
@@ -107,36 +204,29 @@ class SuperResolution(ModelBase, ONNXExportMixin):
 
         Args:
             images: input torch.Tensor.
-            edge_maps: detected edges.
-            output_type: type of the output.
+            edge_maps: super-resolved images; computed with :meth:`forward` when None.
             directory: where to save outputs.
-            output_type: backend used to generate outputs.
-
-        Returns:
-            output torch.Tensor.
+            output_type: "torch" or "pil", passed to :meth:`visualize`; the files hold the same pixels either way.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_sr")
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: Optional[List[Tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type: ignore
+    ) -> "onnx.ModelProto":
         """Export the current super resolution model to an ONNX model file.
 
         Args:
             onnx_name:
                 The name of the output ONNX file. If not provided, a default name in the
                 format "Kornia-<ClassName>.onnx" will be used.
-            image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, image_size will be dynamic. For DexiNed, recommended scale is 352.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
@@ -149,12 +239,15 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
+        # The dummy input must agree with a fixed input size, which ``to_onnx`` checks.
+        pseudo_size = self.pseudo_image_size or self.input_image_size or 352
+
         return ONNXExportMixin.to_onnx(
             self,
             onnx_name,
             input_shape=[-1, 3, self.input_image_size or -1, self.input_image_size or -1],
             output_shape=[-1, 3, self.output_image_size or -1, self.output_image_size or -1],
-            pseudo_shape=[1, 3, self.pseudo_image_size or 352, self.pseudo_image_size or 352],
+            pseudo_shape=[1, 3, pseudo_size, pseudo_size],
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,
@@ -186,22 +279,12 @@ class RRDBNetBuilder:
         Raises:
             ValueError: If ``model_name`` is not one of the supported variants.
         """
-        if model_name == "RealESRGAN_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
-            )
-        elif model_name == "RealESRNet_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
-            )
+        if model_name in ("RealESRGAN_x4plus", "RealESRNet_x4plus"):
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x4plus_anime_6B":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x2plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
         else:
             raise ValueError(
                 f"Model {model_name} not found. Please choose from "
@@ -210,11 +293,12 @@ class RRDBNetBuilder:
 
         model_path = None
         if pretrained:
-            url = URLs[model_name]
+            url = _URLs[model_name]
             model_path = CachedDownloader.download_to_cache(
                 url, model_name, download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
             )
-            model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"))["params_ema"], strict=True)
+            state_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
+            model.load_state_dict(state_dict["params_ema"], strict=True)
         model.eval()
 
         return SuperResolution(
@@ -241,11 +325,15 @@ class SmallSRBuilder:
             model_name: Name of the model variant to build. Currently only
                 ``"small_sr"`` is supported.
             pretrained: If ``True``, load pretrained weights for the selected model.
-            upscale_factor: Integer scale used by ``SmallSRNetWrapper``.
-                For example, ``3`` maps an input image of size ``H x W`` to an
-                output image of approximately ``3H x 3W``.
-            image_size: Optional fixed input size. When provided, output metadata is
-                configured as ``image_size * upscale_factor``.
+            upscale_factor: Integer scale used by ``SmallSRNetWrapper``. The pre-processor
+                first resizes every input to 224 x 224, discarding its aspect ratio, so the
+                output is ``224 * upscale_factor`` square: with ``3``, a 100 x 50 and a
+                480 x 640 input both give 672 x 672. Pretrained weights exist only for
+                ``3``; another factor with ``pretrained=True`` raises a size-mismatch
+                :class:`RuntimeError`.
+            image_size: Optional fixed input size. It declares the size fed to the
+                wrapper and does not change the pre-processor, which always resizes to
+                224; the output side is therefore ``224 * upscale_factor``.
 
         Returns:
             A :class:`SuperResolution` instance configured with resizing pre-processing
@@ -261,14 +349,16 @@ class SmallSRBuilder:
 
         sr = SuperResolution(
             model,
-            pre_processor=ResizePreProcessor(224, 224),
+            pre_processor=ResizePreProcessor(_SMALL_SR_INPUT_SIZE, _SMALL_SR_INPUT_SIZE),
             post_processor=nn.Identity(),
             name=model_name,
         )
+        # The pre-processor resizes to `_SMALL_SR_INPUT_SIZE` regardless of `image_size`,
+        # so the wrapper's output side does not depend on the input size.
+        sr.output_image_size = _SMALL_SR_INPUT_SIZE * upscale_factor
         if image_size is None:
-            sr.pseudo_image_size = 224
+            sr.pseudo_image_size = _SMALL_SR_INPUT_SIZE
         else:
             sr.input_image_size = image_size
-            sr.output_image_size = image_size * 3
             sr.pseudo_image_size = image_size
         return sr

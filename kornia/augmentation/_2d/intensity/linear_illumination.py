@@ -19,15 +19,18 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomLinearIllumination(IntensityAugmentationBase2D):
     r"""Applies random 2D Linear illumination patterns to a batch of images.
 
     .. image:: _static/img/RandomLinearIllumination.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
@@ -41,6 +44,16 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
+          is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
+          a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
+          edge where the gradient is strongest is drawn separately, per sample.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -128,13 +141,16 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        input = _clamp_unit_range(input)
+        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     r"""Applies random 2D Linear from corner illumination patterns to a batch of images.
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
@@ -148,6 +164,16 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
+          so the output stays inside that range even when the input does not.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
+          is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
+          a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
+          corner where the gradient is strongest is drawn separately, per sample.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -235,4 +261,5 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        input = _clamp_unit_range(input)
+        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)

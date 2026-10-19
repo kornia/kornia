@@ -60,24 +60,18 @@ class VGG(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input image tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Classification logits with shape :math:`(B, \text{num\_classes})`.
         """
         x = self.features(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.classifier(x)
-        return x
+        return self.classifier(x)
 
 
 def make_layers(cfg: List[Union[str, int]], batch_norm: bool = False) -> nn.Sequential:
@@ -107,8 +101,7 @@ cfgs: Dict[str, List[Union[str, int]]] = {
 
 
 def _vgg(cfg: str, batch_norm: bool, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
-    model = VGG(make_layers(cfgs[cfg], batch_norm=batch_norm), **kwargs)
-    return model
+    return VGG(make_layers(cfgs[cfg], batch_norm=batch_norm), **kwargs)
 
 
 def vgg11(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:

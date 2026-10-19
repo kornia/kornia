@@ -1,0 +1,1 @@
+Added `kornia.contrib.connected_components_union_find`, an exact, pure PyTorch 8-connected component labeling alternative using 2x2 block union-find. It converges without a user-selected iteration budget and returns integer labels for boolean, integer and floating-point masks, including half precision.

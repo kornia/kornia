@@ -39,7 +39,7 @@ def sample_keypoints(
         local_density = F.conv2d(local_density_x, weights[..., None], padding=(51 // 2, 0))[:, 0]
         scoremap = scoremap * (local_density + 1e-8) ** (-1 / 2)
     grid = get_grid(B, H, W, device=device).reshape(B, H * W, 2)
-    num_samples = min(num_samples, H * W) if num_samples is not None else H * W  # type: ignore
+    num_samples = min(num_samples, H * W) if num_samples is not None else H * W
     inds = torch.topk(scoremap.reshape(B, H * W), k=num_samples).indices
     kps = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_samples, 2))
     if return_scoremap:
@@ -58,11 +58,10 @@ def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
 
 def dedode_denormalize_pixel_coordinates(flow: torch.Tensor, h: int, w: int) -> torch.Tensor:
     """Denormalize pixel coordinates."""
-    flow = torch.stack(
+    return torch.stack(
         (
             w * (flow[..., 0] + 1) / 2,
             h * (flow[..., 1] + 1) / 2,
         ),
         dim=-1,
     )
-    return flow

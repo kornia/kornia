@@ -23,6 +23,7 @@ import torch
 from torch import nn
 
 from kornia.color.gray import grayscale_to_rgb
+from kornia.color.rgb import RgbToBgr
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -38,6 +39,8 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
     """EdgeDetector is a module that wraps an edge detection model.
 
     This is a high-level API that wraps edge detection models like :py:class:`kornia.models.DexiNed`.
+    :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder` builds one with the input conversion, the network
+    and the sigmoid in ``model``.
 
     Args:
         model: The edge detection model.
@@ -46,12 +49,9 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         name: Optional name for the detector.
 
     Example:
-        >>> from kornia.models.dexined import DexiNed
-        >>> from kornia.models.processors import ResizePreProcessor, ResizePostProcessor
-        >>> model = DexiNed(pretrained=True)
-        >>> detector = EdgeDetector(model, ResizePreProcessor(352, 352), ResizePostProcessor())
-        >>> img = torch.rand(1, 3, 320, 320)
-        >>> out = detector(img)
+        >>> detector = EdgeDetectorBuilder.build("dexined", pretrained=True, image_size=352)
+        >>> img = torch.rand(1, 3, 320, 320)  # RGB in [0, 1]
+        >>> out = detector(img)  # a list with one (1, 1, 320, 320) edge probability map per image
 
     """
 
@@ -105,10 +105,14 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
 
         Args:
             images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`. For a detector from
+                :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, the pixel values are in
+                :math:`[0, 1]`.
 
         Returns:
-            output torch.Tensor.
+            A list with one output of shape :math:`(1, 1, H, W)` per input image, resized back to that image's size.
+            For a detector from :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, it holds edge
+            probabilities in :math:`[0, 1]`.
 
         """
         images, image_sizes = self.pre_processor(images)
@@ -120,7 +124,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         images: Union[torch.Tensor, list[torch.Tensor]],
         edge_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Draw the edge detection results.
 
         Args:
@@ -163,7 +167,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_edge")
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 352,
@@ -171,7 +175,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type: ignore
+    ) -> onnx.ModelProto:
         """Export the current edge detection model to an ONNX model file.
 
         Args:
@@ -220,6 +224,10 @@ class EdgeDetectorBuilder:
     def build(model_name: str = "dexined", pretrained: bool = True, image_size: int = 352) -> EdgeDetector:
         """Build an edge detection model.
 
+        The detector takes RGB images in :math:`[0, 1]`. For ``"dexined"`` it flips them to BGR, scales them to
+        :math:`[0, 255]` and subtracts the BGR mean ``[103.939, 116.779, 123.68]``, the input the pretrained DexiNed
+        was trained on (xavysp/DexiNed@d944b70), then applies a sigmoid to the network's logits.
+
         Args:
             model_name: Name of the model to build. Currently only "dexined" is supported.
             pretrained: If True, loads pretrained weights.
@@ -235,9 +243,12 @@ class EdgeDetectorBuilder:
 
         """
         if model_name.lower() == "dexined":
-            # Normalize then scale to [0, 255]
-            norm = Normalize(mean=torch.tensor([[0.485, 0.456, 0.406]]), std=torch.tensor([[1.0 / 255.0] * 3]))
-            model = nn.Sequential(norm, DexiNed(pretrained=pretrained), nn.Sigmoid())
+            # RGB in [0, 1] -> 255 * BGR - mean_bgr, with mean_bgr in B, G, R order (xavysp/DexiNed@d944b70
+            # main.py:319-320). Both steps share slot 0, so DexiNed stays at ``model[1]`` and the state-dict keys stay
+            # ``model.1.*``.
+            mean_bgr = torch.tensor([[103.939, 116.779, 123.68]])
+            to_bgr = nn.Sequential(RgbToBgr(), Normalize(mean=mean_bgr / 255.0, std=torch.tensor([[1.0 / 255.0] * 3])))
+            model = nn.Sequential(to_bgr, DexiNed(pretrained=pretrained), nn.Sigmoid())
         else:
             raise ValueError(f"Model {model_name} not found. Please choose from 'dexined'.")
 

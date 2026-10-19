@@ -30,7 +30,7 @@ class Decoder(nn.Module):
         num_prototypes: The number of prototypes for the output head.
     """
 
-    def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.layers = layers
         self.scales = self.layers.keys()
@@ -40,19 +40,16 @@ class Decoder(nn.Module):
     def forward(
         self, features: torch.Tensor, context: Optional[torch.Tensor] = None, scale: Optional[int] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Args:
-            features: Input value used by this method.
-            context: Input value used by this method.
-            scale: Input value used by this method.
+            features: Encoded feature map with shape :math:`(B, C, H, W)`, or concatenated with context.
+            context: Optional context feature map from previous scale, shape
+                :math:`(B, C_{\text{ctx}}, H, W)`, or ``None``.
+            scale: String key selecting the decoder layer for this scale (e.g. ``"8"``, ``"4"``, ``"2"``, ``"1"``).
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Tuple of ``(logits, context)`` tensors, each with shape :math:`(B, C_{\text{out}}, H, W)`.
         """
         if context is not None:
             features = torch.cat((features, context), dim=1)
@@ -76,7 +73,7 @@ class ConvRefiner(nn.Module):
         amp_dtype: The data type for automatic mixed precision.
     """
 
-    def __init__(  # type: ignore[no-untyped-def]
+    def __init__(
         self,
         in_dim=6,
         hidden_dim=16,
@@ -111,7 +108,7 @@ class ConvRefiner(nn.Module):
         self.amp_dtype = amp_dtype
         self.residual = residual
 
-    def create_block(  # type: ignore[no-untyped-def]
+    def create_block(
         self,
         in_dim,
         out_dim,
@@ -123,20 +120,19 @@ class ConvRefiner(nn.Module):
         """Create one decoder block for the requested scale.
 
         Args:
-            in_dim: Input value used by this method.
-            out_dim: Input value used by this method.
-            dw: Input value used by this method.
-            kernel_size: Input value used by this method.
-            bias: Input value used by this method.
-            norm_type: Input value used by this method.
+            in_dim: Number of input channels.
+            out_dim: Number of output channels. Must be divisible by ``in_dim`` when ``dw=True``.
+            dw: Whether to use depthwise convolution.
+            kernel_size: Convolution kernel size.
+            bias: Whether to include bias in the convolution.
+            norm_type: Normalization layer class to apply after the first conv.
 
         Returns:
-            Decoder block configured for the requested input and output channel counts.
+            Decoder block (``nn.Sequential``) configured for the requested channels.
         """
         num_groups = 1 if not dw else in_dim
-        if dw:
-            if out_dim % in_dim != 0:
-                raise Exception("outdim must be divisible by indim for depthwise")
+        if dw and out_dim % in_dim != 0:
+            raise ValueError("out_dim must be divisible by in_dim for depthwise convolution")
         conv1 = nn.Conv2d(
             in_dim,
             out_dim,
@@ -152,26 +148,19 @@ class ConvRefiner(nn.Module):
         return nn.Sequential(conv1, norm, relu, conv2)
 
     def forward(self, feats: torch.Tensor) -> torch.Tensor:
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Args:
-            feats: Input value used by this method.
+            feats: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Refined feature map with shape :math:`(B, C_{\text{out}}, H, W)`.
         """
         _b, _c, _hs, _ws = feats.shape
-        # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
-        # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
-        # non-CUDA devices to disable AMP entirely.
-        with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
+        # AMP runs only for CUDA tensors.
+        with torch.autocast("cuda", enabled=self.amp and feats.is_cuda, dtype=self.amp_dtype):
             x0 = self.block1(feats)
             x = self.hidden_blocks(x0)
             if self.residual:
                 x = (x + x0) / 1.4
-            x = self.out_conv(x)
-            return x
+            return self.out_conv(x)

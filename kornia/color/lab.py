@@ -39,6 +39,10 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     The input RGB image is assumed to be in the range of :math:`[0, 1]`. Lab
     color is computed using the D65 illuminant and Observer 2.
 
+    Convention:
+        Input is nonlinear sRGB in RGB channel order at axis -3; this function first converts
+        it to linear RGB. Output channels are L*, a*, b* using D65 / 2° reference white.
+
     Args:
         image: RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
 
@@ -90,13 +94,16 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     The L channel is assumed to be in the range of :math:`[0, 100]`.
     a and b channels are in the range of :math:`[-128, 127]`.
 
+    Convention:
+        Input channels are L*, a*, b* at axis -3 using D65 / 2° reference white. Set clip to
+        false to skip the final [0, 1] clamp of the sRGB output.
+
     Args:
         image: Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
         clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
 
     Returns:
-        Lab version of the image with shape :math:`(*, 3, H, W)`.
-        The output RGB image are in the range of :math:`[0, 1]`.
+        RGB version of the image with shape :math:`(*, 3, H, W)`, in :math:`[0, 1]` when ``clip`` is True.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -149,6 +156,8 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
 class RgbToLab(nn.Module):
     r"""Convert an image from RGB to Lab.
 
+    See the Convention block on :func:`rgb_to_lab`.
+
     The image data is assumed to be in the range of :math:`[0, 1]`. Lab
     color is computed using the D65 illuminant and Observer 2.
 
@@ -193,8 +202,10 @@ class RgbToLab(nn.Module):
 class LabToRgb(nn.Module):
     r"""Convert an image from Lab to RGB.
 
+    See the Convention block on :func:`lab_to_rgb`.
+
     Returns:
-        RGB version of the image. Range may not be in :math:`[0, 1]`.
+        RGB version of the image, clipped to :math:`[0, 1]` unless ``clip`` is False.
 
     Shape:
         - image: :math:`(*, 3, H, W)`

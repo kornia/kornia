@@ -2,20 +2,37 @@ kornia.augmentation
 ===================
 
 .. meta::
-   :name: description
-   :content: "The Augmentation module in Kornia provides high-level data augmentation functionalities for computer vision tasks, including random rotations, affine transformations, color intensities, image noise distortion, and more. It supports batch processing, device compatibility, and backpropagation. Additionally, users can retrieve transformation details for more flexibility in complex pipelines."
+   :description: The Augmentation module in Kornia provides high-level data augmentation functionalities for computer vision tasks, including random rotations, affine transformations, color intensities, image noise distortion, and more. It supports batch processing, device compatibility, and backpropagation. Additionally, users can retrieve transformation details for more flexibility in complex pipelines.
 
-This module implements in a high level logic. The main features of this module, and similar to the rest of the
-library, is that can it perform data augmentation routines in a batch mode, using any supported device,
-and can be used for backpropagation. Some of the available functionalities which are worth to mention are the
-following: random rotations; affine and perspective transformations; several random color intensities transformations,
-image noise distortion, motion blurring, and many of the different differentiable data augmentation policies.
-In addition, we include a novel feature which is not found in other augmentations frameworks,
-which allows the user to retrieve the applied transformation or chained transformations after each
-call e.g. the generated random rotation matrix which can be used later to undo the image transformation
-itself, or to be applied to additional metadata such as the label images for semantic segmentation,
-in bounding boxes or landmark keypoints for object detection tasks. It gives the user the flexibility to
-perform complex data augmentations pipelines.
+This module implements data augmentation at a high level of abstraction. Like the rest of the library,
+it performs augmentation routines in batch mode, on any supported device, and every operation is
+differentiable, so it can take part in backpropagation. Among the available functionalities are random rotations;
+affine and perspective transformations; several random color and intensity transformations; image noise;
+motion blur; and many differentiable data augmentation policies such as AutoAugment and RandAugment.
+
+In addition, the module includes a feature that is not found in other augmentation frameworks: after each
+call, the user can retrieve the applied transformation, or the chain of transformations, e.g. the sampled
+random rotation matrix. That matrix can later be used to undo the image transformation, or to apply the same
+transformation to additional data such as segmentation masks, bounding boxes or landmark keypoints. This gives
+the user the flexibility to build complex data augmentation pipelines.
+
+.. code-block:: python
+
+   import torch
+   import kornia.augmentation as K
+
+   aug = K.AugmentationSequential(
+       K.RandomAffine(degrees=30.0, p=1.0),
+       K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+       data_keys=["input", "mask", "keypoints"],
+   )
+   image = torch.rand(2, 3, 64, 64)
+   mask = (torch.rand(2, 1, 64, 64) > 0.5).float()
+   keypoints = torch.tensor([[[16.0, 16.0], [48.0, 32.0]]]).repeat(2, 1, 1)
+
+   img_out, mask_out, kpts_out = aug(image, mask, keypoints)  # same random parameters for all three
+   img_back, mask_back, kpts_back = aug.inverse(img_out, mask_out, kpts_out)
+   matrix = aug.transform_matrix  # (B, 3, 3) matrix of the last geometric transform
 
 .. note::
    **Input format.** Kornia augmentations expect **float tensors with values in** ``[0, 1]`` and shape
@@ -23,18 +40,6 @@ perform complex data augmentations pipelines.
    (or the legacy ``ToTensor``). A ``uint8`` tensor raises a clear error, but a **float tensor already in the**
    ``[0, 255]`` **range does not raise** — it is silently treated as ``[0, 1]`` and the output clips at ``1.0``,
    which shows up later as degraded model accuracy rather than an exception. Scale first, e.g. ``img.float() / 255``.
-
-Interactive Demo
-~~~~~~~~~~~~~~~~
-.. raw:: html
-
-   <iframe
-      id="augmentation-tester"
-      src="https://kornia-kornia-augmentations-tester.hf.space"
-      frameborder="0"
-      width="850"
-      height="450"
-   ></iframe>
 
 Benchmark
 ---------
@@ -59,7 +64,6 @@ Reading them honestly: on a **GPU-batched, differentiable, compiled** pipeline k
 option (torchvision v2 is not differentiable; albumentations is CPU/``uint8``/single-image). On
 **CPU single-image** throughput, SIMD/NumPy libraries such as albumentations are faster — that is
 their regime, not kornia's. See ``benchmarks/augmentation/README.md`` for the per-regime breakdown.
-
 
 Deployment: torch.export, torch.compile, ONNX
 ---------------------------------------------
@@ -94,9 +98,36 @@ Kornia augmentations are plain ``nn.Module`` s and are exportable for deployment
 
 .. currentmodule:: kornia.augmentation
 
-.. toctree::
+Where to find things
+--------------------
 
-   augmentation.auto
-   augmentation.base
-   augmentation.container
-   augmentation.module
+.. list-table::
+   :widths: 30 70
+
+   * - :doc:`Image augmentations <augmentation.module>`
+     - The operators, by category: :doc:`intensity <augmentation.intensity>` (color, blur, noise,
+       illumination, normalization), :doc:`geometric <augmentation.geometric>` (crops, flips, affine,
+       perspective, resize), :doc:`mix <augmentation.mix>` (CutMix, MixUp, Mosaic) and
+       :doc:`3D <augmentation.transforms3d>`.
+   * - :doc:`Containers <augmentation.container>`
+     - :class:`AugmentationSequential` applies one sampled transform to images, masks, boxes and
+       keypoints and can invert it; plus ``ImageSequential``, ``PatchSequential``, ``VideoSequential``
+       and the dispatchers.
+   * - :doc:`Automatic augmentation <augmentation.auto>`
+     - The learned policies: :class:`~kornia.augmentation.auto.AutoAugment`,
+       :class:`~kornia.augmentation.auto.RandAugment` and
+       :class:`~kornia.augmentation.auto.TrivialAugment`.
+   * - :doc:`Base classes <augmentation.base>`
+     - Subclass ``IntensityAugmentationBase2D`` or ``GeometricAugmentationBase2D`` to write your own
+       augmentation, with worked examples.
+
+.. toctree::
+   :hidden:
+
+   intensity <augmentation.intensity>
+   geometric <augmentation.geometric>
+   mix <augmentation.mix>
+   3d transforms <augmentation.transforms3d>
+   containers <augmentation.container>
+   automatic policies <augmentation.auto>
+   base classes <augmentation.base>

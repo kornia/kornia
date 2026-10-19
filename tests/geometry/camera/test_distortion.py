@@ -134,6 +134,82 @@ class TestDistortionAffine(BaseTester):
         self._test_jit_distort(device, dtype)
         self._test_jit_undistort(device, dtype)
 
+    def test_convention_distort_points_affine_takes_normalized_z1_points(self, device, dtype):
+        # Input is a normalized z = 1 point and a flat [fx, fy, cx, cy]: (0.5, 0.25) -> (100*0.5 + 4, 100*0.25 + 3)
+        # = (54, 28). The second batch row uses a different camera so a broadcast of element 0 fails.
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype)
+        self.assert_close(distort_points_affine(points, params), torch.tensor([54.0, 28.0], device=device, dtype=dtype))
+        batched_points = torch.tensor([[0.5, 0.25], [1.0, 1.0]], device=device, dtype=dtype)
+        batched_params = torch.tensor([[100.0, 100.0, 4.0, 3.0], [200.0, 50.0, 6.0, 2.0]], device=device, dtype=dtype)
+        self.assert_close(
+            distort_points_affine(batched_points, batched_params),
+            torch.tensor([[54.0, 28.0], [206.0, 52.0]], device=device, dtype=dtype),
+        )
+
+    def test_convention_undistort_points_affine_is_the_closed_form_inverse(self, device, dtype):
+        # undistort_points_affine (pixel in, normalized z = 1 point out) inverts distort_points_affine in closed
+        # form, with no iteration; the Kannala-Brandt pair below is iterative.
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype)
+        distorted = distort_points_affine(points, params)
+        self.assert_close(undistort_points_affine(distorted, params), points)
+
+    def test_convention_dx_distort_points_affine_matches_autograd(self, device, dtype):
+        # The (2, 2) Jacobian with respect to the point (rows = outputs, columns = inputs) is diag(fx, fy) and
+        # matches autograd.
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype)
+        analytic = dx_distort_points_affine(points, params)
+        autograd = torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, params), points)
+        self.assert_close(analytic, autograd, atol=0.0, rtol=0.0)
+        self.assert_close(
+            analytic, torch.tensor([[100.0, 0.0], [0.0, 100.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+
+    def test_dx_distort_points_batched_points_shared_params_6090(self, device, dtype):
+        # The Jacobian's shape followed the params only, so N points with one set of params returned a single (2, 2).
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.tensor([600.0, 610.0, 319.5, 239.5], device=device, dtype=dtype)
+
+        jacobian = dx_distort_points_affine(points, params)
+
+        assert jacobian.shape == (5, 2, 2)
+        expected = torch.tensor([[600.0, 0.0], [0.0, 610.0]], device=device, dtype=dtype).expand(5, 2, 2)
+        self.assert_close(jacobian, expected, atol=0.0, rtol=0.0)
+        autograd = torch.stack(
+            [torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, params), point) for point in points]
+        )
+        self.assert_close(jacobian, autograd, atol=0.0, rtol=0.0)
+
+    def test_dx_distort_points_broadcasts_points_and_params_6090(self, device, dtype):
+        points = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        params = torch.tensor(
+            [[[600.0, 610.0, 319.5, 239.5]], [[300.0, 310.0, 159.5, 119.5]]], device=device, dtype=dtype
+        )  # (2, 1, 4)
+
+        jacobian = dx_distort_points_affine(points, params)
+
+        assert jacobian.shape == (2, 5, 2, 2)
+        self.assert_close(jacobian[:, :, 0, 0], params[..., 0].expand(2, 5), atol=0.0, rtol=0.0)
+        self.assert_close(jacobian[:, :, 1, 1], params[..., 1].expand(2, 5), atol=0.0, rtol=0.0)
+        assert (jacobian[..., 0, 1] == 0).all()
+        assert (jacobian[..., 1, 0] == 0).all()
+        assert distort_points_affine(points, params).shape[:-1] == jacobian.shape[:-2]
+
+    def test_dx_distort_points_rejects_mismatched_batches_6090(self, device, dtype):
+        # The points' batch used to be ignored, so a params batch that does not match it went unnoticed.
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.rand(3, 4, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            dx_distort_points_affine(points, params)
+
+    def test_dx_distort_points_jit_batched_6090(self, device, dtype):
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        params = torch.tensor([600.0, 610.0, 319.5, 239.5], device=device, dtype=dtype)
+        op_script = torch.jit.script(dx_distort_points_affine)
+        self.assert_close(op_script(points, params), dx_distort_points_affine(points, params))
+
 
 class TestDistortionKannalaBrandt(BaseTester):
     def test_smoke(self, device, dtype) -> None:
@@ -198,13 +274,63 @@ class TestDistortionKannalaBrandt(BaseTester):
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         expected = torch.tensor(
             [
-                [1191.5316162109375, 282.3212890625],
-                [282.3212890625, 1615.0135498046875],
+                [1221.1801242852937, 341.6185175810278],
+                [341.6185175810278, 1733.6079006568352],
             ],
             device=device,
             dtype=dtype,
         )
         self.assert_close(dx_distort_points_kannala_brandt(points, params), expected)
+
+    @pytest.mark.parametrize("radius", [2e-4, 1e-3, 3e-3, 4e-3])
+    @pytest.mark.parametrize("shared_params", [True, False])
+    def test_small_radius_gradients(self, device, dtype, radius, shared_params) -> None:
+        points = torch.tensor([[radius, 0.0], [0.0, radius], [-radius, radius]], device=device, dtype=dtype)
+        params = torch.tensor([600.0, 500.0, 320.0, 240.0, 0.1, -0.05, 0.01, -0.001], device=device, dtype=dtype)
+        if not shared_params:
+            params = params.repeat(3, 1)
+        points.requires_grad_()
+        params.requires_grad_()
+
+        output = distort_points_kannala_brandt(points, params)
+        point_grad, params_grad = torch.autograd.grad(output.sum(), (points, params))
+
+        reference_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        reference_points = points.detach().to(reference_dtype).requires_grad_()
+        reference_params = params.detach().to(reference_dtype).requires_grad_()
+        reference_output = distort_points_kannala_brandt(reference_points, reference_params)
+        _, expected_params_grad = torch.autograd.grad(reference_output.sum(), (reference_points, reference_params))
+        expected_point_grad = dx_distort_points_kannala_brandt(
+            reference_points.detach(), reference_params.detach()
+        ).sum(-2)
+
+        assert output.dtype == dtype
+        assert output.device == device
+        assert torch.isfinite(point_grad).all()
+        assert torch.isfinite(params_grad).all()
+        self.assert_close(output, reference_output.to(dtype))
+        self.assert_close(point_grad, expected_point_grad.to(dtype))
+        self.assert_close(params_grad, expected_params_grad.to(dtype))
+
+    def test_small_radius_gradients_dynamo(self, device, dtype, torch_optimizer) -> None:
+        points = torch.tensor([[1e-3, 0.0], [0.0, 1e-3]], device=device, dtype=dtype, requires_grad=True)
+        params = torch.tensor([600.0, 500.0, 320.0, 240.0, 0.1, -0.05, 0.01, -0.001], device=device, dtype=dtype)
+        compiled = torch_optimizer(distort_points_kannala_brandt)
+        point_grad = torch.autograd.grad(compiled(points, params).sum(), points)[0]
+        self.assert_close(point_grad, params[:2].expand_as(points))
+
+    def test_shared_calibration_gradient(self, device, dtype) -> None:
+        points = torch.tensor([0.25, -0.4], device=device, dtype=dtype).expand(2, 3, 2)
+        params = torch.tensor(
+            [600.0, 500.0, 320.0, 240.0, 0.1, -0.05, 0.01, -0.001], device=device, dtype=dtype, requires_grad=True
+        )
+        actual = torch.autograd.grad(distort_points_kannala_brandt(points, params).sum(), params)[0]
+        reference_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        reference_params = params.detach().to(reference_dtype).requires_grad_()
+        reference_output = distort_points_kannala_brandt(points.to(reference_dtype), reference_params)
+        expected = torch.autograd.grad(reference_output.sum(), reference_params)[0]
+        # The small k1 derivative exposes extra rounding during accumulation.
+        self.assert_close(actual[5], expected[5].to(dtype))
 
     def test_exception(self, device, dtype) -> None:
         from kornia.core.exceptions import ShapeError
@@ -213,6 +339,54 @@ class TestDistortionKannalaBrandt(BaseTester):
         params = torch.tensor([600.0, 600.0, 319.5], device=device, dtype=dtype)
         with pytest.raises(ShapeError):
             distort_points_kannala_brandt(points, params)
+
+    @pytest.mark.parametrize("point", [(0.0, 0.0), (1e-5, -2e-5)])
+    @pytest.mark.parametrize(
+        "calibration",
+        [
+            (100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001),
+            (60000.0, 30000.0, 4.0, 3.0, 10.0, 0.0, 0.0, 0.0),
+            (65504.0, 65504.0, 4.0, 3.0, 65504.0, 65504.0, 65504.0, 65504.0),
+        ],
+    )
+    def test_distort_affine_branch_gradients(self, device, dtype, point, calibration) -> None:
+        points = torch.tensor(point, device=device, dtype=dtype)
+        params = torch.tensor(calibration, device=device, dtype=dtype)
+        point_jacobian = torch.autograd.functional.jacobian(lambda p: distort_points_kannala_brandt(p, params), points)
+        params_jacobian = torch.autograd.functional.jacobian(lambda p: distort_points_kannala_brandt(points, p), params)
+
+        expected_points = torch.diag(params[:2])
+        expected_params = torch.zeros(2, 8, device=device, dtype=dtype)
+        expected_params[0, 0] = points[0]
+        expected_params[1, 1] = points[1]
+        expected_params[0, 2] = 1.0
+        expected_params[1, 3] = 1.0
+        self.assert_close(point_jacobian, expected_points, atol=0.0, rtol=0.0)
+        self.assert_close(params_jacobian, expected_params, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("shared_params", [True, False])
+    def test_gradcheck_distort_mixed_optical_axis_batch(self, device, shared_params) -> None:
+        points = torch.tensor([[0.0, 0.0], [1e-5, -2e-5], [0.5, 0.25]], device=device, dtype=torch.float64)
+        params = torch.tensor([[100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001]], device=device, dtype=torch.float64)
+        if not shared_params:
+            params = params.repeat(3, 1)
+        self.gradcheck(distort_points_kannala_brandt, (points, params))
+
+    def test_dynamo_optical_axis_gradients(self, device, dtype, torch_optimizer) -> None:
+        points = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        params = torch.tensor(
+            [100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001],
+            device=device,
+            dtype=dtype,
+            requires_grad=True,
+        )
+        output = torch_optimizer(distort_points_kannala_brandt)(points, params)
+        point_grad, params_grad = torch.autograd.grad(output.sum(), (points, params))
+        self.assert_close(output, params[2:4])
+        self.assert_close(point_grad, params[:2])
+        self.assert_close(
+            params_grad, torch.tensor([0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        )
 
     def _test_gradcheck_distort(self, device):
         points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)
@@ -255,3 +429,107 @@ class TestDistortionKannalaBrandt(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_distort(device, dtype)
         self._test_jit_undistort(device, dtype)
+
+    def test_convention_undistort_points_kannala_brandt_round_trip_closes_4308(self, device, dtype):
+        # undistort_points_kannala_brandt is an iterative (Gauss-Newton) inverse, so the round trip closes to the
+        # dtype tolerance, including at a normalized radius of 3 where the polynomial is far from linear (the
+        # fixed-point undistort_points does not, #4285). In float64 nonzero radii are rescaled by r itself, so the
+        # residual reaches the rounding floor rather than an additive-epsilon bias of ~1e-8 (#4308).
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        points = torch.tensor([[0.5, 0.25], [3.0, 0.0], [0.01, 0.0]], device=device, dtype=dtype)
+        if dtype == torch.bfloat16:
+            points = points[[0, 2]]  # the far-off-axis point closes only to about 6e-02 in bfloat16
+        recovered = undistort_points_kannala_brandt(distort_points_kannala_brandt(points, params), params)
+        self.assert_close(recovered, points)
+        if dtype == torch.float64:
+            assert (recovered - points).abs().max().item() < 1e-12
+
+    def test_convention_principal_point_undistorts_to_the_origin(self, device, dtype):
+        # A zero distorted radius is masked, so the principal point undistorts to the exact origin, also with
+        # float16 points and float32 params (the result keeps the points dtype). The off-centre point changes
+        # under a cx/cy or fx/fy swap, so the pin is not frame-invariant.
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        undistorted = undistort_points_kannala_brandt(principal_point, params)
+        assert torch.equal(undistorted, torch.zeros(2, device=device, dtype=dtype))
+        if dtype == torch.float16:
+            wide_params = params.to(torch.float32)
+            mixed = undistort_points_kannala_brandt(principal_point, wide_params)
+            assert mixed.dtype == dtype
+            assert torch.equal(mixed, torch.zeros(2, device=device, dtype=dtype))
+        off_centre = torch.tensor([54.0, 28.0], device=device, dtype=dtype)
+        self.assert_close(
+            undistort_points_kannala_brandt(off_centre, params),
+            torch.tensor([0.5392647981643677, 0.26963239908218384], device=device, dtype=dtype),
+        )
+
+    def test_convention_nearest_float16_point_is_not_collapsed_4308(self, device, dtype):
+        if device.type != "cpu" or dtype != torch.float16:
+            pytest.skip("CPU float16 near-origin regression")
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        point = torch.tensor([4.00390625, 3.0], device=device, dtype=dtype)
+        undistorted = undistort_points_kannala_brandt(point, params)
+        expected_x = (point[0] - params[2]) / params[0]
+        assert undistorted[0] != 0
+        self.assert_close(undistorted, torch.stack([expected_x, torch.zeros_like(expected_x)]), atol=6e-8, rtol=0.0)
+
+    def test_convention_principal_point_has_finite_gradients_4308(self, device, dtype):
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        point_jacobian = torch.autograd.functional.jacobian(
+            lambda point: undistort_points_kannala_brandt(point, params), principal_point
+        )
+        params_jacobian = torch.autograd.functional.jacobian(
+            lambda camera: undistort_points_kannala_brandt(principal_point, camera), params
+        )
+        expected_point_jacobian = torch.tensor(
+            [[1.0 / params[0], 0.0], [0.0, 1.0 / params[1]]], device=device, dtype=dtype
+        )
+        expected_params_jacobian = torch.zeros(2, 8, device=device, dtype=dtype)
+        expected_params_jacobian[0, 2] = -1.0 / params[0]
+        expected_params_jacobian[1, 3] = -1.0 / params[1]
+        self.assert_close(point_jacobian, expected_point_jacobian)
+        self.assert_close(params_jacobian, expected_params_jacobian)
+
+    def test_dx_distort_points_kannala_brandt_affine_branch(self, device, dtype) -> None:
+        # The forward distortion switches to the affine model when radius_sq <= 1e-8.
+        # Its Jacobian must therefore be diag(fx, fy), including exactly at the origin.
+        points = torch.tensor([[0.0, 0.0], [1e-5, 0.0]], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+
+        expected_single = torch.tensor([[100.0, 0.0], [0.0, 50.0]], device=device, dtype=dtype)
+        expected = torch.stack([expected_single, expected_single])
+
+        self.assert_close(
+            dx_distort_points_kannala_brandt(points, params),
+            expected,
+            atol=0.0,
+            rtol=0.0,
+        )
+
+    def test_convention_dx_distort_points_kannala_brandt_matches_autograd_4277(self, device, dtype):
+        # Regression for #4277: the analytic Kannala-Brandt Jacobian must match
+        # the derivative of distort_points_kannala_brandt with respect to the point.
+        # Asymmetric focal lengths ensure an fx/fy or row/column swap cannot hide.
+        params = torch.tensor(
+            [100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001],
+            device=device,
+            dtype=dtype,
+        )
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+
+        analytic = dx_distort_points_kannala_brandt(points, params)
+
+        reference_dtype = dtype
+        if dtype in (torch.float16, torch.bfloat16):
+            reference_dtype = torch.float32
+
+        reference_points = points.to(reference_dtype)
+        reference_params = params.to(reference_dtype)
+
+        autograd = torch.autograd.functional.jacobian(
+            lambda q: distort_points_kannala_brandt(q, reference_params),
+            reference_points,
+        ).to(dtype)
+
+        self.assert_close(analytic, autograd)

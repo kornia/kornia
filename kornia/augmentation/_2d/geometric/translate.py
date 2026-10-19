@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core.utils import _as_tensor_nonblocking
 from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 
 
@@ -46,6 +47,11 @@ class RandomTranslate(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - ``translate_x`` and ``translate_y`` are independently sampled fractions of ``W`` and ``H``; positive
+          values move content right and down. Omitting either range fixes that axis at zero.
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 
@@ -56,15 +62,15 @@ class RandomTranslate(GeometricAugmentationBase2D):
         >>> aug = RandomTranslate((-0.2, 0.2), (-0.1, 0.1), p=1.)
         >>> out = aug(input)
         >>> out, aug.transform_matrix
-        (tensor([[[[0.3403, 0.6439, 0.2920],
-                  [0.1377, 0.3383, 0.5569],
-                  [0.3226, 0.6909, 0.4844]]]]), tensor([[[ 1.0000,  0.0000,  0.1588],
+        (tensor([[[[0.3897, 0.6847, 0.2314],
+                  [0.1384, 0.3297, 0.5771],
+                  [0.3749, 0.7565, 0.4780]]]]), tensor([[[ 1.0000,  0.0000,  0.1588],
                  [ 0.0000,  1.0000, -0.0907],
                  [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        tensor([[[[0.3565, 0.4839, 0.1922],
-                  [0.2164, 0.4134, 0.3968],
-                  [0.3797, 0.6075, 0.3765]]]])
+        tensor([[[[0.3969, 0.5571, 0.1770],
+                  [0.1930, 0.3910, 0.4591],
+                  [0.4113, 0.6812, 0.4096]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
@@ -97,7 +103,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         translations = torch.stack([params["translate_x"], params["translate_y"]], dim=-1)
-        return get_translation_matrix2d(torch.as_tensor(translations, device=input.device, dtype=input.dtype))
+        return get_translation_matrix2d(_as_tensor_nonblocking(translations, input.device, input.dtype))
 
     def apply_transform(
         self,

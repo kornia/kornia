@@ -32,6 +32,10 @@ class SmallSRNet(nn.Module):
     "Real-Time Single Image and Video Super-Resolution Using an Efficient Sub-Pixel Convolutional Neural Network"
     - Shi et al for increasing the resolution of an image by an upscale factor.
     Taken from https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html.
+
+    The pretrained weights are that tutorial's, trained for ``upscale_factor=3``; with ``pretrained=True`` any other
+    factor raises a size-mismatch :class:`RuntimeError`. Through :class:`~kornia.contrib.SmallSRBuilder` every input
+    is first resized to 224 x 224, so the output there is ``224 * upscale_factor`` square.
     """
 
     def __init__(self, upscale_factor: int, inplace: bool = False, pretrained: bool = True) -> None:
@@ -62,7 +66,7 @@ class SmallSRNet(nn.Module):
         model_path = CachedDownloader.download_to_cache(
             path_file, "small_sr.pth", download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
         )
-        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"))
+        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -82,8 +86,7 @@ class SmallSRNet(nn.Module):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
-        x = self.pixel_shuffle(self.conv4(x))
-        return x
+        return self.pixel_shuffle(self.conv4(x))
 
 
 def weight_init(module: nn.Module) -> None:

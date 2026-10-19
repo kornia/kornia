@@ -13,10 +13,6 @@ on:
         required: false
         type: string
         default: ubuntu-latest
-      ref:
-        required: false
-        type: string
-        default: ${{ github.sha }}
       cache-path:
         required: false
         type: string
@@ -34,6 +30,7 @@ jobs:
   slow:
     # Only run tests with slow marker which aren't dynamo tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -42,8 +39,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
@@ -60,10 +55,13 @@ jobs:
           pytorch-device: ${{ inputs.pytorch-device }}
           pytest-extra: '--runslow -k "slow and not test_dynamo"'
           coverage-artifact: coverage-slow-${{ matrix.pytorch-dtype }}
+          # tests/filters/test_dissolving.py is slow-only and needs kornia[sd]
+          extra-install: sd
 
   dynamo:
-    # Run all dynamo (torch.compile) related tests
+    # Run all dynamo and compile (torch.compile) tests, including the slow-marked cold compiles
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -72,8 +70,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
@@ -90,12 +86,13 @@ jobs:
           python-version: ${{ inputs.python-version }}
           pytorch-dtype: ${{ matrix.pytorch-dtype }}
           pytorch-device: ${{ inputs.pytorch-device }}
-          pytest-extra: '--runslow -k "test_dynamo"'
+          pytest-extra: '--runslow -k "test_dynamo or compile"'
           coverage-artifact: coverage-dynamo-${{ matrix.pytorch-dtype }}
 
   overall:
     # Run all tests which didn't have a slow marker or are dynamo tests
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -104,8 +101,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
@@ -116,6 +111,9 @@ jobs:
           restore-keys: ${{ inputs.cache-restore-keys }}
 
       - uses: ./.github/actions/coverage
+        env:
+          MKL_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
         with:
           python-version: ${{ inputs.python-version }}
           pytorch-dtype: ${{ matrix.pytorch-dtype }}
@@ -124,13 +122,11 @@ jobs:
 
   report:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 15
     needs: [slow, dynamo, overall]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          repository: kornia/kornia
-          ref: ${{ inputs.ref }}
 
       - name: Download coverage reports
         uses: actions/download-artifact@v8
@@ -143,7 +139,7 @@ jobs:
         run: echo "name=py$(echo '${{ inputs.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.10.0
+        uses: prefix-dev/setup-pixi@v0.10.2
         with:
           pixi-version: v0.40.0
           cache: true
@@ -165,7 +161,7 @@ jobs:
 
       - if: always()
         name: Upload coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v3
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v3
         with:
           file: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}

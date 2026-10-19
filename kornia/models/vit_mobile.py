@@ -235,8 +235,7 @@ class MV2Block(nn.Module):
         """
         if self.use_res_connect:
             return x + self.conv(x)
-        else:
-            return self.conv(x)
+        return self.conv(x)
 
 
 class MobileViTBlock(nn.Module):
@@ -310,8 +309,7 @@ class MobileViTBlock(nn.Module):
         # Fusion
         x = self.conv3(x)
         x = torch.cat((x, y), 1)
-        x = self.conv4(x)
-        return x
+        return self.conv4(x)
 
 
 class MobileViT(nn.Module):
@@ -323,8 +321,14 @@ class MobileViT(nn.Module):
     Args:
         mode: 'xxs', 'xs' or 's', defaults to 'xxs'.
         in_channels: the number of channels for the input image.
-        patch_size: image_size must be divisible by patch_size.
+        patch_size: the patch size :math:`(p_h, p_w)` the MobileViT blocks unfold their feature maps into, at strides
+            8, 16 and 32 of the input. Each of those maps must split into whole patches, which an input height and
+            width that are multiples of :math:`32 p_h` and :math:`32 p_w` guarantee: with the default ``(2, 2)``,
+            192, 256 and 320 px run, and 224 and 288 px raise.
         dropout: dropout ratio in Transformer.
+
+    Raises:
+        ValueError: if ``mode`` is not ``'xxs'``, ``'xs'`` or ``'s'``.
 
     Example:
         >>> img = torch.rand(1, 3, 256, 256)
@@ -350,6 +354,8 @@ class MobileViT(nn.Module):
             expansion = 4
             dims = [144, 192, 240]
             channels = [16, 32, 64, 64, 96, 96, 128, 128, 160, 160, 640]
+        else:
+            raise ValueError(f"mode must be 'xxs', 'xs' or 's'. Got: {mode!r}")
 
         kernel_size = 3
         depth = [2, 4, 3]
@@ -405,5 +411,4 @@ class MobileViT(nn.Module):
 
         x = self.mv2[6](x)
         x = self.mvit[2](x)
-        x = self.conv2(x)
-        return x
+        return self.conv2(x)

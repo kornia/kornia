@@ -34,3 +34,11 @@ def test_all_committed_results_are_valid() -> None:
     results_root = REPO_ROOT / "benchmarks" / "results"
     for path in sorted(results_root.rglob("*.json")):
         assert results_schema.validate_result(path) == [], f"{path} invalid"
+
+
+def test_all_committed_artefacts_are_valid() -> None:
+    """Comparison artefacts (A/B and cross-release raw JSON next to a report) pass the content rules."""
+    paths = sorted((REPO_ROOT / "benchmarks").glob("*/*_results/*.json"))
+    assert paths, "no comparison artefacts matched benchmarks/*/*_results/*.json; update the glob with the layout"
+    for path in paths:
+        assert results_schema.validate_artefact(path) == [], f"{path} invalid"

@@ -2,14 +2,13 @@ kornia.geometry.calibration
 ===========================
 
 .. meta::
-   :name: description
-   :content: "The kornia.geometry.calibration module provides essential functions for camera calibration, including lens distortion modeling, undistortion, and Perspective-n-Point (PnP) solutions. This module supports advanced camera calibration techniques for both pinhole and distorted models, aiding in accurate 3D point projection, distortion correction, and camera pose estimation."
+   :description: The kornia.geometry.calibration module provides essential functions for camera calibration, including lens distortion modeling, undistortion, and Perspective-n-Point (PnP) solutions. This module supports advanced camera calibration techniques for both pinhole and distorted models, aiding in accurate 3D point projection, distortion correction, and camera pose estimation.
 
 .. currentmodule:: kornia.geometry.calibration
 
 Module with useful functionalities for camera calibration.
 
-The pinhole model is an ideal projection model that not considers lens distortion for the projection of a 3D point :math:`(X, Y, Z)` onto the image plane. To model the distortion of a projected 2D pixel point :math:`(u,v)` with the linear pinhole model, we need first to estimate the normalized 2D points coordinates :math:`(\bar{u}, \bar{v})`. For that, we can use the calibration matrix :math:`\mathbf{K}` with the following expression
+The pinhole model is an ideal projection model that does not consider lens distortion when projecting a 3D point :math:`(X, Y, Z)` onto the image plane. To model the distortion of a 2D pixel point :math:`(u,v)` projected with the linear pinhole model, we first need to estimate the normalized 2D point coordinates :math:`(\bar{u}, \bar{v})`. For that, we can use the calibration matrix :math:`\mathbf{K}` with the following expression
 
 .. math::
     \begin{align}
@@ -24,7 +23,7 @@ The pinhole model is an ideal projection model that not considers lens distortio
     \end{bmatrix} \enspace,
     \end{align}
 
-which is equivalent to directly using the internal parameters: focals :math:`f_u, f_v` and principal point :math:`(u_0, v_0)` to estimated the normalized coordinates
+which is equivalent to directly using the internal parameters, the focal lengths :math:`f_u, f_v` and the principal point :math:`(u_0, v_0)`, to estimate the normalized coordinates
 
 .. math::
     \begin{equation}
@@ -49,7 +48,7 @@ The normalized distorted point :math:`(\bar{u}_d, \bar{v}_d)` is given by
     \end{bmatrix} \enspace,
     \end{align}
 
-where :math:`r = \bar{u}^2 + \bar{v}^2`. With this model we consider radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`, tangential :math:`(p_1, p_2)`, and thin prism :math:`(s_1, s_2, s_3, s_4)` distortion. If we want to consider tilt distortion :math:`(\tau_x, \tau_y)`, we need an additional step where we estimate a point :math:`(\bar{u}'_d, \bar{v}'_d)`
+where :math:`r^2 = \bar{u}^2 + \bar{v}^2`. With this model we consider radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`, tangential :math:`(p_1, p_2)`, and thin prism :math:`(s_1, s_2, s_3, s_4)` distortion. If we also want to consider tilt distortion :math:`(\tau_x, \tau_y)`, we need an additional step where we estimate a point :math:`(\bar{u}'_d, \bar{v}'_d)`
 
 .. math::
     \begin{align}
@@ -69,7 +68,7 @@ where :math:`r = \bar{u}^2 + \bar{v}^2`. With this model we consider radial :mat
     \end{bmatrix} \enspace,
     \end{align}
 
-where :math:`\mathbf{R}(\tau_x, \tau_y)` is a 3D rotation matrix defined by an :math:`X` and :math:`Y` rotation given by the angles :math:`\tau_x` and :math:`\tau_y`. Furthermore, :math:`\mathbf{R}_{ij}(\tau_x, \tau_y)` represent the :math:`i`-th row and :math:`j`-th column from :math:`\mathbf{R}(\tau_x, \tau_y)` matrix.
+where :math:`\mathbf{R}(\tau_x, \tau_y)` is a 3D rotation matrix defined by rotations about the :math:`X` and :math:`Y` axes by the angles :math:`\tau_x` and :math:`\tau_y`. Furthermore, :math:`\mathbf{R}_{ij}(\tau_x, \tau_y)` denotes the element in the :math:`i`-th row and :math:`j`-th column of the :math:`\mathbf{R}(\tau_x, \tau_y)` matrix.
 
 .. math::
     \begin{align}
@@ -86,8 +85,7 @@ where :math:`\mathbf{R}(\tau_x, \tau_y)` is a 3D rotation matrix defined by an :
     \end{bmatrix}  \enspace.
     \end{align}
 
-
-Finally, we just need to come back to the original (unnormalized) pixel space. For that we can use the intrinsic matrix
+Finally, we just need to go back to the original (unnormalized) pixel space. For that we can use the intrinsic matrix
 
 .. math::
     \begin{align}
@@ -102,7 +100,6 @@ Finally, we just need to come back to the original (unnormalized) pixel space. F
     \end{bmatrix} \enspace,
     \end{align}
 
-
 which is equivalent to
 
 .. math::
@@ -114,7 +111,7 @@ which is equivalent to
 Undistortion
 ------------
 
-To compensate for lens distortion a set of 2D points, i.e., to estimate the undistorted coordinates for a given set of distorted points, we need to inverse the previously explained distortion model. For the case of undistorting an image, instead of estimating the undistorted location for each pixel, we distort each pixel in the destination image (final undistorted image) to match them with the input image. We finally interpolate the intensity values at each pixel.
+To compensate a set of 2D points for lens distortion, i.e., to estimate the undistorted coordinates of a given set of distorted points, we need to invert the distortion model explained above. When undistorting an image, instead of estimating the undistorted location of each pixel, we distort each pixel of the destination image (the final undistorted image) to find its match in the input image, and then interpolate the intensity values at each pixel.
 
 .. autofunction:: undistort_image
 

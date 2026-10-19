@@ -26,11 +26,20 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
     r"""Compute Total Variation according to [1].
 
+    Convention:
+        - The anisotropic L1 variation, :math:`\sum |\partial_y I| + \sum |\partial_x I|`, over the last two axes
+          only: the output keeps every leading axis, :math:`(B, C)` for an image batch, and the channels are not
+          summed.
+        - The default ``reduction='sum'`` adds the differences. ``'mean'`` averages each term over its own count,
+          :math:`(H - 1) W` vertical and :math:`H (W - 1)` horizontal differences, and adds the two means; it is not
+          the sum divided by :math:`H W`. An axis with no adjacent pixels contributes zero. There is no ``'none'``.
+          :ref:`Losses and metrics <losses-metrics-conventions>` compares both with torchmetrics.
+
     Args:
         img: the input image with shape :math:`(*, H, W)`.
         reduction : Specifies the reduction to apply to the output: ``'mean'`` | ``'sum'``.
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+         ``'mean'``: each of the vertical and horizontal terms is averaged over its own number of differences,
+         ``'sum'``: the differences are summed.
 
     Return:
          a torch.Tensor with shape :math:`(*,)`.
@@ -42,9 +51,10 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
         torch.Size([2, 5, 3])
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/total_variation_denoising.html>`__.
-       Total Variation is formulated with summation, however this is not resolution invariant.
-       Thus, `reduction='mean'` was added as an optional reduction method.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/total_variation_denoising.html>`__.
+       Total Variation is formulated with summation, however this is not resolution invariant;
+       ``reduction='mean'`` averages instead.
+       Narrow integer inputs are promoted before computing differences to avoid overflow.
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
@@ -57,23 +67,32 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
     KORNIA_CHECK_SHAPE(img, ["*", "H", "W"])
     KORNIA_CHECK(reduction in ("mean", "sum"), f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
 
+    # Adjacent differences and their absolute values can exceed the input integer range.
+    if img.dtype in (torch.uint8, torch.int8):
+        img = img.to(torch.int16)
+    elif img.dtype == torch.int16:
+        img = img.to(torch.int32)
+    elif img.dtype == torch.int32:
+        img = img.to(torch.int64)
+
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
     pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
 
-    res1 = pixel_dif1.abs()
-    res2 = pixel_dif2.abs()
+    # Reduce over one flattened dim rather than dim=(-2, -1): the result is identical,
+    # and MPS runs a two-trailing-dims reduction several times slower than a one-dim one.
+    res1 = pixel_dif1.abs().flatten(-2)
+    res2 = pixel_dif2.abs().flatten(-2)
 
-    reduce_axes = (-2, -1)
     if reduction == "mean":
-        if img.is_floating_point():
-            res1 = res1.to(img).mean(dim=reduce_axes)
-            res2 = res2.to(img).mean(dim=reduce_axes)
-        else:
-            res1 = res1.float().mean(dim=reduce_axes)
-            res2 = res2.float().mean(dim=reduce_axes)
+        if not img.is_floating_point():
+            res1 = res1.float()
+            res2 = res2.float()
+        # A singleton spatial axis has no differences: sum the empty term to zero instead of averaging it to NaN.
+        res1 = res1.mean(dim=-1) if res1.shape[-1] > 0 else res1.sum(dim=-1)
+        res2 = res2.mean(dim=-1) if res2.shape[-1] > 0 else res2.sum(dim=-1)
     elif reduction == "sum":
-        res1 = res1.sum(dim=reduce_axes)
-        res2 = res2.sum(dim=reduce_axes)
+        res1 = res1.sum(dim=-1)
+        res2 = res2.sum(dim=-1)
     else:
         raise NotImplementedError("Invalid reduction option.")
 
@@ -82,6 +101,10 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
 
 class TotalVariation(nn.Module):
     r"""Compute the Total Variation according to [1].
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.total_variation`. The module has no ``reduction`` and
+        always sums.
 
     Shape:
         - Input: :math:`(*, H, W)`.

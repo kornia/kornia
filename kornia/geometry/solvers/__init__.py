@@ -20,6 +20,7 @@
 This subpackage provides polynomial solvers and related utilities for geometry tasks.
 """
 
+from .affine import find_affine
 from .homogeneous import null_vector_3x4
 from .polynomial_solver import (
     determinant_to_polynomial,
@@ -32,6 +33,7 @@ from .polynomial_solver import (
 
 __all__ = [
     "determinant_to_polynomial",
+    "find_affine",
     "multiply_deg_one_poly",
     "multiply_deg_two_one_poly",
     "null_vector_3x4",

@@ -26,7 +26,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SIZES
 
 __all__ = ["SigLip2Attention"]
 
@@ -82,10 +82,22 @@ class SigLip2Attention(nn.Module):
 
         Args:
             hidden_states: Input tensor of shape (batch_size, seq_len, hidden_size).
-            attention_mask: Optional attention mask. Can be:
-                - (batch_size, seq_len): 1D mask where 1 = attend, 0 = mask
-                - (batch_size, seq_len, seq_len): 2D mask where 1 = attend, 0 = mask
-                - (batch_size, 1, seq_len, seq_len): 4D mask (broadcastable)
+            attention_mask: Optional attention mask, where ``1``/``True`` means attend and ``0``/``False``
+                means mask out. Can be:
+
+                - (batch_size, seq_len): a padding mask, broadcast over the key axis only, matching
+                  ``SiglipTextTransformer.create_bidirectional_mask`` in Hugging Face ``transformers``.
+                  A padded query row is therefore *not* masked and its output is finite but meaningless;
+                  callers are expected to discard those positions.
+                - (batch_size, seq_len, seq_len): a per-query mask, broadcast over the head axis.
+                - (batch_size, 1, seq_len, seq_len): already in the layout
+                  ``torch.nn.functional.scaled_dot_product_attention`` expects.
+
+                The last dimension of every form is the ``seq_len`` keys, and in a 3-D or 4-D mask the one before
+                it is the ``seq_len`` queries or 1, which shares the key mask across the queries; other sizes raise.
+                A query row whose mask is entirely ``0`` follows the behavior of
+                ``scaled_dot_product_attention`` for a fully masked row: ``0`` on PyTorch 2.5 and later,
+                ``nan`` before it.
 
         Returns:
             Output tensor of shape (batch_size, seq_len, hidden_size).
@@ -112,21 +124,33 @@ class SigLip2Attention(nn.Module):
         if attention_mask is not None:
             # Handle different mask formats
             if attention_mask.dim() == 2:
-                # (batch_size, seq_len) -> (batch_size, 1, seq_len, seq_len)
-                # Create 2D mask: both query and key positions must be valid
-                # Convert to boolean: 1 = attend (False = don't mask), 0 = mask (True = mask out)
-                mask_bool = attention_mask.bool()
-                # Expand to (batch_size, 1, seq_len, seq_len) where True means mask out
-                # We need: if either query or key is masked, then mask that attention
-                attn_mask = ~(mask_bool.unsqueeze(1).unsqueeze(2) & mask_bool.unsqueeze(1).unsqueeze(3))
+                # (batch_size, seq_len) -> (batch_size, 1, 1, seq_len)
+                # Mask keys only so padded query positions do not create fully masked
+                # rows, which produce NaNs in older SDPA implementations.
+                # Boolean SDPA masks use True = attend and False = mask out.
+                attn_mask = attention_mask.bool().unsqueeze(1).unsqueeze(2)
             elif attention_mask.dim() == 3:
                 # (batch_size, seq_len, seq_len) -> (batch_size, 1, seq_len, seq_len)
-                attn_mask = ~attention_mask.bool().unsqueeze(1)
+                attn_mask = attention_mask.bool().unsqueeze(1)
             elif attention_mask.dim() == 4:
-                # Already in correct format (batch_size, 1, seq_len, seq_len)
-                attn_mask = ~attention_mask.bool()
+                # Already in the SDPA layout (batch_size, 1, seq_len, seq_len); True = attend
+                attn_mask = attention_mask.bool()
             else:
                 raise ValueError(f"Unsupported attention_mask dimension: {attention_mask.dim()}")
+            # A key dimension of 1 would broadcast one value over every token: the same as no mask on the CPU, and
+            # SDPA's unrelated "last dimension must be contiguous" error in CUDA float32 and half.
+            sizes: list[Optional[int]] = [None] * attention_mask.dim()
+            sizes[-1] = seq_len
+            if attention_mask.dim() > 2:
+                sizes[-2] = 1 if attention_mask.shape[-2] == 1 else seq_len
+            KORNIA_CHECK_SIZES(
+                attention_mask,
+                sizes,
+                lambda: (
+                    f"SigLip2Attention reads an attention mask over the {seq_len} tokens: the keys are its last "
+                    f"dimension, and in a 3-D or 4-D mask the queries, {seq_len} or 1, the one before it."
+                ),
+            )
 
         dropout_p = self.dropout.p if self.training and self.dropout.p > 0.0 else 0.0
         attention_output = F.scaled_dot_product_attention(

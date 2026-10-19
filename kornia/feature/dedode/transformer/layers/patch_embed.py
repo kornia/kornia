@@ -85,23 +85,21 @@ class PatchEmbed(nn.Module):
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
     def forward(self, x: Tensor) -> Tensor:
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input image tensor with shape :math:`(B, C, H, W)`. ``H`` and ``W`` must be
+               multiples of the patch height and width respectively.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Patch embeddings with shape :math:`(B, N_p, D)` when ``flatten_embedding=True``,
+            or :math:`(B, H_p, W_p, D)` when ``flatten_embedding=False``, where
+            :math:`N_p = H_p \times W_p`.
         """
         _, _, H, W = x.shape
         patch_H, patch_W = self.patch_size
-        KORNIA_CHECK(H % patch_H == 0, f"Input image height {H} is not a multiple of patch height {patch_H}")
-        KORNIA_CHECK(W % patch_W == 0, f"Input image width {W} is not a multiple of patch width: {patch_W}")
+        KORNIA_CHECK(H % patch_H == 0, f"Input image height is not a multiple of patch height {patch_H}: {x.shape}")
+        KORNIA_CHECK(W % patch_W == 0, f"Input image width is not a multiple of patch width {patch_W}: {x.shape}")
 
         x = self.proj(x)  # B C H W
         H, W = x.size(2), x.size(3)

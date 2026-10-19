@@ -15,12 +15,13 @@
 # limitations under the License.
 #
 
-from typing import Any
+from typing import Any, Literal, overload
 
 import torch
 
+from kornia.core.utils import is_exporting
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.grid import create_meshgrid
-from kornia.geometry.linalg import transform_points
 
 
 class StereoException(Exception):
@@ -50,9 +51,42 @@ class StereoException(Exception):
 class StereoCamera:
     """Represent a horizontal stereo camera setup for depth estimation.
 
+    Convention:
+        - the two arguments are the **rectified projection matrices** of the left and the right camera, each of
+          shape :math:`(B, 3, 4)`: ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the left camera, and
+          the same matrix with ``-tx * fx`` in the last column for the right one. The constructor requires the
+          two to be equal outside that last column.
+        - the baseline is read back as the attribute :attr:`tx` ``= -P_right[0, 3] / fx``, which must be
+          strictly **positive** for every rig in the batch: a zero baseline and swapped cameras both raise. A
+          non-finite ``P_right[0, 3]`` is not screened, and these checks and the equal-intrinsics check are
+          skipped under ``torch.export``.
+          The :doc:`/geometry.camera.stereo` page's symbol ``tx`` is the negation of this attribute; :attr:`Q`
+          is the page's matrix evaluated at the page's ``tx``.
+        - ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``; with the divide by ``W = -fy * disparity``
+          the result is ``X = (u - cx) Z / fx``, ``Y = (v - cy) Z / fy``, ``Z = fx * tx / disparity``.
+        - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``.
+        - a disparity map is channels-**last**, :math:`(B, H, W, 1)` (a :math:`(B, 1, H, W)` map is rejected),
+          and the point cloud is :math:`(B, H, W, 3)`.
+        - pixel centres are integers; see the Convention block on
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+    .. warning::
+        A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
+        case, so it is zero on every rig the constructor accepts outside ``torch.export``:
+        `#4270 <https://github.com/kornia/kornia/issues/4270>`_. A zero disparity (a point at infinity) makes
+        ``W = 0``; the divide is then skipped and a finite placeholder, behind the camera on a real rig, is
+        returned. Request ``return_mask=True`` from :meth:`reproject_disparity_to_3D` to identify numerical
+        reconstruction failures without changing those coordinates or their gradients.
+
+    .. warning::
+        The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
+        :doc:`/geometry.camera.stereo` but is in no ``__all__``, so it is not reachable as
+        ``kornia.geometry.reproject_disparity_to_3D``. Tracked as
+        `#4275 <https://github.com/kornia/kornia/issues/4275>`_.
+
     Args:
-        rectified_left_camera: The intrinsic matrix for the left camera.
-        rectified_right_camera: The intrinsic matrix for the right camera.
+        rectified_left_camera: The rectified left camera projection matrix of shape :math:`(B, 3, 4)`.
+        rectified_right_camera: The rectified right camera projection matrix of shape :math:`(B, 3, 4)`.
     """
 
     def __init__(self, rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor) -> None:
@@ -96,14 +130,15 @@ class StereoCamera:
                 f"Expected 'rectified_right_camera' to have 3 dimension. Got {rectified_right_camera.shape}."
             )
 
-        if rectified_left_camera.shape[:1] == (3, 4):
+        if rectified_left_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_left_camera' to be of shape (3, 4).Got {rectified_left_camera.shape[:1]}."
+                f"Expected each 'rectified_left_camera' to be of shape (3, 4). Got {rectified_left_camera.shape[-2:]}."
             )
 
-        if rectified_right_camera.shape[:1] == (3, 4):
+        if rectified_right_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_right_camera' to be of shape (3, 4).Got {rectified_right_camera.shape[:1]}."
+                "Expected each 'rectified_right_camera' to be of shape (3, 4). "
+                f"Got {rectified_right_camera.shape[-2:]}."
             )
 
         # Ensure same devices for cameras.
@@ -123,17 +158,32 @@ class StereoCamera:
             )
 
         # Ensure all intrinsics parameters (fx, fy, cx, cy) are the same in both cameras.
-        if not torch.all(torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])):
+        # The check reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting() and not torch.all(
+            torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])
+        ):
             raise StereoException(
                 "Expected 'left_rectified_camera' and 'rectified_right_camera' to have"
                 "same parameters except for the last column."
                 f"Got {rectified_left_camera[..., :, :3]} and {rectified_right_camera[..., :, :3]}."
             )
 
-        # Ensure that tx * fx is negative and exists.
+        # Reject every rig whose baseline is zero or points the wrong way. The right camera's last column is
+        # -tx * fx, so it must be strictly negative: zero means coincident cameras, which collapses Q and sends
+        # every disparity to the origin, and positive means the two cameras are swapped. The quantifier is
+        # ``any``, so one bad rig cannot hide behind good ones, and an empty batch stays vacuously valid. Neither
+        # comparison screens non-finite input: ``nan`` fails both of them and ``-inf`` is negative, so both are
+        # still accepted, exactly as they were before these checks were tightened.
+        # The check reads the data, which graph capture cannot do; skip it under export.
         tx_fx = rectified_right_camera[..., 0, 3]
-        if torch.all(torch.gt(tx_fx, 0)):
-            raise StereoException(f"Expected :math:`T_x * f_x` to be negative. Got {tx_fx}.")
+        if not is_exporting():
+            if torch.any(tx_fx == 0):
+                raise StereoException(
+                    "Expected a non-zero stereo baseline, but :math:`T_x * f_x` is 0 for at least one camera pair, "
+                    f"so `tx` is 0 and every disparity would reproject to the origin. Got {tx_fx}."
+                )
+            if torch.any(tx_fx > 0):
+                raise StereoException(f"Expected :math:`T_x * f_x` to be negative for every camera pair. Got {tx_fx}.")
 
     @property
     def batch_size(self) -> int:
@@ -246,24 +296,48 @@ class StereoCamera:
         Q[:, 3, 3] = self.fy * (self.cx_left - self.cx_right)  # NOTE: This is usually zero.
         return Q
 
-    def reproject_disparity_to_3D(self, disparity_tensor: torch.Tensor) -> torch.Tensor:
+    @overload
+    def reproject_disparity_to_3D(
+        self, disparity_tensor: torch.Tensor, return_mask: Literal[False] = False
+    ) -> torch.Tensor: ...
+
+    @overload
+    def reproject_disparity_to_3D(
+        self, disparity_tensor: torch.Tensor, return_mask: Literal[True]
+    ) -> tuple[torch.Tensor, torch.Tensor]: ...
+
+    @overload
+    def reproject_disparity_to_3D(
+        self, disparity_tensor: torch.Tensor, return_mask: bool
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]: ...
+
+    def reproject_disparity_to_3D(
+        self, disparity_tensor: torch.Tensor, return_mask: bool = False
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         r"""Reproject the disparity torch.Tensor to a 3D point cloud.
 
+        See the Convention block on :class:`~kornia.geometry.camera.stereo.StereoCamera`.
+
         Args:
-            disparity_tensor: Disparity torch.Tensor of shape :math:`(B, 1, H, W)`.
+            disparity_tensor: Disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
+            return_mask: If True, also return numerical reconstruction validity with
+                shape :math:`(B, H, W, 1)`. This only adds diagnostics; it does not fill
+                invalid points or change their gradients. See the module-level
+                :func:`reproject_disparity_to_3D` for the mask's complete contract.
 
         Returns:
-            The 3D point cloud of shape :math:`(B, H, W, 3)`
+            The 3D point cloud of shape :math:`(B, H, W, 3)`, in the left rectified
+            camera frame, or ``(points, valid)`` when ``return_mask=True``.
 
         """
-        return reproject_disparity_to_3D(disparity_tensor, self.Q)
+        return reproject_disparity_to_3D(disparity_tensor, self.Q, return_mask=return_mask)
 
 
 def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
     r"""Ensure correct user provided correct disparity torch.Tensor.
 
     Args:
-        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, 1, H, W)`.
+        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
 
     """
     if not isinstance(disparity_tensor, torch.Tensor):
@@ -276,7 +350,8 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
 
     if disparity_tensor.shape[-1] != 1:
         raise StereoException(
-            "Expected dimension 1 of 'disparity_tensor' to be 1 for as single channeled disparity map."
+            "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
+            "with a single channel in the last dimension. "
             f"Got {disparity_tensor.shape}."
         )
 
@@ -310,15 +385,63 @@ def _check_Q_matrix(Q_matrix: torch.Tensor) -> None:
         )
 
 
-def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor) -> torch.Tensor:
+@overload
+def reproject_disparity_to_3D(
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: Literal[False] = False
+) -> torch.Tensor: ...
+
+
+@overload
+def reproject_disparity_to_3D(
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: Literal[True]
+) -> tuple[torch.Tensor, torch.Tensor]: ...
+
+
+@overload
+def reproject_disparity_to_3D(
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: bool
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]: ...
+
+
+def reproject_disparity_to_3D(
+    disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: bool = False
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     r"""Reproject the disparity torch.Tensor to a 3D point cloud.
+
+    See the Convention block on :class:`~kornia.geometry.camera.stereo.StereoCamera`.
 
     Args:
         disparity_tensor: Disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
-        Q_matrix: torch.Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
+        Q_matrix: torch.Tensor of Q matrices of shape :math:`(B, 4, 4)` or :math:`(1, 4, 4)`.
+        return_mask: If True, also return a boolean numerical reconstruction mask of
+            shape :math:`(B, H, W, 1)`, on the input device. Defaults to False.
 
     Returns:
-        The 3D point cloud of shape :math:`(B, H, W, 3)`
+        The 3D point cloud of shape :math:`(B, H, W, 3)`, or ``(points, valid)`` when
+        ``return_mask=True``. Points retain the disparity dtype in either mode.
+
+    Raises:
+        ValueError: If the Q matrix batch size is neither 1 nor the disparity batch size.
+
+    Note:
+        A point is valid when all four homogeneous components are finite,
+        ``abs(W) > 1e-8`` in the converter's working dtype, and XYZ is finite after
+        conversion to the returned disparity dtype. The matrix multiplication and
+        homogeneous conversion use Q's dtype (subject to the active autocast context).
+        The absolute W cutoff is the existing coordinate policy: scaling Q can change
+        validity near the cutoff, while Q and -Q have the same mask.
+
+        This mask does not certify a stereo match, front-of-camera eligibility,
+        image bounds or occlusion. In particular, zero disparity can reconstruct a
+        finite point when Q has a nonzero offset. Combine the mask with the matcher's
+        own validity information. The output frame is defined by Q; for a
+        :class:`StereoCamera` it is the left rectified camera frame.
+
+        Requesting the mask changes neither coordinates nor gradients. Below the W
+        cutoff, the converter still returns the homogeneous numerator as a placeholder;
+        nonfinite inputs can still produce nonfinite coordinates or gradients. This is
+        a diagnostic API, not a safe invalid-point filling policy. Masking a loss after
+        unsafe arithmetic is not guaranteed to prevent nonfinite gradients.
 
     """
     _check_Q_matrix(Q_matrix)
@@ -327,13 +450,37 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     batch_size, rows, cols, _ = disparity_tensor.shape
     dtype = disparity_tensor.dtype
     device = disparity_tensor.device
+    if Q_matrix.shape[0] != batch_size and Q_matrix.shape[0] != 1:
+        raise ValueError("Q_matrix batch size must match disparity_tensor or be 1.")
 
     uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
     uv = uv.expand(batch_size, -1, -1, -1)
-    v, u = torch.unbind(uv, dim=-1)
-    v, u = torch.unsqueeze(v, -1), torch.unsqueeze(u, -1)
-    uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
-    points = transform_points(Q_matrix, uvd).reshape(batch_size, rows, cols, 3)
+    # create_meshgrid(normalized_coordinates=False) returns (x, y), so uv[..., 0] is the
+    # column and uv[..., 1] is the row. u is the column and v the row, as in
+    # cv2.reprojectImageTo3D, whose semantics this function provides (#2042). Unbinding
+    # them the other way round fed the row into u and the column into v, which transposed
+    # the two pixel indices in the result.
+    u, v = torch.unbind(uv, dim=-1)
+    u, v = torch.unsqueeze(u, -1), torch.unsqueeze(v, -1)
+    # The pixel count is spelled out: a ``-1`` cannot be inferred for an empty batch.
+    uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, rows * cols).permute(0, 2, 1)
+    # Preserve transform_points' empty point-set path, including its lack of a Q
+    # gradient connection. There are no entries to diagnose in the empty mask.
+    if rows * cols == 0:
+        points = uvd.reshape(batch_size, rows, cols, 3)
+        if return_mask:
+            return points, torch.empty_like(disparity_tensor, dtype=torch.bool)
+        return points
+    # Keep the actual homogeneous components for diagnostics: finite output alone
+    # cannot distinguish a placeholder, or finite XYZ produced by infinite W.
+    # This is transform_points' existing bmm/conversion/cast path, shared by both
+    # return modes so requesting diagnostics cannot select different arithmetic.
+    homogeneous = torch.bmm(
+        convert_points_to_homogeneous(uvd).to(Q_matrix.dtype),
+        Q_matrix.expand(batch_size, -1, -1).transpose(-1, -2),
+    )
+    eps = 1e-8
+    points = convert_points_from_homogeneous(homogeneous, eps=eps).to(dtype).reshape(batch_size, rows, cols, 3)
 
     # Final check that everything went well.
     if not points.shape == (batch_size, rows, cols, 3):
@@ -343,4 +490,8 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
             f"But the computed point cloud had shape {points.shape}. "
             "Please ensure input are correct. If this is an error, please submit an issue."
         )
+    if return_mask:
+        valid = torch.isfinite(homogeneous).all(-1, keepdim=True) & (homogeneous[..., -1:].abs() > eps)
+        valid = valid.reshape(batch_size, rows, cols, 1) & torch.isfinite(points).all(-1, keepdim=True)
+        return points, valid
     return points

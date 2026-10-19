@@ -1,0 +1,191 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import re
+import sys
+
+import pytest
+import torch
+
+from kornia.contrib.super_resolution import (
+    RRDBNetBuilder,
+    SmallSRBuilder,
+    SuperResolution,
+    SuperResolutionConfig,
+)
+from kornia.core._compat import torch_version_lt
+
+from testing.base import BaseTester
+
+
+class TestSuperResolutionBuilders(BaseTester):
+    """Pin the public super-resolution entry points.
+
+    Regression test for #4291: ``SuperResolution`` did not implement ``ModelBase``'s
+    abstract ``from_config`` and defined no ``__init__``, so every builder raised at
+    construction. Nothing in ``tests/`` called the builders, which is why CI never
+    noticed.
+    """
+
+    def test_small_sr_builder_builds_and_runs(self, device, dtype):
+        model = SmallSRBuilder.build(pretrained=False).to(device, dtype)
+        out = model(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
+        assert out.shape[0] == 1
+        assert out.shape[1] == 3
+
+    def test_rrdbnet_builder_builds_and_runs(self, device, dtype):
+        model = RRDBNetBuilder.build(pretrained=False).to(device, dtype)
+        out = model(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
+        assert out.shape[0] == 1
+        assert out.shape[1] == 3
+
+    @pytest.mark.parametrize("num_images", [1, 2])
+    def test_rrdb_list_input(self, device, dtype, num_images):
+        # Every RRDB variant has the same identity pre-processor; the 6-block one keeps CPU half precision fast.
+        model = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=False).to(device, dtype)
+        images = [torch.rand(3, 16, 20, device=device, dtype=dtype) for _ in range(num_images)]
+
+        out = model(images)
+
+        assert isinstance(out, list)
+        assert len(out) == num_images
+        for image, actual in zip(images, out):
+            # RealESRGAN_x4plus_anime_6B upscales by 4
+            assert actual.shape == (3, 64, 80)
+            self.assert_close(actual, model(image[None])[0])
+
+    def test_save_pil_writes_the_torch_pixels(self, tmp_path):
+        pytest.importorskip("PIL.Image")
+        from kornia.io import ImageLoadType, load_image
+
+        # the 6-block RRDB variant, random init, on small images
+        model = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=False)
+        images = torch.rand(2, 3, 16, 20)
+
+        written = {}
+        for output_type in ("torch", "pil"):
+            directory = tmp_path / output_type
+            model.save(images, directory=str(directory), output_type=output_type)
+            # file names carry a "_YYYYmmdd_HHMMSS" timestamp, which may differ between the two calls
+            written[output_type] = {
+                re.sub(r"_\d{8}_\d{6}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
+                for p in sorted(directory.iterdir())
+            }
+
+        # source and super-resolved image of each of the two images, under the same names and with the same pixels
+        assert len(written["torch"]) == 4
+        assert written["pil"].keys() == written["torch"].keys()
+        for name, decoded in written["torch"].items():
+            assert torch.equal(written["pil"][name], decoded), name
+
+    @pytest.mark.parametrize("model_name", ["small_sr", "RealESRNet_x4plus"])
+    def test_from_config_dispatches_to_both_families(self, device, dtype, model_name):
+        config = SuperResolutionConfig(model_name=model_name, pretrained=False)
+        model = SuperResolution.from_config(config).to(device, dtype)
+        out = model(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
+        assert out.shape[0] == 1
+        assert out.shape[1] == 3
+
+    def test_from_config_rejects_unknown_model_name(self):
+        with pytest.raises(ValueError, match="small_sr"):
+            SuperResolution.from_config(SuperResolutionConfig(model_name="not_a_model", pretrained=False))
+
+    @pytest.mark.parametrize("builder", [SmallSRBuilder, RRDBNetBuilder])
+    def test_onnx_metadata_is_initialised(self, builder):
+        """``to_onnx`` reads these three; without defaults they are annotations only.
+
+        Regression test for the review of #4335: an ``__init__`` that does not set them
+        leaves export raising ``AttributeError``.
+        """
+        model = builder.build(pretrained=False)
+        assert model.pseudo_image_size is None or isinstance(model.pseudo_image_size, int)
+        assert model.input_image_size is None or isinstance(model.input_image_size, int)
+        assert model.output_image_size is None or isinstance(model.output_image_size, int)
+
+    def test_rrdbnet_onnx_metadata_defaults_to_none(self):
+        """``RRDBNetBuilder`` sets none of the three, so they must default to ``None``."""
+        model = RRDBNetBuilder.build(pretrained=False)
+        assert model.input_image_size is None
+        assert model.output_image_size is None
+        assert model.pseudo_image_size is None
+
+    # The exporter's cost scales with the traced node count, not with the pseudo input size, so
+    # `RRDBNetBuilder`'s 23-block default costs ~4x the 6-block anime variant while traversing the
+    # identical export path. Which variant maps to which architecture is pinned in
+    # tests/models/test_rrdbnet.py::TestRRDBNetBuilder.
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        ("builder", "build_kwargs"),
+        [
+            (SmallSRBuilder, {}),
+            pytest.param(
+                RRDBNetBuilder,
+                {"model_name": "RealESRGAN_x4plus_anime_6B"},
+                # torch < 2.9 defaults ``torch.onnx.export`` to the TorchScript exporter, which walks this
+                # graph in ~130 s on an Apple Silicon Mac and past the budget on the macOS runners; the
+                # dynamo exporter (2.9+) takes ~6 s on the same machine.
+                marks=pytest.mark.skipif(
+                    sys.platform == "darwin" and torch_version_lt(2, 9, 0),
+                    reason="TorchScript exporter (torch < 2.9) exceeds the 120-second timeout on macOS",
+                ),
+            ),
+        ],
+        ids=["SmallSRBuilder", "RRDBNetBuilder"],
+    )
+    def test_to_onnx_exports(self, builder, build_kwargs):
+        """Both families export; this fails with ``AttributeError`` if the metadata is unset."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        builder.build(pretrained=False, **build_kwargs).to_onnx(save=False)
+
+    @pytest.mark.parametrize(("upscale_factor", "image_size"), [(2, 32), (3, None), (4, 64)])
+    def test_output_image_size_matches_the_real_forward(self, device, dtype, upscale_factor, image_size):
+        """``output_image_size`` must equal what a forward actually returns.
+
+        The pre-processor resizes every input to 224 before the network, so the output
+        side is ``224 * upscale_factor`` and does not depend on ``image_size``. Pinning
+        the attribute alone let it disagree with the model it describes.
+        """
+        model = SmallSRBuilder.build(pretrained=False, upscale_factor=upscale_factor, image_size=image_size).to(
+            device, dtype
+        )
+        out = model(torch.rand(1, 3, 32, 32, device=device, dtype=dtype))
+        assert out.shape[-1] == model.output_image_size
+        assert out.shape[-2] == model.output_image_size
+        assert model.output_image_size == 224 * upscale_factor
+
+    def test_to_onnx_with_only_an_input_size_uses_it_for_the_dummy_input(self):
+        """A fixed ``input_image_size`` without a ``pseudo_image_size`` is also the size of the dummy input."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        model = SuperResolution(torch.nn.Conv2d(3, 3, 3, padding=1), torch.nn.Identity(), torch.nn.Identity())
+        model.input_image_size = 64
+        exported = model.to_onnx(save=False, include_pre_and_post_processor=False)
+        dims = exported.graph.input[0].type.tensor_type.shape.dim
+        assert [d.dim_value for d in dims[1:]] == [3, 64, 64]
+
+    def test_onnx_export_shape_matches_the_real_forward(self):
+        """The static size handed to ``to_onnx`` must be the one the graph produces."""
+        onnx = pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        model = SmallSRBuilder.build(pretrained=False, upscale_factor=2, image_size=32)
+        exported = model.to_onnx(save=False)
+        # The legacy TorchScript exporter (the default before torch 2.9) declares the dimensions after a resize of the
+        # dynamic batch as symbolic; shape inference with data propagation reads the size either exporter's graph makes.
+        inferred = onnx.shape_inference.infer_shapes(exported, data_prop=True)
+        out_dim = inferred.graph.output[0].type.tensor_type.shape.dim[-1]
+        assert out_dim.dim_value == model.output_image_size

@@ -72,9 +72,11 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     The computation uses the **4-D cross-product** (cofactor expansion):
     each component of :math:`\mathbf{v}` is a :math:`3 \times 3` determinant of
     the submatrix obtained by dropping the corresponding column of :math:`A`.
-    This is equivalent to computing the last right singular vector of :math:`A`
-    via SVD but replaces the SVD with 48 scalar multiplications and 20
-    additions — no LAPACK or cuSOLVER call is made.
+    For a rank-3 :math:`A` this gives the last right singular vector up to scale
+    and sign, but replaces the SVD with 48 scalar multiplications and 20
+    additions — no LAPACK or cuSOLVER call is made. The sign follows the
+    cofactor formula below (``[I | 0]`` gives ``[0, 0, 0, -1]``), and a lower
+    rank gives the zero vector rather than a unit vector.
 
     .. math::
 
@@ -106,7 +108,7 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     Example:
         >>> A = torch.tensor([[[1., 0., 0., 0.],
         ...                    [0., 1., 0., 0.],
-        ...                    [0., 0., 1., 0.]]])   # null vector is [0,0,0,1]
+        ...                    [0., 0., 1., 0.]]])   # null vector is [0,0,0,-1]
         >>> v = null_vector_3x4(A)                   # shape (1, 4)
         >>> (A @ v.unsqueeze(-1)).squeeze(-1)         # should be near zero
         tensor([[0., 0., 0.]])
@@ -166,3 +168,65 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     )
 
     return torch.stack([v0, v1, v2, v3], dim=-1)
+
+
+def _null_space_lu(A: torch.Tensor) -> torch.Tensor:
+    r"""Right null spaces of a batch of ``(B, m, n)`` matrices, ``m < n``, as ``(B, n, n - m)``.
+
+    With ``A^T = P L U`` from a partial-pivoted LU factorization, ``f^T A^T = 0`` exactly when ``y = P^T f`` solves
+    ``y^T L = 0``. Splitting the unit lower trapezoidal ``L`` into its square top ``L_1`` and bottom ``L_2`` rows
+    gives the basis ``y = [-(L_2 L_1^{-1})^T; I]``. The pivoting chooses the gauge, so no coordinate of the null
+    vector is assumed non-zero, and the basis is not orthonormal.
+
+    Unlike an SVD, a QR or an ``eigh`` of ``A^T A``, a batched LU factorization is one batched kernel on every
+    backend, and working on ``A`` rather than ``A^T A`` does not square its condition number. ``L_1`` is unit
+    triangular, so a rank-deficient ``A`` still gives a basis of null vectors, of dimension ``n - m`` only, as long
+    as the factorization stays finite; callers treat non-finite vectors as degenerate.
+    """
+    batch, m, n = A.shape
+    lu, pivots, _ = torch.linalg.lu_factor_ex(A.mT)
+    square = lu[:, :m, :m]
+    if torch.compiler.is_compiling() and A.device.type == "cuda":
+        # The CUDA meta kernel tests column-major contiguity of this strided LU view. With an unbacked
+        # batch inside while_loop that needs a data-dependent guard. Make that layout check always true,
+        # including empty batches; a row-major copy still needs a guard for the empty case.
+        square = square.mT.contiguous().mT
+    rhs = lu[:, m:, :m]
+    if A.device.type == "mps":
+        # MPS solve_triangular reads strided views wrongly on torch 2.5.1 and 2.9.1.
+        square, rhs = square.contiguous(), rhs.contiguous()
+    lower = torch.linalg.solve_triangular(square, rhs, upper=False, left=False, unitriangular=True)
+    eye = torch.eye(n - m, dtype=A.dtype, device=A.device).expand(batch, -1, -1)
+    permutation, _, _ = torch.lu_unpack(lu, pivots, unpack_data=False)
+    return permutation @ torch.cat([-lower.mT, eye], 1)
+
+
+def _null_space_householder(A: torch.Tensor) -> torch.Tensor:
+    r"""Orthonormal right null spaces of a batch of ``(B, m, n)`` matrices, ``m < n``, as ``(B, n, n - m)``.
+
+    The last ``n - m`` columns of ``Q`` in the QR factorization ``A^T = Q R``, from ``m`` Householder reflections
+    written as batched tensor operations: ``torch.linalg.qr`` has no batched CUDA kernel and loops over the batch.
+    Both this and :func:`_null_space_lu` span the null space to rounding, but a solver that parametrizes its solution
+    in the basis can depend on which basis it gets: on 22000 exact five-point samples, Nister's candidates missed the
+    true essential matrix by more than 1e-3 nine times with this orthonormal basis, seven times with the SVD's, and 81
+    times with the LU one. It costs about four times the LU null space. ``A`` must have full rank: at a vanishing
+    reflector the normalization divides by zero.
+    """
+    batch, m, n = A.shape
+    remaining = A.mT  # (B, n, m): the columns still to be reduced, below the rows already done
+    reflectors = []
+    for _ in range(m):
+        x = remaining[:, :, 0]
+        head = x[:, :1]
+        # The sign that avoids cancellation in the first entry of the reflector.
+        sign = torch.where(head >= 0, torch.ones_like(head), -torch.ones_like(head))
+        v = torch.cat([head + sign * x.norm(dim=1, keepdim=True), x[:, 1:]], 1)
+        v = v / v.norm(dim=1, keepdim=True)
+        reflectors.append(v)
+        remaining = (remaining - 2 * v[:, :, None] * (v[:, None, :] @ remaining))[:, 1:, 1:]
+    # Q e_j for j >= m, with Q = H_0 H_1 ... H_{m-1}: the reflectors in reverse order, H_k acting on rows k and below.
+    Q = torch.eye(n, dtype=A.dtype, device=A.device)[:, m:].expand(batch, n, n - m)
+    for k in reversed(range(m)):
+        v, tail = reflectors[k], Q[:, k:]
+        Q = torch.cat([Q[:, :k], tail - 2 * v[:, :, None] * (v[:, None, :] @ tail)], 1)
+    return Q

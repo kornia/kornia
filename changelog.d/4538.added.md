@@ -1,0 +1,1 @@
+Document per-class coordinate, sampling, crop, resize, padding, and non-rigid warp conventions for 2D geometric augmentations, with executable tests for current behavior and known limitations. Clarify sampler migration after module and container moves.

@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import equalize
 
 
@@ -27,6 +27,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
     r"""Equalize given tensor image or a batch of tensor images randomly.
 
     .. image:: _static/img/RandomEqualize.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         p: Probability to equalize an image.
@@ -37,6 +39,12 @@ class RandomEqualize(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the wrapper clamps before calling :func:`kornia.enhance.equalize`; the functional API
+          retains its strict range check.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`.
@@ -60,10 +68,13 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        input = _clamp_unit_range(input)
         return equalize(input)

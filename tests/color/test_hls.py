@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
+import io
 import math
+import warnings
 
 import pytest
 import torch
@@ -27,6 +29,23 @@ from testing.base import BaseTester
 
 
 class TestRgbToHls(BaseTester):
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_red_hue_rounded_to_period_is_wrapped(self, device, dtype, requires_grad):
+        # A tiny negative red-max hue rounds up to the dtype's 2π (#5369); 4 * eps gives the largest hue below it.
+        blue = {torch.float16: 1e-3, torch.bfloat16: 1e-2, torch.float32: 6e-8, torch.float64: 1e-17}[dtype]
+        near_seam = 4 * torch.finfo(dtype).eps
+        image = torch.tensor([[1.0, 1.0], [0.0, 0.0], [blue, near_seam]], device=device, dtype=dtype)
+        image = image.reshape(1, 3, 1, 2).requires_grad_(requires_grad)
+        hls = kornia.color.rgb_to_hls(image)
+        hue = hls[0, 0, 0]
+
+        assert hue[0] == 0
+        assert 6.2 < hue[1] < 2 * math.pi
+        if requires_grad:
+            hls.sum().backward()
+            assert image.grad is not None
+            assert torch.isfinite(image.grad).all()
+
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
@@ -41,12 +60,12 @@ class TestRgbToHls(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_hls([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hls(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hls(img)
 
     def test_unit(self, device, dtype):
@@ -110,8 +129,6 @@ class TestRgbToHls(BaseTester):
         self.assert_close(kornia.color.rgb_to_hls(data), expected, low_tolerance=True)
 
     def test_nan_rgb_to_hls(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         data = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
 
         # OpenCV
@@ -125,18 +142,94 @@ class TestRgbToHls(BaseTester):
         )
         self.assert_close(kornia.color.rgb_to_hls(data), expected)
 
+    @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_achromatic_values_are_finite_and_canonical(self, device, dtype, gray_level, shape, requires_grad):
+        input_data = torch.full(shape, gray_level, device=device, dtype=dtype)
+        input_data.requires_grad_(requires_grad)
+        output = kornia.color.rgb_to_hls(input_data)
+        expected = torch.empty_like(output)
+        expected[..., 0, :, :].fill_(0.0)
+        expected[..., 1, :, :].fill_(gray_level)
+        expected[..., 2, :, :].fill_(0.0)
+        assert torch.isfinite(output).all(), "hls-achromatic-oracle: nonfinite output"
+        self.assert_close(output, expected)
+        if requires_grad:
+            output.sum().backward()
+            assert input_data.grad is not None
+            assert torch.isfinite(input_data.grad).all(), "hls-achromatic-oracle: nonfinite backward gradient"
+        assert output.shape == input_data.shape
+        assert output.device == input_data.device
+        assert output.dtype == input_data.dtype
+
+    @pytest.mark.parametrize(
+        ("rgb", "expected"),
+        [
+            ([1.5, 0.5, 0.5], [0.0, 1.0, 1.0]),
+            ([2.0, -2.0, -2.0], [0.0, 0.0, 4.0]),
+        ],
+    )
+    def test_out_of_range_zero_lightness_denominator_values(self, device, dtype, rgb, expected):
+        image = torch.tensor(rgb, device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        actual = kornia.color.rgb_to_hls(image)
+        self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))
+
+    @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_achromatic_round_trip_is_finite(self, device, dtype, gray_level, shape):
+        input_data = torch.full(shape, gray_level, device=device, dtype=dtype)
+        hls = kornia.color.rgb_to_hls(input_data)
+        output = kornia.color.hls_to_rgb(hls)
+        assert torch.isfinite(hls).all(), "hls-roundtrip-oracle: nonfinite HLS"
+        assert torch.isfinite(output).all(), "hls-roundtrip-oracle: nonfinite RGB"
+        self.assert_close(output, input_data)
+        assert output.shape == input_data.shape
+        assert output.device == input_data.device
+        assert output.dtype == input_data.dtype
+
     def test_nan_random_extreme_values(self, device, dtype):
         # generate extreme colors randomly
         ext_rand_slice = (torch.rand((1, 3, 32, 32), dtype=dtype, device=device) >= 0.5).float()
         assert not kornia.color.rgb_to_hls(ext_rand_slice).isnan().any()
 
-    @pytest.mark.grad()
+    # Independent oracle for RGB=(0.2, 0.5, 0.4): chroma=0.3, lightness=0.35,
+    # and green-max hue=((0.4-0.2)/(0.3+eps)+2)*pi/3, saturation=0.3/(0.7+eps).
+    @pytest.mark.parametrize(
+        ("eps", "expected"),
+        [
+            (0.0, [2.792526803190927, 0.35, 0.4285714285714286]),
+            (0.1, [2.617993877991494, 0.35, 0.375]),
+        ],
+    )
+    def test_eps_is_added_to_both_nonzero_denominators(self, device, dtype, eps, expected):
+        image = torch.tensor([[[[0.2]], [[0.5]], [[0.4]]]], device=device, dtype=dtype)
+        actual = kornia.color.rgb_to_hls(image, eps=eps)
+        self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))
+
+    @pytest.mark.parametrize("max_channel", [0, 1, 2])
+    @pytest.mark.parametrize("eps", [0.0, 1e-8, 0.1])
+    def test_near_gray_gradients(self, device, dtype, max_channel, eps):
+        # Adjacent 8-bit values near white overflow the backward of RGB / chroma in float16.
+        image = torch.full((2, 3, 2, 3), 250 / 255, device=device, dtype=dtype)
+        image[:, max_channel] = 251 / 255
+        image.requires_grad_()
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        reference = image.detach().to(reference_dtype).requires_grad_()
+
+        actual = kornia.color.rgb_to_hls(image, eps)[..., 0, :, :]
+        expected = kornia.color.rgb_to_hls(reference, eps)[..., 0, :, :]
+        actual.sum().backward()
+        expected.sum().backward()
+
+        self.assert_close(actual, expected.to(dtype))
+        self.assert_close(image.grad, reference.grad.to(dtype))
+
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hls, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -150,6 +243,41 @@ class TestRgbToHls(BaseTester):
         ops = kornia.color.RgbToHls().to(device, dtype)
         fcn = kornia.color.rgb_to_hls
         self.assert_close(ops(img), fcn(img))
+
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer):
+        # Without grad the channels used to be written with `out=` into views of one output tensor, and Dynamo
+        # rejects an `out=` tensor that is not contiguous.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        compiled = torch_optimizer(kornia.color.rgb_to_hls, fullgraph=True)
+        self.assert_close(compiled(img), kornia.color.rgb_to_hls(img))
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_matches_eager(self, dtype):
+        # The TorchScript exporter (the torch.onnx.export default before torch 2.9) did not trace the `out=` writes
+        # into views of the output, so the exported graph ignored its input and returned zeros.
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        traced = torch.rand(1, 3, 4, 5, dtype=dtype)
+        image = torch.rand(2, 3, 6, 7, dtype=dtype)
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(
+                kornia.color.RgbToHls(),
+                (traced,),
+                buffer,
+                input_names=["image"],
+                output_names=["hls"],
+                dynamic_axes={"image": {0: "B", 2: "H", 3: "W"}, "hls": {0: "B", 2: "H", 3: "W"}},
+                opset_version=17,
+                dynamo=False,
+            )
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        exported = torch.from_numpy(session.run(None, {"image": image.numpy()})[0])
+        self.assert_close(exported, kornia.color.rgb_to_hls(image))
 
 
 class TestHlsToRgb(BaseTester):
@@ -167,12 +295,12 @@ class TestHlsToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.hls_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.hls_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.hls_to_rgb(img)
 
     def test_unit(self, device, dtype):
@@ -248,13 +376,11 @@ class TestHlsToRgb(BaseTester):
         data[:, 0] -= 4 * math.pi
         self.assert_close(f(data), expected, low_tolerance=True)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hls_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

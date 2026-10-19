@@ -17,9 +17,10 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Optional, Union
+from typing import Any, ClassVar, Optional, Union
 
 import torch
+from torch import nn
 
 import kornia
 from kornia.core.external import PILImage as Image
@@ -31,11 +32,65 @@ __all__ = ["SemanticSegmentation"]
 class SemanticSegmentation(ModelBase):
     """Semantic Segmentation is a module that wraps a semantic segmentation model.
 
-    This module uses SegmentationModel library for semantic segmentation.
+    It runs ``pre_processor``, ``model`` and ``post_processor`` in turn on a batch or a list of images.
+    :class:`~kornia.models.segmentation.SegmentationModelsBuilder` builds one around a
+    ``segmentation_models_pytorch`` network and its encoder's preprocessing.
+
+    Args:
+        model: The segmentation network, mapping a ``(B, 3, H, W)`` batch to ``(B, C, H, W)`` predictions.
+            :meth:`visualize` expects per-pixel class probabilities (a softmax head); raw logits raise.
+        pre_processor: Pre-processing module applied to the input images.
+        post_processor: Post-processing module applied to the network output.
+        name: Optional name, used by :meth:`save` for file names.
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
+
+    name: str = "segmentation"
+
+    def __init__(
+        self,
+        model: nn.Module,
+        pre_processor: nn.Module,
+        post_processor: nn.Module,
+        name: Optional[str] = None,
+    ) -> None:
+        """Initialize SemanticSegmentation.
+
+        Args:
+            model: The segmentation network.
+            pre_processor: Pre-processing module applied to the input images.
+            post_processor: Post-processing module applied to the network output.
+            name: Optional name, used by :meth:`save` for file names.
+
+        """
+        super().__init__()
+        self.model = model.eval()
+        self.pre_processor = pre_processor
+        self.post_processor = post_processor
+        if name is not None:
+            self.name = name
+
+    @staticmethod
+    def from_config(config: Any) -> SemanticSegmentation:
+        """Build SemanticSegmentation from config.
+
+        This is a placeholder to satisfy the abstract method requirement.
+        Use :meth:`SegmentationModelsBuilder.build` or instantiate SemanticSegmentation directly.
+
+        Args:
+            config: Configuration object (not used, kept for interface compatibility).
+
+        Returns:
+            SemanticSegmentation instance.
+
+        """
+        raise NotImplementedError(
+            "SemanticSegmentation.from_config() is not implemented. "
+            "Use SegmentationModelsBuilder.build() or instantiate SemanticSegmentation directly."
+        )
 
     @torch.inference_mode()
     def forward(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
@@ -117,13 +172,23 @@ class SemanticSegmentation(ModelBase):
         else:
             raise ValueError(f"Semantic mask must be of shape (C, H, W) or (B, C, H, W), got {semantic_mask.shape}.")
 
-        if torch.allclose(
-            semantic_mask.sum(dim=channel_dim), torch.tensor(1, dtype=semantic_mask.dtype, device=semantic_mask.device)
-        ):
+        # A softmax head sums to one per pixel up to rounding. Allow ``C * eps`` of the mask's dtype: a
+        # half-precision sum of ``C`` probabilities is off by about that much, far more than allclose's
+        # float32-sized default tolerance, which rejected every float16 and bfloat16 model.
+        is_probabilities = False
+        if semantic_mask.is_floating_point():
+            tol = semantic_mask.shape[channel_dim] * torch.finfo(semantic_mask.dtype).eps
+            one = torch.tensor(1, dtype=semantic_mask.dtype, device=semantic_mask.device)
+            is_probabilities = torch.allclose(semantic_mask.sum(dim=channel_dim), one, rtol=tol, atol=tol)
+        if is_probabilities:
+            device, dtype = semantic_mask.device, semantic_mask.dtype
             # Softmax is used, thus, muliclass segmentation
             semantic_mask = semantic_mask.argmax(dim=channel_dim, keepdim=True)
-            # Create a colormap for each pixel based on the class with the highest probability
-            output = colors[semantic_mask.squeeze(channel_dim)]
+            # Create a colormap for each pixel based on the class with the highest probability. The colormap is
+            # generated on the CPU in float32 (a seeded CPU generator keeps it reproducible), so it has to
+            # follow the mask's device and dtype before the gather: indexing a CPU tensor with CUDA or MPS
+            # indices raises, and the visualization keeps the model's dtype.
+            output = colors.to(device=device, dtype=dtype)[semantic_mask.squeeze(channel_dim)]
             if semantic_mask.dim() == 3:
                 output = output.permute(2, 0, 1)
             elif semantic_mask.dim() == 4:
@@ -146,7 +211,7 @@ class SemanticSegmentation(ModelBase):
         output_type: str = "torch",
         colormap: str = "random",
         manual_seed: int = 2147,
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Visualize the segmentation masks.
 
         Args:
@@ -154,7 +219,7 @@ class SemanticSegmentation(ModelBase):
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
             semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
-            output_type: The type of output, can be "torch" or "PIL".
+            output_type: The type of output, can be "torch" or "pil".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
 
@@ -183,7 +248,7 @@ class SemanticSegmentation(ModelBase):
             colors = self.get_colormap(semantic_masks.size(1), colormap, manual_seed=manual_seed)
             outputs = self.visualize_output(semantic_masks, colors)
 
-        return self._tensor_to_type(outputs, output_type, is_batch=True if isinstance(outputs, torch.Tensor) else False)
+        return self._tensor_to_type(outputs, output_type, is_batch=isinstance(outputs, torch.Tensor))
 
     def save(
         self,
@@ -202,12 +267,14 @@ class SemanticSegmentation(ModelBase):
             semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
             directory: The directory to save the results.
-            output_type: The type of output, can be "torch" or "PIL".
+            output_type: "torch" or "pil", as in :meth:`visualize`; it does not change the files written.
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
 
         """
-        colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
+        self._check_output_type(output_type)
+        # The overlay and the files are made from the tensors, whatever output type was asked for.
+        colored_masks = self.visualize(images, semantic_masks, "torch", colormap=colormap, manual_seed=manual_seed)
         overlaid: Union[torch.Tensor, list[torch.Tensor]]
         if isinstance(images, torch.Tensor) and isinstance(colored_masks, torch.Tensor):
             overlaid = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)

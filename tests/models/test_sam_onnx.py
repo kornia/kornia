@@ -18,8 +18,13 @@
 """ONNX export tests for SAM (image encoder subgraph)."""
 
 import pytest
+import torch
 
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.sam.model import Sam, SamConfig
+
+# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
+pytestmark = pytest.mark.device_agnostic
 
 
 def test_sam_has_to_onnx():
@@ -28,6 +33,19 @@ def test_sam_has_to_onnx():
 
 
 @pytest.mark.timeout(120)
+@pytest.mark.xfail(
+    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+    reason=(
+        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph in the CPU "
+        "build (the CUDA build exports it): DispatchError 'No decompositions registered for the "
+        "real-valued input'; not yet reported upstream"
+    ),
+    raises=torch.onnx.OnnxExporterError,
+    # Strict on the CPU builds, where an upstream fix inside 2.14.x must announce itself as an XPASS failure rather
+    # than sit silently until the 2.15 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130 on
+    # Linux), so there the marker is not strict.
+    strict=torch.version.cuda is None,
+)
 def test_sam_encoder_to_onnx(tmp_path):
     """Sam.to_onnx() exports the image encoder subgraph with correct output name."""
     onnx = pytest.importorskip("onnx")
@@ -35,7 +53,7 @@ def test_sam_encoder_to_onnx(tmp_path):
 
     # Create a tiny pseudo-SAM model to prevent CI timeouts during ONNX trace
     config = SamConfig(
-        model_type="vit_b",
+        model_type=None,
         encoder_embed_dim=16,
         encoder_depth=1,
         encoder_num_heads=1,
@@ -43,6 +61,8 @@ def test_sam_encoder_to_onnx(tmp_path):
     )
     model = Sam.from_config(config)
     model.eval()
+    # The tiny encoder, not ViT-B (89.7M encoder parameters): 680,128, mostly the neck's 3 x 3 convolution.
+    assert sum(p.numel() for p in model.image_encoder.parameters()) < 1e6
 
     onnx_path = tmp_path / "sam_encoder.onnx"
     # Export only the image encoder (Sam.to_onnx overrides the full-model export).

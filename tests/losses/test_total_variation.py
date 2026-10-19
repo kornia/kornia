@@ -19,11 +19,53 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
 
 
 class TestTotalVariation(BaseTester):
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1), (2, 3, 1, 4), (2, 3, 4, 1)])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_singleton_spatial_axis(self, device, dtype, shape, reduction):
+        height, width = shape[-2:]
+        image = torch.arange(height * width, device=device, dtype=dtype).reshape(height, width).expand(shape)
+        expected_value = 0.0 if height == width == 1 else 1.0 if reduction == "mean" else 3.0
+        expected = torch.full(shape[:-2], expected_value, device=device, dtype=dtype)
+
+        self.assert_close(kornia.losses.total_variation(image, reduction), expected)
+
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1)])
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+    def test_singleton_spatial_axis_integer(self, device, input_dtype, shape):
+        height, width = shape
+        image = torch.arange(height * width, device=device, dtype=input_dtype).reshape(shape)
+        expected = torch.tensor(0.0 if height == width == 1 else 1.0, device=device)
+
+        self.assert_close(kornia.losses.total_variation(image, reduction="mean"), expected)
+
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1)])
+    def test_singleton_spatial_axis_gradient(self, device, dtype, shape):
+        height, width = shape
+        image = torch.arange(height * width, device=device, dtype=dtype).reshape(shape).requires_grad_()
+        loss = kornia.losses.total_variation(image, reduction="mean")
+        loss.backward()
+        expected = torch.zeros_like(image).flatten()
+        if height * width > 1:
+            expected[0], expected[-1] = -1 / 3, 1 / 3
+
+        self.assert_close(loss, image.new_tensor(0.0 if height == width == 1 else 1.0))
+        self.assert_close(image.grad, expected.reshape(shape))
+
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 4), (4, 1)])
+    def test_dynamo_singleton_spatial_axis(self, device, dtype, shape, torch_optimizer):
+        height, width = shape
+        image = torch.arange(height * width, device=device, dtype=dtype).reshape(shape)
+        expected = image.new_tensor(0.0 if height == width == 1 else 1.0)
+        op_optimized = torch_optimizer(kornia.losses.total_variation)
+
+        self.assert_close(op_optimized(image, reduction="mean"), expected)
+
     # Total variation of constant vectors is 0
     @pytest.mark.parametrize(
         "pred, expected",
@@ -47,6 +89,27 @@ class TestTotalVariation(BaseTester):
     def test_tv_on_constant_int(self, device, pred, expected):
         actual = kornia.losses.total_variation(pred.to(device, dtype=torch.int32), reduction="mean")
         self.assert_close(actual, expected.to(device))
+
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 3, 2, 3)])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_tv_integer_extrema(self, device, input_dtype, shape, reduction):
+        limits = torch.iinfo(input_dtype)
+        pred = torch.tensor(
+            [[limits.max, limits.min, 0], [limits.max, limits.min, 0]], device=device, dtype=input_dtype
+        ).expand(shape)
+        # Four horizontal edges: two span the full range, two have magnitude abs(min).
+        expected_sum = 2 * (limits.max - limits.min + abs(limits.min))
+        expected = torch.tensor(expected_sum, device=device, dtype=torch.int64)
+        if reduction == "mean":
+            expected = expected.float() / 4
+        expected = expected.expand(shape[:-2])
+
+        self.assert_close(kornia.losses.total_variation(pred, reduction), expected)
+        self.assert_close(kornia.losses.total_variation(pred.flip(-1), reduction), expected)
+        self.assert_close(kornia.losses.total_variation(pred.transpose(-2, -1), reduction), expected)
+        if reduction == "sum":
+            self.assert_close(kornia.losses.TotalVariation()(pred), expected)
 
     # Total variation for 3D tensors
     @pytest.mark.parametrize(
@@ -142,6 +205,27 @@ class TestTotalVariation(BaseTester):
         actual = kornia.losses.total_variation(pred, reduction=reduction)
         self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
 
+    @pytest.mark.parametrize("layout", ["contiguous", "channels_last", "permuted"])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_tv_matches_the_two_dim_reduction(self, device, dtype, layout, reduction):
+        # The reduction runs over flatten(-2) rather than dim=(-2, -1); the two must agree
+        # for any memory layout the flatten has to copy, not only a contiguous input.
+        pred = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        if layout == "channels_last":
+            pred = pred.contiguous(memory_format=torch.channels_last)
+        elif layout == "permuted":
+            pred = pred.permute(0, 1, 3, 2)
+
+        dif1 = (pred[..., 1:, :] - pred[..., :-1, :]).abs()
+        dif2 = (pred[..., :, 1:] - pred[..., :, :-1]).abs()
+        if reduction == "sum":
+            expected = dif1.sum(dim=(-2, -1)) + dif2.sum(dim=(-2, -1))
+        else:
+            expected = dif1.mean(dim=(-2, -1)) + dif2.mean(dim=(-2, -1))
+
+        actual = kornia.losses.total_variation(pred, reduction=reduction)
+        self.assert_close(actual, expected)
+
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize("pred", [1, [1, 2]])
     def test_tv_on_invalid_types(self, device, dtype, pred):
@@ -156,6 +240,16 @@ class TestTotalVariation(BaseTester):
 
         self.assert_close(op(image), op_optimized(image))
 
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_dynamo_integer(self, device, input_dtype, reduction, torch_optimizer):
+        limits = torch.iinfo(input_dtype)
+        image = torch.tensor([[limits.max, limits.min], [limits.max, limits.min]], device=device, dtype=input_dtype)
+        op = kornia.losses.total_variation
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(image, reduction), op_optimized(image, reduction))
+
     def test_module(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
 
@@ -164,8 +258,41 @@ class TestTotalVariation(BaseTester):
 
         self.assert_close(op(image), op_module(image))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         self.gradcheck(kornia.losses.total_variation, (image,))
+
+
+class TestConventionsTotalVariation(BaseTester):
+    @staticmethod
+    def _edges(device, dtype):
+        # H = 5, W = 8. Channel 0 holds one vertical edge (a step along W in each of the 5 rows), channel 1 one
+        # horizontal edge (a step along H in each of the 8 columns), channel 2 is constant; sample 1 doubles sample 0.
+        img = torch.zeros(2, 3, 5, 8)
+        img[:, 0, :, 3:] = 1.0
+        img[:, 1, 2:, :] = 1.0
+        img[:, 2] = 0.5
+        img[1] *= 2
+        return img.to(device, dtype)
+
+    def test_convention_total_variation_sums_over_the_last_two_axes(self, device, dtype):
+        # Anisotropic L1 total variation, sum |d/dy| + sum |d/dx| over the last two axes only: (B, C, H, W) gives
+        # (B, C), with the channels kept apart. The default reduction is 'sum', and TotalVariation always sums.
+        img = self._edges(device, dtype)
+        expected = torch.tensor([[5.0, 8.0, 0.0], [10.0, 16.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.losses.total_variation(img), expected)
+        self.assert_close(kornia.losses.TotalVariation()(img), expected)
+        self.assert_close(kornia.losses.total_variation(img[0, 1]), expected[0, 1])
+
+    def test_convention_total_variation_mean_divides_each_term_by_its_own_count(self, device, dtype):
+        # 'mean' is mean |d/dy| over the (H - 1) W vertical differences plus mean |d/dx| over the H (W - 1) horizontal
+        # ones: a vertical edge gives 1 / (W - 1) = 1/7 and a horizontal edge 1 / (H - 1) = 1/4, where dividing the sum
+        # by H W would give 1/8 and 1/5. Only 'mean' and 'sum' are accepted.
+        img = self._edges(device, dtype)
+        expected = torch.tensor([[1 / 7, 1 / 4, 0.0], [2 / 7, 2 / 4, 0.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.losses.total_variation(img, reduction="mean"), expected)
+        # Relabelling check: transposing the image transposes both counts with it, so the values stay.
+        self.assert_close(kornia.losses.total_variation(img.transpose(-2, -1), reduction="mean"), expected)
+        with pytest.raises((ValueError, BaseError)):
+            kornia.losses.total_variation(img, reduction="none")

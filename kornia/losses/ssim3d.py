@@ -34,13 +34,16 @@ def ssim3d_loss(
 ) -> torch.Tensor:
     r"""Compute a loss based on the SSIM measurement.
 
-    The loss, or the Structural dissimilarity (DSSIM) is described as:
+    The loss is the structural dissimilarity (DSSIM) of each voxel, clamped to :math:`[0, 1]`:
 
     .. math::
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
 
-    See :meth:`~kornia.losses.ssim` for details about SSIM.
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.ssim3d` for the window, the border and ``max_val``.
+        - The default ``reduction='mean'`` averages every element; ``'none'`` keeps the shape of the SSIM map.
+        - The per-voxel loss is ``clamp((1 - SSIM) / 2, 0, 1)``, as in :func:`~kornia.losses.ssim_loss`.
 
     Args:
         img1: the first input image with shape :math:`(B, C, D, H, W)`.
@@ -68,7 +71,7 @@ def ssim3d_loss(
     ssim_map: torch.Tensor = metrics.ssim3d(img1, img2, window_size, max_val, eps, padding)
 
     # compute and reduce the loss
-    loss = 1.0 - ssim_map
+    loss = torch.clamp((1.0 - ssim_map) / 2, min=0, max=1)
 
     if reduction == "mean":
         loss = loss.mean()
@@ -85,13 +88,14 @@ def ssim3d_loss(
 class SSIM3DLoss(nn.Module):
     r"""Create a criterion that computes a loss based on the SSIM measurement.
 
-    The loss, or the Structural dissimilarity (DSSIM) is described as:
+    The loss is the structural dissimilarity (DSSIM) of each voxel, clamped to :math:`[0, 1]`:
 
     .. math::
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
 
-    See :meth:`~kornia.losses.ssim_loss` for details about SSIM.
+    Convention:
+        - See the Convention block of :func:`~kornia.losses.ssim3d_loss`.
 
     Args:
         window_size: the size of the gaussian kernel to smooth the images.
