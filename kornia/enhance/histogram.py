@@ -118,6 +118,8 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         histogram2d uses the same batch convention for a joint density. bandwidth must be
         finite and positive; the check runs on CPU and CUDA via ``torch._assert_async`` and
         raises ``RuntimeError``. kornia skips it on MPS by design, so invalid values do not raise there.
+        For float16 and bfloat16 samples and bins, the kernels are evaluated in float32 and the result
+        is cast back to that dtype.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -138,10 +140,12 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         torch.Size([1, 128])
 
     """
-    output_dtype = torch.promote_types(torch.promote_types(x.dtype, bins.dtype), bandwidth.dtype)
-    if output_dtype in (torch.float16, torch.bfloat16):
+    # In half precision the gradient reaches the samples through per-bin terms below the normal range: evaluate the
+    # kernels in float32. The 0-d bandwidth does not promote the kernels, so it does not pick the dtype either.
+    kernel_dtype = torch.promote_types(x.dtype, bins.dtype)
+    if kernel_dtype in (torch.float16, torch.bfloat16):
         pdf, _ = marginal_pdf(x.float().unsqueeze(2), bins.float(), bandwidth.float(), epsilon)
-        return pdf.to(output_dtype)
+        return pdf.to(kernel_dtype)
 
     pdf, _ = marginal_pdf(x.unsqueeze(2), bins, bandwidth, epsilon)
 
@@ -194,7 +198,7 @@ def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: 
     """Hand back the image's dtype when it can represent the histogram counts.
 
     Only for auto-built centers on a floating-point image: an integer image or explicit ``centers`` keep the promoted
-    dtype they always had, and half-precision counts stay float32 because ordinary image counts can exceed their range.
+    dtype (at least float32), and half-precision counts stay float32 because ordinary image counts exceed their range.
     """
     if auto_centers and image.is_floating_point() and image.dtype not in (torch.float16, torch.bfloat16):
         return hist.to(image.dtype)
@@ -244,8 +248,9 @@ def image_histogram2d(
         Spatial axes are the final two axes; input (H, W), (C, H, W), and
         (B, C, H, W) return matching leading axes followed by bins; other ranks raise. Automatic
         centers lie at min + (i + 0.5) * bandwidth; values outside the supplied range contribute
-        according to the selected kernel rather than being clipped into an endpoint bin. Float16 and bfloat16 images
-        are accumulated and returned in float32 so large bin counts remain finite.
+        according to the selected kernel rather than being clipped into an endpoint bin. Float16 and
+        bfloat16 images are accumulated and returned in float32, or in the dtype of wider explicit
+        ``centers``: the bin counts of ordinary images exceed float16's range (65504) and bfloat16's precision.
 
     The calculation uses triangular kernel density estimation.
 

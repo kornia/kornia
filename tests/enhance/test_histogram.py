@@ -332,22 +332,28 @@ class TestHistogram2d(BaseTester):
 class TestHistogram(BaseTester):
     fcn = kornia.enhance.histogram
 
-    def test_float16_gradient_matches_float64_reference(self):
-        torch.manual_seed(0)
-        samples = torch.rand(1, 262144).half().requires_grad_()
-        bins = torch.linspace(0, 1, 64).half()
-        bandwidth = torch.tensor(0.01).half()
-        weights = torch.arange(64, dtype=torch.float16)
+    @pytest.mark.parametrize("bandwidth_dtype", ["input", "float32"])
+    def test_gradient_of_65536_samples_matches_float64(self, device, dtype, bandwidth_dtype):
+        # The gradient reaches the samples through per-bin kernel terms that scale like 1 / N and fall below the
+        # float16 normal range. A float32 bandwidth tensor, as in the docstring example, must not skip the fix.
+        index = torch.arange(65536, dtype=torch.float64)
+        x = ((index * 0.6180339887498949) % 1)[None].to(device=device, dtype=dtype)
+        bins = torch.linspace(0, 1, 64, device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.01, device=device, dtype=dtype if bandwidth_dtype == "input" else torch.float32)
+        weights = torch.linspace(-1, 1, 64, dtype=torch.float64).to(dtype)
 
-        actual = TestHistogram.fcn(samples, bins, bandwidth)
-        assert actual.dtype == torch.float16
-        (actual * weights).sum().backward()
+        def grad(x, bins, bandwidth):
+            x = x.detach().requires_grad_()
+            hist = TestHistogram.fcn(x, bins, bandwidth)
+            assert hist.dtype == x.dtype
+            (hist * weights.to(hist)).sum().backward()
+            return x.grad.cpu().double()
 
-        reference_samples = samples.detach().double().requires_grad_()
-        reference = TestHistogram.fcn(reference_samples, bins.double(), bandwidth.double())
-        (reference * weights.double()).sum().backward()
-
-        self.assert_close(samples.grad.float(), reference_samples.grad.half().float(), atol=1e-3, rtol=1e-3)
+        # float64 reference on the CPU, from the same dtype-rounded inputs.
+        expected = grad(x.cpu().double(), bins.cpu().double(), bandwidth.cpu().double())
+        actual = grad(x, bins, bandwidth)
+        tolerance = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        assert ((actual - expected).norm() / expected.norm()).item() < tolerance
 
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 16, device=device, dtype=dtype)
