@@ -189,20 +189,23 @@ class TestONNXExportMixin(BaseTester):
         assert dims[1] == 3
         assert all(isinstance(d, str) for d in (dims[0], dims[2], dims[3]))
 
-        x = torch.rand(2, 3, 5, 7)
-        with torch.no_grad():
-            expected = model(x)
-        self.assert_close(_run(op, x), expected)
+        # the batch is traced at 2: batches 1 and 3 check that the graph does not keep it
+        for batch in (1, 2, 3):
+            x = torch.rand(batch, 3, 5, 7)
+            with torch.no_grad():
+                expected = model(x)
+            self.assert_close(_run(op, x), expected)
 
     def test_pseudo_shape_alone_sets_the_channel_count(self):
         # Without input_shape, the default's fixed channel count follows an explicit pseudo shape.
         model = ImageSequential(nn.Conv2d(1, 1, 1))
         op = model.to_onnx(save=False, pseudo_shape=[1, 1, 32, 32])
 
-        x = torch.rand(2, 1, 5, 7)
-        with torch.no_grad():
-            expected = model(x)
-        self.assert_close(_run(op, x), expected)
+        for batch in (1, 2, 3):
+            x = torch.rand(batch, 1, 5, 7)
+            with torch.no_grad():
+                expected = model(x)
+            self.assert_close(_run(op, x), expected)
 
         dims = _input_dims(op)
         assert dims[1] == 1

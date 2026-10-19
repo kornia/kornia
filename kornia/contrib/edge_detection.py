@@ -28,6 +28,7 @@ from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.enhance.normalize import Normalize
+from kornia.geometry.transform import resize
 from kornia.models.base import ModelBase
 from kornia.models.dexined import DexiNed
 from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
@@ -56,6 +57,8 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
     """
 
     name: str = "edge_detection"
+    # Set by ``to_onnx`` for the duration of its export, read by ``forward`` (see there).
+    _exporting_to_onnx: bool = False
 
     def __init__(
         self,
@@ -112,12 +115,58 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         Returns:
             A list with one output of shape :math:`(1, 1, H, W)` per input image, resized back to that image's size.
             For a detector from :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, it holds edge
-            probabilities in :math:`[0, 1]`.
+            probabilities in :math:`[0, 1]`. Under an ONNX export with a ``ResizePostProcessor``, one
+            :math:`(B, 1, H, W)` tensor at the input's size instead, see :meth:`to_onnx`.
+
+        Raises:
+            ValueError: Under an ONNX export through :meth:`to_onnx`, or a direct one on the TorchScript exporter or,
+                from torch 2.9, the dynamo exporter, if the ``ResizePostProcessor`` resizes with ``"area"``.
 
         """
+        if (
+            (self._exporting_to_onnx or torch.onnx.is_in_onnx_export())
+            and isinstance(images, torch.Tensor)
+            and self._resizes_back_on_export()
+        ):
+            # An exported graph returns one tensor, so the maps of a batch, whose images share a size, are resized
+            # back together: the ``torch.cat`` of the eager list. The size is read from the input, a symbolic size
+            # under every exporter, not from the pre-processor's ``original_sizes``, whose values
+            # ``ResizePostProcessor`` reads with ``.tolist()``. The flag covers the dynamo exporter below torch 2.9,
+            # where ``is_in_onnx_export()`` is False; ``is_exporting()`` would also be True under ``torch.compile``
+            # there (#5037).
+            interpolation = self._export_interpolation()
+            height, width = images.shape[-2:]
+            out_images = self.model(self.pre_processor(images)[0])
+            return resize(out_images, (height, width), interpolation=interpolation)
         images, image_sizes = self.pre_processor(images)
         out_images = self.model(images)
         return self.post_processor(out_images, image_sizes)
+
+    def _resizes_back_on_export(self) -> bool:
+        """Whether an export replaces the post-processor: a ``ResizePostProcessor`` that keeps its own ``forward``.
+
+        A subclass that overrides ``forward`` is exported as that ``forward`` computes.
+        """
+        return (
+            isinstance(self.post_processor, ResizePostProcessor)
+            and type(self.post_processor).forward is ResizePostProcessor.forward
+        )
+
+    def _export_interpolation(self) -> str:
+        """The post-processor's interpolation mode, which an export resizes the maps back with.
+
+        Raises:
+            ValueError: For ``"area"``, which an exported graph cannot compute at the input's size.
+        """
+        interpolation = self.post_processor.interpolation_mode
+        if interpolation == "area":
+            raise ValueError(
+                'A ResizePostProcessor with interpolation_mode="area" cannot be exported with the input\'s size: '
+                '"area" resizing is adaptive average pooling, which an exported graph cannot compute to a size known '
+                'only at run time. Build the post-processor with "bilinear", "bicubic", "nearest" or "nearest-exact" '
+                "for export."
+            )
+        return interpolation
 
     def visualize(
         self,
@@ -178,36 +227,56 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
     ) -> onnx.ModelProto:
         """Export the current edge detection model to an ONNX model file.
 
+        The graph takes one :math:`(B, 3, H, W)` tensor. With the pre- and post-processor and a
+        ``ResizePostProcessor``, it returns the edge maps of the batch as one :math:`(B, 1, H, W)` tensor at the
+        input's size, resized with the post-processor's ``"bilinear"``, ``"bicubic"``, ``"nearest"`` or
+        ``"nearest-exact"`` mode: the ``torch.cat`` of the list that :meth:`forward` returns. A subclass of
+        ``ResizePostProcessor`` that overrides ``forward`` is exported as its ``forward`` computes. Export through
+        this method rather than ``torch.onnx.export(detector, ...)``: below torch 2.9, a direct
+        ``torch.onnx.export(..., dynamo=True)`` traces the eager per-image list instead.
+
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"kornia_<name>_<image_size>.onnx"``, for
+                example ``"kornia_dexined_352.onnx"``.
             image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, image_size will be dynamic. For DexiNed, recommended scale is 352.
+                The height and width of the graph's input, which the returned maps have too. If None, both are
+                dynamic. The pre-processor keeps the size it was built with, so the model runs at that size
+                whatever ``image_size`` is.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
-                If to save the model or load it.
+                If True, write the model to ``onnx_name``; it is returned either way.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
             kwargs: Additional arguments to convert to onnx.
 
+        Raises:
+            ValueError: With the pre- and post-processor, if the ``ResizePostProcessor`` resizes with ``"area"``:
+                adaptive average pooling cannot be exported with the input's size.
+
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
+        if include_pre_and_post_processor and self._resizes_back_on_export():
+            self._export_interpolation()  # raises before the export for a mode it cannot export
 
-        return ONNXExportMixin.to_onnx(
-            self,
-            onnx_name,
-            input_shape=[-1, 3, image_size or -1, image_size or -1],
-            output_shape=[-1, 1, image_size or -1, image_size or -1],
-            pseudo_shape=[1, 3, image_size or 352, image_size or 352],
-            model=self if include_pre_and_post_processor else self.model,
-            save=save,
-            additional_metadata=additional_metadata,
-            **kwargs,
-        )
+        previous = self._exporting_to_onnx
+        self._exporting_to_onnx = True
+        try:
+            return ONNXExportMixin.to_onnx(
+                self,
+                onnx_name,
+                input_shape=[-1, 3, image_size or -1, image_size or -1],
+                output_shape=[-1, 1, image_size or -1, image_size or -1],
+                pseudo_shape=[1, 3, image_size or 352, image_size or 352],
+                model=self if include_pre_and_post_processor else self.model,
+                save=save,
+                additional_metadata=additional_metadata,
+                **kwargs,
+            )
+        finally:
+            self._exporting_to_onnx = previous
 
 
 class EdgeDetectorBuilder:
