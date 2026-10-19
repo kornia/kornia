@@ -1,0 +1,1 @@
+`find_homography_lines_dlt` and `find_homography_lines_dlt_iterated` raise `AssertionError` for fewer than four line segments, as `find_homography_dlt` does for fewer than four points. Previously they returned an arbitrary homography from the under-determined system (all NaN for zero segments) without an error.

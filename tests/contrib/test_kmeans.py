@@ -132,7 +132,7 @@ class TestKMeans(BaseTester):
         kmeans.fit(torch.rand((1000, 5), dtype=dtype))
         with pytest.raises(Exception) as errinfo:
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
-        assert "7 != 5" in str(errinfo)
+        assert "dimension 1: expected 5, got 7" in str(errinfo.value)
 
         # case: num_clusters does not match the number of rows in an explicit cluster_centers
         starting_centers = torch.rand((5, 2), device=device, dtype=dtype)
@@ -254,7 +254,7 @@ class TestKMeans(BaseTester):
         ).to(device, dtype)
 
     def test_zero_tolerance_stops_at_the_fixed_point(self, device, dtype):
-        # B-25: tolerance=0.0 with the default max_iterations=0 never returned.
+        # tolerance=0.0 with the default max_iterations=0 never returned.
         X = self._blobs(device, dtype)
         km = kornia.contrib.KMeans(3, X[[0, 60, 120]].clone(), tolerance=0.0)
         calls = {"n": 0}
@@ -277,7 +277,7 @@ class TestKMeans(BaseTester):
             kornia.contrib.KMeans(3, None, tolerance=-1.0)
 
     def test_refit_samples_fresh_initial_centres(self, device, dtype):
-        # B-26: the second fit reused the first fit's sampled centres (and raised for another dimension).
+        # A second fit reused the first fit's sampled centres (and raised for another dimension).
         km = kornia.contrib.KMeans(3, None, max_iterations=5, seed=0)
         km.fit(torch.rand(180, 2, device=device, dtype=dtype))
         X5 = torch.rand(100, 5, device=device, dtype=dtype) + 100
@@ -286,13 +286,13 @@ class TestKMeans(BaseTester):
         assert (km.cluster_centers >= 100).all()
 
     def test_float16_distances_do_not_overflow(self, device):
-        # B-29: float16 squared distances overflowed to inf, so argmin returned [0, 0]; float64 gives [1, 0].
+        # float16 squared distances overflowed to inf, so argmin returned [0, 0]; float64 gives [1, 0].
         c = torch.tensor([[0.0, 0.0, 0.0], [100.0, 0.0, 0.0]], device=device, dtype=torch.float16)
         p = torch.tensor([[255.0, 255.0, 255.0], [10.0, 200.0, 190.0]], device=device, dtype=torch.float16)
         assert kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1).predict(p).tolist() == [1, 0]
 
     def test_float16_fit_distances_do_not_overflow(self, device):
-        # B-29 in fit: the same overflow sent both points to cluster 0 and reseeded cluster 1 at random.
+        # The same float16 overflow in fit sent both points to cluster 0 and reseeded cluster 1 at random.
         c = torch.tensor([[0.0, 0.0, 0.0], [100.0, 0.0, 0.0]], device=device, dtype=torch.float16)
         p = torch.tensor([[255.0, 255.0, 255.0], [10.0, 200.0, 190.0]], device=device, dtype=torch.float16)
         km = kornia.contrib.KMeans(2, c, tolerance=None, max_iterations=1)
@@ -384,3 +384,32 @@ class TestKMeans(BaseTester):
         km = kornia.contrib.KMeans(2, torch.rand(2, 2, device=device, dtype=dtype), max_iterations=1)
         with pytest.raises(ShapeError):
             km.predict(torch.rand(4, 2, 1, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        ("tolerance", "max_iterations", "updates"),
+        [(0.25, 0, 1), (0.2, 0, 2), (None, 1, 1)],
+        ids=["squared-shift-at-tolerance", "squared-shift-above-tolerance", "max-iterations"],
+    )
+    def test_convention_stopping_rule(self, tolerance, max_iterations, updates, device, dtype):
+        # The first update moves each centre by 0.25 (to 0.5 and 10.5): the summed shift is 0.5 and its square 0.25,
+        # which is compared with tolerance using <=. The second update moves nothing.
+        X = torch.tensor([[0.0], [1.0], [10.0], [11.0]], device=device, dtype=dtype)
+        km = kornia.contrib.KMeans(
+            2, torch.tensor([[0.25], [10.25]], device=device, dtype=dtype), tolerance, max_iterations
+        )
+        calls = []
+        original = km._pairwise_euclidean_distance
+        km._pairwise_euclidean_distance = lambda a, b: calls.append(1) or original(a, b)
+        km.fit(X)
+        assert len(calls) == updates + 1  # one distance per update, plus the final assignment
+        self.assert_close(km.cluster_centers, torch.tensor([[0.5], [10.5]], device=device, dtype=dtype))
+
+    def test_convention_seed_reseeds_the_global_generator(self):
+        kornia.contrib.KMeans(3, None, seed=0)
+        drawn = torch.rand(4)
+        torch.manual_seed(0)
+        assert torch.equal(drawn, torch.rand(4))
+
+    def test_convention_a_tie_goes_to_the_first_cluster(self, device, dtype):
+        km = kornia.contrib.KMeans(2, torch.tensor([[0.0], [1.0]], device=device, dtype=dtype), None, 1)
+        assert km.predict(torch.tensor([[0.5]], device=device, dtype=dtype)).tolist() == [0]

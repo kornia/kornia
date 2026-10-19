@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import get_perspective_transform, warp_perspective
 
 
@@ -104,7 +105,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
+        start_points = _to_device_nonblocking(params["start_points"], input.device, input.dtype)
+        end_points = _to_device_nonblocking(params["end_points"], input.device, input.dtype)
+        return get_perspective_transform(start_points, end_points)
 
     def apply_transform(
         self,

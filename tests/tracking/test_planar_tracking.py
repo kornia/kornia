@@ -16,16 +16,18 @@
 #
 
 import copy
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
 
+from kornia.contrib import ImageStitcher
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import BaseError
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR, SIFTFeature
 from kornia.feature.loftr.loftr import default_cfg
-from kornia.geometry import rescale, transform_points
+from kornia.geometry import rescale, transform_points, warp_perspective
+from kornia.geometry.ransac import RANSAC
 from kornia.tracking import HomographyTracker
 
 from testing.base import BaseTester
@@ -89,7 +91,7 @@ class TestHomographyTrackerCaching:
         return LocalFeatureMatcher(SIFTFeature(300), DescriptorMatcher("snn", 0.9))
 
     def test_target_features_are_extracted_once(self):
-        # C-4: the nn.Module guard never matched a method, so the target was re-extracted on every frame.
+        # An nn.Module guard never matched a method, so the target was re-extracted on every frame.
         initial, fast = self._sift_matcher(), self._sift_matcher()
         shapes = []
         for m in (initial, fast):
@@ -102,7 +104,7 @@ class TestHomographyTrackerCaching:
         assert shapes == [(1, 1, 70, 90)]
 
     def test_loftr_target_features_are_extracted_once(self):
-        loftr = LoFTR(None)
+        loftr = LoFTR(None).eval()
         calls = []
         loftr.backbone.register_forward_hook(lambda mod, inp, out: calls.append(tuple(inp[0].shape)))
         tracker = HomographyTracker(self._sift_matcher(), loftr, minimum_inliers_num=10)
@@ -114,8 +116,8 @@ class TestHomographyTrackerCaching:
         assert calls == [(1, 1, 64, 80)]  # only the pre-warped frame, at the target's size
 
     def test_loftr_without_cached_features_gets_image0(self):
-        # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0 (as on main).
-        loftr = LoFTR(None)
+        # A target assigned directly, without set_target, has no cached features0, so LoFTR needs image0.
+        loftr = LoFTR(None).eval()
         keys = []
         loftr.register_forward_pre_hook(lambda mod, args: keys.append(sorted(args[0])))
         tracker = HomographyTracker(loftr, self._sift_matcher(), minimum_inliers_num=10)
@@ -128,7 +130,7 @@ class TestHomographyTrackerCaching:
         # itself and gets its own features0 (not image0 next to it, which LoFTR rejects).
         tracker = HomographyTracker(self._sift_matcher(), self._sift_matcher(), minimum_inliers_num=10)
         tracker.set_target(_texture(64, 80))
-        loftr = LoFTR(None)
+        loftr = LoFTR(None).eval()
         inputs = []
         loftr.register_forward_pre_hook(lambda mod, args: inputs.append(dict(args[0])))
         tracker.fast_matcher = loftr
@@ -145,10 +147,10 @@ class TestHomographyTrackerCaching:
         config["match_coarse"]["thr"] = 1e-4
         with torch.random.fork_rng():
             torch.manual_seed(seed)
-            return LoFTR(None, config)
+            return LoFTR(None, config).eval()
 
     def test_loftr_swapped_after_set_target_matches_an_uncached_call(self):
-        # CodeRabbit 4277422844: a LoFTR swapped in after set_target was fed the old LoFTR's cached features0.
+        # A LoFTR swapped in after set_target was fed the old LoFTR's cached features0.
         old, new = self._loftr(1), self._loftr(2)
         tracker = HomographyTracker(old, self._sift_matcher(), minimum_inliers_num=10**6)
         target, frame = _texture(64, 80), _texture(72, 96, seed=1)
@@ -190,14 +192,14 @@ class TestHomographyTrackerCaching:
         assert in_tracker == [(1, 1, 64, 80)] * 3  # the target once after the swap, then the warped frame twice
 
     def test_track_next_frame_without_a_prior_raises(self):
-        # C-5: UnboundLocalError on Hwarp.
+        # It raised UnboundLocalError on Hwarp.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         with pytest.raises(BaseError, match="previous homography"):
             tracker.track_next_frame(torch.rand(1, 1, 8, 9))
 
     def test_fewer_than_four_matches_is_a_failed_match(self):
-        # C-6: minimum_inliers_num < 4 let 3 matches reach RANSAC, which raised.
+        # minimum_inliers_num < 4 let 3 matches reach RANSAC, which raised.
         tracker = _make_tracker(minimum_inliers_num=0)
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.initial_matcher.return_value = _match_dict(3, torch.device("cpu"), torch.float32)
@@ -216,7 +218,7 @@ class TestHomographyTrackerCaching:
         assert tracker.previous_homography is None
 
     def test_set_target_starts_a_new_track(self):
-        # C-7 (controller ruling): the old prior maps the old target's coordinates.
+        # The old prior maps the old target's coordinates.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.previous_homography = torch.eye(3)
@@ -224,7 +226,7 @@ class TestHomographyTrackerCaching:
         assert tracker.previous_homography is None
 
     def test_target_assigned_directly_starts_a_new_track(self):
-        # CodeRabbit 4277848437: after a target was assigned directly, forward tracked it with the old target's prior.
+        # After a target was assigned directly, forward tracked it with the old target's prior.
         tracker = _make_tracker()
         tracker.set_target(torch.rand(1, 1, 8, 9))
         tracker.initial_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
@@ -488,3 +490,263 @@ class TestHomographyTracker(BaseTester):
             homography, success = tracker(data["image1"])
         assert success
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+
+
+_H_TRUE = torch.tensor([[1.1, 0.05, 7.0], [-0.03, 0.95, 4.0], [1e-4, -2e-4, 1.0]])
+
+
+class _ExactMatcher(torch.nn.Module):
+    """Exact correspondences ``keypoints1 = _H_TRUE(keypoints0)``, in float32 whatever the image dtype.
+
+    The keypoints are on the frame's device; ``image1_dtypes`` records the dtype of every frame it is given.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.image1_dtypes: list = []
+
+    def forward(self, data: dict) -> dict:
+        self.image1_dtypes.append(data["image1"].dtype)
+        device = data["image1"].device
+        ys, xs = torch.meshgrid(torch.arange(3.0, 40, 4), torch.arange(3.0, 50, 4), indexing="ij")
+        kp0 = torch.stack([xs.flatten(), ys.flatten()], -1)
+        kp1 = transform_points(_H_TRUE[None], kp0[None])[0]
+        return {
+            "keypoints0": kp0.to(device),
+            "keypoints1": kp1.to(device),
+            "batch_indexes": torch.zeros(len(kp0), dtype=torch.long, device=device),
+        }
+
+
+class TestHomographyTrackerConventions:
+    def test_convention_homography_maps_target_pixels_to_frame_pixels(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54))
+        H, ok = tracker(torch.rand(1, 1, 60, 70))
+        assert ok
+        torch.testing.assert_close(H / H[2, 2], _H_TRUE, rtol=1e-4, atol=1e-4)
+
+    def test_convention_target_is_not_a_buffer(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher())
+        tracker.set_target(torch.rand(1, 1, 44, 54))
+        tracker.to(torch.float64)
+        assert "target" not in dict(tracker.named_buffers())
+        assert tracker.dtype == torch.float32  # .to() leaves the target behind: call set_target again
+
+    def test_convention_default_ransac_is_looser_than_image_stitcher(self):
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher())
+        assert (tracker.ransac.inl_th, tracker.ransac.max_iter) == (5.0, 10)
+        stitcher = ImageStitcher(LocalFeatureMatcher(SIFTFeature(10), DescriptorMatcher("snn", 0.9)))
+        assert (stitcher.ransac.inl_th, stitcher.ransac.max_iter) == (2.0, 10)
+
+    def test_convention_target_changed_in_place_keeps_its_cached_features(self):
+        matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher("snn", 0.9))
+        calls = []
+        matcher.local_feature.register_forward_hook(lambda mod, inp, out: calls.append(tuple(inp[0].shape)))
+        tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=10**6)
+        target = _texture(64, 80)
+        tracker.set_target(target)
+        cached = tracker.target_initial_representation["descriptors"].clone()
+        calls.clear()
+        target.mul_(0.5).add_(0.2)
+        tracker(_texture(72, 96, seed=1))
+        assert calls == [(1, 1, 72, 96)]  # the frame only
+        assert torch.equal(tracker.target_initial_representation["descriptors"], cached)
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_precision_tracks_three_frames(self, half, device):
+        # The first frame returns a float32 homography (float32 keypoints). The next ones warp the half frame with the
+        # float32 inverse of the prior, in float32: a half sampling grid is coarser than a pixel on a large frame (in
+        # bfloat16, 8 mantissa bits). The fast matcher gets the warped frame back in the half dtype.
+        initial, fast = _ExactMatcher(), _ExactMatcher()
+        tracker = HomographyTracker(initial, fast, minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54, device=device, dtype=half))
+        with patch("kornia.tracking.planar_tracker.warp_perspective", wraps=warp_perspective) as warp:
+            for _ in range(3):
+                H, ok = tracker(torch.rand(1, 1, 60, 70, device=device, dtype=half))
+                assert ok
+                assert H.dtype == torch.float32
+        assert [(c.args[0].dtype, c.args[1].dtype) for c in warp.call_args_list] == [(torch.float32,) * 2] * 2
+        assert initial.image1_dtypes == [half]
+        assert fast.image1_dtypes == [half, half]
+
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_precision_prior_assigned_from_outside(self, half, device):
+        # A prior assigned in the half dtype is inverted in float32: linalg.inv has no half kernel.
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54, device=device, dtype=half))
+        tracker.previous_homography = _H_TRUE.to(device, half)
+        H, ok = tracker.track_next_frame(torch.rand(1, 1, 60, 70, device=device, dtype=half))
+        assert ok
+        assert H.dtype == torch.float32
+
+    def test_frame_wider_than_the_target_is_warped_in_its_own_dtype(self):
+        # A float64 frame for a float32 target is warped in float64, with the float32 inverse of the prior, and not
+        # narrowed to float32; the fast matcher gets it in float64. The margin is added to a copy of a prior assigned in
+        # the tracker's own dtype, not to the assigned tensor.
+        fast = _ExactMatcher()
+        tracker = HomographyTracker(_ExactMatcher(), fast, minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54))
+        prior = _H_TRUE.clone()
+        tracker.previous_homography = prior
+        with patch("kornia.tracking.planar_tracker.warp_perspective", wraps=warp_perspective) as warp:
+            H, ok = tracker.track_next_frame(torch.rand(1, 1, 60, 70, dtype=torch.float64))
+        assert ok
+        assert H.dtype == torch.float32
+        assert (warp.call_args.args[0].dtype, warp.call_args.args[1].dtype) == (torch.float64, torch.float32)
+        assert fast.image1_dtypes == [torch.float64]
+        assert torch.equal(prior, _H_TRUE)
+
+    @pytest.mark.parametrize("target_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    def test_homography_dtype_is_the_same_on_every_path(self, target_dtype, device):
+        # _ExactMatcher returns float32 keypoints for every image dtype, so RANSAC estimates in float32; the tracker
+        # returns and stores the homography in the target dtype, float32 for a half target.
+        if device.type == "mps" and target_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        expected = torch.promote_types(target_dtype, torch.float32)
+        tracker = HomographyTracker(_ExactMatcher(), _ExactMatcher(), minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 44, 54, device=device, dtype=target_dtype))
+        frame = torch.rand(1, 1, 60, 70, device=device, dtype=target_dtype)
+        dtypes = {}
+        H, ok = tracker.match_initial(frame)
+        assert ok
+        dtypes["match_initial"], dtypes["prior after match_initial"] = H.dtype, tracker.previous_homography.dtype
+        H, ok = tracker.track_next_frame(frame)
+        assert ok
+        dtypes["track_next_frame"], dtypes["prior after track_next_frame"] = H.dtype, tracker.previous_homography.dtype
+        tracker.minimum_inliers_num = 10**6  # more than the 120 matches of _ExactMatcher: every match fails
+        H, ok = tracker(frame)  # track_next_frame, which fails and drops the prior
+        assert not ok
+        assert tracker.previous_homography is None
+        dtypes["failed track_next_frame"] = H.dtype
+        H, ok = tracker(frame)  # match_initial, which fails
+        assert not ok
+        dtypes["failed match_initial"] = H.dtype
+        dtypes["no_match"] = tracker.no_match()[0].dtype
+        assert dtypes == dict.fromkeys(dtypes, expected)
+
+    def test_bfloat16_sift_tracker_follows_the_float32_tracker(self, device):
+        # A bfloat16 LocalFeatureMatcher(SIFTFeature) tracker raised on its second frame, in warp_perspective. The
+        # texture is stretched 4x: on the plain one, bfloat16 SIFT finds 41 first-frame matches where float32 finds 116
+        # (81 on the stretched one, measured with torch 2.14 on CPU).
+        target = ((_texture(120, 160) - 0.5) * 4.0 + 0.5).clamp(0.0, 1.0)
+        h_true = [
+            torch.tensor([[1.0 + 0.02 * i, 0.03, 9.0 + 3 * i], [-0.02, 1.0 - 0.01 * i, 7.0 + 2 * i], [1e-4, 0.0, 1.0]])
+            for i in range(3)
+        ]
+        frames = [warp_perspective(target, h[None], (136, 182)) for h in h_true]
+        corners = torch.tensor([[[0.0, 0.0], [159.0, 0.0], [159.0, 119.0], [0.0, 119.0]]], device=device)
+        projected = {}
+        for dt in (torch.float32, torch.bfloat16):
+            matcher = LocalFeatureMatcher(SIFTFeature(300), DescriptorMatcher("snn", 0.9)).to(device, dt)
+            # bfloat16 keeps 44 inliers on frame 2 (CPU; 46 on MPS) and at least 34 over texture seeds 0-7
+            tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=20)
+            with torch.no_grad():
+                tracker.set_target(target.to(device, dt))
+                for i, frame in enumerate(frames):
+                    torch.manual_seed(i)  # RANSAC samples with the global generator
+                    H, ok = tracker(frame.to(device, dt))
+                    assert ok
+                    assert H.dtype == torch.float32
+                    if i == 1:
+                        projected[dt] = transform_points(H[None], corners)
+        # The target corners under the second frame's homographies. Measured (torch 2.14): 0.29 px apart on CPU and
+        # 0.42 px on MPS; at most 1.37 px over texture seeds 0-7 on either. The bound is about twice that, below the
+        # 5 px inlier threshold of the tracker's default RANSAC.
+        assert (projected[torch.bfloat16] - projected[torch.float32]).abs().max().item() < 3.0
+
+
+class _FixedMatcher(torch.nn.Module):
+    """Fixed correspondences ``keypoints1 = _H_TRUE(keypoints0)`` over a 600 x 450 frame, built once in float32.
+
+    Nothing it returns depends on the frame or on autocast. ``image1`` records every frame it is given.
+    """
+
+    def __init__(self, dtype: torch.dtype = torch.float32) -> None:
+        super().__init__()
+        ys, xs = torch.meshgrid(torch.arange(7.0, 440, 23), torch.arange(5.0, 590, 29), indexing="ij")
+        kp0 = torch.stack([xs.flatten(), ys.flatten()], -1)
+        self.kp0, self.kp1 = kp0.to(dtype), transform_points(_H_TRUE[None], kp0[None])[0].to(dtype)
+        self.image1: list = []
+
+    def forward(self, data: dict) -> dict:
+        self.image1.append(data["image1"])
+        device = data["image1"].device
+        return {
+            "keypoints0": self.kp0.to(device),
+            "keypoints1": self.kp1.to(device),
+            "batch_indexes": torch.zeros(len(self.kp0), dtype=torch.long, device=device),
+        }
+
+
+class _DtypeSpy(torch.nn.Module):
+    def __init__(self, inner: torch.nn.Module) -> None:
+        super().__init__()
+        self.inner, self.dtypes = inner, []
+
+    def forward(self, kp0, kp1):
+        self.dtypes.append((kp0.dtype, kp1.dtype))
+        return self.inner(kp0, kp1)
+
+
+class TestHomographyTrackerHalfKeypointsAndAutocast:
+    @pytest.mark.parametrize("half", [torch.float16, torch.bfloat16])
+    def test_half_keypoints_are_fitted_in_float32(self, half, device):
+        # RANSAC returns its model in the keypoints' dtype; a bfloat16 homography moves the frame corners by pixels.
+        # The tracker with half keypoints follows the same tracker with float32 keypoints.
+        corners = torch.tensor([[[0.0, 0.0], [599.0, 0.0], [599.0, 449.0], [0.0, 449.0]]], dtype=torch.float64)
+        projected, ransac_dtypes = {}, {}
+        for kp_dtype in (torch.float32, half):
+            tracker = HomographyTracker(_FixedMatcher(kp_dtype), _FixedMatcher(kp_dtype), minimum_inliers_num=10)
+            tracker.ransac = _DtypeSpy(tracker.ransac)
+            tracker.set_target(torch.rand(1, 1, 450, 600, device=device, dtype=half))
+            frame = torch.rand(1, 1, 450, 600, device=device, dtype=half)
+            projected[kp_dtype] = []
+            for _ in range(2):  # match_initial, then track_next_frame
+                torch.manual_seed(0)
+                H, ok = tracker(frame)
+                assert ok
+                projected[kp_dtype].append(transform_points(H.cpu().double()[None], corners))
+            ransac_dtypes[kp_dtype] = tracker.ransac.dtypes
+        gaps = [(a - b).abs().max().item() for a, b in zip(projected[torch.float32], projected[half])]
+        assert max(gaps) < 1.0, gaps
+        assert ransac_dtypes[half] == [(torch.float32, torch.float32)] * 2
+
+    def test_autocast_does_not_reach_the_tracker_geometry(self, device):
+        # Under the caller's autocast, the warp's and transform_points' matrix products would run in bfloat16: the
+        # keypoints mapped back to the frame moved by up to 7.6 px at 600 px (CPU; 5.9 px on CUDA).
+        if device.type == "mps":
+            pytest.skip("MPS autocast is not exercised here")
+        fast = _FixedMatcher()
+        tracker = HomographyTracker(_FixedMatcher(), fast, minimum_inliers_num=10)
+        tracker.set_target(torch.rand(1, 1, 450, 600, device=device))
+        frame = torch.rand(1, 1, 450, 600, device=device)
+        results = []
+        for autocast in (False, True):
+            tracker.previous_homography = _H_TRUE.to(device)
+            torch.manual_seed(0)
+            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=autocast):
+                H, ok = tracker.track_next_frame(frame)
+            assert ok
+            results.append(H)
+        assert torch.equal(fast.image1[0], fast.image1[1])
+        assert torch.equal(results[0], results[1])
+
+    def test_autocast_does_not_reach_ransac(self, device):
+        # With local_optimization="dlt", a bfloat16 fit moved the frame corners by up to 3.1 px here. RANSAC keeps
+        # autocast out of its fit; the tracker also fits with autocast off, for a ``ransac`` module that does not.
+        if device.type == "mps":
+            pytest.skip("MPS autocast is not exercised here")
+        results = []
+        for autocast in (False, True):
+            ransac = RANSAC("homography", inl_th=5.0, batch_size=4096, max_iter=10, local_optimization="dlt")
+            tracker = HomographyTracker(_FixedMatcher(), _FixedMatcher(), ransac, minimum_inliers_num=10)
+            tracker.set_target(torch.rand(1, 1, 450, 600, device=device))
+            frame = torch.rand(1, 1, 450, 600, device=device)
+            torch.manual_seed(0)
+            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=autocast):
+                results.append([tracker(frame) for _ in range(2)])  # match_initial, then track_next_frame
+        for (H0, ok0), (H1, ok1) in zip(*results):
+            assert ok0
+            assert ok1
+            assert torch.equal(H0, H1)

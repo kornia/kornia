@@ -5333,6 +5333,24 @@ class TestRandomFisheye(BaseTester):
 
 
 class TestRandomElasticTransform(BaseTester):
+    def test_zero_padding_with_replayed_noise(self, device, dtype):
+        image = torch.ones(1, 1, 5, 5, device=device, dtype=dtype)
+        noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
+        noise[:, 0] = 1.0
+        params = {"noise": noise, "batch_prob": torch.ones(1, device=device, dtype=dtype)}
+        aug = RandomElasticTransform(
+            kernel_size=(1, 1),
+            sigma=(1.0, 1.0),
+            alpha=(0.8, 0.0),
+            resample="nearest",
+            padding_mode="zeros",
+            p=1.0,
+        )
+        expected = torch.ones_like(image)
+        expected[..., -2:] = 0.0
+        self.assert_close(aug(image, params=params), expected)
+        self.assert_close(aug(image, params=aug._params), expected)
+
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomElasticTransform(p=1.0)

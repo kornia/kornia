@@ -142,11 +142,107 @@ class TestConventionImageSequential(BaseTester):
         with pytest.raises(ValueError, match="Invalid output_type"):
             aug(torch.zeros(1, 3, 4, 4, device=device, dtype=dtype), output_type="jpg")
 
-    def test_convention_slice_crop_inverse_raises(self, device, dtype):
+    @pytest.mark.parametrize("random_apply", [0, (0,), (0, 0), (0, 1), (0, 2)])
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_range_with_zero_never_crashes_6055(self, random_apply, container, device, dtype):
+        # A drawn count of 0 used to reach torch.multinomial and raise "cannot sample n_sample <= 0 samples", so a
+        # range that includes 0 crashed whenever the draw was 0. It now applies no transformation.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=random_apply)
+        counts = set()
+        for seed in range(30):
+            torch.manual_seed(seed)
+            out = seq(x)
+            counts.add(len(seq._params))
+            if len(seq._params) == 0:
+                self.assert_close(out, x, rtol=0.0, atol=0.0)
+        assert 0 in counts
+
+    @pytest.mark.parametrize("random_apply", [-1, (-1,), (-1, 1), (2, 1)])
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_rejects_negative_or_inverted_ranges_6055(self, random_apply, container):
+        # These used to fail only at call time, with torch.multinomial's or torch.randint's own error.
+        with pytest.raises(ValueError, match="random_apply must select a non-negative number of transformations"):
+            container(K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=random_apply)
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_zero_draw_adds_no_mix_6055(self, container, device, dtype):
+        # A mix member replaces one of the drawn members, so a drawn count of 0 must not add it either.
+        x = torch.rand(4, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(K.RandomHorizontalFlip(p=1.0), K.RandomMixUpV2(p=1.0), random_apply=0)
+        for seed in range(20):
+            torch.manual_seed(seed)
+            out = seq(x)
+            assert seq._params == []
+            self.assert_close(out, x, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_mix_insertion_skips_zero_weight_members_6068(self, container, device, dtype):
+        # The mix-insertion step drew among every member whose weight was 0 once the mix weights were zeroed, which
+        # included ordinary members given weight 0, so RandomVerticalFlip was applied in about a third of the calls.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=1,
+            random_apply_weights=[1.0, 0.0, 1.0],
+        )
+        selected = set()
+        for seed in range(100):
+            torch.manual_seed(seed)
+            seq(x)
+            selected.add(tuple(p.name for p in seq._params))
+        assert selected == {("RandomHorizontalFlip_0",), ("RandomMixUpV2_2",)}
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_mix_insertion_with_all_ordinary_weights_zero_6068(self, container, device, dtype):
+        # With every ordinary weight 0, nothing ordinary is drawn, and the insertion step may add only the mix member.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=(1, 2),
+            random_apply_weights=[0.0, 0.0, 1.0],
+        )
+        selected = set()
+        for seed in range(100):
+            torch.manual_seed(seed)
+            out = seq(x)
+            selected.add(tuple(p.name for p in seq._params))
+            if not seq._params:
+                self.assert_close(out, x, rtol=0.0, atol=0.0)
+        assert selected == {(), ("RandomMixUpV2_2",)}
+
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_mix_insertion_draws_among_every_mix_member_6068(self, container, device, dtype):
+        # The insertion draws uniformly among the mix members and does not honor their own weights, as on main: both
+        # mix members are inserted although their weights are 0.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            random_apply=2,
+            random_apply_weights=[1.0, 1.0, 0.0, 0.0],
+        )
+        mixes = set()
+        for seed in range(30):
+            torch.manual_seed(seed)
+            seq(x)
+            names = [p.name for p in seq._params]
+            assert len(names) == 2
+            mixes.update(name for name in names if name.startswith("RandomMixUpV2"))
+        assert mixes == {"RandomMixUpV2_2", "RandomMixUpV2_3"}
+
+    def test_convention_slice_crop_inverse_restores_the_canvas(self, device, dtype):
         seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
         out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError, match="resample cropping mode"):
-            seq.inverse(out)
+        restored = seq.inverse(out)
+        assert restored.shape == (1, 3, 6, 8)
+        self.assert_close(restored[..., 1:5, 1:7], out)
 
     def test_convention_get_transformation_matrix_recomputes_older_params(self, device, dtype):
         # Module matrices hold only the most recent call. Supplying recorded parameters from an earlier call
@@ -225,6 +321,72 @@ class TestConventionImageSequential(BaseTester):
         out = seq(x)
         assert [p.name for p in seq._params] == ["RandomHorizontalFlip_0"]
         self.assert_close(seq.inverse(out), out.flip(-1))
+
+    @pytest.mark.parametrize(
+        "weights",
+        [
+            [1, 0],
+            (1, 0),
+            [True, False],
+            torch.tensor([1, 0]),
+            torch.tensor([True, False]),
+            torch.tensor([1.0, 0.0]),
+            torch.tensor([1.0, 0.0], dtype=torch.float64),
+        ],
+    )
+    @pytest.mark.parametrize("container", [K.ImageSequential, K.AugmentationSequential])
+    def test_random_apply_weights_accept_integer_and_tensor_weights_6049(self, weights, container, device, dtype):
+        # Integer and boolean weights used to reach torch.multinomial as an int64/bool tensor, and a tensor of weights
+        # was tested for its truth value; both raised. Any of them now selects in proportion, like float weights.
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        seq = container(
+            K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=1, random_apply_weights=weights
+        )
+
+        assert seq.random_apply_weights.is_floating_point()
+        for seed in range(5):
+            torch.manual_seed(seed)
+            out = seq(x)
+            assert [p.name for p in seq._params] == ["RandomHorizontalFlip_0"]
+            self.assert_close(out, x.flip(-1))
+
+    def test_random_apply_weights_keep_a_float_dtype_6049(self):
+        # Float weights keep their dtype, so the selections of existing calls are unchanged.
+        flips = (K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0))
+        assert K.ImageSequential(
+            *flips, random_apply=1, random_apply_weights=[0.7, 0.3]
+        ).random_apply_weights.dtype == (torch.get_default_dtype())
+        weights64 = torch.tensor([0.7, 0.3], dtype=torch.float64)
+        assert K.ImageSequential(*flips, random_apply=1, random_apply_weights=weights64).random_apply_weights.dtype == (
+            torch.float64
+        )
+        assert K.ImageSequential(*flips, random_apply=1).random_apply_weights.dtype == torch.get_default_dtype()
+
+    @pytest.mark.parametrize("weights", [[7, 2, 1], torch.tensor([7, 2, 1])])
+    def test_random_apply_weights_integer_select_like_floats_6049(self, weights):
+        # Integer weights are relative weights, converted to the default dtype: they select exactly as the same values
+        # given as floats.
+        def build(w):
+            augs = (K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), K.RandomInvert(p=1.0))
+            return K.ImageSequential(*augs, random_apply=1, random_apply_weights=w)
+
+        x = torch.zeros(1, 3, 4, 4)
+        reference, seq = build([7.0, 2.0, 1.0]), build(weights)
+        assert seq.random_apply_weights.dtype == torch.get_default_dtype()
+        for seed in range(30):
+            torch.manual_seed(seed)
+            reference(x)
+            torch.manual_seed(seed)
+            seq(x)
+            assert [p.name for p in seq._params] == [p.name for p in reference._params]
+
+    @pytest.mark.parametrize("weights", [torch.tensor([[0.7], [0.3]]), [[1.0, 0.0], [0.0, 1.0]]])
+    def test_random_apply_weights_reject_non_vectors_6049(self, weights):
+        # A nested float list used to be accepted and drew a selection per row, so random_apply=1 applied two.
+        with pytest.raises(ValueError, match="must be one-dimensional"):
+            K.ImageSequential(
+                K.RandomHorizontalFlip(p=1.0), K.RandomVerticalFlip(p=1.0), random_apply=1, random_apply_weights=weights
+            )
 
     def test_convention_augmentation_sequential_leaves_plain_modules_applied_4423(self, device, dtype):
         # #4423: `AugmentationSequential` does not take `if_unsupported_ops`; it leaves a plain module child applied,

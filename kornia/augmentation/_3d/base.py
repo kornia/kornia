@@ -23,6 +23,7 @@ from torch import float16, float32, float64
 import kornia
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
 
@@ -123,8 +124,8 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         trans_matrix_identity = self.identity_matrix(in_tensor)
 
         if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))).to(
-                trans_matrix_applied.device
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))), trans_matrix_applied.device
             )
             trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:

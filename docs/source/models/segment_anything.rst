@@ -72,22 +72,22 @@ About the :code:`VisualPrompter`:
 #. From a :class:`~kornia.models.sam.SamConfig` it loads the desired model with the desired checkpoint, which then receives
    the query prompts. For now only the Segment Anything family is supported, with *SAM ViT-H* as the default option.
 
-#. Based on the model, the :code:`VisualPrompter` applies the necessary transformations to the image and prompts before
-   passing them to the model. These transformations are implemented with our augmentation API, using
-   :class:`kornia.augmentation.AugmentationSequential` to handle the different data formats (keypoints, boxes, masks, image).
+#. Based on the model, the :code:`VisualPrompter` resizes the image the way SAM's reference does, and maps the keypoint
+   and box prompts to the resized image with the same per-axis scales before passing them to the model. The formulas are
+   in the :class:`~kornia.contrib.visual_prompter.VisualPrompter` docstring.
 
 #. When you call :code:`prompter.set_image(...)`, the prompter preprocesses the image, passes it to the encoder,
    and caches the embeddings for later queries. Note that the image should be scaled to the range [0, 1].
 
     * The preprocessing steps are: 1) resize the image so that its longer side matches the :code:`image_encoder` input size;
-      2) cache this transformation so it can be applied to the prompts; 3) normalize the image with the given mean and
+      2) record the scales of this resize so they can be applied to the prompts; 3) normalize the image with the given mean and
       standard deviation, or with the SAM dataset statistics; 4) pad the bottom and right so the image has the resolution the
       encoder expects: :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`.
 
     * The best input image will always have shape
       :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`.
 
-#. When you call :code:`prompter.predict(...)`, the prompter applies the cached transformation to the prompt coordinates
+#. When you call :code:`prompter.predict(...)`, the prompter applies the recorded scales to the prompt coordinates
    and then queries the cached embeddings with them.
 
     * If :code:`output_original_size=True`, the result structure upsamples the logits from their native resolution to the
@@ -248,8 +248,9 @@ If a URL is passed, the model automatically downloads and caches the weights usi
     # Load/build the model
     sam_model = Sam.from_config(SamConfig(model_type))
 
-    # Load the checkpoint
+    # Load the checkpoint; loading keeps the module's mode, so switch to evaluation mode for inference
     sam_model.load_checkpoint(checkpoint, device)
+    sam_model.eval()
 
 
 .. Mask Generator
@@ -264,13 +265,12 @@ This is a simple example of how to use the loaded SAM model directly. We recomme
 .. code-block:: python
 
     import torch
-    from torch.nn.functional import pad
+    import torch.nn.functional as F
 
     from kornia.models.sam import Sam, SamConfig
     from kornia.models.structures import SegmentationResults
     from kornia.io import load_image, ImageLoadType
     from kornia.core.utils import get_cuda_or_mps_device_if_available
-    from kornia.geometry import resize
     from kornia.enhance import normalize
 
     model_type = 'vit_b'  # or the number `2`, or the enum `SamModelType.vit_b`
@@ -286,12 +286,22 @@ This is a simple example of how to use the loaded SAM model directly. We recomme
     # Transform the image (CxHxW) into a batched input (BxCxHxW)
     image = image[None, ...]
 
-    # Resize the image to have a maximum size of 1024 on its largest side
-    data = resize(image, 1024, side='long')
-    h, w = data.shape[-2:]
+    # Resize the image so that its longest side is 1024, as SAM's reference does (bilinear, half-pixel, antialiased).
+    # On MPS with torch older than 2.7, which has no antialiased bilinear kernel, resize on the CPU and move back.
+    H, W = image.shape[-2:]
+    h, w = int(H * 1024 / max(H, W)), int(W * 1024 / max(H, W))
+    data = F.interpolate(image, size=(h, w), mode='bilinear', align_corners=False, antialias=True)
 
-    # Embed prompts -- ATTENTION: prompt coordinates must match the image after the resize
-    sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
+    # Map the prompts to the resized image with the same per-axis scales (see the VisualPrompter docstring):
+    # a keypoint marks a pixel centre, (x + 0.5) * s - 0.5; a box marks pixel edges (xyxy), x * s.
+    scale = torch.tensor([w / W, h / H], device=device)
+    keypoints = torch.tensor([[[500.0, 375.0]]], device=device)  # (K, N, 2), in the original image
+    labels = torch.tensor([[1.0]], device=device)  # (K, N): 1 foreground, 0 background
+    points = ((keypoints + 0.5) * scale - 0.5, labels)
+    boxes = (torch.tensor([[100.0, 100.0, 700.0, 600.0]], device=device).reshape(-1, 2, 2) * scale).reshape(-1, 4)
+
+    # Embed prompts
+    sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=points, boxes=boxes, masks=None)
 
     # SAM dataset statistics used to normalize the input, in the [0, 1] range
     pixel_mean = torch.tensor([123.675, 116.28, 103.53], device=device) / 255.0
@@ -301,7 +311,7 @@ This is a simple example of how to use the loaded SAM model directly. We recomme
     data = normalize(data, pixel_mean, pixel_std)
     padh = sam_model.image_encoder.img_size - h
     padw = sam_model.image_encoder.img_size - w
-    data = pad(data, (0, padw, 0, padh))
+    data = F.pad(data, (0, padw, 0, padh))
 
     #--------------------------------------------------------------------
     # Option A: Manually calling each API
@@ -319,13 +329,13 @@ This is a simple example of how to use the loaded SAM model directly. We recomme
     #--------------------------------------------------------------------
     # Option B: Calling the model itself
     #--------------------------------------------------------------------
-    prediction = sam_model(data, [{}], multimask_output=True)[0]  # one SegmentationResults per image
+    prediction = sam_model(data, [{"points": points, "boxes": boxes}], multimask_output=True)[0]  # one per image
 
     #--------------------------------------------------------------------
     # Post processing
     #--------------------------------------------------------------------
     # Upscale the masks to the original image resolution
-    input_size = (data.shape[-2], data.shape[-1])
+    input_size = (h, w)  # the resized image, before the padding
     original_size = (image.shape[-2], image.shape[-1])
     image_size_encoder = (sam_model.image_encoder.img_size, sam_model.image_encoder.img_size)
     prediction.original_res_logits(input_size, original_size, image_size_encoder)

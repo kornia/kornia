@@ -383,7 +383,7 @@ class DeFMO(nn.Module):
           ``k / 23``, each with red, green, blue and alpha channels in :math:`[0, 1]` after a sigmoid.
 
     Args:
-        pretrained: Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model. Default: True.
 
     Returns:
         Temporal super-resolution without background.
@@ -394,12 +394,12 @@ class DeFMO(nn.Module):
     Examples:
         >>> import kornia
         >>> input = torch.rand(2, 6, 240, 320)
-        >>> defmo = kornia.feature.DeFMO()
+        >>> defmo = kornia.feature.DeFMO(pretrained=False).eval()
         >>> tsr_nobgr = defmo(input) # 2x24x4x240x320
 
     """
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.encoder = EncoderDeFMO()
         self.rendering = RenderingDeFMO()
@@ -410,7 +410,7 @@ class DeFMO(nn.Module):
             self.encoder.load_state_dict(pretrained_dict, strict=True)
             pretrained_dict_ren = load_state_dict_from_url(urls["defmo_rendering"], map_location=torch.device("cpu"))
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         """Deblur a fast-moving object into a sequence of RGBA sub-frames.

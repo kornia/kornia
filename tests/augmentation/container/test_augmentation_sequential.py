@@ -1211,6 +1211,12 @@ class TestAugmentationSequential:
         assert outputs[3].dtype == dtype, "Output keypoints dtype should match the input dtype"
 
 
+class _FailingInverseCrop(K.RandomResizedCrop):
+    # A crop whose image and mask inverse raises, to check what an exception inside inverse leaves behind.
+    def inverse_transform(self, *args, **kwargs):
+        raise NotImplementedError("inverse_transform failed")
+
+
 @pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionAugmentationSequential(BaseTester):
     """Convention checks and pins for documented `AugmentationSequential` limitations."""
@@ -1359,15 +1365,15 @@ class TestConventionAugmentationSequential(BaseTester):
     def test_inverse_mask_exception_preserves_next_image_5290(self, mask_first, device, dtype):
         image = torch.arange(16 * 20, device=device, dtype=dtype).reshape(1, 1, 16, 20) / 320
         mask = (image > 0.5).to(dtype)
-        seq = K.AugmentationSequential(K.RandomResizedCrop((12, 14), p=1.0), data_keys=["input", "mask"])
-        reference = K.AugmentationSequential(K.RandomResizedCrop((12, 14), p=1.0), data_keys=["input", "mask"])
+        seq = K.AugmentationSequential(_FailingInverseCrop((12, 14), p=1.0), data_keys=["input", "mask"])
+        reference = K.AugmentationSequential(_FailingInverseCrop((12, 14), p=1.0), data_keys=["input", "mask"])
         out_image, out_mask = seq(image, mask)
         params = seq._params
         original_flags = dict(seq[0].flags)
         inverse_args = (out_mask, out_image) if mask_first else (out_mask,)
         inverse_keys = ["mask", "input"] if mask_first else ["mask"]
 
-        with pytest.raises(NotImplementedError, match=r"resample cropping mode\. Got slice\."):
+        with pytest.raises(NotImplementedError, match="inverse_transform failed"):
             seq.inverse(*inverse_args, data_keys=inverse_keys)
 
         # Explicit keys keep this independent of the container's separate data_keys restoration bug.
@@ -1379,12 +1385,12 @@ class TestConventionAugmentationSequential(BaseTester):
     @pytest.mark.parametrize("align_corners", [None, False, True])
     @pytest.mark.parametrize("shared_flags", [True, False])
     def test_direct_inverse_mask_exception_preserves_flags_5290(self, align_corners, shared_flags, device, dtype):
-        aug = K.RandomResizedCrop((4, 6), align_corners=True, p=1.0)
+        aug = _FailingInverseCrop((4, 6), align_corners=True, p=1.0)
         mask = aug(torch.ones(1, 1, 6, 8, device=device, dtype=dtype))
         flags = aug.flags if shared_flags else dict(aug.flags)
         original_flags = dict(flags)
 
-        with pytest.raises(NotImplementedError, match=r"resample cropping mode\. Got slice\."):
+        with pytest.raises(NotImplementedError, match="inverse_transform failed"):
             aug.inverse_masks(mask, aug._params, flags, transform=aug.transform_matrix, align_corners=align_corners)
 
         assert flags["align_corners"] == original_flags["align_corners"]
@@ -1724,6 +1730,61 @@ class TestConventionAugmentationSequential(BaseTester):
         _, masks = seq(image, [mask[:1].clone(), mask[1:].clone()], params=seq._params)
         for i, entry in enumerate(masks):
             self.assert_close(entry, tensor_mask[i : i + 1])
+
+    @pytest.mark.parametrize(
+        ("fill_value", "mask_override", "mask_padding"),
+        [
+            ((0.2, 0.5, 0.9), None, 0.0),  # a per-channel image fill pads the mask with background
+            ((0.2, 0.5, 0.9), 0.5, 0.5),  # unless the mask sets its own fill_value
+            (0.7, None, 0.7),  # a scalar fill applies to both, as before
+        ],
+    )
+    def test_random_affine_mask_fill_follows_the_mask_rule_6021(
+        self, fill_value, mask_override, mask_padding, device, dtype
+    ):
+        # The mask rule read only ``flags["fill"]``; RandomAffine stores ``fill_value``, so a per-channel image
+        # fill turned a one-channel mask into three channels holding the image colours.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("The image warp path requires grid_sample for the selected dtype.")
+        image = torch.rand(2, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.ones(2, 1, 8, 10, device=device, dtype=dtype)
+        fill = torch.tensor(fill_value, device=device, dtype=dtype)
+        extra_args = None if mask_override is None else {DataKey.MASK: {"fill_value": torch.tensor(mask_override)}}
+        seq = K.AugmentationSequential(
+            K.RandomAffine((30.0, 30.0), padding_mode="fill", fill_value=fill, p=1.0),
+            data_keys=["input", "mask"],
+            extra_args=extra_args,
+        )
+
+        out_image, out_mask = seq(image, mask)
+
+        assert out_image.shape == image.shape
+        assert out_mask.shape == mask.shape
+        padding = out_mask != 1.0
+        assert padding.any()
+        self.assert_close(out_mask[padding], torch.full_like(out_mask[padding], mask_padding))
+
+    @pytest.mark.parametrize("as_list", [False, True])
+    def test_random_affine_mask_fill_rule_on_inverse_6021(self, as_list, device, dtype):
+        # The inverse warps masks with the module's flags as well, so the rule must hold there too: a per-channel
+        # image fill would turn a one-channel mask into three channels, or fail the fill_value channel check.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("The image warp path requires grid_sample for the selected dtype.")
+        image = torch.rand(2, 3, 8, 10, device=device, dtype=dtype)
+        mask = torch.ones(2, 1, 8, 10, device=device, dtype=dtype)
+        fill = torch.tensor([0.2, 0.5, 0.9], device=device, dtype=dtype)
+        seq = K.AugmentationSequential(
+            K.RandomAffine((30.0, 30.0), padding_mode="fill", fill_value=fill, p=1.0), data_keys=["input", "mask"]
+        )
+
+        out_image, out_mask = seq(image, list(mask) if as_list else mask)
+        _, inv_mask = seq.inverse(out_image, out_mask)
+
+        inv_mask = torch.cat(inv_mask) if as_list else inv_mask
+        assert inv_mask.shape == mask.shape
+        padding = inv_mask != 1.0
+        assert padding.any()
+        self.assert_close(inv_mask[padding], torch.zeros_like(inv_mask[padding]))
 
     def test_mask_list_replay_keeps_the_saved_draw_4477(self, device, dtype):
         if not supports_bilinear_2d_grid_sample(device, dtype):
@@ -2305,11 +2366,16 @@ class TestConventionAugmentationSequential(BaseTester):
             outer(torch.rand(1, 1, 6, 8, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("crop_cls", [K.CenterCrop, K.RandomCrop, K.RandomResizedCrop])
-    def test_convention_slice_crop_inverse_raises(self, crop_cls, device, dtype):
+    def test_convention_slice_crop_inverse_restores_the_canvas(self, crop_cls, device, dtype):
+        # Slice-mode crops invert like resample-mode ones: the output is warped back onto the input canvas.
         seq = K.AugmentationSequential(crop_cls((4, 6), p=1.0), data_keys=["input"])
-        out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError, match="resample cropping mode"):
-            seq.inverse(out)
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+        out = seq(image)
+        restored = seq.inverse(out)
+        assert restored.shape == image.shape
+        if crop_cls is not K.RandomResizedCrop:
+            left, top = seq[0]._params["src"][0, 0].long().tolist()
+            self.assert_close(restored[..., top : top + 4, left : left + 6], out)
 
     def test_convention_3d_inverse_raises_for_geometry_and_skips_intensity(self, device, dtype):
         # Enough voxels in two populated histogram bins force an actual equalization in every dtype.
@@ -2991,3 +3057,126 @@ class TestAugmentationSequentialReplay:
             aug(torch.rand(3, 1, 15, 17, device=device, dtype=dtype), keypoints[:1].expand(3, -1, -1))
             replayed = aug(keypoints, params=params, data_keys=["keypoints"])
             assert_close(replayed, expected)
+
+
+class TestCrop3DShapePropagation(BaseTester):
+    @pytest.mark.parametrize("batch", [0, 1, 2])
+    @pytest.mark.parametrize(
+        "first_type,nested", [(K.CenterCrop3D, False), (K.RandomCrop3D, False), (K.CenterCrop3D, True)]
+    )
+    @pytest.mark.parametrize("second_type", [K.CenterCrop3D, K.RandomCrop3D])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_downstream_canvas_and_replay(self, batch, first_type, nested, second_type, p, device, dtype):
+        from copy import deepcopy
+
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if batch and not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        image = torch.arange(batch * 8 * 10 * 12, device=device, dtype=dtype).reshape(batch, 1, 8, 10, 12)
+
+        def make_seq():
+            first = first_type((4, 5, 6), p=p)
+            return K.AugmentationSequential(
+                K.AugmentationSequential(first) if nested else first, second_type((2, 3, 4))
+            )
+
+        torch.manual_seed(17)
+        expected = second_type((2, 3, 4))(first_type((4, 5, 6), p=p)(image))
+        seq = make_seq()
+        seen = []
+        handle = seq[1].register_forward_pre_hook(lambda module, args: seen.append(args[0].shape))
+        torch.manual_seed(17)
+        actual = seq(image)
+        handle.remove()
+        self.assert_close(actual, expected)
+        saved = deepcopy(seq._params)
+        canvas = (4, 5, 6) if p == 1.0 else (8, 10, 12)
+        assert seen == [torch.Size((batch, 1, *canvas))]
+        assert tuple(saved[1].data["forward_input_shape"]) == seen[0]
+        assert saved[1].data["output_size"].shape == (batch, 3)
+        src = saved[1].data["src"]
+        assert (src >= 0).all()
+        assert (src < src.new_tensor(canvas[::-1])).all()
+        seq(image)
+        self.assert_close(seq(image, params=deepcopy(saved)), actual)
+        self.assert_close(make_seq()(image, params=deepcopy(saved)), actual)
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    def test_dynamo(self, batch, device, dtype, torch_optimizer):
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if batch and not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        image = torch.arange(batch * 8 * 10 * 12, device=device, dtype=dtype).reshape(batch, 1, 8, 10, 12)
+        first, second = K.CenterCrop3D((4, 5, 6)), K.CenterCrop3D((2, 3, 4))
+        expected = second(first(image))
+        seq = K.AugmentationSequential(first, second)
+        self.assert_close(torch_optimizer(seq)(image), expected)
+
+    def test_static_shape_does_not_read_scalars(self, device):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        shape = torch.Size((2, 1, 8, 10, 12))
+        for op in (K.CenterCrop3D((4, 5, 6)), K.RandomCrop3D((4, 5, 6))):
+            params = {key: value.to(device) for key, value in op.forward_parameters(shape).items()}
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as profiler:
+                actual = _get_new_batch_shape(ParamItem("crop", params), shape, op)
+            assert actual == (2, 1, 4, 5, 6)
+            assert not any(event.key == "aten::_local_scalar_dense" for event in profiler.key_averages())
+
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_export_shape_respects_static_crop_gate(self, p):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        shape = torch.Size((2, 1, 8, 10, 12))
+        for crop in (K.CenterCrop3D, K.RandomCrop3D):
+            op = crop((4, 5, 6), p=p)
+            params = ParamItem("crop", op.forward_parameters(shape))
+            with patch("kornia.augmentation.container.image.is_exporting", return_value=True):
+                actual = _get_new_batch_shape(params, shape, op)
+            assert actual == (shape if p == 0.0 else torch.Size((2, 1, 4, 5, 6)))
+
+    @pytest.mark.parametrize("first_type", [K.CenterCrop3D, K.RandomCrop3D])
+    @pytest.mark.parametrize("second_type", [K.CenterCrop3D, K.RandomCrop3D])
+    def test_intermediate_probability_follows_gate(self, first_type, second_type, device, dtype):
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        image = torch.arange(2 * 8 * 10 * 12, device=device, dtype=dtype).reshape(2, 1, 8, 10, 12)
+        canvases = set()
+        for seed in range(6):
+            torch.manual_seed(seed)
+            expected = second_type((2, 3, 4))(first_type((4, 5, 6), p=0.5)(image))
+            seq = K.AugmentationSequential(first_type((4, 5, 6), p=0.5), second_type((2, 3, 4)))
+            torch.manual_seed(seed)
+            self.assert_close(seq(image), expected)
+            canvases.add(tuple(seq._params[1].data["forward_input_shape"].tolist()))
+        # p < 1 reads the sampled gate; both outcomes must occur and each must set the next crop's canvas.
+        assert canvases == {(2, 1, 4, 5, 6), (2, 1, 8, 10, 12)}
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    def test_numpy_integer_size(self, batch, device, dtype):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        from testing.base import supports_bilinear_3d_grid_sample
+
+        if batch and not supports_bilinear_3d_grid_sample(device, dtype):
+            pytest.skip("3D grid sampling is unsupported for this device/dtype.")
+        # The 3D crops accept NumPy integer sizes; the tracked shape must hold Python ints for the next generator.
+        size = (np.int64(4), np.int64(5), np.int64(6))
+        image = torch.arange(batch * 8 * 10 * 12, device=device, dtype=dtype).reshape(batch, 1, 8, 10, 12)
+        for first_type in (K.CenterCrop3D, K.RandomCrop3D):
+            torch.manual_seed(17)
+            expected = K.RandomCrop3D((2, 3, 4))(first_type(size)(image))
+            seq = K.AugmentationSequential(first_type(size), K.RandomCrop3D((2, 3, 4)))
+            torch.manual_seed(17)
+            self.assert_close(seq(image), expected)
+            assert tuple(seq._params[1].data["forward_input_shape"].tolist()) == (batch, 1, 4, 5, 6)
+            op = first_type(size)
+            params = ParamItem("crop", op.forward_parameters(image.shape))
+            with patch("kornia.augmentation.container.image.is_exporting", return_value=True):
+                actual = _get_new_batch_shape(params, image.shape, op)
+            assert [type(dim) for dim in actual] == [int] * 5
+            assert actual == (batch, 1, 4, 5, 6)

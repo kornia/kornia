@@ -172,10 +172,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
           see the warning below.
         - ``.inverse()`` undoes the 2D geometric steps and leaves intensity, custom rigid and non-rigid steps
-          applied. Slice-mode crops and 3D geometric children raise ``NotImplementedError``, mix children
-          ``RuntimeError``. Tensor boxes come back as axis-aligned enclosures; pass
-          :class:`~kornia.geometry.boxes.Boxes` to keep rotated corners. Content lost to cropping, padding or
-          interpolation is not recovered.
+          applied. 3D geometric children raise ``NotImplementedError``, mix children ``RuntimeError``. Tensor
+          boxes come back as axis-aligned enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated
+          corners. Content lost to cropping, padding or interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
         - Nested :class:`AugmentationSequential` children contribute the matrix they record for the current call
@@ -335,7 +334,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         transformation_matrix_mode: str = "silent",
         extra_args: Optional[Dict[DataKey, Dict[str, Any]]] = None,
     ) -> None:

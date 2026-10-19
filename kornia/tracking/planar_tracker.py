@@ -30,12 +30,33 @@ from kornia.geometry.transform import warp_perspective
 class HomographyTracker(nn.Module):
     r"""Perform local-feature-based tracking of the target planar object in the sequence of the frames.
 
+    Convention:
+        - The returned homography ``H`` is :math:`(3, 3)` and maps target pixel coordinates :math:`(x, y)` to frame
+          pixel coordinates, the direction of ``cv2.findHomography(target_points, frame_points)``.
+        - The target and every frame are one grayscale image, :math:`(1, 1, H, W)`; a frame can have another size than
+          the target. Call :meth:`set_target` before the first frame. The target is not a buffer, so
+          :meth:`~torch.nn.Module.to` leaves it where it is: call :meth:`set_target` again after moving the tracker.
+        - For a :class:`~kornia.feature.LoFTR`, a :class:`~kornia.feature.LocalFeatureMatcher` or a matcher with an
+          ``extract_features`` module, :meth:`set_target` extracts the target's features once. Changes made in place to
+          the target or to that matcher's weights afterwards are not noticed; call :meth:`set_target` again.
+        - A failed match returns ``(H, False)`` with ``H`` uninitialised (:meth:`no_match`). A failure while tracking
+          also drops the previous homography, so the next frame is matched from scratch by ``initial_matcher``.
+        - Every homography the tracker returns or stores as ``previous_homography``, :meth:`no_match`'s included, is
+          float32 for a ``float16`` or ``bfloat16`` target and has the target's dtype otherwise, whatever the dtype of
+          the frame, of the matcher's keypoints or of a ``previous_homography`` assigned from outside.
+        - Keypoints narrower than that dtype are widened to it before ``ransac`` fits them. The caller's autocast
+          reaches the matchers, but not the tracker's own warp, keypoint mapping and ``ransac`` fit.
+
     Args:
-        initial_matcher: image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
-                          or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.GFTTAffNetHardNet`.
-        fast_matcher: fast image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
-                          or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.DescriptorMatcher`.
-        ransac: homography estimation module. Default: :class:`~kornia.geometry.RANSAC`.
+        initial_matcher: image matching module for a frame without a previous homography, e.g.
+            :class:`~kornia.feature.LocalFeatureMatcher` or :class:`~kornia.feature.LoFTR`. Default:
+            ``LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher("smnn", 0.95))``.
+        fast_matcher: image matching module for the next frames, matched after warping them with the previous
+            homography, e.g. :class:`~kornia.feature.LocalFeatureMatcher` or :class:`~kornia.feature.LoFTR`. Default:
+            ``LoFTR("outdoor")``.
+        ransac: homography estimation module. Default: ``RANSAC("homography", inl_th=5.0, batch_size=4096,
+            max_iter=10, max_lo_iters=10)``, looser than the ``RANSAC("homography")`` (``inl_th=2.0``) of
+            :class:`~kornia.contrib.ImageStitcher`.
         minimum_inliers_num: threshold for number inliers for matching to be successful. RANSAC needs 4 correspondences,
             so fewer than 4 matches always count as a failed match, whatever this value is.
 
@@ -91,6 +112,12 @@ class HomographyTracker(nn.Module):
             The ``torch.dtype`` of ``self.target``.
         """
         return self.target.dtype
+
+    @property
+    def _homography_dtype(self) -> torch.dtype:
+        # The dtype of every homography returned or kept as the prior: float32 for a half target, as the float32
+        # keypoints of a half matcher give it, so that it can be inverted and its sampling grid stays sub-pixel.
+        return torch.promote_types(self.dtype, torch.float32)
 
     @torch.no_grad()
     def set_target(self, target: torch.Tensor) -> None:
@@ -180,13 +207,14 @@ class HomographyTracker(nn.Module):
         """Return a failed-match response and clear current match statistics.
 
         Returns:
-            A tuple ``(H, is_valid)`` where ``H`` is an empty ``3 x 3`` tensor
-            on the tracker device and dtype, and ``is_valid`` is ``False``.
+            A tuple ``(H, is_valid)`` where ``H`` is an uninitialised ``3 x 3`` tensor on the tracker device, in
+            float32 for a ``float16`` or ``bfloat16`` target and in the target's dtype otherwise, and ``is_valid`` is
+            ``False``.
         """
         self.inliers_num = 0
         self.keypoints0_num = 0
         self.keypoints1_num = 0
-        return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
+        return torch.empty(3, 3, device=self.device, dtype=self._homography_dtype), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
         """Estimate a homography from the initial target frame to frame ``x``.
@@ -213,11 +241,16 @@ class HomographyTracker(nn.Module):
         if self.keypoints0_num < max(self.minimum_inliers_num, 4):
             return self.no_match()
 
-        H, inliers = self.ransac(keypoints0, keypoints1)
+        # RANSAC returns its model in the dtype of the keypoints: widen half keypoints first, or the fit is rounded to
+        # half before it is widened to the homography dtype.
+        keypoints_dtype = torch.promote_types(keypoints0.dtype, self._homography_dtype)
+        with torch.autocast(x.device.type, enabled=False):
+            H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1.to(keypoints_dtype))
         self.inliers_num = inliers.sum().item()
 
         if self.inliers_num < self.minimum_inliers_num:
             return self.no_match()
+        H = H.to(self._homography_dtype)
         self.previous_homography = H.clone()
         self._prior_source = (self.previous_homography, self.target)
 
@@ -233,27 +266,40 @@ class HomographyTracker(nn.Module):
             A tuple ``(H, is_valid)`` where ``H`` is the updated homography and
             ``is_valid`` indicates whether tracking remained reliable.
 
-        The frame is first prewarped by the inverse of the previous homography,
-        then matched with ``fast_matcher`` and verified using RANSAC.
+        The frame is first prewarped by the inverse of the previous homography, widened by a margin,
+        then matched with ``fast_matcher`` and verified using RANSAC. The inverse is computed in the homography dtype
+        (float32 for a ``float16`` or ``bfloat16`` target), the frame is warped in that dtype or in its own if that is
+        wider, and ``fast_matcher`` gets the warped frame in the dtype of ``x``. Its keypoints are mapped back and
+        fitted in the homography dtype or in their own if that is wider. Autocast is off for the warp, the mapping and
+        the fit.
         """
         self._drop_prior_of_another_target()
         KORNIA_CHECK(
             self.previous_homography is not None,
             "track_next_frame needs a previous homography; call forward() or match_initial() first.",
         )
-        Hwarp = cast(torch.Tensor, self.previous_homography).clone()[None]
+        homography_dtype = self._homography_dtype
+        Hwarp = cast(torch.Tensor, self.previous_homography).to(homography_dtype, copy=True)[None]
         # make a bit of border for safety
         Hwarp[:, 0:2, 0:2] = Hwarp[:, 0:2, 0:2] / 0.8
         Hwarp[:, 0:2, 2] -= 10.0
-        Hinv = torch.inverse(Hwarp)
         h, w = self.target.shape[2:]
-        frame_warped = warp_perspective(x, Hinv, (h, w))
+        # grid_sample takes the image and the sampling grid in one dtype, and a half grid is coarser than a pixel on a
+        # large frame (bfloat16 keeps 8 mantissa bits): a half frame is warped in float32 and cast back for the matcher.
+        # The caller's autocast would run the warp's matrix products in half again, so it is off for the geometry only.
+        warp_dtype = torch.promote_types(x.dtype, homography_dtype)
+        with torch.autocast(x.device.type, enabled=False):
+            Hinv = torch.inverse(Hwarp)
+            frame_warped = warp_perspective(x.to(warp_dtype), Hinv, (h, w)).to(x.dtype)
         match_dict = self.fast_matcher(
             self._matcher_input(self.fast_matcher, self._target_representation(False), frame_warped)
         )
         keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
         keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
-        keypoints1 = transform_points(Hwarp, keypoints1)
+        # Half keypoints are widened before they are mapped back and fitted, as in match_initial.
+        keypoints_dtype = torch.promote_types(keypoints0.dtype, homography_dtype)
+        with torch.autocast(x.device.type, enabled=False):
+            keypoints1 = transform_points(Hwarp, keypoints1.to(keypoints_dtype))
 
         self.keypoints0_num = len(keypoints0)
         self.keypoints1_num = len(keypoints1)
@@ -262,13 +308,15 @@ class HomographyTracker(nn.Module):
             self.reset_tracking()
             return self.no_match()
 
-        H, inliers = self.ransac(keypoints0, keypoints1)
+        with torch.autocast(x.device.type, enabled=False):
+            H, inliers = self.ransac(keypoints0.to(keypoints_dtype), keypoints1)
         self.inliers_num = inliers.sum().item()
 
         if self.inliers_num < self.minimum_inliers_num:
             self.reset_tracking()
             return self.no_match()
 
+        H = H.to(homography_dtype)
         self.previous_homography = H.clone()
         self._prior_source = (self.previous_homography, self.target)
         return H, True

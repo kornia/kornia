@@ -29,6 +29,7 @@ from kornia.augmentation.utils import (
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, DType
 from kornia.core.check import KORNIA_UNWRAP
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 
 
@@ -157,7 +158,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         applied_post = self.apply_non_transform(applied, params, flags)
 
         if applied_post.shape == non_applied.shape and applied_post.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (applied_post.dim() - 1))).to(applied_post.device)
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (applied_post.dim() - 1))), applied_post.device
+            )
             output = torch.where(to_apply_expanded, applied_post, non_applied)
         else:
             # Shape-changing mix augmentations (e.g. RandomMosaic when ``output_size``
@@ -322,7 +325,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return outputs
 
     @torch.jit.ignore
-    def inverse(self, **kwargs: Any) -> Optional[torch.Tensor]:
+    def inverse(self, *args: Any, **kwargs: Any) -> Optional[torch.Tensor]:
+        # Accept the usual ``inverse(output, params=...)`` call too, so every call form raises this error rather
+        # than a signature TypeError.
         raise RuntimeError(f"Inverse for {self.__class__.__name__} is not supported.")
 
     @property

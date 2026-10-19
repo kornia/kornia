@@ -27,6 +27,7 @@ import torch.nn.functional as F
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, ShapeError, are_checks_enabled
 from kornia.core.exceptions import TypeCheckError
+from kornia.core.ops import _constant_tensor
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
@@ -1832,10 +1833,9 @@ def normalize_homography(
           kernel for it raises here
 
     .. warning::
-        An integer matrix is not rejected: the normalization matrices are cast
-        to it and truncated, and the call then fails inside torch or returns
-        ``nan``, depending on the backend. Tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        An integer matrix is outside the contract and is not rejected: the
+        normalization matrices are cast to it and truncated, and the call then
+        fails inside torch or returns ``nan``, depending on the backend.
 
     .. warning::
         The :math:`[-1, 1]` frames follow this function's own ``align_corners``,
@@ -2056,7 +2056,13 @@ def normal_transform_pixel(
                     torch.stack([zero, zero, anchor]),
                 ]
             )
+        elif dtype is None or dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+            # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for every
+            # queued kernel before it returns. The values round from the same doubles to ``dtype`` either way.
+            tr_mat = _constant_tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         else:
+            # Complex and float8 dtypes keep the host literal: ``torch.full`` has no float8 fill on torch 2.5.1 (CPU)
+            # or on MPS.
             tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
     else:
         # Low-precision floating types cannot represent every practical image size exactly
@@ -2198,7 +2204,15 @@ def normal_transform_pixel3d(
                     torch.stack([zero, zero, zero, anchor]),
                 ]
             )
+        elif dtype is None or dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+            # As in 2-D: filled on the device, without a host copy that waits for the queue.
+            tr_mat = _constant_tensor(
+                [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
+                device=device,
+                dtype=dtype,
+            )
         else:
+            # As in 2-D: complex and float8 dtypes keep the host literal.
             tr_mat = torch.tensor(
                 [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
                 device=device,
@@ -2236,6 +2250,11 @@ def normal_transform_pixel3d(
     return tr_mat.unsqueeze(0)  # 1x4x4
 
 
+def _is_floating_or_complex(x: torch.Tensor) -> bool:
+    """Whether ``x`` has a floating or complex dtype, the only dtypes in which a pixel normalization is invertible."""
+    return x.is_floating_point() or x.is_complex()
+
+
 def denormalize_homography(
     dst_pix_trans_src_pix: torch.Tensor,
     dsize_src: tuple[int, int],
@@ -2252,8 +2271,7 @@ def denormalize_homography(
           source pixels to destination pixels. The ``dsize`` roles, the
           ``(x, y, 1)`` column vectors, per-sample batching, the
           ``align_corners``-selected frames and the shape guard are as
-          documented there, including its integer-input
-          (`#3959 <https://github.com/kornia/kornia/issues/3959>`_) warning
+          documented there, including its integer-input warning
         - ``inv(N_dst)`` goes through ``torch.linalg.inv`` in eager mode (so
           ``cusolver`` on ``cuda``), not through the ``cross``-based adjugate
         - the two functions invert each other to a small multiple of the
@@ -2305,7 +2323,12 @@ def denormalize_homography(
         dtype=normalization_dtype,
         align_corners=align_corners,
     ).to(dst_pix_trans_src_pix)
-    dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
+    # A floating pixel normalization is triangular with diagonal scales 2 / (size - 1), so it is invertible unless a
+    # scale underflows to 0, which in float16 takes an axis longer than 2**26 pixels; that matrix gives non-finite
+    # values instead of an error. An integer one truncates its scales to 0 (kornia#3959) and keeps the error check.
+    dst_denorm_trans_dst_pix = _torch_inverse_cast(
+        dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
+    )
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
     return dst_norm_trans_src_norm
@@ -2374,7 +2397,11 @@ def normalize_homography3d(
         src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
 
-    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    # A floating pixel normalization is invertible unless a scale underflows (see `denormalize_homography`); an
+    # integer one keeps the error check (kornia#3959).
+    src_pix_trans_src_norm = _torch_inverse_cast(
+        src_norm_trans_src_pix, check_errors=not _is_floating_or_complex(src_norm_trans_src_pix)
+    )
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
@@ -2409,7 +2436,7 @@ def denormalize_homography3d(
           ``dst_pix_trans_src_pix`` raises ``TypeCheckError`` (also a
           ``TypeError``) instead of being promoted, so cast it first. Integers
           would truncate the normalization matrices (the 2-D function still
-          does, `#3959 <https://github.com/kornia/kornia/issues/3959>`_), and
+          does), and
           complex dtypes would be inverted in ``float32``
           (``_torch_inverse_cast``), losing ``complex128`` precision
 
@@ -2457,7 +2484,11 @@ def denormalize_homography3d(
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
     ).to(dst_pix_trans_src_pix)
-    dst_pix_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_dst_pix)
+    # A floating pixel normalization is invertible unless a scale underflows (see `denormalize_homography`); an
+    # integer one keeps the error check (kornia#3959).
+    dst_pix_trans_dst_norm = _torch_inverse_cast(
+        dst_norm_trans_dst_pix, check_errors=not _is_floating_or_complex(dst_norm_trans_dst_pix)
+    )
     # compute chain transformations
     return dst_pix_trans_dst_norm @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
 
@@ -2584,10 +2615,9 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     Note:
         ``R`` and ``t`` must promote to a floating point or complex dtype;
         an integer or boolean pair raises ``ValueError`` naming its dtype.
-        Mixed integer/floating inputs keep torch's promotion. The integer-safe
-        ``_4x4`` frame functions and ``camtoworld_to_worldtocam_Rt`` keep their
-        existing behavior; the broader dtype consistency question is tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        Mixed integer/floating inputs keep torch's promotion. The ``_4x4``
+        frame functions and ``camtoworld_to_worldtocam_Rt`` only transpose,
+        negate and multiply, so they accept integer input as well.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -2656,6 +2686,25 @@ def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
     return R, t
 
 
+def _integer_safe_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    # ``a @ b`` for the frame and pose functions that accept integer input (see the Rt_to_matrix4x4 Note).
+    # CUDA has no integer matmul kernels ("baddbmm_cuda" not implemented for 'Long'), so a pair of one integer
+    # dtype is multiplied out and summed instead, on every device so that CPU covers this branch too. Integer
+    # products and sums wrap the same way in either form, so the result is bitwise CPU's integer ``a @ b``.
+    # Every other pair (floating, complex, bool, the unsigned dtypes CPU matmul lacks, mixed dtypes) keeps
+    # ``a @ b``, its rounding and its errors. So does a pair whose inner sizes differ, which only reaches here
+    # with checks disabled: broadcasting would stretch a size-1 inner dimension where ``a @ b`` raises.
+    if (
+        a.dtype == b.dtype
+        and a.dtype in [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64]
+        and a.dim() > 1
+        and b.dim() > 1
+        and a.shape[-1] == b.shape[-2]
+    ):
+        return (a.unsqueeze(-1) * b.unsqueeze(-3)).sum(-2, dtype=a.dtype)
+    return a @ b
+
+
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torch.Tensor:
     r"""Convert a camera-to-world pose from the graphics frame (e.g. OpenGL) to the vision frame (e.g. OpenCV).
 
@@ -2697,10 +2746,10 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
 
     .. warning::
         Integer input is not guarded: this function returns ``int64`` for an
-        ``int64`` matrix (on backends with integer batched matmul), while
+        ``int64`` matrix on every device, CUDA (which has no integer matmul)
+        included, while
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
-        raises ``ValueError`` naming the unsupported dtype. Tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_; see
+        raises ``ValueError`` naming the unsupported dtype; see
         :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`.
 
     Args:
@@ -2724,7 +2773,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
         dtype=extrinsics_graphics.dtype,
         device=extrinsics_graphics.device,
     )
-    return extrinsics_graphics @ invert_yz
+    return _integer_safe_matmul(extrinsics_graphics, invert_yz)
 
 
 def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -2817,7 +2866,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
         dtype=extrinsics_vision.dtype,
         device=extrinsics_vision.device,
     )
-    return extrinsics_vision @ invert_yz
+    return _integer_safe_matmul(extrinsics_vision, invert_yz)
 
 
 def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -2936,6 +2985,10 @@ def camtoworld_to_worldtocam_Rt(
           returns ``R`` exactly and ``t`` to rounding
         - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`, and ``R`` and ``t``
           must carry the same batch size: a mismatched pair raises ``ShapeError``
+        - an ``R`` and ``t`` of one integer dtype (``uint8``, ``int8``, ``int16``,
+          ``int32`` or ``int64``) are accepted on every device, CUDA (which has
+          no integer matmul) included, and the result keeps that dtype, wrapping
+          on overflow; ``check_rotation=True`` checks such an ``R`` in ``float32``
 
     .. warning::
         ``R`` is **assumed** to be a rotation and by default this is not
@@ -2975,7 +3028,7 @@ def camtoworld_to_worldtocam_Rt(
         _check_is_rotation(R, "camtoworld_to_worldtocam_Rt")
 
     R_inv = R.transpose(1, 2)
-    new_t: torch.Tensor = -R_inv @ t
+    new_t: torch.Tensor = _integer_safe_matmul(-R_inv, t)
 
     return (R_inv, new_t)
 
@@ -3029,7 +3082,7 @@ def worldtocam_to_camtoworld_Rt(
         _check_is_rotation(R, "worldtocam_to_camtoworld_Rt")
 
     R_inv = R.transpose(1, 2)
-    new_t: torch.Tensor = -R_inv @ t
+    new_t: torch.Tensor = _integer_safe_matmul(-R_inv, t)
 
     return (R_inv, new_t)
 

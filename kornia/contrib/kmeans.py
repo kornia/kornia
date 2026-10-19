@@ -21,19 +21,35 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import euclidean_distance
 
 
 class KMeans:
-    """Implements the kmeans clustering algorithm with euclidean distance as similarity measure.
+    r"""Implements the kmeans clustering algorithm with euclidean distance as similarity measure.
+
+    Convention:
+        - :meth:`fit` stops after the first update whose squared total centre shift,
+          :math:`(\sum_k \lVert c_k^{\text{new}} - c_k \rVert)^2`, is at most ``tolerance``, or after ``max_iterations``
+          updates. ``max_iterations=0`` sets no limit, so ``tolerance`` must not be ``None`` then.
+        - ``seed`` calls ``torch.manual_seed(seed)``, which reseeds the global generator. The initial centres, sampled
+          from the data of each :meth:`fit` when ``cluster_centers`` is ``None``, and the points that empty clusters
+          move to are drawn from it; there is no ``generator`` argument. A second :meth:`fit` on the same data
+          therefore starts from other centres unless the global generator is reseeded first.
+        - A point at the same distance from two centres goes to the one with the lower index. A cluster that gets no
+          point moves to a random data point.
+        - Distances and means are computed in the promoted dtype of the data and the centres, at least ``float32``
+          (``int64`` for integer data and centres). The centres keep the dtype of the data, so an integer mean is
+          truncated toward zero.
 
     Args:
-        num_clusters: number of clusters the data has to be assigned to
-        cluster_centers: torch.Tensor of starting cluster centres can be passed instead of num_clusters
-        tolerance: float value. the algorithm terminates if the shift in centers is less than tolerance
-        max_iterations: number of iterations to run the algorithm for
-        seed: number to set torch manual seed for reproducibility
+        num_clusters: number of clusters the data has to be assigned to. Required, also with ``cluster_centers``.
+        cluster_centers: the ``(num_clusters, D)`` starting centres, or ``None`` to sample them from the data in
+            each :meth:`fit`.
+        tolerance: the bound on the squared total centre shift that stops :meth:`fit`, or ``None`` to stop only after
+            ``max_iterations`` updates.
+        max_iterations: the maximum number of updates; 0 sets no limit.
+        seed: if given, passed to ``torch.manual_seed`` when the object is created.
 
     Example:
         >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
@@ -189,10 +205,11 @@ class KMeans:
             current_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns
-            KORNIA_CHECK(
-                X.shape[1] == self._initial_cluster_centers.shape[1],
-                f"Dimensions at position 1 of X and cluster_centers do not match. \
-                {X.shape[1]} != {self._initial_cluster_centers.shape[1]}",
+            KORNIA_CHECK_SAME_SIZE(
+                X,
+                self._initial_cluster_centers,
+                dim=1,
+                msg="X and cluster_centers must have the same number of columns.",
             )
             current_centers = self._initial_cluster_centers
 
@@ -273,10 +290,8 @@ class KMeans:
         """
         KORNIA_CHECK_SHAPE(x, ["N", "D"])
         # x and cluster_centers should have same number of columns
-        KORNIA_CHECK(
-            x.shape[1] == self.cluster_centers.shape[1],
-            f"Dimensions at position 1 of x and cluster_centers do not match. \
-                {x.shape[1]} != {self.cluster_centers.shape[1]}",
+        KORNIA_CHECK_SAME_SIZE(
+            x, self.cluster_centers, dim=1, msg="x and cluster_centers must have the same number of columns."
         )
 
         work_dtype = self._work_dtype(x, self.cluster_centers)

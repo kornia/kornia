@@ -479,9 +479,8 @@ Augmentations
   key's handler share their recorded parameters across the inputs; a transform
   matrix alone does not mean every data key is supported.
 - ``.inverse()`` restores keypoints to numerical precision when every
-  geometric step is invertible. Slice-mode crops and the 3D geometric
-  augmentations raise (crops accept ``cropping_mode="resample"`` for
-  inversion); intensity and non-rigid children are skipped, so their effect
+  geometric step is invertible. The 3D geometric augmentations raise;
+  intensity and non-rigid children are skipped, so their effect
   stays. Tensor box outputs are axis-aligned enclosures, so a rotation round
   trip does not restore a box.
 - Non-rigid children do not move coordinate annotations:
@@ -528,20 +527,17 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-- The 2D intensity augmentations assume float input in ``[0, 1]``, and no
-  base-class check enforces it. Outside that range each class follows its own
-  policy -- some clamp, rescale or round-trip through ``uint8``, some do not
-  clamp, :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
-  upper end, and :class:`kornia.augmentation.RandomGamma` does not clamp, so a
-  negative input gives NaN for a non-integer ``gamma``. Several classes return
-  an all-zero image for an all-negative input, and
-  :class:`kornia.augmentation.RandomSolarize` does so when every value is at
-  least ``1.5``. :class:`kornia.augmentation.RandomEqualize` and
-  :class:`kornia.augmentation.RandomClahe` raise an error naming the range; the
-  check is asynchronous, so on an accelerator the error can surface at a later
-  synchronizing call (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
-  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
-  documentation.
+- A 2D intensity augmentation whose arithmetic assumes unit-range images clamps
+  its input into ``[0, 1]`` before operating, and clamps its output too. This
+  includes colour adjustments, illumination, snow, JPEG and histogram
+  equalization. Samples skipped by the probability gate retain their original
+  values. Range-independent operations, such as blurs, noise, channel operations,
+  erasing, grayscale, inversion, ``Normalize`` and ``Denormalize``, do not clamp
+  their input. ``RandomAutoContrast`` rescales each channel's full input range
+  instead of clipping it. ``RandomBrightness`` and ``RandomContrast`` preserve
+  raw arithmetic with ``clip_output=False``. See each class's Convention block.
+  The functional ``kornia.enhance.equalize`` and ``equalize_clahe`` APIs retain
+  their strict range checks; their augmentation wrappers clamp first.
 
 .. code-block:: python
 
@@ -714,15 +710,14 @@ border names and the even-kernel anchor do not. :func:`~kornia.filters.filter2d`
 :func:`~kornia.filters.box_blur`, :func:`~kornia.filters.gaussian_blur2d`, :func:`~kornia.filters.laplacian`,
 :func:`~kornia.filters.motion_blur`, :func:`~kornia.filters.bilateral_blur`,
 :func:`~kornia.filters.joint_bilateral_blur`, :func:`~kornia.filters.guided_blur`, :func:`~kornia.filters.canny`,
-:func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.spatial_gradient`,
+:func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.median_blur`, :func:`~kornia.filters.spatial_gradient`,
 :func:`~kornia.filters.spatial_gradient3d`, :func:`~kornia.filters.sobel` and their modules filter an integer or bool
 image in float32 and return
 float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped to its dtype, where
 ``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
 uint8; a floating image keeps its dtype. :func:`~kornia.filters.guided_blur` returns the promoted dtype of its
-``guidance`` and ``input``, an integer one counting as float32. :func:`~kornia.filters.median_blur`
-and the blur pools do not follow this yet: most of them raise on an integer image
-(`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+``guidance`` and ``input``, an integer one counting as float32. The blur pools are network layers and expect a
+floating input; an integer image is outside their contract.
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
@@ -1210,6 +1205,17 @@ normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homog
 Local features
 --------------
 
+The learned models in ``kornia.feature`` that take a ``pretrained`` flag (``HardNet``, ``HardNet8``, ``HyNet``,
+``SOSNet``, ``TFeat``, ``OriNet``, ``LAFAffNetShapeEstimator``, ``KeyNet``, ``KeyNetDetector``, ``DeFMO``,
+``SOLD2``, ``SOLD2_detector``) default to their pretrained weights, downloaded on first use. ``KeyNetDetector`` puts
+only its ``KeyNet`` network in evaluation mode: the detector itself stays in training mode, and an ``ori_module`` or
+``aff_module`` you pass keeps its own mode. ``DISK``, ``DeDoDe``, ``ALIKED`` and ``XFeat`` build their learned
+weights at random in their constructor and load them with ``from_pretrained``. ``DeDoDe`` with its default ``G``
+descriptor also downloads a frozen, pretrained DINOv2 backbone in its constructor, and ``DeDoDe.detect`` and
+``describe`` switch the model to evaluation mode themselves. ``LoFTR(pretrained=None)`` and
+``LightGlue(features=None)`` are random. Until ``.eval()`` is called, a random ``LoFTR`` runs its supervised training
+branch, which raises without ground-truth matches. See :ref:`pretrained-models-conventions` for the shared mode rule.
+
 A local affine frame (LAF) describes a keypoint by a ``2 x 3`` matrix ``[A | c]``, and a set of them is a
 ``(B, N, 2, 3)`` tensor. The centre ``c = (x, y)`` is in the pixel frame of
 :ref:`Coordinates and sizes <coordinate-conventions>`, with pixel centres at integers: the centre of a 5-pixel axis is
@@ -1273,6 +1279,21 @@ For example, from the ``pt``, ``size`` and ``angle`` of ``cv2.SIFT`` keypoints:
     lafs = KF.laf_from_center_scale_ori(pt[None], 3.0 * size.view(1, -1, 1, 1), -angle.view(1, -1, 1))
     assert torch.allclose(-KF.get_laf_orientation(lafs).flatten() % 360.0, angle)
 
+.. _pretrained-models-conventions:
+
+Pretrained models
+-----------------
+
+- A model built with complete pretrained weights comes back in evaluation mode (``model.training`` is ``False``).
+  A randomly initialised model stays in PyTorch's default training mode. So does a model whose weights are only partly
+  pretrained, such as a pretrained backbone with a newly initialised classification head. Call ``.train()`` to
+  fine-tune a pretrained model, and ``.eval()`` before running inference on a random one.
+- Constructors, ``from_config``, ``from_pretrained`` and the builders set the mode once, when they build the model.
+  ``load_checkpoint`` and ``load_state_dict`` on an existing module leave its mode as it is: after loading your own
+  weights, call ``.eval()``.
+- Task wrappers that take a model (``ObjectDetector``, ``EdgeDetector``, ``SuperResolution``, ``SemanticSegmentation``)
+  put that model in evaluation mode: they run inference.
+
 Pitfall checklist
 -----------------
 
@@ -1306,9 +1327,9 @@ Quick self-review for generated code, most common first:
 16. Expecting ``RandomElasticTransform``, ``RandomThinPlateSpline`` or
     ``RandomFisheye`` to move boxes and keypoints with the image — they do not.
 17. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
-    through an intensity augmentation — some clamp, some rescale,
-    ``RandomEqualize`` and ``RandomClahe`` raise, and several return zeros
-    (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+    through a range-dependent intensity augmentation — input clamping discards
+    out-of-range information and can produce zeros for an all-negative image.
+    Normalize after augmenting instead.
 
 .. tip::
 

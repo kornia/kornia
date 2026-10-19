@@ -44,7 +44,7 @@ def _loftr_matching_every_cell(device, dtype):
     cfg["match_coarse"]["thr"] = 0.0
     cfg["match_coarse"]["border_rm"] = 0
     torch.manual_seed(0)
-    return LoFTR(pretrained=None, config=cfg).to(device, dtype)
+    return LoFTR(pretrained=None, config=cfg).to(device, dtype).eval()
 
 
 class TestLoFTR(BaseTester):
@@ -119,7 +119,7 @@ class TestLoFTR(BaseTester):
         cfg["match_coarse"]["border_rm"] = 0
         gen = torch.Generator(device=device).manual_seed(3)
         patches = torch.rand(1, 1, 64, 64, device=device, generator=gen)
-        loftr = LoFTR(pretrained=None, config=cfg).to(device)
+        loftr = LoFTR(pretrained=None, config=cfg).to(device).eval()
         mask = torch.ones(1, 64, 64, device=device)
         mask[..., :16] = 0  # the left quarter of both images is padding
         with torch.no_grad():
@@ -1190,7 +1190,7 @@ class TestConventionsLoFTR(BaseTester):
             return feat0, feat1, data
 
         torch.manual_seed(0)
-        model = LoFTR(pretrained=None).to(device, dtype)
+        model = LoFTR(pretrained=None).to(device, dtype).eval()
         model.coarse_matching.register_forward_pre_hook(coarse_features)
         model.fine_matching.register_forward_pre_hook(fine_features)
         return model

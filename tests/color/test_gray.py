@@ -129,6 +129,13 @@ class TestRgbToGrayscale(BaseTester):
         assert out.device == img.device
         assert out.dtype == img.dtype
 
+    def test_jit_script(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        op_jit = torch.jit.script(kornia.color.rgb_to_grayscale)
+        self.assert_close(op_jit(img), kornia.color.rgb_to_grayscale(img))
+        module_jit = torch.jit.script(kornia.color.RgbToGrayscale())
+        self.assert_close(module_jit(img), kornia.color.rgb_to_grayscale(img))
+
     def test_smoke_byte(self, device):
         C, H, W = 3, 4, 5
         img = torch.randint(0, 255, (C, H, W), device=device, dtype=torch.uint8)

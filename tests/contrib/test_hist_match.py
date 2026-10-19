@@ -149,26 +149,26 @@ class TestHistMatch(BaseTester):
         assert torch.equal(kornia.contrib.interp(xp, xp, fp), fp)
 
     def test_interp_left_of_a_repeated_first_knot(self, device, dtype):
-        # A-31: np.interp([-1, 0, 0.5], [0, 0, 1], [5, 6, 7]) == [5, 6, 6.5]; kornia returned 6.0 left of the step.
+        # np.interp([-1, 0, 0.5], [0, 0, 1], [5, 6, 7]) == [5, 6, 6.5]; 6.0 was returned left of the step.
         x = torch.tensor([-1.0, 0.0, 0.5], device=device, dtype=dtype)
         xp = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
         fp = torch.tensor([5.0, 6.0, 7.0], device=device, dtype=dtype)
         assert kornia.contrib.interp(x, xp, fp).tolist() == [5.0, 6.0, 6.5]
 
     def test_matching_an_image_to_itself_is_the_identity(self, device, dtype):
-        # A-21: 132 (float32) / 178 (float64) of 5328 pixels changed.
+        # An interp inexact at its knots changed 132 (float32) / 178 (float64) of these 5328 pixels.
         g = torch.Generator().manual_seed(0)
         x = (torch.rand(2, 3, 24, 37, generator=g) * 255).round().to(device, dtype)
         assert torch.equal(kornia.contrib.histogram_matching(x, x), x)
 
     def test_uint8_result_survives_a_uint8_cast(self, device):
-        # A-21: [3, 1, 2] onto [10, 20, 30] gave [29.999998, 10, 20], i.e. 29 after .to(torch.uint8).
+        # An interp inexact at its knots gave [29.999998, 10, 20] for [3, 1, 2] onto [10, 20, 30], 29 as uint8.
         src = torch.tensor([3, 1, 2], dtype=torch.uint8, device=device)
         tpl = torch.tensor([10, 20, 30], dtype=torch.uint8, device=device)
         assert kornia.contrib.histogram_matching(src, tpl).to(torch.uint8).tolist() == [30, 10, 20]
 
     def test_float32_output_stays_inside_the_template_range(self, device):
-        # A-22: #5794's range guarantee leaked one ulp in 24-49 of 300 random float32 pairs.
+        # An interp inexact at its knots left the template range by one ulp for some random float32 pairs.
         outside = 0
         for seed in range(300):
             g = torch.Generator().manual_seed(seed)
@@ -353,8 +353,7 @@ class TestHistMatch(BaseTester):
         assert out.tolist() == [float("inf")]
 
     def test_jit_script(self, device, dtype):
-        # Codex review on #5960: a recursive interp (for the complex parts) made both public functions unscriptable,
-        # also for real inputs; main (4863aed8a) scripted them.
+        # A recursive interp (for the complex parts) made both public functions unscriptable, also for real inputs.
         interp_script = torch.jit.script(kornia.contrib.interp)
         x = torch.linspace(-1.0, 2.0, 13, device=device, dtype=dtype)
         xp = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype)
@@ -369,3 +368,152 @@ class TestHistMatch(BaseTester):
         template = (torch.rand(1, 3, 10, 7, generator=g) ** 2).to(device, dtype)
         matched = torch.jit.script(kornia.contrib.histogram_matching)(source, template)
         self.assert_close(matched, kornia.contrib.histogram_matching(source, template))
+
+    def test_convention_histogram_matching_pools_every_element(self, device, dtype):
+        source = torch.tensor([0.1, 0.4, 0.2, 0.3, 0.6, 0.5], device=device, dtype=dtype).view(2, 1, 1, 3)
+        template = torch.arange(1, 7, device=device, dtype=dtype).view(2, 1, 1, 3)
+        # skimage 0.26.0: match_histograms(source, template, channel_axis=None) -> [[1, 4, 2], [3, 6, 5]].
+        # Matching each sample on its own would give [2, 6, 4] for both.
+        expected = torch.tensor([1.0, 4.0, 2.0, 3.0, 6.0, 5.0], device=device, dtype=dtype).view(2, 1, 1, 3)
+        self.assert_close(kornia.contrib.histogram_matching(source, template), expected)
+
+    def test_convention_integer_source_returns_float32_between_template_values(self, device):
+        source = torch.tensor([0, 1, 2], dtype=torch.uint8, device=device)
+        out = kornia.contrib.histogram_matching(source, torch.tensor([0, 10], dtype=torch.uint8, device=device))
+        assert out.dtype == torch.float32
+        # skimage 0.26.0 match_histograms gives [0, 3.333, 10] (in float64)
+        self.assert_close(out, torch.tensor([0.0, 10.0 / 3.0, 10.0], device=device))
+
+    def test_convention_interp_extrapolates_where_np_interp_clamps(self, device, dtype):
+        xp = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        fp = torch.tensor([4.0, 2.0, 0.0], device=device, dtype=dtype)
+        x = torch.tensor([[0.0, 0.5], [4.0, 6.0]], device=device, dtype=dtype)
+        # np.interp([0, 0.5, 4, 6], [1, 2, 3], [4, 2, 0]) -> [4, 4, 0, 0]
+        expected = torch.tensor([[6.0, 5.0], [-2.0, -6.0]], device=device, dtype=dtype)
+        self.assert_close(kornia.contrib.interp(x, xp, fp), expected)
+
+    @pytest.mark.parametrize(
+        ("dtype_", "xp", "big"),
+        [
+            (torch.float16, [0.0, 4.0], 40000.0),
+            (torch.float16, [-2.71875, 0.0012], 40000.0),  # a spacing float16 holds only approximately
+            (torch.bfloat16, [0.0, 3.0], 3e38),
+        ],
+    )
+    def test_half_overflow_segment_matches_float64(self, dtype_, xp, big, device):
+        # f1 - f0 = 2 * big overflows the half dtype while both ends are finite. Over 481 points of the segment and 10 %
+        # beyond it, the extrapolated ones included, every value equals the float64 result rounded to the dtype.
+        # Reference: fp0 + (fp1 - fp0) * (x - xp0) / (xp1 - xp0) evaluated in float64 on the half inputs. (Not every
+        # point of every segment is: float32 intermediates round a few near-ties the other way, by one ulp.)
+        xp = torch.tensor(xp, dtype=dtype_)
+        fp = torch.tensor([-big, big], dtype=dtype_)
+        span = float(xp[1] - xp[0])
+        x = torch.linspace(float(xp[0]) - 0.1 * span, float(xp[1]) + 0.1 * span, 481, dtype=torch.float64).to(dtype_)
+        xp64, fp64 = xp.double(), fp.double()
+        expected = (fp64[0] + (fp64[1] - fp64[0]) * (x.double() - xp64[0]) / (xp64[1] - xp64[0])).to(dtype_)
+        out = kornia.contrib.interp(x.to(device), xp.to(device), fp.to(device))
+        assert out.dtype == dtype_
+        assert torch.equal(out.cpu(), expected)
+
+    def test_half_overflow_segment_is_exact_at_its_knots_for_inexact_spacing(self, device):
+        # float16 rounds the spacing 4.349121 to 4.347656, which used to make the knot weights sum to 1.0003 and the
+        # first knot -inf.
+        xp = torch.tensor([-4.71875, -0.36962890625], device=device, dtype=torch.float16)
+        fp = torch.tensor([-65504.0, 42240.0], device=device, dtype=torch.float16)
+        assert torch.equal(kornia.contrib.interp(xp, xp, fp), fp)
+
+    def test_half_overflow_segments_are_exact_at_their_knots(self, device):
+        g = torch.Generator().manual_seed(0)
+        for _ in range(300):
+            xp = torch.sort(torch.randn(2, generator=g) * 3).values.to(torch.float16)
+            sign = 1.0 if torch.rand(1, generator=g) < 0.5 else -1.0
+            fp = (sign * torch.tensor([-1.0, 1.0]) * (33000 + 32000 * torch.rand(2, generator=g))).to(torch.float16)
+            if xp[0] == xp[1]:
+                continue
+            assert torch.equal(kornia.contrib.interp(xp.to(device), xp.to(device), fp.to(device)), fp.to(device))
+
+    def test_half_coordinates_with_a_difference_above_65504(self, device):
+        # 60000 - (-60000) overflows float16; the weights are formed in float32.
+        x = torch.tensor([0.0, -30000.0, 30000.0], device=device, dtype=torch.float16)
+        xp = torch.tensor([-60000.0, 60000.0], device=device, dtype=torch.float16)
+        fp = torch.tensor([0.0, 2.0], device=device, dtype=torch.float16)
+        # fp0 + (fp1 - fp0) * (x - xp0) / (xp1 - xp0): (1, 0.5, 1.5), exact in float16 for these x
+        expected = torch.tensor([1.0, 0.5, 1.5], dtype=torch.float16)
+        assert torch.equal(kornia.contrib.interp(x, xp, fp).cpu(), expected)
+
+    @pytest.mark.parametrize(
+        ("x", "x_dtype", "xp", "xp_dtype", "fp_dtype", "expected"),
+        [
+            # 3001 is not a float16 number (it rounds to 3000): an integer x rounded onto the float16 grid gave fp[0]
+            (3001, torch.int64, [3000, 3010], torch.float16, torch.float16, -32000.0),
+            # 2999 rounds to 3000 in float16: an integer xp rounded onto the float16 grid gave fp[0] at x = 3000
+            (3000, torch.float16, [2999, 3009], torch.int64, torch.float16, -32000.0),
+            # bfloat16 keeps 8 bits: 3001 and 3009 would round to 3008, merging the knots
+            (3008, torch.bfloat16, [3001, 3009], torch.int64, torch.bfloat16, 29952.0),
+        ],
+    )
+    def test_integer_coordinates_mixed_with_half_coordinates_are_not_rounded_to_half(
+        self, x, x_dtype, xp, xp_dtype, fp_dtype, expected, device
+    ):
+        # Expected: fp0 + (fp1 - fp0) * (x - xp0) / (xp1 - xp0) in float64 on the fp_dtype ends, rounded to fp_dtype:
+        # -40000 + 80000 / 10 in float16, and -39936 + 79872 * 7 / 8 in bfloat16 (where 40000 is 39936).
+        fp = torch.tensor([-40000.0, 40000.0], device=device, dtype=fp_dtype)
+        out = kornia.contrib.interp(
+            torch.tensor([x], device=device, dtype=x_dtype), torch.tensor(xp, device=device, dtype=xp_dtype), fp
+        )
+        assert out.dtype == fp_dtype
+        assert out.cpu().tolist() == [expected]
+
+    @pytest.mark.parametrize("dtype_", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize(
+        ("x", "xp", "expected"),
+        [
+            # Each expected value is fp0 + (fp1 - fp0) * (x - xp0) / (xp1 - xp0) in float64 with fp = [0, 2], rounded to
+            # the dtype.
+            (100000, [0, 200000], 1.0),  # x - xp0 = 100000 used to overflow float16 to inf: NaN
+            (60000, [0, 200000], 0.6),  # the spacing 200000 used to overflow to inf, so the weight was a silent 0
+            (1000, [0, 200000], 0.01),  # the same silent 0
+            (100000, [0, 10], 20000.0),  # x - xp0 = 100000 used to overflow to inf
+        ],
+    )
+    def test_integer_coordinates_with_half_fp(self, x, xp, expected, dtype_, device):
+        out = kornia.contrib.interp(
+            torch.tensor([x], device=device),
+            torch.tensor(xp, device=device),
+            torch.tensor([0.0, 2.0], device=device, dtype=dtype_),
+        )
+        assert out.dtype == dtype_
+        assert torch.equal(out.cpu(), torch.tensor([expected], dtype=torch.float64).to(dtype_))
+
+    def test_integer_coordinates_with_half_fp_are_interpolated_in_float32(self, device):
+        # The weight and the interpolation are computed in float32 and rounded once: xp = [0, 10, 25], fp = [0, 3, -7]
+        # at x = -4 is -1.2 -> float16 -1.2001953125 (the weight rounded to float16 first gave -1.19921875).
+        out = kornia.contrib.interp(
+            torch.tensor([-4], device=device),
+            torch.tensor([0, 10, 25], device=device),
+            torch.tensor([0.0, 3.0, -7.0], device=device, dtype=torch.float16),
+        )
+        assert out.cpu().tolist() == [-1.2001953125]
+
+    @pytest.mark.parametrize(("dtype_", "big"), [(torch.float16, 40000.0), (torch.bfloat16, 3e38)])
+    def test_integer_coordinates_with_half_fp_far_from_zero(self, dtype_, big, device):
+        # The offsets are subtracted in int64: as float32 the 2**40 offset swallows them and every value is -big. The
+        # bfloat16 segment also overflows the dtype, so it goes through the overflow branch.
+        x = torch.tensor([2**40, 2**40 + 1, 2**40 + 3, 2**40 + 4], device=device)
+        xp = torch.tensor([2**40, 2**40 + 4], device=device)
+        fp = torch.tensor([-big, big], device=device, dtype=dtype_)
+        # halves of a half-precision number are exact
+        expected = torch.tensor([-big, -big / 2, big / 2, big], dtype=dtype_)
+        assert torch.equal(kornia.contrib.interp(x, xp, fp).cpu(), expected)
+
+    def test_interp_integer_coordinates_with_half_fp_are_exact_at_knots_and_give_the_weights_as_fp_gradient(
+        self, device
+    ):
+        x = torch.tensor([0, 100000, 200000], device=device)
+        xp = torch.tensor([0, 200000], device=device)
+        fp = torch.tensor([-40000.0, 40000.0], device=device, dtype=torch.float16, requires_grad=True)
+        out = kornia.contrib.interp(x, xp, fp)
+        assert out.tolist() == [-40000.0, 0.0, 40000.0]
+        out.sum().backward()
+        # weights (1, .5, 0) and (0, .5, 1) summed
+        assert fp.grad.tolist() == [1.5, 1.5]

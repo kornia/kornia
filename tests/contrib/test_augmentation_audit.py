@@ -39,7 +39,7 @@ class TestAugmentationAudit(BaseTester):
         assert not hasattr(K.AugmentationSequential, "audit")
 
     def test_bhw_mask_is_accepted_like_bchw(self, device, dtype):
-        # C-26: AugmentationSequential takes (B, H, W) masks (#5602); audit rejected them as "not batched".
+        # AugmentationSequential takes (B, H, W) masks (#5602); audit rejected them as "not batched".
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
         img = torch.rand(2, 3, 30, 40, device=device, dtype=dtype)
         mask = (torch.rand(2, 30, 40, device=device) > 0.5).to(dtype)

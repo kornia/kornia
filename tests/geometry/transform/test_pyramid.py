@@ -19,9 +19,10 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import BaseError
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestPyrUp(BaseTester):
@@ -41,6 +42,118 @@ class TestPyrUp(BaseTester):
 
 
 class TestPyrDown(BaseTester):
+    @pytest.mark.parametrize("dynamo", [False, True])
+    @pytest.mark.parametrize("operation", ["pyrdown", "build_pyramid", "rescale"])
+    def test_onnx_dynamic_spatial_shape(self, operation, dynamo, tmp_path):
+        import numpy as np
+
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        if dynamo:
+            if not dynamo_is_available():
+                pytest.skip("Dynamo ONNX export is unavailable on this torch/python pair")
+            if torch_version_lt(2, 9, 0):
+                pytest.skip("Dynamo ONNX export of a dynamic height or width needs torch >= 2.9")
+            pytest.importorskip("onnxscript")
+
+        class Wrapper(torch.nn.Module):
+            def forward(self, x):
+                if operation == "pyrdown":
+                    return kornia.geometry.transform.pyrdown(x)
+                if operation == "build_pyramid":
+                    return kornia.geometry.transform.build_pyramid(x, 3)[-1]
+                return kornia.geometry.transform.rescale(x, 0.5)
+
+        model = Wrapper().eval()
+        path = tmp_path / "model.onnx"
+        export_kwargs = {
+            "input_names": ["x"],
+            "output_names": ["y"],
+            "opset_version": 18,
+            "dynamo": dynamo,
+        }
+        if dynamo:
+            export_kwargs["dynamic_shapes"] = (
+                {
+                    0: torch.export.Dim("batch"),
+                    2: torch.export.Dim("height", min=6),
+                    3: torch.export.Dim("width", min=6),
+                },
+            )
+        else:
+            export_kwargs["dynamic_axes"] = {
+                "x": {0: "batch", 2: "height", 3: "width"},
+                "y": {0: "out_batch", 2: "out_height", 3: "out_width"},
+            }
+        torch.onnx.export(model, (torch.rand(2, 1, 22, 44),), path, **export_kwargs)
+
+        x = torch.rand(3, 1, 33, 64)
+        actual = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]).run(None, {"x": x.numpy()})[0]
+        np.testing.assert_allclose(actual, model(x).numpy(), rtol=1e-5, atol=1e-6)
+
+    def test_area_rescale_static_torchscript_export(self, tmp_path):
+        import numpy as np
+
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Wrapper(torch.nn.Module):
+            def forward(self, x):
+                return kornia.geometry.transform.rescale(x, 0.5, interpolation="area")
+
+        model = Wrapper().eval()
+        path = tmp_path / "model.onnx"
+        x = torch.rand(1, 1, 22, 44)
+        torch.onnx.export(model, (x,), path, input_names=["x"], output_names=["y"], opset_version=18, dynamo=False)
+        actual = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]).run(None, {"x": x.numpy()})[0]
+        np.testing.assert_allclose(actual, model(x).numpy(), rtol=1e-5, atol=1e-6)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="torch.compile is unavailable on this torch/python pair")
+    def test_eager_backend_trace_keeps_rescales_empty_output(self):
+        # kornia's is_exporting() is also true inside torch.compile on torch 2.5.1 and 2.9.1.
+        x = torch.rand(1, 1, 22, 44)
+        actual = torch.compile(lambda t: kornia.geometry.transform.rescale(t, 0.01), backend="eager", fullgraph=True)(x)
+        assert actual.shape == kornia.geometry.transform.rescale(x, 0.01).shape == (1, 1, 0, 0)
+
+    @pytest.mark.parametrize("dynamo", [False, True])
+    def test_onnx_fractional_factor_preserves_truncation(self, dynamo, tmp_path):
+        import numpy as np
+
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        if dynamo:
+            if not dynamo_is_available():
+                pytest.skip("Dynamo ONNX export is unavailable on this torch/python pair")
+            pytest.importorskip("onnxscript")
+
+        class Wrapper(torch.nn.Module):
+            def forward(self, x):
+                return kornia.geometry.transform.pyrdown(x, factor=1.1)
+
+        model = Wrapper().eval()
+        path = tmp_path / "model.onnx"
+        torch.onnx.export(
+            model,
+            (torch.rand(1, 1, 33, 55),),
+            path,
+            input_names=["x"],
+            output_names=["y"],
+            opset_version=18,
+            dynamo=dynamo,
+        )
+        x = torch.rand(1, 1, 33, 55)
+        expected = model(x)
+        assert expected.shape[-2:] == (29, 49)
+        actual = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"]).run(None, {"x": x.numpy()})[0]
+        np.testing.assert_allclose(actual, expected.numpy(), rtol=1e-5, atol=1e-6)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="torch.compile is unavailable on this torch/python pair")
+    def test_fractional_factor_compile_shape(self):
+        model = torch.compile(
+            lambda x: kornia.geometry.transform.pyrdown(x, factor=1.1), backend="eager", fullgraph=True
+        )
+        assert model(torch.rand(1, 1, 33, 55)).shape[-2:] == (29, 49)
+
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrDown()
@@ -55,7 +168,14 @@ class TestPyrDown(BaseTester):
     @pytest.mark.parametrize("align_corners", [False, True])
     @pytest.mark.parametrize(
         "height, width, factor, expected_size",
-        [(11, 22, 1.1, (10, 20)), (9, 18, 1.8, (5, 10)), (9, 15, 1.2, (7, 12)), (11, 15, 2.0, (5, 7))],
+        [
+            (11, 22, 1.1, (10, 20)),
+            (9, 18, 1.8, (5, 10)),
+            (9, 15, 1.2, (7, 12)),
+            (11, 15, 2.0, (5, 7)),
+            (33, 55, 1.1, (29, 49)),
+            (39, 65, 1.3, (30, 50)),
+        ],
     )
     def test_fractional_factor_axis_symmetry(
         self, device, dtype, as_module, align_corners, height, width, factor, expected_size

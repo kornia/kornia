@@ -23,6 +23,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core.utils import _as_tensor_nonblocking
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
@@ -72,6 +73,9 @@ class RandomAffine(GeometricAugmentationBase2D):
         - ``shear`` draws degrees, converted to radians and applied about the image centre with the sign and the
           x-then-y order of :func:`~kornia.geometry.transform.get_shear_matrix2d`, as
           :class:`~kornia.geometry.transform.Affine` applies its ``shear``.
+        - in :class:`~kornia.augmentation.container.AugmentationSequential`, a ``fill_value`` with more than one
+          element pads only the image: masks are padded with zero, forward and inverse, unless
+          ``extra_args[DataKey.MASK]`` sets their ``fill_value``; a one-element ``fill_value`` applies to both.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
@@ -139,13 +143,13 @@ class RandomAffine(GeometricAugmentationBase2D):
         # does not support at opset 20. Multiply by ``pi/180`` explicitly same value,
         # but only basic arithmetic ops in the trace.
         deg2rad_factor: float = math.pi / 180.0
-        shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor
-        shear_y = torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype) * deg2rad_factor
+        shear_x = _as_tensor_nonblocking(params["shear_x"], input.device, input.dtype) * deg2rad_factor
+        shear_y = _as_tensor_nonblocking(params["shear_y"], input.device, input.dtype) * deg2rad_factor
         return get_affine_matrix2d(
-            torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
+            _as_tensor_nonblocking(params["translations"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["center"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["scale"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["angle"], input.device, input.dtype),
             shear_x,
             shear_y,
         )

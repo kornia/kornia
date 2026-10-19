@@ -47,6 +47,7 @@ class Normalize(IntensityAugmentationBase2D):
         Normalised tensor with same size as input :math:`(*, C, H, W)`.
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``mean`` and ``std`` accept a float, a per-channel sequence or tensor, or a per-sample ``(B, C)``
           tensor; a length that is neither ``1`` nor the channel count raises.
         - ``p`` gates the whole batch rather than each sample: the constructor hard-codes ``same_on_batch=True``

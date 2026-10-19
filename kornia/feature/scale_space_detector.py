@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
 from kornia.geometry.subpix import (
     AdaptiveQuadInterp3d,
     ConvQuadInterp3d,
@@ -156,10 +156,7 @@ def _check_mask(mask: torch.Tensor, img: torch.Tensor) -> None:
     """
     KORNIA_CHECK(mask.dim() == 4 and mask.shape[1] == 1, f"mask must be (1 or B, 1, H, W). Got {tuple(mask.shape)}")
     KORNIA_CHECK(mask.device == img.device, f"mask device {mask.device} must match the image device {img.device}")
-    KORNIA_CHECK(
-        mask.shape[0] in (1, img.shape[0]),
-        f"mask batch {mask.shape[0]} must be 1 or match the image batch {img.shape[0]}",
-    )
+    KORNIA_CHECK_SAME_SIZE(mask, img, allow_one=True, msg="The mask batch must be 1 or match the image batch.")
     KORNIA_CHECK(
         mask.shape[-2:] == img.shape[-2:],
         f"mask spatial size {tuple(mask.shape[-2:])} must match the image {tuple(img.shape[-2:])}",
@@ -179,7 +176,7 @@ def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
     The response cannot serve: :class:`ScaleSpaceDetector`'s response function is pluggable and
     may be signed, so an exact zero there is a legitimate maximum.
     """
-    return torch.where(filled.view(filled.shape[0], -1, 1, 1), lafs, torch.zeros_like(lafs))
+    return torch.where(filled[..., None, None], lafs, torch.zeros_like(lafs))
 
 
 _BUILTIN_SUBPIX = (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
@@ -235,6 +232,8 @@ class ScaleSpaceDetector(nn.Module):
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
           at least float32.
+        - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
+          runs.
         - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
           mask check of their refined centres, so the slot of a candidate rejected there stays empty even when a
           weaker valid candidate exists (`#5741 <https://github.com/kornia/kornia/issues/5741>`_).
@@ -422,22 +421,17 @@ class ScaleSpaceDetector(nn.Module):
         else:
             with self._dynamo_config_patch(("resp",)):
                 level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.reshape(-1))
-            KORNIA_CHECK(
-                level_resp.dim() == 4
-                and level_resp.shape[0] == B * L
-                and level_resp.shape[1] == 1
-                and level_resp.shape[-2:] == (H, W),
-                "resp_module must return one response map per image with shape "
-                f"({B * L}, 1, {H}, {W}). Got {tuple(level_resp.shape)}",
+            KORNIA_CHECK_SIZES(
+                level_resp, [B * L, 1, H, W], "resp_module must return one response map per image, (B * L, 1, H, W)."
             )
             oct_resp = level_resp.view(B, L, 1, H, W)
             # Reorder to (B, CH, L, H, W) for scale-space NMS
             oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
-        KORNIA_CHECK(
-            oct_resp.dim() == 5 and oct_resp.shape[0] == B and oct_resp.shape[1] == 1 and oct_resp.shape[-2:] == (H, W),
-            "resp_module must return one scale-space response channel with shape "
-            f"({B}, 1, L, {H}, {W}). Got {tuple(oct_resp.shape)}. For a multi-channel image, convert it to "
-            "grayscale first or use a response function that reduces the channels to one.",
+        KORNIA_CHECK_SIZES(
+            oct_resp,
+            [B, 1, None, H, W],
+            "resp_module must return one scale-space response channel, (B, 1, L, H, W). For a multi-channel image, "
+            "convert it to grayscale first or use a response function that reduces the channels to one.",
         )
         # Iterative sub-pixel modules flatten the full response volume internally. The
         # level/channel permutation above is contiguous when CH == 1 (the common path), but
@@ -513,9 +507,9 @@ class ScaleSpaceDetector(nn.Module):
         # every tensor describes the same (channel, scale, y, x) candidate. Responses
         # are single-channel by the contract checked above, but custom sub-pixel modules
         # still have to preserve this axis order.
-        mask_flat = cand_mask.reshape(B, -1)  # (B, C*L*H*W)
-        resp_flat = response_max.reshape(B, -1)  # (B, C*L*H*W)
-        coord_flat = coord_max.movedim(2, -1).reshape(B, -1, 3)  # (B, C*L*H*W, 3)
+        mask_flat = cand_mask.flatten(1)  # (B, C*L*H*W)
+        resp_flat = response_max.flatten(1)  # (B, C*L*H*W)
+        coord_flat = coord_max.movedim(2, -1).flatten(1, -2)  # (B, C*L*H*W, 3)
 
         if B == 1:
             nms_idx = mask_flat[0].nonzero(as_tuple=True)[0]  # (M,)
@@ -528,7 +522,8 @@ class ScaleSpaceDetector(nn.Module):
                 idxs = nms_idx[local_idx].unsqueeze(0)
                 resp_flat_best = resp_flat_best.unsqueeze(0)  # (1, k_eff)
             else:
-                resp_flat_best = resp_flat.new_zeros(1, 0)
+                # A zero-width slice, not a fresh tensor: the empty result stays linked to the response.
+                resp_flat_best = resp_flat[:, :0]
                 idxs = nms_idx.new_empty(1, 0)
         else:
             # Batched fallback: mask non-candidates to -inf so they lose top-K to every finite
@@ -547,9 +542,9 @@ class ScaleSpaceDetector(nn.Module):
         if self.minima_are_also_good:
             # Merge coordinates only for the selected features, not for every voxel
             # in the octave (three full image volumes per scale level).
-            coord_min_flat = coord_min.movedim(2, -1).reshape(B, -1, 3)
+            coord_min_flat = coord_min.movedim(2, -1).flatten(1, -2)
             min_coords_best = torch.gather(coord_min_flat, 1, coord_idxs)
-            take_min_best = torch.gather(take_min_mask.reshape(B, -1), 1, idxs)
+            take_min_best = torch.gather(take_min_mask.flatten(1), 1, idxs)
             max_coords_best = torch.where(take_min_best.unsqueeze(-1), min_coords_best, max_coords_best)
 
         B, N = resp_flat_best.size()
@@ -581,7 +576,7 @@ class ScaleSpaceDetector(nn.Module):
             # region. Re-check the refined centre against the resampled mask, conservatively: every
             # octave pixel the centre touches (its floor and ceil in x and y) has to be allowed, as a
             # zero region already suppresses every candidate within one octave pixel of it.
-            keep_flat = oct_keep.reshape(oct_keep.shape[0], -1)  # (1 or B, H*W)
+            keep_flat = oct_keep.flatten(1)  # (1 or B, H*W)
             if keep_flat.shape[0] != B:
                 keep_flat = keep_flat.expand(B, -1)
             x0 = cx.floor().long().clamp_(0, w - 1)
@@ -706,7 +701,7 @@ class ScaleSpaceDetector(nn.Module):
             2, 3)`. A slot that no detection filled -- there were fewer candidates than requested, or the border or
             mask test rejected a candidate -- carries a zero response and a zero LAF, and sorts after every real
             detection. The converse does not hold: a signed response function can peak at exactly zero, and that
-            slot keeps its frame.
+            slot keeps its frame. A batch of zero images returns empty outputs of these shapes.
         """
         responses, lafs, _ = self._detect(img, num_feats, mask)
         return responses, lafs

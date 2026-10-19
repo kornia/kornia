@@ -64,8 +64,7 @@ calls pass masks, boxes, and keypoints through unchanged unless a subclass overr
 `GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
 For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion
-also requires `inverse_transform`; the base provides matrix inversion. Some configurations, such as slice-mode
-crops, reject inversion.
+also requires `inverse_transform`; the base provides matrix inversion.
 
 .. autoclass:: GeometricAugmentationBase2D
 

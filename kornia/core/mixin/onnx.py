@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import itertools
 import os
@@ -24,6 +25,7 @@ import tempfile
 from typing import (
     Any,
     ClassVar,
+    Iterator,
     Optional,
     Union,
 )
@@ -59,6 +61,22 @@ def _to_floating(value: Any, reference: torch.Tensor) -> Any:
     if isinstance(value, tuple):
         return tuple(_to_floating(item, reference) for item in value)
     return value
+
+
+@contextlib.contextmanager
+def _eval_mode(module: Any) -> Iterator[None]:
+    """Put ``module`` in eval mode for the block, then restore the training flag of each of its submodules."""
+    modes = [(m, m.training) for m in module.modules()] if isinstance(module, nn.Module) else []
+    try:
+        if isinstance(module, nn.Module):
+            module.eval()
+        yield
+    finally:
+        # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
+        # state. It also skips ``train()`` overrides: check any new ``train()`` override with side effects against
+        # this restore.
+        for submodule, training in modes:
+            submodule.training = training
 
 
 class ONNXExportMixin:
@@ -147,7 +165,9 @@ class ONNXExportMixin:
             - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
-            - A dummy input tensor is created from the input shape, with each `-1` taken from the pseudo shape.
+            - A dummy input tensor is created from the input shape, with each `-1` taken from the pseudo shape and
+              raised to 2 if it is smaller: `torch.export` specializes an example size of 0 or 1, which can leave a
+              graph that declares the dimension dynamic but runs only at that size.
               It has the dtype and device of the model's first floating parameter or, for a model without one,
               of its first floating buffer; it is float32 on the CPU for a model with neither.
             - The dimensions marked `-1` are exported as dynamic: through `dynamic_shapes` on the dynamo exporter
@@ -189,6 +209,14 @@ class ONNXExportMixin:
                 raise FileNotFoundError(f"Cannot save the ONNX model to {onnx_name}: {directory} does not exist.")
 
         module = self if model is None else model
+        if -1 in input_shape:
+            # ``torch.export`` specializes an example size of 0 or 1, so a dynamic dimension traced at 1 can come out
+            # fixed inside the graph while the graph input stays dynamic: on torch 2.9 DexiNed's ``Resize`` nodes kept
+            # the batch of 1 and failed in ONNX Runtime at any other batch size. Dynamic dimensions are traced at 2 or
+            # more.
+            pseudo_shape = [
+                max(size, 2) if dim == -1 else size for dim, size in zip(input_shape, resolved_pseudo_shape)
+            ]
         dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
         reference = _first_floating_tensor(module)
         if reference is not None:
@@ -211,27 +239,16 @@ class ONNXExportMixin:
 
         # The dynamo exporter captures the model in whatever mode it is in, so a model left in training mode would
         # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all.
-        modes = [(m, m.training) for m in module.modules()] if isinstance(module, nn.Module) else []
-        try:
-            if isinstance(module, nn.Module):
-                module.eval()
-            # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = os.path.join(tmp_dir, "model.onnx")
-                torch.onnx.export(
-                    module,
-                    dummy_input,
-                    tmp_path,
-                    **default_args,
-                )
-                onnx_model = onnx.load(tmp_path)
-        finally:
-            # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
-            # state. It also skips ``train()`` overrides: TinyViT's ``Attention.train(True)`` would drop the attention
-            # bias cached in eval mode, which is harmless because a training-mode forward does not read it. Check any
-            # new ``train()`` override with side effects against this restore.
-            for submodule, training in modes:
-                submodule.training = training
+        # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
+        with _eval_mode(module), tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = os.path.join(tmp_dir, "model.onnx")
+            torch.onnx.export(
+                module,
+                dummy_input,
+                tmp_path,
+                **default_args,
+            )
+            onnx_model = onnx.load(tmp_path)
 
         # Later entries overwrite earlier ones, so the caller's metadata wins over the class's.
         metadata = [*self.ADDITIONAL_METADATA, *(additional_metadata or [])]

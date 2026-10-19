@@ -57,14 +57,14 @@ class SOSNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
-        >>> sosnet = SOSNet()
+        >>> sosnet = SOSNet(pretrained=False).eval()
         >>> descs = sosnet(input) # 8x128
 
     """
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.layers = _DescriptorSequential(
             nn.InstanceNorm2d(1, affine=False),
@@ -95,7 +95,7 @@ class SOSNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["lib"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
         """Compute SOSNet descriptors for grayscale 32x32 patches.
@@ -124,4 +124,4 @@ class SOSNet(nn.Module):
             descr = self.desc_norm(descr.float() + eps).to(descr.dtype)
         else:
             descr = self.desc_norm(descr + eps)
-        return descr.view(descr.size(0), -1)
+        return descr.flatten(1)

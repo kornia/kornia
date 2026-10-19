@@ -1,0 +1,1 @@
+`YuNet(phase, pretrained=False)` returns the randomly initialised model in training mode; it returned it in evaluation mode. Call `.eval()` before inference, for example after loading your own weights. `FaceDetector`, which loads the weights, is unaffected.
