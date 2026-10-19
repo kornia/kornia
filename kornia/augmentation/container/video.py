@@ -286,13 +286,12 @@ class VideoSequential(ImageSequential):
         params = []
         for name, module in named_modules:
             if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
-                is_same_on_batch = getattr(module, "same_on_batch", False)
-
-                # RandomCutMixV2 pairs the videos of a batch with each other, so it needs one draw per video
-                # (same_on_batch is applied by its own generator), never a single shared one.
+                # RandomCutMixV2 pairs the images of a batch with each other, so it needs one draw per video, or per
+                # frame with same_on_frame=False (same_on_batch is applied by its own generator), never a shared one.
                 is_cutmix = isinstance(module, K.RandomCutMixV2)
+                is_same_on_batch = getattr(module, "same_on_batch", False) and not is_cutmix
 
-                if self.same_on_frame and is_same_on_batch and not is_cutmix:
+                if self.same_on_frame and is_same_on_batch:
                     mod_shape = torch.Size([1, *batch_shape[1:]])
                 elif self.same_on_frame:
                     mod_shape = batch_shape

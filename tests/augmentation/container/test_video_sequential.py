@@ -365,3 +365,29 @@ class TestVideoSequential:
 
         assert out.shape == video.shape
         assert torch.equal(aug(video, params=aug._params), out)
+
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("num_mix", [1, 2])
+    def test_cutmix_not_same_on_frame_with_same_on_batch(self, data_format, num_mix, device, dtype):
+        # With same_on_frame=False the B * T frames are one image batch for CutMix, whose own generator applies
+        # same_on_batch. One draw per frame index, repeated over the videos, raised IndexError for B > 1.
+        batch_size, frame_num = 2, 3
+        mix = K.RandomCutMixV2(num_mix=num_mix, p=1.0, same_on_batch=True, use_correct_lambda=True)
+        aug = K.VideoSequential(mix, data_format=data_format, same_on_frame=False)
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+
+        torch.manual_seed(0)
+        out = aug(video.transpose(1, 2).contiguous() if data_format == "BCTHW" else video)
+        out = out.transpose(1, 2) if data_format == "BCTHW" else out
+
+        torch.manual_seed(0)
+        params = mix.forward_parameters(torch.Size((batch_size * frame_num, 3, 8, 8)))
+        expected = mix(video.reshape(-1, 3, 8, 8), params=params).reshape(video.shape)
+        assert torch.equal(out, expected)
+
+    def test_cutmix_same_on_frame_empty_video_batch(self, device, dtype):
+        aug = K.VideoSequential(K.RandomCutMixV2(p=1.0, use_correct_lambda=True))
+        video = torch.rand(0, 4, 3, 8, 8, device=device, dtype=dtype)
+
+        assert aug(video).shape == video.shape
+        assert aug(video, params=aug._params).shape == video.shape
