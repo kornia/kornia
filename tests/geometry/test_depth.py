@@ -605,6 +605,23 @@ class TestDepthToNormals(BaseTester):
 
 
 class TestWarpFrameDepth(BaseTester):
+    @pytest.mark.parametrize("half_dtype", [torch.bfloat16, torch.float16])
+    def test_half_depth_with_float32_intrinsics_is_the_identity_6148(self, half_dtype, device, dtype):
+        # kornia#6148 on the wrapper path: warp_frame_depth reaches the mixed-dtype fix through
+        # depth_to_3d_v2, so an identity warp with half-precision depth and float32 intrinsics and
+        # transform reproduces the float32-depth image instead of sampling off-by-pixels.
+        height, width = 2, 640
+        camera_matrix = torch.tensor(
+            [[[500.0, 0.0, 320.0], [0.0, 500.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=torch.float32
+        )
+        image = torch.rand(1, 1, height, width, device=device, dtype=torch.float32)
+        depth = torch.full((1, 1, height, width), 2.0, device=device, dtype=half_dtype)
+        transform = torch.eye(4, device=device, dtype=torch.float32)[None]
+
+        warped = warp_frame_depth(image, depth, transform, camera_matrix)
+        assert warped.dtype == torch.float32
+        self.assert_close(warped, image, rtol=0, atol=5e-4)
+
     @pytest.mark.parametrize("normalize_points", [False, True])
     def test_jit(self, normalize_points, device, dtype):
         image = torch.rand(2, 3, 3, 4, device=device, dtype=dtype)
