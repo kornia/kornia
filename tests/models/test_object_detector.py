@@ -168,6 +168,35 @@ class TestObjectDetector(BaseTester):
 
         assert model_path.is_file()
 
+    def test_output_check_keeps_an_image_module_cache(self):
+        # ObjectDetector.to_onnx first runs the detector once to tell a per-image list from one tensor. That run, like
+        # the export's own, leaves the show()/save() cache of an image module inside the detector as it was.
+        from kornia.contrib.object_detection import _returns_detections_per_image
+
+        class _Pre(kornia.core.ImageModule):
+            def forward(self, x):
+                return x, torch.tensor([[x.shape[-2], x.shape[-1]]] * x.shape[0])
+
+        class _Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(3, 6, 1)
+
+            def forward(self, x):
+                y = self.conv(x).mean((-2, -1))
+                return y[:, None, :2], y[:, None, 2:]
+
+        class _Post(torch.nn.Module):
+            def forward(self, logits, boxes, sizes):
+                return torch.cat([logits, boxes], -1)
+
+        pre = _Pre()
+        detector = kornia.contrib.object_detection.ObjectDetector(_Model(), pre, _Post())
+        pre(torch.rand(1, 3, 8, 8))
+        cache = pre.__dict__["_output_image"]
+        assert not _returns_detections_per_image(detector, torch.rand(2, 3, 16, 16))
+        assert pre.__dict__["_output_image"] is cache
+
     def test_results_from_detections_misspelt_format_5907(self, device, dtype):
         detections = torch.zeros(1, 6, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="'xywhh' is not a valid BoundingBoxDataFormat") as excinfo:
