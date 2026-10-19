@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.check import disable_checks, enable_checks
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -101,12 +101,14 @@ class TestMS_SSIMLoss(BaseTester):
         # globally; the loss must never broadcast mismatched inputs silently.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
             with pytest.raises(ValueError, match="same shape"):
                 kornia.losses.MS_SSIMLoss()(img1, img2)
         finally:
-            enable_checks()
+            if were_checks_enabled:
+                enable_checks()
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_high_pixel_values_use_float32_moments(self, device, dtype):
