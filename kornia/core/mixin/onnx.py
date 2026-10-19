@@ -315,9 +315,10 @@ class ONNXExportMixin:
         Raises:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
             ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
-                a fixed entry of `input_shape` differs from the explicit `pseudo_shape`; or if the model returns one
-                output per image and a `dynamic_axes` or `dynamic_shapes` keyword argument made the exported batch
-                dynamic. That check runs after the export and before anything is saved.
+                a fixed entry of `input_shape` differs from the explicit `pseudo_shape`; or if the model declares one
+                output per image, as ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
+                ``filter_as_zero`` do, and the exported batch is dynamic. That check runs after the export and before
+                anything is saved.
             FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
                 checked before the export runs.
 
@@ -339,9 +340,12 @@ class ONNXExportMixin:
               of its first floating buffer; it is float32 on the CPU for a model with neither.
             - The dimensions marked `-1` are exported as dynamic: through `dynamic_shapes` on the dynamo exporter
               from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
-              argument replaces them. A model whose output is a list of per-image results is exported for a fixed
-              batch, because the exporters turn the list into a fixed number of graph outputs: an override that makes
-              its batch dynamic raises.
+              argument replaces them.
+            - The exporters turn a list output into a fixed number of graph outputs, one per item of the traced
+              batch. ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
+              ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the batch, and an export whose
+              batch comes out dynamic raises. Other models are not checked: the default ``_onnx_fixed_batch_hint``
+              declares nothing, so a list output keeps the traced batch's number of outputs at any batch size.
             - The model is exported with `torch.onnx.export`, with constant folding enabled.
 
         """
@@ -419,16 +423,17 @@ class ONNXExportMixin:
             )
             onnx_model = onnx.load(tmp_path)
 
-        # A ``dynamic_axes`` or ``dynamic_shapes`` keyword replaces the dynamic dimensions derived from ``input_shape``,
-        # so it can make the batch of a per-image-list export dynamic. The exported graph is checked rather than the
-        # keywords, whose forms differ between the exporters and between torch releases.
+        # The batch of a per-image-list export can still come out dynamic: a ``dynamic_axes`` or ``dynamic_shapes``
+        # keyword replaces the dynamic dimensions derived from ``input_shape``, and a direct call of this method can
+        # mark the batch -1. The exported graph is checked rather than the arguments, whose forms differ between the
+        # exporters and between torch releases.
         if _has_dynamic_batch(onnx_model):
             hint = self._onnx_fixed_batch_hint(module, dummy_input)
             if hint is not None:
                 raise ValueError(
                     f"{type(module).__name__} returns one output per image, so its ONNX export needs a fixed batch, "
-                    "but a dynamic_axes or dynamic_shapes argument made the batch dynamic. Remove the batch "
-                    f"dimension from that argument. {hint}"
+                    "but the exported batch is dynamic (a -1 batch in input_shape, or a dynamic_axes or "
+                    f"dynamic_shapes argument). Fix the batch there. {hint}"
                 )
 
         # Later entries overwrite earlier ones, so the caller's metadata wins over the class's.
@@ -441,8 +446,9 @@ class ONNXExportMixin:
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
         """Return how to export ``module`` for a dynamic batch if it returns one output per image, else ``None``.
 
-        :meth:`to_onnx` calls it only when the exported graph has a dynamic batch. The default returns ``None``: the
-        model's output follows the batch.
+        :meth:`to_onnx` calls it only when the exported graph has a dynamic batch, and raises when it returns a hint.
+        The default returns ``None`` and so checks nothing: a class whose model can return one output per image
+        overrides it.
         """
         return None
 

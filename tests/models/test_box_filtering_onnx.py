@@ -214,3 +214,17 @@ class TestBoxFilteringONNXBatchOverride(BaseTester):
         dims = exported.graph.input[0].type.tensor_type.shape.dim
         assert dims[0].dim_value == 1
         assert dims[1].dim_param
+
+    @pytest.mark.timeout(120)
+    def test_the_exported_model_decides_not_the_caller_6111(self):
+        """With ``model=``, the exported filter's ``filter_as_zero`` decides whether a dynamic batch raises."""
+        pytest.importorskip("onnx")
+        list_filter = BoxFiltering(confidence_threshold=0.5, classes_to_keep=[0, 1, 2])
+        zero_filter = BoxFiltering(confidence_threshold=0.5, classes_to_keep=[0, 1, 2], filter_as_zero=True)
+
+        # A filter_as_zero caller keeps the default input_shape, [-1, -1, 6], so the list filter gets a dynamic batch.
+        with pytest.raises(ValueError, match="filter_as_zero=True"):
+            zero_filter.to_onnx(model=list_filter, save=False, dynamo=False)
+        exported = list_filter.to_onnx(model=zero_filter, save=False, dynamo=False, dynamic_axes={"input": {0: "b"}})
+
+        assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_param == "b"
