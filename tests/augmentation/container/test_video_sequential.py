@@ -261,3 +261,107 @@ class TestVideoSequential:
         boxes = torch.rand(0, 3, 2, 4, 2, device=device, dtype=dtype)
         assert aug.transform_boxes(boxes, params).shape == boxes.shape
         assert aug.inverse_boxes(boxes, params).shape == boxes.shape
+
+    @staticmethod
+    def _tagged_video(batch_size, frame_num, data_format, device, dtype):
+        """Build a video whose pixel value is ``10 * (video + 1) + frame``.
+
+        Every pixel then names the video and the frame it came from, so a mixed output can be decoded back into
+        the donor video and donor frame of each pixel.
+        """
+        video = 10.0 * (torch.arange(batch_size, device=device, dtype=dtype) + 1)[:, None] + torch.arange(
+            frame_num, device=device, dtype=dtype
+        )
+        video = video[:, :, None, None, None].expand(batch_size, frame_num, 3, 8, 8).contiguous()
+        return video.transpose(1, 2).contiguous() if data_format == "BCTHW" else video
+
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("random_apply", [False, 1])
+    @pytest.mark.parametrize("num_mix", [1, 2])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_cutmix_same_on_frame_shares_box_and_partner(
+        self, data_format, random_apply, num_mix, same_on_batch, device, dtype
+    ):
+        # RandomCutMixV2 draws (num_mix, B, ...) parameters, so the frame repeat must not touch the mix axis.
+        batch_size, frame_num = 4, 3
+        aug = K.VideoSequential(
+            K.RandomCutMixV2(num_mix=num_mix, p=1.0, same_on_batch=same_on_batch, use_correct_lambda=True),
+            data_format=data_format,
+            same_on_frame=True,
+            random_apply=random_apply,
+        )
+        video = self._tagged_video(batch_size, frame_num, data_format, device, dtype)
+
+        torch.manual_seed(0)
+        out = aug(video)
+        assert out.shape == video.shape
+
+        out = out.transpose(1, 2) if data_format == "BCTHW" else out  # (B, T, C, H, W)
+        frame_id = torch.arange(frame_num, device=device, dtype=dtype)[None, :, None, None, None]
+        # A frame only ever takes pixels from the same frame index of some video: value = 10 * (donor + 1) + frame.
+        donor = (out - frame_id) / 10.0 - 1.0
+        assert_close(donor, donor.round())
+        # Every frame of a video cuts the same box from the same partner video.
+        for frame in range(1, frame_num):
+            assert_close(donor[:, frame], donor[:, 0])
+        # The cut is not a no-op: at least one video received pixels from another one.
+        own = torch.arange(batch_size, device=device, dtype=dtype)[:, None, None, None, None]
+        assert (donor != own).any()
+
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_cutmix_same_on_frame_with_same_on_batch_and_p(self, data_format, same_on_batch, p, device, dtype):
+        aug = K.VideoSequential(
+            K.RandomCutMixV2(p=p, same_on_batch=same_on_batch, use_correct_lambda=True),
+            data_format=data_format,
+            same_on_frame=True,
+        )
+        video = self._tagged_video(3, 4, data_format, device, dtype)
+
+        out = aug(video)
+
+        assert out.shape == video.shape
+        changed = out != video
+        if p == 0.0:
+            assert not changed.any()
+        frame_dim = 2 if data_format == "BCTHW" else 1
+        for frame in range(1, 4):
+            assert torch.equal(changed.select(frame_dim, frame), changed.select(frame_dim, 0))
+
+    def test_cutmix_video_params_follow_the_flattened_frames(self, device, dtype):
+        batch_size, frame_num, num_mix = 3, 4, 2
+        aug = K.VideoSequential(
+            K.RandomCutMixV2(num_mix=num_mix, p=1.0, use_correct_lambda=True), data_format="BTCHW", same_on_frame=True
+        )
+        aug(torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype))
+        params = aug._params[0].data
+
+        flat = batch_size * frame_num
+        assert params["mix_pairs"].shape == (num_mix, flat)
+        assert params["crop_src"].shape == (num_mix, flat, 4, 2)
+        assert params["image_shape"].shape == (2,)
+        assert params["batch_prob"].shape == (flat,)
+
+        pairs = params["mix_pairs"].view(num_mix, batch_size, frame_num)
+        boxes = params["crop_src"].view(num_mix, batch_size, frame_num, 4, 2)
+        for frame in range(frame_num):
+            # Frame t of a video is mixed with frame t of the partner video, in the same box as frame 0.
+            assert torch.equal(pairs[..., frame] % frame_num, torch.full_like(pairs[..., frame], frame))
+            assert torch.equal(pairs[..., frame] // frame_num, pairs[..., 0] // frame_num)
+            assert torch.equal(boxes[:, :, frame], boxes[:, :, 0])
+
+    def test_cutmix_not_same_on_frame_still_runs(self, device, dtype):
+        aug = K.VideoSequential(K.RandomCutMixV2(p=1.0, use_correct_lambda=True), same_on_frame=False)
+        video = torch.rand(2, 4, 3, 8, 8, device=device, dtype=dtype)
+        assert aug(video).shape == video.shape
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("frame_num", [1, 4])
+    def test_cutmix_default_same_on_frame_replay(self, batch_size, frame_num, device, dtype):
+        aug = K.VideoSequential(K.RandomCutMixV2(p=1.0, use_correct_lambda=True))
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        out = aug(video)
+
+        assert out.shape == video.shape
+        assert torch.equal(aug(video, params=aug._params), out)

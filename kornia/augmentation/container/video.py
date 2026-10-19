@@ -189,6 +189,35 @@ class VideoSequential(ImageSequential):
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 
+    def _broadcast_cutmix_params(self, params: Dict[str, torch.Tensor], frame_num: int) -> None:
+        """Repeat the parameters of :class:`~kornia.augmentation.RandomCutMixV2` over the frames of each video.
+
+        The generator lays its parameters out as ``(num_mix, B, ...)``: the video is axis 1, so the repeat of
+        :meth:`__broadcast_param__` over axis 0 would repeat the mixes instead of the frames. ``mix_pairs`` also
+        holds video indices, which must become indices into the ``B * T`` flattened frames. Frame ``t`` of a video
+        is mixed with frame ``t`` of its partner video, so all frames of a video cut the same box from the same
+        partner.
+
+        Args:
+            params: Parameters drawn for the ``B`` videos; updated in place to cover the ``B * T`` frames.
+            frame_num: Number of frames ``T`` in each video.
+        """
+        for key, value in list(params.items()):
+            if not value.numel():
+                continue
+            if key == "mix_pairs":
+                # (num_mix, B) => (num_mix, B * T), entry [m, b * T + t] = pairs[m, b] * T + t.
+                frames = torch.arange(frame_num, device=value.device, dtype=value.dtype)
+                params[key] = (value[..., None] * frame_num + frames).reshape(value.shape[0], -1)
+            elif key == "crop_src":
+                # (num_mix, B, 4, 2) => (num_mix, B * T, 4, 2)
+                params[key] = value.repeat_interleave(frame_num, dim=1)
+            elif key == "batch_prob":
+                # (B,) => (B * T,)
+                params[key] = self.__repeat_param_across_channels__(value, frame_num)
+            # ``image_shape`` is the (H, W) of every image and ``forward_input_shape`` / ``video_batch_size`` are
+            # metadata: none of them has a per-video axis, so they stay as drawn.
+
     @staticmethod
     def _record_video_batch_size(
         param: Union[Dict[str, torch.Tensor], List[ParamItem]], original_batch_size: int
@@ -259,7 +288,11 @@ class VideoSequential(ImageSequential):
             if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
                 is_same_on_batch = getattr(module, "same_on_batch", False)
 
-                if self.same_on_frame and is_same_on_batch:
+                # RandomCutMixV2 pairs the videos of a batch with each other, so it needs one draw per video
+                # (same_on_batch is applied by its own generator), never a single shared one.
+                is_cutmix = isinstance(module, K.RandomCutMixV2)
+
+                if self.same_on_frame and is_same_on_batch and not is_cutmix:
                     mod_shape = torch.Size([1, *batch_shape[1:]])
                 elif self.same_on_frame:
                     mod_shape = batch_shape
@@ -270,7 +303,10 @@ class VideoSequential(ImageSequential):
 
                 mod_param = module.forward_parameters(mod_shape)
 
-                if isinstance(mod_param, dict):
+                if isinstance(mod_param, dict) and self.same_on_frame and is_cutmix:
+                    self._record_video_batch_size(mod_param, original_batch_size)
+                    self._broadcast_cutmix_params(mod_param, frame_num)
+                elif isinstance(mod_param, dict):
                     self._record_video_batch_size(mod_param, original_batch_size)
                     for k, v in list(mod_param.items()):
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
