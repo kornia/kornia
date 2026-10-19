@@ -38,7 +38,7 @@ Run it
 
 .. figure:: /_static/img/models/tiny_vit.jpg
    :align: center
-   :alt: A panda photo next to a bar chart of the five most probable ImageNet classes, with giant panda far ahead.
+   :alt: A panda photo next to a bar chart of the five most probable ImageNet classes, with giant panda first.
 
    Top-5 ImageNet classes predicted by TinyViT-5M for the input on the left.
 

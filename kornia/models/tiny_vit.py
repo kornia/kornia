@@ -669,12 +669,13 @@ class TinyViT(nn.Module):
 
             ``img_size`` does not change the window sizes: they are the 224-px ``[7, 7, 14, 7]`` at every
             ``img_size``, except that the TinyViT-21M ``'in1k_384'`` and ``'in1k_512'`` checkpoints get the windows
-            they were trained with, ``[12, 12, 24, 12]`` and ``[16, 16, 32, 16]``. A ``window_sizes`` argument
-            overrides them. The checkpoint's attention biases are interpolated (bicubic) only when the window sizes
-            differ from the checkpoint's. ``img_size`` must be a multiple of 32 (of 16 with ``mobile_sam=True``), and
-            a checkpoint's accuracy is not preserved away from the resolution it was trained at: on the panda image of
-            the :doc:`/models/tiny_vit` example, TinyViT-5M's probability of the right class drops from 0.37 at 224 px
-            to 0.02 at ``img_size=256``.
+            they were trained with, ``[12, 12, 24, 12]`` and ``[16, 16, 32, 16]``, and the stochastic depth rate
+            they were fine-tuned with, ``drop_path_rate=0.1`` instead of TinyViT-21M's 0.2. A ``window_sizes`` or
+            ``drop_path_rate`` argument overrides them. The checkpoint's attention biases are interpolated (bicubic)
+            only when the window sizes differ from the checkpoint's. ``img_size`` must be a multiple of 32 (of 16 with
+            ``mobile_sam=True``), and a checkpoint's accuracy is not preserved away from the resolution it was trained
+            at: on the panda image of the :doc:`/models/tiny_vit` example, TinyViT-5M's probability of the right class
+            drops from 0.37 at 224 px to 0.02 at ``img_size=256``.
 
             With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
             zeros, and the model, a pretrained backbone to fine-tune, stays in training mode. The ``'in22k'``
@@ -814,7 +815,8 @@ def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
 
 
 # The window sizes the TinyViT-21M 384 and 512 checkpoints were trained with (Cream ``tiny_vit_21m_384`` and
-# ``tiny_vit_21m_512``); the other 21M checkpoints use the 224-px windows (7, 7, 14, 7).
+# ``tiny_vit_21m_512``), which also set drop_path_rate 0.1; the other 21M checkpoints use the 224-px windows
+# (7, 7, 14, 7) and 0.2, as Cream ``tiny_vit_21m_224`` does.
 _TINY_VIT_21M_WINDOW_SIZES = {"in1k_384": (12, 12, 24, 12), "in1k_512": (16, 16, 32, 16)}
 
 
@@ -824,14 +826,16 @@ def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
         img_size = kwargs.get("img_size", 224)
         pretrained = "in1k_512" if img_size >= 512 else "in1k_384" if img_size >= 384 else "in1k"
     window_sizes = (7, 7, 14, 7)
-    if isinstance(pretrained, str):
-        window_sizes = _TINY_VIT_21M_WINDOW_SIZES.get(pretrained, window_sizes)
+    drop_path_rate = 0.2
+    if isinstance(pretrained, str) and pretrained in _TINY_VIT_21M_WINDOW_SIZES:
+        window_sizes = _TINY_VIT_21M_WINDOW_SIZES[pretrained]
+        drop_path_rate = 0.1
 
     kwargs.setdefault("embed_dims", [96, 192, 384, 576])
     kwargs.setdefault("depths", [2, 2, 6, 2])
     kwargs.setdefault("num_heads", [3, 6, 12, 18])
     kwargs.setdefault("window_sizes", list(window_sizes))
-    kwargs.setdefault("drop_path_rate", 0.2)
+    kwargs.setdefault("drop_path_rate", drop_path_rate)
     model = TinyViT(**kwargs)
 
     if pretrained:

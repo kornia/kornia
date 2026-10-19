@@ -1,0 +1,1 @@
+With `random_apply` and a mix augmentation, `ImageSequential`, `AugmentationSequential` and `VideoSequential` insert only a mix member at the mix-insertion step. That step drew among every member whose weight was 0, so an ordinary member given weight 0 in `random_apply_weights` could still be applied, and was reported as the added mix.

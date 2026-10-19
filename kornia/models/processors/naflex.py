@@ -195,7 +195,7 @@ class NaFlex(nn.Module):
         )
         # A square grid on an image whose sides differ by at least one patch of the longer side takes rectangular
         # patches. That is right for a rectangular patch embedding, but for square patches the grid is not square
-        # (#6004: 8 x 32 at patch 16 for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the
+        # (8 x 32 at patch 16 for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the
         # two apart, so warn. A square-patch convolution of stride s, overlapping or not, with padding up to half its
         # kernel never warns: its grid is square only for sides H < W less than s apart, and H >= (side - 1) * s, so
         # (W - H) * side < (side - 1) * s + (W - H) <= W.
