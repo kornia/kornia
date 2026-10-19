@@ -227,17 +227,31 @@ _PER_CALL_STATE = (
 )
 
 
+def _items(value: Any) -> Any:
+    """Return a shallow copy of the items of a list or dict ``value``, else ``None``."""
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, dict):
+        return dict(value)
+    return None
+
+
 @contextlib.contextmanager
 def _preserved_call_state(module: Any) -> Iterator[None]:
-    """Keep the state every module in ``module`` holds from its last call as it was before the block.
+    """Keep the attributes in ``_PER_CALL_STATE`` of every module in ``module`` as they were before the block.
 
     An export runs the module on its dummy input. The TorchScript exporter does so outside ``is_exporting()``, so each
     module in the tree would store the dummy's output, parameters and matrices, and the dynamo exporter can put copies
-    back in place of them. Each attribute in ``_PER_CALL_STATE`` gets back the object it held, and one the block stored
-    on a module that had none is removed, so a class-level default shows through again.
+    back in place of them. Each listed attribute gets back the object it held, and one the block stored on a module
+    that had none is removed, so a class-level default shows through again. A list or dict also gets back its items:
+    under a capture, where ``is_exporting()`` skips their reset, the policy containers append to
+    ``_transform_matrices`` in place.
     """
     saved = (
-        [(m, {name: m.__dict__[name] for name in _PER_CALL_STATE if name in m.__dict__}) for m in module.modules()]
+        [
+            (m, {name: (m.__dict__[name], _items(m.__dict__[name])) for name in _PER_CALL_STATE if name in m.__dict__})
+            for m in module.modules()
+        ]
         if isinstance(module, nn.Module)
         else []
     )
@@ -246,10 +260,32 @@ def _preserved_call_state(module: Any) -> Iterator[None]:
     finally:
         for submodule, state in saved:
             for name in _PER_CALL_STATE:
-                if name in state:
-                    submodule.__dict__[name] = state[name]
-                else:
+                if name not in state:
                     submodule.__dict__.pop(name, None)
+                    continue
+                value, items = state[name]
+                if isinstance(value, list):
+                    value[:] = items
+                elif isinstance(value, dict):
+                    value.clear()
+                    value.update(items)
+                submodule.__dict__[name] = value
+
+
+@contextlib.contextmanager
+def _preserved_rng() -> Iterator[None]:
+    """Put back the global random state the block draws from.
+
+    That is the CPU generator, every CUDA device's once CUDA is initialized (an augmentation moved to a device draws
+    there even without parameters), and the MPS generator where MPS is available.
+    """
+    cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_initialized() else []
+    with contextlib.ExitStack() as stack:
+        # ``fork_rng`` always restores the CPU generator; the device type picks the accelerator it also restores.
+        stack.enter_context(torch.random.fork_rng(devices=cuda_devices, device_type="cuda"))
+        if torch.backends.mps.is_available():
+            stack.enter_context(torch.random.fork_rng(devices=[0], device_type="mps"))
+        yield
 
 
 class ONNXExportMixin:
@@ -335,10 +371,14 @@ class ONNXExportMixin:
               The one opt-out is ``training=torch.onnx.TrainingMode.TRAINING``, which torch deprecates: the legacy
               TorchScript exporter (the default before torch 2.9, ``dynamo=False`` from it) then exports the
               training-mode graph. The dynamo exporter does not read ``training``.
-            - The export runs the model on the dummy input, but what each module stored from its last call is kept:
-              the output cache that ``show()`` and ``save()`` read, and the parameters and transformation matrices
-              that an augmentation's ``inverse()`` and ``transform_matrix`` read. Each of them holds the same object
-              afterwards as before, in every module of the exported model, also when the export fails.
+            - The export runs the model on the dummy input, but these attributes of every module in the exported
+              model keep the objects they held, with the same items, also when the export fails: the output cache
+              that ``show()`` and ``save()`` read, and the parameters and transformation matrices that an
+              augmentation's ``inverse()`` and ``transform_matrix`` read. Other attributes a module writes in its
+              ``forward`` can hold what the run on the dummy left.
+            - The global random state (the CPU generator, the CUDA devices' once CUDA is initialized, and the MPS
+              generator where MPS is available) is restored after the dummy is drawn and after the export, so the
+              draws that follow are the ones they would be without the export.
             - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
@@ -394,7 +434,9 @@ class ONNXExportMixin:
             pseudo_shape = [
                 max(size, 2) if dim == -1 else size for dim, size in zip(input_shape, resolved_pseudo_shape)
             ]
-        dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
+        # The dummy and the export's run on it draw from the global generators; both give back what they drew.
+        with _preserved_rng():
+            dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
         reference = _first_floating_tensor(module)
         if reference is not None:
             dummy_input = _to_floating(dummy_input, reference)
@@ -417,7 +459,12 @@ class ONNXExportMixin:
         # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all, and
         # so is the state each module keeps from its last call, which the exporters' run on the dummy replaces.
         # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
-        with _eval_mode(module), _preserved_call_state(module), tempfile.TemporaryDirectory() as tmp_dir:
+        with (
+            _eval_mode(module),
+            _preserved_call_state(module),
+            _preserved_rng(),
+            tempfile.TemporaryDirectory() as tmp_dir,
+        ):
             tmp_path = os.path.join(tmp_dir, "model.onnx")
             torch.onnx.export(
                 module,

@@ -137,8 +137,9 @@ def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> 
     """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
 
     The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
-    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. What every
-    module inside it stored from its last call, such as an image module's output cache, is left as it was.
+    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The
+    attributes that ``to_onnx`` keeps, such as an image module's output cache, hold what they held before, in every
+    module inside the detector.
     """
     reference = _first_floating_tensor(detector)
     if reference is not None:

@@ -76,9 +76,14 @@ class CropGenerator(RandomGeneratorBase):
         )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+        return self._crop_parameters(batch_shape, same_on_batch, self.size)
+
+    def _crop_parameters(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool, crop_size: Union[Tuple[int, int], torch.Tensor]
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
-        _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, torch.Tensor) else None])
+        _device, _dtype = _extract_device_dtype([crop_size if isinstance(crop_size, torch.Tensor) else None])
 
         if batch_size == 0:
             return {
@@ -87,14 +92,14 @@ class CropGenerator(RandomGeneratorBase):
             }
 
         input_size = (batch_shape[-2], batch_shape[-1])
-        if not isinstance(self.size, torch.Tensor):
-            size = _constant_tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+        if not isinstance(crop_size, torch.Tensor):
+            size = _constant_tensor(crop_size, device=_device, dtype=_dtype).repeat(batch_size, 1)
             if size.shape != torch.Size([batch_size, 2]):
                 raise AssertionError(
-                    f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {self.size!r}."
+                    f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {crop_size!r}."
                 )
         else:
-            size = self.size.to(device=_device, dtype=_dtype)
+            size = crop_size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 2]):
             raise AssertionError(
                 "If `size` is a torch.Tensor, it must be shaped as (B, 2). "
@@ -311,9 +316,9 @@ class ResizedCropGenerator(CropGenerator):
         h_out = torch.clamp(h_out, min=1, max=size[0])
         w_out = torch.clamp(w_out, min=1, max=size[1])
 
-        # Update the crop size.
-        self.size = torch.stack([h_out, w_out], dim=1)
-        return super().forward(batch_shape, same_on_batch)
+        # The drawn crop sizes are this call's, so they are passed on rather than stored on the generator, whose
+        # ``size`` stays the output size it was built with.
+        return self._crop_parameters(batch_shape, same_on_batch, torch.stack([h_out, w_out], dim=1))
 
 
 def center_crop_generator(
