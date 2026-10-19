@@ -12,7 +12,7 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
   feed the inputs of the next.
 - **Export**: save the combined model as a single ONNX file.
 - **PyTorch-like interface**: call the sequence directly, like an ``nn.Sequential``, on numpy arrays or CPU torch
-  tensors of a dtype numpy has (not bfloat16). It returns numpy arrays.
+  tensors of a dtype numpy has (not bfloat16 or float8). It returns numpy arrays.
 - **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
   session options.
 

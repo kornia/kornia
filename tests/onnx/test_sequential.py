@@ -525,6 +525,40 @@ class TestONNXSequentialComposition:
         with pytest.raises(RuntimeError, match=r"No Adapter To Version \$17 for Resize"):
             ONNXSequential(resize, target_opset_version=17)
 
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"target_opset_version": 19},
+            {"target_ir_version": 8},
+            {"auto_ir_version_conversion": True, "target_ir_version": 8},
+        ],
+        ids=["opset", "ir", "flag"],
+    )
+    def test_a_model_with_duplicate_metadata_keys_converts(self, kwargs):
+        # kornia 0.9.0rc1's add_metadata appended every key, so a file it wrote after ONNXSequential.add_metadata or
+        # ONNXModule.add_metadata holds "source" and "version" twice. The conversion re-checks the model, and
+        # onnx.checker.check_model rejects duplicate keys: they are merged first.
+        model = _identity(("source", "kornia"), ("version", "0.9.0rc1"), ("source", "kornia"), ("version", "0.9.0rc1"))
+
+        seq = ONNXSequential(model, **kwargs)
+
+        assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
+        assert _props(seq._combined_op) == [("source", "kornia"), ("version", "0.9.0rc1")]
+        assert len(model.metadata_props) == 4  # the caller's model is not modified
+
+    def test_a_combined_graph_converts_and_chains_again(self, tmp_path):
+        # merge_models lists each domain once per model, and the version converter updates only one of those entries,
+        # so a combined graph, once converted, did not merge with a model of the target version.
+        path = tmp_path / "combined.onnx"
+        ONNXSequential(_identity(), _identity()).export(str(path))
+        later = _identity()
+        later.opset_import[0].version = 19
+
+        seq = ONNXSequential(path, later, io_maps=[[("K01-output", "input")]], target_opset_version=19)
+
+        assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
+        assert [(entry.domain, entry.version) for entry in seq._combined_op.opset_import] == [("", 19)]
+
     def test_a_target_the_model_already_has_is_not_converted_again(self):
         # Converting re-checks the model, which rejects the duplicate metadata keys earlier kornia versions wrote;
         # an IR 9 model with target_ir_version=9 runs as on main, with its metadata merged into one entry per key.

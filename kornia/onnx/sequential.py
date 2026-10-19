@@ -36,7 +36,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     the last model that sets it. The models passed in are not modified.
 
     Args:
-        *args: A variable number of ONNX models (ONNX ModelProto objects, or file paths as ``str``, ``bytes`` or
+        *args: A variable number of ONNX models (ONNX ModelProto objects, or file paths as ``str`` or
             :class:`os.PathLike`; a path object always names a local file). For Hugging Face-hosted models, use the
             format 'hf://model_name'. Valid `model_name` can be found on https://huggingface.co/kornia/ONNX_models.
             Or a URL to the ONNX model.
@@ -62,14 +62,16 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             `auto_ir_version_conversion` converts them to 9.
         target_opset_version: The OPSET version to convert every model to before combining them, whether or not
             `auto_ir_version_conversion` is set. If None, the models keep their OPSET versions, unless
-            `auto_ir_version_conversion` converts them to the highest among them. The ONNX version converter raises
-            where it has no adapter for an operator, for example ``Resize`` or ``Pad`` from opset 18 to 17.
+            `auto_ir_version_conversion` converts them to the highest among them. A conversion that fails raises its
+            error: the ONNX version converter's where it has no adapter for an operator (for example ``Resize`` or
+            ``Pad`` from opset 18 to 17), ``onnx.checker``'s where the converted graph is invalid (for example a
+            ``ReduceMean`` from opset 18 to 17), or ONNX Runtime's where it does not support the target IR version.
 
     """
 
     def __init__(
         self,
-        *args: Union[onnx.ModelProto, str, bytes, os.PathLike],
+        *args: Union[onnx.ModelProto, str, os.PathLike],
         providers: Optional[list[str]] = None,
         session_options: Optional[ort.SessionOptions] = None,
         io_maps: Optional[list[list[tuple[str, str]]]] = None,

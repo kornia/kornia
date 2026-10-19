@@ -93,6 +93,19 @@ def _check_keywords(method: str, kwargs: dict[str, Any]) -> None:
             raise TypeError(f"{method}() got an unexpected keyword argument {key!r}")
 
 
+def _path_text(method: str, value: Any) -> str:
+    """Return the text of ``value``, a ``str`` or an :class:`os.PathLike` naming a ``str`` path.
+
+    Anything else raises ``TypeError``. ``bytes`` are not a path here: ONNX Runtime reads ``bytes`` as a serialized
+    model, so the message names the call for that.
+    """
+    text = os.fspath(value) if isinstance(value, os.PathLike) else value
+    if isinstance(text, str):
+        return text
+    hint = " For a serialized model, pass onnx.load_model_from_string(data)." if isinstance(text, bytes) else ""
+    raise TypeError(f"{method} takes a str or an os.PathLike, got {type(value).__name__}.{hint}")
+
+
 def _onnx_data_name(name: str) -> str:
     """Return the name of the ``.onnx_data`` weights stored beside the model ``name``, with or without ``.onnx``."""
     return (name[: -len(".onnx")] if name.endswith(".onnx") else name) + ".onnx_data"
@@ -102,13 +115,13 @@ class ONNXLoader(CachedDownloader):
     """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models."""
 
     @classmethod
-    def load_config(cls, url: Union[str, bytes, os.PathLike], download: bool = True, **kwargs: Any) -> dict[str, Any]:
+    def load_config(cls, url: Union[str, os.PathLike], download: bool = True, **kwargs: Any) -> dict[str, Any]:
         """Load JSON config from the specified URL or local file.
 
         Args:
             url: The HTTP(S) URL of the preprocessor config to load, or the path of a local JSON file, which is read
-                as it is: a ``str`` or ``bytes``, or an :class:`os.PathLike`, which always names a local file. A local
-                path may start with ``~``.
+                as it is: a ``str``, or an :class:`os.PathLike`, which always names a local file. A local path may
+                start with ``~``.
             download: If True, the config will be downloaded if it's not already in the local cache. A local file
                 is read either way.
             kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
@@ -122,11 +135,12 @@ class ONNXLoader(CachedDownloader):
 
         Raises:
             RuntimeError: If ``url`` is neither an HTTP(S) URL nor an existing local file.
+            TypeError: If ``url`` is not a ``str`` or an :class:`os.PathLike`; ``bytes`` raise it too.
 
         """
         _check_keywords("ONNXLoader.load_config", kwargs)
         local = isinstance(url, os.PathLike)  # a path object names a local file, whatever its text
-        url = os.fsdecode(url)
+        url = _path_text("ONNXLoader.load_config", url)
         if not local and url.startswith(("http:", "https:")):
             kwargs["cache_dir"] = kwargs.get("cache_dir") or None  # "" is the default directory, as for load_model
             file_path = cls.download_to_cache(url, _url_cache_name(url), download=download, suffix=".json", **kwargs)
@@ -144,7 +158,7 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def load_model(
-        cls, model_name: Union[str, bytes, os.PathLike], download: bool = True, with_data: bool = False, **kwargs
+        cls, model_name: Union[str, os.PathLike], download: bool = True, with_data: bool = False, **kwargs
     ) -> onnx.ModelProto:
         """Load an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
@@ -152,8 +166,8 @@ class ONNXLoader(CachedDownloader):
             model_name: The name of the ONNX model or operator. For Hugging Face-hosted models,
                 use the format 'hf://model_name'. Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models.
-                Or a URL to the ONNX model, or the path of a local file. A ``str`` or ``bytes`` can be any of
-                those; an :class:`os.PathLike` always names a local file. A local path may start with ``~``.
+                Or a URL to the ONNX model, or the path of a local file. A ``str`` can be any of those; an
+                :class:`os.PathLike` always names a local file. A local path may start with ``~``.
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
             cache_dir: The root of the cache. An ``hf://`` model is stored under it at the path of its name after
                 the folder (``<cache_dir>/a/b.onnx`` for ``hf://models/a/b``): the kornia/ONNX_models names are fully
@@ -173,10 +187,13 @@ class ONNXLoader(CachedDownloader):
         Returns:
             onnx.ModelProto: The loaded ONNX model.
 
+        Raises:
+            TypeError: If ``model_name`` is not a ``str`` or an :class:`os.PathLike`; ``bytes`` raise it too.
+
         """
         _check_keywords("ONNXLoader.load_model", kwargs)
         local = isinstance(model_name, os.PathLike)  # a path object names a local file, whatever its text
-        model_name = os.fsdecode(model_name)
+        model_name = _path_text("ONNXLoader.load_model", model_name)
         if not local and model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"

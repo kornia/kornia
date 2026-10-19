@@ -75,25 +75,32 @@ class TestONNXModule:
         x = torch.rand(2, 3, 4, 5)
         assert_close(torch.from_numpy(module(x.numpy())[0]), sigmoid(x))
 
-    @pytest.mark.parametrize("form", ["Path", "bytes", "~"])
-    def test_takes_file_paths_as_path_objects_bytes_and_with_a_tilde(self, sigmoid, form, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("form", ["Path", "~"])
+    def test_takes_file_paths_as_path_objects_and_with_a_tilde(self, sigmoid, form, monkeypatch, tmp_path):
         import os
 
         path = tmp_path / "sigmoid.onnx"
         sigmoid.to_onnx(str(path), **_RGB)
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("USERPROFILE", str(tmp_path))  # what os.path.expanduser reads on Windows
-        model = {"Path": path, "bytes": os.fsencode(path), "~": os.path.join("~", "sigmoid.onnx")}[form]
+        model = {"Path": path, "~": os.path.join("~", "sigmoid.onnx")}[form]
 
         x = torch.rand(1, 3, 4, 5)
         for runtime in (ONNXModule(model), load(model), ONNXSequential(model)):
             assert_close(torch.from_numpy(runtime(x.numpy())[0]), sigmoid(x))
 
+    def test_bytes_raise_type_error_naming_load_model_from_string(self, sigmoid, tmp_path):
+        # ONNX Runtime reads bytes as a serialized model; kornia does not take them as a path either
+        path = tmp_path / "sigmoid.onnx"
+        sigmoid.to_onnx(str(path), **_RGB)
+        for model in (path.read_bytes(), bytes(path)):
+            for runtime in (ONNXModule, load, ONNXSequential):
+                with pytest.raises(TypeError, match=r"got bytes\. For a serialized model, pass onnx\.load_model_from"):
+                    runtime(model)
+
     @pytest.mark.parametrize("model", [1, None, {"model": "m.onnx"}])
     def test_other_argument_types_raise_type_error(self, model):
-        message = (
-            r"an onnx.ModelProto, a str or bytes \(a file path, an 'hf://' name or a URL\), or an os.PathLike file"
-        )
+        message = r"an onnx.ModelProto, a str \(a file path, an 'hf://' name or a URL\), or an os.PathLike file"
         with pytest.raises(TypeError, match=message):
             ONNXModule(model)
         with pytest.raises(TypeError, match=message):

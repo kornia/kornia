@@ -393,7 +393,7 @@ class TestONNXLoader:
             "hub/https/b.invalid/preprocessor_config.json",
         ]
 
-    @pytest.mark.parametrize("form", ["str", "Path", "bytes", "~"])
+    @pytest.mark.parametrize("form", ["str", "Path", "~"])
     @pytest.mark.parametrize("download", [True, False])
     def test_load_config_reads_a_local_file(self, download, form, monkeypatch, tmp_path):
         # #6119: an existing local file was reported "not found", with "You may set `download=True`"
@@ -407,7 +407,6 @@ class TestONNXLoader:
         url = {
             "str": str(config),
             "Path": config,
-            "bytes": os.fsencode(config),
             "~": os.path.join("~", "preprocessor_config.json"),
         }[form]
 
@@ -449,8 +448,8 @@ class TestONNXLoader:
         mock_download.assert_not_called()
         mock_fetch.assert_not_called()
 
-    @pytest.mark.parametrize("form", ["Path", "bytes", "~"])
-    def test_load_model_reads_a_local_path_object_bytes_and_a_tilde(self, form, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("form", ["Path", "~"])
+    def test_load_model_reads_a_local_path_object_and_a_tilde(self, form, monkeypatch, tmp_path):
         from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 
         graph = make_graph(
@@ -463,9 +462,21 @@ class TestONNXLoader:
         onnx.save(make_model(graph), str(path))
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        name = {"Path": path, "bytes": os.fsencode(path), "~": os.path.join("~", "identity.onnx")}[form]
+        name = {"Path": path, "~": os.path.join("~", "identity.onnx")}[form]
 
         assert [node.op_type for node in ONNXLoader.load_model(name).graph.node] == ["Identity"]
+
+    @pytest.mark.parametrize("value", [b"model.onnx", 1, None])
+    def test_loaders_take_a_str_or_a_path_object_only(self, value):
+        # bytes too: ONNX Runtime reads them as a serialized model, and the message says how to load one
+        hint = (
+            r" For a serialized model, pass onnx\.load_model_from_string\(data\)\." if isinstance(value, bytes) else ""
+        )
+        message = rf" takes a str or an os\.PathLike, got {type(value).__name__}\.{hint}$"
+        with pytest.raises(TypeError, match=r"ONNXLoader\.load_model" + message):
+            ONNXLoader.load_model(value)
+        with pytest.raises(TypeError, match=r"ONNXLoader\.load_config" + message):
+            ONNXLoader.load_config(value)
 
     @pytest.mark.parametrize(
         "url", ["https://example.invalid", "https://example.invalid/", "https://example.invalid/d/"]

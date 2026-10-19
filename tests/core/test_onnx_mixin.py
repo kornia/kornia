@@ -328,11 +328,11 @@ class TestONNXRuntimeMixin(BaseTester):
         with pytest.raises(ValueError, match=r"ONNX input 1 is a torch tensor on meta"):
             subtract(torch.tensor([3.0, 1.0]), torch.empty(2, device="meta"))
 
-    def test_runtime_rejects_bfloat16_tensors_naming_the_input(self, subtract):
-        # numpy has no bfloat16
+    @pytest.mark.parametrize("dtype_numpy_lacks", [torch.bfloat16, torch.float8_e4m3fn])
+    def test_runtime_rejects_tensors_of_a_dtype_numpy_lacks_naming_the_input(self, subtract, dtype_numpy_lacks):
         a = torch.tensor([3.0, 1.0])
-        with pytest.raises(TypeError, match=r"ONNX input 1 is a torch.bfloat16 tensor, and numpy has no bfloat16"):
-            subtract(a.numpy(), a.bfloat16())
+        with pytest.raises(TypeError, match=rf"ONNX input 1 is a {dtype_numpy_lacks} tensor, a dtype numpy has no"):
+            subtract(a.numpy(), a.to(dtype_numpy_lacks))
 
     def test_runtime_rejects_sparse_tensors_naming_the_input(self, subtract):
         a = torch.tensor([3.0, 0.0])

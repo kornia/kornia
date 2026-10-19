@@ -60,13 +60,14 @@ def _host_array(value: Any, index: int) -> Any:
             f"ONNX input {index} is a {value.layout} tensor, which a numpy array cannot hold: convert it with "
             ".to_dense() first."
         )
-    if value.dtype == torch.bfloat16:
+    try:
+        # resolve_conj and resolve_neg return the tensor itself unless a conjugate or negative view needs materializing
+        return value.detach().resolve_conj().resolve_neg().numpy()
+    except TypeError as error:  # a dtype numpy has no equivalent of: bfloat16, the float8 types, quantized types
         raise TypeError(
-            f"ONNX input {index} is a torch.bfloat16 tensor, and numpy has no bfloat16: convert it, e.g. with "
-            ".float() for a float32 graph."
-        )
-    # resolve_conj and resolve_neg return the tensor itself unless a conjugate or negative view needs materializing
-    return value.detach().resolve_conj().resolve_neg().numpy()
+            f"ONNX input {index} is a {value.dtype} tensor, a dtype numpy has no equivalent of: convert it, e.g. "
+            "with .float() for a float32 graph."
+        ) from error
 
 
 def _prefix(index: int) -> str:
@@ -148,6 +149,18 @@ def _warn_on_joint_element_types(
                 "tensor element types at each joint should agree. Convert one of the models, unless the later one "
                 "accepts both types."
             )
+
+
+def _merge_opset_imports(model: onnx.ModelProto) -> None:
+    """Keep one ``opset_import`` entry per domain, in place.
+
+    ``onnx.compose.merge_models`` concatenates the entries of both models after checking that they agree, so a chain
+    of ``n`` models lists each domain ``n`` times; the version converter then updates only one of them, and the
+    converted graph no longer merges with a model of the target version.
+    """
+    versions = {entry.domain: entry.version for entry in model.opset_import}
+    del model.opset_import[:]
+    model.opset_import.extend(onnx.helper.make_opsetid(domain, version) for domain, version in versions.items())
 
 
 def _first_floating_tensor(module: Any) -> Optional[torch.Tensor]:
@@ -501,7 +514,7 @@ class ONNXRuntimeMixin:
 
         Args:
             *inputs: Inputs to the ONNX model, in the order of ``get_session().get_inputs()``: numpy arrays, or
-                strided torch tensors on the CPU of a dtype numpy has (not bfloat16). A tensor is passed as
+                strided torch tensors on the CPU of a dtype numpy has (not bfloat16 or float8). A tensor is passed as
                 ``tensor.detach().numpy()``, which shares its memory (a conjugate or negative view is materialized
                 first). The number of inputs must match the expected inputs of the session.
 
@@ -531,43 +544,44 @@ class ONNXMixin:
 
     def _load_op(
         self,
-        arg: Union[onnx.ModelProto, str, bytes, os.PathLike],
+        arg: Union[onnx.ModelProto, str, os.PathLike],
         cache_dir: Optional[str] = None,
     ) -> onnx.ModelProto:
         """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
-            arg: An ONNX ModelProto object; a ``str`` or ``bytes`` file path, ``hf://`` name or URL of an ONNX model;
-                or an :class:`os.PathLike` file path, which always names a local file. A local path may start with
-                ``~``.
+            arg: An ONNX ModelProto object; a ``str`` file path, ``hf://`` name or URL of an ONNX model; or an
+                :class:`os.PathLike` file path, which always names a local file. A local path may start with ``~``.
             cache_dir: Where to read onnx objects from if stored on disk.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
 
         Raises:
-            TypeError: If ``arg`` is of another type.
+            TypeError: If ``arg`` is of another type, ``bytes`` included: ONNX Runtime reads ``bytes`` as a serialized
+                model, which ``onnx.load_model_from_string`` turns into a ModelProto.
 
         """
         if isinstance(arg, onnx.ModelProto):
             return arg
-        if isinstance(arg, (str, bytes, os.PathLike)):
+        if isinstance(arg, (str, os.PathLike)):
             return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
+        hint = " For a serialized model, pass onnx.load_model_from_string(data)." if isinstance(arg, bytes) else ""
         raise TypeError(
-            "Expected an onnx.ModelProto, a str or bytes (a file path, an 'hf://' name or a URL), or an os.PathLike "
-            f"file path, got {type(arg).__name__}."
+            "Expected an onnx.ModelProto, a str (a file path, an 'hf://' name or a URL), or an os.PathLike file path, "
+            f"got {type(arg).__name__}.{hint}"
         )
 
     def _load_ops(
         self,
-        *args: Union[onnx.ModelProto, str, bytes, os.PathLike],
+        *args: Union[onnx.ModelProto, str, os.PathLike],
         cache_dir: Optional[str] = None,
     ) -> list[onnx.ModelProto]:
         """Load multiple ONNX models or operators and returns them as a list.
 
         Args:
             *args: A variable number of ONNX models, each as :meth:`_load_op` takes it: ONNX ModelProto objects, or
-                file paths (``str``, ``bytes`` or :class:`os.PathLike`). For Hugging Face-hosted models, use the format
+                file paths (``str`` or :class:`os.PathLike`). For Hugging Face-hosted models, use the format
                 'hf://model_name' (a ``str``). Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
             cache_dir: Where to read operations from if stored on disk.
@@ -636,6 +650,7 @@ class ONNXMixin:
             combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)
 
         onnx.helper.set_model_props(combined_op, metadata)
+        _merge_opset_imports(combined_op)
         return combined_op
 
     def _export(
@@ -696,6 +711,12 @@ class ONNXMixin:
             model_bytes = io.BytesIO()
             onnx.save_model(op, model_bytes)
             loaded_model = onnx.load_model_from_string(model_bytes.getvalue())
+            # check_model rejects duplicate metadata keys, which files that kornia 0.9.0rc1 tagged twice hold: keep one
+            # entry per key with its last value, the one ONNX Runtime reads, as _combine does
+            metadata = {entry.key: entry.value for entry in loaded_model.metadata_props}
+            del loaded_model.metadata_props[:]
+            onnx.helper.set_model_props(loaded_model, metadata)
+            _merge_opset_imports(loaded_model)  # a graph combined by an earlier release lists each domain per model
             if target_opset_version is not None:
                 loaded_model = onnx.version_converter.convert_version(loaded_model, target_opset_version)
             onnx.checker.check_model(loaded_model)
