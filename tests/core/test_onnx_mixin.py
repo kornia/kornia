@@ -431,6 +431,34 @@ class TestONNXExportMixin(BaseTester):
         copy.deepcopy(aug)
         pickle.dumps(aug)
 
+    def test_failed_export_leaves_no_buffer_registration_hook_6140(self):
+        # torch 2.9's non-strict torch.export registers a global buffer-registration hook and removes it only when its
+        # trace succeeds. Left behind by a failed export, it ran in every later Dynamo trace that registers a buffer,
+        # which then raised ``Unsupported``: on CI, the losses' traces after this file.
+        class _Fails(nn.Module):
+            def forward(self, x):
+                raise ValueError("this model does not export")
+
+        class _WithBuffer(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.register_buffer("offset", torch.ones(1))
+
+        hooks = getattr(torch.nn.modules.module, "_global_buffer_registration_hooks", {})
+        before = list(hooks)
+        with pytest.raises(Exception) as info:  # each exporter wraps the model's error in its own
+            ImageSequential(_Fails()).to_onnx(save=False, **_RGB)
+        error = info.value
+        while error is not None and not isinstance(error, ValueError):
+            error = error.__cause__ or error.__context__
+        assert error is not None, f"no ValueError behind {info.value!r}"
+        assert "does not export" in str(error)
+        assert list(hooks) == before
+
+        torch._dynamo.reset()
+        traced = torch.compile(lambda x: x + _WithBuffer().offset, backend="eager", fullgraph=True)
+        self.assert_close(traced(torch.zeros(2)), torch.ones(2))
+
     def test_every_attribute_written_after_construction_is_classified_6140(self):
         # ``to_onnx`` restores the attributes in ``_PER_CALL_STATE``. An augmentation or image module that starts
         # writing another attribute on itself outside its constructor must say which kind it is: state of its last

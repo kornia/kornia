@@ -288,6 +288,24 @@ def _preserved_rng() -> Iterator[None]:
         yield
 
 
+@contextlib.contextmanager
+def _removed_buffer_hooks() -> Iterator[None]:
+    """Remove the global buffer-registration hooks the block adds.
+
+    torch 2.9's non-strict ``torch.export`` registers one and removes it only when its trace succeeds, and the dynamo
+    ONNX exporter starts with that trace, also when a later strategy then exports the model. Left behind, the hook runs
+    in every later Dynamo trace that registers a buffer, which then raises ``Unsupported``.
+    """
+    hooks = getattr(torch.nn.modules.module, "_global_buffer_registration_hooks", None)
+    before = set(hooks) if hooks is not None else set()
+    try:
+        yield
+    finally:
+        if hooks is not None:
+            for key in set(hooks) - before:
+                del hooks[key]
+
+
 class ONNXExportMixin:
     """Mixin class that provides ONNX export functionality for objects that support it.
 
@@ -379,6 +397,9 @@ class ONNXExportMixin:
             - The global random state (the CPU generator, the CUDA devices' once CUDA is initialized, and the MPS
               generator where MPS is available) is restored after the dummy is drawn and after the export, so the
               draws that follow are the ones they would be without the export.
+            - A global buffer-registration hook that the export leaves behind is removed, also when the export
+              fails: torch 2.9's ``torch.export`` keeps it after a failed trace, and later ``torch.compile`` calls
+              in the process would fail on it.
             - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
@@ -463,6 +484,7 @@ class ONNXExportMixin:
             _eval_mode(module),
             _preserved_call_state(module),
             _preserved_rng(),
+            _removed_buffer_hooks(),
             tempfile.TemporaryDirectory() as tmp_dir,
         ):
             tmp_path = os.path.join(tmp_dir, "model.onnx")
