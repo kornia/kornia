@@ -83,7 +83,7 @@ def _count_calls(monkeypatch) -> list:
 
 
 class TestDiceLossCpu(BaseTester):
-    def assert_close_scaled(self, actual: torch.Tensor, expected: torch.Tensor) -> None:
+    def assert_close_scaled(self, actual: torch.Tensor, expected: torch.Tensor, **tolerance: float) -> None:
         """``assert_close`` relative to the largest finite entry of ``expected``.
 
         A mean over a large batch makes gradients of about 1 / (B H W), far below the absolute tolerance, so both
@@ -92,7 +92,19 @@ class TestDiceLossCpu(BaseTester):
         finite = expected[expected.isfinite()]
         scale = finite.abs().max() if finite.numel() else expected.new_ones(())
         scale = torch.where(scale > 0, scale, torch.ones_like(scale))
-        self.assert_close(actual / scale, expected / scale)
+        self.assert_close(actual / scale, expected / scale, **tolerance)
+
+    def assert_values_and_grads_close(self, actual: tuple, expected: tuple) -> None:
+        """Compare the loss, the logits' gradient and, when weighted, the weight's gradient of the two paths.
+
+        Each entry of the weight's gradient sums the B H W terms of its class, in a different order on each path. In
+        float32 that moves an entry by up to ~1.3e-5 of the scale (Windows, weighted macro on sliced logits), so its
+        float32 tolerance is 1e-4; the loss and the logits' gradient keep the default.
+        """
+        for index, (actual_value, expected_value) in enumerate(zip(actual, expected)):
+            weight_grad = index == 2 and expected_value.dtype == torch.float32
+            tolerance = {"rtol": 1e-4, "atol": 1e-4} if weight_grad else {}
+            self.assert_close_scaled(actual_value, expected_value, **tolerance)
 
     def assert_close_with_nan(self, actual: torch.Tensor, expected: torch.Tensor) -> None:
         assert torch.equal(actual.isnan(), expected.isnan())
@@ -148,8 +160,7 @@ class TestDiceLossCpu(BaseTester):
         kwargs = {"weight": weight, "ignore_index": ignore_index}
         expected = _reference(monkeypatch, logits, labels, average, eps, **kwargs)
         actual = _value_and_grads(logits, labels, average, eps, **kwargs)
-        for actual_value, expected_value in zip(actual, expected):
-            self.assert_close_scaled(actual_value, expected_value)
+        self.assert_values_and_grads_close(actual, expected)
 
     @pytest.mark.parametrize("average", ["micro", "macro"])
     @pytest.mark.parametrize("weighted", [False, True])
@@ -165,8 +176,7 @@ class TestDiceLossCpu(BaseTester):
         weight = torch.tensor([0.5, 1.5], device=device, dtype=dtype) if weighted else None
         expected = _reference(monkeypatch, logits, labels, average, weight=weight, ignore_index=None)
         actual = _value_and_grads(logits, labels, average, weight=weight, ignore_index=None)
-        for actual_value, expected_value in zip(actual, expected):
-            self.assert_close_scaled(actual_value, expected_value)
+        self.assert_values_and_grads_close(actual, expected)
         assert calls
 
     @pytest.mark.parametrize("shape", [(21, 1), (21, 1, 1)])
@@ -178,8 +188,7 @@ class TestDiceLossCpu(BaseTester):
         weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype).reshape(shape)
         expected = _reference(monkeypatch, logits, labels, "micro", weight=weight)
         actual = _value_and_grads(logits, labels, "micro", weight=weight)
-        for actual_value, expected_value in zip(actual, expected):
-            self.assert_close_scaled(actual_value, expected_value)
+        self.assert_values_and_grads_close(actual, expected)
         assert calls
 
     @pytest.mark.parametrize("average", ["micro", "macro"])
@@ -196,8 +205,7 @@ class TestDiceLossCpu(BaseTester):
         for eps in (1e-8, 0.0):
             expected = _reference(monkeypatch, logits, labels, average, eps, weight=weight)
             actual = _value_and_grads(logits, labels, average, eps, weight=weight)
-            for actual_value, expected_value in zip(actual, expected):
-                self.assert_close_scaled(actual_value, expected_value)
+            self.assert_values_and_grads_close(actual, expected)
         assert calls
 
     @pytest.mark.parametrize("shape", [(3, 1, 4, 5), (0, 4, 5, 6), (3, 4, 0, 6), (1, 2, 1, 1)])
@@ -228,8 +236,7 @@ class TestDiceLossCpu(BaseTester):
         weight = torch.linspace(0.5, 1.5, LARGE[1], device=device, dtype=dtype) if weighted else None
         expected = _reference(monkeypatch, logits, labels, average, weight=weight)
         actual = _value_and_grads(logits, labels, average, weight=weight)
-        for actual_value, expected_value in zip(actual, expected):
-            self.assert_close_scaled(actual_value, expected_value)
+        self.assert_values_and_grads_close(actual, expected)
         # The gradient keeps the one-hot path's layout.
         assert actual[1].stride() == expected[1].stride()
 
