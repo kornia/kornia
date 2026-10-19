@@ -24,7 +24,7 @@ import traceback
 
 import torch
 import torch.nn.functional as F
-from harness import case, run_cases
+from harness import case, err_str, run_cases
 
 import kornia.feature as KF
 
@@ -125,7 +125,8 @@ def try_build(name: str, fn):
         return fn(), None
     except Exception as e:
         traceback.print_exc()
-        return None, f"could not build/download {name}: {type(e).__name__}: {str(e)[:120]}"
+        # the root cause: a loader that tries several sources reports the last one's error only as its cause
+        return None, f"could not build/download {name}: {err_str(e)}"
 
 
 def pcase(name, group, builder, inputs, kwargs=None, **kw):
