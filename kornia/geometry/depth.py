@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
-from kornia.core.utils import _torch_grid_sample
+from kornia.core.utils import _autocast_disabled, _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -282,9 +282,11 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
 
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW
+    dtype = dtype if dtype.is_floating_point else xyz.dtype
 
-    # compute the pointcloud spatial gradients
-    gradients: torch.Tensor = spatial_gradient(xyz).to(xyz.dtype)  # Bx3x2xHxW
+    # Keep the gradient convolution in the point-cloud dtype under autocast.
+    with _autocast_disabled(xyz.device.type):
+        gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
     # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
     # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides

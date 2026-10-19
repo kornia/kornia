@@ -351,9 +351,30 @@ class TestDepthToNormals(BaseTester):
         assert normals.device == device
         self.assert_close(normals, expected)
 
-    def test_autocast_small_depth_plane(self, device, dtype):
+    @pytest.mark.parametrize("depth_value", [0.125, 1e-5])
+    def test_autocast_small_depth_plane(self, depth_value, device, dtype):
+        depth = torch.full((1, 1, 16, 16), depth_value, device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[1000.0, 0.0, 7.5], [0.0, 1000.0, 7.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        expected = depth_to_normals(depth, camera_matrix)
+
         with torch.autocast(device.type):
-            self.test_small_depth_plane(0.125, device, dtype)
+            normals = depth_to_normals(depth, camera_matrix)
+
+        self.assert_close(normals, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("input_dtype", [torch.int32, torch.int64])
+    def test_integer_depth_plane(self, input_dtype, device):
+        depth = torch.tensor([[[[12, 6, 4, 3]]]], device=device, dtype=input_dtype).expand(1, 1, 4, 4)
+        camera_matrix = torch.eye(3, device=device, dtype=input_dtype)[None]
+
+        normals = depth_to_normals(depth, camera_matrix)
+
+        # These points lie on X + Z = 12, with normal (1, 0, 1) / sqrt(2) pointing away from the camera.
+        expected = torch.tensor([1.0, 0.0, 1.0], device=device, dtype=torch.get_default_dtype()) / 2**0.5
+        assert normals.dtype == expected.dtype
+        self.assert_close(normals, expected.view(1, 3, 1, 1).expand_as(normals))
 
     @pytest.mark.parametrize(("height", "width"), [(1, 3), (3, 1), (1, 1), (0, 3), (3, 0), (0, 0)])
     @pytest.mark.parametrize("normalize_points", [False, True])
