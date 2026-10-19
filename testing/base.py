@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import math
 import sys
+from contextlib import contextmanager
 from functools import cache
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 import pytest
 import torch
@@ -37,6 +38,27 @@ DYNAMO_UNAVAILABLE_REASON = "torch.compile requires torch>=2.4 on Python>=3.12 a
 DYNAMIC_EXPORT_UNAVAILABLE_REASON = (
     f"named torch.export dynamic shapes require torch>=2.2, and {DYNAMO_UNAVAILABLE_REASON}"
 )
+
+
+@contextmanager
+def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
+    """Run the block with deterministic algorithms on CUDA, and restore the caller's mode afterwards.
+
+    Some CUDA backward kernels accumulate with atomics, so two backward passes of one graph can round differently.
+    Deterministic algorithms fix the accumulation order (CPU kernels already have one). ``warn_only`` keeps an op
+    without a deterministic CUDA kernel running, as it does by default; it only warns. A strict mode the caller
+    already set is kept.
+    """
+    if device.type != "cuda":
+        yield
+        return
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(True, warn_only=warn_only if enabled else True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
 
 
 def dynamo_is_available() -> bool:

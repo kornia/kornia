@@ -87,6 +87,32 @@ def _eval_mode(module: Any) -> Iterator[None]:
             submodule.training = training
 
 
+_NO_OUTPUT_CACHE = object()
+
+
+@contextlib.contextmanager
+def _preserved_output_caches(module: Any) -> Iterator[None]:
+    """Keep the ``show()`` / ``save()`` output cache of every module in ``module`` as it was before the block.
+
+    The TorchScript exporter runs the module on the dummy input outside ``is_exporting()``, so every image module in
+    the tree would cache the dummy's output, ``AugmentationSequential`` included, which writes the attribute itself.
+    Each cache gets back the object it held, and a cache the block created on a module that had none is removed.
+    """
+    caches = (
+        [(m, m.__dict__.get("_output_image", _NO_OUTPUT_CACHE)) for m in module.modules()]
+        if isinstance(module, nn.Module)
+        else []
+    )
+    try:
+        yield
+    finally:
+        for submodule, cache in caches:
+            if cache is _NO_OUTPUT_CACHE:
+                submodule.__dict__.pop("_output_image", None)
+            else:
+                submodule.__dict__["_output_image"] = cache
+
+
 class ONNXExportMixin:
     """Mixin class that provides ONNX export functionality for objects that support it.
 
@@ -170,6 +196,8 @@ class ONNXExportMixin:
               The one opt-out is ``training=torch.onnx.TrainingMode.TRAINING``, which torch deprecates: the legacy
               TorchScript exporter (the default before torch 2.9, ``dynamo=False`` from it) then exports the
               training-mode graph. The dynamo exporter does not read ``training``.
+            - The output cache that ``show()`` and ``save()`` read is kept: every image module in the exported module
+              holds the same cached object afterwards as before, also when the export fails.
             - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
@@ -245,9 +273,10 @@ class ONNXExportMixin:
         default_args.update(kwargs)
 
         # The dynamo exporter captures the model in whatever mode it is in, so a model left in training mode would
-        # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all.
+        # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all, and
+        # so is each image module's output cache, which the TorchScript exporter's run on the dummy overwrites.
         # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
-        with _eval_mode(module), tempfile.TemporaryDirectory() as tmp_dir:
+        with _eval_mode(module), _preserved_output_caches(module), tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = os.path.join(tmp_dir, "model.onnx")
             torch.onnx.export(
                 module,
