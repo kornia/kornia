@@ -190,6 +190,27 @@ class VideoSequential(ImageSequential):
         return v
 
     @staticmethod
+    def _batch_index_param(module: nn.Module) -> Optional[str]:
+        """Name the parameter of a mix augmentation that holds indices into the image batch.
+
+        Along its first axis the parameter has one row per image, and its values index the batch as well. Drawn per
+        video, those values are video indices, which must become indices into the ``B * T`` flattened frames.
+        """
+        if isinstance(module, K.RandomMixUpV2):
+            return "mixup_pairs"
+        if isinstance(module, K.PatchMix):
+            return "mix_pairs"
+        if isinstance(module, K.RandomMosaic):
+            return "permutation"
+        return None
+
+    @staticmethod
+    def _video_to_frame_indices(v: torch.Tensor, frame_num: int) -> torch.Tensor:
+        """Map video indices, already repeated over the frames, to frame ``t`` of each indexed video."""
+        frames = torch.arange(v.shape[0], device=v.device, dtype=v.dtype) % frame_num
+        return v * frame_num + frames.view(-1, *([1] * (v.ndim - 1)))
+
+    @staticmethod
     def _record_video_batch_size(
         param: Union[Dict[str, torch.Tensor], List[ParamItem]], original_batch_size: int
     ) -> None:
@@ -257,7 +278,10 @@ class VideoSequential(ImageSequential):
         params = []
         for name, module in named_modules:
             if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
-                is_same_on_batch = getattr(module, "same_on_batch", False)
+                batch_index_param = self._batch_index_param(module)
+                # A mix pairs the images of a batch with each other, so it needs one draw per video, or per frame with
+                # same_on_frame=False. Its own generator applies same_on_batch.
+                is_same_on_batch = getattr(module, "same_on_batch", False) and batch_index_param is None
 
                 if self.same_on_frame and is_same_on_batch:
                     mod_shape = torch.Size([1, *batch_shape[1:]])
@@ -284,6 +308,8 @@ class VideoSequential(ImageSequential):
                         mod_param[k] = self.__broadcast_param__(
                             v, batch_shape, frame_num, self.same_on_frame, is_same_on_batch
                         )
+                        if self.same_on_frame and k == batch_index_param:
+                            mod_param[k] = self._video_to_frame_indices(mod_param[k], frame_num)
                 elif isinstance(mod_param, list):
                     self._record_video_batch_size(mod_param, original_batch_size)
 

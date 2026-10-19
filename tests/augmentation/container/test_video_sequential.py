@@ -261,3 +261,29 @@ class TestVideoSequential:
         boxes = torch.rand(0, 3, 2, 4, 2, device=device, dtype=dtype)
         assert aug.transform_boxes(boxes, params).shape == boxes.shape
         assert aug.inverse_boxes(boxes, params).shape == boxes.shape
+
+    @pytest.mark.parametrize(
+        "mix",
+        [
+            lambda sob: K.RandomMixUpV2(p=1.0, same_on_batch=sob),
+            lambda sob: K.PatchMix(patch_size=2, p=1.0, same_on_batch=sob),
+            lambda sob: K.RandomMosaic(p=1.0),
+        ],
+        ids=["mixup", "patchmix", "mosaic"],
+    )
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    def test_mix_same_on_frame_pairs_matching_frames(self, mix, same_on_batch, data_format, device, dtype):
+        batch_size, frame_num = 3, 4
+        aug = mix(same_on_batch)
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        seq = K.VideoSequential(aug, data_format=data_format, same_on_frame=True)
+
+        torch.manual_seed(0)
+        out = seq(video.transpose(1, 2).contiguous() if data_format == "BCTHW" else video)
+        out = out.transpose(1, 2) if data_format == "BCTHW" else out
+
+        torch.manual_seed(0)
+        params = aug.forward_parameters(torch.Size((batch_size, 3, 8, 8)))
+        for frame in range(frame_num):
+            assert_close(out[:, frame], aug(video[:, frame], params=params))

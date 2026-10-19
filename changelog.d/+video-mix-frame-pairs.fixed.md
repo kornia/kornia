@@ -1,0 +1,1 @@
+Fixed `VideoSequential` mixing `RandomMixUpV2`, `PatchMix` and `RandomMosaic` with the wrong frames when `same_on_frame=True`. The partner indices drawn per video now point at frame `t` of the partner video, and these mixes draw one sample per video under `same_on_batch=True` instead of mixing every frame with the first one.
