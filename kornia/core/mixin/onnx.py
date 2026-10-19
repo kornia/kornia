@@ -188,6 +188,8 @@ class ONNXExportMixin:
               The one opt-out is ``training=torch.onnx.TrainingMode.TRAINING``, which torch deprecates: the legacy
               TorchScript exporter (the default before torch 2.9, ``dynamo=False`` from it) then exports the
               training-mode graph. The dynamo exporter does not read ``training``.
+            - The output cache that ``show()`` and ``save()`` read is kept: every image module in the exported module
+              holds the same cached object afterwards as before, also when the export fails.
             - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
