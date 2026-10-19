@@ -281,6 +281,75 @@ class TestPatchSequentialRegression(BaseTester):
         self.assert_close(seq(x, params=params), out, rtol=0, atol=0)
         assert len(calls) == (6 if same_on_batch else 12)
 
+    def test_random_apply_allows_mix_until_one_is_added(self, monkeypatch):
+        seq = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), K.RandomMixUpV2(p=1.0), grid_size=(2, 2), random_apply=True
+        )
+        flip, mix = seq.named_children()
+        seen = []
+
+        def select(with_mix=True):
+            seen.append(with_mix)
+            # Delay the mix until the second selection to exercise both transitions.
+            mix_added = with_mix and len(seen) == 2
+            return iter([mix if mix_added else flip]), mix_added
+
+        monkeypatch.setattr(seq, "get_random_forward_sequence", select)
+        list(seq.generate_parameters(torch.Size([4, 1, 3, 2, 2])))
+        # A mix member is allowed from the start, and not after one has been added.
+        assert seen == [True, True, False, False]
+
+    @pytest.mark.parametrize("patchwise_apply,random_apply", [(True, True), (False, True), (False, 1), (False, (1, 3))])
+    @pytest.mark.parametrize("same_on_batch", [True, False, None])
+    def test_random_apply_mix_is_applied_at_most_once(
+        self, patchwise_apply, random_apply, same_on_batch, device, dtype
+    ):
+        seq = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomBrightness((0.8, 1.2), p=1.0),
+            K.RandomVerticalFlip(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            grid_size=(2, 2),
+            random_apply=random_apply,
+            patchwise_apply=patchwise_apply,
+            same_on_batch=same_on_batch,
+        )
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mix_counts = []
+        for seed in range(50):
+            torch.manual_seed(seed)
+            out = seq(x)
+            assert out.shape == x.shape
+            self.assert_close(seq(x, params=seq._params), out, rtol=0, atol=0)
+            mix_counts.append(
+                sum(isinstance(seq.get_submodule(item.param.name), K.MixAugmentationBaseV2) for item in seq._params)
+            )
+        assert max(mix_counts) == 1, f"expected a mix member in some calls and at most one per call, got {mix_counts}"
+
+    @pytest.mark.parametrize("patchwise_apply", [True, False])
+    def test_random_apply_mix_replacement_never_selects_zero_weight_child(self, patchwise_apply, device, dtype):
+        # The mix member replaces a drawn member, so it must come from the mix members and never from a
+        # non-mix child whose weight is 0.
+        seq = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomBrightness((0.8, 1.2), p=1.0),
+            K.RandomMixUpV2(p=1.0),
+            grid_size=(2, 2),
+            random_apply=True if patchwise_apply else 1,
+            random_apply_weights=[1.0, 0.0, 1.0],
+            patchwise_apply=patchwise_apply,
+        )
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        mixes = 0
+        for seed in range(100):
+            torch.manual_seed(seed)
+            seq(x)
+            selected = [seq.get_submodule(item.param.name) for item in seq._params]
+            assert not any(isinstance(module, K.RandomBrightness) for module in selected)
+            mixes += any(isinstance(module, K.MixAugmentationBaseV2) for module in selected)
+        assert mixes > 0, "the mix member was never selected, so the replacement path was not exercised"
+
     @pytest.mark.parametrize("patchwise_apply", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
     @pytest.mark.parametrize("padding", ["same", "valid"])
