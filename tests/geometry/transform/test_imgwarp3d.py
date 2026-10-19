@@ -695,26 +695,26 @@ class TestPerspectiveTransform3D(BaseTester):
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
         ).to(device=device, dtype=dtype)
         dst = kornia.geometry.bbox.bbox_generator3d(
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(1, 50, (1,), dtype=dtype).repeat(batch_size),
         ).to(device=device, dtype=dtype)
         out = kornia.geometry.transform.get_perspective_transform3d(src, dst)
         if batch_size == 1:
             expected = torch.tensor(
                 [
                     [
-                        [3.3000, 0.0000, 0.0000, -118.2000],
-                        [0.0000, 0.0769, 0.0000, 0.0000],
-                        [0.0000, 0.0000, 0.5517, 28.7930],
+                        [1.4348, 0.0000, 0.0000, -36.1304],
+                        [0.0000, 1.0667, 0.0000, -38.6000],
+                        [0.0000, 0.0000, 2.6250, -39.6250],
                         [0.0000, 0.0000, 0.0000, 1.0000],
                     ]
                 ],
@@ -725,15 +725,15 @@ class TestPerspectiveTransform3D(BaseTester):
             expected = torch.tensor(
                 [
                     [
-                        [0.9630, 0.0000, 0.0000, -9.3702],
-                        [0.0000, 2.0000, 0.0000, -49.9999],
-                        [0.0000, 0.0000, 0.3830, 44.0213],
+                        [0.0976, 0.0000, 0.0000, 28.7073],
+                        [0.0000, 0.0889, 0.0000, 13.0667],
+                        [0.0000, 0.0000, 11.0000, -94.0000],
                         [0.0000, 0.0000, 0.0000, 1.0000],
                     ],
                     [
-                        [0.9630, 0.0000, 0.0000, -36.5555],
-                        [0.0000, 2.0000, 0.0000, -14.0000],
-                        [0.0000, 0.0000, 0.3830, 16.8940],
+                        [0.0976, 0.0000, 0.0000, -2.8049],
+                        [0.0000, 0.0889, 0.0000, 5.1111],
+                        [0.0000, 0.0000, 11.0000, -291.0000],
                         [0.0000, 0.0000, 0.0000, 1.0000],
                     ],
                 ],
