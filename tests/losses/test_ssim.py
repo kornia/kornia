@@ -106,7 +106,8 @@ class TestMS_SSIMLoss(BaseTester):
         disable_checks()
         try:
             with pytest.raises(
-                ValueError, match=r"same shape\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[1, 3, 16, 16\]\)"
+                ValueError,
+                match=r"same shape\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[1, 3, 16, 16\]\)",
             ):
                 kornia.losses.MS_SSIMLoss()(img1, img2)
         finally:
