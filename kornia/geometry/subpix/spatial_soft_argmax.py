@@ -694,8 +694,9 @@ def _scale_to_unit_hessian(
     callers' masks, which then spreads to every pixel. Scaled, the largest Hessian magnitude is about 1. Cramer's shifts
     do not change when H and the right-hand side are scaled together, and a power of two scales every product exactly,
     so wherever the unscaled solve neither underflows nor overflows, the shifts and the ``solved`` mask stay the same,
-    bit for bit. The factor is capped so that the right-hand side stays below ``2**64``: a tiny Hessian next to a
-    large finite right-hand side would otherwise scale it to inf.
+    bit for bit. A factor above 1 is capped so that it takes the right-hand side no higher than ``2**64``: a tiny
+    Hessian next to a large finite right-hand side would otherwise scale it to inf. The cap never scales a system
+    down, so a large right-hand side alone leaves the system as it is.
     """
 
     def _exponent(*entries: torch.Tensor) -> torch.Tensor:
@@ -709,10 +710,12 @@ def _scale_to_unit_hessian(
     limit = -math.log2(torch.finfo(dxx.dtype).tiny)
     hessian = _exponent(dxx, dyy, dss, dxy, dxs, dys)
     hessian = torch.where(torch.isfinite(hessian), hessian, torch.zeros_like(hessian))
-    # 2**-exponent scales max |H| to [1, 2), and 2**(63 - exponent_r) keeps max |r| below 2**64.
-    exponent = torch.maximum(hessian, _exponent(r0, r1, r2) - 63).clamp(-limit, limit)
-    # 2**-exponent. exp2 of a negative integer is one ulp below its power of two on MPS, and exp2 of a non-negative
-    # integer and its reciprocal are exact: build the factor from those.
+    # 2**-exponent scales max |H| to [1, 2). An upward factor stops at 2**(63 - exponent_r), which keeps max |r| below
+    # 2**64; the cap is at most 0, so it never scales down a system the Hessian alone would leave as it is.
+    exponent = torch.maximum(hessian, (_exponent(r0, r1, r2) - 63).clamp(max=0)).clamp(-limit, limit)
+    # 2**-exponent. In eager mode, exp2 of a negative integer is one ulp below its power of two on MPS, and exp2 of a
+    # non-negative integer and its reciprocal are exact: build the factor from those. (MPS inductor's exp2 is inexact
+    # from 2**13; the refiners do not compile on MPS today.)
     power = torch.exp2(exponent.abs())
     factor = torch.where(exponent > 0, power.reciprocal(), power)
     return tuple(t * factor for t in (dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2))
@@ -819,10 +822,10 @@ def _solve_cramer_sym3x3(
     if dxx.is_cuda and dxx.ndim == 1 and dxx.dtype in (torch.float32, torch.float64):
         return _solve_cramer_sym3x3_cuda(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2, eps)
 
-    # float16 is solved in float32 and the shifts are rounded once: the cofactor
-    # products would round to an 11-bit significand, and the relative floor of
-    # the scaled system, about 1e-7, is below float16's smallest normal number
-    # (finfo.tiny is 6.1e-5). bfloat16 keeps float32's exponent range.
+    # float16 is solved in float32 and the shifts are rounded once: the relative
+    # floor of the scaled system, about 1e-7, is below float16's smallest normal
+    # number (finfo.tiny is 6.1e-5). bfloat16 keeps float32's exponent range and
+    # is solved in its own dtype, as before.
     in_dtype = dxx.dtype
     if in_dtype == torch.float16:
         dxx, dyy, dss = dxx.float(), dyy.float(), dss.float()

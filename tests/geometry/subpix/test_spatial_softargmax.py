@@ -1344,6 +1344,23 @@ class TestPackedQuadraticFit(BaseTester):
         self.assert_close(grad, grad_ref * 2.0**50, atol=0, rtol=0)
 
     @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
+    @pytest.mark.parametrize("power", [64, 100, 120])
+    def test_cramer_large_right_hand_side_is_not_rescaled(self, device, dtype, solver, power):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype != torch.float32:
+            pytest.skip("float32 only: there a scaled-down determinant underflows")
+        if solver == "_solve_cramer_sym3x3_cuda" and device.type not in ("cpu", "cuda"):
+            pytest.skip("the packed solve runs on CUDA only; CPU checks it bit for bit against the scalar one")
+        # A well-conditioned Hessian of order 1 needs no scaling. A large right-hand side must not scale it down:
+        # 2**-57 would take det = 1e-6 to 2**-171 * 1e-6, which underflows to 0 and rejects a solvable system.
+        system = torch.tensor([1.0, 1.0, 1e-6, 0.0, 0.0, 0.0, 2.0**power, 0.0, 0.0], device=device, dtype=dtype)
+        sx, sy, ss, solved = getattr(subpix, solver)(*system[:, None])
+        assert bool(solved.all())
+        self.assert_close(sx, system[6:7], atol=0, rtol=0)
+        assert torch.stack([sy, ss]).eq(0).all()
+
+    @pytest.mark.parametrize("solver", ["_solve_cramer_sym3x3", "_solve_cramer_sym3x3_cuda"])
     @pytest.mark.parametrize(
         ("system", "solve_dtype"),
         [
@@ -1353,8 +1370,11 @@ class TestPackedQuadraticFit(BaseTester):
             # Singular in float16: on the scaled system the numerator is -2**19, beyond float16's range, where the
             # unscaled one rounded to 0, so an unsolved shift is returned as 0.
             ((0.0, 2.0**-19, 2.0**-19, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0), torch.float16),
+            # A subnormal Hessian: its exponent, -133, is clamped to -126, or the factor 2**133 would be inf in float32
+            # and the backward of the scaling NaN.
+            ((1e-40, 1e-40, 0.0, 0.0, 0.0, 0.0, 1e-40, 0.0, 0.0), torch.float32),
         ],
-        ids=["large-rhs-float32", "singular-float16"],
+        ids=["large-rhs-float32", "singular-float16", "subnormal-hessian-float32"],
     )
     def test_cramer_unsolved_system_is_zero_with_a_finite_backward(self, device, system, solve_dtype, solver):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix
