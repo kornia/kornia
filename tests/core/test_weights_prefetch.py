@@ -38,9 +38,8 @@ enumerated in :data:`WEIGHT_REGISTRIES`). Two other download paths live in
 as the vision-language builders (``kornia/models/{kimi_vl,siglip2}/builder.py``)
 call it, to fetch a ``model.safetensors``, and as ``kornia/feature/lightglue_onnx/utils/download.py``
 calls it, to fetch the LightGlue ONNX models -- and ``CachedDownloader`` into
-``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
-``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR matrix
-downloads through either today; a test that did would fetch live from every
+``.kornia_hub/`` (``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``). Nothing in the PR
+matrix downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
 
 Those builders' checkpoints could in principle be prefetched as the reference
@@ -72,6 +71,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from kornia.contrib import super_resolution
 from kornia.feature import affine_shape, defmo, hardnet, hynet, keynet, mkd, orientation, sosnet, tfeat, xfeat
 from kornia.feature import lightglue as lightglue_mod
 from kornia.feature.aliked import aliked
@@ -83,7 +83,7 @@ from kornia.feature.loftr import loftr
 from kornia.feature.sold2 import sold2, sold2_detector
 from kornia.filters import dexined
 from kornia.models import dexined as dexined_model
-from kornia.models import tiny_vit, vit
+from kornia.models import small_sr, tiny_vit, vit
 from kornia.models.efficient_vit import model as efficient_vit
 from kornia.models.rt_detr import model as rt_detr
 from kornia.models.sam import model as sam
@@ -145,6 +145,8 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "rt_detr": (rt_detr, rt_detr.URLs),
     "keynet": (keynet, {"keynet": keynet.KeyNet_URL}),
     "yunet": (yunet, {"yunet": yunet._url}),
+    "small_sr": (small_sr, {"small_sr": small_sr.url}),
+    "super_resolution": (super_resolution, super_resolution._URLs),
     # kornia.filters.dexined re-exports kornia.models.dexined, so both entries
     # read one list; the filters entry keeps the old import path's ``url`` alias,
     # which testing/reference_data.py reads, under the same guard.
@@ -289,6 +291,11 @@ NOT_PREFETCHED: dict[str, str] = {
     "vit_s-16.pth": "no test or doctest selects this ViT variant",
     "vit_ti-16.pth": "no test or doctest selects this ViT variant",
     "vit_b-32.pth": "no test or doctest selects this ViT variant",
+    # Real-ESRGAN: the tests build RRDBNetBuilder random or monkeypatch its loader, and models.rst only shows the call.
+    "RealESRGAN_x4plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRNet_x4plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRGAN_x4plus_anime_6B.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
+    "RealESRGAN_x2plus.pth": "no test, doctest or docs build loads pretrained Real-ESRGAN weights",
 }
 
 
