@@ -438,7 +438,7 @@ def dilation(
             output = output.masked_fill(special == 3, float("nan"))
 
         output = output.masked_fill(
-            kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0,
+            kernel.reshape(-1).flip(0).view(1, -1, 1, 1) == 0,
             reduction_min,
         )
 
@@ -591,7 +591,8 @@ def erosion(
             # As in :func:`dilation`; subtracting the zero offsets changes no value, not even a ``-0.0``.
             output = torch.where(excluded, reduction_max, output).amin((-2, -1)).to(compute_dtype)
         else:
-            output = output - neighborhood
+            # A bool structuring element has no subtraction; the cast changes no other value.
+            output = output - neighborhood.to(dtype=compute_dtype)
             output.masked_fill_(excluded, reduction_max)
             output, _ = torch.min(output, 4)
             output, _ = torch.min(output, 4)
@@ -627,7 +628,7 @@ def erosion(
             output = output.masked_fill(special == 3, float("nan"))
 
         output = output.masked_fill(
-            kernel.view(-1).view(1, -1, 1, 1) == 0,
+            kernel.reshape(-1).view(1, -1, 1, 1) == 0,
             reduction_max,
         )
 
@@ -640,7 +641,9 @@ def erosion(
         output = output.min(dim=1).values
         output = output.view(B, C, H, W)
     elif engine == "shift":
-        offsets = -neighborhood
+        # Negate in the compute dtype, as ``unfold`` and ``convolution`` subtract: an unsigned structuring
+        # element would wrap (``-uint8(2) == 254``), and a bool one has no negation.
+        offsets = -neighborhood.to(dtype=compute_dtype)
         inplace = False
         if not torch.jit.is_scripting():
             inplace = not recording_grad and _can_reduce_in_place(output, offsets)
