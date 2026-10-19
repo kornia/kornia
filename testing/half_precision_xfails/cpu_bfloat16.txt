@@ -249,7 +249,6 @@ call	builtins.AssertionError	tests/geometry/transform/test_imgwarp.py::TestWarpP
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90x[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90y[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestGetRotationMatrix3d::test_rot90z[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestPerspectiveTransform3D::test_get_perspective_transform3d_2[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWarpAffine3d::test_rotate_x[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWarpAffine3d::test_rotate_y[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWarpAffine3d::test_rotate_y_large[cpu-bfloat16]
