@@ -149,7 +149,7 @@ class ONNXLoader(CachedDownloader):
 
         path = os.path.expanduser(url)
         if os.path.isfile(path):
-            with open(path) as f:
+            with open(path, "rb") as f:  # json.load decodes UTF-8, -16 or -32 bytes, whatever the locale
                 return json.load(f)
 
         raise RuntimeError(
