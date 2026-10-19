@@ -67,12 +67,18 @@ def _pad_to() -> torch.nn.Module:
     return K.PadTo((40, 40))
 
 
+def _pad_to_no_crop() -> torch.nn.Module:
+    # The 32 x 32 input is taller than the target, so its height passes through and its width is padded.
+    return K.PadTo((16, 40), crop_if_exceeds=False)
+
+
 TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
     ("Normalize", _normalize),
     ("Denormalize", _denormalize),
     ("Resize", _resize),
     ("CenterCrop", _center_crop),
     ("PadTo", _pad_to),
+    ("PadTo[no-crop]", _pad_to_no_crop),
 ]
 
 
