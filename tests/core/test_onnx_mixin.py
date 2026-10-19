@@ -32,7 +32,7 @@ from kornia.core._compat import torch_version_ge
 from kornia.core.mixin.onnx import ONNXMixin, ONNXRuntimeMixin
 from kornia.filters import GaussianBlur2d
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
@@ -431,6 +431,7 @@ class TestONNXExportMixin(BaseTester):
         copy.deepcopy(aug)
         pickle.dumps(aug)
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_failed_export_leaves_no_buffer_registration_hook_6140(self):
         # torch 2.9's non-strict torch.export registers a global buffer-registration hook and removes it only when its
         # trace succeeds. Left behind by a failed export, it ran in every later Dynamo trace that registers a buffer,
