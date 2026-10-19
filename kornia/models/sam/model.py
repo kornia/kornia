@@ -285,8 +285,9 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         encoder and the mask decoder are not exported. The encoder embeddings
         can be fed into a separate prompt-encoder / mask-decoder pipeline.
 
-        On the CPU build of torch 2.14, whose default exporter is the dynamo exporter, the export needs
-        ``onnxscript`` 0.7.2 or later: with 0.7.1 it raises :class:`torch.onnx.OnnxExporterError` (kornia issue #5947).
+        On torch 2.14, whose default exporter is the dynamo exporter, a ViT image encoder (SAM ViT-B, ViT-L, ViT-H)
+        needs ``onnxscript`` 0.7.2 or later: with 0.7.1 the export raises :class:`torch.onnx.OnnxExporterError`
+        (https://github.com/kornia/kornia/issues/5947). A TinyViT encoder (MobileSAM) exports with 0.7.1.
 
         Args:
             onnx_name: Path for the saved ``.onnx`` file.  Defaults to

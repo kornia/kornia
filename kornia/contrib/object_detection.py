@@ -261,11 +261,12 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         Args:
             onnx_name:
                 The name of the output ONNX file. If not provided, ``"kornia_<name>_<image_size>.onnx"``, with
-                the detector's ``name``, for example ``"kornia_detection_640.onnx"``.
+                the detector's ``name``, for example ``"kornia_detection_640.onnx"``
+                (``"kornia_detection_None.onnx"`` for ``image_size=None``).
             image_size:
-                The height and width of the exported graph's input. If None, both are dynamic. The pre-processor keeps
-                the size it was built with, so the exported model resizes its input to that size whatever
-                ``image_size`` is.
+                The height and width of the exported graph's input. If None, both are dynamic. With the pre- and
+                post-processor, the pre-processor resizes the input to the size it was built with, whatever
+                ``image_size`` is; without them, the model runs at ``image_size``.
                 For RTDETR, recommended scales include [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.

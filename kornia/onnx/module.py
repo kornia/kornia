@@ -131,5 +131,8 @@ def load(model_name: Union[onnx.ModelProto, str, os.PathLike]) -> ONNXModule:
             use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
 
+    Note:
+        Given an ``onnx.ModelProto``, the module holds that object itself; see the note of :class:`ONNXModule`.
+
     """
     return ONNXModule(model_name)

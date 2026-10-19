@@ -122,8 +122,7 @@ class _BasicAugmentationBase(nn.Module):
         """The class-level ``ONNX_EXPORTABLE`` flag, ``True`` unless a subclass sets it.
 
         Nothing in kornia reads the flag, and it makes no statement about whether, or with which exporter, an
-        augmentation exports. ``tests/augmentation/test_onnx_export.py`` lists the augmentations that export
-        and those that do not.
+        augmentation exports.
         """
         return bool(self.ONNX_EXPORTABLE)
 
