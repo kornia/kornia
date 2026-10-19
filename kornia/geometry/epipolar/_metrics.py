@@ -255,7 +255,10 @@ def sampson_epipolar_distance(
         the computed Sampson distance with shape :math:`(*, N)`.
 
     """
-    # Shapes are validated by the implementations, as before; a single (3, 3) Fm never counts as several models.
+    # Checked here because the CUDA matmul and shared-point implementations do not check Fm. A single (3, 3) Fm
+    # never counts as several models.
+    if Fm.shape[-2:] != (3, 3):
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
     num_points = pts1.shape[-2]
     matmul = Fm.device.type == "cuda" and num_points < use_matmul_at_less_than_points
     num_models = math.prod(Fm.shape[:-2])
@@ -361,6 +364,9 @@ def symmetrical_epipolar_distance(
         the computed Symmetrical distance with shape :math:`(*, N)`.
 
     """
+    # Checked here because the CUDA matmul implementation does not check Fm.
+    if Fm.shape[-2:] != (3, 3):
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
     if Fm.device.type == "cuda":
         num_points = pts1.shape[-2]
         if num_points < 10000:

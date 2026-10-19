@@ -643,11 +643,15 @@ class TestUnbatchedFundamentalMatrix(BaseTester):
         out = metric(pts1, pts2, Fm[0])
 
         assert out.shape == (3, 7)
-        self.assert_close(out, metric(pts1, pts2, Fm.expand(3, 3, 3)), rtol=0.0, atol=0.0)
+        # A (3, 3) Fm folds the product into one matrix multiplication, and the expanded Fm runs a batched one. The
+        # two kernels can round differently (float64 on an AVX-512 CPU and on CUDA), so compare to rounding.
+        self.assert_close(out, metric(pts1, pts2, Fm.expand(3, 3, 3)))
 
     @pytest.mark.parametrize("metric", METRICS, ids=lambda fn: fn.__name__)
-    @pytest.mark.parametrize("shape", [(3,), (4, 4), (2, 3)])
+    @pytest.mark.parametrize("shape", [(3,), (4, 4), (2, 3), (2, 4, 4)])
     def test_fm_without_a_3x3_matrix_still_raises_6108(self, metric, shape, device, dtype):
+        # The CUDA matmul paths of the first two metrics, and the shared-point Sampson path that (2, 4, 4) reaches on
+        # the CPU, did not check Fm and raised a RuntimeError or an IndexError instead.
         pts = torch.rand(7, 2, device=device, dtype=dtype)
         with pytest.raises(ValueError, match=r"Fm must be a \(\*, 3, 3\) tensor"):
             metric(pts, pts, torch.rand(*shape, device=device, dtype=dtype))
