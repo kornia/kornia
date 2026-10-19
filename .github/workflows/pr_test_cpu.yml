@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       run-tests: ${{ steps.filter.outputs.run-tests }}
+      onnx-conformance: ${{ steps.filter.outputs.onnx-conformance }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,10 +32,15 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "run-tests=true" >> "$GITHUB_OUTPUT"
+            echo "onnx-conformance=all" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           changed=$(git diff --no-renames --name-only "${BASE_SHA}...HEAD")
+          # The packages whose promised ONNX operators this change can affect (#5819); empty skips the job.
+          conformance=$(python3 .github/scripts/onnx_conformance_packages.py <<< "$changed")
+          echo "onnx-conformance=$conformance" >> "$GITHUB_OUTPUT"
+          echo "ONNX conformance selection: '${conformance}'"
           if grep -Eqv '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' <<< "$changed"; then
             echo "run-tests=true" >> "$GITHUB_OUTPUT"
           else
@@ -235,6 +241,28 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
+  # ONNX conformance (#5819): every promised operator of the packages this PR can affect must export with the dynamo
+  # exporter and match eager in onnxruntime, and a legacy export that succeeds must not give wrong values. The
+  # `changes` job maps the changed paths to packages (.github/scripts/onnx_conformance_packages.py); the whole set
+  # runs on main twice a day on torch 2.9.1 and 2.14.0 (scheduled_test_cpu.yml). It also runs when only the survey
+  # under docs/export_support/ changed, when `pre-tests` is skipped: the weights then come from the newest cache.
+  onnx-conformance:
+    needs: [changes, pre-tests]
+    if: ${{ !cancelled() && needs.changes.outputs.onnx-conformance != '' && needs.pre-tests.result != 'failure' }}
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.14.0"]'
+      pytorch-dtype: float32
+      test-path: tests/onnx/test_conformance.py
+      pytest-extra: --onnx-conformance=${{ needs.changes.outputs.onnx-conformance }}
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
   typecheck:
     needs: [pre-tests]
     uses: ./.github/workflows/typecheck.yml
@@ -243,7 +271,7 @@ jobs:
   # `collector` does not wait for it, so at PR time it cost ~12 runner-minutes without gating.
 
   collector:
-    needs: [changes, pre-tests, tests, tests-mps, half-precision, dynamo, typecheck]
+    needs: [changes, pre-tests, tests, tests-mps, half-precision, dynamo, onnx-conformance, typecheck]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

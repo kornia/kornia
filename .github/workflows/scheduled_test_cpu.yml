@@ -191,6 +191,25 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
+  # ONNX conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers 2.14.0
+  # for the packages a change touches.
+  onnx-conformance:
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.9.1", "2.14.0"]'
+      pytorch-dtype: float32
+      test-path: tests/onnx/test_conformance.py
+      pytest-extra: --onnx-conformance=all
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
   tests-cpu-windows:
     needs: [check-skip, pre-tests]
     if: needs.check-skip.outputs.should-skip == 'false'
