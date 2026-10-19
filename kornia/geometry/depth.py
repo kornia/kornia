@@ -276,9 +276,12 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
         )
 
     dtype = torch.promote_types(depth.dtype, camera_matrix.dtype)
-    # Small pixel tangents can have a cross product below the float16 range, even at ordinary depth and focal length.
-    if dtype in (torch.float16, torch.bfloat16):
-        depth, camera_matrix = depth.float(), camera_matrix.float()
+    # Compute in float32 when either input is half precision: bfloat16 cannot hold the pixel grid past 256 and the
+    # float16 cross product of small pixel tangents underflows. The grid takes ``depth``'s dtype, so cast each input.
+    if depth.dtype in (torch.float16, torch.bfloat16):
+        depth = depth.float()
+    if camera_matrix.dtype in (torch.float16, torch.bfloat16):
+        camera_matrix = camera_matrix.float()
 
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW

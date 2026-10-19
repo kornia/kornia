@@ -364,6 +364,21 @@ class TestDepthToNormals(BaseTester):
 
         self.assert_close(normals, expected, rtol=0, atol=0)
 
+    @pytest.mark.parametrize("camera_dtype", [torch.bfloat16, torch.float32], ids=["bfloat16", "float32"])
+    def test_bfloat16_depth_wider_than_256_pixels(self, camera_dtype, device):
+        # The pixel grid takes the depth dtype, and bfloat16 cannot hold column indices above 256.
+        depth = torch.full((1, 1, 4, 320), 2.0, device=device, dtype=torch.bfloat16)
+        camera_matrix = torch.tensor(
+            [[[500.0, 0.0, 159.5], [0.0, 500.0, 1.5], [0.0, 0.0, 1.0]]], device=device, dtype=camera_dtype
+        )
+
+        normals = depth_to_normals(depth, camera_matrix)
+
+        expected = torch.zeros_like(normals)
+        expected[:, 2] = 1.0
+        assert normals.dtype == torch.promote_types(torch.bfloat16, camera_dtype)
+        self.assert_close(normals, expected)
+
     @pytest.mark.parametrize("input_dtype", [torch.int32, torch.int64])
     def test_integer_depth_plane(self, input_dtype, device):
         depth = torch.tensor([[[[12, 6, 4, 3]]]], device=device, dtype=input_dtype).expand(1, 1, 4, 4)
