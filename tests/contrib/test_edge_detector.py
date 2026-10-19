@@ -366,15 +366,24 @@ class TestEdgeDetector(BaseTester):
             else {"opset_version": 18, "output_names": ["output"], "dynamic_axes": {"input": dims, "output": dims}}
         )
 
-        with pytest.raises(Exception) as info:
-            torch.onnx.export(
-                det,
-                (traced,),
-                str(tmp_path / "edge_detector.onnx"),
-                dynamo=dynamo,
-                input_names=["input"],
-                **export_kwargs,
-            )
+        # torch 2.9's non-strict export registers a global buffer-registration hook and removes it only when the
+        # trace succeeds. Drop the one this failing export leaves behind, or every later dynamo trace in the process
+        # calls it and raises ``Unsupported``.
+        buffer_hooks = torch.nn.modules.module._global_buffer_registration_hooks
+        hooks_before = set(buffer_hooks)
+        try:
+            with pytest.raises(Exception) as info:
+                torch.onnx.export(
+                    det,
+                    (traced,),
+                    str(tmp_path / "edge_detector.onnx"),
+                    dynamo=dynamo,
+                    input_names=["input"],
+                    **export_kwargs,
+                )
+        finally:
+            for key in set(buffer_hooks) - hooks_before:
+                del buffer_hooks[key]
 
         error = info.value
         while error is not None and not isinstance(error, ValueError):
