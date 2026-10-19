@@ -533,8 +533,9 @@ def jpeg_codec_differentiable(
         float16 and bfloat16 inputs are computed in float32, quality and tables included, and the
         output is rounded once to the input dtype. The codec runs with autocast disabled, so inside a
         ``torch.autocast`` region it gives the same output as outside it, and the same gradients when the
-        backward pass runs after the region. A backward pass inside the region, which ``torch.compile``
-        assumes by default, still computes part of the gradient in the autocast dtype.
+        backward pass runs after the region (on CUDA, up to the run-to-run spread of its atomic accumulation
+        unless deterministic algorithms are enabled). A backward pass inside the region, which
+        ``torch.compile`` assumes by default, still computes part of the gradient in the autocast dtype.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
@@ -675,7 +676,8 @@ def jpeg_codec_differentiable(
     quantization_table_y = _to_device_nonblocking(quantization_table_y, device, dtype)
     quantization_table_c = _to_device_nonblocking(quantization_table_c, device, dtype)
     # A caller's autocast would run the codec's matrix products and convolutions in its lower dtype, which rounds the
-    # [0, 255] pixels, DCT coefficients and quality scale as coarsely as a half-precision input: compute it in dtype.
+    # [0, 255] pixels, DCT coefficients and quality scale as coarsely as computing them in half precision would:
+    # compute it in dtype.
     with _autocast_disabled(input.device.type):
         # Perform encoding
         y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
