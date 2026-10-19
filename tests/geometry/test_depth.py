@@ -317,6 +317,111 @@ class TestDepthTo3d(BaseTester):
         with pytest.raises(ShapeError):
             depth_to_3d_v2(depth, camera_matrix[0])
 
+    @pytest.mark.parametrize("half_dtype", [torch.bfloat16, torch.float16])
+    def test_half_depth_with_float32_intrinsics_keeps_pixel_precision_6148(self, half_dtype, device, dtype):
+        # kornia#6148: a half-precision depth map with float32 intrinsics built its pixel grid in the depth's
+        # dtype, so the integer column indices were rounded (bfloat16 holds integers only to 256) and X drifted
+        # by up to 2 px at 640 px wide. The grid is now built in the promoted dtype, so the points match the
+        # float64 reference at float32 roundoff. float16 keeps the same behaviour past 2048 columns.
+        width = 640 if half_dtype == torch.bfloat16 else 2051
+        camera_matrix = torch.tensor(
+            [[[500.0, 0.0, 320.0], [0.0, 500.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=torch.float32
+        )
+        depth = torch.full((1, 1, 2, width), 2.0, device=device, dtype=half_dtype)
+
+        points_v1 = depth_to_3d(depth, camera_matrix)
+        points_v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
+        assert points_v1.dtype == torch.float32
+        assert points_v2.dtype == torch.float32
+
+        # float64 reference on CPU: MPS has no float64 kernels
+        x64 = (torch.arange(width, dtype=torch.float64) - 320.0) * 2.0 / 500.0
+        self.assert_close(points_v2[..., 0].cpu().double(), x64[None, None].expand(1, 2, width), rtol=0, atol=5e-7)
+        assert torch.equal(points_v1.permute(0, 2, 3, 1), points_v2)
+
+    def test_uint16_depth_unprojects_like_int32_6148(self, device, dtype):
+        # kornia#6148: uint16 is what a 16-bit millimetre depth PNG decodes to; it used to raise
+        # NotImplementedError from arange_cpu because the grid was built in the depth's dtype. It now follows
+        # the floating intrinsics exactly like the int32 arm of the integer-depth convention test.
+        camera_matrix = _k_asymmetric(device, dtype)
+        for depth_value in (1, 1000, 40000, 65535):
+            depth = torch.full((1, 1, 2, 3), depth_value, device=device, dtype=torch.uint16)
+            reference = torch.full((1, 1, 2, 3), depth_value, device=device, dtype=torch.int32)
+
+            points = depth_to_3d(depth, camera_matrix)
+            points_v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
+            assert points.dtype == dtype
+            assert torch.equal(points, depth_to_3d(reference, camera_matrix))
+            assert torch.equal(points_v2, depth_to_3d_v2(reference[:, 0], camera_matrix))
+
+    def test_integer_depth_and_intrinsics_use_the_default_floating_dtype_6148(self, device, dtype):
+        # Both inputs integer: promote_types does not support the unsigned/signed pair, so the grid falls back
+        # to the default floating dtype instead of raising. MPS cannot compute in float64.
+        if device.type == "mps":
+            pytest.skip("float64 default dtype, which MPS does not compute in")
+        depth = torch.full((1, 1, 2, 3), 2, device=device, dtype=torch.uint16)
+        camera_matrix = torch.tensor([[[100, 0, 4], [0, 100, 3], [0, 0, 1]]], device=device, dtype=torch.int32)
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            points_v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
+            assert points_v2.dtype == torch.float64
+            expected = torch.tensor([-0.08, -0.06, 2.0], device=device, dtype=torch.float64)
+            self.assert_close(points_v2[0, 0, 0], expected)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+
+    def test_all_half_inputs_keep_the_half_grid_6148(self, device, dtype):
+        # An all-bfloat16 call keeps its bfloat16 grid (the wider half-precision policy belongs to #5814), so
+        # only the mixed case changes. With fx = 1 and cx = 1, column 257 unprojects to x = 256 in exact
+        # arithmetic, which a bfloat16 grid stores as 255 while a float32 computation cast back gives 256:
+        # the pinned literal proves the grid itself stayed bfloat16, not a float32 pipeline narrowing late.
+        camera_matrix = torch.tensor(
+            [[[1.0, 0.0, 1.0], [0.0, 1.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=torch.bfloat16
+        )
+        depth = torch.full((1, 1, 2, 259), 1.0, device=device, dtype=torch.bfloat16)
+
+        points_v1 = depth_to_3d(depth, camera_matrix)
+        points_v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
+        assert points_v2.dtype == torch.bfloat16
+        assert points_v1[0, 0, 0, 257].item() == 255.0
+        assert points_v2[0, 0, 257, 0].item() == 255.0
+
+    def test_real_depth_with_complex_intrinsics_promotes_through_the_grid_6148(self, device, dtype):
+        # A complex promotion keeps a real grid (arange has no complex kernels); the arithmetic still
+        # promotes to complex, which also unblocks complex inputs that failed on main during grid
+        # construction.
+        camera_matrix = torch.eye(3, device=device, dtype=torch.complex64)[None]
+        depth = torch.full((1, 1, 2, 3), 2.0, device=device, dtype=torch.float32)
+
+        points = depth_to_3d(depth, camera_matrix)
+        points_v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
+        assert points.dtype == torch.complex64
+        assert points_v2.dtype == torch.complex64
+        expected = torch.tensor([0.0, 0.0, 2.0], device=device, dtype=torch.complex64)
+        self.assert_close(points_v2[0, 0, 0], expected)
+
+    @pytest.mark.parametrize(
+        "depth_dtype",
+        [torch.float16, torch.float32, torch.int32, torch.bfloat16],
+    )
+    def test_float32_intrinsics_results_are_bitwise_unchanged_6148(self, depth_dtype, device, dtype):
+        # Control: for every depth dtype whose old grid was already built in the dtype the promotion keeps,
+        # every output bit is preserved. On the half profiles the fixture dtype matches the depth dtype, so
+        # the promoted grid dtype is the same half and the comparison covers the all-half policy of #5814.
+        camera_matrix = _k_asymmetric(device, dtype)
+        depth_values = torch.rand(1, 1, 2, 6, device=device).mul(5).add(1)
+        depth = depth_values.to(depth_dtype)
+
+        points_v1 = depth_to_3d(depth, camera_matrix)
+        points_v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
+        old_grid = unproject_meshgrid(2, 6, camera_matrix, device=device, dtype=depth.dtype)
+        expected_v2 = old_grid * depth[:, 0, ..., None]
+
+        assert points_v1.dtype == expected_v2.dtype
+        assert torch.equal(points_v1.permute(0, 2, 3, 1).contiguous(), expected_v2.contiguous())
+        assert torch.equal(points_v2, expected_v2)
+
 
 class TestUnprojectMeshgrid(BaseTester):
     def test_convention_returns_b_h_w_3_and_equals_depth_to_3d_v2_at_depth_one(self, device, dtype):

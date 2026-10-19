@@ -51,6 +51,26 @@ __all__ = [
 ]
 
 
+def _depth_grid_dtype(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.dtype:
+    """Return the dtype the pixel grid is built in before unprojection.
+
+    The grid holds the integer pixel indices at the precision of the promoted inputs: a bfloat16 or
+    float16 grid rounds them, and an integer grid cannot represent them. Integer inputs promote to
+    the default floating dtype instead: ``promote_types`` does not support unsigned/signed integer
+    pairs. A complex promotion keeps a real grid, because ``arange`` has no complex kernels and the
+    subsequent arithmetic promotes to complex anyway, which also unblocks complex inputs. An all-half
+    call keeps its half grid.
+    """
+    depth_is_float = depth.is_floating_point()
+    camera_is_float = camera_matrix.is_floating_point()
+    if not depth_is_float and not camera_is_float:
+        return torch.empty(0, device=depth.device).dtype
+    promoted = torch.promote_types(depth.dtype, camera_matrix.dtype)
+    if promoted in (torch.complex64, torch.complex128):
+        return torch.empty(0, device=depth.device, dtype=promoted).real.dtype
+    return promoted
+
+
 def unproject_meshgrid(
     height: int,
     width: int,
@@ -82,7 +102,7 @@ def unproject_meshgrid(
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         device: device to place the result on.
-        dtype: dtype of the result.
+        dtype: dtype of the pixel grid; the output dtype follows promotion with ``camera_matrix``.
 
     Return:
         tensor with a 3d point per pixel, with shape :math:`(B, H, W, 3)`.
@@ -133,10 +153,14 @@ def depth_to_3d_v2(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`). It equals
           :func:`~kornia.geometry.depth.depth_to_3d` after ``permute(0, 2, 3, 1)``.
         - without ``xyz_grid``, ``camera_matrix`` must be exactly :math:`(B, 3, 3)` (another shape raises
-          ``ShapeError``); with ``xyz_grid`` it is never read.
+          ``ShapeError``); with ``xyz_grid`` only its shape is checked.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - ``xyz_grid`` replaces the grid construction; pass what :func:`~kornia.geometry.depth.unproject_meshgrid`
-          returns for the same camera.
+          returns for the same camera. With ``xyz_grid`` the calibration values of ``camera_matrix`` are never
+          read, only its ``(*, 3, 3)`` shape is checked.
+        - without ``xyz_grid``, the pixel grid is built in ``promote_types(depth.dtype, camera_matrix.dtype)``
+          when either input is floating (the default floating dtype when both are integer), so half-precision
+          depth does not round the pixel indices below the intrinsics' precision.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
@@ -167,7 +191,9 @@ def depth_to_3d_v2(
     points_xyz: torch.Tensor = (
         xyz_grid
         if xyz_grid is not None
-        else unproject_meshgrid(height, width, camera_matrix, normalize_points, depth.device, depth.dtype)
+        else unproject_meshgrid(
+            height, width, camera_matrix, normalize_points, depth.device, _depth_grid_dtype(depth, camera_matrix)
+        )
     )
 
     KORNIA_CHECK_SHAPE(points_xyz, ["*", "H", "W", "3"])
@@ -191,6 +217,9 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
           :func:`~kornia.geometry.depth.depth_to_3d_v2` after ``permute(0, 2, 3, 1)``.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - an integer ``depth`` is not rejected; the result takes the floating dtype of ``camera_matrix``.
+          The pixel grid is built in ``promote_types(depth.dtype, camera_matrix.dtype)`` when either input is
+          floating (the default floating dtype when both are integer), so half-precision ``depth`` does not
+          round the pixel indices below the intrinsics' precision.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
@@ -216,7 +245,11 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     # create base coordinates grid
     _, _, height, width = depth.shape
     points_2d: torch.Tensor = create_meshgrid(
-        height, width, normalized_coordinates=False, device=depth.device, dtype=depth.dtype
+        height,
+        width,
+        normalized_coordinates=False,
+        device=depth.device,
+        dtype=_depth_grid_dtype(depth, camera_matrix),
     )  # 1xHxWx2
 
     # depth should come in Bx1xHxW

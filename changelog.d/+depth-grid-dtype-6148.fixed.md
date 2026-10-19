@@ -1,0 +1,1 @@
+`depth_to_3d`, `depth_to_3d_v2` and `warp_frame_depth` now build the pixel grid in the promoted dtype of `depth` and `camera_matrix`, so half-precision depth with float32 intrinsics no longer rounds the pixel indices, and uint16 depth no longer raises `NotImplementedError`.
