@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.check import disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -93,7 +93,9 @@ class TestMS_SSIMLoss(BaseTester):
         # silently and return a wrong loss; mismatched shapes must raise.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match="same shape"):
+        with pytest.raises(
+            ValueError, match=r"same shape\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[1, 3, 16, 16\]\)"
+        ):
             kornia.losses.MS_SSIMLoss()(img1, img2)
 
     def test_shape_mismatch_raises_when_checks_disabled(self, device, dtype):
@@ -101,14 +103,14 @@ class TestMS_SSIMLoss(BaseTester):
         # globally; the loss must never broadcast mismatched inputs silently.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
-        were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
-            with pytest.raises(ValueError, match="same shape"):
+            with pytest.raises(
+                ValueError, match=r"same shape\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[1, 3, 16, 16\]\)"
+            ):
                 kornia.losses.MS_SSIMLoss()(img1, img2)
         finally:
-            if were_checks_enabled:
-                enable_checks()
+            enable_checks()
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_high_pixel_values_use_float32_moments(self, device, dtype):
@@ -198,7 +200,9 @@ class TestMS_SSIMLoss(BaseTester):
         with pytest.raises(ValueError, match="BxCxHxW"):
             criterion(torch.rand(1), torch.rand(1, 2))
 
-        with pytest.raises(ValueError, match="same shape"):
+        with pytest.raises(
+            ValueError, match=r"same shape\. Got: torch\.Size\(\[1, 1, 8, 8\]\) and torch\.Size\(\[2, 1, 8, 8\]\)"
+        ):
             criterion(torch.rand(1, 1, 8, 8), torch.rand(2, 1, 8, 8))
 
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
