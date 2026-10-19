@@ -36,9 +36,9 @@ class PadTo(GeometricAugmentationBase2D):
         pad_value: fill value for 'constant' padding applied to the image
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
-        crop_if_exceeds: if True (default), inputs larger than ``size`` on a given dimension
-            are cropped to fit, matching the historical behavior. If False, inputs larger than
-            ``size`` are left unchanged on that dimension instead of being cropped.
+        crop_if_exceeds: if True (default), an input dimension larger than ``size`` is cropped to ``size``. If
+            False, that dimension passes through unchanged, so the output is at least ``size`` on each axis and its
+            shape depends on the input.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -49,9 +49,10 @@ class PadTo(GeometricAugmentationBase2D):
 
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
-        This operation always runs and pads on the right and bottom, using ``pad_mode`` and ``pad_value``. A
-        target smaller than the input crops that axis instead, so a target can pad one axis while cropping the
-        other (`#4410 <https://github.com/kornia/kornia/issues/4410>`_).
+        This operation always runs and pads on the right and bottom, using ``pad_mode`` and ``pad_value``. With the
+        default ``crop_if_exceeds=True``, a target smaller than the input crops that axis instead, so a target can pad
+        one axis while cropping the other (`#4410 <https://github.com/kornia/kornia/issues/4410>`_). With
+        ``crop_if_exceeds=False``, that axis passes through unchanged.
 
         :meth:`inverse` slices to the prior input size. It exactly removes right/bottom padding, but after a crop it
         returns the cropped result unchanged rather than restoring discarded pixels. The transformation matrix is
@@ -107,12 +108,10 @@ class PadTo(GeometricAugmentationBase2D):
         _, _, height, width = input.shape
         height_pad: int = flags["size"][0] - height
         width_pad: int = flags["size"][1] - width
-        if not flags["crop_if_exceeds"]:
-            # torch.sym_max keeps this clamp traceable under torch.compile/torch.export:
-            # height_pad/width_pad are derived from input.shape and may be SymInt, and the
-            # builtin max() would force a guard/specialization on their sign.
-            height_pad = torch.sym_max(height_pad, 0)
-            width_pad = torch.sym_max(width_pad, 0)
+        # A PadTo pickled before ``crop_if_exceeds`` existed has no such flag and keeps cropping.
+        if not flags.get("crop_if_exceeds", True):
+            height_pad = max(height_pad, 0)
+            width_pad = max(width_pad, 0)
         return torch.nn.functional.pad(
             input, [0, width_pad, 0, height_pad], mode=flags["pad_mode"], value=flags["pad_value"]
         )
