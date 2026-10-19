@@ -673,10 +673,9 @@ class TinyViT(nn.Module):
             they were fine-tuned with, ``drop_path_rate=0.1`` instead of TinyViT-21M's 0.2. A ``window_sizes`` or
             ``drop_path_rate`` argument overrides them. The checkpoint's attention biases are interpolated (bicubic)
             only when the window sizes differ from the checkpoint's. ``img_size`` must be a multiple of 32 (of 16 with
-            ``mobile_sam=True``), and
-            a checkpoint's accuracy is not preserved away from the resolution it was trained at: on the panda image of
-            the :doc:`/models/tiny_vit` example, TinyViT-5M's probability of the right class drops from 0.37 at 224 px
-            to 0.02 at ``img_size=256``.
+            ``mobile_sam=True``), and a checkpoint's accuracy is not preserved away from the resolution it was trained
+            at: on the panda image of the :doc:`/models/tiny_vit` example, TinyViT-5M's probability of the right class
+            drops from 0.37 at 224 px to 0.02 at ``img_size=256``.
 
             With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
             zeros, and the model, a pretrained backbone to fine-tune, stays in training mode. The ``'in22k'``

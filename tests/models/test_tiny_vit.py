@@ -258,13 +258,21 @@ class TestTinyViT(BaseTester):
             for name, bias in biases.items():
                 assert torch.equal(state_dict[name], bias), name
 
-        # An explicit ``window_sizes`` wins; the biases are then interpolated to it.
+        # An explicit ``window_sizes`` or ``drop_path_rate`` wins; the biases are then interpolated to the windows.
         model = TinyViT.from_config(
-            "21m", pretrained=key, img_size=img_size, num_classes=num_classes, window_sizes=[8, 8, 16, 8]
+            "21m",
+            pretrained=key,
+            img_size=img_size,
+            num_classes=num_classes,
+            window_sizes=[8, 8, 16, 8],
+            drop_path_rate=0.3,
         )
         assert _windows(model) == [8, 16, 8]
-        # Random init has no checkpoint to follow and keeps the 224-px windows.
-        assert _windows(TinyViT.from_config("21m", img_size=img_size)) == [7, 14, 7]
+        assert model.layers[-1].blocks[-1].drop_path1.drop_prob == pytest.approx(0.3)
+        # Random init has no checkpoint to follow and keeps the 224-px windows and rate.
+        model = TinyViT.from_config("21m", img_size=img_size)
+        assert _windows(model) == [7, 14, 7]
+        assert model.layers[-1].blocks[-1].drop_path1.drop_prob == pytest.approx(0.2)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(

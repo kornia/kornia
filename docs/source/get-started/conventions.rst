@@ -1287,10 +1287,11 @@ Pretrained models
 - A model built with complete pretrained weights comes back in evaluation mode (``model.training`` is ``False``).
   A randomly initialised model stays in PyTorch's default training mode. So does a model whose weights are only partly
   pretrained, such as a pretrained backbone with a newly initialised classification head. Call ``.train()`` to
-  fine-tune a pretrained model, and ``.eval()`` before running inference on a random one. ``KeyNetDetector`` is the
-  exception: it puts only its pretrained ``KeyNet`` in evaluation mode, so that the ``ori_module`` and ``aff_module``
-  you pass keep their own mode, and the detector itself reports ``training`` as ``True`` (see
-  :ref:`local-features-conventions`).
+  fine-tune a pretrained model, and ``.eval()`` before running inference on a random one. The ``kornia.feature``
+  pipelines are the exception: ``KeyNetDetector``, ``KeyNetHardNet``, ``KeyNetAffNetHardNet``, ``GFTTAffNetHardNet``,
+  ``LAFDescriptor`` and ``LightGlueMatcher`` put only their pretrained networks in evaluation mode and report
+  ``training`` as ``True`` themselves, so that an ``ori_module`` or ``aff_module`` you pass to ``KeyNetDetector`` keeps
+  its own mode (see :ref:`local-features-conventions`).
 - Constructors, ``from_config``, ``from_pretrained`` and the builders set the mode once, when they build the model.
   ``load_checkpoint`` and ``load_state_dict`` on an existing module leave its mode as it is: after loading your own
   weights, call ``.eval()``.

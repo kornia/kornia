@@ -76,7 +76,7 @@ class TestDexiNed(BaseTester):
     @pytest.mark.slow
     def test_gradcheck(self, device):
         # A full gradcheck: fast mode checks one random projection of the Jacobian and passes a dense layer whose input
-        # is detached from the graph. 8x12 keeps it to about 16 s per class; in evaluation mode BatchNorm accepts the
+        # is detached from the graph. 8x12 keeps it to about 16 s; in evaluation mode BatchNorm accepts the
         # 1x1 deepest maps.
         net = DexiNed(pretrained=False).to(device, torch.float64).eval()
         img = torch.rand(1, 3, 8, 12, device=device, dtype=torch.float64)
