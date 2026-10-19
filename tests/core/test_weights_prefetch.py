@@ -147,10 +147,9 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "yunet": (yunet, {"yunet": yunet._url}),
     "small_sr": (small_sr, {"small_sr": small_sr.url}),
     "super_resolution": (super_resolution, super_resolution._URLs),
-    # Two independent registries, identical today, both loading the same cache
-    # name -- which is what hides the models copy from the coverage check: the
-    # filters copy accounts for the name either way. Holding both to MODELS also
-    # holds the two copies equal to each other.
+    # kornia.filters.dexined re-exports kornia.models.dexined, so both entries
+    # read one list; the filters entry keeps the old import path's ``url`` alias,
+    # which testing/reference_data.py reads, under the same guard.
     "dexined": (dexined, {"dexined": dexined.url}),
     "dexined_model": (dexined_model, {"dexined": dexined_model._url}),
     "xfeat": (xfeat, {"xfeat": xfeat.XFeat.weights_url}),

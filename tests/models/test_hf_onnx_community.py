@@ -68,6 +68,34 @@ def test_to_onnx_keeps_one_metadata_entry_per_key(include_pre_and_post_processor
     onnx.checker.check_model(exported)
 
 
+@pytest.mark.parametrize("include_pre_and_post_processor", [False, True])
+def test_to_onnx_leaves_the_stored_and_the_callers_graphs_unchanged(include_pre_and_post_processor):
+    # Each export carries that call's metadata on a copy: the keys of one call used to be written into the stored
+    # graph, which is the caller's ModelProto, and so into every later export.
+    model = _identity_model(("keep", "yes"))
+    hf_model = HFONNXComunnityModel(model, pre_processor=_identity_model())
+    stored = hf_model._combined_op.SerializeToString()
+
+    first = hf_model.to_onnx(
+        save=False, include_pre_and_post_processor=include_pre_and_post_processor, additional_metadata=[("run", "1")]
+    )
+    second = hf_model.to_onnx(save=False, include_pre_and_post_processor=include_pre_and_post_processor)
+
+    assert ("run", "1") in [(prop.key, prop.value) for prop in first.metadata_props]
+    assert "run" not in [prop.key for prop in second.metadata_props]
+    assert [(prop.key, prop.value) for prop in model.metadata_props] == [("keep", "yes")]
+    assert hf_model.model is model
+    assert hf_model._combined_op.SerializeToString() == stored
+
+
+def test_resize_back_names_the_expected_type():
+    import torch
+
+    hf_model = HFONNXComunnityModel(_identity_model())
+    with pytest.raises(TypeError, match=r"target_images must be a torch\.Tensor, got list"):
+        hf_model.resize_back(torch.rand(1, 3, 4, 4), [torch.rand(3, 8, 8)])
+
+
 def test_each_repository_preprocessing_config_is_cached_beside_its_model(monkeypatch, tmp_path):
     # #5902: every onnx-community repository's preprocessor_config.json used to be cached as one file,
     # <hub_cache_dir>/preprocessor_config.json, outside the loader's cache_dir, so the second model built loaded the

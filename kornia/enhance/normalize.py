@@ -404,6 +404,8 @@ def normalize_min_max(
         Input is ``(*, C, H, W)``: minima and maxima are taken over H and W separately for every
         leading index and channel. Constant planes map to min_val. Empty leading dimensions are
         preserved; channel and spatial dimensions must be nonzero.
+        Integer and boolean inputs are promoted to torch's default floating dtype first, as in
+        :func:`normalize`; floating inputs keep their dtype.
 
     The data is normalised using the following formulation:
 
@@ -445,6 +447,9 @@ def normalize_min_max(
     if not isinstance(max_val, float):
         raise TypeError(f"'max_val' should be a float. Got: {type(max_val)}.")
 
+    if not input.is_floating_point() and not input.is_complex():
+        # Promote as `_promote_integer_data` does; `* 1.0` also follows the default dtype under TorchScript.
+        input = input * 1.0
     shape = input.shape
     x_reshaped = input.flatten(start_dim=-2)
     x_min = x_reshaped.min(-1, keepdim=True)[0]
