@@ -398,8 +398,8 @@ class ONNXExportMixin:
               generator where MPS is available) is restored after the dummy is drawn and after the export, so the
               draws that follow are the ones they would be without the export.
             - A global buffer-registration hook that the export leaves behind is removed, also when the export
-              fails: torch 2.9's ``torch.export`` keeps it after a failed trace, and later ``torch.compile`` calls
-              in the process would fail on it.
+              fails: torch 2.9's ``torch.export`` keeps it after a failed trace, and every later Dynamo trace in the
+              process that registers a buffer would raise ``Unsupported`` on it.
             - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
