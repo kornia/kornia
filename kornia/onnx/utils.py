@@ -128,9 +128,9 @@ def _load_cached_json(file_path: str) -> Any:
     it (:meth:`BaseException.add_note`), which a traceback prints.
     """
     try:
-        with open(file_path) as f:
+        with open(file_path, "rb") as f:  # json.load detects UTF-8, -16 or -32 in bytes, whatever the locale
             return json.load(f)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:  # both are ValueErrors
         exc.add_note(_cached_file_hint(file_path))
         raise
 
@@ -204,8 +204,10 @@ class ONNXLoader(CachedDownloader):
             with_data: If True, the model will be loaded with its `.onnx_data` weights, stored beside the model.
             force_download: If True, fetch the model, and its `.onnx_data` weights with ``with_data``, again and
                 replace the cached files, even when they are cached. A file is replaced only once its download is
-                complete, so a download that fails leaves the cached one as it was. Needs ``download=True``. It has no
-                effect on a model given as a path to a local file, which is never downloaded. Defaults to False.
+                complete, so a download that fails leaves the cached one as it was. The model is replaced before the
+                weights are fetched: if the weights then fail to download, the cache holds the new model with the old
+                weights, so call again with ``force_download=True`` before loading it. Needs ``download=True``. It has
+                no effect on a model given as a path to a local file, which is never downloaded. Defaults to False.
             **kwargs: Only ``cache_dir``; any other keyword raises ``TypeError``, whatever ``model_name`` is.
 
         Returns:

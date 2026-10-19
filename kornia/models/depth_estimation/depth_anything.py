@@ -34,6 +34,7 @@ class DepthAnythingONNXBuilder:
         model_name: str = "depth-anything-v2-small",
         model_type: str = "model",
         cache_dir: Optional[str] = None,
+        *,
         force_download: bool = False,
     ) -> DepthEstimation:
         """Build a ``DepthEstimation`` around the onnx-community graph (downloaded on first use).

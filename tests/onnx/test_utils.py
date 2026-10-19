@@ -788,14 +788,19 @@ class TestONNXLoaderForceDownload:
         assert load() == {"size": 2}
         assert fetched == [_CONFIG_URL, _CONFIG_URL]
 
-    def test_load_config_damaged_cached_config_names_force_download(self, fake_hub, tmp_path):
+    @pytest.mark.parametrize(
+        ("damage", "error"),
+        [(b"<html>Bad gateway</html>", json.JSONDecodeError), (b"\x89PNG\r\n\x1a\n\x81", UnicodeDecodeError)],
+        ids=["not json", "not text"],
+    )
+    def test_load_config_damaged_cached_config_names_force_download(self, fake_hub, tmp_path, damage, error):
         contents, fetched = fake_hub
         contents[_CONFIG_URL] = json.dumps({"size": 1}).encode()
         ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path))
         (cached,) = tmp_path.rglob("*.json")
-        cached.write_text("<html>Bad gateway</html>")
+        cached.write_bytes(damage)
 
-        with pytest.raises(json.JSONDecodeError) as exc_info:
+        with pytest.raises(error) as exc_info:
             ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path))
         (note,) = exc_info.value.__notes__
         assert "force_download=True" in note
@@ -804,6 +809,12 @@ class TestONNXLoaderForceDownload:
 
         assert ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path), force_download=True) == {"size": 1}
         assert fetched == [_CONFIG_URL, _CONFIG_URL]
+
+    def test_load_config_reads_a_utf8_config_whatever_the_locale(self, fake_hub, tmp_path):
+        # the cached bytes are decoded by json, not by the locale's encoding (cp1252 on Windows)
+        contents, _ = fake_hub
+        contents[_CONFIG_URL] = json.dumps({"name": "caf\u00e9"}, ensure_ascii=False).encode("utf-8")
+        assert ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path)) == {"name": "caf\u00e9"}
 
     def test_load_config_force_download_without_download_raises(self, fake_hub, tmp_path):
         with pytest.raises(ValueError, match=r"force_download=True.*download=True"):

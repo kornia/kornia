@@ -54,9 +54,10 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
+        *,
         force_download: bool = False,
     ) -> None:
-        self.op = self._load_op(op, cache_dir, force_download)
+        self.op = self._load_op(op, cache_dir, force_download=force_download)
         if target_ir_version is not None or target_opset_version is not None:
             self.op = self._onnx_version_conversion(
                 self.op, target_ir_version=target_ir_version, target_opset_version=target_opset_version

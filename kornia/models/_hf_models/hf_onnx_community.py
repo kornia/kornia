@@ -92,7 +92,9 @@ class HFONNXComunnityModelLoader:
                 with Kornia pre-processing or post-processing graphs that expect
                 specific tensor names.
             force_download: Whether to download the model, and its weights when ``with_data`` is set, again and replace
-                the cached files, even when they are cached. Needs ``download=True``.
+                the cached files, even when they are cached. The model is replaced before the weights are fetched: if
+                the weights then fail to download, the cache holds the new model with the old weights, so call again
+                with ``force_download=True`` before loading it. Needs ``download=True``.
             kwargs: Not used; any keyword raises ``TypeError``. Kept for compatibility.
 
         Returns:
