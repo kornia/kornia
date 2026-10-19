@@ -393,6 +393,28 @@ class TestONNXExportMixin(BaseTester):
             assert all(now is item for now, item in zip(matrices, items))
         self.assert_close(policy.transform_matrix, expected)
 
+    def test_failed_export_gives_back_the_items_of_a_params_dict_6140(self, monkeypatch):
+        # ``_params`` and ``_transform_matrix_params`` are dicts that ``forward`` edits in place when they are passed
+        # back to it (``params["batch_prob"] = ...``, ``save_kwargs=True``). No export run does that today; the stand-in
+        # export edits the stored dict in place, then fails.
+        exported, aug, y, expected = self._augmented("module")
+        params = aug._params
+        items = dict(params)
+
+        def _edit_then_fail(module, args, *rest, **kwargs):
+            module._params["batch_prob"] = torch.zeros(2)
+            module._params["written by the export"] = True
+            raise RuntimeError("export failed")
+
+        monkeypatch.setattr(torch.onnx, "export", _edit_then_fail)
+        with pytest.raises(RuntimeError, match="export failed"):
+            self._export(exported)
+
+        assert aug._params is params
+        assert params.keys() == items.keys()
+        assert all(params[key] is items[key] for key in items)
+        self.assert_close(aug.inverse(y), expected)
+
     @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
     def test_export_leaves_a_resized_crop_copyable_6140(self, exporter):
         # ``ResizedCropGenerator`` stored each call's crop sizes on itself. A dynamo export on torch 2.9 left its fake
@@ -408,18 +430,6 @@ class TestONNXExportMixin(BaseTester):
         assert aug._param_generator.size == (6, 6)
         copy.deepcopy(aug)
         pickle.dumps(aug)
-
-    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
-    def test_export_gives_back_the_random_state_6140(self, exporter):
-        # The dummy and the export's run on it draw from the global generator, so the draws after an export were not
-        # the ones the same calls make without it.
-        exported, *_ = self._augmented("container")
-        self._export(exported, **exporter)
-        draws, output = torch.rand(8), exported(torch.rand(4, 3, 8, 8))
-
-        reference, *_ = self._augmented("container")
-        self.assert_close(draws, torch.rand(8))
-        self.assert_close(output, reference(torch.rand(4, 3, 8, 8)))
 
     def test_every_attribute_written_after_construction_is_classified_6140(self):
         # ``to_onnx`` restores the attributes in ``_PER_CALL_STATE``. An augmentation or image module that starts
@@ -593,6 +603,28 @@ class TestONNXExportMixinDtypeDevice(BaseTester):
         with torch.no_grad():
             expected = model(x)
         self.assert_close(_run(op, x.cpu()), expected.cpu())
+
+
+class TestONNXExportMixinRandomState(BaseTester):
+    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    def test_export_gives_back_the_random_state_6140(self, device, exporter):
+        # The dummy and the export's run on it draw from the global generators, an augmentation moved to a device on
+        # that device's, so the draws after an export were not the ones the same calls make without it (#6140).
+        import kornia.augmentation as K
+
+        def _draws_after(export):
+            torch.manual_seed(3)
+            model = ImageSequential(
+                K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), K.RandomVerticalFlip(p=0.5))
+            ).to(device)
+            x = torch.rand(4, 3, 8, 8).to(device)
+            model(x)
+            if export:
+                model.to_onnx(save=False, pseudo_shape=[1, 3, 4, 4], **_RGB, **exporter)
+            return model(x), torch.rand(8, device=device), torch.rand(8)
+
+        for after, expected in zip(_draws_after(True), _draws_after(False)):
+            self.assert_close(after, expected)
 
 
 @pytest.mark.device_agnostic

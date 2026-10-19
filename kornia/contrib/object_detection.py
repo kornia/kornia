@@ -33,6 +33,7 @@ from kornia.core.mixin.onnx import (
     _eval_mode,
     _first_floating_tensor,
     _preserved_call_state,
+    _preserved_rng,
     _to_floating,
     _uses_dynamic_shapes,
 )
@@ -293,8 +294,10 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         # Exported for a dynamic batch, a per-image list comes out as the traced batch's detections, or the export
         # fails: such a detector is exported for one image.
         batch = -1
-        if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
-            batch = 1
+        # The probe's input draws from the global generator, as the export's dummy does, and gives back what it drew.
+        with _preserved_rng():
+            if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
+                batch = 1
         input_shape = [batch, 3, image_size or -1, image_size or -1]
 
         output_names = None if include_pre_and_post_processor else getattr(self.model, "ONNX_OUTPUT_NAMES", None)

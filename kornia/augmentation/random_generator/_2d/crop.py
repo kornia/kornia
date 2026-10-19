@@ -181,7 +181,11 @@ class ResizedCropGenerator(CropGenerator):
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - size (torch.Tensor): element-wise cropping sizes with a shape of (B, 2).
+            - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
+            - dst (torch.Tensor): output bounding boxes with a shape of (B, 4, 2).
+            - input_size (torch.Tensor): the input's (height, width), repeated to a shape of (B, 2).
+            - output_size (torch.Tensor): ``output_size``, repeated to a shape of (B, 2).
+            An empty batch gives ``src`` and ``dst`` of shape (0, 4, 2) and a ``size`` of shape (0, 2) instead.
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
