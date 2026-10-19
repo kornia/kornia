@@ -201,6 +201,10 @@ class TestObjectDetector(BaseTester):
     def test_export_gives_back_the_random_state_6140(self, exporter):
         # ObjectDetector.to_onnx draws an input for its output check before the export draws its dummy. Both give back
         # what they drew, so the draws after an export are the ones the same calls make without it.
+        pytest.importorskip("onnx")
+        if not exporter and torch_version_ge(2, 9, 0):
+            pytest.importorskip("onnxscript")  # the default exporter from torch 2.9 is the dynamo one, which needs it
+
         class _Pre(kornia.core.ImageModule):
             def forward(self, x):
                 return x, x.new_full((x.shape[0], 2), float(x.shape[-1]))
