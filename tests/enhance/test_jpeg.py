@@ -1171,6 +1171,72 @@ class TestDiffJPEG(BaseTester):
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img_jpeg, img_jpeg_ref, rtol=0.01, atol=0.01)
 
+    def test_half_precision_rounds_float32_once(self, device, dtype) -> None:
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("only float16 and bfloat16 inputs are computed in float32")
+        # Computed in the input dtype, the codec rounded pixels scaled to [0, 255], DCT coefficients of about 1000 and a
+        # quantization scale of 2500 to an 8-bit (bfloat16) or 11-bit (float16) significand, and its outputs were up to
+        # 0.2 away from float64's on these qualities.
+        img = torch.rand(4, 3, 32, 32, device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        wide = kornia.enhance.jpeg_codec_differentiable(img.float(), jpeg_quality.float())
+        assert img_jpeg.dtype == dtype
+        assert torch.equal(img_jpeg, wide.to(dtype))
+        # The module hands its float32 tables to the codec as they are, not rounded to the image dtype first.
+        qt_y = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        qt_c = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        img_jpeg = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)(img, jpeg_quality)
+        wide = kornia.enhance.jpeg_codec_differentiable(img.float(), jpeg_quality.float(), qt_y, qt_c)
+        assert img_jpeg.dtype == dtype
+        assert torch.equal(img_jpeg, wide.to(dtype))
+
+    def test_a_mixed_precision_region_does_not_reach_the_codec(self, device) -> None:
+        # A caller's autocast ran the codec's matrix products and convolutions in its lower dtype: a float32 image under
+        # CPU bfloat16 autocast came out about 0.1 away from the same call outside autocast. MPS autocasts to float16;
+        # the test has no "autocast" in its name, which conftest would skip on MPS.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
+        bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
+        autocast_dtype = torch.bfloat16 if bfloat16_ok else torch.float16
+        img = torch.rand(4, 3, 32, 32, device=device, requires_grad=True)
+        jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, requires_grad=True)
+        qt_y = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        qt_c = 1.0 + 254.0 * torch.rand(8, 8, device=device)
+        for codec in (kornia.enhance.jpeg_codec_differentiable, kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)):
+            expected = codec(img, jpeg_quality)
+            expected_grads = torch.autograd.grad(expected.sum(), (img, jpeg_quality))
+            with torch.autocast(device.type, dtype=autocast_dtype):
+                actual = codec(img, jpeg_quality)
+            actual_grads = torch.autograd.grad(actual.sum(), (img, jpeg_quality))
+            assert actual.dtype == torch.float32
+            assert torch.equal(actual, expected)
+            for grad, expected_grad in zip(actual_grads, expected_grads):
+                if device.type == "cuda":
+                    # CUDA's interpolation backward accumulates with atomics, so two backward passes may round apart.
+                    self.assert_close(grad, expected_grad)
+                else:
+                    assert torch.equal(grad, expected_grad)
+
+    def test_half_precision_backward(self, device, dtype) -> None:
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("float32 and float64 gradients are covered by test_gradcheck")
+        img = torch.rand(4, 3, 32, 32, device=device, dtype=dtype, requires_grad=True)
+        jpeg_quality = torch.tensor([99.0, 90.0, 50.0, 10.0], device=device, dtype=dtype, requires_grad=True)
+        img32 = img.detach().float().requires_grad_(True)
+        jpeg_quality32 = jpeg_quality.detach().float().requires_grad_(True)
+        for x, q in ((img, jpeg_quality), (img32, jpeg_quality32)):
+            kornia.enhance.jpeg_codec_differentiable(x, q).sum().backward()
+        # The half-precision gradients are the float32 ones rounded once. CUDA's interpolation backward accumulates
+        # with atomics, so that rounding may land one step either way: allow one rounding at the largest magnitude.
+        # Computed in the input dtype, the image gradient was off by its own magnitude (relative L2 error 0.5 to 0.9).
+        eps = torch.finfo(dtype).eps
+        for grad, grad32 in ((img.grad, img32.grad), (jpeg_quality.grad, jpeg_quality32.grad)):
+            assert grad.dtype == dtype
+            assert bool(torch.isfinite(grad).all())
+            self.assert_close(grad, grad32.to(dtype), rtol=eps, atol=eps * grad32.abs().max().item())
+
     def test_module(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
@@ -1181,6 +1247,18 @@ class TestDiffJPEG(BaseTester):
         img_jpeg = diff_jpeg_module(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
+
+    def test_module_float64_tables_on_cpu(self, device, dtype) -> None:
+        # The tables may stay float64 on the CPU while the image lives on a device without float64 (MPS): the codec
+        # converts them to the image device and its compute dtype in one step.
+        qt_y = 1.0 + 254.0 * torch.rand(8, 8, dtype=torch.float64)
+        qt_c = 1.0 + 254.0 * torch.rand(8, 8, dtype=torch.float64)
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        jpeg_quality = torch.tensor([50.0], device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)(img, jpeg_quality)
+        assert img_jpeg.dtype == dtype
+        assert img_jpeg.device == img.device
+        assert torch.equal(img_jpeg, kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c))
 
     def test_module_with_param(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
@@ -1263,3 +1341,51 @@ class TestDiffJPEG(BaseTester):
         assert type(img_jpeg) is torch.Tensor
         kornia.enhance.jpeg._DCT8_CACHE.clear()
         self.assert_close(img_jpeg, module(img, jpeg_quality))
+
+
+class TestDefaultQuantizationTables(BaseTester):
+    def test_tables_are_built_once_per_device_and_dtype(self, device, dtype):
+        from kornia.enhance.jpeg import _default_quantization_tables, _get_default_qt_c, _get_default_qt_y
+
+        first = _default_quantization_tables(device, dtype)
+        second = _default_quantization_tables(device, dtype)
+        assert first[0] is second[0]
+        assert first[1] is second[1]
+        assert torch.equal(first[0], _get_default_qt_y(device, dtype))
+        assert torch.equal(first[1], _get_default_qt_c(device, dtype))
+
+    def test_tables_cached_in_inference_mode_still_take_gradients(self, device):
+        from kornia.enhance.jpeg import _DEFAULT_QT_CACHE
+
+        _DEFAULT_QT_CACHE.clear()
+        img = torch.rand(1, 3, 16, 16, device=device, dtype=torch.float32)
+        quality = torch.tensor([50.0], device=device)
+        with torch.inference_mode():
+            kornia.enhance.jpeg_codec_differentiable(img, quality)
+        img.requires_grad_(True)
+        kornia.enhance.jpeg_codec_differentiable(img, quality).sum().backward()
+        assert img.grad is not None
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA streams")
+    def test_cached_tables_are_complete_on_another_stream(self):
+        # The caches are shared by every stream. A call on a second stream must not read tables whose fill kernels
+        # are still queued behind other work on the stream that built them.
+        from kornia.enhance import jpeg
+
+        cuda = torch.device("cuda")
+        img = torch.rand(4, 3, 64, 64, device=cuda)
+        quality = torch.tensor([50.0, 60.0, 70.0, 80.0])
+        expected = jpeg.jpeg_codec_differentiable(img, quality)
+        first, second = torch.cuda.Stream(), torch.cuda.Stream()
+        for _ in range(5):
+            jpeg._DEFAULT_QT_CACHE.clear()
+            jpeg._DCT8_CACHE.clear()
+            jpeg._get_dct8_basis_scale(img.dtype, img.device)
+            torch.cuda.synchronize()
+            with torch.cuda.stream(first):
+                torch.cuda._sleep(50_000_000)
+                jpeg.jpeg_codec_differentiable(img, quality)
+            with torch.cuda.stream(second):
+                out = jpeg.jpeg_codec_differentiable(img, quality)
+            torch.cuda.synchronize()
+            assert torch.equal(out, expected)

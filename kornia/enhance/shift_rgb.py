@@ -19,6 +19,7 @@
 import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import _check_floating_image
 
 
@@ -39,4 +40,5 @@ def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor,
 
     shifts = [r_shift, g_shift, b_shift]
 
-    return (image + torch.stack(shifts, dim=1).view(-1, 3, 1, 1).to(image)).clamp_(min=0, max=1)
+    shift = _to_device_nonblocking(torch.stack(shifts, dim=1).view(-1, 3, 1, 1), image.device, image.dtype)
+    return (image + shift).clamp_(min=0, max=1)

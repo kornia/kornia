@@ -25,7 +25,7 @@ from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -218,7 +218,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             out_row = []
             for j in range(flags["mosaic_grid"][1]):
                 img_idx = flags["mosaic_grid"][1] * i + j
-                image = input[params["permutation"][:, img_idx]]
+                image = input[_to_device_nonblocking(params["permutation"][:, img_idx], input.device)]
                 out_row.append(image)
             out.append(torch.cat(out_row, -2))
         return torch.cat(out, -1)
@@ -227,7 +227,9 @@ class RandomMosaic(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] == "resample":
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            transform: torch.Tensor = get_perspective_transform(src, dst)
             return transform
         if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
             return eye_like(3, input)

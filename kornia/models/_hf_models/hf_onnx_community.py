@@ -190,10 +190,13 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         Returns:
             The resized images.
 
+        Raises:
+            TypeError: if ``target_images`` is not a tensor.
+
         """
         if isinstance(target_images, torch.Tensor):
             return resize(images, target_images.shape[-2:])
-        raise RuntimeError
+        raise TypeError(f"target_images must be a torch.Tensor, got {type(target_images).__name__}.")
 
     def to_onnx(
         self,
@@ -216,20 +219,22 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
             save:
                 If to save the model or load it.
             additional_metadata:
-                Additional metadata to add to the ONNX model.
+                Additional metadata to add to the exported model. It goes on a copy: the stored graphs, and a
+                ``ModelProto`` the model was built from, are left as they are.
             kwargs: Additional arguments to convert to onnx.
+
+        Returns:
+            A copy of the model or of the combined graph, with ``source``, ``version`` and ``additional_metadata``.
 
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
-        if not include_pre_and_post_processor:
-            self._add_metadata(self.model, additional_metadata)
-            if save:
-                self._export(self.model, onnx_name, **kwargs)
-            return self.model
-
-        self._add_metadata(self._combined_op, additional_metadata)
+        # The metadata goes on a copy: written into the stored graph, which is the caller's ModelProto, one call's keys
+        # would reach every later export.
+        op = onnx.ModelProto()
+        op.CopyFrom(self._combined_op if include_pre_and_post_processor else self.model)
+        self._add_metadata(op, additional_metadata)
         if save:
-            self._export(self._combined_op, onnx_name, **kwargs)
-        return self._combined_op
+            self._export(op, onnx_name, **kwargs)
+        return op

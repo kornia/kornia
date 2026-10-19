@@ -21,6 +21,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _to_device_nonblocking
 from kornia.filters.kernels import normalize_kernel2d
 
 _VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
@@ -168,9 +169,9 @@ def filter2d(
     # prepare kernel
     b, c, h, w = input.shape
     if behaviour == "conv":
-        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel.flip((-2, -1))[:, None, ...], input.device, input.dtype)
     else:
-        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel[:, None, ...], input.device, input.dtype)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
@@ -360,9 +361,9 @@ def filter3d(
     # prepare kernel
     b, c, d, h, w = input.shape
     if behaviour == "conv":
-        tmp_kernel = kernel.flip((-3, -2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel.flip((-3, -2, -1))[:, None, ...], input.device, input.dtype)
     else:
-        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel[:, None, ...], input.device, input.dtype)
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
@@ -509,9 +510,9 @@ def fft_conv(
     )
 
     if behaviour == "conv":
-        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel.flip((-2, -1))[:, None, ...], input.device, input.dtype)
     else:
-        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel[:, None, ...], input.device, input.dtype)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)

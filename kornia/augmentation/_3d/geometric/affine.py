@@ -23,6 +23,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 
 
@@ -177,8 +178,9 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             params["syz"] * deg2rad_factor,
             params["szx"] * deg2rad_factor,
             params["szy"] * deg2rad_factor,
-        ).to(input)
-        return transform
+        )
+        # Built from the CPU parameters, then moved once without waiting for the queued kernels.
+        return _to_device_nonblocking(transform, input.device, input.dtype)
 
     def apply_transform(
         self,

@@ -37,8 +37,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.enhance``
      - ✅ Yes
      - ⚠️ Partial
-     - 0 / 2
-     - bfloat16: ``DiffJPEG`` and ZCA whitening accuracy.
+     - 0 / 1
+     - bfloat16: ZCA whitening accuracy. ``jpeg_codec_differentiable`` computes float16 and bfloat16 inputs in
+       float32 and returns the input dtype.
    * - ``kornia.morphology``
      - ✅ Yes
      - ✅ Yes

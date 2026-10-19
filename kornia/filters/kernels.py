@@ -23,6 +23,7 @@ from typing import Optional, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
 
 
 def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False) -> None:
@@ -183,7 +184,8 @@ def gaussian(
 
     mean = float(window_size // 2) if mean is None else mean
     if isinstance(mean, (int, float)):
-        mean = torch.tensor([[float(mean)]], device=sigma.device, dtype=sigma.dtype)
+        # Filled on the device in eager mode, so a CUDA ``sigma`` gets no host copy that waits for queued work.
+        mean = _device_literal([[float(mean)]], device=sigma.device, dtype=sigma.dtype)
 
     KORNIA_CHECK_IS_TENSOR(mean)
     KORNIA_CHECK_SHAPE(mean, ["B", "1"])
@@ -1318,6 +1320,11 @@ def get_hanning_kernel1d(
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
     x = torch.arange(kernel_size, device=device, dtype=dtype)
+    if dtype is None:
+        # The int64 ramp is converted to the default dtype explicitly, as the multiplication below promoted it on the
+        # CPU, without the int64-tensor-times-float ``aten.mul.Scalar`` that the torch 2.14 dynamo ONNX exporter cannot
+        # translate with onnxscript 0.7.1.
+        x = x.to(torch.get_default_dtype())
     return 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
 
 

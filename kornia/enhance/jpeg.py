@@ -26,12 +26,19 @@ from torch import nn
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling, is_exporting
 from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
 
 _DCT8_CACHE: dict[
+    tuple[Union[torch.dtype, None], Union[str, torch.device, None]], tuple[torch.Tensor, torch.Tensor]
+] = {}
+
+# The default quantization tables of eager calls, per (dtype, device): built once, as a filled literal of 64 values
+# costs a kernel per distinct value. They are only read.
+_DEFAULT_QT_CACHE: dict[
     tuple[Union[torch.dtype, None], Union[str, torch.device, None]], tuple[torch.Tensor, torch.Tensor]
 ] = {}
 
@@ -98,7 +105,8 @@ def _differentiable_clipping(
 
 def _get_default_qt_y(device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]) -> torch.Tensor:
     """Generate default Quantization table of Y channel."""
-    return torch.tensor(
+    # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued kernels.
+    return _device_literal(
         [
             [16, 11, 10, 16, 24, 40, 51, 61],
             [12, 12, 14, 19, 26, 58, 60, 55],
@@ -116,7 +124,8 @@ def _get_default_qt_y(device: Union[str, torch.device, None], dtype: Union[torch
 
 def _get_default_qt_c(device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]) -> torch.Tensor:
     """Generate default Quantization table of C channels."""
-    return torch.tensor(
+    # Filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for queued kernels.
+    return _device_literal(
         [
             [17, 18, 24, 47, 99, 99, 99, 99],
             [18, 21, 26, 66, 99, 99, 99, 99],
@@ -130,6 +139,28 @@ def _get_default_qt_c(device: Union[str, torch.device, None], dtype: Union[torch
         device=device,
         dtype=dtype,
     )
+
+
+def _default_quantization_tables(
+    device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the default Y and C quantization tables, cached per (dtype, device) in eager mode.
+
+    As in :func:`_get_dct8_basis_scale`, a captured forward builds them inside the graph and leaves the cache alone,
+    and the cache is filled outside inference mode, so that later calls in which autograd tracks the input can use it.
+    """
+    if is_compiling():
+        return _get_default_qt_y(device, dtype), _get_default_qt_c(device, dtype)
+    key = (dtype, device)
+    if key not in _DEFAULT_QT_CACHE:
+        with torch.inference_mode(False):
+            tables = (_get_default_qt_y(device, dtype), _get_default_qt_c(device, dtype))
+        if tables[0].is_cuda:
+            # The cache is read from every stream, and the tables are filled on this one: wait for them once, so that
+            # a call on another stream cannot read them before they are written.
+            torch.cuda.current_stream(tables[0].device).synchronize()
+        _DEFAULT_QT_CACHE[key] = tables
+    return _DEFAULT_QT_CACHE[key]
 
 
 def _patchify_8x8(input: torch.Tensor) -> torch.Tensor:
@@ -205,8 +236,9 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     freq_idx = idx.unsqueeze(1)
 
     basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * math.pi / 16.0)
-    alpha = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2**0.5)
+    # Built on the device in one go: assigning a Python float to an element copies it from the host, which waits
+    # for every queued kernel.
+    alpha = _device_literal([1.0 / (2**0.5)] + [1.0] * 7, dtype=dtype, device=device)
     dct_scale = torch.outer(alpha, alpha)
     input = input * dct_scale
 
@@ -498,6 +530,12 @@ def jpeg_codec_differentiable(
         jpeg_quality is a one-dimensional (1,) shared quality or (N,) per-image quality; a 0-D
         scalar is rejected. The codec pads on the bottom and right internally and crops back to
         the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
+        float16 and bfloat16 inputs are computed in float32, quality and tables included, and the
+        output is rounded once to the input dtype. The codec runs with autocast disabled, so inside a
+        ``torch.autocast`` region it gives the same output as outside it, and the same gradients when the
+        backward pass runs after the region (on CUDA, up to the run-to-run spread of its atomic accumulation
+        unless deterministic algorithms are enabled). A backward pass inside the region, which
+        ``torch.compile`` assumes by default, still computes part of the gradient in the autocast dtype.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
@@ -578,11 +616,18 @@ def jpeg_codec_differentiable(
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(jpeg_quality)
     # Get device and dtype
-    dtype: Union[torch.dtype, None] = input.dtype
+    out_dtype: torch.dtype = input.dtype
     device: Union[str, torch.device, None] = input.device
+    # The codec scales pixels to [0, 255], and its DCT coefficients reach about 1000 and its quality scale 2500, where
+    # bfloat16's 8-bit significand rounds by 1 to 16: coarser than the quantization step of 1 at quality 99. Compute
+    # float16 and bfloat16 inputs in float32 and round once, to the input dtype, at the end.
+    dtype: torch.dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+    input = input.to(dtype)
     # Use default QT if QT is not given
-    quantization_table_y = _get_default_qt_y(device, dtype) if quantization_table_y is None else quantization_table_y
-    quantization_table_c = _get_default_qt_c(device, dtype) if quantization_table_c is None else quantization_table_c
+    if quantization_table_y is None or quantization_table_c is None:
+        default_y, default_c = _default_quantization_tables(device, dtype)
+        quantization_table_y = default_y if quantization_table_y is None else quantization_table_y
+        quantization_table_c = default_c if quantization_table_c is None else quantization_table_c
     KORNIA_CHECK_IS_TENSOR(quantization_table_y)
     KORNIA_CHECK_IS_TENSOR(quantization_table_c)
     # Check shape of inputs
@@ -626,31 +671,35 @@ def jpeg_codec_differentiable(
         jpeg_quality, input, allow_one=True, msg="jpeg_quality needs one quality per image, or one for all."
     )
     # keep jpeg_quality same device as input torch.Tensor
-    jpeg_quality = jpeg_quality.to(device, dtype)
+    jpeg_quality = _to_device_nonblocking(jpeg_quality, device, dtype)
     # Quantization tables to same device and dtype as input image
-    quantization_table_y = quantization_table_y.to(device, dtype)
-    quantization_table_c = quantization_table_c.to(device, dtype)
-    # Perform encoding
-    y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
-        image_rgb=input,
-        jpeg_quality=jpeg_quality,
-        quantization_table_c=quantization_table_c,
-        quantization_table_y=quantization_table_y,
-    )
-    image_rgb_jpeg: torch.Tensor = _jpeg_decode(
-        input_y=y_encoded,
-        input_cb=cb_encoded,
-        input_cr=cr_encoded,
-        jpeg_quality=jpeg_quality,
-        H=H,
-        W=W,
-        quantization_table_c=quantization_table_c,
-        quantization_table_y=quantization_table_y,
-    )
-    # Clip coded image
-    image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
+    quantization_table_y = _to_device_nonblocking(quantization_table_y, device, dtype)
+    quantization_table_c = _to_device_nonblocking(quantization_table_c, device, dtype)
+    # A caller's autocast would run the codec's matrix products and convolutions in its lower dtype, which rounds the
+    # [0, 255] pixels, DCT coefficients and quality scale as coarsely as computing them in half precision would:
+    # compute it in dtype.
+    with _autocast_disabled(input.device.type):
+        # Perform encoding
+        y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
+            image_rgb=input,
+            jpeg_quality=jpeg_quality,
+            quantization_table_c=quantization_table_c,
+            quantization_table_y=quantization_table_y,
+        )
+        image_rgb_jpeg: torch.Tensor = _jpeg_decode(
+            input_y=y_encoded,
+            input_cb=cb_encoded,
+            input_cr=cr_encoded,
+            jpeg_quality=jpeg_quality,
+            H=H,
+            W=W,
+            quantization_table_c=quantization_table_c,
+            quantization_table_y=quantization_table_y,
+        )
+        # Clip coded image
+        image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
-    return image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
+    return image_rgb_jpeg[..., : H - h_pad, : W - w_pad].to(out_dtype)
 
 
 def _get_dct8_basis_scale(
@@ -666,7 +715,11 @@ def _get_dct8_basis_scale(
         # Build outside inference mode: an inference tensor in the cache would make later calls in which autograd
         # tracks the input fail, since autograd cannot save it for backward.
         with torch.inference_mode(False):
-            _DCT8_CACHE[key] = _build_dct8_basis_scale(dtype, device)
+            basis = _build_dct8_basis_scale(dtype, device)
+        if basis[0].is_cuda:
+            # Read from every stream: wait once for the kernels that build it, as for the quantization tables.
+            torch.cuda.current_stream(basis[0].device).synchronize()
+        _DCT8_CACHE[key] = basis
     return _DCT8_CACHE[key]
 
 
@@ -786,8 +839,8 @@ class JPEGCodecDifferentiable(nn.Module):
 
         The method runs an RGB image through the internal JPEG codec pipeline
         using the module's quantization tables, then reconstructs an RGB tensor.
-        Quantization tables are moved to the input device and dtype before
-        encoding/decoding.
+        Quantization tables are moved to the input device and to the dtype
+        the codec computes in before encoding/decoding.
 
         Args:
             image_rgb: Input RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -797,17 +850,13 @@ class JPEGCodecDifferentiable(nn.Module):
             Reconstructed RGB tensor after differentiable JPEG processing, with
             the same shape as ``image_rgb``.
         """
-        device = image_rgb.device
-        dtype = image_rgb.dtype
-        # Move quantization tables to the same device and dtype as input
-        # and store it in the local variables created in init
-        quantization_table_y = self.quantization_table_y.to(device, dtype)
-        quantization_table_c = self.quantization_table_c.to(device, dtype)
-        # Perform encoding-decoding
+        # The codec moves the tables to the input device and casts them to the dtype it computes in, float32 for a
+        # half-precision image, in one step. Casting them to the image dtype here would round them, and a device-only
+        # move first would try to put float64 tables on MPS, which has no float64.
         image_rgb_jpeg: torch.Tensor = jpeg_codec_differentiable(
             image_rgb,
             jpeg_quality=jpeg_quality,
-            quantization_table_c=quantization_table_c,
-            quantization_table_y=quantization_table_y,
+            quantization_table_c=self.quantization_table_c,
+            quantization_table_y=self.quantization_table_y,
         )
         return image_rgb_jpeg

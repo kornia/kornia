@@ -17,17 +17,152 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 from kornia.losses._utils import mask_ignore_pixels
 from kornia.losses.one_hot import _check_class_labels, one_hot
 
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py
+
+# Logits per batch chunk of the CPU target log-probability, at least one sample: a chunk's temporary is reused from
+# the heap instead of being a fresh, page-faulted buffer, and stays in the cache between its passes.
+_CPU_CHUNK_BYTES = 2 * 1024 * 1024
+# Measured forward + backward, 4 threads: the custom function's fixed cost (about 25 us) loses below about 2**18
+# logits (0.8x for a handful) and breaks even up to 21 x 128 x 128; from 2**19 the full-size buffers it avoids
+# dominate.
+_CPU_MIN_NUMEL = 1 << 19
+
+
+def _focal_loss_cpu_eligible(pred: torch.Tensor) -> bool:
+    """Select large native-precision CPU logits, whose full-size log-softmax buffers are fresh memory on every call."""
+    # Keep log_softmax where it is what the caller captures or transforms: the exporters and the legacy tracer record
+    # it, functorch transforms (vmap, grad, jvp) need no custom function, and autocast chooses its precision.
+    # Forward-mode AD keeps it too: Dynamo cannot capture an autograd function that defines a jvp, so a jvp would
+    # break every compiled training graph, and a jvp built on the saved statistics is not differentiable again.
+    return (
+        pred.device.type == "cpu"
+        and pred.dtype in (torch.float32, torch.float64)
+        # Before the size check: torch.export would turn it into a guard of the exported program, which then fails at
+        # run time for logits on the other side of the threshold although its dynamic shapes allow them.
+        and not is_exporting()
+        # Before the size check, which the legacy tracer would record as a constant with a TracerWarning.
+        and not torch.jit.is_tracing()
+        and pred.numel() >= _CPU_MIN_NUMEL
+        and not torch._C._are_functorch_transforms_active()
+        and not is_autocast_enabled()
+        and torch.autograd.forward_ad.unpack_dual(pred).tangent is None
+    )
+
+
+def _batch_chunks(pred: torch.Tensor, *tensors: Optional[torch.Tensor]) -> list[tuple[Any, ...]]:
+    """Split ``pred`` and ``tensors`` (``None`` stays ``None``) into the same batch chunks of about 2 MB of logits."""
+    sample_bytes = pred.numel() // max(1, pred.shape[0]) * pred.element_size()
+    step = max(1, _CPU_CHUNK_BYTES // max(1, sample_bytes))
+    if step >= pred.shape[0]:
+        return [(pred, *tensors)]
+    splits = [t.split(step) if t is not None else None for t in (pred, *tensors)]
+    return [tuple(s[i] if s is not None else None for s in splits) for i in range(len(splits[0]))]
+
+
+def _target_log_softmax_values(
+    pred: torch.Tensor, target: torch.Tensor, valid: Optional[torch.Tensor], inplace: bool
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``log_softmax(where(valid, pred, 0), 1).gather(1, target)``, and the maximum and log-sum of each position.
+
+    The log-probability is ``(x - max) - log(sum(exp(x - max)))``, in that order, as in ``log_softmax``'s CPU kernel.
+    """
+    x = pred if valid is None else torch.where(valid, pred, 0.0)
+    # A NaN or +inf logit, or a position whose logits are all -inf, makes the log-sum NaN, as in log_softmax.
+    x_max = x.amax(1, keepdim=True)
+    x_target = x.gather(1, target)
+    if inplace:
+        # x is a temporary of this function unless it is pred itself.
+        log_sum = (x.sub_(x_max) if valid is not None else x - x_max).exp_().sum(1, keepdim=True).log_()
+    else:
+        log_sum = (x - x_max).exp().sum(1, keepdim=True).log()
+    return (x_target - x_max) - log_sum, x_max, log_sum
+
+
+class _TargetLogSoftmax(torch.autograd.Function):
+    r"""Target-class log-probability ``log_softmax(where(valid, pred, 0), 1).gather(1, target)`` of CPU logits.
+
+    ``log_softmax`` saves a full-size output for its backward, and the ``gather`` and ``masked_fill`` backwards each
+    allocate another full-size gradient: on a large CPU batch, fresh memory that is faulted in on every call. This
+    saves ``pred`` itself and the maximum and log-sum of each position, and the backward writes
+    :math:`(\text{onehot}(t) - \text{softmax}) \cdot g` straight into the one gradient buffer, a batch chunk at a time.
+    The logits are masked as ``log_softmax``'s input was, so NaN and infinity positions are the same, and the gradient
+    at a position that is not ``valid`` is exactly 0, as ``masked_fill``'s backward made it. ``torch.compile`` and
+    functorch get the same arithmetic out of place and unchunked; a double backward differentiates a softmax
+    recomputed from ``pred``. Forward-mode AD never reaches it (see :func:`_focal_loss_cpu_eligible`).
+    """
+
+    @staticmethod
+    def forward(ctx: Any, pred: torch.Tensor, target: torch.Tensor, valid: Optional[torch.Tensor]) -> torch.Tensor:
+        if is_compiling() or torch._C._are_functorch_transforms_active():
+            log_prob, x_max, log_sum = _target_log_softmax_values(pred, target, valid, inplace=False)
+        else:
+            parts = [
+                _target_log_softmax_values(p, t, v, inplace=True) for p, t, v in _batch_chunks(pred, target, valid)
+            ]
+            if len(parts) == 1:
+                log_prob, x_max, log_sum = parts[0]
+            else:
+                log_prob, x_max, log_sum = (torch.cat([part[i] for part in parts]) for i in range(3))
+        ctx.save_for_backward(pred, target, valid, x_max, log_sum)
+        return log_prob
+
+    @staticmethod
+    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor, None, None]:
+        pred, target, valid, x_max, log_sum = ctx.saved_tensors
+        if torch.is_grad_enabled():
+            # create_graph: the saved maximum and log-sum have no history, so differentiate a softmax recomputed from
+            # pred.
+            x = pred if valid is None else torch.where(valid, pred, 0.0)
+            grad = (x.softmax(1) * -grad_output).scatter_add(1, target, grad_output)
+            return (grad if valid is None else torch.where(valid, grad, 0.0)), None, None
+        # Out of place under compile and functorch, and for a batched (autograd.grad(is_grads_batched=True), legacy
+        # vmap) or dual (forward-over-reverse) incoming gradient, which cannot be written into one plain buffer.
+        if (
+            is_compiling()
+            or torch._C._are_functorch_transforms_active()
+            or torch._C._functorch.is_legacy_batchedtensor(grad_output)
+            or torch.autograd.forward_ad.unpack_dual(grad_output).tangent is not None
+        ):
+            grad = (((pred - x_max) - log_sum).exp() * -grad_output).scatter_add(1, target, grad_output)
+            return (grad if valid is None else torch.where(valid, grad, 0.0)), None, None
+        # Contiguous for any layout of pred, as the gather backward of the log_softmax path makes its gradient.
+        grad = torch.empty_like(pred, memory_format=torch.contiguous_format)
+        neg_grad_output = -grad_output
+        for p, g, t, v, m, ls, go, neg_go in _batch_chunks(
+            pred, grad, target, valid, x_max, log_sum, grad_output, neg_grad_output
+        ):
+            torch.sub(p, m, out=g)
+            g.sub_(ls).exp_().mul_(neg_go).scatter_add_(1, t, go)
+            if v is not None:
+                g.masked_fill_(~v, 0.0)
+        return grad, None, None
+
+
+def _masked_log_softmax(
+    pred: torch.Tensor, target: torch.Tensor, target_mask: Optional[torch.Tensor], reduced: bool
+) -> torch.Tensor:
+    """Log-softmax over dim 1 of ``pred``, positions outside ``target_mask`` set to 0; at ``target`` if reduced."""
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if reduced and _focal_loss_cpu_eligible(pred):
+            return _TargetLogSoftmax.apply(pred, target.unsqueeze(1), target_mask)
+    if target_mask is not None:
+        # Exclude ignored logits before log-softmax: an overflowing log probability times zero is NaN.
+        pred = pred.masked_fill(~target_mask, 0.0)
+    log_pred_soft = pred.log_softmax(1)
+    if reduced:
+        log_pred_soft = log_pred_soft.gather(1, target.unsqueeze(1))
+    return log_pred_soft
 
 
 def focal_loss(
@@ -70,6 +205,12 @@ def focal_loss(
           :ref:`Losses and metrics <losses-metrics-conventions>` ports
           :func:`~torch.nn.functional.cross_entropy` to this loss.
         - ``alpha`` outside ``[0, 1]`` and a negative ``gamma`` are not validated.
+        - On the CPU, ``'mean'`` and ``'sum'`` without ``weight``, with a finite ``gamma >= 0`` and ``alpha`` ``None``
+          or a number in ``[0, 1]``, of float32 or float64 logits with at least :math:`2^{19}` values compute the
+          target-class log-probability with a custom autograd function, a batch chunk at a time, instead of a
+          full-size ``log_softmax``, unless ``torch.export`` or ``torch.jit.trace`` captures the call, a functorch
+          transform or forward-mode AD runs, or autocast is on. It agrees with ``log_softmax`` to rounding, with the
+          same NaN and infinity positions and a zero gradient at ignored pixels, and supports double backward.
 
     Args:
         pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
@@ -133,12 +274,8 @@ def focal_loss(
         target_mask = target_mask.unsqueeze(1)
         if target_one_hot is not None:
             target_one_hot = target_one_hot * target_mask
-        # Exclude ignored logits before log-softmax: an overflowing log probability times zero is NaN.
-        pred = pred.masked_fill(~target_mask, 0.0)
 
-    log_pred_soft = pred.log_softmax(1)
-    if reduced:
-        log_pred_soft = log_pred_soft.gather(1, target.unsqueeze(1))
+    log_pred_soft = _masked_log_softmax(pred, target, target_mask, reduced)
 
     # compute the actual focal loss
     # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, so a probability that rounds to 1 gives a

@@ -1426,6 +1426,85 @@ def _unit_normal(seg: torch.Tensor) -> torch.Tensor:
     return torch.stack([-d[..., 1], d[..., 0]], -1) / d.norm(dim=-1, keepdim=True)
 
 
+def _segments(points: torch.Tensor) -> torch.Tensor:
+    return points.reshape(points.shape[0], -1, 2, 2)
+
+
+class TestHomographyDLTAutocast(BaseTester):
+    @pytest.mark.parametrize(
+        "solve",
+        [
+            pytest.param(lambda p1, p2, w: find_homography_dlt(p1[:, :4], p2[:, :4]), id="dlt-4-points"),
+            pytest.param(find_homography_dlt, id="dlt-lu"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt(p1, p2, w, solver="svd"), id="dlt-svd"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt_iterated(p1, p2, w, 5.0), id="dlt-iterated"),
+            pytest.param(lambda p1, p2, w: find_homography_lines_dlt(_segments(p1), _segments(p2)), id="lines-dlt"),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt_iterated(_segments(p1), _segments(p2), w[:, ::2], 5.0),
+                id="lines-dlt-iterated",
+            ),
+        ],
+    )
+    def test_autocast_does_not_reach_the_fit(self, device, solve):
+        # A caller's bfloat16 autocast ran the DLT's matrix products in bfloat16: the fit moved by up to 70 % of its
+        # largest entry, and float32 points gave a bfloat16 homography.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        generator = torch.Generator().manual_seed(0)
+        H = torch.tensor([[1.05, 0.03, 4.0], [-0.02, 0.98, 6.0], [1e-4, 2e-5, 1.0]])
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([600.0, 450.0])
+        points2 = transform_points(H[None], points1) + torch.randn(1, 100, 2, generator=generator)
+        weights = torch.rand(1, 100, generator=generator)
+        points1, points2, weights = points1.to(device), points2.to(device), weights.to(device)
+        expected = solve(points1, points2, weights)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = solve(points1, points2, weights)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "solve",
+        [
+            pytest.param(find_homography_dlt, id="dlt-lu"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt(p1, p2, w, solver="svd"), id="dlt-svd"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt_iterated(p1, p2, w, 5.0), id="dlt-iterated"),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt(_segments(p1), _segments(p2), w[:, ::2]), id="lines-dlt"
+            ),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt_iterated(_segments(p1), _segments(p2), w[:, ::2], 5.0),
+                id="lines-dlt-iterated",
+            ),
+        ],
+    )
+    def test_weights_of_another_dtype_take_the_points_dtype(self, solve):
+        # bfloat16 points with float32 weights fitted under a caller's autocast, which cast them together. The fit
+        # now runs outside autocast and casts the weights itself, with the same result in and out of autocast.
+        generator = torch.Generator().manual_seed(0)
+        H = torch.tensor([[1.05, 0.03, 4.0], [-0.02, 0.98, 6.0], [1e-4, 2e-5, 1.0]])
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([600.0, 450.0])
+        points2 = transform_points(H[None], points1) + torch.randn(1, 100, 2, generator=generator)
+        weights = torch.rand(1, 100, generator=generator)
+        points1, points2 = points1.bfloat16(), points2.bfloat16()
+        expected = solve(points1, points2, weights.bfloat16())
+        outside = solve(points1, points2, weights)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            inside = solve(points1, points2, weights)
+        for actual in (outside, inside):
+            assert actual.dtype == torch.bfloat16
+            self.assert_close(actual, expected, atol=0, rtol=0)
+
+    def test_meta_device_infers_the_shape(self):
+        # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
+        points = torch.empty(2, 8, 2, device="meta")
+        weights = torch.empty(2, 8, device="meta")
+        segments = points.reshape(2, 4, 2, 2)
+        assert find_homography_dlt(points, points).shape == (2, 3, 3)
+        assert find_homography_dlt_iterated(points, points, weights).shape == (2, 3, 3)
+        assert find_homography_lines_dlt(segments, segments).shape == (2, 3, 3)
+        assert find_homography_lines_dlt_iterated(segments, segments, weights[:, :4]).shape == (2, 3, 3)
+
+
 class TestConventionHomography(BaseTester):
     def test_convention_find_homography_dlt_maps_p1_to_p2(self, device, dtype):
         if dtype == torch.float16:
