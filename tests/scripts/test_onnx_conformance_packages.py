@@ -36,45 +36,114 @@ SCRIPT = REPO / ".github" / "scripts" / "onnx_conformance_packages.py"
 pytestmark = pytest.mark.device_agnostic
 
 
+def _selected(paths):
+    result = select(paths)
+    return set(result.split(",")) if result else set()
+
+
 @pytest.mark.parametrize(
-    ("changed", "expected"),
+    "changed",
     [
-        (["kornia/geometry/transform/imgwarp.py", "tests/geometry/test_imgwarp.py"], "geometry"),
-        (["kornia/filters/gaussian.py", "kornia/color/hsv.py", "kornia/color/lab.py"], "color,filters"),
-        (["kornia/core/check.py"], "all"),
-        (["kornia/utils/helpers.py"], "all"),
-        (["kornia/onnx/sequential.py"], "all"),
-        (["kornia/__init__.py"], "all"),
-        (["docs/export_support/cases_misc.py"], "all"),
-        (["testing/known_failure_xfails/onnx_conformance_torch2.14.txt"], "all"),
-        (["tests/onnx/test_conformance.py"], "all"),
-        (["uv.lock"], "all"),
-        (["pixi.toml"], "all"),
-        (["pyproject.toml"], "all"),
-        (["conftest.py"], "all"),
-        (["docs/source/get-started/onnx.rst", "README.md"], ""),
-        (["kornia/contrib/face_detection.py", "kornia/models/sam/model.py"], ""),
-        (["tests/geometry/test_homography.py"], ""),
-        ([], ""),
+        ["kornia/core/check.py"],
+        ["kornia/utils/helpers.py"],
+        ["kornia/onnx/sequential.py"],
+        ["kornia/__init__.py"],
+        ["kornia/constants.py"],
+        ["docs/export_support/cases_misc.py"],
+        ["docs/source/_data/export_support.json"],
+        ["docs/source/get-started/stability.rst"],
+        ["testing/known_failure_xfails/onnx_conformance_torch2.14.txt"],
+        ["tests/onnx/test_conformance.py"],
+        [".github/workflows/pr_test_cpu.yml"],
+        ["uv.lock"],
+        ["pixi.toml"],
+        ["pyproject.toml"],
+        ["conftest.py"],
     ],
 )
-def test_select(changed, expected):
-    assert select(changed) == expected
+def test_select_all(changed):
+    assert select(changed) == "all"
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        ["docs/source/get-started/onnx.rst", "README.md"],
+        ["tests/geometry/test_homography.py"],
+        ["kornia/contrib/face_detection.py", "kornia/models/sam/model.py"],
+        ["kornia/x/trainer.py"],
+        [],
+    ],
+)
+def test_select_nothing(changed):
+    assert select(changed) == ""
+
+
+def test_select_follows_importers_in_the_repository():
+    # The PSNR losses call kornia.metrics.psnr: a fix there must run the losses' known failures too (#6165).
+    assert _selected(["kornia/metrics/psnr.py"]) >= {"metrics", "losses"}
+    assert "metrics" not in _selected(["kornia/losses/psnr.py"])
+    assert _selected(["kornia/geometry/transform/imgwarp.py"]) >= {"geometry", "augmentation", "feature"}
+    # PatchSequential crops with kornia.contrib.extract_patches; the DexiNed filter re-exports kornia.models.dexined.
+    assert _selected(["kornia/contrib/extract_patches.py"]) >= {"augmentation"}
+    assert _selected(["kornia/models/dexined.py"]) >= {"filters"}
+
+
+def _write(root, files):
+    for path, text in files.items():
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+
+
+def test_select_resolves_each_import_form(tmp_path):
+    _write(
+        tmp_path,
+        {
+            "kornia/__init__.py": "from . import augmentation, color, contrib, feature, filters, geometry, losses\n",
+            "kornia/metrics/__init__.py": "from .psnr import psnr\n",
+            "kornia/metrics/psnr.py": "def psnr(): ...\n",
+            "kornia/losses/__init__.py": "",
+            "kornia/losses/psnr.py": "from kornia import metrics\n",  # a submodule imported from its package
+            "kornia/color/__init__.py": "",
+            "kornia/color/hsv.py": "def rgb_to_hsv(): ...\n",
+            "kornia/augmentation/__init__.py": "",
+            "kornia/augmentation/aug.py": "import kornia\n\nf = kornia.color.hsv.rgb_to_hsv\n",  # attribute chain
+            "kornia/geometry/__init__.py": "",
+            "kornia/geometry/y.py": "def g(): ...\n",
+            "kornia/feature/__init__.py": "",
+            "kornia/feature/x.py": "def f():\n    from ..geometry.y import g\n",  # relative, function-local
+            "kornia/contrib/__init__.py": "",
+            "kornia/contrib/c.py": "",
+            "kornia/models/__init__.py": "",
+            "kornia/models/dex.py": "class N: ...\n",
+            "kornia/models/sam.py": "",
+            "kornia/filters/__init__.py": "",
+            "kornia/filters/d.py": "from kornia.models.dex import N\n",  # a name from a module
+        },
+    )
+    assert select(["kornia/metrics/psnr.py"], tmp_path) == "losses,metrics"
+    assert select(["kornia/color/hsv.py"], tmp_path) == "augmentation,color"
+    assert select(["kornia/geometry/y.py"], tmp_path) == "geometry,feature"
+    assert select(["kornia/models/dex.py"], tmp_path) == "filters"
+    assert select(["kornia/contrib/c.py", "kornia/models/sam.py"], tmp_path) == ""
+    assert select(["kornia/color/removed.py"], tmp_path) == "color"  # a deleted module stands for its package
 
 
 def test_cli_reads_stdin():
     result = subprocess.run(  # noqa: S603 -- the current test interpreter on the script under test.
         [sys.executable, str(SCRIPT)],
-        input="kornia/feature/laf.py\nkornia/enhance/adjust.py\n",
+        input="kornia/morphology/morphology.py\n",
         capture_output=True,
         text=True,
         check=True,
     )
-    assert result.stdout == "enhance,feature\n"
+    assert result.stdout == "morphology\n"
 
 
 def test_stable_core_matches_the_test_and_the_stability_page():
     assert STABLE_CORE == onnx_conformance.STABLE_CORE
+    assert set(onnx_conformance.REGISTRIES_OF) == set(STABLE_CORE)
     page = (REPO / "docs" / "source" / "get-started" / "stability.rst").read_text(encoding="utf-8")
     paragraph = page.split("**Stable core**", 1)[1].split("\n\n", 1)[0]
     assert set(re.findall(r"``kornia\.(\w+)``", paragraph)) == set(STABLE_CORE)

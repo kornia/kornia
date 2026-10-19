@@ -37,7 +37,8 @@ jobs:
           fi
 
           changed=$(git diff --no-renames --name-only "${BASE_SHA}...HEAD")
-          # The packages whose promised ONNX operators this change can affect (#5819); empty skips the job.
+          # The packages whose promised ONNX operators this change can affect, importers included (#5819); empty
+          # skips the job.
           conformance=$(python3 .github/scripts/onnx_conformance_packages.py <<< "$changed")
           echo "onnx-conformance=$conformance" >> "$GITHUB_OUTPUT"
           echo "ONNX conformance selection: '${conformance}'"
@@ -243,12 +244,13 @@ jobs:
 
   # ONNX conformance (#5819): every promised operator of the packages this PR can affect must export with the dynamo
   # exporter and match eager in onnxruntime, and a legacy export that succeeds must not give wrong values. The
-  # `changes` job maps the changed paths to packages (.github/scripts/onnx_conformance_packages.py); the whole set
-  # runs on main twice a day on torch 2.9.1 and 2.14.0 (scheduled_test_cpu.yml). It also runs when only the survey
-  # under docs/export_support/ changed, when `pre-tests` is skipped: the weights then come from the newest cache.
+  # `changes` job maps the changed paths to the packages they belong to plus every package that imports them
+  # (.github/scripts/onnx_conformance_packages.py); the whole set runs on main twice a day on torch 2.9.1 and 2.14.0
+  # (scheduled_test_cpu.yml). No promised operator needs pretrained weights, so the job does not wait for `pre-tests`
+  # and also runs when only the survey or its snapshot under docs/ changed.
   onnx-conformance:
-    needs: [changes, pre-tests]
-    if: ${{ !cancelled() && needs.changes.outputs.onnx-conformance != '' && needs.pre-tests.result != 'failure' }}
+    needs: [changes]
+    if: needs.changes.outputs.onnx-conformance != ''
     uses: ./.github/workflows/tests.yml
     with:
       os: ubuntu-latest
@@ -257,11 +259,6 @@ jobs:
       pytorch-dtype: float32
       test-path: tests/onnx/test_conformance.py
       pytest-extra: --onnx-conformance=${{ needs.changes.outputs.onnx-conformance }}
-      cache-path: weights/
-      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
-      cache-restore-keys: |
-        model-weights-${{ needs.pre-tests.outputs.hash }}
-        model-weights-
 
   typecheck:
     needs: [pre-tests]
