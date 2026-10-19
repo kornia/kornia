@@ -401,6 +401,33 @@ class TestDepthTo3d(BaseTester):
         expected = torch.tensor([0.0, 0.0, 2.0], device=device, dtype=torch.complex64)
         self.assert_close(points_v2[0, 0, 0], expected)
 
+    def test_complex32_depth_with_half_intrinsics_unprojects_6148(self, device, dtype):
+        # complex32 depth promotes with float16 intrinsics to complex32, which also has no arange kernel:
+        # the grid stays real (float16) and only the final multiplication sees the complex depth. The
+        # imaginary part reaches the output: at pixel (u=2, v=1) an identity camera unprojects z = 2+1j
+        # to (x, y, z) = (2z, z, z) = (4+2j, 2+1j, 2+1j). Compared in complex64, because torch has no
+        # ComplexHalf comparison kernels either.
+        camera_matrix = torch.eye(3, device=device, dtype=torch.float16)[None]
+        depth = torch.full((1, 1, 3, 4), 2 + 1j, device=device, dtype=torch.complex32)
+
+        points = depth_to_3d(depth, camera_matrix)
+        points_v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
+        assert points.dtype == torch.complex32
+        assert points_v2.dtype == torch.complex32
+        expected = torch.tensor([4 + 2j, 2 + 1j, 2 + 1j], device=device, dtype=torch.complex64)
+        self.assert_close(points[0, :, 1, 2].to(torch.complex64), expected)
+        self.assert_close(points_v2[0, 1, 2].to(torch.complex64), expected)
+
+    def test_all_complex32_inputs_get_a_real_grid_6148(self, device, dtype):
+        # Two complex32 inputs cannot run through torch (no ComplexHalf division kernel), but the grid
+        # dtype itself is well defined: the real component of the promotion, float16.
+        from kornia.geometry.depth import _depth_grid_dtype
+
+        depth = torch.empty(1, 2, 3, device=device, dtype=torch.complex32)
+        camera_matrix = torch.empty(1, 3, 3, device=device, dtype=torch.complex32)
+
+        assert _depth_grid_dtype(depth, camera_matrix) == torch.float16
+
     @pytest.mark.parametrize(
         "depth_dtype",
         [torch.float16, torch.float32, torch.int32, torch.bfloat16],

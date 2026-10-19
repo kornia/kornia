@@ -66,7 +66,9 @@ def _depth_grid_dtype(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch
     if not depth_is_float and not camera_is_float and not depth.is_complex() and not camera_matrix.is_complex():
         return torch.empty(0, device=depth.device).dtype
     promoted = torch.promote_types(depth.dtype, camera_matrix.dtype)
-    if promoted in (torch.complex64, torch.complex128):
+    # A complex32 promotion is checked through the tensors, not the promoted dtype: TorchScript sees a
+    # dtype as an integer, so a membership test on dtype attributes would not compile.
+    if depth.is_complex() or camera_matrix.is_complex():
         return torch.empty(0, device=depth.device, dtype=promoted).real.dtype
     return promoted
 
