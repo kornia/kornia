@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.augmentation import RandomCrop, RandomCrop3D
+from kornia.augmentation import AugmentationSequential, RandomCrop, RandomCrop3D
 
 from testing.base import BaseTester
 
@@ -301,6 +301,47 @@ class TestRandomCrop3D(BaseTester):
             RandomCrop3D((4, 4, 4), padding=1, fill=(1.0, 0.0, 0.0), padding_mode="replicate", p=1.0).precrop_padding(
                 volume
             )
+
+
+class TestRandomCrop3DEmptyValidation(BaseTester):
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
+    @pytest.mark.parametrize("probability", [0.0, 1.0])
+    @pytest.mark.parametrize("in_sequence", [False, True])
+    def test_oversized_crop_raises_4429(self, batch_size, size, probability, in_sequence, device, dtype):
+        """Empty and skipped batches obey the same crop-size contract as applied batches."""
+        volume = torch.empty(batch_size, 1, 4, 5, 6, device=device, dtype=dtype)
+        crop = RandomCrop3D(size, p=probability)
+        augmentation = AugmentationSequential(crop) if in_sequence else crop
+
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input_size=\(4, 5, 6\)"):
+            augmentation(volume)
+
+    @pytest.mark.parametrize(
+        "size,padding,pad_if_needed",
+        [
+            ((3, 4, 5), None, False),
+            ((4, 5, 6), None, False),
+            ((5, 6, 7), 1, False),
+            ((5, 6, 7), None, True),
+        ],
+    )
+    @pytest.mark.parametrize("probability", [0.0, 1.0])
+    @pytest.mark.parametrize("in_sequence", [False, True])
+    def test_legal_empty_crop_keeps_shape_4429(
+        self, size, padding, pad_if_needed, probability, in_sequence, device, dtype
+    ):
+        """Empty crops validate against the padded canvas and preserve the skip shape."""
+        volume = torch.empty(0, 1, 4, 5, 6, device=device, dtype=dtype)
+        crop = RandomCrop3D(size, padding=padding, pad_if_needed=pad_if_needed, p=probability)
+        augmentation = AugmentationSequential(crop) if in_sequence else crop
+
+        output = augmentation(volume)
+
+        expected_size = size if probability == 1.0 else (4, 5, 6)
+        assert output.shape == (0, 1, *expected_size)
+        assert output.device == volume.device
+        assert output.dtype == volume.dtype
 
 
 class TestRandomCrop3DPaddingMatrix(BaseTester):

@@ -109,11 +109,19 @@ class CropGenerator3D(RandomGeneratorBase):
         # ``*_diff`` is the number of valid start offsets, so it is 1 when the crop covers the whole
         # axis and 0 when the crop is one voxel too large. The guard has to reject that zero as well.
         # The size check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and ((x_diff <= 0).any() or (y_diff <= 0).any() or (z_diff <= 0).any()):
-            raise ValueError(
-                "`size` must not exceed the input spatial size in any dimension. "
-                f"Got size={self.size!r} and input_size={(depth, height, width)}."
-            )
+        if not is_exporting():
+            # A fixed size still needs validation when repeating it produces no per-sample rows.
+            if batch_size == 0 and not isinstance(self.size, torch.Tensor):
+                size_exceeds_input = any(
+                    crop_dim > input_dim for crop_dim, input_dim in zip(self.size, (depth, height, width))
+                )
+            else:
+                size_exceeds_input = (x_diff <= 0).any() or (y_diff <= 0).any() or (z_diff <= 0).any()
+            if size_exceeds_input:
+                raise ValueError(
+                    "`size` must not exceed the input spatial size in any dimension. "
+                    f"Got size={self.size!r} and input_size={(depth, height, width)}."
+                )
 
         if batch_size == 0:
             return {

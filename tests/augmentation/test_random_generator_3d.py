@@ -439,6 +439,33 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
 
 class TestRandomCropGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
+    @pytest.mark.parametrize("resize_to", [None, (2, 2, 2)])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_oversized_crop_is_rejected_for_empty_batches_4429(
+        self, batch_size, size, resize_to, same_on_batch, device, dtype
+    ):
+        """A fixed crop must fit the source volume even when no rows are sampled."""
+        generator = CropGenerator3D(size, resize_to)
+        generator.set_rng_device_and_dtype(device, dtype)
+
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input_size=\(4, 5, 6\)"):
+            generator((batch_size, 1, 4, 5, 6), same_on_batch=same_on_batch)
+
+    def test_dynamo_empty_crop_parameters_4429(self, device, dtype, torch_optimizer):
+        """A legal empty crop keeps its parameter shapes under fullgraph compilation."""
+        generator = CropGenerator3D((3, 4, 5))
+        generator.set_rng_device_and_dtype(device, dtype)
+        optimized = torch_optimizer(generator, fullgraph=True)
+
+        params = optimized((0, 1, 4, 5, 6))
+
+        assert params["src"].shape == (0, 8, 3)
+        assert params["dst"].shape == (0, 8, 3)
+        assert params["output_size"].shape == (0, 3)
+        assert params["output_size"].dtype == torch.long
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize("input_size", [(200, 200, 200)])
     @pytest.mark.parametrize("size", [(100, 100, 100), torch.tensor([50, 60, 70])])
     @pytest.mark.parametrize("resize_to", [None, (100, 100, 100)])
