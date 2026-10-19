@@ -119,7 +119,8 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             :math:`(B, 1, H, W)` tensor at the input's size instead, see :meth:`to_onnx`.
 
         Raises:
-            ValueError: Under an ONNX export, if the ``ResizePostProcessor`` resizes with ``"area"``.
+            ValueError: Under an ONNX export through :meth:`to_onnx`, or a direct one on the TorchScript exporter or,
+                from torch 2.9, the dynamo exporter, if the ``ResizePostProcessor`` resizes with ``"area"``.
 
         """
         if (

@@ -356,10 +356,12 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             ``onnx.ModelProto`` of the exported model.
 
         """
-        kwargs.setdefault("output_names", list(self.ONNX_OUTPUT_NAMES))
+        if kwargs.get("output_names") is None:  # absent, or ``torch.onnx.export``'s own default of None
+            kwargs["output_names"] = list(self.ONNX_OUTPUT_NAMES)
+        # keyed by the names the graph gets, the caller's if given
         kwargs.setdefault(
             "dynamic_axes",
-            {"input": {0: "batch"}, **{name: {0: "batch"} for name in self.ONNX_OUTPUT_NAMES}},
+            {"input": {0: "batch"}, **{name: {0: "batch"} for name in kwargs["output_names"]}},
         )
         if pseudo_shape is None:
             pseudo_shape = [1, 3, 640, 640]

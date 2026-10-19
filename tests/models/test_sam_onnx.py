@@ -155,3 +155,19 @@ def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
     else:
         _check_onnx_against_eager(op, model.image_encoder, (1, 2, 3), 64)
         assert isinstance(_dims(op.graph.input[0])[0], str)
+
+
+@pytest.mark.timeout(120)
+def test_tiny_vit_encoder_legacy_onnx_declares_the_pseudo_batch():
+    """On the legacy exporter, a TinyViT encoder is traced at the pseudo shape's batch, here 3, and declares it."""
+    pytest.importorskip("onnx")
+    torch.manual_seed(0)
+    model = Sam.from_name("mobile_sam")
+    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True)
+    model.eval()
+
+    op = model.to_onnx(save=False, pseudo_shape=[3, 3, 64, 64], dynamo=False)
+
+    assert _dims(op.graph.input[0]) == [3, 3, 64, 64]
+    assert _dims(op.graph.output[0])[0] == 3
+    _check_onnx_against_eager(op, model.image_encoder, (3,), 64)

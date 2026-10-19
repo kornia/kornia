@@ -296,7 +296,8 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         if output_names:
             # The bare model's outputs by name, each with a dynamic batch: listed in ``dynamic_axes`` for the
             # TorchScript exporter, derived by the dynamo exporter from the input's dynamic dimensions.
-            kwargs.setdefault("output_names", list(output_names))
+            if kwargs.get("output_names") is None:  # absent, or ``torch.onnx.export``'s own default of None
+                kwargs["output_names"] = list(output_names)
             if not _uses_dynamic_shapes(kwargs) and "dynamic_axes" not in kwargs and "dynamic_shapes" not in kwargs:
                 input_axes = {i: f"dim_{i}" for i, dim in enumerate(input_shape) if dim == -1}
                 # Keyed by the names the graph gets, the caller's if given.

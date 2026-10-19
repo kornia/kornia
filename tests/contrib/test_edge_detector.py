@@ -63,6 +63,13 @@ class _DoubledPostProcessor(ResizePostProcessor):
         return 2 * imgs
 
 
+class _NearestPostProcessor(ResizePostProcessor):
+    """A ``ResizePostProcessor`` subclass that keeps its ``forward``: nearest resizing by default."""
+
+    def __init__(self) -> None:
+        super().__init__("nearest")
+
+
 class TestEdgeDetector(BaseTester):
     def test_builder_feeds_dexined_bgr_minus_bgr_mean(self, device, dtype):
         # DexiNed was trained on ``cv2.imread`` images (BGR, 0-255) minus ``mean_bgr``: xavysp/DexiNed@d944b70
@@ -308,6 +315,72 @@ class TestEdgeDetector(BaseTester):
                 expected = det(images)
             assert expected.shape == (shape[0], 1, 16, 16)
             self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
+    def test_onnx_resizes_back_for_a_post_processor_subclass_that_keeps_forward(self, export_kwargs):
+        # A subclass without its own ``forward`` resizes as ``ResizePostProcessor`` does, so the export branch replaces
+        # it too, with the subclass's mode.
+        pytest.importorskip("onnx")
+        if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            pytest.importorskip("onnxscript")
+        det = _small_edge_detector(_NearestPostProcessor())
+        op = det.to_onnx(image_size=None, save=False, **export_kwargs)
+
+        generator = torch.Generator().manual_seed(0)
+        for shape in [(1, 3, 20, 28), (3, 3, 33, 18)]:
+            images = torch.rand(*shape, generator=generator)
+            with torch.no_grad():
+                expected = torch.cat(det(images))
+            self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        "dynamo",
+        [
+            pytest.param(False, id="legacy"),
+            pytest.param(
+                True,
+                id="torch_export",
+                marks=pytest.mark.skipif(
+                    torch_version_lt(2, 9, 0),
+                    reason="below torch 2.9 a direct export on that exporter takes the eager path; use to_onnx",
+                ),
+            ),
+        ],
+    )
+    def test_direct_torch_onnx_export_with_an_area_post_processor_raises(self, tmp_path, dynamo):
+        # ``forward`` itself rejects "area" under export: the dynamo exporter would otherwise give a graph that is
+        # right only at the traced size. That exporter raises its own error, caused by the ``ValueError``.
+        pytest.importorskip("onnx")
+        if dynamo:
+            pytest.importorskip("onnxscript")
+        det = _small_edge_detector(ResizePostProcessor("area")).eval()
+        traced = torch.rand(2, 3, 24, 32, generator=torch.Generator().manual_seed(1))
+        dims = {0: "batch", 2: "height", 3: "width"}
+        export_kwargs = (
+            {"dynamic_shapes": (dims,)}
+            if dynamo
+            else {"opset_version": 18, "output_names": ["output"], "dynamic_axes": {"input": dims, "output": dims}}
+        )
+
+        with pytest.raises(Exception) as info:
+            torch.onnx.export(
+                det,
+                (traced,),
+                str(tmp_path / "edge_detector.onnx"),
+                dynamo=dynamo,
+                input_names=["input"],
+                **export_kwargs,
+            )
+
+        error = info.value
+        while error is not None and not isinstance(error, ValueError):
+            error = error.__cause__ or error.__context__
+        assert error is not None, f"no ValueError behind {info.value!r}"
+        assert '"area"' in str(error)
 
     def test_dynamo_returns_the_eager_list(self, device, dtype, torch_optimizer):
         # Only an export returns the stacked tensor: a compiled detector keeps the per-image list. Under
