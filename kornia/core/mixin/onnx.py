@@ -417,19 +417,22 @@ class ONNXMixin:
         self,
         arg: Union[onnx.ModelProto, str],
         cache_dir: Optional[str] = None,
+        force_download: bool = False,
     ) -> onnx.ModelProto:
         """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
             arg: Either an ONNX ModelProto object or a file path to an ONNX model.
             cache_dir: Where to read onnx objects from if stored on disk.
+            force_download: If True, download an ``hf://`` name or a URL again, replacing the cached file, even when
+                it is cached. It has no effect on a ``ModelProto`` or a path to a local file.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
 
         """
         if isinstance(arg, str):
-            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
+            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir, force_download=force_download)
         if isinstance(arg, onnx.ModelProto):
             return arg
         raise ValueError(f"Invalid argument type. Got {type(arg)}")
@@ -438,6 +441,7 @@ class ONNXMixin:
         self,
         *args: Union[onnx.ModelProto, str],
         cache_dir: Optional[str] = None,
+        force_download: bool = False,
     ) -> list[onnx.ModelProto]:
         """Load multiple ONNX models or operators and returns them as a list.
 
@@ -446,6 +450,8 @@ class ONNXMixin:
                 For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
             cache_dir: Where to read operations from if stored on disk.
+            force_download: If True, download every ``hf://`` name and URL again, replacing the cached files, even when
+                they are cached.
 
         Returns:
             list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
@@ -453,7 +459,7 @@ class ONNXMixin:
         """
         op_list = []
         for arg in args:
-            op_list.append(self._load_op(arg, cache_dir=cache_dir))
+            op_list.append(self._load_op(arg, cache_dir=cache_dir, force_download=force_download))
         return op_list
 
     def _combine(

@@ -161,3 +161,65 @@ class TestONNXSequentialOfKorniaExports:
         assert _opsets(seq._combined_op) == {version + 1}
         x = torch.rand(1, 3, 4, 5)
         assert_close(torch.from_numpy(seq(x.numpy())[0]), x.sigmoid().sigmoid())
+
+
+class TestForceDownloadReachesTheLoader:
+    @pytest.fixture
+    def model(self):
+        input_info = onnx.helper.make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 2])
+        output_info = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 2])
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("Identity", ["input"], ["output"])], "g", [input_info], [output_info]
+        )
+        return onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 17)], ir_version=9)
+
+    @pytest.mark.parametrize("force_download", [False, True])
+    def test_sequential(self, model, force_download):
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            ONNXSequential("https://example.com/a.onnx", cache_dir="cache", force_download=force_download)
+
+        load_model.assert_called_once_with(
+            "https://example.com/a.onnx", cache_dir="cache", force_download=force_download
+        )
+
+    def test_sequential_downloads_nothing_again_by_default(self, model):
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            ONNXSequential("hf://operators/a")
+
+        load_model.assert_called_once_with("hf://operators/a", cache_dir=None, force_download=False)
+
+    def test_sequential_does_not_load_a_model_object(self, model):
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model") as load_model:
+            ONNXSequential(model, force_download=True)
+
+        load_model.assert_not_called()
+
+    @pytest.mark.parametrize("force_download", [False, True])
+    def test_module(self, model, force_download):
+        from unittest import mock
+
+        from kornia.onnx.module import ONNXModule
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            ONNXModule("https://example.com/a.onnx", cache_dir="cache", force_download=force_download)
+
+        load_model.assert_called_once_with(
+            "https://example.com/a.onnx", cache_dir="cache", force_download=force_download
+        )
+
+    @pytest.mark.parametrize("force_download", [False, True])
+    def test_load(self, model, force_download):
+        from unittest import mock
+
+        from kornia.onnx.module import load
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader.load_model", return_value=model) as load_model:
+            load("https://example.com/a.onnx", force_download=force_download)
+
+        load_model.assert_called_once_with("https://example.com/a.onnx", cache_dir=None, force_download=force_download)

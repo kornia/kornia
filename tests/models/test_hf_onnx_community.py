@@ -150,3 +150,118 @@ def test_loader_refuses_a_model_name_outside_the_cache_directory(model_name, tmp
     with mock.patch.object(ONNXLoader, "download") as mock_download, pytest.raises(ValueError, match="model_name"):
         HFONNXComunnityModelLoader(model_name, cache_dir=str(root)).load_preprocessing()
     mock_download.assert_not_called()
+
+
+_DPT_CONFIG = {
+    "image_processor_type": "DPTImageProcessor",
+    "do_pad": False,
+    "do_resize": True,
+    "size": {"height": 14, "width": 14},
+    "do_rescale": False,
+    "do_normalize": False,
+}
+
+
+@pytest.fixture
+def fake_repository():
+    """Serve a repository's model, weights and preprocessing config, and record the file name of every fetch."""
+    import json
+    from pathlib import Path
+    from unittest import mock
+
+    versions = {"model": "1", "config": 1}
+    fetched: list[str] = []
+
+    def serve(url, dst, **kwargs):
+        name = url.rsplit("/", 1)[-1]
+        fetched.append(name)
+        if name == "preprocessor_config.json":
+            content = json.dumps({**_DPT_CONFIG, "size": {"height": 14 * versions["config"], "width": 14}}).encode()
+        elif name.endswith(".onnx_data"):
+            content = b"weights"
+        else:
+            content = _identity_model(("version", versions["model"])).SerializeToString()
+        Path(dst).write_bytes(content)
+
+    with mock.patch("kornia.core.download._download_url_to_file", side_effect=serve):
+        yield versions, fetched
+
+
+def test_loader_force_download_fetches_the_model_weights_and_config_again(fake_repository, tmp_path):
+    # a cached file of an onnx-community repository was used for as long as it existed: an updated model was never
+    # fetched again
+    import torch
+
+    from kornia.models._hf_models import HFONNXComunnityModelLoader
+
+    versions, fetched = fake_repository
+    loader = HFONNXComunnityModelLoader("depth-anything-v2-small", cache_dir=str(tmp_path), with_data=True)
+
+    def version(model):
+        return {p.key: p.value for p in model.metadata_props}["version"]
+
+    def height(preprocessing):
+        return preprocessing(torch.rand(1, 3, 7, 9)).shape[-2]
+
+    assert version(loader.load_model()) == "1"
+    assert height(loader.load_preprocessing()) == 14
+    assert fetched == ["model.onnx", "model.onnx_data", "preprocessor_config.json"]
+
+    versions["model"], versions["config"] = "2", 2  # the repository changed
+    assert version(loader.load_model()) == "1"
+    assert height(loader.load_preprocessing()) == 14
+    assert len(fetched) == 3  # the cached files are used as they are
+
+    assert version(loader.load_model(force_download=True)) == "2"
+    assert fetched[3:] == ["model.onnx", "model.onnx_data"]  # the weights beside the model, as they go together
+    assert height(loader.load_preprocessing(force_download=True)) == 28
+    assert fetched[5:] == ["preprocessor_config.json"]
+
+    assert version(loader.load_model()) == "2"  # the new files are the cached ones
+    assert height(loader.load_preprocessing()) == 28
+    assert len(fetched) == 6
+
+
+def test_loader_damaged_cached_files_name_force_download(fake_repository, tmp_path):
+    import json
+
+    from google.protobuf.message import DecodeError
+
+    from kornia.models._hf_models import HFONNXComunnityModelLoader
+
+    _, fetched = fake_repository
+    loader = HFONNXComunnityModelLoader("depth-anything-v2-small", cache_dir=str(tmp_path))
+    loader.load_model()
+    loader.load_preprocessing()
+    model, config = (
+        tmp_path / "depth-anything-v2-small" / "model.onnx",
+        tmp_path / "depth-anything-v2-small" / "preprocessor_config.json",
+    )
+    model.write_bytes(b"<html>Bad gateway</html>")
+    config.write_text("<html>Bad gateway</html>")
+
+    with pytest.raises(DecodeError) as model_error:
+        loader.load_model()
+    with pytest.raises(json.JSONDecodeError) as config_error:
+        loader.load_preprocessing()
+    assert "force_download=True" in model_error.value.__notes__[0]
+    assert "force_download=True" in config_error.value.__notes__[0]
+    assert len(fetched) == 2
+
+    loader.load_model(force_download=True)
+    loader.load_preprocessing(force_download=True)
+    assert len(fetched) == 4
+    loader.load_model()
+    loader.load_preprocessing()
+
+
+def test_loader_force_download_without_download_raises(fake_repository, tmp_path):
+    from kornia.models._hf_models import HFONNXComunnityModelLoader
+
+    _, fetched = fake_repository
+    loader = HFONNXComunnityModelLoader("depth-anything-v2-small", cache_dir=str(tmp_path))
+    loader.load_model()
+
+    with pytest.raises(ValueError, match=r"force_download=True.*download=True"):
+        loader.load_model(download=False, force_download=True)
+    assert fetched == ["model.onnx"]

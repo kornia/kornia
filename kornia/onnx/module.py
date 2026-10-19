@@ -40,6 +40,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.
+        force_download: If True, an ``hf://`` name or a URL is downloaded again, and replaces the cached file, even
+            when it is cached. By default a cached file is used as it is, however old, and one that does not load
+            fails every time until it is deleted. It has no effect on a model object or a path to a local file.
 
     """
 
@@ -51,8 +54,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
+        force_download: bool = False,
     ) -> None:
-        self.op = self._load_op(op, cache_dir)
+        self.op = self._load_op(op, cache_dir, force_download)
         if target_ir_version is not None or target_opset_version is not None:
             self.op = self._onnx_version_conversion(
                 self.op, target_ir_version=target_ir_version, target_opset_version=target_opset_version
@@ -103,7 +107,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: Union[onnx.ModelProto, str]) -> ONNXModule:
+def load(model_name: Union[onnx.ModelProto, str], *, force_download: bool = False) -> ONNXModule:
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with
@@ -113,6 +117,7 @@ def load(model_name: Union[onnx.ModelProto, str]) -> ONNXModule:
         model_name: The name of the model to load. For Hugging Face-hosted models,
             use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+        force_download: If True, download the model again and replace the cached file, even when it is cached.
 
     """
-    return ONNXModule(model_name)
+    return ONNXModule(model_name, force_download=force_download)

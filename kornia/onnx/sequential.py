@@ -47,6 +47,9 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             converted up. Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.
+        force_download: If True, every ``hf://`` name and URL is downloaded again, and replaces the cached file, even
+            when it is cached. By default a cached file is used as it is, however old, and one that does not load
+            fails every time until it is deleted. It has no effect on a model object or a path to a local file.
 
     """
 
@@ -60,8 +63,9 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         auto_ir_version_conversion: bool = False,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
+        force_download: bool = False,
     ) -> None:
-        self.operators = self._load_ops(*args, cache_dir=cache_dir)
+        self.operators = self._load_ops(*args, cache_dir=cache_dir, force_download=force_download)
         if auto_ir_version_conversion:
             self.operators = self._auto_version_conversion(
                 *self.operators, target_ir_version=target_ir_version, target_opset_version=target_opset_version
