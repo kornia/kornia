@@ -532,7 +532,9 @@ def jpeg_codec_differentiable(
         the input shape. See :class:`JPEGCodecDifferentiable` for the reusable-table wrapper.
         float16 and bfloat16 inputs are computed in float32, quality and tables included, and the
         output is rounded once to the input dtype. The codec runs with autocast disabled, so inside a
-        ``torch.autocast`` region it gives the same output and gradients as outside it.
+        ``torch.autocast`` region it gives the same output as outside it, and the same gradients when the
+        backward pass runs after the region. A backward pass inside the region, which ``torch.compile``
+        assumes by default, still computes part of the gradient in the autocast dtype.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
