@@ -80,6 +80,13 @@ _MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
 
 
 class TestMS_SSIMLoss(BaseTester):
+    def test_non_4d_inputs_raise(self, device, dtype):
+        # MS-SSIM is defined for BxCxHxW only; equal-shaped 3-D inputs must not
+        # fall through to conv2d's unbatched path and its confusing errors.
+        img = torch.rand(3, 16, 16, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="BxCxHxW"):
+            kornia.losses.MS_SSIMLoss()(img, img)
+
     def test_shape_mismatch_raises(self, device, dtype):
         # GH#6157 a batch-2 input against a batch-1 target used to broadcast
         # silently and return a wrong loss; mismatched shapes must raise.
@@ -173,8 +180,11 @@ class TestMS_SSIMLoss(BaseTester):
             criterion(torch.rand(1), 2)
         assert "Output type is not a torch.Tensor. Got" in str(errinfo)
 
-        with pytest.raises(ValueError, match="same shape"):
+        with pytest.raises(ValueError, match="BxCxHxW"):
             criterion(torch.rand(1), torch.rand(1, 2))
+
+        with pytest.raises(ValueError, match="same shape"):
+            criterion(torch.rand(1, 1, 8, 8), torch.rand(2, 1, 8, 8))
 
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
     @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
