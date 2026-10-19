@@ -28,7 +28,6 @@ from harness import case, run_cases
 import kornia as K
 
 torch.manual_seed(0)
-torch.set_num_threads(4)
 
 # ----------------------------------------------------------------------------- helpers
 

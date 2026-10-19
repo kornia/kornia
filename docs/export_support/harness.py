@@ -174,7 +174,8 @@ def make_wrapper(target: Any, kwargs: dict[str, Any], n_inputs: int, method: str
             return tuple(outs)
 
     Wrap.forward = ns["forward"]
-    return Wrap()
+    # in eval mode: the legacy exporter puts the wrapper back into the mode it found, children included
+    return Wrap().eval()
 
 
 # ----------------------------------------------------------------------------- utilities

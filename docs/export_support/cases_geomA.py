@@ -509,7 +509,8 @@ CASES = [
         "transform.HomographyWarper[pixel]",
         G,
         T.HomographyWarper(H, W, normalized_coordinates=False),
-        [img, homo33_pert],
+        [img, K.geometry.conversions.normal_transform_pixel(H, W) @ homo33_pert],
+        note="the pixel grid goes to grid_sample unnormalized, so the homography normalizes it to sample the image",
     ),
     case(
         "transform.HomographyWarper[precomputed]",
