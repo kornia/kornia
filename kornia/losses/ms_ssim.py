@@ -23,6 +23,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SAME_SHAPE
+
 # Based on:
 # https://github.com/psyrocloud/MS-SSIM_L1_LOSS
 
@@ -207,8 +209,7 @@ class MS_SSIMLoss(nn.Module):
         if not isinstance(img2, torch.Tensor):
             raise TypeError(f"Output type is not a torch.Tensor. Got {type(img2)}")
 
-        if not len(img1.shape) == len(img2.shape):
-            raise ValueError(f"Input shapes should be same. Got {type(img1)} and {type(img2)}.")
+        KORNIA_CHECK_SAME_SHAPE(img1, img2)
 
         mask_dtype = self._g_masks.dtype
         if img1.is_complex() or img2.is_complex():
