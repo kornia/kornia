@@ -1431,6 +1431,14 @@ class TestRefineEssentialLM(BaseTester):
         self.assert_close(together, alone, atol=1e-12, rtol=0)
 
 
+def _skip_without_bfloat16_autocast(device):
+    # A bfloat16 autocast region raises on a CUDA device without bfloat16 support, and other devices are not covered.
+    if device.type == "cuda" and not torch.cuda.is_bf16_supported():
+        pytest.skip("this CUDA device does not support bfloat16")
+    if device.type not in ("cpu", "cuda"):
+        pytest.skip("CPU and CUDA autocast")
+
+
 def _autocast_scene(device):
     # A float32 two-view scene built outside any autocast region: K, a small motion, and 30 points in front of both
     # cameras.
@@ -1463,8 +1471,7 @@ class TestEssentialDecompositionAutocast(BaseTester):
     def test_autocast_does_not_change_the_result_6146(self, device, name):
         # Under bfloat16 autocast, a float32 essential matrix was decomposed with bfloat16 matrix products: bfloat16
         # rotations about 1.6e-3 off and no longer orthogonal, next to a float32 translation.
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        _skip_without_bfloat16_autocast(device)
         E_mat, K, x1, x2, _ = _autocast_scene(device)
         call = _AUTOCAST_CALLS[name]
         expected = call(E_mat, K, x1, x2)
@@ -1477,8 +1484,7 @@ class TestEssentialDecompositionAutocast(BaseTester):
             self.assert_close(out, ref, atol=0, rtol=0)
 
     def test_chosen_rotation_stays_a_rotation_under_autocast_6146(self, device):
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        _skip_without_bfloat16_autocast(device)
         E_mat, K, x1, x2, R = _autocast_scene(device)
         with torch.autocast(device.type, dtype=torch.bfloat16):
             R_out, t_out, _, count = epi.motion_from_essential_choose_solution(E_mat, K, K, x1, x2)
