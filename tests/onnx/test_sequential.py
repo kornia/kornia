@@ -559,6 +559,18 @@ class TestONNXSequentialComposition:
         assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
         assert [(entry.domain, entry.version) for entry in seq._combined_op.opset_import] == [("", 19)]
 
+    def test_disagreeing_opset_entries_keep_the_first_version(self):
+        # The checker and ONNX Runtime accept two versions of one domain; the target is compared with the first, so
+        # the merged graph keeps that one rather than whichever came last.
+        model = _identity()
+        model.opset_import.extend([onnx.helper.make_opsetid("", 18)])
+        model.opset_import[0].version = 17
+
+        seq = ONNXSequential(model, target_opset_version=17)
+
+        assert seq(torch.tensor([1.0, 2.0]).numpy())[0].tolist() == [1.0, 2.0]
+        assert [(entry.domain, entry.version) for entry in seq._combined_op.opset_import] == [("", 17)]
+
     def test_a_target_the_model_already_has_is_not_converted_again(self):
         # Converting re-checks the model, which rejects the duplicate metadata keys earlier kornia versions wrote;
         # an IR 9 model with target_ir_version=9 runs as on main, with its metadata merged into one entry per key.

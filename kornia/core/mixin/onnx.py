@@ -156,9 +156,12 @@ def _merge_opset_imports(model: onnx.ModelProto) -> None:
 
     ``onnx.compose.merge_models`` concatenates the entries of both models after checking that they agree, so a chain
     of ``n`` models lists each domain ``n`` times; the version converter then updates only one of them, and the
-    converted graph no longer merges with a model of the target version.
+    converted graph no longer merges with a model of the target version. Entries that disagree, which the checker and
+    ONNX Runtime accept, keep the first version, the one :meth:`ONNXMixin._opset_version` and the converter read.
     """
-    versions = {entry.domain: entry.version for entry in model.opset_import}
+    versions: dict[str, int] = {}
+    for entry in model.opset_import:
+        versions.setdefault(entry.domain, entry.version)
     del model.opset_import[:]
     model.opset_import.extend(onnx.helper.make_opsetid(domain, version) for domain, version in versions.items())
 
