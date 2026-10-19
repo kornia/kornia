@@ -87,12 +87,15 @@ class TestDiceLossCpu(BaseTester):
         """``assert_close`` relative to the largest finite entry of ``expected``.
 
         A mean over a large batch makes gradients of about 1 / (B H W), far below the absolute tolerance, so both
-        sides are divided by that entry first; the dtype tolerances then bound the error relative to it.
+        sides are divided by that entry first; the dtype tolerances then bound the error relative to it. In float32
+        the two paths sum the B H W terms of each class in a different order, which moves an entry by up to ~1.3e-5
+        of that scale (Windows, weighted macro on sliced logits), so float32 allows 1e-4.
         """
         finite = expected[expected.isfinite()]
         scale = finite.abs().max() if finite.numel() else expected.new_ones(())
         scale = torch.where(scale > 0, scale, torch.ones_like(scale))
-        self.assert_close(actual / scale, expected / scale)
+        tolerance = {"rtol": 1e-4, "atol": 1e-4} if expected.dtype == torch.float32 else {}
+        self.assert_close(actual / scale, expected / scale, **tolerance)
 
     def assert_close_with_nan(self, actual: torch.Tensor, expected: torch.Tensor) -> None:
         assert torch.equal(actual.isnan(), expected.isnan())
