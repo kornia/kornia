@@ -3212,6 +3212,7 @@ class TestPadToMosaicShapePropagation(BaseTester):
         # RandomMosaic resizes to ``output_size`` also when the mosaic is skipped, and keeps the size without one.
         cases = [
             (K.PadTo((40, 48)), (40, 48)),
+            (K.PadTo((16, 48)), (16, 48)),  # a target below the input height crops it
             (K.RandomMosaic(output_size=(20, 30), p=0.0), (20, 30)),
             (K.RandomMosaic(p=1.0), (24, 40)),
         ]
