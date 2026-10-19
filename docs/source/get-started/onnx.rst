@@ -139,9 +139,6 @@ https://github.com/microsoft/onnxruntime/issues/21769#issuecomment-2295342211. F
 
    pip install onnxruntime-gpu==1.19.2 --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
 
-On an onnxruntime build without CUDA, ``as_cuda()`` only warns and the sequence keeps running on the CPU;
-``get_session().get_providers()`` shows which provider runs.
-
 Then move a sequence between devices with ``as_cuda()`` / ``as_cpu()``:
 
 .. code-block:: python
@@ -167,6 +164,9 @@ Then move a sequence between devices with ``as_cuda()`` / ``as_cpu()``:
    start_time = time.time()
    onnx_seq(inp)
    print("--- CPU %s seconds ---" % (time.time() - start_time))
+
+On an onnxruntime build without CUDA, ``as_cuda()`` only warns and the sequence keeps running on the CPU;
+``get_session().get_providers()`` shows which provider runs.
 
 A typical result:
 
