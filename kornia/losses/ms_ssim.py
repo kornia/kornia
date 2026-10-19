@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK_SAME_SHAPE
+from kornia.core.exceptions import ShapeError
 
 # Based on:
 # https://github.com/psyrocloud/MS-SSIM_L1_LOSS
@@ -215,7 +215,8 @@ class MS_SSIMLoss(nn.Module):
         if not len(img2.shape) == 4:
             raise ValueError(f"Invalid img2 shape, we expect BxCxHxW. Got: {img2.shape}")
 
-        KORNIA_CHECK_SAME_SHAPE(img1, img2)
+        if img1.shape != img2.shape:
+            raise ShapeError(f"Input and target must have the same shape. Got: {img1.shape} and {img2.shape}.")
 
         mask_dtype = self._g_masks.dtype
         if img1.is_complex() or img2.is_complex():
