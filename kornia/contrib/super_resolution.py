@@ -224,15 +224,15 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"kornia_<name>.onnx"``, with the model's
+                ``name``, for example ``"kornia_small_sr.onnx"``.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
-                If to save the model or load it.
+                If True, write the model to ``onnx_name``; it is returned either way.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
-            kwargs: Additional arguments for converting to onnx.
+            kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
         """
         if onnx_name is None:

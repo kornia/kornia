@@ -165,6 +165,9 @@ Then move a sequence between devices with ``as_cuda()`` / ``as_cpu()``:
    onnx_seq(inp)
    print("--- CPU %s seconds ---" % (time.time() - start_time))
 
+On an onnxruntime build without CUDA, ``as_cuda()`` only warns and the sequence keeps running on the CPU;
+``get_session().get_providers()`` shows which provider runs.
+
 A typical result:
 
 .. code-block:: console
@@ -185,7 +188,10 @@ Use the ``io_maps`` argument to say which output feeds which input: one list of 
 joint, as in step 4.
 
 **Can I use custom ONNX Runtime session options?**
-Yes, pass your own session options to the ``create_session`` method.
+Yes. Pass them as ``session_options=`` to the constructor of
+:class:`~kornia.onnx.sequential.ONNXSequential`, or replace the session of an existing object with
+``seq.set_session(seq.create_session(session_options=...))``. ``create_session`` alone returns a new session and leaves
+the object on the one it already has.
 
 **Which operators export?**
 The :ref:`ONNX, torch.compile and torch.export survey <export-support>` lists every surveyed operator with

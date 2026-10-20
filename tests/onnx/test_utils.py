@@ -16,6 +16,7 @@
 #
 
 import hashlib
+import json
 import os
 import urllib
 from pathlib import Path
@@ -751,3 +752,215 @@ def test_add_metadata_merges_duplicate_keys_already_in_the_model():
         ("date", "20261001"),
     ]
     onnx.checker.check_model(model)
+
+
+_MODEL_URL = "https://example.com/models/m.onnx"
+_CONFIG_URL = "https://example.com/configs/preprocessor_config.json"
+
+
+def _model_bytes(version: str) -> bytes:
+    """A small valid ONNX model whose ``version`` metadata tells which one it is."""
+    graph = onnx.helper.make_graph(
+        [onnx.helper.make_node("Identity", ["x"], ["y"])],
+        "g",
+        [onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [1])],
+        [onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [1])],
+    )
+    model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 18)])
+    model.metadata_props.add(key="version", value=version)
+    return model.SerializeToString()
+
+
+def _version(model) -> str:
+    return {p.key: p.value for p in model.metadata_props}["version"]
+
+
+@pytest.fixture
+def fake_hub():
+    """Replace the transfer of a download by one that serves ``contents[url]`` and records every URL it is asked for."""
+    from unittest import mock
+
+    contents: dict[str, bytes] = {}
+    fetched: list[str] = []
+
+    def serve(url, dst, **kwargs):
+        fetched.append(url)
+        Path(dst).write_bytes(contents[url])
+
+    with mock.patch("kornia.core.download._download_url_to_file", side_effect=serve):
+        yield contents, fetched
+
+
+class TestONNXLoaderForceDownload:
+    @pytest.mark.parametrize("name", ["url", "hf"])
+    def test_load_model_fetches_a_cached_model_again_only_when_forced(self, name, fake_hub, tmp_path):
+        contents, fetched = fake_hub
+        if name == "url":
+            model_name = url = _MODEL_URL
+        else:
+            model_name = "hf://operators/some_model"
+            url = "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx"
+        contents[url] = _model_bytes("1")
+
+        def load(**kwargs):
+            return ONNXLoader.load_model(model_name, cache_dir=str(tmp_path), **kwargs)
+
+        assert _version(load()) == "1"
+        contents[url] = _model_bytes("2")  # the model changed on the hub
+        assert _version(load()) == "1"  # a cached model is used as it is
+        assert _version(load(force_download=False)) == "1"
+        assert fetched == [url]
+
+        assert _version(load(force_download=True)) == "2"
+        assert fetched == [url, url]
+
+        assert _version(load()) == "2"  # the new model is the cached one
+        assert fetched == [url, url]
+
+    @pytest.mark.parametrize("name", ["url", "hf"])
+    def test_load_model_force_download_fetches_the_weights_again_too(self, name, fake_hub, tmp_path):
+        contents, fetched = fake_hub
+        if name == "url":
+            model_name, url = _MODEL_URL, _MODEL_URL
+        else:
+            model_name = "hf://operators/some_model"
+            url = "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx"
+        contents[url] = _model_bytes("1")
+        contents[f"{url}_data"] = b"weights 1"
+
+        def load(**kwargs):
+            return ONNXLoader.load_model(model_name, with_data=True, cache_dir=str(tmp_path), **kwargs)
+
+        load()
+        load()
+        assert fetched == [url, f"{url}_data"]
+
+        contents[f"{url}_data"] = b"weights 2"
+        load(force_download=True)
+        assert fetched == [url, f"{url}_data", url, f"{url}_data"]
+        assert next(tmp_path.rglob("*.onnx_data")).read_bytes() == b"weights 2"
+
+    @pytest.mark.parametrize("damage", ["not an onnx file", "truncated"])
+    @pytest.mark.parametrize("name", ["url", "hf"])
+    def test_load_model_damaged_cached_model_names_force_download(self, name, damage, fake_hub, tmp_path):
+        from google.protobuf.message import DecodeError
+
+        contents, fetched = fake_hub
+        if name == "url":
+            model_name = url = _MODEL_URL
+        else:
+            model_name = "hf://operators/some_model"
+            url = "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx"
+        contents[url] = _model_bytes("1")
+
+        def load(**kwargs):
+            return ONNXLoader.load_model(model_name, cache_dir=str(tmp_path), **kwargs)
+
+        load()
+        (cached,) = tmp_path.rglob("*.onnx")
+        cached.write_bytes(b"<html>Bad gateway</html>" if damage == "not an onnx file" else contents[url][:20])
+
+        # the error is still a DecodeError, and says what to do about the file, which is not fetched again by itself
+        with pytest.raises(DecodeError) as exc_info:
+            load()
+        (note,) = exc_info.value.__notes__
+        assert "force_download=True" in note
+        assert str(cached) in note
+        assert fetched == [url]
+
+        assert _version(load(force_download=True)) == "1"
+        assert fetched == [url, url]
+        assert _version(load()) == "1"  # the damaged file was replaced
+        assert fetched == [url, url]
+
+    def test_load_model_force_download_leaves_a_local_file_alone(self, fake_hub, tmp_path):
+        _, fetched = fake_hub
+        path = tmp_path / "local.onnx"
+        path.write_bytes(_model_bytes("local"))
+
+        assert _version(ONNXLoader.load_model(str(path), force_download=True)) == "local"
+        assert fetched == []
+
+    def test_load_model_force_download_without_download_raises(self, fake_hub, tmp_path):
+        contents, fetched = fake_hub
+        contents[_MODEL_URL] = _model_bytes("1")
+        ONNXLoader.load_model(_MODEL_URL, cache_dir=str(tmp_path))
+
+        with pytest.raises(ValueError, match=r"force_download=True.*download=True"):
+            ONNXLoader.load_model(_MODEL_URL, download=False, force_download=True, cache_dir=str(tmp_path))
+
+        assert fetched == [_MODEL_URL]
+        assert _version(ONNXLoader.load_model(_MODEL_URL, download=False, cache_dir=str(tmp_path))) == "1"
+
+    def test_load_config_fetches_a_cached_config_again_only_when_forced(self, fake_hub, tmp_path):
+        contents, fetched = fake_hub
+        contents[_CONFIG_URL] = json.dumps({"size": 1}).encode()
+
+        def load(**kwargs):
+            return ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path), **kwargs)
+
+        assert load() == {"size": 1}
+        contents[_CONFIG_URL] = json.dumps({"size": 2}).encode()
+        assert load() == {"size": 1}
+        assert fetched == [_CONFIG_URL]
+
+        assert load(force_download=True) == {"size": 2}
+        assert fetched == [_CONFIG_URL, _CONFIG_URL]
+        assert load() == {"size": 2}
+        assert fetched == [_CONFIG_URL, _CONFIG_URL]
+
+    @pytest.mark.parametrize(
+        ("damage", "error"),
+        [(b"<html>Bad gateway</html>", json.JSONDecodeError), (b"\x89PNG\r\n\x1a\n\x81", UnicodeDecodeError)],
+        ids=["not json", "not text"],
+    )
+    def test_load_config_damaged_cached_config_names_force_download(self, fake_hub, tmp_path, damage, error):
+        contents, fetched = fake_hub
+        contents[_CONFIG_URL] = json.dumps({"size": 1}).encode()
+        ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path))
+        (cached,) = tmp_path.rglob("*.json")
+        cached.write_bytes(damage)
+
+        with pytest.raises(error) as exc_info:
+            ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path))
+        (note,) = exc_info.value.__notes__
+        assert "force_download=True" in note
+        assert str(cached) in note
+        assert fetched == [_CONFIG_URL]
+
+        assert ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path), force_download=True) == {"size": 1}
+        assert fetched == [_CONFIG_URL, _CONFIG_URL]
+
+    def test_load_config_reads_a_utf8_config_whatever_the_locale(self, fake_hub, tmp_path):
+        # the cached bytes are decoded by json, not by the locale's encoding (cp1252 on Windows)
+        contents, _ = fake_hub
+        contents[_CONFIG_URL] = json.dumps({"name": "r\u00e9sum\u00e9"}, ensure_ascii=False).encode("utf-8")
+        assert ONNXLoader.load_config(_CONFIG_URL, cache_dir=str(tmp_path)) == {"name": "r\u00e9sum\u00e9"}
+
+    def test_load_config_force_download_without_download_raises(self, fake_hub, tmp_path):
+        with pytest.raises(ValueError, match=r"force_download=True.*download=True"):
+            ONNXLoader.load_config(_CONFIG_URL, download=False, force_download=True, cache_dir=str(tmp_path))
+
+    def test_load_model_does_not_call_a_file_too_large_to_load_damaged(self, fake_hub, tmp_path):
+        from unittest import mock
+
+        contents, _ = fake_hub
+        contents[_MODEL_URL] = _model_bytes("1")
+        ONNXLoader.load_model(_MODEL_URL, cache_dir=str(tmp_path))
+
+        with mock.patch("onnx.load", side_effect=MemoryError) as onnx_load, pytest.raises(MemoryError) as exc_info:
+            ONNXLoader.load_model(_MODEL_URL, cache_dir=str(tmp_path))
+
+        onnx_load.assert_called_once()
+        assert not hasattr(exc_info.value, "__notes__")
+
+    def test_load_model_local_file_that_does_not_load_gets_no_cache_hint(self, tmp_path):
+        from google.protobuf.message import DecodeError
+
+        path = tmp_path / "local.onnx"
+        path.write_bytes(b"<html>Bad gateway</html>")
+
+        with pytest.raises(DecodeError) as exc_info:
+            ONNXLoader.load_model(str(path))
+
+        assert not hasattr(exc_info.value, "__notes__")  # the file is not in the cache, force_download would not help

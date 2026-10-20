@@ -277,17 +277,6 @@ class _ScoredDetections(nn.Module):
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.xfail(
-    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
-    reason=(
-        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph in the CPU build: "
-        "DispatchError 'No decompositions registered for the real-valued input', as in "
-        "test_sam_onnx.py::test_sam_encoder_to_onnx"
-    ),
-    raises=torch.onnx.OnnxExporterError,
-    # Strict on the CPU builds, as in test_sam_onnx.py, where an upstream fix inside 2.14.x must show as an XPASS.
-    strict=torch.version.cuda is None,
-)
 def test_detector_with_per_image_detections_exports_one_image():
     """A post-processor returning a list per image is exported for a batch of one, not for any batch's first image."""
     pytest.importorskip("onnx")

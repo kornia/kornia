@@ -39,12 +39,23 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
         providers: A list of execution providers for ONNXRuntime
-            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
+            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']). A provider that the installed onnxruntime
+            build does not offer is skipped with onnxruntime's ``UserWarning``; the session runs on the CPU if none
+            is left. If None, the CPU.
         session_options: Optional ONNXRuntime session options for optimizing the session.
         cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         target_ir_version: The IR version to convert the model to. If None, the model keeps its IR version.
         target_opset_version: The OPSET version to convert the model to. If None, the model keeps its OPSET version.
+        force_download: If True, an ``hf://`` name or a URL is downloaded again, and replaces the cached file, even
+            when it is cached. By default a cached file is used as it is, however old, and one that does not load
+            fails every time until it is deleted. It has no effect on a model object or a path to a local file.
+
+    Note:
+        Given an ``onnx.ModelProto``, the module holds that object itself, not a copy, unless a target version
+        converts it: with no target, or with a target the model already has, ``module.op is op``. Whatever edits the
+        wrapped graph in place, such as :meth:`add_metadata`, then changes the caller's model too. Pass a copy
+        (``copy.deepcopy(op)``) to keep the original unchanged.
 
     """
 
@@ -56,8 +67,10 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
+        *,
+        force_download: bool = False,
     ) -> None:
-        self.op = self._load_op(op, cache_dir)
+        self.op = self._load_op(op, cache_dir, force_download=force_download)
         if target_ir_version is not None or target_opset_version is not None:
             self.op = self._onnx_version_conversion(
                 self.op, target_ir_version=target_ir_version, target_opset_version=target_opset_version
@@ -98,6 +111,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:
         """Attach metadata entries to the wrapped ONNX model graph.
 
+        The metadata is written into the wrapped graph in place. When the module was built from an
+        ``onnx.ModelProto``, that can be the caller's own object; see the note of :class:`ONNXModule`.
+
         Args:
             additional_metadata: Optional list of ``(key, value)`` string pairs
                 to store in the ONNX model metadata properties.
@@ -108,7 +124,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: Union[onnx.ModelProto, str, os.PathLike]) -> ONNXModule:
+def load(model_name: Union[onnx.ModelProto, str, os.PathLike], *, force_download: bool = False) -> ONNXModule:
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with
@@ -119,6 +135,10 @@ def load(model_name: Union[onnx.ModelProto, str, os.PathLike]) -> ONNXModule:
             always names a local file), or an ONNX ModelProto object. For Hugging Face-hosted models,
             use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+        force_download: If True, download the model again and replace the cached file, even when it is cached.
+
+    Note:
+        Given an ``onnx.ModelProto``, the module holds that object itself; see the note of :class:`ONNXModule`.
 
     """
-    return ONNXModule(model_name)
+    return ONNXModule(model_name, force_download=force_download)

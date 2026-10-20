@@ -92,11 +92,9 @@ class _BasicAugmentationBase(nn.Module):
 
     """
 
-    # Flag for whether this augmentation supports ONNX export. Override to False in subclasses
-    # that use ops the legacy tracer can't lower (e.g. ``torch.histc``,
-    # ``torch.distributions.Beta``).
-    # Users can introspect via ``aug.exportable``; CI iterates the known-exportable
-    # subset in ``tests/augmentation/test_onnx_export.py``.
+    # A class-level flag that ``aug.exportable`` returns. It is True unless a subclass sets it, and no subclass does.
+    # Nothing in kornia reads it, and it does not say whether an export works: the augmentations that
+    # ``tests/augmentation/test_onnx_export.py`` exports are listed in that file, not selected by this flag.
     ONNX_EXPORTABLE = True
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -121,13 +119,10 @@ class _BasicAugmentationBase(nn.Module):
 
     @property
     def exportable(self) -> bool:
-        """Whether this augmentation supports ONNX export via the legacy tracer at opset 20.
+        """The class-level ``ONNX_EXPORTABLE`` flag, ``True`` unless a subclass sets it.
 
-        Reflects the class-level ``ONNX_EXPORTABLE`` flag. Note that ``True`` here
-        means *the graph traces and exports* — it does not guarantee the resulting
-        ONNX runtime output is bit-equivalent to eager. See the categorisation in
-        ``tests/augmentation/test_onnx_export.py`` for the numerical-correctness
-        signal per augmentation.
+        Nothing in kornia reads the flag, and it makes no statement about whether, or with which exporter, an
+        augmentation exports.
         """
         return bool(self.ONNX_EXPORTABLE)
 

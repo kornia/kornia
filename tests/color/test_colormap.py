@@ -40,6 +40,30 @@ def test_autumn(device, dtype):
     assert_close(actual, expected)
 
 
+class TestColorMap(BaseTester):
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_integer_base_uses_default_float_dtype(self, device, default_dtype):
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64.")
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            actual = ColorMap(base=[[0, 0, 0], [1, 1, 1]], num_colors=3, device=device)
+            expected = torch.tensor([[0.0, 0.5, 1.0]] * 3, device=device)
+
+            assert actual.colors.dtype == default_dtype
+            self.assert_close(actual.colors, expected)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+
+    def test_integer_base_respects_explicit_dtype(self, device, dtype):
+        actual = ColorMap(base=[[0, 0, 0], [1, 1, 1]], num_colors=3, device=device, dtype=dtype)
+        expected = torch.tensor([[0.0, 0.5, 1.0]] * 3, device=device, dtype=dtype)
+
+        assert actual.colors.dtype == dtype
+        self.assert_close(actual.colors, expected)
+
+
 class TestApplyColorMap(BaseTester):
     def test_smoke(self, device, dtype):
         input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]], device=device, dtype=dtype)

@@ -131,8 +131,7 @@ class TestAugmentationConstantTransfer(BaseTester):
             params = aug.forward_parameters(input.shape)
             return aug(input, params=params), params
 
-        # Crop3D validates crop sizes and still has a separate graph break.
-        compiled = torch_optimizer(apply, fullgraph=not isinstance(aug, K.RandomCrop3D))
+        compiled = torch_optimizer(apply, fullgraph=True)
         for _ in range(2):
             actual, params = compiled(input)
             if device.type == "cuda":
