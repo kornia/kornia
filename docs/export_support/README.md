@@ -16,13 +16,13 @@ inputs, registered in one of the `cases_*.py` files:
 | `cases_feature.py` | `kornia.feature` (detectors, descriptors, matchers) |
 | `cases_geomA.py` | `kornia.geometry` transforms, conversions, cameras, calibration |
 | `cases_geomB.py` | the rest of `kornia.geometry` (epipolar, Lie groups, boxes, ...) |
-| `cases_misc.py` | `kornia.filters`, `color`, `enhance`, `morphology`, `contrib`, `losses`, `metrics`, `utils`, `sensors`, `io`, `nerf`, `tracking`, `x` |
-| `cases_models.py` | `kornia.models` (weights are downloaded when they are not cached) |
+| `cases_misc.py` | `kornia.filters`, `color`, `enhance`, `morphology`, `image`, `losses`, `metrics`, `utils` |
+| `cases_models.py` | `kornia.models`, `contrib`, `sensors`, `tracking`, `x` (weights are downloaded when they are not cached) |
 
 For each case:
 
 - **ONNX** (`harness.py`): `torch.onnx.export(dynamo=True, opset_version=18)`, `onnx.checker`,
-  then an `onnxruntime` run compared against eager.
+  then an `onnxruntime` run compared against eager: the same dtype, and values within the case's tolerance.
 - **torch.export** and **torch.compile** (`probe_compile.py`): `torch.export.export`, then
   `torch._dynamo.explain` for the graph-break count and a `torch.compile` run compared against
   eager.
@@ -30,6 +30,15 @@ For each case:
 Random operators cannot be compared value-for-value (the RNG stream differs inside the graph), so
 they are reported as *ok-unverified* when the captured program runs and returns finite outputs of
 the right shape.
+
+The cases also drive the ONNX conformance test, `tests/onnx/test_conformance.py` (#5819): every
+case the snapshot records as ONNX "ok" in a stable-core package, and not tagged `pretrained`, is
+promised, and the test runs it through the same `harness.run_case` on every pull request that
+touches its package or a module it imports. Renaming,
+skipping or dropping a promised case therefore fails that test, and the harness must not change
+the process it is imported into: the survey's own process settings (quiet logging and warnings,
+four threads) are applied by `run_cases` and `probe_compile.py` through
+`harness.configure_survey_process()`, not at import.
 
 ## Regenerating the snapshot
 
