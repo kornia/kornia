@@ -248,8 +248,8 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
             one (each without a ``forward`` of a subclass's own), so that combination keeps a dynamic batch without a
             probe. Which kind of output any other combination returns is read from one call of :meth:`forward` for
             one image at the export size, in eval mode, without gradients and outside the export, which the check
-            after the export reuses. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export
-            dynamic raises a ``ValueError`` after the export, before anything is saved.
+            after the export reuses. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an
+            export dynamic raises a ``ValueError`` after the export, before anything is saved.
 
         """
         if onnx_name is None:
