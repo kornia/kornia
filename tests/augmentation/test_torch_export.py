@@ -38,6 +38,7 @@ from typing import Callable, Tuple
 
 import pytest
 import torch
+from torch.export.graph_signature import InputKind
 
 import kornia.augmentation as K
 
@@ -305,12 +306,10 @@ def test_torch_export_annotation_replay_copies_no_constant_6166(data_key: str) -
     """The annotation handlers recompute a child's matrix from copies of constant params under export (#6166).
 
     Params held constant are graph constants in the exported program. ``RandomAffine`` writes ``center`` as-is into
-    its matrix, and torch 2.9's dynamo ONNX exporter lowers a ``copy`` whose source is a constant to the constant itself
-    and renames it, so the export failed. The decomposed graph that exporter lowers must hold no such ``copy`` on any
-    torch, and the exported annotations must match eager.
+    its matrix, and torch 2.9's dynamo ONNX exporter drops the same-dtype cast it lowers that ``copy`` to, renames the
+    constant after the copy and then rejects it, so the export failed. The decomposed graph that exporter lowers must
+    hold no ``copy`` of a constant on any torch, and the exported annotations must match eager.
     """
-    from torch.export.graph_signature import InputKind
-
     torch.manual_seed(0)
     image = torch.rand(2, 3, 16, 20)
     extra = {
@@ -325,9 +324,7 @@ def test_torch_export_annotation_replay_copies_no_constant_6166(data_key: str) -
 
     program = torch.export.export(model, (image, extra), strict=False)
     graph = program.run_decompositions()
-    constants = {
-        spec.arg.name for spec in graph.graph_signature.input_specs if spec.kind == InputKind.CONSTANT_TENSOR
-    }
+    constants = {spec.arg.name for spec in graph.graph_signature.input_specs if spec.kind == InputKind.CONSTANT_TENSOR}
     copies_of_constants = [
         node.name
         for node in graph.graph.nodes
@@ -336,5 +333,6 @@ def test_torch_export_annotation_replay_copies_no_constant_6166(data_key: str) -
     assert not copies_of_constants, f"{data_key}: {copies_of_constants} copy a graph constant as-is"
 
     out = program.module()(image, extra)
-    for got, expected in zip(out, eager):
+    assert len(out) == len(eager) == 2
+    for got, expected in zip(out, eager, strict=True):
         torch.testing.assert_close(got, expected, atol=1e-5, rtol=1e-5)
