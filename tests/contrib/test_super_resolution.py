@@ -369,7 +369,8 @@ class TestSuperResolutionONNXBatch(BaseTester):
         if export_kwargs["dynamo"] and torch_version_lt(2, 9, 0):
             # Measured on torch 2.5.1 (2.6 to 2.8 not checked), on main as well: after other exports in the process, an
             # eager call of this model followed by its dynamo export can fail with "Hit PythonDispatcher dispatch key
-            # but PythonDispatcherTLS was not set", which leaves every later export in the process failing too.
+            # but PythonDispatcherTLS was not set", and later dynamo exports in the process with it. Which
+            # parametrization fails depends on what ran before, so both are skipped.
             pytest.skip("torch < 2.9: the dynamo exporter's PythonDispatcher state can break on this graph")
         model = _small_super_resolution(post_processor(), _ImagesOneByOne())
         images = torch.rand(3, 3, 16, 16, generator=torch.Generator().manual_seed(0))

@@ -257,8 +257,9 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             With a post-processor that returns a list of per-image detections, as a
             ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
             exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
-            the detector returns is read from one forward pass at the export size, in eval mode and without gradients,
-            which the check after the export reuses. Build an RT-DETR detector with ``confidence_filtering=False`` to
+            the detector returns is read from one forward pass for one image at the export size, in eval mode and
+            without gradients, which the check after the export reuses; a post-processor whose kind of output depends
+            on the batch size is taken at its one-image kind. Build an RT-DETR detector with ``confidence_filtering=False`` to
             export a batch of any size. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such
             an export dynamic raises a ``ValueError`` after the export, before anything is saved.
 

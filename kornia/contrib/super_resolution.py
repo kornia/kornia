@@ -246,9 +246,9 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
             network one at a time. The builders' pre-processors, ``nn.Identity`` and ``ResizePreProcessor``, hand the
             network one tensor, and their post-processors, ``nn.Identity`` and ``OutputRangePostProcessor``, keep it
             one (each without a ``forward`` of a subclass's own), so that combination keeps a dynamic batch without a
-            probe. Which kind of output any other combination returns is read from one call of :meth:`forward` at
-            the export size, in eval mode, without gradients and outside the export, which the check after the
-            export reuses. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export
+            probe. Which kind of output any other combination returns is read from one call of :meth:`forward` for
+            one image at the export size, in eval mode, without gradients and outside the export, which the check
+            after the export reuses. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export
             dynamic raises a ``ValueError`` after the export, before anything is saved.
 
         """
