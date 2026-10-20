@@ -499,3 +499,66 @@ class TestConventionTriangulation(BaseTester):
             cofactor = epi.triangulate_points(P1, P2, x1 + n1, x2 + n2, solver="cofactor")
             assert (svd - X).norm(dim=-1).max() <= 0.25, name
             assert (cofactor - svd).norm(dim=-1).max() <= 1e-4, name
+
+
+def _autocast_6174(device, dtype):
+    """Return a ``torch.autocast`` region for ``device`` in ``dtype``, or skip where that region cannot be entered."""
+    if device.type == "cuda" and dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+        pytest.skip("this CUDA device does not support bfloat16")
+    if device.type not in ("cpu", "cuda", "mps"):
+        pytest.skip("CPU, CUDA and MPS autocast")
+    try:
+        with torch.autocast(device.type, dtype=dtype):
+            pass
+    except RuntimeError as e:
+        pytest.skip(f"{device.type} autocast does not support {dtype}: {e}")
+    return torch.autocast(device.type, dtype=dtype)
+
+
+def _scene_6174(device):
+    generator = torch.Generator().manual_seed(6174)
+    K = torch.tensor([[[300.0, 0.0, 320.0], [0.0, 310.0, 240.0], [0.0, 0.0, 1.0]]])
+    R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(torch.tensor([[0.05, -0.1, 0.02]]))
+    t = torch.tensor([[[0.5], [0.1], [0.0]]])
+    P1 = epi.projection_from_KRt(K, torch.eye(3)[None], torch.zeros(1, 3, 1))
+    P2 = epi.projection_from_KRt(K, R, t)
+    X = torch.rand(1, 30, 3, generator=generator) * 4 + torch.tensor([-2.0, -2.0, 5.0])
+    x1 = kornia.geometry.conversions.convert_points_from_homogeneous(X @ K.mT)
+    x2 = kornia.geometry.conversions.convert_points_from_homogeneous((X @ R.mT + t.mT) @ K.mT)
+    return [v.to(device) for v in (P1, P2, x1, x2, X, K, R, t)]
+
+
+class TestTriangulatePointsAutocast(BaseTester):
+    """A caller's autocast region does not reach triangulate_points (#6174)."""
+
+    @pytest.mark.parametrize("solver", ["eigh", "svd", "cofactor"])
+    @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
+    def test_autocast_does_not_change_the_result_6174(self, device, solver, autocast_dtype):
+        # MPS autocast handed eigh, which has no half-precision kernel, a float16 X^T X, and the cofactor solver ran
+        # its products in the autocast dtype: up to 7.8e-2 off on the CPU under bfloat16 autocast.
+        P1, P2, x1, x2, X, _, _, _ = _scene_6174(device)
+        expected = epi.triangulate_points(P1, P2, x1, x2, solver=solver)
+        with _autocast_6174(device, autocast_dtype):
+            actual = epi.triangulate_points(P1, P2, x1, x2, solver=solver)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(actual, X, atol=1e-3, rtol=0)
+
+    @pytest.mark.parametrize("solver", ["eigh", "svd", "cofactor"])
+    @pytest.mark.parametrize(
+        "input_dtype, autocast_dtype", [(torch.float16, torch.bfloat16), (torch.bfloat16, torch.float16)]
+    )
+    def test_half_precision_input_under_the_other_autocast_dtype_6174(
+        self, device, solver, input_dtype, autocast_dtype
+    ):
+        # Half-precision inputs under autocast in the other half-precision dtype raised from autocast's casts
+        # ("Unexpected floating ScalarType in at::autocast::prioritize"); they now give the result outside autocast.
+        if device.type != "cpu":
+            pytest.skip("measured on the CPU")
+        P1, P2, x1, x2, _, _, _, _ = _scene_6174(device)
+        args = [v.to(input_dtype) for v in (P1, P2, x1, x2)]
+        expected = epi.triangulate_points(*args, solver=solver)
+        with _autocast_6174(device, autocast_dtype):
+            actual = epi.triangulate_points(*args, solver=solver)
+        assert actual.dtype == input_dtype
+        self.assert_close(actual, expected, atol=0, rtol=0)

@@ -19,6 +19,7 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
+import kornia
 import kornia.geometry.epipolar as epi
 from kornia.geometry.camera import PinholeCamera
 
@@ -451,3 +452,59 @@ class TestConventionProjection(BaseTester):
         K = epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=dtype))
         self.assert_close(K[:, 0, 2], torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(K[:, 1, 2], torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+
+def _autocast_6174(device, dtype):
+    """Return a ``torch.autocast`` region for ``device`` in ``dtype``, or skip where that region cannot be entered."""
+    if device.type == "cuda" and dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+        pytest.skip("this CUDA device does not support bfloat16")
+    if device.type not in ("cpu", "cuda", "mps"):
+        pytest.skip("CPU, CUDA and MPS autocast")
+    try:
+        with torch.autocast(device.type, dtype=dtype):
+            pass
+    except RuntimeError as e:
+        pytest.skip(f"{device.type} autocast does not support {dtype}: {e}")
+    return torch.autocast(device.type, dtype=dtype)
+
+
+def _scene_6174(device):
+    generator = torch.Generator().manual_seed(6174)
+    K = torch.tensor([[[300.0, 0.0, 320.0], [0.0, 310.0, 240.0], [0.0, 0.0, 1.0]]])
+    R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(torch.tensor([[0.05, -0.1, 0.02]]))
+    t = torch.tensor([[[0.5], [0.1], [0.0]]])
+    P1 = epi.projection_from_KRt(K, torch.eye(3)[None], torch.zeros(1, 3, 1))
+    P2 = epi.projection_from_KRt(K, R, t)
+    X = torch.rand(1, 30, 3, generator=generator) * 4 + torch.tensor([-2.0, -2.0, 5.0])
+    x1 = kornia.geometry.conversions.convert_points_from_homogeneous(X @ K.mT)
+    x2 = kornia.geometry.conversions.convert_points_from_homogeneous((X @ R.mT + t.mT) @ K.mT)
+    return [v.to(device) for v in (P1, P2, x1, x2, X, K, R, t)]
+
+
+class TestKRtFromProjectionAutocast(BaseTester):
+    """A caller's autocast region does not reach KRt_from_projection (#6174), as for the solvers of #6072."""
+
+    @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
+    def test_autocast_does_not_change_the_result_6174(self, device, autocast_dtype):
+        # Under CPU autocast the products before torch.linalg.solve ran in half precision, and solve, which has no
+        # half-precision CPU kernel, raised NotImplementedError for a float32 P; MPS autocast reached a float16 QR.
+        _, P2, _, _, _, K, R, _ = _scene_6174(device)
+        expected = epi.KRt_from_projection(P2)
+        with _autocast_6174(device, autocast_dtype):
+            actual = epi.KRt_from_projection(P2)
+        for out, ref in zip(actual, expected):
+            assert out.dtype == torch.float32
+            self.assert_close(out, ref, atol=0, rtol=0)
+        self.assert_close(actual[0], K, atol=1e-3, rtol=1e-5)
+        self.assert_close(actual[1], R, atol=1e-5, rtol=0)
+
+    def test_still_scriptable_6174(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("torch.linalg.qr has no half-precision CPU kernel")
+        P = torch.tensor(
+            [[[300.0, 0.0, 320.0, 10.0], [0.0, 310.0, 240.0, -5.0], [0.0, 0.0, 1.0, 0.2]]], device=device, dtype=dtype
+        )
+        scripted = torch.jit.script(epi.KRt_from_projection)
+        for out, ref in zip(scripted(P), epi.KRt_from_projection(P)):
+            self.assert_close(out, ref)
