@@ -129,7 +129,7 @@ class CropGenerator3D(RandomGeneratorBase):
         z_start = _truncate_to_start(_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch), z_diff)
 
         crop_src = bbox_generator3d(
-            x_start.view(-1), y_start.view(-1), z_start.view(-1), size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1
+            x_start.view(-1), y_start.view(-1), z_start.view(-1), size[:, 2], size[:, 1], size[:, 0]
         )
 
         if self.resize_to is None:
@@ -137,9 +137,9 @@ class CropGenerator3D(RandomGeneratorBase):
                 torch.zeros(batch_size, device=_device, dtype=_dtype),
                 torch.zeros(batch_size, device=_device, dtype=_dtype),
                 torch.zeros(batch_size, device=_device, dtype=_dtype),
-                size[:, 2] - 1,
-                size[:, 1] - 1,
-                size[:, 0] - 1,
+                size[:, 2],
+                size[:, 1],
+                size[:, 0],
             )
         else:
             if not (

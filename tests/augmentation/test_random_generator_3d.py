@@ -29,6 +29,7 @@ from kornia.augmentation.random_generator import (
     RotationGenerator3D,
     center_crop_generator3d,
 )
+from kornia.geometry.bbox import infer_bbox_shape3d
 
 from testing.base import assert_close
 
@@ -467,6 +468,17 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to,
             )(batch_shape=torch.Size((2, 1, *input_size)))
+
+    @pytest.mark.parametrize("resize_to", [None, (2, 3, 2)])
+    def test_boxes_measure_crop_and_output_size_4018(self, resize_to, device, dtype):
+        # kornia#4018: src measures the crop size and dst the output size, inclusively, with dst at the origin.
+        size = torch.tensor([[2, 3, 4], [1, 1, 1], [4, 5, 6]], device=device, dtype=dtype)
+        params = CropGenerator3D(size, resize_to)(torch.Size((3, 1, 4, 5, 6)))
+        output_size = size if resize_to is None else torch.tensor([resize_to] * 3, device=device, dtype=dtype)
+        for key, expected in (("src", size), ("dst", output_size)):
+            measured = torch.stack(infer_bbox_shape3d(params[key].to(dtype)), dim=-1)
+            assert_close(measured, expected, atol=0.0, rtol=0.0)
+        assert_close(params["dst"][:, 0], torch.zeros(3, 3, device=device, dtype=params["dst"].dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
