@@ -288,6 +288,33 @@ class TestVideoSequential:
         for frame in range(frame_num):
             assert_close(out[:, frame], aug(video[:, frame], params=params))
 
+    @pytest.mark.parametrize(
+        "mix",
+        [
+            lambda sob: K.RandomMixUpV2(p=1.0, same_on_batch=sob),
+            lambda sob: K.PatchMix(patch_size=2, p=1.0, same_on_batch=sob),
+            lambda sob: K.RandomMosaic(p=1.0),
+        ],
+        ids=["mixup", "patchmix", "mosaic"],
+    )
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    def test_mix_not_same_on_frame_matches_flattened_frames(self, mix, same_on_batch, data_format, device, dtype):
+        # With same_on_frame=False the B * T frames are one image batch for the mix, whose own generator applies
+        # same_on_batch. One draw per frame index, repeated over the videos, took every partner from the first video.
+        batch_size, frame_num = 3, 4
+        aug = mix(same_on_batch)
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        seq = K.VideoSequential(aug, data_format=data_format, same_on_frame=False)
+
+        torch.manual_seed(0)
+        out = seq(video.transpose(1, 2).contiguous() if data_format == "BCTHW" else video)
+        out = out.transpose(1, 2) if data_format == "BCTHW" else out
+
+        torch.manual_seed(0)
+        params = aug.forward_parameters(torch.Size((batch_size * frame_num, 3, 8, 8)))
+        assert_close(out, aug(video.reshape(-1, 3, 8, 8), params=params).reshape(video.shape))
+
     @staticmethod
     def _tagged_video(batch_size, frame_num, data_format, device, dtype):
         """Build a video whose pixel value is ``10 * (video + 1) + frame``.
