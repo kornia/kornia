@@ -1,0 +1,39 @@
+# Strict known-failure baseline of tests/test_inductor_conformance.py on torch 2.14.0 (CPU float32, Python 3.11):
+# promised operators that do not compile with torch.compile(fullgraph=True) and the inductor backend, or whose
+# compiled result differs from eager (#5819).
+# Remove an entry when its case passes (a strict XPASS fails the run). A new failure of a promised operator is a
+# regression to fix; add it only with a comment naming its own tracking issue.
+# Entries of packages a run does not select are not checked; every node ID must name a promised case.
+# Format: <exact exception type>\t<pytest node ID>
+# #5037: a data-dependent check or a host-side route guarded by is_exporting(), which is False under torch.compile
+# on torch 2.14 (True on 2.9.1), so Dynamo traces it and fullgraph fails; the call sites want is_compiling().
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[LongestMaxSize]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[SmallestMaxSize]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[LongestMaxSize[const-size]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[SmallestMaxSize[const-size]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[transform.center_crop3d]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[transform.crop_and_resize3d]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[bbox.bbox_to_mask3d]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[bbox.infer_bbox_shape3d]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[boxes.Boxes.from_tensor[xyxy]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[boxes.Boxes.from_tensor[xywh]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[boxes.Boxes.from_tensor[xyxy_plus]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[boxes.Boxes.to_mask]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[boxes.Boxes3D.from_tensor[xyzxyz]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[boxes.Boxes3D.from_tensor[xyzwhd]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[boxes.Boxes3D.to_mask]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[geometry.camera.StereoCamera.reproject_disparity_to_3D]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[geometry.camera.StereoCamera.Q]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[geometry.liegroup.So2.from_matrix]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[geometry.liegroup.Se2.from_matrix]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[geometry.camera.StereoCamera.reproject_disparity_to_3D[baked-cams]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[enhance.JPEGCodecDifferentiable]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[enhance.JPEGCodecDifferentiable[batch]]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[enhance.JPEGCodecDifferentiable[custom_qt]]
+# #TBD-survey-explain-not-fullgraph: the survey recorded these as compiling without a graph break, but Dynamo cannot
+# capture them in one graph on any measured torch (a loop over a data-dependent count, a host read of tensor values).
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[bbox.nms]
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[image.draw_rectangle]
+# #TBD-patch-sequential-inductor-mismatch: inductor computes a different image than eager for PatchSequential
+# with patchwise_apply=False (an inductor miscompile; reproduces without kornia), since #4460.
+AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[PatchSequential[not-patchwise]]

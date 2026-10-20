@@ -31,14 +31,15 @@ Random operators cannot be compared value-for-value (the RNG stream differs insi
 they are reported as *ok-unverified* when the captured program runs and returns finite outputs of
 the right shape.
 
-The cases also drive the ONNX conformance test, `tests/onnx/test_conformance.py` (#5819): every
-case the snapshot records as ONNX "ok" in a stable-core package, and not tagged `pretrained`, is
-promised, and the test runs it through the same `harness.run_case` on every pull request that
-touches its package or a module it imports. Renaming,
-skipping or dropping a promised case therefore fails that test, and the harness must not change
-the process it is imported into: the survey's own process settings (quiet logging and warnings,
-four threads) are applied by `run_cases` and `probe_compile.py` through
-`harness.configure_survey_process()`, not at import.
+The cases also drive the conformance tests of #5819. Every case the snapshot records as ONNX "ok"
+in a stable-core package, and not tagged `pretrained`, is promised to `tests/onnx/test_conformance.py`,
+which runs it through the same `harness.run_case`; every such case recorded as compile "ok" is promised
+to `tests/test_inductor_conformance.py`, which runs it through `probe_compile.run_case(case,
+export=False, fullgraph=True)`. Pull requests run both for the packages they touch and the packages
+that import them. Renaming, skipping or dropping a promised case therefore fails those tests, and the
+harness and the probe must not change the process they are imported into: the survey's own process
+settings (quiet logging and warnings, four threads, the compile probe's per-case timeout and Dynamo
+cache limit) are applied by `run_cases` and `probe_compile.main`, not at import.
 
 ## Regenerating the snapshot
 
