@@ -37,6 +37,7 @@ from kornia.geometry.conversions import (
     axis_angle_to_rotation_matrix,
     convert_affinematrix_to_homography,
     convert_affinematrix_to_homography3d,
+    normal_transform_pixel,
     normalize_homography,
     normalize_homography3d,
     normalize_pixel_coordinates,
@@ -635,6 +636,18 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     # the grid is copied to input device and casted to the same type
     flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxHxWx2
     return flow.view(batch_size, height, width, 2)  # NxHxWx2
+
+
+def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, align_corners: bool) -> torch.Tensor:
+    """Map a ``(N, H, W, 2)`` grid of source pixel coordinates to the ``[-1, 1]`` coordinates ``grid_sample`` reads.
+
+    ``height`` and ``width`` are the source's. The map is :func:`~kornia.geometry.conversions.normal_transform_pixel`
+    under ``align_corners``, the one :func:`warp_perspective` conjugates its pixel homography with, applied per axis.
+    """
+    norm = normal_transform_pixel(height, width, device=grid.device, dtype=grid.dtype, align_corners=align_corners)[0]
+    scale = torch.stack((norm[0, 0], norm[1, 1]))
+    offset = torch.stack((norm[0, 2], norm[1, 2]))
+    return grid * scale + offset
 
 
 def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
@@ -1857,13 +1870,16 @@ def homography_warp(
         coordinates and ``align_corners`` sampling rules.
 
         - input: :math:`(N, C, H, W)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`, in normalized
-          :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), when
-          ``normalized_homography=True`` (default); with ``normalized_homography=False`` it is
-          consumed as the source→destination **pixel** homography, exactly like
-          :func:`warp_perspective`
+        - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)` when
+          ``normalized_homography=True`` (default), in normalized :math:`[-1, 1]` coordinates by default
+          (``normalized_coordinates=True``). With ``normalized_coordinates=False`` it is in **pixel**
+          coordinates, pixel centres at integers: it maps the pixel ``(x, y)`` of the ``dsize`` output to the
+          source pixel it samples, so an identity returns the top-left ``dsize`` window of the input
+        - with ``normalized_homography=False`` it is consumed as the source→destination **pixel** homography,
+          exactly like :func:`warp_perspective`, and ``normalized_coordinates`` is ignored
         - ``dsize`` is ``(h, w)``
-        - align_corners: ``False`` by default (differs from :func:`warp_perspective`)
+        - align_corners: ``False`` by default (differs from :func:`warp_perspective`). A pixel homography
+          samples the same positions under both settings; they then differ only in ``padding_mode="reflection"``
         - negative output dimensions raise ``ValueError``
 
     Args:
@@ -1877,9 +1893,11 @@ def homography_warp(
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
-        normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
-        normalized_homography: whether ``src_homo_dst`` is a normalized (destination→source)
-            homography (``True``, default) or a pixel source→destination homography (``False``).
+        normalized_coordinates: whether ``src_homo_dst`` is in normalized :math:`[-1, 1]` coordinates
+            (``True``) or in pixel coordinates (``False``). Ignored when ``normalized_homography=False``.
+        normalized_homography: whether ``src_homo_dst`` is a destination→source homography in the coordinates
+            ``normalized_coordinates`` selects (``True``, default) or a pixel source→destination homography
+            (``False``).
 
     Return:
         Patch sampled at locations from source to destination.
@@ -1915,6 +1933,11 @@ def homography_warp(
             align_corners=align_corners,
         )
         warped_grid = warp_grid(grid, src_homo_dst)
+        if not normalized_coordinates:
+            # a pixel homography lands on source pixels, which grid_sample reads normalized
+            warped_grid = _normalize_warped_pixel_grid(
+                warped_grid, patch_src.shape[-2], patch_src.shape[-1], align_corners
+            )
 
         return _torch_grid_sample(
             patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
