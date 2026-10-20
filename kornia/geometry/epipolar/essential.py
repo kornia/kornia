@@ -750,7 +750,8 @@ def motion_from_essential_choose_solution(
           candidate, as ``cv2.recoverPose`` returns. A count of ``0`` means no point passed, and the returned
           pose is then candidate 0 of
           :py:meth:`~kornia.geometry.epipolar.motion_from_essential`, not a recovered motion.
-        - A caller's autocast region does not change the result.
+        - A caller's autocast region does not change the result. ``K1`` and ``K2`` are cast to the dtype of
+          ``E_mat``.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
@@ -794,6 +795,10 @@ def motion_from_essential_choose_solution(
         x2 = x2[None]
         if mask is not None:
             mask = mask[None]
+
+    # Autocast is off below, so the intrinsics are cast to the dtype of ``E_mat`` here, as autocast casts
+    # half-precision intrinsics and a float32 ``E_mat`` to one dtype.
+    K1, K2 = K1.to(E_mat.dtype), K2.to(E_mat.dtype)
 
     # A caller's autocast region would build the projection matrices and the depths in half precision, which moves
     # the triangulated points and can change the chosen candidate, and would return a half-precision rotation.

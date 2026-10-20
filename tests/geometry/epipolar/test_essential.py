@@ -1493,6 +1493,19 @@ class TestEssentialDecompositionAutocast(BaseTester):
         self.assert_close(R_out, R, atol=1e-5, rtol=0)
         self.assert_close(R_out @ R_out.mT, torch.eye(3, device=device).expand_as(R_out), atol=1e-5, rtol=0)
 
+    def test_half_precision_intrinsics_under_autocast_6146(self, device):
+        # Autocast used to cast bfloat16 intrinsics and a float32 essential matrix to one dtype. With autocast off
+        # inside, the intrinsics are cast to the matrix's dtype, so the call still runs and gives the float32 result.
+        _skip_without_bfloat16_autocast(device)
+        E_mat, K, x1, x2, _ = _autocast_scene(device)
+        K_half = K.to(torch.bfloat16)
+        expected = epi.motion_from_essential_choose_solution(E_mat, K_half.float(), K_half.float(), x1, x2)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = epi.motion_from_essential_choose_solution(E_mat, K_half, K_half, x1, x2)
+        for out, ref in zip(actual, expected):
+            assert out.dtype == ref.dtype
+            self.assert_close(out, ref, atol=0, rtol=0)
+
     @pytest.mark.parametrize(
         "fn",
         [
