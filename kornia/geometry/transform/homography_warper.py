@@ -203,8 +203,10 @@ class HomographyWarper(BaseWarper):
                 _warped_grid = _normalize_warped_pixel_grid(
                     _warped_grid, patch_src.shape[-2], patch_src.shape[-1], self.align_corners
                 )
-                if self._warped_grid_dtype is not None:
-                    _warped_grid = _warped_grid.to(self._warped_grid_dtype)
+                # getattr: a module pickled before this attribute existed has no _warped_grid_dtype
+                warped_grid_dtype = getattr(self, "_warped_grid_dtype", None)
+                if warped_grid_dtype is not None:
+                    _warped_grid = _warped_grid.to(warped_grid_dtype)
             warped_patch = _torch_grid_sample(
                 patch_src,
                 _warped_grid,
