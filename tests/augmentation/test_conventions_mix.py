@@ -451,7 +451,9 @@ class TestMixConventions(BaseTester):
         aug_multi(image, labels)
         params_multi = dict(aug_multi._params)
         params_multi["mix_pairs"] = torch.tensor([[1, 2, 0], [2, 0, 1]])
-        params_multi["crop_src"] = torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]).expand(2, 3, 4, 2).clone()
+        params_multi["crop_src"] = (
+            torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]).expand(2, 3, 4, 2).clone()
+        )
         params_multi["batch_prob"] = torch.tensor([0.0, 1.0, 0.0])
         output_multi, mixed_multi = aug_multi(image, labels, params=params_multi)
         self.assert_close(output_multi[0], image[0])
