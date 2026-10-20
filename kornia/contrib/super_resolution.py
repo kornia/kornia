@@ -24,7 +24,7 @@ from torch import nn
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import ONNXExportMixin
+from kornia.core.mixin.onnx import ONNXExportMixin, _preserved_rng, _returns_list
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.rrdbnet import RRDBNet
@@ -234,23 +234,64 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
                 Additional metadata to add to the ONNX model.
             kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
+        Raises:
+            ValueError: With the pre- and post-processor, if the post-processor returns a list with one image per input
+                image and a ``dynamic_axes`` or ``dynamic_shapes`` argument makes the exported batch dynamic.
+
+        Note:
+            With the pre- and post-processor, a model whose post-processor returns a list with one image per input
+            image is exported for a batch of one image: the exporters turn a list into one graph output per traced
+            image, so a dynamic batch would return the traced batch's images at any batch size. The builders'
+            post-processors, ``nn.Identity`` and ``OutputRangePostProcessor`` (without a ``forward`` of a subclass's
+            own), return one tensor for the batch and keep it dynamic. Which kind of output any other post-processor
+            returns is read from one forward pass at the export size, in eval mode, without gradients and outside the
+            export. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic
+            raises a ``ValueError`` after the export, before anything is saved.
+
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
         # The dummy input must agree with a fixed input size, which ``to_onnx`` checks.
         pseudo_size = self.pseudo_image_size or self.input_image_size or 352
+        pseudo_shape = [1, 3, pseudo_size, pseudo_size]
+        # Exported for a dynamic batch, a list of per-image outputs comes out as the traced batch's images, or the
+        # export fails: such a model is exported for one image.
+        batch = -1
+        if include_pre_and_post_processor and not self._post_processor_returns_one_tensor():
+            # The probe's input draws from the global generator, as the export's dummy does, and gives back what it
+            # drew.
+            with _preserved_rng():
+                if _returns_list(self, torch.rand(pseudo_shape)):
+                    batch = 1
 
         return ONNXExportMixin.to_onnx(
             self,
             onnx_name,
-            input_shape=[-1, 3, self.input_image_size or -1, self.input_image_size or -1],
-            output_shape=[-1, 3, self.output_image_size or -1, self.output_image_size or -1],
-            pseudo_shape=[1, 3, pseudo_size, pseudo_size],
+            input_shape=[batch, 3, self.input_image_size or -1, self.input_image_size or -1],
+            output_shape=[batch, 3, self.output_image_size or -1, self.output_image_size or -1],
+            pseudo_shape=pseudo_shape,
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,
             **kwargs,
+        )
+
+    def _post_processor_returns_one_tensor(self) -> bool:
+        """Whether the post-processor is one of the builders', which returns the network's tensor output as a tensor.
+
+        ``nn.Identity`` and ``OutputRangePostProcessor`` keep a tensor a tensor, so :meth:`to_onnx` runs no forward
+        pass to read their output: for an RRDB model that pass costs more than the export.
+        """
+        forward = type(self.post_processor).forward
+        return forward is nn.Identity.forward or forward is OutputRangePostProcessor.forward
+
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        if module is not self or self._post_processor_returns_one_tensor() or not _returns_list(self, dummy_input):
+            return None
+        return (
+            "Use a post-processor that returns the images of the batch as one tensor, such as "
+            "OutputRangePostProcessor, to export a dynamic batch."
         )
 
 
