@@ -23,6 +23,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.helpers import deepcopy_dict
 from kornia.constants import DataKey
 from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
@@ -95,7 +96,10 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
             left, right, top, bottom = padding_size[0].tolist()
             input_shape = (*input_shape[:-2], input_shape[-2] - top - bottom, input_shape[-1] - left - right)
         matrix_input = torch.empty((), device=device, dtype=dtype).expand(input_shape)
-        return module.generate_transformation_matrix(matrix_input, params, module.flags)
+        # Compute from a copy of the params, as the image call does (its ``data_keys`` override copies the dict). Under
+        # export the caller's tensors can be graph constants, and a child that copies one as-is into its matrix, as
+        # ``RandomAffine`` does with ``center``, makes torch 2.9's dynamo ONNX exporter rename that constant and fail.
+        return module.generate_transformation_matrix(matrix_input, deepcopy_dict(params), module.flags)
 
     @classmethod
     def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:

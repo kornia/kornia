@@ -282,3 +282,59 @@ def test_torch_export_integer_mask_labels_4478(image_dtype: torch.dtype) -> None
     for invalid in (label, torch.iinfo(torch.int64).max):
         with pytest.raises(RuntimeError, match="Integer mask labels"):
             exported(image, torch.full_like(mask, invalid))
+
+
+class _ReplayWithConstantParams(torch.nn.Module):
+    """Call ``seq`` with the params of its last eager call held constant, as an exported replay does."""
+
+    def __init__(self, seq: torch.nn.Module, params: list) -> None:
+        super().__init__()
+        self.seq = seq
+        self.params = params
+
+    def forward(self, *args: torch.Tensor) -> object:
+        return self.seq(*args, params=self.params)
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("data_key", ["mask", "keypoints", "bbox_xyxy"])
+@pytest.mark.device_agnostic
+def test_torch_export_annotation_replay_copies_no_constant_6166(data_key: str) -> None:
+    """The annotation handlers recompute a child's matrix from copies of constant params under export (#6166).
+
+    Params held constant are graph constants in the exported program. ``RandomAffine`` writes ``center`` as-is into
+    its matrix, and torch 2.9's dynamo ONNX exporter lowers a ``copy`` whose source is a constant to the constant itself
+    and renames it, so the export failed. The decomposed graph that exporter lowers must hold no such ``copy`` on any
+    torch, and the exported annotations must match eager.
+    """
+    from torch.export.graph_signature import InputKind
+
+    torch.manual_seed(0)
+    image = torch.rand(2, 3, 16, 20)
+    extra = {
+        "mask": (torch.rand(2, 1, 16, 20) > 0.5).float(),
+        "keypoints": torch.tensor([[[3.0, 4.0], [12.0, 9.0]]]).repeat(2, 1, 1),
+        "bbox_xyxy": torch.tensor([[[2.0, 3.0, 10.0, 12.0]]]).repeat(2, 1, 1),
+    }[data_key]
+    seq = K.AugmentationSequential(K.RandomAffine(15.0, p=1.0), data_keys=["input", data_key])
+    seq(image, extra)
+    model = _ReplayWithConstantParams(seq, seq._params)
+    eager = model(image, extra)
+
+    program = torch.export.export(model, (image, extra), strict=False)
+    graph = program.run_decompositions()
+    constants = {
+        spec.arg.name for spec in graph.graph_signature.input_specs if spec.kind == InputKind.CONSTANT_TENSOR
+    }
+    copies_of_constants = [
+        node.name
+        for node in graph.graph.nodes
+        if node.target == torch.ops.aten.copy.default and getattr(node.args[1], "name", None) in constants
+    ]
+    assert not copies_of_constants, f"{data_key}: {copies_of_constants} copy a graph constant as-is"
+
+    out = program.module()(image, extra)
+    for got, expected in zip(out, eager):
+        torch.testing.assert_close(got, expected, atol=1e-5, rtol=1e-5)
