@@ -306,6 +306,25 @@ def _removed_buffer_hooks() -> Iterator[None]:
                 del hooks[key]
 
 
+def _returns_list(module: Any, inputs: Any) -> bool:
+    """Return whether ``module`` returns a Python list for ``inputs``, from one run that leaves no trace.
+
+    The export wrappers whose post-processor can return one output per image read the kind of their output with it:
+    the exporters turn such a list into one graph output per traced image. The module runs once, in eval mode and
+    without gradients, on ``inputs`` moved to the dtype and device of its first floating tensor, as the export's dummy
+    input is. Its output decides, so any post-processor is covered. The attributes that ``to_onnx`` keeps, such as an
+    image module's output cache, hold what they held before, in every module inside ``module``, and so does the global
+    random state.
+    """
+    reference = _first_floating_tensor(module)
+    if reference is not None:
+        inputs = _to_floating(inputs, reference)
+    # The run must not leave its output or parameters in a module inside ``module``, nor consume the global random
+    # state, as the export's own run does not.
+    with _eval_mode(module), _preserved_call_state(module), _preserved_rng(), torch.no_grad():
+        return isinstance(module(inputs), list)
+
+
 def _has_dynamic_batch(onnx_model: onnx.ModelProto) -> bool:
     """Return whether the first graph input of ``onnx_model`` has a batch dimension without a fixed size."""
     if not onnx_model.graph.input:

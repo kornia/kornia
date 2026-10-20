@@ -28,15 +28,7 @@ from kornia.constants import _get_by_name
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import (
-    ONNXExportMixin,
-    _eval_mode,
-    _first_floating_tensor,
-    _preserved_call_state,
-    _preserved_rng,
-    _to_floating,
-    _uses_dynamic_shapes,
-)
+from kornia.core.mixin.onnx import ONNXExportMixin, _preserved_rng, _returns_list, _uses_dynamic_shapes
 from kornia.image.draw import draw_rectangle
 from kornia.models.base import ModelBase
 from kornia.models.processors import ResizePreProcessor
@@ -132,23 +124,6 @@ def results_from_detections(
             )
         )
     return results
-
-
-def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> bool:
-    """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
-
-    The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
-    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The
-    attributes that ``to_onnx`` keeps, such as an image module's output cache, hold what they held before, in every
-    module inside the detector, and so does the global random state.
-    """
-    reference = _first_floating_tensor(detector)
-    if reference is not None:
-        images = _to_floating(images, reference)
-    # The run must not leave its output or parameters in a module inside the detector, nor consume the global random
-    # state, as the export's own run does not.
-    with _eval_mode(detector), _preserved_call_state(detector), _preserved_rng(), torch.no_grad():
-        return isinstance(detector(images), list)
 
 
 class ObjectDetector(ModelBase, ONNXExportMixin):
@@ -300,7 +275,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         batch = -1
         # The probe's input draws from the global generator, as the export's dummy does, and gives back what it drew.
         with _preserved_rng():
-            if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
+            if include_pre_and_post_processor and _returns_list(self, torch.rand(pseudo_shape)):
                 batch = 1
         input_shape = [batch, 3, image_size or -1, image_size or -1]
 
@@ -329,7 +304,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         )
 
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
-        if module is not self or not _returns_detections_per_image(self, dummy_input):
+        if module is not self or not _returns_list(self, dummy_input):
             return None
         return (
             "Use a post-processor that returns one tensor for the batch, such as a DETRPostProcessor with "

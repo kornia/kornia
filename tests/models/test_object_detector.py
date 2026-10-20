@@ -159,7 +159,7 @@ class TestObjectDetector(BaseTester):
     def test_output_check_keeps_an_image_module_cache(self):
         # ObjectDetector.to_onnx first runs the detector once to tell a per-image list from one tensor. That run, like
         # the export's own, leaves the show()/save() cache of an image module inside the detector as it was.
-        from kornia.contrib.object_detection import _returns_detections_per_image
+        from kornia.core.mixin.onnx import _returns_list
 
         class _Pre(kornia.core.ImageModule):
             def forward(self, x):
@@ -182,13 +182,13 @@ class TestObjectDetector(BaseTester):
         detector = kornia.contrib.object_detection.ObjectDetector(_Model(), pre, _Post())
         pre(torch.rand(1, 3, 8, 8))
         cache = pre.__dict__["_output_image"]
-        assert not _returns_detections_per_image(detector, torch.rand(2, 3, 16, 16))
+        assert not _returns_list(detector, torch.rand(2, 3, 16, 16))
         assert pre.__dict__["_output_image"] is cache
 
     def test_output_check_gives_back_the_random_state(self):
         # The output check runs the detector in eval mode; a model that still draws there must not consume the
         # global random state, wherever the check runs, before the export or after it.
-        from kornia.contrib.object_detection import _returns_detections_per_image
+        from kornia.core.mixin.onnx import _returns_list
 
         class _Pre(torch.nn.Module):
             def forward(self, x):
@@ -210,7 +210,7 @@ class TestObjectDetector(BaseTester):
         detector = kornia.contrib.object_detection.ObjectDetector(_DrawingModel(), _Pre(), _Post())
         images = torch.rand(2, 3, 16, 16)
         state = torch.get_rng_state()
-        assert not _returns_detections_per_image(detector, images)
+        assert not _returns_list(detector, images)
         assert torch.equal(torch.get_rng_state(), state)
 
     @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
