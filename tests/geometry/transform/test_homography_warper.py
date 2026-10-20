@@ -509,6 +509,63 @@ class TestHomographyWarper(BaseTester):
             assert torch.isfinite(tensor.grad).all()
             assert tensor.grad.abs().sum() > 0
 
+    @pytest.mark.parametrize(("default_dtype", "width"), [(torch.float16, 4096), (torch.bfloat16, 640)])
+    def test_pixel_coordinates_precomputed_under_half_default_dtype(self, default_dtype, width, device):
+        # A warper constructed under a half default dtype holds a half base grid, whose integer columns round from
+        # 2048 (float16) or 256 (bfloat16) on. The cached pixel grid is built like the direct one instead, so a
+        # cached identity samples every column of a float32 column-index image.
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            warper = kornia.geometry.transform.HomographyWarper(2, width, normalized_coordinates=False)
+        finally:
+            torch.set_default_dtype(previous)
+        image = torch.arange(width, device=device, dtype=torch.float32).expand(1, 1, 2, width)
+        identity = eye_like(3, image)
+
+        direct = warper(image, identity)
+        warper.precompute_warp_grid(identity)
+        cached = warper(image)
+
+        self.assert_close(cached, direct, rtol=0, atol=0)
+        self.assert_close(cached[..., 1:-1], image[..., 1:-1])
+
+    @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
+    def test_autocast_does_not_reach_the_pixel_grid(self, entry, device):
+        # A caller's bfloat16 autocast ran the homography's matrix product in bfloat16 and rounded the pixel columns
+        # of a 640 px grid to whole pixels (x = 257 sampled 256, 639 fell outside the image); a grid cached inside
+        # autocast kept the error outside it. The pixel grid is warped outside autocast.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        width = 640
+        image = torch.arange(width, device=device, dtype=torch.float32).expand(1, 1, 2, width)
+        identity = eye_like(3, image)
+        expected = self._pixel_warp(entry, image, identity, (2, width))
+
+        warper = kornia.geometry.transform.HomographyWarper(2, width, normalized_coordinates=False)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = self._pixel_warp(entry, image, identity, (2, width))
+            warper.precompute_warp_grid(identity)
+        cached_inside = warper(image)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        self.assert_close(cached_inside, expected, rtol=0, atol=0)
+        self.assert_close(expected[..., 1:-1], image[..., 1:-1])
+
+    def test_pixel_coordinates_torchscript(self, device, dtype):
+        # TorchScript has no autocast and no context managers; the scripted pixel path skips the autocast guard and
+        # matches eager.
+        image = (torch.arange(2 * 5 * 7, device=device) % 11 / 11).to(dtype).view(1, 2, 5, 7)
+        src_homo_dst = torch.tensor(
+            [[[1.05, 0.02, 0.3], [0.01, 0.95, -0.4], [1e-3, -2e-3, 1.0]]], device=device, dtype=dtype
+        )
+        scripted = torch.jit.script(kornia.geometry.transform.homography_warp)
+
+        actual = scripted(image, src_homo_dst, (4, 6), normalized_coordinates=False)
+        expected = kornia.geometry.transform.homography_warp(image, src_homo_dst, (4, 6), normalized_coordinates=False)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
         # The default normalized path is grid_sample over warp_grid of a normalized meshgrid, bit for bit; the

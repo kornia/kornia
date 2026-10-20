@@ -650,6 +650,21 @@ def _pixel_grid_work_dtype(src_homo_dst: torch.Tensor) -> torch.dtype:
     return src_homo_dst.dtype
 
 
+def _warp_pixel_grid(src_homo_dst: torch.Tensor, height: int, width: int) -> torch.Tensor:
+    """Warp the ``(height, width)`` grid of destination pixels by ``src_homo_dst`` into source pixel coordinates.
+
+    The grid is built and warped in :func:`_pixel_grid_work_dtype`, whatever the default dtype, and outside a caller's
+    autocast region: autocast would run the homography's matrix product in half precision, which rounds the pixel
+    coordinates of a 640 px wide grid to whole pixels in bfloat16. TorchScript, which has no autocast, skips the guard.
+    """
+    work_dtype = _pixel_grid_work_dtype(src_homo_dst)
+    grid = create_meshgrid(height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype)
+    if torch.jit.is_scripting():
+        return warp_grid(grid, src_homo_dst.to(work_dtype))
+    with _autocast_disabled(src_homo_dst.device.type):
+        return warp_grid(grid, src_homo_dst.to(work_dtype))
+
+
 def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, align_corners: bool) -> torch.Tensor:
     """Map a ``(N, H, W, 2)`` grid of source pixel coordinates to the ``[-1, 1]`` coordinates ``grid_sample`` reads.
 
@@ -1889,8 +1904,8 @@ def homography_warp(
           source pixel it samples, so an identity returns the top-left ``dsize`` window of the input
         - with ``normalized_homography=False`` it is consumed as the source→destination **pixel** homography,
           exactly like :func:`warp_perspective`, and ``normalized_coordinates`` is ignored
-        - with ``normalized_coordinates=False`` the pixel grid is warped and normalized in at least float32 and
-          then cast to the homography's dtype
+        - with ``normalized_coordinates=False`` the pixel grid is warped and normalized in at least float32, also
+          under a half default dtype and outside a caller's autocast region, and then cast to the homography's dtype
         - ``dsize`` is ``(h, w)``
         - align_corners: ``False`` by default (differs from :func:`warp_perspective`). Along a source axis longer
           than one pixel, a pixel homography samples the same positions under both settings, which then differ
@@ -1949,12 +1964,8 @@ def homography_warp(
             warped_grid = warp_grid(grid, src_homo_dst)
         else:
             # A pixel homography lands on source pixels, which grid_sample reads normalized. The pixel arithmetic
-            # runs in at least float32, then the grid returns to the homography's dtype.
-            work_dtype = _pixel_grid_work_dtype(src_homo_dst)
-            grid = create_meshgrid(
-                height, width, normalized_coordinates=False, device=patch_src.device, dtype=work_dtype
-            )
-            warped_grid = warp_grid(grid, src_homo_dst.to(work_dtype))
+            # runs in at least float32 and outside autocast, then the grid returns to the homography's dtype.
+            warped_grid = _warp_pixel_grid(src_homo_dst, height, width)
             warped_grid = _normalize_warped_pixel_grid(
                 warped_grid, patch_src.shape[-2], patch_src.shape[-1], align_corners
             ).to(src_homo_dst.dtype)

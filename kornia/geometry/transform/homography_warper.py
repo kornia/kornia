@@ -26,7 +26,7 @@ from torch import nn
 from kornia.core.utils import _torch_grid_sample
 from kornia.geometry.grid import create_meshgrid
 
-from .imgwarp import _normalize_warped_pixel_grid, _pixel_grid_work_dtype, homography_warp, warp_grid
+from .imgwarp import _normalize_warped_pixel_grid, _warp_pixel_grid, homography_warp, warp_grid
 
 __all__ = ["BaseWarper", "HomographyWarper"]
 
@@ -87,8 +87,8 @@ class HomographyWarper(BaseWarper):
 
         - See the convention block of :func:`homography_warp`.
         - with ``normalized_coordinates=False`` a grid from :meth:`precompute_warp_grid` holds source pixel
-          coordinates in at least float32, normalized at sampling time with the size of the patch passed to
-          ``forward`` and then cast to the homography's dtype
+          coordinates computed as in :func:`homography_warp` (in at least float32, outside autocast), normalized at
+          sampling time with the size of the patch passed to ``forward`` and then cast to the homography's dtype
 
     Args:
         height: The height of the destination torch.Tensor.
@@ -145,10 +145,10 @@ class HomographyWarper(BaseWarper):
         if self.normalized_coordinates:
             self._warped_grid = warp_grid(self.grid, src_homo_dst)
             return
-        # Source pixels, kept in at least float32 until forward() normalizes them with the patch size, as in
-        # homography_warp; the normalized grid then returns to the homography's dtype.
-        work_dtype = _pixel_grid_work_dtype(src_homo_dst)
-        self._warped_grid = warp_grid(self.grid.to(work_dtype), src_homo_dst.to(work_dtype))
+        # Source pixels, from a pixel grid built and warped as in homography_warp (in at least float32, outside
+        # autocast; not from self.grid, which a half default dtype has already rounded), kept until forward()
+        # normalizes them with the patch size; the normalized grid then returns to the homography's dtype.
+        self._warped_grid = _warp_pixel_grid(src_homo_dst, self.height, self.width)
         self._warped_grid_dtype = src_homo_dst.dtype
 
     def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
