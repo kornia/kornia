@@ -100,6 +100,14 @@ class TestCheckShape:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"], raises=False) is False
 
+    @pytest.mark.parametrize("raises", [True, False])
+    def test_non_tensor_input_uses_type_check_error(self, raises):
+        if raises:
+            with pytest.raises(TypeCheckError, match=r"expected Tensor, got <class 'list'>"):
+                KORNIA_CHECK_SHAPE([1, 2], ["N"], raises=raises)  # type: ignore[arg-type]
+        else:
+            assert KORNIA_CHECK_SHAPE([1, 2], ["N"], raises=raises) is False  # type: ignore[arg-type]
+
     def test_jit(self):
         op_jit = torch.jit.script(KORNIA_CHECK_SHAPE)
         assert op_jit is not None

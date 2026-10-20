@@ -164,6 +164,7 @@ def KORNIA_CHECK_SHAPE(
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
+        TypeCheckError: if the input is not a tensor and raises is True.
         ShapeError: if the input tensor does not have the expected shape and raises is True.
 
     Note:
@@ -185,6 +186,9 @@ def KORNIA_CHECK_SHAPE(
     if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
+
+    if not KORNIA_CHECK_IS_TENSOR(x, msg=msg, raises=raises):
+        return False
 
     dimension_offset = 0
     if len(shape) > 0 and "*" == shape[0]:
