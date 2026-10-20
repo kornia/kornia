@@ -236,7 +236,7 @@ class TestEqualization(BaseTester):
 
         y = enhance.equalize_clahe(x, 40.0, (1, 1))
 
-        assert y.sum().item() == pytest.approx(8416 / 255)
+        assert y.sum().item() == pytest.approx(8539 / 255)
         assert y.max().item() == pytest.approx(1.0)
 
     @pytest.mark.parametrize("grid_size", [(1, 1), (1, 2), (2, 1), (2, 2)])
@@ -249,15 +249,15 @@ class TestEqualization(BaseTester):
         assert torch.isfinite(out).all()
 
     def test_histogram_skips_out_of_range(self, device, dtype):
-        # torch.histc on CPU counts only values inside [min, max] and _tiles_histc must too. 1.0000001 and
-        # -1e-7 are inside the window equalize_clahe admits (see RandomClahe's warning and #4564), and MPS's
-        # torch.histc counts them, so this also pins CPU/MPS parity.
+        # Like torch.histc on CPU, _tiles_histc counts only values inside [0, 1]. 1.0000001 and -1e-7 are inside the
+        # window equalize_clahe admits (see RandomClahe's warning and #4564), and MPS's torch.histc counts them, so
+        # this also pins CPU/MPS parity. With 4 bins a value is counted in (x * 3).long(): 0.5 in 1 and 0.25 in 0.
         from kornia.enhance.equalization import _tiles_histc
 
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("1.0000001 and -1e-7 round to 1 and 0 in half precision")
         tiles = torch.tensor([[0.5, 1.0000001, -1e-7, 0.25]], device=device, dtype=dtype)
-        expected = torch.tensor([[0.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype)
         self.assert_close(_tiles_histc(tiles, 4), expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
@@ -343,46 +343,14 @@ class TestEqualization(BaseTester):
         return torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
 
     def test_he(self, img):
-        # should be similar to enhance.equalize but slower. Similar because the lut is computed in a different way.
-        clip_limit: float = 0.0
-        grid_size: Tuple = (1, 1)
-        res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
-        # NOTE: for next versions we need to improve the computation of the LUT
-        # and test with a better image
-        self.assert_close(
-            res[..., 0, :],
-            torch.tensor(
-                [
-                    [
-                        [
-                            0.051,
-                            0.102,
-                            0.1490,
-                            0.2000,
-                            0.251,
-                            0.2980,
-                            0.3490,
-                            0.3490,
-                            0.451,
-                            0.451,
-                            0.5490,
-                            0.5490,
-                            0.651,
-                            0.651,
-                            0.6980,
-                            0.7490,
-                            0.8000,
-                            0.851,
-                            0.902,
-                            1.0000,
-                        ]
-                    ]
-                ],
-                dtype=res.dtype,
-                device=res.device,
-            ),
-            low_tolerance=True,
-        )
+        # With no clip limit and one tile this is global equalization with OpenCV's rounded LUT: the 20-step ramp maps
+        # to 20 evenly spaced levels, round(12.75 * (i + 1)) with ties to even, as an exact rational evaluation of
+        # CLAHE gives. Counting each pixel in floor(256 x) instead of the entry floor(255 x) it reads merged four pairs
+        # of neighbouring steps (#6181).
+        res = enhance.equalize_clahe(img, clip_limit=0.0, grid_size=(1, 1))
+        levels = [13, 26, 38, 51, 64, 76, 89, 102, 115, 128, 140, 153, 166, 178, 191, 204, 217, 230, 242, 255]
+        expected = torch.tensor(levels, dtype=res.dtype, device=res.device) / 255
+        self.assert_close(res[0, 0, 0], expected, low_tolerance=True)
 
     def test_ahe(self, img):
         clip_limit: float = 0.0
@@ -426,8 +394,8 @@ class TestEqualization(BaseTester):
         # its range; piling them into the first 6 bins mapped every pixel but the first above 0.77. No other test
         # pins the values of the differentiable path's soft histogram.
         expected_row = torch.tensor(
-            [0.2235, 0.3333, 0.332, 0.2967, 0.4431, 0.4458, 0.4078, 0.4431, 0.5556, 0.4444]
-            + [0.6667, 0.5922, 0.6301, 0.6667, 0.7033, 0.668, 0.7765, 0.8523, 0.851, 1.0],
+            [0.2235, 0.3333, 0.332, 0.2967, 0.4431, 0.4458, 0.4078, 0.5569, 0.5556, 0.5176]
+            + [0.6667, 0.6654, 0.6301, 0.7765, 0.7791, 0.7412, 0.8902, 0.9255, 0.9268, 1.0],
             dtype=res.dtype,
             device=res.device,
         )
@@ -460,8 +428,8 @@ class TestEqualization(BaseTester):
         assert out.device == device
 
     def test_clahe_lut_rounding_ties_to_even(self, device, dtype):
-        # Four bins with counts [1, 2, 1, 2] give CDF values [0.5, 1.5, 2, 3].
-        tiles = torch.tensor([0.0, 0.25, 0.25, 0.5, 0.75, 0.75], device=device, dtype=dtype)
+        # Four bins with counts [1, 2, 1, 2] give CDF values [0.5, 1.5, 2, 3]. A value is counted in (x * 3).long().
+        tiles = torch.tensor([0.0, 0.34, 0.34, 0.67, 1.0, 1.0], device=device, dtype=dtype)
         luts = enhance.equalization._compute_luts(tiles.view(1, 1, 1, 1, 2, 3), num_bins=4, clip=0.0)
         expected = torch.tensor([0.0, 2.0, 2.0, 3.0], device=device, dtype=dtype)
         self.assert_close(luts.flatten(), expected, rtol=0, atol=0)
@@ -494,7 +462,7 @@ class TestEqualization(BaseTester):
         # round(cumsum * 255 / 1024): bin 100 maps to round(535 * 255 / 1024) = 133 and bin 200 to
         # round(908 * 255 / 1024) = 226, where writing the residual into bins 0..31 would give 138 and 228.
         # The counts stay in float32 for half-precision tiles too, so this is exact in every dtype.
-        values = torch.cat([torch.zeros(342), torch.full((341,), 100 / 256), torch.full((341,), 200 / 256)])
+        values = torch.cat([torch.zeros(342), torch.full((341,), 100 / 255), torch.full((341,), 200 / 255)])
         tiles = values.to(device, dtype).view(1, 1, 1, 1, 32, 32)
         clip = torch.tensor([40.0], device=device, dtype=dtype) if clip_as_tensor else 40.0
         luts = enhance.equalization._compute_luts(tiles, clip=clip)
@@ -511,7 +479,7 @@ class TestEqualization(BaseTester):
         # is a multiple of 1/8, so 64 * 255 * output is an integer. The expected integers come from an exact
         # rational evaluation of CLAHE pixel by pixel, independent of this implementation's tile indexing; the
         # reference is an exact-Fraction restatement of _compute_tiles/_compute_luts/_compute_equalized_tiles
-        # (tile size ceil(n/g) rounded up to even, trailing reflect pad, floor(v*256) histogram, clip and
+        # (tile size ceil(n/g) rounded up to even, trailing reflect pad, floor(v*255) histogram, clip and
         # redistribute, round(cumsum*255/P), axis blend weight (T-k-0.5)/T); the reference posted on #4628 is
         # evaluated here with round-to-even LUTs and the clipped residual spread over every (256 // residual)-th
         # bin from bin 0, as OpenCV does.
@@ -532,14 +500,14 @@ class TestEqualization(BaseTester):
         img = levels[codes][None, None]
         expected = torch.tensor(
             [
-                [2048, 3072, 10304, 11840, 2048, 11328, 2048, 8792, 6528, 16320, 6144, 10176],
-                [3072, 12224, 12096, 16320, 2048, 7168, 11328, 4096, 8552, 2048, 4096, 2048],
-                [5248, 5248, 8265, 8411, 11488, 3760, 6816, 16320, 8411, 8265, 6144, 6144],
-                [9792, 8192, 2384, 7120, 8087, 5056, 3424, 16320, 2288, 5440, 12224, 12224],
-                [3712, 2688, 2608, 11040, 3152, 16320, 16320, 4800, 3616, 3936, 6144, 6144],
-                [16320, 3968, 2832, 5056, 16320, 5712, 8769, 2384, 3424, 7983, 2944, 12224],
-                [16320, 16320, 3840, 4992, 16320, 8312, 8440, 4224, 2688, 6016, 16320, 6144],
-                [4096, 10176, 16320, 10560, 6912, 11072, 11328, 6912, 2688, 2944, 10176, 3072],
+                [3072, 5120, 12096, 13888, 3712, 13376, 4096, 10816, 8552, 16320, 8192, 11200],
+                [5120, 14272, 14144, 16320, 2048, 9032, 13376, 5760, 10560, 2048, 5120, 4096],
+                [7296, 7296, 10040, 10264, 13536, 5696, 8703, 16320, 10339, 10145, 8192, 8192],
+                [11072, 9432, 2384, 8129, 9832, 6544, 5056, 16320, 3808, 6176, 13888, 13888],
+                [5760, 3712, 2608, 13088, 4800, 16320, 16320, 5984, 5184, 5568, 8192, 8192],
+                [16320, 6016, 2832, 7056, 16320, 6729, 10416, 2384, 5056, 9191, 2944, 13376],
+                [16320, 16320, 5760, 7040, 16320, 10048, 10304, 5504, 3328, 7936, 16320, 8192],
+                [6144, 12224, 16320, 12608, 8192, 13120, 13248, 8552, 2688, 2944, 11200, 3072],
             ],
             dtype=torch.float64,
         )
@@ -560,8 +528,8 @@ class TestEqualization(BaseTester):
         self.assert_close(out_t, out.transpose(-2, -1))
 
     # The fast path counts, clips and accumulates each tile's histogram in float32 (float64 for float64 images) and
-    # casts only the finished LUT back, so a half-precision tile gets the LUT a float32 tile with the same pixels gets.
-    # Counting in float16 overflowed the clipped total of a 256 x 256 tile to inf, the tile the default 8 x 8 grid
+    # casts only the finished LUT back, so a half-precision tile gets the LUT a float32 tile with the same 8-bit levels
+    # gets. Counting in float16 overflowed the clipped total of a 256 x 256 tile to inf, the tile the default 8 x 8 grid
     # gives on a 2048 x 2048 image, and rounded counts above 2048; bfloat16 rounded counts above 256.
     @pytest.mark.parametrize("clip_as_tensor", [False, True])
     @pytest.mark.parametrize(
@@ -575,7 +543,10 @@ class TestEqualization(BaseTester):
         clip = torch.tensor([40.0], device=device) if clip_as_tensor else 40.0
         luts = enhance.equalization._compute_luts(tiles, clip=clip)
         count_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-        expected = enhance.equalization._compute_luts(tiles.to(count_dtype), clip=clip)
+        # A pixel is counted in the level it reads, (x * 255).long() in the image dtype; float16 can round 255 x to
+        # another level than float32 does, so the reference tiles hold those levels.
+        levels = (tiles * 255).long().to(count_dtype) / 255
+        expected = enhance.equalization._compute_luts(levels, clip=clip)
         assert luts.dtype == dtype
         assert torch.equal(luts.to(count_dtype), expected)
 

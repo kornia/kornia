@@ -4541,7 +4541,7 @@ class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.arange(36, device=device, dtype=dtype).reshape(2, 2, 3, 3) / 36
         # Centre-anchored blending of the 2 x 2 tile LUTs, evaluated with the per-pixel reference.
-        expected = torch.tensor(86173 / (16 * 255), device=device, dtype=dtype)
+        expected = torch.tensor(102320 / (16 * 255), device=device, dtype=dtype)
         self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), expected)
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
