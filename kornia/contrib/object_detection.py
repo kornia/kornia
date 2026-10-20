@@ -135,20 +135,29 @@ def results_from_detections(
 
 
 def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> bool:
-    """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
+    """Return whether ``detector`` returns one detection tensor per image rather than one tensor for the batch.
 
-    The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
-    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The
+    A per-image result is a list or tuple as long as the batch. Its type alone cannot decide: a post-processor that
+    returns a batched pair such as ``(boxes, scores)`` also returns a tuple, with the same length at every batch size.
+    The detector therefore runs at two batch sizes, in eval mode and without gradients, on ``images`` moved to the
+    dtype and device of its first floating tensor, as the export's dummy input is. The export traces the batch at 1
+    when it is fixed and at 2 when it is dynamic, so a sequence whose length follows the batch is per-image. The
     attributes that ``to_onnx`` keeps, such as an image module's output cache, hold what they held before, in every
     module inside the detector, and so does the global random state.
     """
     reference = _first_floating_tensor(detector)
     if reference is not None:
         images = _to_floating(images, reference)
-    # The run must not leave its output or parameters in a module inside the detector, nor consume the global random
+    single = images[:1]
+
+    def one_per_image(batch_size: int) -> bool:
+        output = detector(single.repeat(batch_size, *([1] * (single.ndim - 1))))
+        return isinstance(output, (list, tuple)) and len(output) == batch_size
+
+    # The runs must not leave their output or parameters in a module inside the detector, nor consume the global random
     # state, as the export's own run does not.
     with _eval_mode(detector), _preserved_call_state(detector), _preserved_rng(), torch.no_grad():
-        return isinstance(detector(images), list)
+        return one_per_image(1) and one_per_image(2)
 
 
 class ObjectDetector(ModelBase, ONNXExportMixin):
@@ -279,10 +288,11 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
         Note:
-            With a post-processor that returns a list of per-image detections, as a
+            With a post-processor that returns a list or tuple of per-image detections, as a
             ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
             exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
-            the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
+            the detector returns is read from forward passes at batch sizes 1 and 2 at the export size, in eval mode
+            and without gradients: a sequence whose length follows the batch is per-image, a batched pair is not.
             Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size. A
             ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a
             ``ValueError`` after the export, before anything is saved.
@@ -295,7 +305,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
         pseudo_shape = [1, 3, image_size or 352, image_size or 352]
-        # Exported for a dynamic batch, a per-image list comes out as the traced batch's detections, or the export
+        # Exported for a dynamic batch, a per-image sequence comes out as the traced batch's detections, or the export
         # fails: such a detector is exported for one image.
         batch = -1
         # The probe's input draws from the global generator, as the export's dummy does, and gives back what it drew.
