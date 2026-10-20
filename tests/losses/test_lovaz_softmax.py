@@ -56,6 +56,15 @@ def _lovasz_softmax_reference(logits, labels, weight=None):
 
 
 class TestLovaszSoftmaxLoss(BaseTester):
+    @pytest.mark.parametrize(("pred_batch", "target_batch"), [(1, 2), (2, 1), (2, 3), (3, 2)])
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_mismatched_batch(self, pred_batch, target_batch, as_module, device, dtype):
+        logits = torch.zeros(pred_batch, 2, 2, 3, device=device, dtype=dtype)
+        labels = torch.zeros(target_batch, 2, 3, device=device, dtype=torch.int64)
+        criterion = kornia.losses.LovaszSoftmaxLoss() if as_module else kornia.losses.lovasz_softmax_loss
+        with pytest.raises(ValueError, match="pred and target shapes must be the same"):
+            criterion(logits, labels)
+
     def test_smoke(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 1, 1, device=device, dtype=dtype)

@@ -1,0 +1,1 @@
+`lovasz_hinge_loss`, `lovasz_softmax_loss` and their module wrappers now raise `ValueError` when prediction and target batch sizes differ. Previously, Lovasz-Softmax could broadcast one prediction across several targets, while other mismatches failed later with indexing or tensor-size errors. Callers that need a shared prediction or target must expand it explicitly.
