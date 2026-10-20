@@ -140,14 +140,14 @@ def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> 
     The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
     floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The
     attributes that ``to_onnx`` keeps, such as an image module's output cache, hold what they held before, in every
-    module inside the detector.
+    module inside the detector, and so does the global random state.
     """
     reference = _first_floating_tensor(detector)
     if reference is not None:
         images = _to_floating(images, reference)
-    # The run must not leave its output or parameters in a module inside the detector, as the export's own run does
-    # not.
-    with _eval_mode(detector), _preserved_call_state(detector), torch.no_grad():
+    # The run must not leave its output or parameters in a module inside the detector, nor consume the global random
+    # state, as the export's own run does not.
+    with _eval_mode(detector), _preserved_call_state(detector), _preserved_rng(), torch.no_grad():
         return isinstance(detector(images), list)
 
 
