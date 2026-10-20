@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, List, Optional, Tuple, Union
+from typing import Any, ClassVar, List, Optional, Union
 
 import torch
 from torch import nn
@@ -529,16 +529,6 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         if not isinstance(module, BoxFiltering) or module.filter_as_zero:
             return None
         return "Use filter_as_zero=True to export a dynamic batch as one (B, D, 6) output."
-
-    def _create_dummy_input(
-        self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
-    ) -> Union[Tuple[Any, ...], torch.Tensor]:
-        return torch.rand(
-            *[
-                ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
-                for i, dim in enumerate(input_shape)
-            ]
-        )
 
 
 class RTDETRDetectorBuilder:

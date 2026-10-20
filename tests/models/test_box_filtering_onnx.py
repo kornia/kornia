@@ -219,7 +219,6 @@ class TestBoxFilteringONNXBatchOverride(BaseTester):
         """Each form of the override raises after the export, before the file is written."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
-        # Classes to keep avoid the class mask that torch 2.14's dynamo exporter cannot translate (#6112).
         module = BoxFiltering(confidence_threshold=0.5, classes_to_keep=[0, 1, 2])
         path = tmp_path / "filter.onnx"
 
