@@ -15,11 +15,13 @@
 # limitations under the License.
 #
 
+import re
+
 import pytest
 import torch
 
 import kornia
-from kornia.core.check import disable_checks, enable_checks
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -81,21 +83,21 @@ _MS_SSIM_TOL = {torch.float16: 1e-2, torch.bfloat16: 5e-2}
 
 
 class TestMS_SSIMLoss(BaseTester):
-    def test_non_4d_inputs_raise(self, device, dtype):
-        # MS-SSIM is defined for BxCxHxW only; equal-shaped 3-D inputs must not
-        # fall through to conv2d's unbatched path and its confusing errors.
-        img = torch.rand(3, 16, 16, device=device, dtype=dtype)
+    @pytest.mark.parametrize("shape", [(3, 16, 16), (1, 1, 3, 16, 16), (16, 16)])
+    def test_non_4d_inputs_raise(self, shape, device, dtype):
+        # MS-SSIM is defined for BxCxHxW only; equal-shaped inputs of another rank must not
+        # fall through to conv2d (a 3-D pair takes its unbatched path) and its confusing errors.
+        img = torch.rand(shape, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="BxCxHxW"):
             kornia.losses.MS_SSIMLoss()(img, img)
 
-    def test_shape_mismatch_raises(self, device, dtype):
-        # GH#6157 a batch-2 input against a batch-1 target used to broadcast
-        # silently and return a wrong loss; mismatched shapes must raise.
+    @pytest.mark.parametrize("target_shape", [(1, 3, 16, 16), (2, 1, 16, 16), (2, 3, 1, 16), (2, 3, 16, 1)])
+    def test_shape_mismatch_raises(self, target_shape, device, dtype):
+        # GH#6157 a batch-1 target, or a height or width of 1, used to broadcast
+        # silently; mismatched shapes must raise.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-        img2 = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
-        with pytest.raises(
-            ValueError, match=r"same shape\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[1, 3, 16, 16\]\)"
-        ):
+        img2 = torch.rand(target_shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=re.escape(f"same shape. Got: {img1.shape} and {img2.shape}.")):
             kornia.losses.MS_SSIMLoss()(img1, img2)
 
     def test_shape_mismatch_raises_when_checks_disabled(self, device, dtype):
@@ -103,6 +105,7 @@ class TestMS_SSIMLoss(BaseTester):
         # globally; the loss must never broadcast mismatched inputs silently.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
             with pytest.raises(
@@ -111,7 +114,8 @@ class TestMS_SSIMLoss(BaseTester):
             ):
                 kornia.losses.MS_SSIMLoss()(img1, img2)
         finally:
-            enable_checks()
+            if were_checks_enabled:
+                enable_checks()
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_high_pixel_values_use_float32_moments(self, device, dtype):

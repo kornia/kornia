@@ -66,6 +66,8 @@ class MS_SSIMLoss(nn.Module):
         - The defaults follow [3]: ``alpha=0.025``, as in [2], and ``compensation=200``, which neither [1] nor [2]
           applies; [1] sets :math:`\alpha = 0.84`. The default ``reduction='mean'`` averages the :math:`(B, H, W)`
           map, whose channels are already averaged.
+        - The two images must have the same :math:`(B, C, H, W)` shape, without broadcasting, as in
+          :func:`~kornia.metrics.ssim`.
 
     Reference:
         [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
