@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any, Optional
 
@@ -31,7 +30,7 @@ from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
 from kornia.onnx import ONNXSequential
 from kornia.onnx.download import _relative_path_components
-from kornia.onnx.utils import ONNXLoader, io_name_conversion
+from kornia.onnx.utils import ONNXLoader, _cached_file_hint, _load_cached_json, _load_cached_onnx, io_name_conversion
 
 from .preprocessor import PreprocessingLoader
 
@@ -74,9 +73,16 @@ class HFONNXComunnityModelLoader:
         )
 
     def load_model(
-        self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
+        self,
+        download: bool = True,
+        io_name_mapping: Optional[dict[str, str]] = None,
+        *,
+        force_download: bool = False,
+        **kwargs: Any,
     ) -> onnx.ModelProto:
         """Load the ONNX model file from the configured onnx-community repository.
+
+        A model that is in the cache is used as it is, however old: pass ``force_download=True`` to fetch it again.
 
         Args:
             download: Whether to download the remote ONNX file when it is not already
@@ -85,6 +91,10 @@ class HFONNXComunnityModelLoader:
                 output names after loading. This is useful when composing the model
                 with Kornia pre-processing or post-processing graphs that expect
                 specific tensor names.
+            force_download: Whether to download the model, and its weights when ``with_data`` is set, again and replace
+                the cached files, even when they are cached. The model is replaced before the weights are fetched: if
+                the weights then fail to download, the cache holds the new model with the old weights, so call again
+                with ``force_download=True`` before loading it. Needs ``download=True``.
             kwargs: Not used; any keyword raises ``TypeError``. Kept for compatibility.
 
         Returns:
@@ -94,7 +104,13 @@ class HFONNXComunnityModelLoader:
         # <cache_dir>/<model_name>/<model_type>.onnx: the repository's own directory, where earlier releases cached
         # these models too, so they are not downloaded again
         file_path = ONNXLoader.download_to_cache(
-            self.model_url, self.model_type, download, cache_dir=self.cache_dir, suffix=".onnx", **kwargs
+            self.model_url,
+            self.model_type,
+            download,
+            cache_dir=self.cache_dir,
+            suffix=".onnx",
+            force_download=force_download,
+            **kwargs,
         )
         if self.with_data:  # beside the model, under the name the model refers to
             ONNXLoader.download_to_cache(
@@ -103,18 +119,17 @@ class HFONNXComunnityModelLoader:
                 download,
                 cache_dir=self.cache_dir,
                 suffix=".onnx_data",
+                force_download=force_download,
                 **kwargs,
             )
-        onnx_model = onnx.load(file_path)
+        onnx_model = _load_cached_onnx(file_path)
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)
 
         return onnx_model
 
-    def load_preprocessing(
-        self,
-    ) -> ImageSequential:
+    def load_preprocessing(self, *, force_download: bool = False) -> ImageSequential:
         """Load the preprocessing pipeline described by the remote processor config.
 
         The Hugging Face onnx-community repositories store image preprocessing
@@ -122,14 +137,24 @@ class HFONNXComunnityModelLoader:
         converts the supported operations, such as resize, rescale, and normalize, into
         a Kornia :class:`~kornia.core.ImageSequential` module.
 
+        Args:
+            force_download: Whether to download ``preprocessor_config.json`` again and replace the cached file, even
+                when it is cached.
+
         Returns:
             Sequential Kornia image preprocessing module built from the repository
             configuration.
         """
         # <cache_dir>/<model_name>/preprocessor_config.json, beside the repository's model
-        file_path = ONNXLoader.download_to_cache(self.config_url, "preprocessor_config.json", cache_dir=self.cache_dir)
-        with open(file_path) as f:
-            return PreprocessingLoader.from_json(json.load(f))
+        file_path = ONNXLoader.download_to_cache(
+            self.config_url, "preprocessor_config.json", cache_dir=self.cache_dir, force_download=force_download
+        )
+        config = _load_cached_json(file_path)
+        try:
+            return PreprocessingLoader.from_json(config)
+        except KeyError as exc:  # valid JSON that lacks what a processor config has: a file that is not the hub's
+            exc.add_note(_cached_file_hint(file_path))
+            raise
 
 
 class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
@@ -147,8 +172,9 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         name: Optional human-readable model name used for export filenames.
         auto_ir_version_conversion: Whether to allow automatic ONNX IR version
             conversion when composing the sequence.
-        io_maps: Optional list of input/output name mappings used when connecting the
-            ONNX graphs together.
+        io_maps: Optional list with one list of ``(output, input)`` name pairs per joint between
+            consecutive graphs (pre-processor, model, post-processor, of those given), as for
+            :class:`~kornia.onnx.sequential.ONNXSequential`.
         resize: Optional torch module that resizes an image before the ONNX graphs, for a
             resize whose output size depends on the input size and so cannot be part of a
             graph with dynamic height and width. It is kept as ``self.resize``; the subclass
@@ -165,7 +191,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         post_processor: Optional[onnx.ModelProto] = None,
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
-        io_maps: Optional[list[tuple[str, str]]] = None,
+        io_maps: Optional[list[list[tuple[str, str]]]] = None,
         resize: Optional[nn.Module] = None,
     ) -> None:
         model_list = [] if pre_processor is None else [pre_processor]

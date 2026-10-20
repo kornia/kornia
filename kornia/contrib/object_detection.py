@@ -34,6 +34,7 @@ from kornia.core.mixin.onnx import (
     _first_floating_tensor,
     _preserved_output_caches,
     _to_floating,
+    _uses_dynamic_shapes,
 )
 from kornia.image.draw import draw_rectangle
 from kornia.models.base import ModelBase
@@ -280,6 +281,10 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
             Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size.
 
+            Without the pre- and post-processor, a model that declares ``ONNX_OUTPUT_NAMES``, as
+            :class:`~kornia.models.rt_detr.RTDETR` does (``pred_logits`` and ``pred_boxes``), has its outputs exported
+            under those names, each with a dynamic batch; any other model has one output, ``output``.
+
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
@@ -289,11 +294,24 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         batch = -1
         if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
             batch = 1
+        input_shape = [batch, 3, image_size or -1, image_size or -1]
+
+        output_names = None if include_pre_and_post_processor else getattr(self.model, "ONNX_OUTPUT_NAMES", None)
+        if output_names:
+            # The bare model's outputs by name, each with a dynamic batch: listed in ``dynamic_axes`` for the
+            # TorchScript exporter, derived by the dynamo exporter from the input's dynamic dimensions.
+            if kwargs.get("output_names") is None:  # absent, or ``torch.onnx.export``'s own default of None
+                kwargs["output_names"] = list(output_names)
+            if not _uses_dynamic_shapes(kwargs) and "dynamic_axes" not in kwargs and "dynamic_shapes" not in kwargs:
+                input_axes = {i: f"dim_{i}" for i, dim in enumerate(input_shape) if dim == -1}
+                # Keyed by the names the graph gets, the caller's if given.
+                output_axes = {name: {0: "dim_0"} for name in kwargs["output_names"]}
+                kwargs["dynamic_axes"] = {"input": input_axes, **output_axes}
 
         return ONNXExportMixin.to_onnx(
             self,
             onnx_name,
-            input_shape=[batch, 3, image_size or -1, image_size or -1],
+            input_shape=input_shape,
             output_shape=[-1, -1, 6],
             pseudo_shape=pseudo_shape,
             model=self if include_pre_and_post_processor else self.model,

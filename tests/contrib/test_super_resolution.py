@@ -27,7 +27,7 @@ from kornia.contrib.super_resolution import (
     SuperResolution,
     SuperResolutionConfig,
 )
-from kornia.core._compat import torch_version_lt
+from kornia.core._compat import torch_version_ge, torch_version_lt
 
 from testing.base import BaseTester
 
@@ -151,6 +151,32 @@ class TestSuperResolutionBuilders(BaseTester):
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
         builder.build(pretrained=False, **build_kwargs).to_onnx(save=False)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+    def test_to_onnx_with_pre_and_post_processor_matches_eager_at_any_size(self, export_kwargs):
+        """Without an ``image_size``, the graph takes any batch, height and width, as the eager pre-processor does."""
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            pytest.importorskip("onnxscript")
+        torch.manual_seed(0)
+        model = SmallSRBuilder.build(pretrained=False)
+        op = model.to_onnx(save=False, **export_kwargs)
+        dims = [d.dim_param or d.dim_value for d in op.graph.input[0].type.tensor_type.shape.dim]
+        assert dims[1] == 3
+        assert all(isinstance(d, str) for d in (dims[0], dims[2], dims[3]))
+        session = ort.InferenceSession(op.SerializeToString(), providers=["CPUExecutionProvider"])
+
+        generator = torch.Generator().manual_seed(0)
+        # batches other than the traced 2, H != W, odd sizes
+        for shape in [(1, 3, 40, 56), (3, 3, 37, 61)]:
+            images = torch.rand(*shape, generator=generator)
+            (upscaled,) = session.run(None, {session.get_inputs()[0].name: images.numpy()})
+            with torch.no_grad():
+                expected = model(images)
+            self.assert_close(torch.from_numpy(upscaled), expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize(("upscale_factor", "image_size"), [(2, 32), (3, None), (4, 64)])
     def test_output_image_size_matches_the_real_forward(self, device, dtype, upscale_factor, image_size):
