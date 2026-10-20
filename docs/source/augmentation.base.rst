@@ -264,6 +264,12 @@ Generators must match the sampling device, normally CPU regardless of the image'
 ``generator.get_state()`` and restore it with ``generator.set_state()``. PyTorch does not guarantee
 identical draws across devices or releases.
 
+With a stream bound, every built-in sampler draws on that stream's device. A few samplers build their
+bounds from host-side constants, so the ``None`` path keeps drawing them on CPU even under
+``set_rng_device_and_dtype("cuda")``; binding a CUDA stream moves those draws to CUDA, which keeps an
+explicit run identical to the equivalent globally seeded run. Generator-free results are therefore
+unchanged only for the default CPU sampling device.
+
 A DataLoader worker must receive its own appropriately seeded generator. The workers inherit a copy of the
 persistent stream, so without a fix each worker replays the same draws; copy the state to every worker and
 they all stay duplicated. Seed a fresh generator per worker from the worker's own seed:

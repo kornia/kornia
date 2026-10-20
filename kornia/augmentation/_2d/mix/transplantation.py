@@ -96,8 +96,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
           of the full batch, with its original content, whether or not it is an acceptor itself; at ``B = 1`` the
           call is an identity.
         - one label is drawn uniformly from the donor's distinct labels minus ``excluded_labels`` (over labels, not
-          area), on the global CPU generator whatever the mask's device. An acceptor whose donor has no eligible
-          label is dropped from ``acceptor_indices`` and its ``batch_prob`` is cleared.
+          area). The default path draws on the global CPU generator whatever the mask's device; an explicit stream
+          (``set_generator`` or a call-local ``generator=``) draws on that generator's device instead. An acceptor
+          whose donor has no eligible label is dropped from ``acceptor_indices`` and its ``batch_prob`` is cleared.
         - ``selection`` in ``_params`` is what the transform reads: row ``d`` marks the positions moved from
           ``donor_indices[d]`` into ``acceptor_indices[d]``. A ``params`` passed back is used as given and completed
           in place. Labels are drawn only when ``selected_labels`` and ``selection`` are both missing; a missing
