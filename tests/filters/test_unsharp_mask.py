@@ -186,3 +186,6 @@ class TestUnsharpMaskMixedPrecision(BaseTester):
         assert image.grad is not None
         assert image.grad.dtype == torch.float32
         assert torch.isfinite(image.grad).all()
+        # The gradient also flows back through the blur: it matches that of 2 * image - blur outside the region.
+        (expected,) = torch.autograd.grad((2 * image - gaussian_blur2d(image, (3, 3), (1.0, 1.0))).sum(), image)
+        self.assert_close(image.grad, expected, atol=5e-2, rtol=0)

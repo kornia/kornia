@@ -42,8 +42,9 @@ def unsharp_mask(
           below 0 and above 1. :ref:`Filtering <filtering-conventions>` maps the call onto scikit-image.
         - An integer or bool image is filtered in float32 and the result is float32 on its own scale, like
           :func:`~kornia.filters.gaussian_blur2d`; a floating image keeps its dtype.
-        - Under ``torch.autocast`` the blur runs in the autocast dtype, as in :func:`~kornia.filters.gaussian_blur2d`,
-          and the result keeps the image's dtype, as for :func:`~kornia.enhance.sharpness`.
+        - Under ``torch.autocast`` the blur runs in the autocast dtype, as in :func:`~kornia.filters.gaussian_blur2d`
+          (autocast leaves a float64 image alone), and the result keeps the image's dtype, as for
+          :func:`~kornia.enhance.sharpness`.
 
     Args:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
