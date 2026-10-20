@@ -100,8 +100,11 @@ never downloads.
 
 Known failures are strict xfails in `testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt`, one
 manifest per enforced torch release, in the `<exception>\t<node ID>` format of the other manifests, each entry under
-a comment naming its tracking issue. Entries of packages a run does not select are not checked. Delete an entry when
-its case passes (a strict XPASS fails the run); a new failure of a promised operator is a regression to fix.
+a comment naming its tracking issue. The exception type names the kind of failure (`STATUS_EXCEPTIONS` in
+`testing/conformance.py`): `AssertionError` for a result that differs from eager, `RuntimeError` for a failed export,
+checker or onnxruntime run (or, in the compile test, a failed compile), `ValueError` for a failed eager run, so a known
+failure that changes kind fails the run. Entries of packages a run does not select are not checked. Delete an entry
+when its case passes (a strict XPASS fails the run); a new failure of a promised operator is a regression to fix.
 
 ### torch.compile conformance (#5819)
 
@@ -121,9 +124,10 @@ pixi run test-module tests/test_inductor_conformance.py --compile-conformance=co
 
 It has its own option and does not read `KORNIA_TEST_OPTIMIZER`, and its tests are named after inductor because the
 root `conftest.py` drops tests whose name contains `compile` or `dynamo` when that variable is unset. Inductor needs a
-C++ compiler. Pull requests run it on torch 2.14.0 for the packages `.github/scripts/conformance_packages.py compile`
-selects (the same mapping as the ONNX job, with this test file in place of the ONNX one); the scheduled run on `main`
-checks `all` on torch 2.9.1 and 2.14.0.
+C++ compiler; onnx and onnxruntime are not needed. Pull requests run it on torch 2.14.0 for the packages
+`.github/scripts/conformance_packages.py compile` selects (the same mapping as the ONNX job, with this test file and
+its manifests in place of the ONNX ones); the scheduled run on `main` checks `all` on torch 2.9.1 and 2.14.0. Both
+conformance jobs run with `--timeout=600`.
 
 ---
 

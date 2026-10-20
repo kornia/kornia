@@ -23,7 +23,9 @@ the case's tolerance. A legacy (TorchScript) export that succeeds must match too
 
 Selected with ``--onnx-conformance=<package>[,<package>...]`` or ``all`` (env ``KORNIA_TEST_ONNX_CONFORMANCE``);
 deselected otherwise. Known failures are strict xfails in
-``testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt``: delete an entry when its case passes.
+``testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt``: delete an entry when its case passes. A
+case that does not pass raises the exception ``testing.conformance.STATUS_EXCEPTIONS`` maps its status to, which its
+manifest entry names.
 """
 
 from __future__ import annotations
@@ -33,13 +35,13 @@ import pytest
 from testing.conformance import (
     LEGACY_PASSES,
     ONNX,
-    describe,
     import_survey_module,
     parametrize_cases,
     pin_problems,
     process_state,
     promised_case,
     promised_cases,
+    raise_for_status,
     registration_problems,
     run_onnx_case,
     selection,
@@ -71,15 +73,13 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 @pytest.mark.onnx_conformance
 @quiet
 def test_export_matches_eager(case_name: str | None) -> None:
-    record = run_onnx_case(promised_case(ONNX, case_name), dynamo=True)
-    assert record["status"] == "ok", describe(record)
+    raise_for_status(run_onnx_case(promised_case(ONNX, case_name), dynamo=True), ("ok",))
 
 
 @pytest.mark.onnx_conformance
 @quiet
 def test_legacy_export_is_not_wrong(case_name: str | None) -> None:
-    record = run_onnx_case(promised_case(ONNX, case_name), dynamo=False)
-    assert record["status"] in LEGACY_PASSES, describe(record)
+    raise_for_status(run_onnx_case(promised_case(ONNX, case_name), dynamo=False), LEGACY_PASSES)
 
 
 @pytest.mark.onnx_conformance

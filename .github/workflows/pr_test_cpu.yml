@@ -263,7 +263,8 @@ jobs:
       pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       test-path: tests/onnx/test_conformance.py
-      pytest-extra: --onnx-conformance=${{ needs.changes.outputs.onnx-conformance }}
+      # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
+      pytest-extra: --onnx-conformance=${{ needs.changes.outputs.onnx-conformance }} --timeout=600
 
   # torch.compile conformance (#5819): every promised operator of the packages this PR can affect must compile with
   # torch.compile(fullgraph=True) and the default inductor backend and match eager, selected like the ONNX job
@@ -279,7 +280,8 @@ jobs:
       pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       test-path: tests/test_inductor_conformance.py
-      pytest-extra: --compile-conformance=${{ needs.changes.outputs.compile-conformance }}
+      # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
+      pytest-extra: --compile-conformance=${{ needs.changes.outputs.compile-conformance }} --timeout=600
 
   typecheck:
     needs: [pre-tests]

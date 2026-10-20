@@ -52,8 +52,7 @@ def _selected(paths, promise="onnx"):
         ["docs/export_support/cases_misc.py"],
         ["docs/source/_data/export_support.json"],
         ["docs/source/get-started/stability.rst"],
-        ["testing/known_failure_xfails/onnx_conformance_torch2.14.txt"],
-        ["testing/known_failure_xfails/compile_conformance_torch2.14.txt"],
+        ["testing/known_failure_xfails/mps_float32.txt"],
         ["testing/conformance.py"],
         [".github/scripts/conformance_packages.py"],
         [".github/workflows/pr_test_cpu.yml"],
@@ -68,12 +67,24 @@ def test_select_all(changed, promise):
     assert select(changed, promise=promise) == "all"
 
 
-def test_select_all_for_the_promise_of_a_changed_test():
-    # A promise's own test selects all of its cases, and nothing of the other promise.
-    assert select(["tests/onnx/test_conformance.py"], promise="onnx") == "all"
-    assert select(["tests/onnx/test_conformance.py"], promise="compile") == ""
-    assert select(["tests/test_inductor_conformance.py"], promise="compile") == "all"
-    assert select(["tests/test_inductor_conformance.py"], promise="onnx") == ""
+@pytest.mark.parametrize(
+    ("changed", "promise"),
+    [
+        ("tests/onnx/test_conformance.py", "onnx"),
+        ("testing/known_failure_xfails/onnx_conformance_torch2.14.txt", "onnx"),
+        ("testing/known_failure_xfails/onnx_conformance_torch2.9.txt", "onnx"),
+        ("tests/test_inductor_conformance.py", "compile"),
+        ("testing/known_failure_xfails/compile_conformance_torch2.14.txt", "compile"),
+        ("testing/known_failure_xfails/compile_conformance_torch2.9.txt", "compile"),
+    ],
+)
+def test_select_all_for_the_promise_of_a_changed_test_or_manifest(changed, promise):
+    # A promise's own test or manifest selects all of its cases, and nothing of the other promise.
+    other = "compile" if promise == "onnx" else "onnx"
+    assert select([changed], promise=promise) == "all"
+    assert select([changed], promise=other) == ""
+    # ... while a module changed with it still selects its packages for the other one
+    assert _selected([changed, "kornia/morphology/morphology.py"], other) == {"morphology"}
 
 
 @pytest.mark.parametrize(

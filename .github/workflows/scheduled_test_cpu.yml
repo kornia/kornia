@@ -210,7 +210,8 @@ jobs:
       pytorch-version: '["2.9.1", "2.14.0"]'
       pytorch-dtype: float32
       test-path: tests/onnx/test_conformance.py
-      pytest-extra: --onnx-conformance=all
+      # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
+      pytest-extra: --onnx-conformance=all --timeout=600
 
   # torch.compile conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers
   # 2.14.0 for the packages a change touches and the packages that import them.
@@ -224,7 +225,8 @@ jobs:
       pytorch-version: '["2.9.1", "2.14.0"]'
       pytorch-dtype: float32
       test-path: tests/test_inductor_conformance.py
-      pytest-extra: --compile-conformance=all
+      # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
+      pytest-extra: --compile-conformance=all --timeout=600
 
   tests-cpu-windows:
     needs: [check-skip, pre-tests]

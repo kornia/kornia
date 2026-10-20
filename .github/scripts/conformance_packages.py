@@ -35,7 +35,9 @@ nothing.
 ``all`` is selected by code every package runs (``kornia/core``, ``kornia/utils``, ``kornia/onnx``, the modules
 directly under ``kornia/``), by the sources of the promises and their tests (the survey snapshot, the stability page,
 the survey under ``docs/export_support/``, ``testing/``, the promise's own test, the root ``conftest.py``, this script,
-the workflows that run it) and by the dependency pins. The two promises differ only in their test file.
+the workflows that run it) and by the dependency pins. The two promises differ only in their own test file and
+known-failure manifests (``testing/known_failure_xfails/<onnx|compile>_conformance_*``), which select ``all`` for their
+promise and nothing for the other.
 
 Standard library only: the ``changes`` job runs it before any environment is installed.
 """
@@ -93,6 +95,8 @@ TEST_FILES = {
     "onnx": "tests/onnx/test_conformance.py",
     "compile": "tests/test_inductor_conformance.py",
 }
+# Each promise's known-failure manifests: an edit selects all of that promise and nothing of the other.
+MANIFEST_PREFIX = "testing/known_failure_xfails/{}_conformance_"
 
 
 def module_index(root: Path) -> dict[str, Path]:
@@ -195,6 +199,11 @@ def select(paths: Iterable[str], root: Path = REPO, *, promise: str) -> str:
     for raw in paths:
         path = raw.strip()
         if not path:
+            continue
+        manifest_of = [other for other in TEST_FILES if path.startswith(MANIFEST_PREFIX.format(other))]
+        if manifest_of:
+            if manifest_of == [promise]:
+                return "all"
             continue
         if (
             path.startswith(ALL_PREFIXES)

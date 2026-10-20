@@ -135,6 +135,23 @@ REGISTRIES = ("cases_aug", "cases_feature", "cases_geomA", "cases_geomB", "cases
 # Legacy (TorchScript) export statuses that pass: the export worked and matched, or it failed loudly.
 LEGACY_PASSES = ("ok", "export-fail", "checker-fail", "ort-load-fail", "ort-run-fail")
 
+# The exception a per-case test raises for a status that does not pass, so that a manifest entry pins the kind of
+# failure: a known failure that changes kind (a graph break that turns into a wrong value, an eager regression of a
+# pinned case) then fails as an unexpected exception instead of staying a strict xfail.
+STATUS_EXCEPTIONS: dict[str, type[Exception]] = {
+    # the export or compile ran and the result differs from eager: value, dtype, shape or output count
+    "mismatch": AssertionError,
+    # the export, the ONNX checker, onnxruntime or the compile failed (a graph break, a backend error)
+    "fail": RuntimeError,
+    "export-fail": RuntimeError,
+    "checker-fail": RuntimeError,
+    "ort-load-fail": RuntimeError,
+    "ort-run-fail": RuntimeError,
+    # the eager reference itself failed, or returned no tensor
+    "eager-fail": ValueError,
+    "no-tensor-output": ValueError,
+}
+
 # torch's process-wide module hooks that a failed or (on torch 2.5) a successful non-strict ``torch.export`` trace can
 # leave registered; a later ``torch.compile`` of a module with buffers then fails. The runners remove what they added.
 REGISTRATION_HOOKS = (
@@ -427,6 +444,19 @@ def run_compile_case(case: dict[str, Any]) -> dict[str, Any]:
     probe = import_survey_module("probe_compile")
     with torch.random.fork_rng(devices=[]), _restore_registration_hooks(), _restore_compile_configs():
         return probe.run_case(case, export=False, fullgraph=True)
+
+
+def raise_for_status(record: dict[str, Any], passes: Sequence[str], step: str = "") -> None:
+    """Raise the ``STATUS_EXCEPTIONS`` type of a record whose status is not in ``passes``, with ``describe``'s message.
+
+    Args:
+        record: a survey record.
+        passes: the statuses that pass.
+        step: as for ``describe``: ``""`` for a harness record, ``"compile"`` for a compile probe record.
+    """
+    status = record[step or "status"]
+    if status not in passes:
+        raise STATUS_EXCEPTIONS.get(status, AssertionError)(describe(record, step))
 
 
 def describe(record: dict[str, Any], step: str = "") -> str:

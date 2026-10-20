@@ -24,7 +24,10 @@ not part of the promise.
 
 Selected with ``--compile-conformance=<package>[,<package>...]`` or ``all`` (env ``KORNIA_TEST_COMPILE_CONFORMANCE``);
 deselected otherwise. Known failures are strict xfails in
-``testing/known_failure_xfails/compile_conformance_torch<major>.<minor>.txt``: delete an entry when its case passes.
+``testing/known_failure_xfails/compile_conformance_torch<major>.<minor>.txt``: delete an entry when its case passes. A
+case that does not pass raises the exception ``testing.conformance.STATUS_EXCEPTIONS`` maps its status to
+(``AssertionError`` for a wrong result, ``RuntimeError`` for a failed compile, ``ValueError`` for a failed eager
+reference), which its manifest entry names. The test needs neither onnx nor onnxruntime.
 
 The root conftest drops a test whose name or id contains "compile" or "dynamo" unless ``KORNIA_TEST_OPTIMIZER`` is
 set, so the tests here are named after inductor; this test does not use ``KORNIA_TEST_OPTIMIZER``.
@@ -43,6 +46,7 @@ from testing.conformance import (
     process_state,
     promised_case,
     promised_cases,
+    raise_for_status,
     registration_problems,
     run_compile_case,
     selection,
@@ -58,10 +62,6 @@ pytestmark = [pytest.mark.device_agnostic, pytest.mark.usefixtures("restore_torc
 # module-wide: the process-state tests must see a filter the probe would add.
 quiet = pytest.mark.filterwarnings("ignore")
 
-# The compile probe imports the survey harness, which imports onnx and onnxruntime.
-pytest.importorskip("onnx")
-pytest.importorskip("onnxruntime")
-
 # The compile promise of the 2026-09-02 snapshot: 832 cases of 637 operators.
 PROMISED_COUNT = 832
 PROMISED_DIGEST = "8461e5c612ed2c8aa696633f3dc9f4154bfcb8c1cc01f19a2ddb29610e9b188d"
@@ -74,8 +74,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 @pytest.mark.compile_conformance
 @quiet
 def test_inductor_matches_eager(case_name: str | None) -> None:
-    record = run_compile_case(promised_case(COMPILE, case_name))
-    assert record["compile"] == "ok", describe(record, "compile")
+    raise_for_status(run_compile_case(promised_case(COMPILE, case_name)), ("ok",), "compile")
 
 
 @pytest.mark.compile_conformance

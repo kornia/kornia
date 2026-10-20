@@ -25,7 +25,10 @@ For each case:
   then an `onnxruntime` run compared against eager: the same dtype, and values within the case's tolerance.
 - **torch.export** and **torch.compile** (`probe_compile.py`): `torch.export.export`, then
   `torch._dynamo.explain` for the graph-break count and a `torch.compile` run compared against
-  eager.
+  eager. The count is the operator's own: the wrapper returns a tensor output without probing its
+  attributes, which would be a break of its own after a resumed frame. An explain count of 0 is not
+  proof of a single graph (Dynamo can run part of a frame eagerly without recording a break; #6194);
+  the conformance test compiles with `fullgraph=True`.
 
 Random operators cannot be compared value-for-value (the RNG stream differs inside the graph), so
 they are reported as *ok-unverified* when the captured program runs and returns finite outputs of
