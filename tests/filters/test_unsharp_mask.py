@@ -134,3 +134,39 @@ class TestConventionsUnsharpMask(BaseTester):
         self.assert_close(out[0, 0, 3], torch.tensor(expected, device=device, dtype=dtype))
         assert out.min() < -0.3
         assert out.max() > 1.3
+
+
+class TestUnsharpMaskAutocast(BaseTester):
+    """``unsharp_mask`` and ``UnsharpMask`` run under autocast like ``gaussian_blur2d`` (#6182)."""
+
+    @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_runs_under_autocast_6182(self, device, autocast_dtype, as_module):
+        # The blur, a convolution, came back in the autocast dtype and met the float32 image in torch.lerp, which raised
+        # "expected dtype ... for `end` but got dtype float".
+        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        generator = torch.Generator().manual_seed(6182)
+        image = torch.rand(2, 3, 16, 20, generator=generator).to(device)
+        op = UnsharpMask((5, 5), (1.5, 1.5)) if as_module else lambda x: unsharp_mask(x, (5, 5), (1.5, 1.5))
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = op(image)
+            blur = gaussian_blur2d(image, (5, 5), (1.5, 1.5))
+        # The result has the autocast dtype, as the blur does, and is the unsharp mask of the image in that dtype.
+        assert actual.dtype == blur.dtype == autocast_dtype
+        self.assert_close(actual, torch.lerp(blur, image.to(autocast_dtype), weight=2.0), atol=0, rtol=0)
+        self.assert_close(actual.float(), unsharp_mask(image, (5, 5), (1.5, 1.5)), atol=5e-2, rtol=0)
+
+    def test_gradient_under_autocast_6182(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        dtype = torch.float16 if device.type == "cuda" else torch.bfloat16
+        image = torch.rand(1, 3, 12, 12, device=device, requires_grad=True)
+        with torch.autocast(device.type, dtype=dtype):
+            out = unsharp_mask(image, (3, 3), (1.0, 1.0))
+        out.float().sum().backward()
+        assert image.grad is not None
+        assert image.grad.dtype == torch.float32
+        assert torch.isfinite(image.grad).all()
