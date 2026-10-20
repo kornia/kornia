@@ -351,7 +351,7 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         filter_as_zero: whether to filter boxes as zero.
 
     Note:
-        The exported graph has the single input ``boxes``. It filters at ``confidence_threshold``, held as a
+        The exported graph has one input, ``input``, the boxes. It filters at ``confidence_threshold``, held as a
         constant, and at the eager default of ``0.0`` (keep boxes with a positive confidence) when none was given.
 
     Note:
