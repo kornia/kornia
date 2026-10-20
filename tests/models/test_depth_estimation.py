@@ -444,7 +444,7 @@ def test_builder_resizes_in_torch_before_the_graph(monkeypatch):
     monkeypatch.setattr(
         HFONNXComunnityModelLoader,
         "load_preprocessing",
-        lambda self: PreprocessingLoader.from_json(dict(_DEPTH_ANYTHING_V2_SMALL_CONFIG)),
+        lambda self, **kwargs: PreprocessingLoader.from_json(dict(_DEPTH_ANYTHING_V2_SMALL_CONFIG)),
     )
 
     model = DepthAnythingONNXBuilder.build()
@@ -455,3 +455,30 @@ def test_builder_resizes_in_torch_before_the_graph(monkeypatch):
     depth = model(torch.rand(1, 3, 300, 400))
     assert [tuple(x.shape) for x in spy.inputs] == [(1, 3, 392, 518)]
     assert depth.shape == (1, 1, 300, 400)
+
+
+@pytest.mark.device_agnostic
+@pytest.mark.parametrize(
+    ("kwargs", "expected"), [({}, False), ({"force_download": False}, False), ({"force_download": True}, True)]
+)
+def test_builder_passes_force_download_to_the_model_and_the_preprocessing_config(monkeypatch, kwargs, expected):
+    from kornia.models._hf_models import HFONNXComunnityModelLoader
+    from kornia.models._hf_models.preprocessor import PreprocessingLoader
+    from kornia.models.depth_estimation import DepthAnythingONNXBuilder
+
+    seen = []
+
+    def load_model(self, **kwargs):
+        seen.append(("model", kwargs["force_download"]))
+        return _stand_in_graph()
+
+    def load_preprocessing(self, **kwargs):
+        seen.append(("preprocessing", kwargs["force_download"]))
+        return PreprocessingLoader.from_json(dict(_DEPTH_ANYTHING_V2_SMALL_CONFIG))
+
+    monkeypatch.setattr(HFONNXComunnityModelLoader, "load_model", load_model)
+    monkeypatch.setattr(HFONNXComunnityModelLoader, "load_preprocessing", load_preprocessing)
+
+    DepthAnythingONNXBuilder.build(**kwargs)
+
+    assert seen == [("model", expected), ("preprocessing", expected)]

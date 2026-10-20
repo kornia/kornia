@@ -29,8 +29,10 @@ from kornia.feature.loftr.backbone import ResNetFPN_8_2
 from kornia.feature.loftr.loftr import default_cfg
 from kornia.feature.loftr.loftr_module import FinePreprocess
 from kornia.feature.loftr.loftr_module.linear_attention import LinearAttention
+from kornia.feature.loftr.loftr_module.transformer import LoFTREncoderLayer
 from kornia.feature.loftr.utils.coarse_matching import CoarseMatching
 from kornia.feature.loftr.utils.fine_matching import FineMatching
+from kornia.feature.loftr.utils.position_encoding import PositionEncodingSine
 from kornia.geometry import resize, transform_points, warp_perspective
 
 from testing.base import BaseTester
@@ -191,6 +193,20 @@ class TestLoFTR(BaseTester):
         assert out["confidence"].dtype == dtype
         far = out["keypoints1"][out["keypoints1"][:, 0] > 256, 0]
         assert (far % 2 != 0).any()  # sub-2-px positions exist past 256, which bfloat16 cannot hold
+
+    def test_position_encoding_growth_preserves_half_dtype(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rule")
+        position_encoding = PositionEncodingSine(4, max_shape=(2, 2)).to(device, dtype)
+        features = torch.zeros(1, 4, 3, 3, device=device, dtype=dtype)
+
+        encoded = position_encoding(features)
+
+        assert position_encoding.pe.dtype == dtype
+        assert encoded.dtype == dtype
+        layer = LoFTREncoderLayer(4, 1).to(device, dtype).eval()
+        with torch.no_grad():
+            layer(encoded.flatten(2).transpose(1, 2), encoded.flatten(2).transpose(1, 2))
 
     def test_mask_is_read_at_the_coarse_cell_pixels_5728(self, device, dtype):
         # A coarse cell takes the mask value of the pixel it sits on, (8x, 8y). The masks are 1 only on those pixels

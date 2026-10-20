@@ -192,6 +192,9 @@ MODELS: dict[str, "str | list[str]"] = {
     # DeFMO(True): smoke and jit tests instantiate both halves.
     "encoder_best.pt": "https://huggingface.co/kornia/defmo/resolve/main/encoder_best.pt",
     "rendering_best.pt": "https://huggingface.co/kornia/defmo/resolve/main/rendering_best.pt",
+    # -- super-resolution ----------------------------------------------------
+    # SmallSRNet(pretrained=True): about 240 KB; its two slow tests skip unless it is cached.
+    "superres_epoch100-44c6958e.pth": "https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth",
 }
 
 

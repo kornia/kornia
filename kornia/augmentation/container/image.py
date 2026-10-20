@@ -503,6 +503,8 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     Note:
        Augmentations that change the spatial size provide `output_size` with shape (B, spatial_dims).
+       `PadTo` and `RandomMosaic(output_size=...)` provide none, so their configured size is used; with
+       `crop_if_exceeds=False`, `PadTo` keeps a dimension that is already larger.
        Empty crops and resizes have no sampled
        output-size rows, so their configured size is used only when the image forward path
        always applies the transform. Other probability branches retain the current empty-gate
@@ -537,6 +539,20 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         for p in data:
             batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
+
+    # PadTo and RandomMosaic(output_size=...) return their configured size (PadTo(crop_if_exceeds=False): at least
+    # the input size) but emit no ``output_size``.
+    # No branch below matches them, so the final return passes the updated shape on.
+    if isinstance(module, (K.PadTo, K.RandomMosaic)):
+        size = module.flags["size" if isinstance(module, K.PadTo) else "output_size"]
+        if size is not None:
+            new_batch_shape = list(batch_shape)
+            dims = [operator.index(dim) for dim in size]
+            if isinstance(module, K.PadTo) and not module.flags.get("crop_if_exceeds", True):
+                # A dimension already larger than the target is kept, not cropped.
+                dims = [max(old, dim) for old, dim in zip(new_batch_shape[-len(dims) :], dims)]
+            new_batch_shape[-len(dims) :] = dims
+            batch_shape = torch.Size(new_batch_shape)
 
     if (
         batch_shape[0] == 0

@@ -21,7 +21,7 @@ from typing import Any, List, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.config import kornia_config
+from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -29,7 +29,6 @@ from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.rrdbnet import RRDBNet
 from kornia.models.small_sr import SmallSRNetWrapper
-from kornia.onnx.download import CachedDownloader
 
 __all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution", "SuperResolutionConfig"]
 
@@ -291,14 +290,11 @@ class RRDBNetBuilder:
                 "'RealESRGAN_x4plus', 'RealESRNet_x4plus', 'RealESRGAN_x4plus_anime_6B', 'RealESRGAN_x2plus'."
             )
 
-        model_path = None
         if pretrained:
-            url = _URLs[model_name]
-            model_path = CachedDownloader.download_to_cache(
-                url, model_name, download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
-            )
-            state_dict = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
-            model.load_state_dict(state_dict["params_ema"], strict=True)
+            # The torch hub cache, as for every other kornia checkpoint. Real-ESRGAN's RealESRGANer prefers the EMA
+            # weights and falls back to the plain ones.
+            checkpoint = load_state_dict_from_url(_URLs[model_name], map_location=torch.device("cpu"))
+            model.load_state_dict(checkpoint["params_ema" if "params_ema" in checkpoint else "params"], strict=True)
         model.eval()
 
         return SuperResolution(

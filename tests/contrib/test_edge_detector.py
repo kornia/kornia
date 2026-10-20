@@ -15,14 +15,59 @@
 # limitations under the License.
 #
 
+from typing import Optional
+
 import pytest
 import torch
+from torch import nn
 
 import kornia
-from kornia.contrib.edge_detection import EdgeDetectorBuilder
+from kornia.contrib.edge_detection import EdgeDetector, EdgeDetectorBuilder
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.dexined import DexiNed
+from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+
+try:
+    from onnxruntime.capi.onnxruntime_pybind11_state import Fail as _OrtFail
+    from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument as _OrtInvalidArgument
+    from onnxruntime.capi.onnxruntime_pybind11_state import InvalidGraph as _OrtInvalidGraph
+except ImportError:  # the ONNX tests skip without onnxruntime
+    _OrtFail = _OrtInvalidArgument = _OrtInvalidGraph = RuntimeError
+
+# The interpolation modes an exported ``ResizePostProcessor`` resizes with; "area" raises, see its own test.
+_EXPORTABLE_MODES = ["nearest", "bilinear", "bicubic", "nearest-exact"]
+
+# ``to_onnx`` without ``dynamo=``: the dynamo exporter from torch 2.9, the TorchScript exporter before it.
+_EXPORTERS = [pytest.param({}, id="default"), pytest.param({"dynamo": False}, id="legacy")]
+
+
+def _run_onnx(op, x):
+    ort = pytest.importorskip("onnxruntime")
+    session = ort.InferenceSession(op.SerializeToString(), providers=["CPUExecutionProvider"])
+    return torch.from_numpy(session.run(None, {session.get_inputs()[0].name: x.numpy()})[0])
+
+
+def _small_edge_detector(post_processor: Optional[nn.Module] = None) -> EdgeDetector:
+    """A detector whose model is one convolution and a sigmoid, behind the builder's resize pre- and post-processor."""
+    torch.manual_seed(0)
+    model = nn.Sequential(nn.Conv2d(3, 1, 3, padding=1), nn.Sigmoid())
+    return EdgeDetector(model, ResizePreProcessor(16, 16), post_processor or ResizePostProcessor())
+
+
+class _DoubledPostProcessor(ResizePostProcessor):
+    """A ``ResizePostProcessor`` subclass with its own ``forward``: the maps at the model's size, doubled."""
+
+    def forward(self, imgs, original_sizes):
+        return 2 * imgs
+
+
+class _NearestPostProcessor(ResizePostProcessor):
+    """A ``ResizePostProcessor`` subclass that keeps its ``forward``: nearest resizing by default."""
+
+    def __init__(self) -> None:
+        super().__init__("nearest")
 
 
 class TestEdgeDetector(BaseTester):
@@ -81,6 +126,284 @@ class TestEdgeDetector(BaseTester):
         with torch.no_grad():
             eager = det.model(img)
         self.assert_close(exported, eager, rtol=0.0, atol=1e-4)
+
+    def test_list_of_two_sizes_returns_a_map_per_image_at_its_size(self, device, dtype):
+        det = EdgeDetectorBuilder.build(pretrained=False, image_size=32).to(device, dtype)
+        generator = torch.Generator().manual_seed(0)
+        images = [torch.rand(3, h, w, generator=generator).to(device, dtype) for h, w in [(40, 72), (33, 47)]]
+
+        out = det(images)
+
+        assert isinstance(out, list)
+        assert [tuple(edge_map.shape) for edge_map in out] == [(1, 1, 40, 72), (1, 1, 33, 47)]
+        for image, edge_map in zip(images, out):
+            self.assert_close(edge_map, det(image[None])[0])
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
+    @pytest.mark.parametrize("interpolation", _EXPORTABLE_MODES)
+    @pytest.mark.parametrize(
+        ("image_size", "shapes"),
+        [
+            # different heights and widths, an odd size, sizes above and below the pre-processor's 32
+            (None, [(1, 3, 40, 72), (2, 3, 33, 47), (3, 3, 64, 48), (1, 3, 20, 28)]),
+            # a graph input size other than the pre-processor's, which keeps its own
+            (48, [(1, 3, 48, 48), (2, 3, 48, 48), (3, 3, 48, 48)]),
+        ],
+        ids=["dynamic_size", "fixed_size"],
+    )
+    def test_onnx_with_pre_and_post_processor_matches_eager(self, export_kwargs, interpolation, image_size, shapes):
+        # The graph returns one (B, 1, H, W) tensor at the input's size, resized with the post-processor's mode:
+        # ``torch.cat`` of the eager per-image list.
+        pytest.importorskip("onnx")
+        if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            pytest.importorskip("onnxscript")
+        torch.manual_seed(0)
+        det = EdgeDetectorBuilder.build(pretrained=False, image_size=32)
+        det.post_processor = ResizePostProcessor(interpolation)
+        op = det.to_onnx(image_size=image_size, save=False, **export_kwargs)
+
+        generator = torch.Generator().manual_seed(0)
+        for shape in shapes:
+            images = torch.rand(*shape, generator=generator)
+            with torch.no_grad():
+                expected = torch.cat(det(images))
+            assert expected.shape == (shape[0], 1, *shape[2:])
+            self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-4)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "image_size",
+        [
+            pytest.param(
+                None,
+                id="dynamic_size",
+                marks=[
+                    pytest.mark.xfail(
+                        torch_version_lt(2, 6, 0),
+                        reason=(
+                            "the dynamo exporter of torch 2.5.1 writes a resize to a symbolic size, as "
+                            "F.interpolate(x, size=y.shape[-2:]) alone, as a Concat of 0-d sizes, which ONNX Runtime "
+                            "rejects as INVALID_GRAPH"
+                        ),
+                        raises=_OrtInvalidGraph,
+                        strict=True,
+                    ),
+                    pytest.mark.xfail(
+                        torch_version_ge(2, 6, 0) and torch_version_lt(2, 9, 0),
+                        reason=(
+                            "not checked on torch 2.6 to 2.8, whose dynamo exporter may write a resize to a symbolic "
+                            "size as torch 2.5.1's does, which ONNX Runtime rejects"
+                        ),
+                        raises=(_OrtInvalidGraph, _OrtFail, _OrtInvalidArgument),
+                        strict=False,
+                    ),
+                ],
+            ),
+            pytest.param(24, id="fixed_size"),
+        ],
+    )
+    def test_onnx_on_the_torch_export_exporter_returns_the_input_size(self, image_size):
+        # Below torch 2.9, ``dynamo=True`` selects the exporter on which ``torch.onnx.is_in_onnx_export()`` is False,
+        # so only the flag that ``to_onnx`` sets selects the export branch there. A one-convolution model: that
+        # exporter cannot translate DexiNed's batch norm on torch 2.5.1.
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        det = _small_edge_detector()
+        op = det.to_onnx(image_size=image_size, save=False, dynamo=True)
+
+        generator = torch.Generator().manual_seed(0)
+        shapes = [(1, 3, 20, 28), (3, 3, 33, 18)] if image_size is None else [(1, 3, 24, 24), (3, 3, 24, 24)]
+        for shape in shapes:
+            images = torch.rand(*shape, generator=generator)
+            with torch.no_grad():
+                expected = torch.cat(det(images))
+            self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        "dynamo",
+        [
+            pytest.param(False, id="legacy"),
+            pytest.param(
+                True,
+                id="torch_export",
+                marks=pytest.mark.skipif(
+                    torch_version_lt(2, 9, 0),
+                    reason="below torch 2.9 a direct export on that exporter takes the eager path; use to_onnx",
+                ),
+            ),
+        ],
+    )
+    def test_direct_torch_onnx_export_matches_eager(self, tmp_path, dynamo):
+        # ``torch.onnx.export(detector, ...)`` without ``to_onnx``: ``torch.onnx.is_in_onnx_export()`` alone selects
+        # the export branch, on the legacy exporter and on the dynamo exporter from torch 2.9.
+        pytest.importorskip("onnx")
+        if dynamo:
+            pytest.importorskip("onnxscript")
+        det = _small_edge_detector().eval()
+        path = tmp_path / "edge_detector.onnx"
+        traced = torch.rand(2, 3, 24, 32, generator=torch.Generator().manual_seed(1))
+        if dynamo:
+            dims = {0: "batch", 2: "height", 3: "width"}
+            torch.onnx.export(det, (traced,), str(path), dynamo=True, input_names=["input"], dynamic_shapes=(dims,))
+        else:
+            axes = {0: "batch", 2: "height", 3: "width"}
+            torch.onnx.export(
+                det,
+                (traced,),
+                str(path),
+                dynamo=False,
+                opset_version=18,
+                input_names=["input"],
+                output_names=["output"],
+                dynamic_axes={"input": axes, "output": axes},
+            )
+        onnx = pytest.importorskip("onnx")
+        op = onnx.load(str(path))
+
+        generator = torch.Generator().manual_seed(0)
+        for shape in [(1, 3, 20, 28), (3, 3, 33, 18)]:
+            images = torch.rand(*shape, generator=generator)
+            with torch.no_grad():
+                expected = torch.cat(det(images))
+            self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
+    def test_onnx_with_an_area_post_processor_raises(self, export_kwargs):
+        # "area" resizing is adaptive average pooling, which cannot be exported to a size known only at run time:
+        # the legacy exporter fails on it and the dynamo exporter's graph is right only at the traced size.
+        pytest.importorskip("onnx")
+        if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            pytest.importorskip("onnxscript")
+        det = _small_edge_detector(ResizePostProcessor("area"))
+        images = torch.rand(2, 3, 20, 28, generator=torch.Generator().manual_seed(0))
+
+        with pytest.raises(ValueError, match='"area"'):
+            det.to_onnx(image_size=None, save=False, **export_kwargs)
+        with pytest.raises(ValueError, match='"area"'):
+            det.to_onnx(image_size=24, save=False, **export_kwargs)
+
+        # eager resizing with "area" is unchanged
+        out = det(images)
+        assert isinstance(out, list)
+        assert [tuple(edge_map.shape) for edge_map in out] == [(1, 1, 20, 28)] * 2
+        assert det._exporting_to_onnx is False
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
+    def test_onnx_keeps_the_forward_of_a_post_processor_subclass(self, export_kwargs):
+        # Only ``ResizePostProcessor.forward`` itself is replaced by the export branch: a subclass that overrides it is
+        # exported as its own ``forward`` computes.
+        pytest.importorskip("onnx")
+        if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            pytest.importorskip("onnxscript")
+        det = _small_edge_detector(_DoubledPostProcessor())
+        op = det.to_onnx(image_size=None, save=False, **export_kwargs)
+
+        generator = torch.Generator().manual_seed(0)
+        for shape in [(1, 3, 20, 28), (3, 3, 33, 18)]:
+            images = torch.rand(*shape, generator=generator)
+            with torch.no_grad():
+                expected = det(images)
+            assert expected.shape == (shape[0], 1, 16, 16)
+            self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EXPORTERS)
+    def test_onnx_resizes_back_for_a_post_processor_subclass_that_keeps_forward(self, export_kwargs):
+        # A subclass without its own ``forward`` resizes as ``ResizePostProcessor`` does, so the export branch replaces
+        # it too, with the subclass's mode.
+        pytest.importorskip("onnx")
+        if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            pytest.importorskip("onnxscript")
+        det = _small_edge_detector(_NearestPostProcessor())
+        op = det.to_onnx(image_size=None, save=False, **export_kwargs)
+
+        generator = torch.Generator().manual_seed(0)
+        for shape in [(1, 3, 20, 28), (3, 3, 33, 18)]:
+            images = torch.rand(*shape, generator=generator)
+            with torch.no_grad():
+                expected = torch.cat(det(images))
+            self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        "dynamo",
+        [
+            pytest.param(False, id="legacy"),
+            pytest.param(
+                True,
+                id="torch_export",
+                marks=pytest.mark.skipif(
+                    torch_version_lt(2, 9, 0),
+                    reason="below torch 2.9 a direct export on that exporter takes the eager path; use to_onnx",
+                ),
+            ),
+        ],
+    )
+    def test_direct_torch_onnx_export_with_an_area_post_processor_raises(self, tmp_path, dynamo):
+        # ``forward`` itself rejects "area" under export: the dynamo exporter would otherwise give a graph that is
+        # right only at the traced size. That exporter raises its own error, caused by the ``ValueError``.
+        pytest.importorskip("onnx")
+        if dynamo:
+            pytest.importorskip("onnxscript")
+        det = _small_edge_detector(ResizePostProcessor("area")).eval()
+        traced = torch.rand(2, 3, 24, 32, generator=torch.Generator().manual_seed(1))
+        dims = {0: "batch", 2: "height", 3: "width"}
+        export_kwargs = (
+            {"dynamic_shapes": (dims,)}
+            if dynamo
+            else {"opset_version": 18, "output_names": ["output"], "dynamic_axes": {"input": dims, "output": dims}}
+        )
+
+        # torch 2.9's non-strict export registers a global buffer-registration hook and removes it only when the
+        # trace succeeds. Drop the one this failing export leaves behind, or every later dynamo trace in the process
+        # calls it and raises ``Unsupported``.
+        buffer_hooks = torch.nn.modules.module._global_buffer_registration_hooks
+        hooks_before = set(buffer_hooks)
+        try:
+            with pytest.raises(Exception) as info:
+                torch.onnx.export(
+                    det,
+                    (traced,),
+                    str(tmp_path / "edge_detector.onnx"),
+                    dynamo=dynamo,
+                    input_names=["input"],
+                    **export_kwargs,
+                )
+        finally:
+            for key in set(buffer_hooks) - hooks_before:
+                del buffer_hooks[key]
+
+        error = info.value
+        while error is not None and not isinstance(error, ValueError):
+            error = error.__cause__ or error.__context__
+        assert error is not None, f"no ValueError behind {info.value!r}"
+        assert '"area"' in str(error)
+
+    def test_dynamo_returns_the_eager_list(self, device, dtype, torch_optimizer):
+        # Only an export returns the stacked tensor: a compiled detector keeps the per-image list. Under
+        # ``torch.compile`` on torch 2.5.1, ``is_exporting()`` is True (#5037), so it cannot select the export branch.
+        det = _small_edge_detector().to(device, dtype)
+        images = torch.rand(2, 3, 20, 28, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+
+        out = torch_optimizer(det)(images)
+
+        assert isinstance(out, list)
+        expected = det(images)
+        assert len(out) == len(expected) == 2
+        for actual, edge_map in zip(out, expected):
+            self.assert_close(actual, edge_map)
 
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
