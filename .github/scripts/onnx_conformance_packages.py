@@ -200,8 +200,17 @@ def select(paths: Iterable[str], root: Path = REPO) -> str:
     if not changed:
         return ""
     by_path, reverse = _graph(root)
-    # a deleted file, or data next to the code, stands for its package's ``__init__``
-    affected = {by_path.get(path) or f"kornia.{path.split('/')[1]}" for path in changed}
+    index = {module: root / path for path, module in by_path.items()}
+    affected: set[str] = set()
+    for path in changed:
+        if (module := by_path.get(path)) is not None:
+            affected.add(module)
+            continue
+        # a deleted file, or data next to the code, stands for its package's ``__init__``; a deleted module also for
+        # the nearest module that survives it, where the imports of its remaining importers now resolve
+        affected.add(f"kornia.{path.split('/')[1]}")
+        if path.endswith(".py") and (survivor := _resolve(path.removesuffix(".py").replace("/", "."), index)):
+            affected.add(survivor)
     pending = list(affected)
     while pending:
         for importer in reverse.get(pending.pop(), set()) - affected:

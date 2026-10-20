@@ -130,6 +130,23 @@ def test_select_resolves_each_import_form(tmp_path):
     assert select(["kornia/color/removed.py"], tmp_path) == "color"  # a deleted module stands for its package
 
 
+def test_select_follows_importers_of_a_deleted_nested_module(tmp_path):
+    # The importers of a deleted module still import it; their imports resolve to the nearest module that survives,
+    # not to the package's ``__init__``.
+    _write(
+        tmp_path,
+        {
+            "kornia/__init__.py": "",
+            "kornia/geometry/__init__.py": "",
+            "kornia/geometry/transform/__init__.py": "",
+            "kornia/geometry/transform/kept.py": "",
+            "kornia/feature/__init__.py": "",
+            "kornia/feature/uses.py": "from kornia.geometry.transform.removed import warp\n",
+        },
+    )
+    assert select(["kornia/geometry/transform/removed.py"], tmp_path) == "geometry,feature"
+
+
 @pytest.mark.parametrize(
     "stdin",
     [

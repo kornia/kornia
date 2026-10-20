@@ -50,8 +50,10 @@ from testing.onnx_conformance import (
     selected_cases,
 )
 
-# Every case runs on CPU tensors and is compared in onnxruntime as numpy, whatever ``--device`` says.
-pytestmark = pytest.mark.device_agnostic
+# Every case runs on CPU tensors and is compared in onnxruntime as numpy, whatever ``--device`` says. The registries
+# and the harness call torch.manual_seed, which seeds CUDA and MPS too; testing.onnx_conformance forks only the CPU
+# generator, so restore_torch_rng puts the accelerator generators back.
+pytestmark = [pytest.mark.device_agnostic, pytest.mark.usefixtures("restore_torch_rng")]
 
 # The exporters warn at length about every graph; the per-case tests keep the session output readable. Not module-wide:
 # test_survey_harness_leaves_process_state_alone must see a filter the harness would add.
@@ -160,6 +162,9 @@ def test_survey_harness_leaves_process_state_alone() -> None:
     records = [run_case(case, dynamo=dynamo) for dynamo in (True, False)]
     after = _process_state()
     assert all(record["status"] not in ("eager-fail", "skipped") for record in records), records
+    # A canary for the legacy test, which passes any export failure: this case exports with the legacy exporter on
+    # every supported torch, so an error of the harness itself (a renamed torch constant, say) cannot pass silently.
+    assert records[1]["status"] == "ok", records[1]
     assert torch.equal(after.pop("rng"), before["rng"])
     # A torch.export trace may add torch's own filters (torch 2.5 adds one for module "torch.distributed"); the
     # harness used to add a blanket "ignore everything" one. Anything new must name a torch module.
