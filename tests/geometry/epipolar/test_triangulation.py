@@ -317,6 +317,18 @@ class TestTriangulation(BaseTester):
         atol = 1e-4 if dtype == torch.float64 else 1e-3
         self.assert_close(X_kornia, X_expected, atol=atol, rtol=0.0)
 
+    @pytest.mark.parametrize("solver", SOLVERS)
+    def test_autocast_does_not_reach_the_solver(self, solver, device):
+        # A caller's autocast region ran the solvers' products in half precision: cofactor lost accuracy, and eigh
+        # raised on MPS, which has no half-precision eigh (#6174).
+        scene = _make_scene(device, torch.float32)
+        args = (scene["P"][0:1], scene["P"][1:2], scene["points2d"][0:1], scene["points2d"][1:2])
+        expected = epi.triangulate_points(*args, solver=solver)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = epi.triangulate_points(*args, solver=solver)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
     # ------------------------------------------------------------------
     # Module-level import check
     # ------------------------------------------------------------------

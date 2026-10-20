@@ -24,7 +24,7 @@ from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
-from kornia.core.utils import _torch_svd_cast
+from kornia.core.utils import _autocast_disabled, _torch_svd_cast
 
 from .numeric import cross_product_matrix
 
@@ -167,6 +167,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
           determinant and ``-P`` when it has negative determinant (``-P`` gives the factors of ``P``). ``K`` is
           not normalised to ``K[2, 2] = 1``; divide by ``K[..., 2:, 2:]`` to normalise.
         - ``P`` must have exactly one batch dimension. float16 and bfloat16 raise.
+        - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
         P: the projection matrix with shape :math:`(B, 3, 4)`.
@@ -180,6 +181,15 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
     """
     KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
+    # A caller's autocast region would run the products below in half precision, which torch.linalg.solve and qr
+    # have no kernel for. TorchScript has no context managers; a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        return _KRt_from_projection(P)
+    with _autocast_disabled(P.device.type):
+        return _KRt_from_projection(P)
+
+
+def _KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     submat_3x3 = P[:, 0:3, 0:3]
     last_column = P[:, 0:3, 3].unsqueeze(-1)
 
