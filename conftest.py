@@ -34,6 +34,7 @@ from torch.distributions import Distribution
 import kornia
 from kornia.core.download import load_state_dict_from_url
 
+from testing import onnx_conformance
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
     FailureRecorder,
@@ -287,6 +288,12 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
 
 def pytest_configure(config) -> None:
     """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
+    try:
+        config._onnx_conformance = onnx_conformance.parse_selection(config.getoption(onnx_conformance.OPTION))
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
+    if config._onnx_conformance:
+        config.pluginmanager.register(onnx_conformance.KnownFailurePlugin(), "onnx-conformance-known-failures")
     profile = _configure_known_failure_profile(config)
     config._known_failure_profile = profile
     if profile is None:
@@ -424,6 +431,15 @@ def pytest_collection_modifyitems(config, items):
     if not optimizer_env:
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
+
+    # The ONNX conformance test (#5819) is opt-in: --onnx-conformance names the packages whose promised operators it
+    # runs. When it is given, onnx_conformance.KnownFailurePlugin turns the known failures into strict xfails.
+    if not config._onnx_conformance:
+        conformance_items = [item for item in items if item.get_closest_marker(onnx_conformance.MARKER) is not None]
+        if conformance_items:
+            config.hook.pytest_deselected(items=conformance_items)
+            conformance_ids = {id(item) for item in conformance_items}
+            items[:] = [item for item in items if id(item) not in conformance_ids]
 
     if config.getoption("--xfail-known-failures") and getattr(config, "_known_failure_profile", None) is None:
         devices = _parse_test_option(config, "--device", TEST_DEVICES)
@@ -575,6 +591,17 @@ def pytest_addoption(parser):
             "so they are skipped by default; real Apple hardware does not abort, and this restores "
             "them for local diagnosis. Expect failures the known-failure manifest does not pin. "
             "(env: KORNIA_TEST_RUN_MPS_PROCESS_ABORT)"
+        ),
+    )
+    parser.addoption(
+        onnx_conformance.OPTION,
+        action="store",
+        default=os.environ.get(onnx_conformance.ENV_VAR, ""),
+        metavar="PACKAGES",
+        help=(
+            "Run the ONNX conformance test (tests/onnx/test_conformance.py, #5819) for these stable-core "
+            "packages, comma-separated (geometry,color,...), or 'all'; it is deselected without this option. "
+            f"(env: {onnx_conformance.ENV_VAR})"
         ),
     )
     parser.addoption(
