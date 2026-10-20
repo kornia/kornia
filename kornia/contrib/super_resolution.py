@@ -235,18 +235,21 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
             kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
         Raises:
-            ValueError: With the pre- and post-processor, if the post-processor returns a list with one image per input
-                image and a ``dynamic_axes`` or ``dynamic_shapes`` argument makes the exported batch dynamic.
+            ValueError: With the pre- and post-processor, if the output is a list with one image per input image and
+                a ``dynamic_axes`` or ``dynamic_shapes`` argument makes the exported batch dynamic.
 
         Note:
-            With the pre- and post-processor, a model whose post-processor returns a list with one image per input
-            image is exported for a batch of one image: the exporters turn a list into one graph output per traced
-            image, so a dynamic batch would return the traced batch's images at any batch size. The builders'
-            post-processors, ``nn.Identity`` and ``OutputRangePostProcessor`` (without a ``forward`` of a subclass's
-            own), return one tensor for the batch and keep it dynamic. Which kind of output any other post-processor
-            returns is read from one forward pass at the export size, in eval mode, without gradients and outside the
-            export. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic
-            raises a ``ValueError`` after the export, before anything is saved.
+            With the pre- and post-processor, an output that is a list with one image per input image is exported
+            for a batch of one image: the exporters turn a list into one graph output per traced image, so a dynamic
+            batch would return the traced batch's images at any batch size. The list comes from a post-processor that
+            returns one, or from a pre-processor that returns a list of images, which :meth:`forward` runs through the
+            network one at a time. The builders' pre-processors, ``nn.Identity`` and ``ResizePreProcessor``, hand the
+            network one tensor, and their post-processors, ``nn.Identity`` and ``OutputRangePostProcessor``, keep it
+            one (each without a ``forward`` of a subclass's own), so that combination keeps a dynamic batch without a
+            probe. Which kind of output any other combination returns is read from one call of :meth:`forward` at
+            the export size, in eval mode, without gradients and outside the export, which the check after the
+            export reuses. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export
+            dynamic raises a ``ValueError`` after the export, before anything is saved.
 
         """
         if onnx_name is None:
@@ -257,41 +260,47 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         pseudo_shape = [1, 3, pseudo_size, pseudo_size]
         # Exported for a dynamic batch, a list of per-image outputs comes out as the traced batch's images, or the
         # export fails: such a model is exported for one image.
-        batch = -1
-        if include_pre_and_post_processor and not self._post_processor_returns_one_tensor():
+        returns_list = None
+        if include_pre_and_post_processor and not self._returns_one_tensor_without_a_probe():
             # The probe's input draws from the global generator, as the export's dummy does, and gives back what it
             # drew.
             with _preserved_rng():
-                if _returns_list(self, torch.rand(pseudo_shape)):
-                    batch = 1
+                returns_list = _returns_list(self, torch.rand(pseudo_shape))
+        batch = 1 if returns_list else -1
 
-        return ONNXExportMixin.to_onnx(
-            self,
-            onnx_name,
-            input_shape=[batch, 3, self.input_image_size or -1, self.input_image_size or -1],
-            output_shape=[batch, 3, self.output_image_size or -1, self.output_image_size or -1],
-            pseudo_shape=pseudo_shape,
-            model=self if include_pre_and_post_processor else self.model,
-            save=save,
-            additional_metadata=additional_metadata,
-            **kwargs,
+        with self._onnx_output_kind_kept(returns_list):
+            return ONNXExportMixin.to_onnx(
+                self,
+                onnx_name,
+                input_shape=[batch, 3, self.input_image_size or -1, self.input_image_size or -1],
+                output_shape=[batch, 3, self.output_image_size or -1, self.output_image_size or -1],
+                pseudo_shape=pseudo_shape,
+                model=self if include_pre_and_post_processor else self.model,
+                save=save,
+                additional_metadata=additional_metadata,
+                **kwargs,
+            )
+
+    def _returns_one_tensor_without_a_probe(self) -> bool:
+        """Whether the pre- and post-processor are the builders', which keep a tensor batch one tensor.
+
+        ``nn.Identity`` and ``ResizePreProcessor`` hand the network one tensor for a tensor batch, so :meth:`forward`
+        does not run it image by image, and ``nn.Identity`` and ``OutputRangePostProcessor`` keep its output a tensor.
+        :meth:`to_onnx` then runs no forward pass to read the output kind: for an RRDB model that pass costs more than
+        the export.
+        """
+        pre = type(self.pre_processor).forward
+        post = type(self.post_processor).forward
+        return (pre is nn.Identity.forward or pre is ResizePreProcessor.forward) and (
+            post is nn.Identity.forward or post is OutputRangePostProcessor.forward
         )
 
-    def _post_processor_returns_one_tensor(self) -> bool:
-        """Whether the post-processor is one of the builders', which returns the network's tensor output as a tensor.
-
-        ``nn.Identity`` and ``OutputRangePostProcessor`` keep a tensor a tensor, so :meth:`to_onnx` runs no forward
-        pass to read their output: for an RRDB model that pass costs more than the export.
-        """
-        forward = type(self.post_processor).forward
-        return forward is nn.Identity.forward or forward is OutputRangePostProcessor.forward
-
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
-        if module is not self or self._post_processor_returns_one_tensor() or not _returns_list(self, dummy_input):
+        if module is not self or self._returns_one_tensor_without_a_probe() or not self._onnx_returns_list(dummy_input):
             return None
         return (
-            "Use a post-processor that returns the images of the batch as one tensor, such as "
-            "OutputRangePostProcessor, to export a dynamic batch."
+            "Use a pre-processor that hands the network the batch as one tensor and a post-processor that keeps it "
+            "one, such as nn.Identity or ResizePreProcessor and OutputRangePostProcessor, to export a dynamic batch."
         )
 
 

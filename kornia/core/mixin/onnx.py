@@ -325,6 +325,11 @@ def _returns_list(module: Any, inputs: Any) -> bool:
         return isinstance(module(inputs), list)
 
 
+# The instance attribute in which ``ONNXExportMixin._onnx_output_kind_kept`` keeps a wrapper's output kind for the
+# duration of its export. It is written to ``__dict__`` and removed afterwards, so no class declares it.
+_ONNX_LIST_OUTPUT = "_onnx_list_output"
+
+
 def _has_dynamic_batch(onnx_model: onnx.ModelProto) -> bool:
     """Return whether the first graph input of ``onnx_model`` has a batch dimension without a fixed size."""
     if not onnx_model.graph.input:
@@ -407,8 +412,8 @@ class ONNXExportMixin:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
             ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
                 a fixed entry of `input_shape` differs from the explicit `pseudo_shape`; or if the model declares one
-                output per image, as ``ObjectDetector``, ``EdgeDetector`` and ``SuperResolution`` with a per-image
-                post-processor and ``BoxFiltering`` without ``filter_as_zero`` do, and the exported batch is dynamic.
+                output per image, as an ``ObjectDetector``, ``EdgeDetector`` or ``SuperResolution`` whose output is a
+                per-image list and ``BoxFiltering`` without ``filter_as_zero`` do, and the exported batch is dynamic.
                 That check runs after the export and before anything is saved.
             FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
                 checked before the export runs.
@@ -442,7 +447,7 @@ class ONNXExportMixin:
               from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
               argument replaces them.
             - The exporters turn a list output into a fixed number of graph outputs, one per item of the traced
-              batch. ``ObjectDetector``, ``EdgeDetector`` and ``SuperResolution`` with a per-image post-processor
+              batch. An ``ObjectDetector``, ``EdgeDetector`` or ``SuperResolution`` whose output is a per-image list
               and ``BoxFiltering`` without ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the
               batch, and an export whose batch comes out dynamic raises. Other models are not checked: the default
               ``_onnx_fixed_batch_hint`` declares nothing, so a list output keeps the traced batch's number of outputs
@@ -560,6 +565,33 @@ class ONNXExportMixin:
         overrides it.
         """
         return None
+
+    @contextlib.contextmanager
+    def _onnx_output_kind_kept(self, returns_list: Optional[bool]) -> Iterator[None]:
+        """Keep ``returns_list``, the output kind a wrapper's ``to_onnx`` read before its export, for the block.
+
+        :meth:`_onnx_returns_list` gives it back to ``_onnx_fixed_batch_hint`` after the export, so the model runs once
+        to read its output kind, not twice. ``None`` keeps nothing. What was kept before comes back after the block,
+        also when the export fails.
+        """
+        missing = object()
+        previous = self.__dict__.get(_ONNX_LIST_OUTPUT, missing)
+        self.__dict__[_ONNX_LIST_OUTPUT] = returns_list
+        try:
+            yield
+        finally:
+            if previous is missing:
+                del self.__dict__[_ONNX_LIST_OUTPUT]
+            else:
+                self.__dict__[_ONNX_LIST_OUTPUT] = previous
+
+    def _onnx_returns_list(self, inputs: Any) -> bool:
+        """Return whether this object returns a list: the kind kept for the current export, else one run on ``inputs``.
+
+        A direct call of :meth:`ONNXExportMixin.to_onnx` on a wrapper keeps nothing, so its check runs the model.
+        """
+        kept = self.__dict__.get(_ONNX_LIST_OUTPUT)
+        return _returns_list(self, inputs) if kept is None else kept
 
     def _create_dummy_input(
         self, input_shape: list[int], pseudo_shape: Optional[list[int]] = None

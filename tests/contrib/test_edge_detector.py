@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import importlib
 from typing import Optional
 
 import pytest
@@ -24,6 +25,7 @@ from torch import nn
 import kornia
 from kornia.contrib.edge_detection import EdgeDetector, EdgeDetectorBuilder
 from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.dexined import DexiNed
 from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
 
@@ -70,6 +72,13 @@ class _NearestPostProcessor(ResizePostProcessor):
         super().__init__("nearest")
 
 
+class _DelegatingPostProcessor(ResizePostProcessor):
+    """A ``ResizePostProcessor`` subclass whose own ``forward`` delegates: a list eagerly, the maps under export."""
+
+    def forward(self, imgs, original_sizes):
+        return super().forward(imgs, original_sizes)
+
+
 class _PerImageMaps(nn.Module):
     """A post-processor that returns a list with one ``(1, 1, h, w)`` map per image, at the model's size (#6161)."""
 
@@ -112,6 +121,21 @@ _DYNAMIC_BATCH = [
         ],
     ),
 ]
+
+
+def _count_probes(monkeypatch):
+    """Count the runs that read the detector's output kind, wherever ``to_onnx`` or its check makes them."""
+    mixin = importlib.import_module("kornia.core.mixin.onnx")
+    probe = mixin._returns_list
+    calls = []
+
+    def _counting(module, inputs):
+        calls.append(type(module).__name__)
+        return probe(module, inputs)
+
+    monkeypatch.setattr(kornia.contrib.edge_detection, "_returns_list", _counting)
+    monkeypatch.setattr(mixin, "_returns_list", _counting)
+    return calls
 
 
 def _importorskip_exporter(export_kwargs):
@@ -499,6 +523,7 @@ class TestEdgeDetector(BaseTester):
             raise AssertionError("to_onnx ran the detector to read its output kind")
 
         monkeypatch.setattr(kornia.contrib.edge_detection, "_returns_list", _no_probe)
+        monkeypatch.setattr(importlib.import_module("kornia.core.mixin.onnx"), "_returns_list", _no_probe)
         det = _small_edge_detector()
 
         op = det.to_onnx(image_size=24, save=False, **export_kwargs)
@@ -544,6 +569,69 @@ class TestEdgeDetector(BaseTester):
         with torch.no_grad():
             expected = det.model(images)
         self.assert_close(_run_onnx(op, images), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EACH_EXPORTER)
+    def test_onnx_with_a_delegating_resize_post_processor_exports_one_image_6161(self, export_kwargs):
+        # A subclass whose own ``forward`` calls ``ResizePostProcessor.forward`` returns a list eagerly and the maps
+        # unchanged under export. The output kind is read outside the export, so it is exported for one image.
+        _importorskip_exporter(export_kwargs)
+        det = _small_edge_detector(_DelegatingPostProcessor())
+
+        op = det.to_onnx(image_size=16, save=False, **export_kwargs)
+
+        assert op.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+        images = torch.rand(1, 3, 16, 16, generator=torch.Generator().manual_seed(0))
+        with torch.no_grad():
+            expected = det(images)
+        self.assert_close(_run_onnx(op, images), expected[0], rtol=0.0, atol=1e-5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        ("post_processor", "override"),
+        [
+            pytest.param(_DoubledPostProcessor, {"dynamo": False}, id="tensor_torchscript"),
+            pytest.param(_PerImageMaps, {"dynamo": False}, id="list_torchscript"),
+            pytest.param(
+                _PerImageMaps,
+                {"dynamo": False, "dynamic_axes": {"input": {0: "batch"}}},
+                id="list_torchscript_batch_override",
+            ),
+        ],
+    )
+    def test_onnx_reads_the_output_kind_once_6161(self, post_processor, override, monkeypatch):
+        # ``to_onnx`` runs the detector once to read its output kind, and the check after the export reuses that
+        # reading rather than running it again on the dummy batch. The reading is not kept after the export.
+        _importorskip_exporter(override)
+        calls = _count_probes(monkeypatch)
+        det = _small_edge_detector(post_processor())
+
+        if "dynamic_axes" in override:
+            with pytest.raises(ValueError, match="returns one output per image"):
+                det.to_onnx(image_size=24, save=False, **override)
+        else:
+            det.to_onnx(image_size=24, save=False, **override)
+
+        assert calls == ["EdgeDetector"]
+        assert "_onnx_list_output" not in det.__dict__
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    def test_direct_mixin_export_of_a_per_image_detector_reads_the_output_kind_6161(self, monkeypatch):
+        # ``ONNXExportMixin.to_onnx`` called directly reads nothing before the export, so the check after it runs the
+        # detector itself, and rejects the dynamic batch.
+        pytest.importorskip("onnx")
+        calls = _count_probes(monkeypatch)
+        det = _small_edge_detector(_PerImageMaps())
+
+        with pytest.raises(ValueError, match="EdgeDetector returns one output per image"):
+            ONNXExportMixin.to_onnx(
+                det, input_shape=[-1, 3, 24, 24], pseudo_shape=[1, 3, 24, 24], save=False, dynamo=False
+            )
+
+        assert calls == ["EdgeDetector"]
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)

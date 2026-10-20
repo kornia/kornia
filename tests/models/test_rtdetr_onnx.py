@@ -17,6 +17,8 @@
 
 """ONNX export tests for RT-DETR."""
 
+import importlib
+
 import pytest
 import torch
 from torch import nn
@@ -406,11 +408,49 @@ class _NormalisedDetections(_ScoredDetections):
 
 
 @pytest.mark.timeout(120)
+@pytest.mark.parametrize(
+    ("post_processor", "override"),
+    [
+        pytest.param(_BatchedDetections, {"dynamo": False}, id="batched_torchscript"),
+        pytest.param(_PerImageDetections, {"dynamo": False}, id="per_image_torchscript"),
+        pytest.param(
+            _PerImageDetections,
+            {"dynamo": False, "dynamic_axes": {"input": {0: "batch"}}},
+            id="per_image_torchscript_batch_override",
+        ),
+    ],
+)
+def test_detector_reads_the_output_kind_once_6161(post_processor, override, monkeypatch):
+    """``to_onnx`` runs the detector once to read its output kind; the check after the export reuses that reading."""
+    pytest.importorskip("onnx")
+    mixin = importlib.import_module("kornia.core.mixin.onnx")
+    probe = mixin._returns_list
+    calls = []
+
+    def _counting(module, inputs):
+        calls.append(type(module).__name__)
+        return probe(module, inputs)
+
+    monkeypatch.setattr(importlib.import_module("kornia.contrib.object_detection"), "_returns_list", _counting)
+    monkeypatch.setattr(mixin, "_returns_list", _counting)
+    detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), post_processor())
+
+    if "dynamic_axes" in override:
+        with pytest.raises(ValueError, match="confidence_filtering=False"):
+            detector.to_onnx(image_size=32, save=False, **override)
+    else:
+        detector.to_onnx(image_size=32, save=False, **override)
+
+    assert calls == ["ObjectDetector"]
+    assert "_onnx_list_output" not in detector.__dict__
+
+
+@pytest.mark.timeout(120)
 @pytest.mark.parametrize("per_image", [True, False], ids=["per_image", "batched"])
 def test_detector_output_probe_runs_in_eval_mode_on_the_models_dtype(per_image):
-    """The forward passes that read the output kind keep statistics and each training flag, in the model's dtype.
+    """The forward pass that reads the output kind keeps statistics and each training flag, in the model's dtype.
 
-    A batched detector exports a dynamic batch, so ``to_onnx`` runs it a second time for the check of #6111.
+    A batched detector exports a dynamic batch, whose check after the export (#6111) reuses that reading.
     """
     pytest.importorskip("onnx")
     pytest.importorskip("onnxscript")

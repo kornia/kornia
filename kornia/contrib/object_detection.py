@@ -257,10 +257,10 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             With a post-processor that returns a list of per-image detections, as a
             ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
             exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
-            the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
-            Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size. A
-            ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a
-            ``ValueError`` after the export, before anything is saved.
+            the detector returns is read from one forward pass at the export size, in eval mode and without gradients,
+            which the check after the export reuses. Build an RT-DETR detector with ``confidence_filtering=False`` to
+            export a batch of any size. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such
+            an export dynamic raises a ``ValueError`` after the export, before anything is saved.
 
             Without the pre- and post-processor, a model that declares ``ONNX_OUTPUT_NAMES``, as
             :class:`~kornia.models.rt_detr.RTDETR` does (``pred_logits`` and ``pred_boxes``), has its outputs exported
@@ -272,11 +272,13 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         pseudo_shape = [1, 3, image_size or 352, image_size or 352]
         # Exported for a dynamic batch, a per-image list comes out as the traced batch's detections, or the export
         # fails: such a detector is exported for one image.
-        batch = -1
-        # The probe's input draws from the global generator, as the export's dummy does, and gives back what it drew.
-        with _preserved_rng():
-            if include_pre_and_post_processor and _returns_list(self, torch.rand(pseudo_shape)):
-                batch = 1
+        returns_list = None
+        if include_pre_and_post_processor:
+            # The probe's input draws from the global generator, as the export's dummy does, and gives back what it
+            # drew.
+            with _preserved_rng():
+                returns_list = _returns_list(self, torch.rand(pseudo_shape))
+        batch = 1 if returns_list else -1
         input_shape = [batch, 3, image_size or -1, image_size or -1]
 
         output_names = None if include_pre_and_post_processor else getattr(self.model, "ONNX_OUTPUT_NAMES", None)
@@ -291,20 +293,21 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
                 output_axes = {name: {0: "dim_0"} for name in kwargs["output_names"]}
                 kwargs["dynamic_axes"] = {"input": input_axes, **output_axes}
 
-        return ONNXExportMixin.to_onnx(
-            self,
-            onnx_name,
-            input_shape=input_shape,
-            output_shape=[-1, -1, 6],
-            pseudo_shape=pseudo_shape,
-            model=self if include_pre_and_post_processor else self.model,
-            save=save,
-            additional_metadata=additional_metadata,
-            **kwargs,
-        )
+        with self._onnx_output_kind_kept(returns_list):
+            return ONNXExportMixin.to_onnx(
+                self,
+                onnx_name,
+                input_shape=input_shape,
+                output_shape=[-1, -1, 6],
+                pseudo_shape=pseudo_shape,
+                model=self if include_pre_and_post_processor else self.model,
+                save=save,
+                additional_metadata=additional_metadata,
+                **kwargs,
+            )
 
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
-        if module is not self or not _returns_list(self, dummy_input):
+        if module is not self or not self._onnx_returns_list(dummy_input):
             return None
         return (
             "Use a post-processor that returns one tensor for the batch, such as a DETRPostProcessor with "

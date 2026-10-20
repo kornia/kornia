@@ -262,11 +262,13 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             exported for a batch of one image: the exporters turn a list into one graph output per traced image, so a
             dynamic batch would return the traced batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
             its own ``forward`` is not such a post-processor, since the export replaces it. Which kind of output any
-            other post-processor returns is read from one forward pass at the export size, in eval mode, without
-            gradients and outside the export, so a ``forward`` that returns a list there is exported for one image
-            even if it returns a tensor under export. Return the maps of the batch as one tensor to export a batch of
-            any size. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic
-            raises a ``ValueError`` after the export, before anything is saved.
+            other post-processor returns is read from one forward pass of the detector at the export size, in eval
+            mode, without gradients and outside the export, which the check after the export reuses. A ``forward``
+            that returns a list there is therefore exported for one image even if it returns a tensor under export,
+            as a ``ResizePostProcessor`` subclass whose own ``forward`` calls ``ResizePostProcessor.forward`` does.
+            Return the maps of the batch as one tensor to export a batch of any size. A ``dynamic_axes`` or
+            ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a ``ValueError`` after
+            the export, before anything is saved.
 
         """
         if onnx_name is None:
@@ -280,31 +282,32 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         try:
             # Exported for a dynamic batch, a list of per-image maps comes out as the traced batch's maps, or the
             # export fails: such a detector is exported for one image.
-            batch = -1
+            returns_list = None
             if include_pre_and_post_processor and not self._resizes_back_on_export():
                 # The probe's input draws from the global generator, as the export's dummy does, and gives back what
                 # it drew.
                 with _preserved_rng():
-                    if _returns_list(self, torch.rand(pseudo_shape)):
-                        batch = 1
-            return ONNXExportMixin.to_onnx(
-                self,
-                onnx_name,
-                input_shape=[batch, 3, image_size or -1, image_size or -1],
-                output_shape=[batch, 1, image_size or -1, image_size or -1],
-                pseudo_shape=pseudo_shape,
-                model=self if include_pre_and_post_processor else self.model,
-                save=save,
-                additional_metadata=additional_metadata,
-                **kwargs,
-            )
+                    returns_list = _returns_list(self, torch.rand(pseudo_shape))
+            batch = 1 if returns_list else -1
+            with self._onnx_output_kind_kept(returns_list):
+                return ONNXExportMixin.to_onnx(
+                    self,
+                    onnx_name,
+                    input_shape=[batch, 3, image_size or -1, image_size or -1],
+                    output_shape=[batch, 1, image_size or -1, image_size or -1],
+                    pseudo_shape=pseudo_shape,
+                    model=self if include_pre_and_post_processor else self.model,
+                    save=save,
+                    additional_metadata=additional_metadata,
+                    **kwargs,
+                )
         finally:
             self._exporting_to_onnx = previous
 
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
         # The export replaces a ``ResizePostProcessor`` with one resize of the batch, a tensor: only another
-        # post-processor is run to read its output.
-        if module is not self or self._resizes_back_on_export() or not _returns_list(self, dummy_input):
+        # post-processor is read, from what ``to_onnx`` read before the export.
+        if module is not self or self._resizes_back_on_export() or not self._onnx_returns_list(dummy_input):
             return None
         return (
             "Use a post-processor that returns the maps of the batch as one tensor, or a ResizePostProcessor, which "

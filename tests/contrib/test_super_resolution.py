@@ -15,8 +15,10 @@
 # limitations under the License.
 #
 
+import importlib
 import re
 import sys
+from typing import Optional
 
 import pytest
 import torch
@@ -30,7 +32,7 @@ from kornia.contrib.super_resolution import (
     SuperResolutionConfig,
 )
 from kornia.core._compat import torch_version_ge, torch_version_lt
-from kornia.models.processors import OutputRangePostProcessor
+from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -227,6 +229,13 @@ class _PerImageOutputs(nn.Module):
         return [imgs[i : i + 1] for i in range(imgs.shape[0])]
 
 
+class _ImagesOneByOne(nn.Module):
+    """A pre-processor that returns a list of ``(C, H, W)`` images, which ``forward`` runs one at a time (#6161)."""
+
+    def forward(self, imgs):
+        return [imgs[i] for i in range(imgs.shape[0])]
+
+
 class _Doubled(nn.Module):
     """A post-processor of the caller's own that returns one tensor for the batch."""
 
@@ -234,12 +243,39 @@ class _Doubled(nn.Module):
         return 2 * imgs
 
 
-def _small_super_resolution(post_processor: nn.Module) -> SuperResolution:
+class _DrawingNormalisedModel(nn.Module):
+    """A convolution behind a batch norm, which a forward pass in training mode would update, drawing in any mode."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.conv = nn.Conv2d(3, 3, 3, padding=1)
+        self.norm = nn.BatchNorm2d(3)
+
+    def forward(self, x):
+        return self.norm(self.conv(x + 0.0 * torch.rand_like(x)))
+
+
+def _small_super_resolution(post_processor: nn.Module, pre_processor: Optional[nn.Module] = None) -> SuperResolution:
     """A one-convolution model behind the RRDB builder's identity pre-processor, at a fixed 16 x 16 input."""
     torch.manual_seed(0)
-    model = SuperResolution(nn.Conv2d(3, 3, 3, padding=1), nn.Identity(), post_processor)
+    model = SuperResolution(nn.Conv2d(3, 3, 3, padding=1), pre_processor or nn.Identity(), post_processor)
     model.input_image_size = model.output_image_size = 16
     return model
+
+
+def _count_probes(monkeypatch):
+    """Count the runs that read the model's output kind, wherever ``to_onnx`` or its check makes them."""
+    mixin = importlib.import_module("kornia.core.mixin.onnx")
+    probe = mixin._returns_list
+    calls = []
+
+    def _counting(module, inputs):
+        calls.append(type(module).__name__)
+        return probe(module, inputs)
+
+    monkeypatch.setattr(kornia.contrib.super_resolution, "_returns_list", _counting)
+    monkeypatch.setattr(mixin, "_returns_list", _counting)
+    return calls
 
 
 def _run_onnx(op, images):
@@ -322,22 +358,65 @@ class TestSuperResolutionONNXBatch(BaseTester):
         assert not path.exists()
 
     @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EACH_EXPORTER)
+    @pytest.mark.parametrize(
+        "post_processor", [nn.Identity, OutputRangePostProcessor], ids=["identity", "output_range"]
+    )
+    def test_per_image_pre_processor_exports_one_image_6161(self, post_processor, export_kwargs):
+        # A pre-processor that returns a list of images makes ``forward`` run the network one image at a time, and
+        # the builders' post-processors pass the list on: such a model is exported for one image too.
+        _importorskip_exporter(export_kwargs)
+        if export_kwargs["dynamo"] and torch_version_lt(2, 9, 0):
+            # Measured on torch 2.5.1 (2.6 to 2.8 not checked), on main as well: after other exports in the process, an
+            # eager call of this model followed by its dynamo export can fail with "Hit PythonDispatcher dispatch key
+            # but PythonDispatcherTLS was not set", which leaves every later export in the process failing too.
+            pytest.skip("torch < 2.9: the dynamo exporter's PythonDispatcher state can break on this graph")
+        model = _small_super_resolution(post_processor(), _ImagesOneByOne())
+        images = torch.rand(3, 3, 16, 16, generator=torch.Generator().manual_seed(0))
+
+        op = model.to_onnx(save=False, **export_kwargs)
+
+        assert op.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+        outputs = _run_onnx(op, images[:1])
+        assert len(outputs) == 1
+        with torch.no_grad():
+            expected = model(images[:1])
+        self.assert_close(torch.from_numpy(outputs[0]), expected[0], rtol=0.0, atol=1e-5)
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("override", _DYNAMIC_BATCH)
+    @pytest.mark.parametrize(
+        "post_processor", [nn.Identity, OutputRangePostProcessor], ids=["identity", "output_range"]
+    )
+    def test_per_image_pre_processor_rejects_a_dynamic_batch_6161(self, post_processor, override):
+        _importorskip_exporter(override)
+        model = _small_super_resolution(post_processor(), _ImagesOneByOne())
+
+        with pytest.raises(ValueError, match="SuperResolution returns one output per image"):
+            model.to_onnx(save=False, **override)
+
+    @pytest.mark.timeout(120)
     @pytest.mark.parametrize("export_kwargs", [*_EACH_EXPORTER, *_DYNAMIC_BATCH])
     @pytest.mark.parametrize(
         "post_processor", [nn.Identity, OutputRangePostProcessor], ids=["identity", "output_range"]
     )
-    def test_builders_post_processors_keep_a_dynamic_batch_without_a_probe_6161(
-        self, post_processor, export_kwargs, monkeypatch
+    @pytest.mark.parametrize(
+        "pre_processor", [nn.Identity, lambda: ResizePreProcessor(16, 16)], ids=["identity", "resize"]
+    )
+    def test_builders_processors_keep_a_dynamic_batch_without_a_probe_6161(
+        self, pre_processor, post_processor, export_kwargs, monkeypatch
     ):
-        # The builders' post-processors return one tensor for the model's tensor: no forward pass reads the output
-        # kind, before the export or after it, which for an RRDB model would cost more than the export.
+        # The builders' pre-processors hand the network one tensor and their post-processors keep it one: no forward
+        # pass reads the output kind, before the export or after it, which for an RRDB model would cost more than the
+        # export.
         _importorskip_exporter(export_kwargs)
 
         def _no_probe(module, inputs):
             raise AssertionError("to_onnx ran the model to read its output kind")
 
         monkeypatch.setattr(kornia.contrib.super_resolution, "_returns_list", _no_probe)
-        model = _small_super_resolution(post_processor())
+        monkeypatch.setattr(importlib.import_module("kornia.core.mixin.onnx"), "_returns_list", _no_probe)
+        model = _small_super_resolution(post_processor(), pre_processor())
 
         op = model.to_onnx(save=False, **export_kwargs)
 
@@ -362,6 +441,61 @@ class TestSuperResolutionONNXBatch(BaseTester):
         with torch.no_grad():
             expected = model(images)
         self.assert_close(torch.from_numpy(_run_onnx(op, images)[0]), expected, rtol=0.0, atol=1e-5)
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        ("post_processor", "override"),
+        [
+            pytest.param(_Doubled, {"dynamo": False}, id="tensor_torchscript"),
+            pytest.param(_PerImageOutputs, {"dynamo": False}, id="list_torchscript"),
+            pytest.param(
+                _PerImageOutputs,
+                {"dynamo": False, "dynamic_axes": {"input": {0: "batch"}}},
+                id="list_torchscript_batch_override",
+            ),
+        ],
+    )
+    def test_reads_the_output_kind_once_6161(self, post_processor, override, monkeypatch):
+        # ``to_onnx`` runs the model once to read its output kind, and the check after the export reuses that reading
+        # rather than running it again on the dummy batch. The reading is not kept after the export.
+        _importorskip_exporter(override)
+        calls = _count_probes(monkeypatch)
+        model = _small_super_resolution(post_processor())
+
+        if "dynamic_axes" in override:
+            with pytest.raises(ValueError, match="returns one output per image"):
+                model.to_onnx(save=False, **override)
+        else:
+            model.to_onnx(save=False, **override)
+
+        assert calls == ["SuperResolution"]
+        assert "_onnx_list_output" not in model.__dict__
+
+    @pytest.mark.timeout(120)
+    def test_output_probe_leaves_the_model_as_it_was_6161(self):
+        # The run that reads the output kind is in eval mode, on the network's dtype, without gradients: the batch
+        # norm keeps its statistics, each submodule its training flag, and the global random state is given back.
+        pytest.importorskip("onnx")
+
+        def _draws_after(export):
+            torch.manual_seed(0)
+            network = _DrawingNormalisedModel()
+            model = SuperResolution(network, nn.Identity(), _PerImageOutputs()).double().train()
+            model.input_image_size = model.output_image_size = 16
+            model.pre_processor.eval()  # a mixed state, which ``train()`` would not restore
+            running_mean = network.norm.running_mean.clone()
+            if export:
+                op = model.to_onnx(save=False, dynamo=False)
+                assert op.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+                assert torch.equal(network.norm.running_mean, running_mean)
+                assert network.norm.num_batches_tracked.item() == 0
+                assert model.training
+                assert network.training
+                assert network.norm.training
+                assert not model.pre_processor.training
+            return torch.rand(8)
+
+        self.assert_close(_draws_after(True), _draws_after(False))
 
 
 class TestRRDBNetBuilderWeights:
