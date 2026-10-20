@@ -52,7 +52,6 @@ from harness import (
     make_wrapper,
     prepare_resume,
     shape_and_finite,
-    to_np,
 )
 from torch import nn
 
@@ -102,7 +101,7 @@ def _compare(ref: list[torch.Tensor], out: list[torch.Tensor], c: dict[str, Any]
         return f"{len(out)} outputs vs {len(ref)}"
     bad = []
     for i, (a, b) in enumerate(zip(ref, out)):
-        ok, why = close(to_np(a), to_np(b), c["atol"], c["rtol"])
+        ok, why = close(a, b, c["atol"], c["rtol"])
         if not ok:
             bad.append(f"out{i}: {why}")
     return "; ".join(bad)[:400] if bad else None

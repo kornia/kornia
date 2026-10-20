@@ -32,7 +32,8 @@ the graph. The harness:
 
 Importing this module (or a registry) leaves the process alone: the survey entry points (``run_cases``,
 ``probe_compile.main``) call ``configure_survey_process`` for their quieter, fixed-thread-count settings, so
-``tests/onnx/test_conformance.py`` can drive ``run_case`` inside a pytest session.
+``tests/onnx/test_conformance.py`` can drive ``run_case`` inside a pytest session. ``onnx`` and ``onnxruntime`` are
+imported where they are used, so the compile probe and ``tests/test_inductor_conformance.py`` do not need them.
 
 Usage from a registry file::
 
@@ -58,14 +59,15 @@ import subprocess
 import time
 import traceback
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import onnx
-import onnxruntime as ort
 import torch
 from torch import nn
 from torch.utils._pytree import tree_flatten
+
+if TYPE_CHECKING:
+    import onnx
 
 SEED = 1234
 OPSET = 18  # the opset the dynamo export requests, and the ceiling of the legacy one
@@ -73,6 +75,8 @@ OPSET = 18  # the opset the dynamo export requests, and the ceiling of the legac
 
 def configure_survey_process() -> None:
     """Quiet logs and warnings and fix the thread count, for a process that runs survey probes and nothing else."""
+    import onnxruntime as ort
+
     logging.disable(logging.CRITICAL)
     warnings.filterwarnings("ignore")
     ort.set_default_logger_severity(3)
@@ -193,13 +197,23 @@ def to_np(x: torch.Tensor) -> np.ndarray:
     return x.numpy()
 
 
-def close(a: np.ndarray, b: np.ndarray, atol: float, rtol: float) -> tuple[bool, str]:
-    """Compare a reference ``a`` with ``b``: the same shape and dtype, then the values within ``atol`` / ``rtol``."""
-    a, b = np.asarray(a), np.asarray(b)
+def _dtype_name(x: Any) -> str:
+    """The dtype of a tensor or an array as numpy names it (``float32``, ``bfloat16``, ``bool``)."""
+    return str(x.dtype).removeprefix("torch.") if isinstance(x, torch.Tensor) else str(np.asarray(x).dtype)
+
+
+def close(a: Any, b: Any, atol: float, rtol: float) -> tuple[bool, str]:
+    """Compare a reference ``a`` with a candidate ``b``, tensors or arrays: the same shape and dtype, then the values.
+
+    The dtypes are compared before any conversion (``to_np`` widens bfloat16), the values within ``atol`` / ``rtol``.
+    """
+    dtype_a, dtype_b = _dtype_name(a), _dtype_name(b)
+    a = to_np(a) if isinstance(a, torch.Tensor) else np.asarray(a)
+    b = to_np(b) if isinstance(b, torch.Tensor) else np.asarray(b)
     if a.shape != b.shape:
         return False, f"shape {a.shape} vs {b.shape}"
-    if a.dtype != b.dtype:
-        return False, f"dtype {a.dtype} vs {b.dtype}"
+    if dtype_a != dtype_b:
+        return False, f"dtype {dtype_a} vs {dtype_b}"
     if bool in (a.dtype, b.dtype):
         ok = bool(np.array_equal(a, b))
         return ok, "" if ok else f"{int((a != b).sum())} bool mismatches"
@@ -207,7 +221,7 @@ def close(a: np.ndarray, b: np.ndarray, atol: float, rtol: float) -> tuple[bool,
     nan_a, nan_b = np.isnan(a64), np.isnan(b64)
     if nan_a.any() or nan_b.any():
         if not np.array_equal(nan_a, nan_b):
-            return False, f"NaN pattern differs (torch {int(nan_a.sum())}, ort {int(nan_b.sum())} NaNs)"
+            return False, f"NaN pattern differs (reference {int(nan_a.sum())}, candidate {int(nan_b.sum())} NaNs)"
         a64, b64 = a64[~nan_a], b64[~nan_b]
     ok = bool(np.allclose(a64, b64, atol=atol, rtol=rtol))
     if ok:
@@ -236,6 +250,8 @@ def shape_and_finite(ref: list[torch.Tensor], out: list[Any]) -> str | None:
 
 
 def op_types(model: onnx.ModelProto) -> list[str]:
+    import onnx
+
     s: set[str] = set()
 
     def walk(graph: onnx.GraphProto) -> None:
@@ -300,6 +316,8 @@ def legacy_opset() -> int:
 
 def export(m: nn.Module, inputs: list[torch.Tensor], dynamo: bool = True) -> onnx.ModelProto:
     """Export ``m`` called on ``inputs`` with the dynamo exporter (opset 18) or the legacy TorchScript one."""
+    import onnx
+
     buf = io.BytesIO()
     if dynamo:
         kwargs: dict[str, Any] = {
@@ -333,6 +351,9 @@ def export(m: nn.Module, inputs: list[torch.Tensor], dynamo: bool = True) -> onn
 
 def run_case(c: dict[str, Any], dynamo: bool = True) -> dict[str, Any]:
     """Probe one case (see the module docstring) with the dynamo or the legacy exporter; return its record."""
+    import onnx
+    import onnxruntime as ort
+
     rec: dict[str, Any] = {k: c[k] for k in ("name", "group", "note", "tags", "check")}
     rec["n_inputs"] = len(c["inputs"])
     rec["input_shapes"] = [list(x.shape) + [str(x.dtype).replace("torch.", "")] for x in c["inputs"]]
@@ -422,7 +443,7 @@ def run_case(c: dict[str, Any], dynamo: bool = True) -> dict[str, Any]:
         return rec
     bad = []
     for i, (a, b) in enumerate(zip(ref, outs)):
-        ok, why = close(to_np(a), b, c["atol"], c["rtol"])
+        ok, why = close(a, b, c["atol"], c["rtol"])
         if not ok:
             bad.append(f"out{i}: {why}")
     if bad:
