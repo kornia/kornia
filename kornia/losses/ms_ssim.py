@@ -66,8 +66,8 @@ class MS_SSIMLoss(nn.Module):
         - The defaults follow [3]: ``alpha=0.025``, as in [2], and ``compensation=200``, which neither [1] nor [2]
           applies; [1] sets :math:`\alpha = 0.84`. The default ``reduction='mean'`` averages the :math:`(B, H, W)`
           map, whose channels are already averaged.
-        - The two images must have the same :math:`(B, C, H, W)` shape, without broadcasting, as in
-          :func:`~kornia.metrics.ssim`.
+        - The two images must have the same :math:`(C, H, W)` shape. Their batch sizes must match, or one of them
+          must be 1, and that image is then compared with every image of the other batch.
 
     Reference:
         [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
@@ -217,8 +217,14 @@ class MS_SSIMLoss(nn.Module):
         if not len(img2.shape) == 4:
             raise ValueError(f"Invalid img2 shape, we expect BxCxHxW. Got: {img2.shape}")
 
-        if img1.shape != img2.shape:
-            raise ShapeError(f"Input and target must have the same shape. Got: {img1.shape} and {img2.shape}.")
+        # A batch of one broadcasts over the other image's batch and gives the loss against the repeated image; a
+        # height, width or channel count of one would broadcast to a wrong loss.
+        same_batch = img1.shape[0] == img2.shape[0] or img1.shape[0] == 1 or img2.shape[0] == 1
+        if img1.shape[1:] != img2.shape[1:] or not same_batch:
+            raise ShapeError(
+                "Input and target must have the same shape, except for a batch size of 1. "
+                f"Got: {img1.shape} and {img2.shape}."
+            )
 
         mask_dtype = self._g_masks.dtype
         if img1.is_complex() or img2.is_complex():

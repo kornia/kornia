@@ -91,26 +91,35 @@ class TestMS_SSIMLoss(BaseTester):
         with pytest.raises(ValueError, match="BxCxHxW"):
             kornia.losses.MS_SSIMLoss()(img, img)
 
-    @pytest.mark.parametrize("target_shape", [(1, 3, 16, 16), (2, 1, 16, 16), (2, 3, 1, 16), (2, 3, 16, 1)])
+    @pytest.mark.parametrize("target_shape", [(3, 3, 16, 16), (2, 1, 16, 16), (2, 3, 1, 16), (2, 3, 16, 1)])
     def test_shape_mismatch_raises(self, target_shape, device, dtype):
-        # GH#6157 a batch-1 target, or a height or width of 1, used to broadcast
-        # silently; mismatched shapes must raise.
+        # GH#6157 a height or width of 1 used to broadcast silently to a wrong loss; mismatched shapes must raise.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         img2 = torch.rand(target_shape, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match=re.escape(f"same shape. Got: {img1.shape} and {img2.shape}.")):
+        with pytest.raises(ValueError, match=re.escape(f"batch size of 1. Got: {img1.shape} and {img2.shape}.")):
             kornia.losses.MS_SSIMLoss()(img1, img2)
+
+    @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
+    def test_batch_of_one_broadcasts(self, reduction, device, dtype):
+        # GH#6157 a batch of one is compared with every image of the other batch, in either argument.
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        single = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        criterion = kornia.losses.MS_SSIMLoss(reduction=reduction).to(device, dtype)
+        repeated = single.expand_as(img)
+        self.assert_close(criterion(img, single), criterion(img, repeated), rtol=0, atol=0)
+        self.assert_close(criterion(single, img), criterion(repeated, img), rtol=0, atol=0)
 
     def test_shape_mismatch_raises_when_checks_disabled(self, device, dtype):
         # GH#6157 the shape guard must hold even with Kornia checks disabled
         # globally; the loss must never broadcast mismatched inputs silently.
         img1 = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-        img2 = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        img2 = torch.rand(3, 3, 16, 16, device=device, dtype=dtype)
         were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
             with pytest.raises(
                 ValueError,
-                match=r"same shape\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[1, 3, 16, 16\]\)",
+                match=r"batch size of 1\. Got: torch\.Size\(\[2, 3, 16, 16\]\) and torch\.Size\(\[3, 3, 16, 16\]\)",
             ):
                 kornia.losses.MS_SSIMLoss()(img1, img2)
         finally:
@@ -206,9 +215,9 @@ class TestMS_SSIMLoss(BaseTester):
             criterion(torch.rand(1), torch.rand(1, 2))
 
         with pytest.raises(
-            ValueError, match=r"same shape\. Got: torch\.Size\(\[1, 1, 8, 8\]\) and torch\.Size\(\[2, 1, 8, 8\]\)"
+            ValueError, match=r"batch size of 1\. Got: torch\.Size\(\[3, 1, 8, 8\]\) and torch\.Size\(\[2, 1, 8, 8\]\)"
         ):
-            criterion(torch.rand(1, 1, 8, 8), torch.rand(2, 1, 8, 8))
+            criterion(torch.rand(3, 1, 8, 8), torch.rand(2, 1, 8, 8))
 
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
     @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
