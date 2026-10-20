@@ -424,7 +424,8 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_mix_class_handlers_honour_a_replayed_partial_gate_4775(self):
-        # #4775: class handler honours batch_prob, i.e. an unselected row is labelled with its own class twice and lambda 0.
+        # #4775: class handler honours batch_prob, i.e. an unselected row is labelled
+        # with its own class twice and lambda 0.
         image = torch.arange(3.0).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
         labels = torch.tensor([10, 20, 30])
         aug = K.RandomMixUpV2(p=1.0, lambda_val=(0.25, 0.25), data_keys=["input", "class"])
