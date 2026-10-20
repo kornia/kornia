@@ -155,7 +155,7 @@ def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> 
         if not isinstance(output, tuple) or len(output) != images.shape[0]:
             return False
         other_batch = 2 if images.shape[0] == 1 else 1
-        other_output = detector(images[:1].expand(other_batch, *images.shape[1:]))
+        other_output = detector(images[:1].expand(other_batch, *images.shape[1:]).contiguous())
         return isinstance(other_output, tuple) and len(other_output) == other_batch
 
 

@@ -105,12 +105,18 @@ class TestObjectDetectorOutputSequence(BaseTester):
         if dynamo:
             pytest.importorskip("onnxscript")
         detector = _detector("batched_pair")
+        # Bound the dynamo dimension: torch 2.5 otherwise falls back to a static TorchScript graph.
+        batch_options = (
+            {"dynamic_shapes": ({0: torch.export.Dim("batch", min=1, max=8)},)}
+            if dynamo
+            else {"dynamic_axes": {"input": {0: "batch"}}}
+        )
         exported = detector.to_onnx(
             image_size=16,
             save=False,
             dynamo=dynamo,
             output_names=["logits", "boxes"],
-            dynamic_axes={"input": {0: "batch"}},
+            **batch_options,
         )
         session = _session(exported)
         assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_param
@@ -146,3 +152,14 @@ class TestObjectDetectorOutputSequence(BaseTester):
 
         assert _returns_detections_per_image(detector, torch.rand(1, 3, 16, 16))
         assert pre.__dict__["_output_image"] is cache
+
+    def test_tuple_probe_accepts_contiguous_only_preprocessor(self):
+        class FlattenPre(nn.Module):
+            def forward(self, images):
+                images = images.view(-1).mul(0.5).view_as(images)
+                return images, images.new_ones((images.shape[0], 2))
+
+        detector = ObjectDetector(_Scored(), FlattenPre(), _Post("tuple"))
+        images = torch.rand(1, 3, 16, 16)
+        assert len(detector(images)) == 1
+        assert _returns_detections_per_image(detector, images)
