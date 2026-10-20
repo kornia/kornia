@@ -417,19 +417,25 @@ class _NormalisedDetections(_ScoredDetections):
 
 
 @pytest.mark.timeout(120)
-def test_detector_output_probe_runs_in_eval_mode_on_the_models_dtype():
-    """The forward pass that reads the output kind keeps statistics and each training flag, in the model's dtype."""
+@pytest.mark.parametrize("per_image", [True, False], ids=["per_image", "batched"])
+def test_detector_output_probe_runs_in_eval_mode_on_the_models_dtype(per_image):
+    """The forward passes that read the output kind keep statistics and each training flag, in the model's dtype.
+
+    A batched detector exports a dynamic batch, so ``to_onnx`` runs it a second time for the check of #6111.
+    """
     pytest.importorskip("onnx")
     pytest.importorskip("onnxscript")
 
     model = _NormalisedDetections()
-    detector = ObjectDetector(model, ResizePreProcessor(32, 32), _PerImageDetections()).double().train()
+    post_processor = _PerImageDetections() if per_image else _BatchedDetections()
+    detector = ObjectDetector(model, ResizePreProcessor(32, 32), post_processor).double().train()
     detector.pre_processor.eval()  # a mixed state, which ``train()`` would not restore
     running_mean = model.norm.running_mean.clone()
 
     exported = detector.to_onnx(image_size=32, save=False)
 
-    assert exported.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+    batch = exported.graph.input[0].type.tensor_type.shape.dim[0]
+    assert batch.dim_value == 1 if per_image else batch.dim_param
     assert torch.equal(model.norm.running_mean, running_mean)
     assert model.norm.num_batches_tracked.item() == 0
     assert detector.training

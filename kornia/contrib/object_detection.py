@@ -325,7 +325,10 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
         if module is not self or not _returns_detections_per_image(self, dummy_input):
             return None
-        return "Build an RT-DETR detector with confidence_filtering=False to export a dynamic batch."
+        return (
+            "Use a post-processor that returns one tensor for the batch, such as a DETRPostProcessor with "
+            "confidence_filtering=False, to export a dynamic batch."
+        )
 
     def compile(
         self,
