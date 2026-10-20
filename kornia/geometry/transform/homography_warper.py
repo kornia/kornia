@@ -26,7 +26,7 @@ from torch import nn
 from kornia.core.utils import _torch_grid_sample
 from kornia.geometry.grid import create_meshgrid
 
-from .imgwarp import _normalize_warped_pixel_grid, homography_warp, warp_grid
+from .imgwarp import _normalize_warped_pixel_grid, _pixel_grid_work_dtype, homography_warp, warp_grid
 
 __all__ = ["BaseWarper", "HomographyWarper"]
 
@@ -87,7 +87,8 @@ class HomographyWarper(BaseWarper):
 
         - See the convention block of :func:`homography_warp`.
         - with ``normalized_coordinates=False`` a grid from :meth:`precompute_warp_grid` holds source pixel
-          coordinates, normalized at sampling time with the size of the patch passed to ``forward``
+          coordinates in at least float32, normalized at sampling time with the size of the patch passed to
+          ``forward`` and then cast to the homography's dtype
 
     Args:
         height: The height of the destination torch.Tensor.
@@ -102,6 +103,7 @@ class HomographyWarper(BaseWarper):
     """
 
     _warped_grid: Optional[torch.Tensor]
+    _warped_grid_dtype: Optional[torch.dtype]
 
     def __init__(
         self,
@@ -123,8 +125,9 @@ class HomographyWarper(BaseWarper):
             height, width, normalized_coordinates=normalized_coordinates, align_corners=align_corners
         )
 
-        # initialice the warped destination grid
+        # initialice the warped destination grid, and in pixel mode the dtype forward() returns it to
         self._warped_grid = None
+        self._warped_grid_dtype = None
 
     def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
         r"""Compute and store internally the transformations of the points.
@@ -139,7 +142,14 @@ class HomographyWarper(BaseWarper):
               normalized_coordinates is True, and pixel coordinates otherwise.
 
         """
-        self._warped_grid = warp_grid(self.grid, src_homo_dst)
+        if self.normalized_coordinates:
+            self._warped_grid = warp_grid(self.grid, src_homo_dst)
+            return
+        # Source pixels, kept in at least float32 until forward() normalizes them with the patch size, as in
+        # homography_warp; the normalized grid then returns to the homography's dtype.
+        work_dtype = _pixel_grid_work_dtype(src_homo_dst)
+        self._warped_grid = warp_grid(self.grid.to(work_dtype), src_homo_dst.to(work_dtype))
+        self._warped_grid_dtype = src_homo_dst.dtype
 
     def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
         r"""Warp a torch.Tensor from source into reference frame.
@@ -193,6 +203,8 @@ class HomographyWarper(BaseWarper):
                 _warped_grid = _normalize_warped_pixel_grid(
                     _warped_grid, patch_src.shape[-2], patch_src.shape[-1], self.align_corners
                 )
+                if self._warped_grid_dtype is not None:
+                    _warped_grid = _warped_grid.to(self._warped_grid_dtype)
             warped_patch = _torch_grid_sample(
                 patch_src,
                 _warped_grid,

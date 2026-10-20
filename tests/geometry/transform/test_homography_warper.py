@@ -432,9 +432,7 @@ class TestHomographyWarper(BaseTester):
         expected[1, :, :5, 3:] = image[1, :, 1:, :5]
 
         actual = self._pixel_warp(entry, image, src_homo_dst, (6, 8), align_corners=align_corners)
-        # a half-precision grid lands a few thousandths of a pixel off, which the samples one pixel past the edge
-        # pick up from the last row or column
-        self.assert_close(actual, expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
     @pytest.mark.parametrize("align_corners", [True, False])
@@ -465,7 +463,51 @@ class TestHomographyWarper(BaseTester):
         actual = self._pixel_warp(
             entry, image, src_homo_dst, dsize, align_corners=align_corners, padding_mode=padding_mode
         )
+        # in half precision the two matrices are rounded separately, one before and one after the inversion
         self.assert_close(actual, expected, low_tolerance=dtype in (torch.float16, torch.bfloat16))
+
+    @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_pixel_coordinates_wide_identity(self, entry, align_corners, device, dtype):
+        # Pixel coordinates reach the image width, where float16 rounds them to half pixels from 512 and bfloat16 to
+        # whole pixels from 128. The pixel grid is warped and normalized in float32 and only the normalized grid
+        # returns to the homography's dtype, so a 640 px wide identity samples where the default normalized path
+        # does, and in float16 within an eighth of a pixel of every column. The image holds the column index.
+        width = 640
+        image = torch.arange(width, device=device).to(dtype).expand(1, 1, 3, width)
+        identity = eye_like(3, image)
+
+        actual = self._pixel_warp(entry, image, identity, (3, width), align_corners=align_corners)
+        normalized = kornia.geometry.transform.homography_warp(image, identity, (3, width), align_corners=align_corners)
+
+        # Interior columns only: the outermost ones border the zero padding, where any sub-pixel offset of the last
+        # column (value 639) costs a large value error. Values are column indices, so tolerances are in pixels.
+        actual, normalized, image = actual[..., 1:-1], normalized[..., 1:-1], image[..., 1:-1]
+        if dtype in (torch.float16, torch.bfloat16):
+            self.assert_close(actual, normalized, rtol=0, atol=0.125 if dtype == torch.float16 else 1.0)
+        else:
+            self.assert_close(actual, normalized)
+        # bfloat16 stores these column indices only to within 2 to 4, so it is checked against the default path alone
+        if dtype != torch.bfloat16:
+            max_error = 0.125 if dtype == torch.float16 else 1e-3
+            assert (actual.float() - image.float()).abs().max() <= max_error
+
+    @pytest.mark.parametrize("entry", ["functional", "module", "precomputed"])
+    def test_pixel_coordinates_backward_keeps_dtype(self, entry, device, dtype):
+        # The pixel grid is warped in float32 for a half homography and cast back: gradients still reach the image
+        # and the homography, finite and in their own dtype.
+        image = ((torch.arange(2 * 6 * 8, device=device) % 13) / 13).to(dtype).view(1, 2, 6, 8).requires_grad_()
+        src_homo_dst = torch.tensor(
+            [[[1.05, 0.02, 0.3], [0.01, 0.95, -0.4], [1e-3, -2e-3, 1.0]]], device=device, dtype=dtype
+        ).requires_grad_()
+
+        self._pixel_warp(entry, image, src_homo_dst, (5, 7)).float().square().sum().backward()
+
+        for tensor in (image, src_homo_dst):
+            assert tensor.grad is not None
+            assert tensor.grad.dtype == dtype
+            assert torch.isfinite(tensor.grad).all()
+            assert tensor.grad.abs().sum() > 0
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):

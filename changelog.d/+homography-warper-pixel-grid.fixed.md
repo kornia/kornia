@@ -3,5 +3,7 @@ both the direct and the `precompute_warp_grid` path, now warp by a destinationâ†
 warped grid of source pixel coordinates is normalized under the call's `align_corners` before `grid_sample`, as
 `warp_perspective` does. Previously the pixel grid reached `grid_sample` unnormalized, so almost every sample fell
 outside the image and an identity homography returned a nearly blank image instead of the input. The result now
-matches `warp_perspective` with the inverse homography. The default `normalized_coordinates=True` is unchanged.
-Fixes #6170.
+matches `warp_perspective` with the inverse homography; the pixel grid is warped and normalized in at least
+`float32`, so `float16` and `bfloat16` homographies do not lose half or whole pixels to coordinate rounding. Callers that pre-multiplied
+the homography by `normal_transform_pixel` to work around this must drop that factor. The default
+`normalized_coordinates=True` is unchanged. Fixes #6170.

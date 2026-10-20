@@ -638,6 +638,18 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     return flow.view(batch_size, height, width, 2)  # NxHxWx2
 
 
+def _pixel_grid_work_dtype(src_homo_dst: torch.Tensor) -> torch.dtype:
+    """Return the dtype a pixel-coordinate sampling grid is warped and normalized in: float32 for a half homography.
+
+    Pixel coordinates reach the image size, where float16 rounds them to half pixels from 512 and to whole pixels from
+    1024, and bfloat16 already from 64 and 128. The grid is therefore warped and normalized in float32, and only the
+    normalized result, whose values lie near ``[-1, 1]``, returns to the homography's dtype. Other dtypes are kept.
+    """
+    if src_homo_dst.dtype in (torch.float16, torch.bfloat16):
+        return torch.float32
+    return src_homo_dst.dtype
+
+
 def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, align_corners: bool) -> torch.Tensor:
     """Map a ``(N, H, W, 2)`` grid of source pixel coordinates to the ``[-1, 1]`` coordinates ``grid_sample`` reads.
 
@@ -1877,9 +1889,12 @@ def homography_warp(
           source pixel it samples, so an identity returns the top-left ``dsize`` window of the input
         - with ``normalized_homography=False`` it is consumed as the source→destination **pixel** homography,
           exactly like :func:`warp_perspective`, and ``normalized_coordinates`` is ignored
+        - with ``normalized_coordinates=False`` the pixel grid is warped and normalized in at least float32 and
+          then cast to the homography's dtype
         - ``dsize`` is ``(h, w)``
-        - align_corners: ``False`` by default (differs from :func:`warp_perspective`). A pixel homography
-          samples the same positions under both settings; they then differ only in ``padding_mode="reflection"``
+        - align_corners: ``False`` by default (differs from :func:`warp_perspective`). Along a source axis longer
+          than one pixel, a pixel homography samples the same positions under both settings, which then differ
+          only in ``padding_mode="reflection"``
         - negative output dimensions raise ``ValueError``
 
     Args:
@@ -1887,9 +1902,7 @@ def homography_warp(
         src_homo_dst: The homography or torch.stack of homographies of shape :math:`(N, 3, 3)` —
             destination to source when ``normalized_homography=True`` (default), source to
             destination (pixel) when ``normalized_homography=False``.
-        dsize:
-          if homography normalized: The height and width of the image to warp.
-          if homography not normalized: size of the output image (height, width).
+        dsize: output size ``(h, w)``.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
@@ -1924,20 +1937,27 @@ def homography_warp(
         )
     if normalized_homography:
         height, width = dsize
-        grid = create_meshgrid(
-            height,
-            width,
-            normalized_coordinates=normalized_coordinates,
-            device=patch_src.device,
-            dtype=patch_src.dtype,
-            align_corners=align_corners,
-        )
-        warped_grid = warp_grid(grid, src_homo_dst)
-        if not normalized_coordinates:
-            # a pixel homography lands on source pixels, which grid_sample reads normalized
+        if normalized_coordinates:
+            grid = create_meshgrid(
+                height,
+                width,
+                normalized_coordinates=True,
+                device=patch_src.device,
+                dtype=patch_src.dtype,
+                align_corners=align_corners,
+            )
+            warped_grid = warp_grid(grid, src_homo_dst)
+        else:
+            # A pixel homography lands on source pixels, which grid_sample reads normalized. The pixel arithmetic
+            # runs in at least float32, then the grid returns to the homography's dtype.
+            work_dtype = _pixel_grid_work_dtype(src_homo_dst)
+            grid = create_meshgrid(
+                height, width, normalized_coordinates=False, device=patch_src.device, dtype=work_dtype
+            )
+            warped_grid = warp_grid(grid, src_homo_dst.to(work_dtype))
             warped_grid = _normalize_warped_pixel_grid(
                 warped_grid, patch_src.shape[-2], patch_src.shape[-1], align_corners
-            )
+            ).to(src_homo_dst.dtype)
 
         return _torch_grid_sample(
             patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
