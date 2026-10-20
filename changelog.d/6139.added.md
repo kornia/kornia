@@ -1,0 +1,1 @@
+Added `force_download=True` to `CachedDownloader` and the ONNX loaders, including the Hugging Face community loader and `DepthAnythingONNXBuilder`, to refresh cached models, external weights, and preprocessing configs. Failed downloads preserve the previous cached file. Errors when loading cached models or parsing configs now suggest the option.

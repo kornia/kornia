@@ -111,12 +111,53 @@ def _onnx_data_name(name: str) -> str:
     return (name[: -len(".onnx")] if name.endswith(".onnx") else name) + ".onnx_data"
 
 
+def _cached_file_hint(file_path: str) -> str:
+    """Return what to do when the cached file ``file_path`` does not load."""
+    return (
+        f"If the cached file `{file_path}` is damaged, or was replaced by hand, pass force_download=True to download "
+        "it again, or delete the file."
+    )
+
+
+def _load_cached_onnx(file_path: str) -> onnx.ModelProto:
+    """Load the ONNX model cached at ``file_path``; the error for a file that does not load names the way out.
+
+    The error is raised as it is, so a caller that catches ``google.protobuf.message.DecodeError`` still does; the
+    hint is a note on it (:meth:`BaseException.add_note`), which a traceback prints.
+    """
+    try:
+        return onnx.load(file_path)
+    except MemoryError:  # a file too large to load is not a damaged one
+        raise
+    except Exception as exc:
+        exc.add_note(_cached_file_hint(file_path))
+        raise
+
+
+def _load_cached_json(file_path: str) -> Any:
+    """Load the JSON cached at ``file_path``; the error for a file that does not parse names the way out.
+
+    The error is raised as it is, so a caller that catches ``json.JSONDecodeError`` still does; the hint is a note on
+    it (:meth:`BaseException.add_note`), which a traceback prints.
+    """
+    try:
+        with open(file_path, "rb") as f:  # json.load detects UTF-8, -16 or -32 in bytes, whatever the locale
+            return json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:  # both are ValueErrors
+        exc.add_note(_cached_file_hint(file_path))
+        raise
+
+
 class ONNXLoader(CachedDownloader):
     """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models."""
 
     @classmethod
-    def load_config(cls, url: Union[str, os.PathLike], download: bool = True, **kwargs: Any) -> dict[str, Any]:
+    def load_config(
+        cls, url: Union[str, os.PathLike], download: bool = True, *, force_download: bool = False, **kwargs: Any
+    ) -> dict[str, Any]:
         """Load JSON config from the specified URL or local file.
+
+        A config that is in the cache is used as it is, however old: pass ``force_download=True`` to fetch it again.
 
         Args:
             url: The HTTP(S) URL of the preprocessor config to load, or the path of a local JSON file, which is read
@@ -124,6 +165,8 @@ class ONNXLoader(CachedDownloader):
                 start with ``~``.
             download: If True, the config will be downloaded if it's not already in the local cache. A local file
                 is read either way.
+            force_download: If True, fetch an HTTP(S) config again and replace the cached file, even when it is
+                cached. Needs ``download=True``. It has no effect on a local file. Defaults to False.
             kwargs: Keyword arguments of ``CachedDownloader.download_to_cache``. Only ``cache_dir`` applies: the root
                 the config is stored under, at ``<scheme>/<host>/<directories of the URL's path>/<file name>``, with a
                 ``%3F<hash>`` directory before the file name when the URL has a query, as for ``load_model``. ``None``
@@ -143,9 +186,10 @@ class ONNXLoader(CachedDownloader):
         url = _path_text("ONNXLoader.load_config", url)
         if not local and url.startswith(("http:", "https:")):
             kwargs["cache_dir"] = kwargs.get("cache_dir") or None  # "" is the default directory, as for load_model
-            file_path = cls.download_to_cache(url, _url_cache_name(url), download=download, suffix=".json", **kwargs)
-            with open(file_path) as f:
-                return json.load(f)
+            file_path = cls.download_to_cache(
+                url, _url_cache_name(url), download=download, suffix=".json", force_download=force_download, **kwargs
+            )
+            return _load_cached_json(file_path)
 
         path = os.path.expanduser(url)
         if os.path.isfile(path):
@@ -158,9 +202,18 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def load_model(
-        cls, model_name: Union[str, os.PathLike], download: bool = True, with_data: bool = False, **kwargs
+        cls,
+        model_name: Union[str, os.PathLike],
+        download: bool = True,
+        with_data: bool = False,
+        *,
+        force_download: bool = False,
+        **kwargs,
     ) -> onnx.ModelProto:
         """Load an ONNX model from the local cache or downloads it from Hugging Face if necessary.
+
+        A model that is in the cache is used as it is, however old, and a cached file that does not load fails every
+        time: pass ``force_download=True`` to fetch it again, or delete the file.
 
         Args:
             model_name: The name of the ONNX model or operator. For Hugging Face-hosted models,
@@ -182,6 +235,12 @@ class ONNXLoader(CachedDownloader):
                 neither can a directory with a reserved name (``con``); on a case-insensitive file system, URLs that
                 differ only in letter case share a file.
             with_data: If True, the model will be loaded with its `.onnx_data` weights, stored beside the model.
+            force_download: If True, fetch the model, and its `.onnx_data` weights with ``with_data``, again and
+                replace the cached files, even when they are cached. A file is replaced only once its download is
+                complete, so a download that fails leaves the cached one as it was. The model is replaced before the
+                weights are fetched: if the weights then fail to download, the cache holds the new model with the old
+                weights, so call again with ``force_download=True`` before loading it. Needs ``download=True``. It has
+                no effect on a model given as a path to a local file, which is never downloaded. Defaults to False.
             **kwargs: Only ``cache_dir``; any other keyword raises ``TypeError``, whatever ``model_name`` is.
 
         Returns:
@@ -202,21 +261,34 @@ class ONNXLoader(CachedDownloader):
             else:
                 kwargs["cache_dir"] = kornia_config.hub_onnx_dir
                 name = model_name  # "<folder>/<a>/<b>": the folder is checked as the other components are
-            file_path = cls.download_to_cache(url, name, download=download, suffix=".onnx", **kwargs)
+            file_path = cls.download_to_cache(
+                url, name, download=download, suffix=".onnx", force_download=force_download, **kwargs
+            )
             if with_data:
                 url_data = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx_data"
-                cls.download_to_cache(url_data, name, download=download, suffix=".onnx_data", **kwargs)
-            return onnx.load(file_path)
+                cls.download_to_cache(
+                    url_data, name, download=download, suffix=".onnx_data", force_download=force_download, **kwargs
+                )
+            return _load_cached_onnx(file_path)
 
         if not local and model_name.startswith(("http://", "https://")):
             name = _url_cache_name(model_name)
             kwargs["cache_dir"] = kwargs.get("cache_dir") or kornia_config.hub_onnx_dir  # "" is the default too
-            file_path = cls.download_to_cache(model_name, name, download=download, suffix=".onnx", **kwargs)
+            file_path = cls.download_to_cache(
+                model_name, name, download=download, suffix=".onnx", force_download=force_download, **kwargs
+            )
             if with_data:
                 parts = urlsplit(model_name)
                 url_data = urlunsplit(parts._replace(path=_onnx_data_name(parts.path)))
-                cls.download_to_cache(url_data, _onnx_data_name(name), download=download, suffix=".onnx_data", **kwargs)
-            return onnx.load(file_path)
+                cls.download_to_cache(
+                    url_data,
+                    _onnx_data_name(name),
+                    download=download,
+                    suffix=".onnx_data",
+                    force_download=force_download,
+                    **kwargs,
+                )
+            return _load_cached_onnx(file_path)
 
         path = os.path.expanduser(model_name)
         if os.path.exists(path):

@@ -584,6 +584,7 @@ class ONNXMixin:
         self,
         arg: Union[onnx.ModelProto, str, os.PathLike],
         cache_dir: Optional[str] = None,
+        force_download: bool = False,
     ) -> onnx.ModelProto:
         """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
@@ -591,6 +592,8 @@ class ONNXMixin:
             arg: An ONNX ModelProto object; a ``str`` file path, ``hf://`` name or URL of an ONNX model; or an
                 :class:`os.PathLike` file path, which always names a local file. A local path may start with ``~``.
             cache_dir: Where to read onnx objects from if stored on disk.
+            force_download: If True, download an ``hf://`` name or a URL again, replacing the cached file, even when
+                it is cached. It has no effect on a ``ModelProto`` or a path to a local file.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
@@ -603,7 +606,7 @@ class ONNXMixin:
         if isinstance(arg, onnx.ModelProto):
             return arg
         if isinstance(arg, (str, os.PathLike)):
-            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
+            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir, force_download=force_download)
         hint = " For a serialized model, pass onnx.load_model_from_string(data)." if isinstance(arg, bytes) else ""
         raise TypeError(
             "Expected an onnx.ModelProto, a str (a file path, an 'hf://' name or a URL), or an os.PathLike file path, "
@@ -614,6 +617,7 @@ class ONNXMixin:
         self,
         *args: Union[onnx.ModelProto, str, os.PathLike],
         cache_dir: Optional[str] = None,
+        force_download: bool = False,
     ) -> list[onnx.ModelProto]:
         """Load multiple ONNX models or operators and returns them as a list.
 
@@ -623,6 +627,8 @@ class ONNXMixin:
                 'hf://model_name' (a ``str``). Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
             cache_dir: Where to read operations from if stored on disk.
+            force_download: If True, download every ``hf://`` name and URL again, replacing the cached files, even when
+                they are cached.
 
         Returns:
             list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
@@ -630,7 +636,7 @@ class ONNXMixin:
         """
         op_list = []
         for arg in args:
-            op_list.append(self._load_op(arg, cache_dir=cache_dir))
+            op_list.append(self._load_op(arg, cache_dir=cache_dir, force_download=force_download))
         return op_list
 
     def _combine(
