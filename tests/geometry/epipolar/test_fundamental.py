@@ -1220,7 +1220,7 @@ class TestRefineFundamentalLM(BaseTester):
         self.assert_close(cauchy, torch.tensor(expected, dtype=torch.float64), atol=1e-9, rtol=0)
 
 
-class TestClosestPointOnEpipolarLineAutocast(BaseTester):
+class TestClosestPointOnEpipolarLineMixedPrecision(BaseTester):
     """A caller's autocast region does not reach get_closest_point_on_epipolar_line (#6177)."""
 
     @staticmethod
@@ -1231,30 +1231,41 @@ class TestClosestPointOnEpipolarLineAutocast(BaseTester):
         points2 = torch.rand(2, 10, 2, generator=generator) * 600
         return points1.to(device, dtype), points2.to(device, dtype), Fm.to(device, dtype)
 
-    @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
-    def test_autocast_does_not_change_the_result_6177(self, device, autocast_dtype):
+    @pytest.mark.parametrize("half_pts2", [False, True], ids=["float32_pts2", "half_pts2"])
+    @pytest.mark.parametrize("region_dtype", [torch.bfloat16, torch.float16], ids=["bfloat16", "float16"])
+    def test_a_mixed_precision_region_does_not_change_the_result_6177(self, device, region_dtype, half_pts2):
         # The epipolar lines came out of autocast in half precision and met the caller's float32 points in
-        # torch.linalg.cross, which raised "expected scalar type Float but found BFloat16".
-        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
-            pytest.skip("this CUDA device does not support bfloat16")
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("CPU and CUDA autocast")
+        # torch.linalg.cross, which raised "expected scalar type Float but found BFloat16" on CPU and returned wrong
+        # values on MPS. A half-precision pts2, which autocast used to unify with the lines, keeps working. No
+        # "autocast" in the name: conftest skips those on MPS.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
+        bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
+        if region_dtype == torch.bfloat16 and not bfloat16_ok:
+            pytest.skip("no bfloat16 autocast on this device")
         points1, points2, Fm = self._inputs(device)
-        expected = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
-        with torch.autocast(device.type, dtype=autocast_dtype):
+        if half_pts2:
+            points2 = points2.to(region_dtype)
+        expected = epi.get_closest_point_on_epipolar_line(points1, points2.float(), Fm)
+        with torch.autocast(device.type, dtype=region_dtype):
             actual = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, atol=0, rtol=0)
 
-    @pytest.mark.parametrize("fm_dtype", [torch.float32, torch.float64])
-    def test_fm_takes_the_points_dtype_6177(self, device, dtype, fm_dtype):
-        # Autocast used to cast a float32 Fm to half-precision points' dtype; the function now does it itself, in and
-        # out of autocast, so the result has the points' dtype.
-        if device.type == "mps" and fm_dtype == torch.float64:
+    @pytest.mark.parametrize("operand", ["Fm", "pts2"])
+    @pytest.mark.parametrize("other_dtype", [torch.float32, torch.float64])
+    def test_fm_and_pts2_take_the_dtype_of_pts1_6177(self, device, dtype, other_dtype, operand):
+        # Autocast used to unify half-precision operands with float32 ones; the function now casts Fm and pts2 to the
+        # dtype of pts1 itself, in and out of autocast. A mixed pts2 raised on CPU and gave wrong values on MPS.
+        if device.type == "mps" and other_dtype == torch.float64:
             pytest.skip("MPS does not support float64")
         points1, points2, Fm = self._inputs(device, dtype)
         expected = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
-        actual = epi.get_closest_point_on_epipolar_line(points1, points2, Fm.to(fm_dtype))
+        if operand == "Fm":
+            actual = epi.get_closest_point_on_epipolar_line(points1, points2, Fm.to(other_dtype))
+        else:
+            actual = epi.get_closest_point_on_epipolar_line(points1, points2.to(other_dtype), Fm)
         assert actual.dtype == dtype
         self.assert_close(actual, expected, atol=0, rtol=0)
 
