@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
-from kornia.core.utils import _torch_grid_sample
+from kornia.core.utils import _autocast_disabled, _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -241,6 +241,9 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
           the columns tilts it towards ``-x``, one growing along the rows towards ``-y``.
         - the arguments mean what they mean for :func:`~kornia.geometry.depth.depth_to_3d`, and the result
           has its :math:`(B, 3, H, W)` layout.
+        - float16 and bfloat16 inputs are widened to float32 first. The result has the promoted dtype of ``depth`` and
+          ``camera_matrix``, or the default floating dtype when both are integer, and it does not follow an
+          enclosing autocast region: its dtype and values are the same inside autocast as outside.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`, with
@@ -275,11 +278,21 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
             expected_shape=["B", "1", "H >= 2", "W >= 2"],
         )
 
+    dtype = torch.promote_types(depth.dtype, camera_matrix.dtype)
+    # Compute in float32 when either input is half precision: bfloat16 cannot hold the pixel grid past 256 and the
+    # float16 cross product of small pixel tangents underflows. The grid takes ``depth``'s dtype, so cast each input.
+    if depth.dtype in (torch.float16, torch.bfloat16):
+        depth = depth.float()
+    if camera_matrix.dtype in (torch.float16, torch.bfloat16):
+        camera_matrix = camera_matrix.float()
+
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW
+    dtype = dtype if dtype.is_floating_point else xyz.dtype
 
-    # compute the pointcloud spatial gradients
-    gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
+    # Keep the gradient convolution in the point-cloud dtype under autocast.
+    with _autocast_disabled(xyz.device.type):
+        gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
     # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
     # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides
@@ -288,7 +301,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     b: torch.Tensor = gradients[:, :, 1].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
 
     normals: torch.Tensor = torch.linalg.cross(a, b, dim=-1)  # BxHxWx3
-    return F.normalize(normals, dim=-1, p=2).permute(0, 3, 1, 2)  # Bx3xHxW
+    return F.normalize(normals, dim=-1, p=2).to(dtype).permute(0, 3, 1, 2)  # Bx3xHxW
 
 
 def depth_from_plane_equation(

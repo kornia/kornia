@@ -31,7 +31,11 @@ class DepthAnythingONNXBuilder:
 
     @staticmethod
     def build(
-        model_name: str = "depth-anything-v2-small", model_type: str = "model", cache_dir: Optional[str] = None
+        model_name: str = "depth-anything-v2-small",
+        model_type: str = "model",
+        cache_dir: Optional[str] = None,
+        *,
+        force_download: bool = False,
     ) -> DepthEstimation:
         """Build a ``DepthEstimation`` around the onnx-community graph (downloaded on first use).
 
@@ -59,6 +63,10 @@ class DepthAnythingONNXBuilder:
                     - `model_uint8`
             cache_dir:
                 The directory where the model should be cached.
+            force_download:
+                Whether to download the model and its ``preprocessor_config.json`` again and replace the cached
+                files, even when they are cached. By default a cached file is used as it is, however old, and one
+                that does not load fails every time until it is deleted.
 
         Returns:
             DepthEstimation: The depth estimation model.
@@ -77,8 +85,9 @@ class DepthAnythingONNXBuilder:
         onnx_model = loader.load_model(
             download=True,
             io_name_mapping={"pixel_values": "input", "predicted_depth": "output"},
+            force_download=force_download,
         )
-        preprocessing = loader.load_preprocessing()
+        preprocessing = loader.load_preprocessing(force_download=force_download)
         resize = next((m for m in preprocessing if isinstance(m, _DPTResize)), None)
         others = [m for m in preprocessing if not isinstance(m, _DPTResize)]
         preproc = ImageSequential(*others).to_onnx(save=False) if others else None
