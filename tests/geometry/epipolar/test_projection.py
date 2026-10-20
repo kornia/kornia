@@ -230,19 +230,36 @@ class TestKRtFromProjection(BaseTester):
         P_mat = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(epi.KRt_from_projection, (P_mat,), raise_exception=True, fast_mode=True)
 
-    def test_autocast_does_not_reach_the_decomposition(self, device):
-        # A caller's autocast region ran the products in half precision, and torch.linalg.solve (CPU) or qr (MPS)
-        # raised for the half-precision result (#6174).
+    def test_a_mixed_precision_region_does_not_reach_the_decomposition(self, device):
+        # A caller's autocast region ran the products in half precision, and torch.linalg.det (CPU) or qr (MPS)
+        # raised for the half-precision result (#6174). No "autocast" in the name: conftest skips those on MPS.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
+        bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
         P = torch.tensor(
             [[[308.0, 139.0, 231.0, 84.0], [481.0, 161.0, 358.0, 341.0], [384.0, 387.0, 459.0, 102.0]]],
             device=device,
         )
         expected = epi.KRt_from_projection(P)
-        with torch.autocast(device.type, dtype=torch.bfloat16):
+        with torch.autocast(device.type, dtype=torch.bfloat16 if bfloat16_ok else torch.float16):
             actual = epi.KRt_from_projection(P)
         for a, e in zip(actual, expected):
             assert a.dtype == torch.float32
             self.assert_close(a, e, atol=0, rtol=0)
+
+    def test_still_scriptable(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard (#6174); it must keep
+        # scripting and give the eager result.
+        _skip_half(dtype, _NO_HALF_QR)
+        P = torch.tensor(
+            [[[308.0, 139.0, 231.0, 84.0], [481.0, 161.0, 358.0, 341.0], [384.0, 387.0, 459.0, 102.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        scripted = torch.jit.script(epi.KRt_from_projection)
+        for a, e in zip(scripted(P), epi.KRt_from_projection(P)):
+            self.assert_close(a, e)
 
 
 _NO_HALF_QR = "KRt_from_projection does not upcast half input, and torch.linalg.qr has no float16/bfloat16 kernel"

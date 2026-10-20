@@ -181,8 +181,8 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
     """
     KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
-    # A caller's autocast region would run the products below in half precision, which torch.linalg.solve and qr
-    # have no kernel for. TorchScript has no context managers; a scripted call keeps the caller's precision.
+    # A caller's autocast region would run the products below in half precision, which torch.linalg.det (CPU) and
+    # qr (MPS) have no kernel for. TorchScript has no context managers; a scripted call keeps the caller's precision.
     if torch.jit.is_scripting():
         return _KRt_from_projection(P)
     with _autocast_disabled(P.device.type):
