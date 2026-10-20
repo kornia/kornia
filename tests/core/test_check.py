@@ -15,6 +15,9 @@
 # limitations under the License.
 #
 
+import re
+from typing import Optional, Union
+
 import pytest
 import torch
 
@@ -182,10 +185,22 @@ class TestCheckType:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_TYPE("world", int, raises=False) is False
 
-    @pytest.mark.parametrize("typ", [int | str, (int | str, bytes)])
-    def test_invalid_union(self, typ):
+    @pytest.mark.parametrize(
+        "typ, expected",
+        [
+            (int | str, "int | str"),
+            ((int | str, bytes), "int | str | bytes"),
+            (Union[int, str], "int | str"),
+            (int | None, "int | None"),
+            (Optional[int], "int | None"),
+        ],
+        ids=["pep604", "tuple", "typing-union", "pep604-none", "typing-optional"],
+    )
+    def test_invalid_union(self, typ, expected):
+        # A union is named by its members on every Python: typing's unions, and from 3.14 also ``int | str``, are
+        # themselves named "Union".
         assert KORNIA_CHECK_TYPE(1.0, typ, raises=False) is False
-        with pytest.raises(TypeCheckError, match=r"expected int \| str"):
+        with pytest.raises(TypeCheckError, match=rf"expected {re.escape(expected)}, got"):
             KORNIA_CHECK_TYPE(1.0, typ)
 
 

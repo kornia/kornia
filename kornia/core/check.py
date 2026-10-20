@@ -20,7 +20,8 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, TypeVar, Union, cast
+from types import UnionType
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, TypeVar, Union, cast, get_args, get_origin
 
 import torch
 from torch import float16, float32, float64
@@ -301,6 +302,15 @@ def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:
 _T = TypeVar("_T", bound=type)
 
 
+def _type_name(typ: Any) -> str:
+    """Name a type for an error message, spelling a union of any kind as ``int | str``."""
+    # A union's own name says nothing: typing.Union[...] is "Union", and from Python 3.14 on so is ``int | str``, which
+    # has no ``__name__`` before 3.14. Name it from its members instead.
+    if get_origin(typ) in (Union, UnionType):
+        return " | ".join("None" if arg is type(None) else _type_name(arg) for arg in get_args(typ))
+    return getattr(typ, "__name__", repr(typ))
+
+
 def KORNIA_CHECK_TYPE(
     x: Any, typ: _T | tuple[_T, ...], msg: Optional[CheckMessage] = None, raises: bool = True
 ) -> bool:
@@ -340,12 +350,7 @@ def KORNIA_CHECK_TYPE(
                     error_msg += f"\n  {msg}"
                 raise TypeCheckError(error_msg)
             # In Python mode, we can safely use type introspection
-            # A PEP 604 union (``int | str``) has no ``__name__``; its repr is already readable.
-            expected_type_str = (
-                " | ".join(getattr(t, "__name__", repr(t)) for t in typ)
-                if isinstance(typ, tuple)
-                else getattr(typ, "__name__", repr(typ))
-            )
+            expected_type_str = " | ".join(_type_name(t) for t in typ) if isinstance(typ, tuple) else _type_name(typ)
             type_name = str(type(x))
             error_msg = f"Type mismatch: expected {expected_type_str}, got {type_name}."
             if msg is not None:
