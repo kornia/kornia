@@ -121,6 +121,10 @@ def _guided_blur_multichannel_guidance(
     subsample: int = 1,
     separable: bool = False,
 ) -> torch.Tensor:
+    # One compute dtype for the whole path: ``mean_I @ a`` needs ``mean_I`` in the dtype ``a`` is solved in, so a
+    # guidance narrower than ``input`` (float16, float32 or uint8 next to float64) is promoted to the pair's dtype.
+    # ``Tensor.to`` is a no-op when the dtypes already match, so every other pair is unaffected.
+    guidance = guidance.to(torch.promote_types(guidance.dtype, input.dtype))
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
     # The input channel count is spelled out instead of inferred with ``-1``: an empty batch has no elements, so

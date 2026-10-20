@@ -27,7 +27,7 @@ from kornia.contrib.super_resolution import (
     SuperResolution,
     SuperResolutionConfig,
 )
-from kornia.core._compat import torch_version_lt
+from kornia.core._compat import torch_version_ge, torch_version_lt
 
 from testing.base import BaseTester
 
@@ -152,6 +152,32 @@ class TestSuperResolutionBuilders(BaseTester):
         pytest.importorskip("onnxscript")
         builder.build(pretrained=False, **build_kwargs).to_onnx(save=False)
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+    def test_to_onnx_with_pre_and_post_processor_matches_eager_at_any_size(self, export_kwargs):
+        """Without an ``image_size``, the graph takes any batch, height and width, as the eager pre-processor does."""
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            pytest.importorskip("onnxscript")
+        torch.manual_seed(0)
+        model = SmallSRBuilder.build(pretrained=False)
+        op = model.to_onnx(save=False, **export_kwargs)
+        dims = [d.dim_param or d.dim_value for d in op.graph.input[0].type.tensor_type.shape.dim]
+        assert dims[1] == 3
+        assert all(isinstance(d, str) for d in (dims[0], dims[2], dims[3]))
+        session = ort.InferenceSession(op.SerializeToString(), providers=["CPUExecutionProvider"])
+
+        generator = torch.Generator().manual_seed(0)
+        # batches other than the traced 2, H != W, odd sizes
+        for shape in [(1, 3, 40, 56), (3, 3, 37, 61)]:
+            images = torch.rand(*shape, generator=generator)
+            (upscaled,) = session.run(None, {session.get_inputs()[0].name: images.numpy()})
+            with torch.no_grad():
+                expected = model(images)
+            self.assert_close(torch.from_numpy(upscaled), expected, rtol=1e-4, atol=1e-4)
+
     @pytest.mark.parametrize(("upscale_factor", "image_size"), [(2, 32), (3, None), (4, 64)])
     def test_output_image_size_matches_the_real_forward(self, device, dtype, upscale_factor, image_size):
         """``output_image_size`` must equal what a forward actually returns.
@@ -189,3 +215,42 @@ class TestSuperResolutionBuilders(BaseTester):
         inferred = onnx.shape_inference.infer_shapes(exported, data_prop=True)
         out_dim = inferred.graph.output[0].type.tensor_type.shape.dim[-1]
         assert out_dim.dim_value == model.output_image_size
+
+
+class TestRRDBNetBuilderWeights:
+    """Pretrained Real-ESRGAN weights load like every other kornia checkpoint, with no download here."""
+
+    @staticmethod
+    def _fake_loader(monkeypatch, checkpoint):
+        import kornia.contrib.super_resolution as sr
+
+        calls = []
+
+        def _load(url, **kwargs):
+            calls.append((url, kwargs))
+            return checkpoint
+
+        monkeypatch.setattr(sr, "load_state_dict_from_url", _load)
+        return calls
+
+    @pytest.mark.parametrize("keys", [("params_ema",), ("params",), ("params", "params_ema")])
+    def test_loads_the_ema_weights_and_falls_back_to_params(self, monkeypatch, tmp_path, keys):
+        # Real-ESRGAN's RealESRGANer prefers ``params_ema`` and falls back to ``params``; kornia read ``params_ema``
+        # only, so a checkpoint without it raised ``KeyError``.
+        monkeypatch.chdir(tmp_path)
+        reference = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=False).model.state_dict()
+        checkpoint = {key: {k: torch.full_like(v, i + 1.0) for k, v in reference.items()} for i, key in enumerate(keys)}
+        calls = self._fake_loader(monkeypatch, checkpoint)
+
+        model = RRDBNetBuilder.build("RealESRGAN_x4plus_anime_6B", pretrained=True).model
+
+        expected = checkpoint["params_ema" if "params_ema" in keys else "params"]
+        assert all(torch.equal(v, expected[k]) for k, v in model.state_dict().items())
+        assert [url for url, _ in calls] == [
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
+        ]
+        # The weights go to the torch hub cache, as every other kornia checkpoint does, not under the working
+        # directory, where each new one downloaded them again: no ``model_dir`` overrides the hub's.
+        assert calls[0][1].get("model_dir") is None
+        assert calls[0][1].get("file_name") is None
+        assert not any(tmp_path.iterdir())

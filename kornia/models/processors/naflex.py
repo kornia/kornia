@@ -17,9 +17,6 @@
 from __future__ import annotations
 
 import math
-import sys
-import warnings
-from types import FrameType
 from typing import Callable, Optional, Union
 
 import torch
@@ -28,7 +25,7 @@ from torch.nn import functional as F
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.utils import _in_torch_or_kornia, is_compiling
+from kornia.core.utils import _warn_at_caller, is_compiling
 
 __all__ = ["NaFlex"]
 
@@ -198,7 +195,7 @@ class NaFlex(nn.Module):
         )
         # A square grid on an image whose sides differ by at least one patch of the longer side takes rectangular
         # patches. That is right for a rectangular patch embedding, but for square patches the grid is not square
-        # (#6004: 8 x 32 at patch 16 for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the
+        # (8 x 32 at patch 16 for 128 x 512) and the table goes in the wrong layout. N, H and W cannot tell the
         # two apart, so warn. A square-patch convolution of stride s, overlapping or not, with padding up to half its
         # kernel never warns: its grid is square only for sides H < W less than s apart, and H >= (side - 1) * s, so
         # (W - H) * side < (side - 1) * s + (W - H) <= W.
@@ -210,16 +207,3 @@ class NaFlex(nn.Module):
                 "NaFlex (which also silences this warning), or make the patch embedding return (B, C, h, w)."
             )
         return side, side
-
-
-def _warn_at_caller(message: str) -> None:
-    """Warn with a ``UserWarning`` attributed to the first frame outside kornia and torch.
-
-    NaFlex warns from inside its ``forward``, which ``nn.Module.__call__`` reaches through torch frames and which may
-    run inside another kornia model, so no fixed ``stacklevel`` names the line that needs ``patch_size``.
-    """
-    level = 2  # warnings.warn's stacklevel for the frame that called this function
-    frame: Optional[FrameType] = sys._getframe(1)
-    while frame is not None and _in_torch_or_kornia(frame):
-        frame, level = frame.f_back, level + 1
-    warnings.warn(message, UserWarning, stacklevel=level if frame is not None else 2)

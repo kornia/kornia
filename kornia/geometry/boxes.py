@@ -95,10 +95,21 @@ def _boxes_to_polygons(
     return polygons
 
 
-def _validate_box_coordinates(boxes: torch.Tensor) -> None:
-    """Validate that box coordinates are finite."""
-    if not torch.isfinite(boxes).all():
+def _validate_box_values(boxes: torch.Tensor, width: torch.Tensor, height: torch.Tensor) -> None:
+    """Raise the first of the non-finite, width and height errors, reading all three checks in one host transfer.
+
+    The three reductions run on the device of ``boxes`` and come back together, so a CUDA box costs one device
+    synchronization instead of three. The errors, their messages and their order are those of the separate checks.
+    """
+    non_finite, bad_width, bad_height = torch.stack(
+        ((~torch.isfinite(boxes)).any(), (width <= 0).any(), (height <= 0).any())
+    ).tolist()
+    if non_finite:
         raise ValueError("Some boxes have non-finite coordinates.")
+    if bad_width:
+        raise ValueError("Some boxes have negative widths or 0.")
+    if bad_height:
+        raise ValueError("Some boxes have negative heights or 0.")
 
 
 def _assert_finite_vertices(boxes: torch.Tensor) -> None:
@@ -134,11 +145,9 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
 
     # Value validation reads the data, which graph capture cannot do; skip it under export. The vertex modes check
     # finiteness asynchronously so that they stay fullgraph-compilable.
-    if validate_boxes and not is_exporting() and boxes.numel() > 0:
-        if mode.startswith("vertices"):
-            _assert_finite_vertices(boxes)
-        else:
-            _validate_box_coordinates(boxes)
+    # The coordinate modes check finiteness together with the extents below, in one host read.
+    if validate_boxes and not is_exporting() and boxes.numel() > 0 and mode.startswith("vertices"):
+        _assert_finite_vertices(boxes)
 
     if mode.startswith("vertices"):
         if mode == "vertices":
@@ -166,10 +175,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
 
         # Value validation reads the data, which graph capture cannot do; skip it under export.
         if validate_boxes and not is_exporting():
-            if (width <= 0).any():
-                raise ValueError("Some boxes have negative widths or 0.")
-            if (height <= 0).any():
-                raise ValueError("Some boxes have negative heights or 0.")
+            _validate_box_values(boxes, width, height)
 
         xmin, ymin = boxes[..., 0], boxes[..., 1]
         quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)

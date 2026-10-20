@@ -82,13 +82,16 @@ class TestEnhanceConventions(BaseTester):
 
     def test_convention_image_histogram_triangular_range(self, device, dtype):
         # Centers are 0.25 and 0.75; 1.1 lies outside [0, 1] and keeps its triangular weight
-        # 1 - 0.35 / 0.5 = 0.3 for the 0.75 bin instead of being clipped to 1.0 (weight 0.5) or dropped.
+        # for the 0.75 bin instead of being clipped to 1.0 (weight 0.5) or dropped.
         image = torch.tensor([[0.25, 1.1]], device=device, dtype=dtype)
         hist, pdf = kornia.enhance.image_histogram2d(
             image, min=0.0, max=1.0, n_bins=2, bandwidth=0.5, kernel="triangular", return_pdf=True
         )
-        self.assert_close(hist, torch.tensor([1.0, 0.3], device=device, dtype=dtype))
-        self.assert_close(pdf, torch.tensor([1.0, 0.3], device=device, dtype=dtype) / 1.3)
+        output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        weight = 1.0 - (image[0, 1].to(output_dtype) - 0.75).abs() / 0.5
+        expected_hist = torch.stack((torch.ones((), device=device, dtype=output_dtype), weight))
+        self.assert_close(hist, expected_hist)
+        self.assert_close(pdf, expected_hist / expected_hist.sum())
 
     def test_convention_image_histogram_automatic_centers_follow_bandwidth(self, device, dtype):
         image = torch.tensor([[0.125]], device=device, dtype=dtype)
@@ -96,7 +99,8 @@ class TestEnhanceConventions(BaseTester):
             image, min=0.0, max=1.0, n_bins=2, bandwidth=0.25, kernel="triangular"
         )
         # Centers are 0.125 and 0.375, generated as min + (i + 0.5) * bandwidth.
-        self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=dtype))
+        output_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(hist, torch.tensor([1.0, 0.0], device=device, dtype=output_dtype))
 
     @pytest.mark.parametrize("explicit_center", [False, True])
     @pytest.mark.parametrize("return_pdf", [False, True])
@@ -253,6 +257,29 @@ class TestEnhanceConventions(BaseTester):
         image = torch.zeros(1, 1, 300, 300, dtype=torch.float16)
         image[..., :, 150:] = 1.0
         self.assert_close(kornia.enhance.equalize(image), kornia.enhance.equalize(image.float()).half())
+
+    # An 8-bit level v reads lookup entry (v / 255 * 255).long() == v in every dtype. Its bin, v * 256 / 255, was
+    # computed in the input dtype, where it rounds up to v + 1 for v >= 240 in float16 and v >= 128 in bfloat16, so
+    # the pixel was counted one bin above the entry it reads and the whole table moved.
+    # Snippet used to generate expected (float32 kornia gives the same):
+    #   PIL.ImageOps.equalize(Image.fromarray(np.repeat([10, 100, 254, 255], 300).astype(np.uint8).reshape(30, 40)))
+    def test_convention_equalize_counts_each_8bit_level_in_its_own_bin(self, device, dtype):
+        levels = torch.tensor([10.0, 100.0, 254.0, 255.0], device=device)
+        image = (levels.repeat_interleave(300) / 255).reshape(1, 1, 30, 40).to(dtype)
+        out = kornia.enhance.equalize(image)
+        assert out.dtype == dtype
+        expected = torch.tensor([0.0, 100.0, 200.0, 255.0], device=device)
+        self.assert_close((out.float().flatten()[::300] * 255).round(), expected, rtol=0, atol=0)
+
+    def test_convention_equalize_of_an_8bit_image_matches_float64_up_to_output_rounding(self, device, dtype):
+        # Every bin now matches the float64 one, so only the final division by 255 rounds: at most half a ulp.
+        torch.manual_seed(0)
+        image = torch.randint(0, 256, (2, 3, 64, 64)).double() / 255
+        expected = kornia.enhance.equalize(image)
+        out = kornia.enhance.equalize(image.to(device, dtype))
+        ulp = {torch.float16: 2.0**-11, torch.bfloat16: 2.0**-8}.get(dtype, 1e-6)
+        # Compare on the CPU: MPS has no float64.
+        self.assert_close(out.cpu().double(), expected, rtol=0, atol=ulp / 2 + 1e-12)
 
     # Each op expects a floating-point image in [0, 1]. An integer image used to come back saturated, wrapped or
     # negative without an error, so it is now rejected with the conversion to use (#5981).

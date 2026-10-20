@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _range_bound
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import adjust_brightness
 
 
@@ -109,5 +110,5 @@ class RandomBrightness(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         if self.clip_output:
             input = _clamp_unit_range(input)
-        brightness_factor = params["brightness_factor"].to(input)
+        brightness_factor = _to_device_nonblocking(params["brightness_factor"], input.device, input.dtype)
         return adjust_brightness(input, brightness_factor - 1, self.clip_output)

@@ -23,6 +23,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core.utils import _as_tensor_nonblocking
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
@@ -142,13 +143,13 @@ class RandomAffine(GeometricAugmentationBase2D):
         # does not support at opset 20. Multiply by ``pi/180`` explicitly same value,
         # but only basic arithmetic ops in the trace.
         deg2rad_factor: float = math.pi / 180.0
-        shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor
-        shear_y = torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype) * deg2rad_factor
+        shear_x = _as_tensor_nonblocking(params["shear_x"], input.device, input.dtype) * deg2rad_factor
+        shear_y = _as_tensor_nonblocking(params["shear_y"], input.device, input.dtype) * deg2rad_factor
         return get_affine_matrix2d(
-            torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
+            _as_tensor_nonblocking(params["translations"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["center"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["scale"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["angle"], input.device, input.dtype),
             shear_x,
             shear_y,
         )

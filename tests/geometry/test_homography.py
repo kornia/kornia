@@ -49,6 +49,21 @@ from kornia.geometry.linalg import transform_points
 from testing.base import BaseTester
 from testing.geometry.create import create_random_homography
 
+# A mild warp of the unit square and spread-out points and segments in it. Their exact correspondences give DLT
+# systems whose smallest non-zero singular value is 0.32 (points) and 0.27 (segments) of the largest, so a batched
+# fit matches the unbatched one in every dtype and on every device.
+_EXACT_H = torch.tensor([[1.05, 0.03, 0.1], [-0.02, 0.98, 0.05], [0.01, 0.02, 1.0]])
+_SPREAD_POINTS = torch.tensor([[0.1, 0.1], [0.9, 0.15], [0.85, 0.9], [0.15, 0.8]])
+_SPREAD_SEGMENTS = torch.tensor(
+    [
+        [[0.1, 0.1], [0.9, 0.2]],
+        [[0.2, 0.8], [0.8, 0.9]],
+        [[0.1, 0.9], [0.3, 0.1]],
+        [[0.7, 0.1], [0.9, 0.9]],
+        [[0.4, 0.3], [0.6, 0.7]],
+    ]
+)
+
 
 class TestSampleValidation(BaseTester):
     def test_good(self, device, dtype):
@@ -633,16 +648,49 @@ class TestFindHomographyDLT(BaseTester):
         assert find_homography_lines_dlt(segments1, segments2).isnan().all().item()
 
     @pytest.mark.timeout(120, method="thread")
-    def test_nonfinite_sample_leaves_batch_intact(self, device, dtype):
-        points1 = torch.rand(3, 4, 2, device=device, dtype=dtype)
-        points2 = torch.rand(3, 4, 2, device=device, dtype=dtype)
-        weights = torch.ones(3, 4, device=device, dtype=dtype)
-        expected = find_homography_dlt(points1[:1], points2[:1], weights[:1])
+    @pytest.mark.parametrize("solver", ["lu", "svd"])
+    def test_nonfinite_sample_leaves_batch_intact(self, device, dtype, solver):
+        # With ``solver="svd"``, CPU's SVD raised for the whole batch, which then held uninitialized memory, and
+        # CUDA's gave the NaN-weight sample a finite homography.
+        points1 = _SPREAD_POINTS.to(device, dtype).repeat(4, 1, 1)
+        points2 = transform_points(_EXACT_H.to(device, dtype)[None], points1)
+        weights = torch.ones(4, 4, device=device, dtype=dtype)
+        expected = find_homography_dlt(points1[:1], points2[:1], weights[:1], solver)
         points1[1, 0, 0] = float("nan")
         weights[2, 1] = float("inf")
-        H = find_homography_dlt(points1, points2, weights)
+        weights[3, 2] = float("nan")
+        H = find_homography_dlt(points1, points2, weights, solver)
         assert H[1:].isnan().all().item()
         self.assert_close(H[:1], expected)
+
+    def test_svd_failure_gives_nan(self, device, dtype, monkeypatch):
+        # An SVD that fails on finite input leaves no homography: NaN and a warning, not uninitialized memory.
+        def fail(*args, **kwargs):
+            raise RuntimeError("linalg.svd: The algorithm failed to converge")
+
+        monkeypatch.setattr("kornia.geometry.homography._torch_svd_cast", fail)
+        points1 = torch.rand(2, 6, 2, device=device, dtype=dtype)
+        points2 = torch.rand(2, 6, 2, device=device, dtype=dtype)
+        with pytest.warns(RuntimeWarning, match="SVD did not converge"):
+            H = find_homography_dlt(points1, points2, solver="svd")
+        assert H.shape == (2, 3, 3)
+        assert H.isnan().all().item()
+
+    def test_dynamo_nonfinite_sample(self, device, dtype, torch_optimizer):
+        # A compiled program has no Python ``except``: CPU's SVD raised out of it for a non-finite sample.
+        points1 = _SPREAD_SEGMENTS.to(device, dtype).reshape(1, 10, 2).repeat(3, 1, 1)
+        points2 = transform_points(_EXACT_H.to(device, dtype)[None], points1)
+        weights = torch.ones(3, 10, device=device, dtype=dtype)
+        points1[1, 0, 0] = float("nan")
+        weights[2, 1] = float("inf")
+
+        def op(p1: torch.Tensor, p2: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+            return find_homography_dlt(p1, p2, w, solver="svd")
+
+        actual, expected = torch_optimizer(op)(points1, points2, weights), op(points1, points2, weights)
+        assert expected[1:].isnan().all().item()
+        assert torch.equal(actual.isnan(), expected.isnan())
+        self.assert_close(actual[:1], expected[:1])
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
@@ -870,6 +918,64 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         ls2 = torch.stack([points2st, points2end], dim=2)
         H = find_homography_lines_dlt(ls1, ls2, weights)
         assert H.shape == (1, 3, 3)
+        # CPU's SVD raised on the NaN, and the result used to be uninitialized memory.
+        assert H.isnan().all().item()
+
+    @staticmethod
+    def _segments_with_nonfinite_samples(device, dtype):
+        # Sample 0 is exact and finite; 1 has a NaN endpoint, 2 an infinite weight and 3 a NaN weight.
+        ls1 = _SPREAD_SEGMENTS.to(device, dtype).repeat(4, 1, 1, 1)
+        ls2 = transform_points(_EXACT_H.to(device, dtype)[None], ls1.flatten(1, 2)).view_as(ls1)
+        weights = torch.ones(4, 5, device=device, dtype=dtype)
+        ls1[1, 0, 1, 0] = float("nan")
+        weights[2, 1] = float("inf")
+        weights[3, 2] = float("nan")
+        return ls1, ls2, weights
+
+    @pytest.mark.parametrize("solve", [find_homography_lines_dlt, find_homography_lines_dlt_iterated])
+    def test_nonfinite_sample_leaves_batch_intact(self, solve, device, dtype):
+        # CPU's SVD raised for the whole batch, which then held uninitialized memory, and CUDA's gave the
+        # samples with a non-finite weight finite homographies.
+        ls1, ls2, weights = self._segments_with_nonfinite_samples(device, dtype)
+        expected = solve(ls1[:1], ls2[:1], weights[:1])
+        H = solve(ls1, ls2, weights)
+        assert H[1:].isnan().all().item()
+        self.assert_close(H[:1], expected)
+
+    def test_nonfinite_sample_keeps_the_gradient_of_the_others(self, device):
+        # The uninitialized result had no autograd graph, so the finite sample had no gradient either.
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+        ls1, ls2, weights = self._segments_with_nonfinite_samples(device, torch.float64)
+        ls1.requires_grad_(True)
+        weights.requires_grad_(True)
+        find_homography_lines_dlt(ls1, ls2, weights)[0].sum().backward()
+        ls1_0, weights_0 = ls1[:1].detach().requires_grad_(True), weights[:1].detach().requires_grad_(True)
+        find_homography_lines_dlt(ls1_0, ls2[:1], weights_0).sum().backward()
+        self.assert_close(ls1.grad[:1], ls1_0.grad)
+        self.assert_close(weights.grad[:1], weights_0.grad)
+
+    def test_svd_failure_gives_nan(self, device, dtype, monkeypatch):
+        # An SVD that fails on finite input leaves no homography: NaN and a warning, not uninitialized memory.
+        def fail(*args, **kwargs):
+            raise RuntimeError("linalg.svd: The algorithm failed to converge")
+
+        monkeypatch.setattr("kornia.geometry.homography._torch_svd_cast", fail)
+        ls1 = torch.rand(2, 5, 2, 2, device=device, dtype=dtype)
+        ls2 = torch.rand(2, 5, 2, 2, device=device, dtype=dtype)
+        with pytest.warns(RuntimeWarning, match="SVD did not converge"):
+            H = find_homography_lines_dlt(ls1, ls2)
+        assert H.shape == (2, 3, 3)
+        assert H.isnan().all().item()
+
+    @pytest.mark.parametrize("solve", [find_homography_lines_dlt, find_homography_lines_dlt_iterated])
+    def test_dynamo_nonfinite_sample(self, solve, device, dtype, torch_optimizer):
+        # A compiled program has no Python ``except``: CPU's SVD raised out of it for a non-finite sample.
+        ls1, ls2, weights = self._segments_with_nonfinite_samples(device, dtype)
+        actual, expected = torch_optimizer(solve)(ls1, ls2, weights), solve(ls1, ls2, weights)
+        assert expected[1:].isnan().all().item()
+        assert torch.equal(actual.isnan(), expected.isnan())
+        self.assert_close(actual[:1], expected[:1])
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
@@ -1318,6 +1424,85 @@ def _unit_normal(seg: torch.Tensor) -> torch.Tensor:
     """Unit normal of the segment ``seg = [start, end]``, shape ``(..., 2, 2)`` -> ``(..., 2)``."""
     d = seg[..., 1, :] - seg[..., 0, :]
     return torch.stack([-d[..., 1], d[..., 0]], -1) / d.norm(dim=-1, keepdim=True)
+
+
+def _segments(points: torch.Tensor) -> torch.Tensor:
+    return points.reshape(points.shape[0], -1, 2, 2)
+
+
+class TestHomographyDLTAutocast(BaseTester):
+    @pytest.mark.parametrize(
+        "solve",
+        [
+            pytest.param(lambda p1, p2, w: find_homography_dlt(p1[:, :4], p2[:, :4]), id="dlt-4-points"),
+            pytest.param(find_homography_dlt, id="dlt-lu"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt(p1, p2, w, solver="svd"), id="dlt-svd"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt_iterated(p1, p2, w, 5.0), id="dlt-iterated"),
+            pytest.param(lambda p1, p2, w: find_homography_lines_dlt(_segments(p1), _segments(p2)), id="lines-dlt"),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt_iterated(_segments(p1), _segments(p2), w[:, ::2], 5.0),
+                id="lines-dlt-iterated",
+            ),
+        ],
+    )
+    def test_autocast_does_not_reach_the_fit(self, device, solve):
+        # A caller's bfloat16 autocast ran the DLT's matrix products in bfloat16: the fit moved by up to 70 % of its
+        # largest entry, and float32 points gave a bfloat16 homography.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        generator = torch.Generator().manual_seed(0)
+        H = torch.tensor([[1.05, 0.03, 4.0], [-0.02, 0.98, 6.0], [1e-4, 2e-5, 1.0]])
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([600.0, 450.0])
+        points2 = transform_points(H[None], points1) + torch.randn(1, 100, 2, generator=generator)
+        weights = torch.rand(1, 100, generator=generator)
+        points1, points2, weights = points1.to(device), points2.to(device), weights.to(device)
+        expected = solve(points1, points2, weights)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = solve(points1, points2, weights)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "solve",
+        [
+            pytest.param(find_homography_dlt, id="dlt-lu"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt(p1, p2, w, solver="svd"), id="dlt-svd"),
+            pytest.param(lambda p1, p2, w: find_homography_dlt_iterated(p1, p2, w, 5.0), id="dlt-iterated"),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt(_segments(p1), _segments(p2), w[:, ::2]), id="lines-dlt"
+            ),
+            pytest.param(
+                lambda p1, p2, w: find_homography_lines_dlt_iterated(_segments(p1), _segments(p2), w[:, ::2], 5.0),
+                id="lines-dlt-iterated",
+            ),
+        ],
+    )
+    def test_weights_of_another_dtype_take_the_points_dtype(self, solve):
+        # bfloat16 points with float32 weights fitted under a caller's autocast, which cast them together. The fit
+        # now runs outside autocast and casts the weights itself, with the same result in and out of autocast.
+        generator = torch.Generator().manual_seed(0)
+        H = torch.tensor([[1.05, 0.03, 4.0], [-0.02, 0.98, 6.0], [1e-4, 2e-5, 1.0]])
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([600.0, 450.0])
+        points2 = transform_points(H[None], points1) + torch.randn(1, 100, 2, generator=generator)
+        weights = torch.rand(1, 100, generator=generator)
+        points1, points2 = points1.bfloat16(), points2.bfloat16()
+        expected = solve(points1, points2, weights.bfloat16())
+        outside = solve(points1, points2, weights)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            inside = solve(points1, points2, weights)
+        for actual in (outside, inside):
+            assert actual.dtype == torch.bfloat16
+            self.assert_close(actual, expected, atol=0, rtol=0)
+
+    def test_meta_device_infers_the_shape(self):
+        # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
+        points = torch.empty(2, 8, 2, device="meta")
+        weights = torch.empty(2, 8, device="meta")
+        segments = points.reshape(2, 4, 2, 2)
+        assert find_homography_dlt(points, points).shape == (2, 3, 3)
+        assert find_homography_dlt_iterated(points, points, weights).shape == (2, 3, 3)
+        assert find_homography_lines_dlt(segments, segments).shape == (2, 3, 3)
+        assert find_homography_lines_dlt_iterated(segments, segments, weights[:, :4]).shape == (2, 3, 3)
 
 
 class TestConventionHomography(BaseTester):

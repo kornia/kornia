@@ -46,7 +46,7 @@ def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
-    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     # Extract coords; support 2D (w=1) and 3D homogeneous
@@ -255,7 +255,10 @@ def sampson_epipolar_distance(
         the computed Sampson distance with shape :math:`(*, N)`.
 
     """
-    # Shapes are validated by the implementations, as before; a single (3, 3) Fm never counts as several models.
+    # Checked here because the CUDA matmul and shared-point implementations do not check Fm. A single (3, 3) Fm
+    # never counts as several models.
+    if Fm.shape[-2:] != (3, 3):
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
     num_points = pts1.shape[-2]
     matmul = Fm.device.type == "cuda" and num_points < use_matmul_at_less_than_points
     num_models = math.prod(Fm.shape[:-2])
@@ -275,7 +278,7 @@ def _symmetrical_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: 
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
-    if (len(Fm.shape) < 3) or Fm.shape[-2:] != (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     # Extract coords; support 2D (w=1) and 3D homogeneous
@@ -361,6 +364,9 @@ def symmetrical_epipolar_distance(
         the computed Symmetrical distance with shape :math:`(*, N)`.
 
     """
+    # Checked here because the CUDA matmul implementation does not check Fm.
+    if Fm.shape[-2:] != (3, 3):
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
     if Fm.device.type == "cuda":
         num_points = pts1.shape[-2]
         if num_points < 10000:
@@ -391,7 +397,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     KORNIA_CHECK_IS_TENSOR(pts2)
     KORNIA_CHECK_IS_TENSOR(Fm)
 
-    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts1.shape[-1] == 2:
@@ -426,7 +432,7 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     KORNIA_CHECK_IS_TENSOR(pts2)
     KORNIA_CHECK_IS_TENSOR(Fm)
 
-    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+    if Fm.shape[-2:] != (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts2.shape[-1] == 2:

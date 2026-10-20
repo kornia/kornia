@@ -35,6 +35,7 @@ from kornia.geometry.transform import ScalePyramid
 from testing.base import (
     DYNAMO_UNAVAILABLE_REASON,
     BaseTester,
+    deterministic_algorithms_on_cuda,
     dynamo_is_available,
     supports_conv2d,
     supports_reflect_padding,
@@ -174,18 +175,26 @@ class TestScaleSpaceDetector(BaseTester):
             kwargs["max_candidates"] = max_candidates
         joint, separate = subpix_type(**kwargs), SeparateSubpix(**kwargs)
         joint_calls, separate_calls = count_calls(joint), count_calls(separate)
-        actual = detector(joint)(img, mask)
-        expected = detector(separate)(img, mask)
-        assert actual[0].ne(0).any()
-        for a, e in zip(actual, expected):
-            self.assert_close(a, e)
-        # The subclass refines each sign of every octave in its own call. The built-in refiner
-        # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
-        assert len(separate_calls) > 0
-        assert len(separate_calls) % 2 == 0
-        assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
-        actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
-        expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
+        # On CUDA the packed Cramer solve of `conv_quad_interp3d` selects its system entries with a repeated-index
+        # `index_select`, whose backward accumulates with atomics in no fixed order. One keypoint of the batch-1
+        # fixture has an ill-conditioned fit, and the reordering moves the float32 image gradient there by up to
+        # 4.3e-5 -- within that gradient's own float32 error against float64 (5.5e-5), but over the float32
+        # tolerance -- so about a third of the runs failed, the capped variant too, where both detectors take the
+        # same separate path. Deterministic algorithms give both passes one accumulation order: the two detectors
+        # then agree bit for bit on CUDA, as they do on CPU, and the default tolerance stands.
+        with deterministic_algorithms_on_cuda(device):
+            actual = detector(joint)(img, mask)
+            expected = detector(separate)(img, mask)
+            assert actual[0].ne(0).any()
+            for a, e in zip(actual, expected):
+                self.assert_close(a, e)
+            # The subclass refines each sign of every octave in its own call. The built-in refiner
+            # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
+            assert len(separate_calls) > 0
+            assert len(separate_calls) % 2 == 0
+            assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
+            actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
+            expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
         self.assert_close(actual_grad, expected_grad)
 
     def test_shape(self, device, dtype):
@@ -256,6 +265,27 @@ class TestScaleSpaceDetector(BaseTester):
         assert img.grad is not None
         # An image without candidates has no gradient to give.
         assert torch.count_nonzero(img.grad) == 0
+
+    @pytest.mark.parametrize("subpix_type", [IterativeQuadInterp3d, ConvQuadInterp3d])
+    @pytest.mark.parametrize("image", ["flat", "ramp", "near-flat"])
+    def test_a_flat_image_has_a_finite_gradient(self, device, dtype, subpix_type, image):
+        # On a flat float32 image the Hessian entries of the sub-pixel fit are rounding noise of about 1e-15. Their
+        # determinants reach float32's smallest subnormal, under a relative floor that underflowed to 0, and the
+        # backward of the Cramer solve divided by them twice: the inf times a later mask's zero gradient made every
+        # pixel's gradient NaN.
+        _skip_without_half_padding(device, dtype)
+        generator = torch.Generator().manual_seed(0)
+        if image == "flat":
+            img = torch.full((1, 1, 64, 80), 0.5)
+        elif image == "ramp":
+            img = torch.linspace(0, 1, 80).expand(1, 1, 64, 80).clone()
+        else:
+            img = 0.5 + 1e-6 * torch.rand(1, 1, 64, 80, generator=generator)
+        img = img.to(device, dtype).requires_grad_()
+        det = ScaleSpaceDetector(10, subpix_module=subpix_type()).to(device, dtype)
+        lafs, resps = det(img)
+        (lafs.sum() + resps.sum()).backward()
+        assert bool(torch.isfinite(img.grad).all())
 
     @pytest.mark.parametrize(
         "img_tail, mask_shape, error",
@@ -662,8 +692,11 @@ class TestScaleSpaceDetector(BaseTester):
                 super().__init__()
                 self.response = kornia.feature.BlobHessian()
 
-            def forward(self, x: torch.Tensor, _sigmas: torch.Tensor) -> torch.Tensor:
-                return self.response(x.mean(dim=1, keepdim=True))
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                # Forward the sigmas as the default BlobHessian gets them. Without the sigma**4 normalisation the
+                # response falls with scale, so a candidate needs a noise feature that beats the level below it,
+                # and 8-18% of noise images had none; this seed's CUDA float64 draw was one of them.
+                return self.response(x.mean(dim=1, keepdim=True), sigmas)
 
         torch.manual_seed(3)
         inp = torch.rand(1, 3, 96, 96, device=device, dtype=dtype)

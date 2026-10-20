@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _to_device_nonblocking
 
 
 def get_planckian_coeffs(mode: str) -> torch.Tensor:
@@ -209,7 +210,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
         # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. Cast the
         # buffer to the input so both device and dtype follow the input for the channel-wise multiplication.
-        coeffs = self.pl.to(input)[params["idx"].long()]
+        coeffs = _to_device_nonblocking(self.pl, input.device, input.dtype)[
+            _to_device_nonblocking(params["idx"].long(), input.device)
+        ]
 
         r_w = coeffs[:, 0][..., None, None]
         b_w = coeffs[:, 1][..., None, None]

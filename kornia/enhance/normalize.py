@@ -22,6 +22,8 @@ from typing import List, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core.utils import _as_tensor_nonblocking
+
 __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_min_max"]
 
 
@@ -203,8 +205,8 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
             raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+        std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     mean = mean[..., None]
     std = std[..., None]
@@ -374,8 +376,8 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         if std.shape and std.shape[0] != 1 and std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
             raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+        mean = _as_tensor_nonblocking(mean, data.device, data.dtype)
+        std = _as_tensor_nonblocking(std, data.device, data.dtype)
 
     if mean.dim() == 1:
         mean = mean.view(1, -1, *([1] * (data.dim() - 2)))
@@ -402,6 +404,8 @@ def normalize_min_max(
         Input is ``(*, C, H, W)``: minima and maxima are taken over H and W separately for every
         leading index and channel. Constant planes map to min_val. Empty leading dimensions are
         preserved; channel and spatial dimensions must be nonzero.
+        Integer and boolean inputs are promoted to torch's default floating dtype first, as in
+        :func:`normalize`; floating inputs keep their dtype.
 
     The data is normalised using the following formulation:
 
@@ -443,6 +447,9 @@ def normalize_min_max(
     if not isinstance(max_val, float):
         raise TypeError(f"'max_val' should be a float. Got: {type(max_val)}.")
 
+    if not input.is_floating_point() and not input.is_complex():
+        # Promote as `_promote_integer_data` does; `* 1.0` also follows the default dtype under TorchScript.
+        input = input * 1.0
     shape = input.shape
     x_reshaped = input.flatten(start_dim=-2)
     x_min = x_reshaped.min(-1, keepdim=True)[0]

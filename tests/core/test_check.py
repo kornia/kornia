@@ -15,6 +15,9 @@
 # limitations under the License.
 #
 
+import re
+from typing import Optional, Union
+
 import pytest
 import torch
 
@@ -48,7 +51,7 @@ from kornia.core.exceptions import (
     ValueCheckError,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, dynamo_is_available
 
 
 class TestCheck:
@@ -182,10 +185,22 @@ class TestCheckType:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_TYPE("world", int, raises=False) is False
 
-    @pytest.mark.parametrize("typ", [int | str, (int | str, bytes)])
-    def test_invalid_union(self, typ):
+    @pytest.mark.parametrize(
+        "typ, expected",
+        [
+            (int | str, "int | str"),
+            ((int | str, bytes), "int | str | bytes"),
+            (Union[int, str], "int | str"),
+            (int | None, "int | None"),
+            (Optional[int], "int | None"),
+        ],
+        ids=["pep604", "tuple", "typing-union", "pep604-none", "typing-optional"],
+    )
+    def test_invalid_union(self, typ, expected):
+        # A union is named by its members on every Python: typing's unions, and from 3.14 also ``int | str``, are
+        # themselves named "Union".
         assert KORNIA_CHECK_TYPE(1.0, typ, raises=False) is False
-        with pytest.raises(TypeCheckError, match=r"expected int \| str"):
+        with pytest.raises(TypeCheckError, match=rf"expected {re.escape(expected)}, got"):
             KORNIA_CHECK_TYPE(1.0, typ)
 
 
@@ -660,6 +675,28 @@ class TestCheckSameSize:
             x, y = torch.rand(batch, batch + 3), torch.rand(batch, batch + 3)
             assert torch.equal(compiled(x, y), x + y)
         assert counter.frame_count == 1
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason="torch.export is unavailable on this torch/python pair")
+    def test_size_oblivious_export_keeps_a_dynamic_size_against_a_size_of_one(self):
+        # The Dynamo ONNX exporter of torch 2.9.1 runs torch.export size-obliviously, where comparing a kernel batch of
+        # 1 with a dynamic batch first guarded the batch against 1, so a dynamic batch that admits 1 failed to export.
+        config = torch.fx.experimental._config
+        if not hasattr(config, "backed_size_oblivious"):
+            pytest.skip("torch.export has no size-oblivious mode in this torch release")
+
+        class Model(torch.nn.Module):
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                KORNIA_CHECK_SAME_SIZE(torch.ones(1, 3, 3), x, allow_one=True)
+                KORNIA_CHECK_SAME_SIZE(x, x, allow_one=True)
+                return x * 2
+
+        with config.patch(backed_size_oblivious=True):
+            program = torch.export.export(
+                Model(), (torch.rand(2, 3, 8, 8),), dynamic_shapes=({0: torch.export.Dim("batch")},)
+            )
+        for batch in (1, 3):
+            x = torch.rand(batch, 3, 8, 8)
+            assert torch.equal(program.module()(x), x * 2)
 
 
 class TestCheckSizes:

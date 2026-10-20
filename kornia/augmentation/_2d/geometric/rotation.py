@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.ops import eye_like
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import affine
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
@@ -102,7 +103,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: torch.Tensor = params["degrees"].to(input)
+        angles: torch.Tensor = _to_device_nonblocking(params["degrees"], input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
@@ -214,7 +215,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: dict[str, torch.Tensor], flags: dict[str, Any]
     ) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: torch.Tensor = 90.0 * params["times"].round().to(input)
+        angles: torch.Tensor = 90.0 * _to_device_nonblocking(params["times"].round(), input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
