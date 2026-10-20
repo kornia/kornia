@@ -278,8 +278,8 @@ class ONNXExportMixin:
 
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"Kornia-<ClassName>.onnx"`` is used, with the
+                name of the object's class. Classes that override ``to_onnx`` can use another default.
             input_shape:
                 The input shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_INPUTSHAPE` will be used, with its fixed entries (the channel count) taken
@@ -298,7 +298,7 @@ class ONNXExportMixin:
             model:
                 The model to export. If not provided, the current object will be used.
             save:
-                If to save the model or load it.
+                If True, write the model to ``onnx_name``; it is returned either way. If False, nothing is written.
             additional_metadata:
                 Additional metadata to add to the ONNX model. A key that is already present is overwritten.
             **kwargs:
@@ -455,6 +455,8 @@ class ONNXRuntimeMixin:
             op: Onnx operation.
             providers:
                 Execution providers for ONNXRuntime (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
+                A provider that the installed onnxruntime build does not offer is skipped with onnxruntime's
+                ``UserWarning``, and the session runs on the CPU if none is left.
             session_options:
                 Optional ONNXRuntime session options for session configuration and optimizations, used as given.
                 If None, the session uses ``ORT_ENABLE_EXTENDED`` graph optimizations.
@@ -498,7 +500,8 @@ class ONNXRuntimeMixin:
     def as_cuda(self, device_id: int = 0, **kwargs: Any) -> None:
         """Set the session to run on CUDA.
 
-        We set the ONNX runtime session to use CUDAExecutionProvider.
+        We set the ONNX runtime session to use CUDAExecutionProvider. If the installed onnxruntime build does not
+        offer it, nothing raises: onnxruntime warns and the session runs on the CPU.
         For other CUDAExecutionProvider configurations, or CUDA/cuDNN/ONNX version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html.
 
@@ -517,7 +520,8 @@ class ONNXRuntimeMixin:
     def as_tensorrt(self, device_id: int = 0, **kwargs: Any) -> None:
         """Set the session to run on TensorRT.
 
-        We set the ONNX runtime session to use TensorrtExecutionProvider.
+        We set the ONNX runtime session to use TensorrtExecutionProvider. If the installed onnxruntime build does not
+        offer it, nothing raises: onnxruntime warns and the session runs on the CPU.
         For other TensorrtExecutionProvider configurations, or CUDA/cuDNN/ONNX/TensorRT version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html.
 
@@ -533,7 +537,8 @@ class ONNXRuntimeMixin:
     def as_openvino(self, device_type: str = "GPU", **kwargs: Any) -> None:
         """Set the session to run on OpenVINO.
 
-        We set the ONNX runtime session to use OpenVINOExecutionProvider.
+        We set the ONNX runtime session to use OpenVINOExecutionProvider. If the installed onnxruntime build does not
+        offer it, nothing raises: onnxruntime warns and the session runs on the CPU.
         For other OpenVINOExecutionProvider configurations, or CUDA/cuDNN/ONNX/TensorRT version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html.
 

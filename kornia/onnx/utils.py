@@ -399,7 +399,7 @@ def add_metadata(
             for the additional metadata to add to the ONNX model. Values are stored as strings.
 
     Returns:
-        The ONNX model with the added metadata.
+        ``onnx_model`` itself, with the added metadata: the metadata is written in place.
 
     """
     if additional_metadata is None:

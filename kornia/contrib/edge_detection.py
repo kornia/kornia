@@ -238,18 +238,18 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         Args:
             onnx_name:
                 The name of the output ONNX file. If not provided, ``"kornia_<name>_<image_size>.onnx"``, for
-                example ``"kornia_dexined_352.onnx"``.
+                example ``"kornia_dexined_352.onnx"`` (``"kornia_dexined_None.onnx"`` for ``image_size=None``).
             image_size:
                 The height and width of the graph's input, which the returned maps have too. If None, both are
-                dynamic. The pre-processor keeps the size it was built with, so the model runs at that size
-                whatever ``image_size`` is.
+                dynamic. With the pre- and post-processor, the pre-processor resizes the input to the size it was
+                built with, whatever ``image_size`` is; without them, the model runs at the size of its input.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
                 If True, write the model to ``onnx_name``; it is returned either way.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
-            kwargs: Additional arguments to convert to onnx.
+            kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
         Raises:
             ValueError: With the pre- and post-processor, if the ``ResizePostProcessor`` resizes with ``"area"``:

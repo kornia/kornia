@@ -280,9 +280,14 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         which cannot be directly exported via :func:`torch.onnx.export`.
 
         This override exports only the **image encoder** subgraph
-        (``self.image_encoder``), which is a pure ``(B, 3, H, W) -> (B, C, H', W')``
-        tensor-to-tensor module and fully ONNX-compatible.  The encoder embeddings
-        can then be fed into a separate prompt-encoder / mask-decoder pipeline.
+        (``self.image_encoder``), a ``(B, 3, H, W) -> (B, C, H', W')`` tensor-to-tensor
+        module whose graph input is named ``input`` and output ``image_embeddings``. The prompt
+        encoder and the mask decoder are not exported. The encoder embeddings
+        can be fed into a separate prompt-encoder / mask-decoder pipeline.
+
+        On torch 2.14, whose default exporter is the dynamo exporter, a ViT image encoder (SAM ViT-B, ViT-L, ViT-H)
+        needs ``onnxscript`` 0.7.2 or later: with 0.7.1 the export raises :class:`torch.onnx.OnnxExporterError`
+        (https://github.com/kornia/kornia/issues/5947). A TinyViT encoder (MobileSAM) exports with 0.7.1.
 
         Args:
             onnx_name: Path for the saved ``.onnx`` file.  Defaults to

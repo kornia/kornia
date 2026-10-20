@@ -41,7 +41,9 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             format 'hf://model_name'. Valid `model_name` can be found on https://huggingface.co/kornia/ONNX_models.
             Or a URL to the ONNX model.
         providers: A list of execution providers for ONNXRuntime
-            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
+            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']). A provider that the installed onnxruntime
+            build does not offer is skipped with onnxruntime's ``UserWarning``; the session runs on the CPU if none
+            is left. If None, the CPU.
         session_options: Optional ONNXRuntime session options for optimizing the session.
         io_maps: An optional list with one list of ``(output, input)`` name pairs per joint between consecutive
             models: ``io_maps[0]`` connects outputs of the first model to inputs of the second, ``io_maps[1]`` the

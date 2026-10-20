@@ -243,11 +243,11 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
                 ``resize`` stage runs in torch and is in neither graph: for a model that has one, the exported
                 graph takes an image that is already resized, such as ``model.resize(image)``.
             save:
-                If to save the model or load it.
+                If True, write the model to ``onnx_name``; it is returned either way.
             additional_metadata:
                 Additional metadata to add to the exported model. It goes on a copy: the stored graphs, and a
                 ``ModelProto`` the model was built from, are left as they are.
-            kwargs: Additional arguments to convert to onnx.
+            kwargs: Additional keyword arguments of ``onnx.save``, used when ``save`` is True.
 
         Returns:
             A copy of the model or of the combined graph, with ``source``, ``version`` and ``additional_metadata``.
