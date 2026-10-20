@@ -1,0 +1,1 @@
+`BoxFiltering` with `classes_to_keep` now runs on CUDA boxes after `.cuda()` or `.to(device)` instead of raising `RuntimeError: Expected all tensors to be on the same device`: `classes_to_keep` and `confidence_threshold` are non-persistent buffers that move with the module, and leave its `state_dict` unchanged.

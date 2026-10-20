@@ -357,11 +357,18 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         :meth:`to_onnx` defaults to a batch of one image. Use ``filter_as_zero=True`` to export a dynamic batch
         as one ``(B, D, 6)`` tensor.
 
+    Note:
+        ``classes_to_keep`` and ``confidence_threshold`` are non-persistent buffers: ``.to(device)`` moves them with
+        the module, and they are not part of its ``state_dict``.
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
     ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[List[int]] = [5, 20, 6]
+
+    classes_to_keep: Optional[torch.Tensor]
+    confidence_threshold: Optional[torch.Tensor]
 
     def __init__(
         self,
@@ -371,18 +378,16 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
     ) -> None:
         super().__init__()
         self.filter_as_zero = filter_as_zero
-        self.classes_to_keep = None
-        self.confidence_threshold = None
-        if classes_to_keep is not None:
-            self.classes_to_keep = (
-                classes_to_keep if isinstance(classes_to_keep, torch.Tensor) else torch.tensor(classes_to_keep)
-            )
-        if confidence_threshold is not None:
-            self.confidence_threshold = (
-                confidence_threshold or confidence_threshold
-                if isinstance(confidence_threshold, torch.Tensor)
-                else torch.tensor(confidence_threshold)
-            )
+        # Buffers, so that `.to(device)` moves them with the module. They are not persistent: the `state_dict` stays
+        # empty. `None` is a valid buffer value and means no class filtering, respectively a threshold of 0.
+        self.register_buffer(
+            "classes_to_keep", None if classes_to_keep is None else torch.as_tensor(classes_to_keep), persistent=False
+        )
+        self.register_buffer(
+            "confidence_threshold",
+            None if confidence_threshold is None else torch.as_tensor(confidence_threshold),
+            persistent=False,
+        )
 
     def forward(
         self,
@@ -505,11 +510,15 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
     def _create_dummy_input(
         self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
     ) -> Union[Tuple[Any, ...], torch.Tensor]:
+        # Trace on the device of the filter's tensors. `ONNXExportMixin.to_onnx` follows only a floating buffer, and
+        # `classes_to_keep` holds integers: a CPU dummy input would meet it on another device after `.to(device)`.
+        device = next((buffer.device for buffer in self.buffers()), None)
         pseudo_input = torch.rand(
             *[
                 ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
                 for i, dim in enumerate(input_shape)
-            ]
+            ],
+            device=device,
         )
         if self.confidence_threshold is None:
             return pseudo_input, 0.1

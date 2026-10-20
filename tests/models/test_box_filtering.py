@@ -21,6 +21,8 @@ from numpy.testing import assert_almost_equal
 
 from kornia.contrib.object_detection import BoxFiltering
 
+from testing.base import BaseTester
+
 
 class TestBoxFiltering:
     @pytest.fixture
@@ -114,3 +116,56 @@ class TestBoxFiltering:
         assert len(filtered_boxes[0]) == 4  # All boxes in the first batch should be kept
         assert len(filtered_boxes[1]) == 4  # All boxes in the second batch should be kept
         assert len(filtered_boxes[2]) == 4  # All boxes in the third batch should be kept
+
+
+class TestBoxFilteringDevice(BaseTester):
+    """``classes_to_keep`` and ``confidence_threshold`` follow the module on ``.to(device)`` (#6180)."""
+
+    @staticmethod
+    def _boxes(device, dtype):
+        # (class_id, confidence, x, y, w, h): classes cycle through 0..4, confidences span (0, 1).
+        generator = torch.Generator().manual_seed(0)
+        boxes = torch.rand(2, 20, 6, generator=generator)
+        boxes[..., 0] = torch.arange(20) % 5
+        return boxes.to(device=device, dtype=dtype)
+
+    def test_tensors_are_buffers_outside_the_state_dict_6180(self):
+        module = BoxFiltering(0.5, classes_to_keep=[0, 1, 2])
+        assert {name for name, _ in module.named_buffers()} == {"classes_to_keep", "confidence_threshold"}
+        # Non-persistent: loading or saving a detector's weights is unaffected.
+        assert len(module.state_dict()) == 0
+
+    def test_unset_filters_register_no_buffer_6180(self):
+        module = BoxFiltering()
+        assert module.classes_to_keep is None
+        assert module.confidence_threshold is None
+        assert len(list(module.buffers())) == 0
+
+    @pytest.mark.parametrize("kwargs", [{"classes_to_keep": [0, 1, 2]}, {"confidence_threshold": 0.5}])
+    def test_tensors_move_with_the_module_6180(self, kwargs):
+        """The ``meta`` device stands in for CUDA: a tensor left on the CPU raises, as it does next to CUDA boxes."""
+        module = BoxFiltering(filter_as_zero=True, **kwargs).to("meta")
+        for tensor in module.buffers():
+            assert tensor.device.type == "meta"
+        out = module(torch.rand(2, 20, 6, device="meta"))
+        assert out.device.type == "meta"
+        assert out.shape == (2, 20, 6)
+
+    @pytest.mark.parametrize("filter_as_zero", [False, True])
+    def test_matches_cpu_after_moving_the_module_6180(self, device, dtype, filter_as_zero):
+        """With the CUDA fixture this is the scenario of the issue: it raised before the tensors became buffers."""
+        kwargs = {"confidence_threshold": 0.5, "classes_to_keep": [0, 1, 2], "filter_as_zero": filter_as_zero}
+        expected = BoxFiltering(**kwargs)(self._boxes("cpu", dtype))
+        actual = BoxFiltering(**kwargs).to(device)(self._boxes(device, dtype))
+
+        if filter_as_zero:
+            # A comparison that kept or dropped every box would pass for the wrong reason.
+            assert 0 < (expected[..., 1] != 0).sum() < expected.shape[0] * expected.shape[1]
+            assert actual.device.type == device.type
+            self.assert_close(actual.cpu(), expected)
+        else:
+            assert 0 < sum(len(e) for e in expected) < 2 * 20
+            assert len(actual) == len(expected)
+            for got, want in zip(actual, expected):
+                assert got.device.type == device.type
+                self.assert_close(got.cpu(), want)
