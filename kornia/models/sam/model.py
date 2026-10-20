@@ -33,6 +33,7 @@ from typing import Any, Optional
 
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -288,7 +289,11 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
                 ``"Kornia-Sam-ImageEncoder.onnx"``.
             pseudo_shape: Concrete input shape used to trace the encoder, e.g.
                 ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``. The batch is
-                exported as dynamic, so a batch below 2 is traced at 2.
+                exported as dynamic, so a batch below 2 is traced at 2. A TinyViT image encoder
+                (MobileSAM) on the legacy TorchScript exporter (the default before torch 2.9, or
+                ``dynamo=False``) is the exception: that graph runs at the traced batch only, so it is
+                traced at this shape's batch and declares it static. With a caller's ``dynamic_axes``, such an
+                encoder is still traced at this shape's batch and runs at that batch only.
             save: Whether to write the model to disk.  Default ``True``.
             **kwargs: Additional keyword arguments forwarded to
                 :func:`torch.onnx.export`.
@@ -302,16 +307,17 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         if pseudo_shape is None:
             pseudo_shape = [1, 3, 1024, 1024]
         kwargs.setdefault("output_names", ["image_embeddings"])
-        kwargs.setdefault(
-            "dynamic_axes",
-            {
-                "input": {0: "batch"},
-                "image_embeddings": {0: "batch"},
-            },
-        )
+        input_shape = [-1, 3, -1, -1]
+        dynamic_axes: dict[str, dict[int, str]] = {"input": {0: "batch"}, "image_embeddings": {0: "batch"}}
+        if isinstance(self.image_encoder, TinyViT) and not kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            # The TorchScript exporter keeps the traced batch in TinyViT's attention reshapes, so the graph runs at
+            # that batch only: a fixed batch is traced at the pseudo shape's size rather than at 2, and declared.
+            input_shape = [pseudo_shape[0], 3, -1, -1]
+            dynamic_axes = {}
+        kwargs.setdefault("dynamic_axes", dynamic_axes)
         return super().to_onnx(
             onnx_name=onnx_name,
-            input_shape=[-1, 3, -1, -1],
+            input_shape=input_shape,
             pseudo_shape=pseudo_shape,
             model=self.image_encoder,
             save=save,

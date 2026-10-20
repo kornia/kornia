@@ -3185,8 +3185,12 @@ class TestCrop3DShapePropagation(BaseTester):
 class TestPadToMosaicShapePropagation(BaseTester):
     @pytest.mark.parametrize(
         "make_first",
-        [lambda: K.PadTo((40, 48)), lambda: K.RandomMosaic(output_size=(20, 30), p=1.0)],
-        ids=["PadTo", "RandomMosaic"],
+        [
+            lambda: K.PadTo((40, 48)),
+            lambda: K.PadTo((16, 48), crop_if_exceeds=False),  # keeps the larger input height, pads the width
+            lambda: K.RandomMosaic(output_size=(20, 30), p=1.0),
+        ],
+        ids=["PadTo", "PadTo-no-crop", "RandomMosaic"],
     )
     @pytest.mark.parametrize(
         "make_second",
@@ -3213,6 +3217,7 @@ class TestPadToMosaicShapePropagation(BaseTester):
         cases = [
             (K.PadTo((40, 48)), (40, 48)),
             (K.PadTo((16, 48)), (16, 48)),  # a target below the input height crops it
+            (K.PadTo((16, 48), crop_if_exceeds=False), (24, 48)),  # keeps the larger input height
             (K.RandomMosaic(output_size=(20, 30), p=0.0), (20, 30)),
             (K.RandomMosaic(p=1.0), (24, 40)),
         ]
