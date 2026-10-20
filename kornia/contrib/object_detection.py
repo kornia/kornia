@@ -135,10 +135,11 @@ def results_from_detections(
 
 
 def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> bool:
-    """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
+    """Return whether ``detector`` returns a sequence of per-image detections rather than batched tensors.
 
-    The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
-    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The
+    The detector runs in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
+    floating tensor, as the export's dummy input is. A tuple is checked at a second batch size: its length must
+    follow the batch, rather than name a fixed set of batched outputs such as ``(boxes, scores)``. The
     attributes that ``to_onnx`` keeps, such as an image module's output cache, hold what they held before, in every
     module inside the detector, and so does the global random state.
     """
@@ -148,7 +149,14 @@ def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> 
     # The run must not leave its output or parameters in a module inside the detector, nor consume the global random
     # state, as the export's own run does not.
     with _eval_mode(detector), _preserved_call_state(detector), _preserved_rng(), torch.no_grad():
-        return isinstance(detector(images), list)
+        output = detector(images)
+        if isinstance(output, list):
+            return True
+        if not isinstance(output, tuple) or len(output) != images.shape[0]:
+            return False
+        other_batch = 2 if images.shape[0] == 1 else 1
+        other_output = detector(images[:1].expand(other_batch, *images.shape[1:]))
+        return isinstance(other_output, tuple) and len(other_output) == other_batch
 
 
 class ObjectDetector(ModelBase, ONNXExportMixin):
@@ -279,10 +287,11 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
         Note:
-            With a post-processor that returns a list of per-image detections, as a
+            With a post-processor that returns a list or tuple of per-image detections, as a
             ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
             exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
-            the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
+            the detector returns is read at the export size, in eval mode and without gradients. A tuple requires
+            two forward passes with different batch sizes to distinguish per-image results from batched outputs.
             Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size. A
             ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a
             ``ValueError`` after the export, before anything is saved.
@@ -295,7 +304,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
         pseudo_shape = [1, 3, image_size or 352, image_size or 352]
-        # Exported for a dynamic batch, a per-image list comes out as the traced batch's detections, or the export
+        # Exported for a dynamic batch, a per-image sequence comes out as the traced batch's detections, or the export
         # fails: such a detector is exported for one image.
         batch = -1
         # The probe's input draws from the global generator, as the export's dummy does, and gives back what it drew.
