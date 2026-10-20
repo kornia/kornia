@@ -75,11 +75,14 @@ OPSET = 18  # the opset the dynamo export requests, and the ceiling of the legac
 
 def configure_survey_process() -> None:
     """Quiet logs and warnings and fix the thread count, for a process that runs survey probes and nothing else."""
-    import onnxruntime as ort
-
     logging.disable(logging.CRITICAL)
     warnings.filterwarnings("ignore")
-    ort.set_default_logger_severity(3)
+    try:
+        import onnxruntime as ort
+    except ImportError:  # the compile probe runs without it
+        pass
+    else:
+        ort.set_default_logger_severity(3)
     torch.set_num_threads(4)
 
 

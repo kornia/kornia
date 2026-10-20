@@ -36,6 +36,7 @@ set, so the tests here are named after inductor; this test does not use ``KORNIA
 from __future__ import annotations
 
 import pytest
+import torch
 
 from testing.conformance import (
     COMPILE,
@@ -98,6 +99,36 @@ def test_survey_probe_import_leaves_process_state_alone() -> None:
     after = process_state()
     assert not state_changes(before, after), f"importing the survey changed {state_changes(before, after)}"
     assert after["filters"] == before["filters"]
+
+
+def test_survey_probe_records_failures_and_lets_test_outcomes_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed export or compile is recorded; a test's own outcome, such as pytest-timeout's expiry, ends the test.
+
+    Recorded, a timeout would become a ``fail`` record, which a known-failure entry of the same type absorbs.
+    """
+    probe = import_survey_module("probe_compile")
+    harness = import_survey_module("harness")
+    case = harness.case("neg", "test", torch.neg, [torch.ones(2)])
+    wrap, inputs, ref = probe._reference(case)
+
+    def raising(error: BaseException):
+        def refuse(*args, **kwargs):
+            raise error
+
+        return refuse
+
+    monkeypatch.setattr(torch, "compile", raising(probe.Timeout("case exceeded 420s")))
+    record = probe.compile_step(case, wrap, inputs, ref, fullgraph=True)
+    assert record["compile"] == "fail", record
+    assert "Timeout" in record["compile_error"], record
+    monkeypatch.setattr(torch, "compile", raising(pytest.fail.Exception("Timeout (>600.0s) from pytest-timeout.")))
+    with pytest.raises(pytest.fail.Exception, match="pytest-timeout"):
+        probe.compile_step(case, wrap, inputs, ref, fullgraph=True)
+    monkeypatch.setattr(
+        torch.export, "export", raising(pytest.fail.Exception("Timeout (>600.0s) from pytest-timeout."))
+    )
+    with pytest.raises(pytest.fail.Exception, match="pytest-timeout"):
+        probe.export_step(wrap, inputs)
 
 
 @pytest.mark.compile_conformance

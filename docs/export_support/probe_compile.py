@@ -129,9 +129,7 @@ def export_step(wrap: nn.Module, inputs: list[torch.Tensor]) -> dict[str, Any]:
         with torch.no_grad():
             torch.export.export(wrap, tuple(copy.deepcopy(inputs)))
         rec["export"] = "ok"
-    except BaseException as e:
-        if isinstance(e, KeyboardInterrupt):
-            raise
+    except Exception as e:  # not BaseException: KeyboardInterrupt and a test's outcome (pytest-timeout) end the run
         rec.update(export="fail", export_error=err_str(e), export_where=_kornia_frames(e))
     finally:
         _set_alarm(0)
@@ -173,9 +171,7 @@ def compile_step(
             rec["compile"] = ("ok" if breaks == 0 else f"ok-breaks:{breaks}") if why is None else "mismatch"
         if why:
             rec["compile_error"] = why
-    except BaseException as e:
-        if isinstance(e, KeyboardInterrupt):
-            raise
+    except Exception as e:  # the survey's own Timeout is one; a pytest outcome or KeyboardInterrupt is not
         rec.update(
             compile="fail", compile_error=err_str(e), compile_error_full=err_full(e), compile_where=_kornia_frames(e)
         )
