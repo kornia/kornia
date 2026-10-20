@@ -129,8 +129,13 @@ def case(
 
 
 def _flatten_outputs(out: Any) -> list[torch.Tensor]:
+    # A tensor first, before any attribute probe: on torch 2.5 ``hasattr(tensor, "data")`` inside a ``torch.export``
+    # trace raises "Attempting to use FunctionalTensor on its own", which fails the export of every operator that
+    # returns a plain tensor (the dynamo ONNX exporter then falls back to its TorchScript-trace strategy).
+    if isinstance(out, torch.Tensor):
+        return [out]
     # dataclass-like kornia containers (Boxes, Keypoints, Se3, Quaternion, Image...) expose tensors via attributes
-    if hasattr(out, "data") and isinstance(out.data, torch.Tensor) and not isinstance(out, torch.Tensor):
+    if hasattr(out, "data") and isinstance(out.data, torch.Tensor):
         return [out.data]
     if hasattr(out, "__dict__") and not isinstance(out, (torch.Tensor, dict, list, tuple)):
         vals = []
