@@ -883,7 +883,9 @@ class Boxes:
         # CPU Hotpath (loop)
         # -----------------
         # The loop slices with data-dependent bounds, which graph capture cannot do; export takes the vectorized path.
-        if device.type != "cuda" and not is_exporting():
+        # So does the legacy ONNX exporter, which traces outside ``is_exporting()``: it loses the loop's in-place
+        # writes into the mask and exports a constant all-zero mask with no graph input.
+        if device.type != "cuda" and not is_exporting() and not torch.jit.is_tracing():
             if self._is_batched:  # (B, N, 4, 2)
                 mask = torch.zeros(
                     (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
@@ -1562,9 +1564,10 @@ class Boxes3D:
         # Cast boxes coordinates to be integer to use them as bounds. Use round to handle decimal values.
         xyzxyz = clipped_boxes_xyzxyz.view(-1, 6).round().long()
 
-        if is_exporting():
+        if is_exporting() or torch.jit.is_tracing():
             # The loop below slices with data-dependent bounds, which graph capture cannot do; compare a
-            # coordinate grid against the bounds instead.
+            # coordinate grid against the bounds instead. The legacy ONNX exporter traces outside
+            # ``is_exporting()`` and loses the loop's in-place writes, exporting a constant all-zero mask.
             device = self._data.device
             zs = torch.arange(depth, device=device)
             ys = torch.arange(height, device=device)

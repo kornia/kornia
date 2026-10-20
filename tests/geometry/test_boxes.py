@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
+import io
 import pickle
+import warnings
 from functools import partial
 
 import pytest
@@ -26,6 +28,21 @@ from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape,
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
 from testing.base import BaseTester
+
+
+def _legacy_onnx_to_mask_pairs(
+    model: torch.nn.Module, vertices: list[torch.Tensor]
+) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    """Export ``model`` with the legacy exporter on ``vertices[0]``; return ``(onnxruntime, eager)`` for each set."""
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    buffer = io.BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        torch.onnx.export(model, (vertices[0],), buffer, input_names=["vertices"], opset_version=18, dynamo=False)
+    session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+    assert [graph_input.name for graph_input in session.get_inputs()] == ["vertices"]
+    return [(torch.from_numpy(session.run(None, {"vertices": boxes.numpy()})[0]), model(boxes)) for boxes in vertices]
 
 
 def _unbatched_geometry_data(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
@@ -1261,6 +1278,26 @@ class TestBoxes2D(BaseTester):
         assert loop.shape == vectorized.shape
         self.assert_close(loop, vectorized, atol=0.0, rtol=0.0)
 
+    @pytest.mark.device_agnostic
+    def test_to_mask_legacy_onnx_export_reads_its_input_6164(self):
+        # The legacy exporter traces outside is_exporting(). It used to trace the CPU loop and lose its in-place
+        # writes: a graph with no input that returned zeros for every box (#6164). The graph must read the boxes, so
+        # boxes other than the traced ones (overlapping, fractional, partly or wholly outside the image) give their
+        # own masks.
+        class ToMask(torch.nn.Module):
+            def forward(self, vertices: torch.Tensor) -> torch.Tensor:
+                return Boxes(vertices).to_mask(9, 11)
+
+        xyxy = [
+            [[[1.0, 2.0, 6.0, 7.0], [0.0, 0.0, 2.0, 1.0]]],
+            [[[-2.0, -1.0, 4.0, 3.0], [3.0, 3.0, 14.0, 12.0]]],
+            [[[1.4, 1.6, 5.5, 4.4], [20.0, 20.0, 25.0, 25.0]]],
+        ]
+        vertices = [Boxes.from_tensor(torch.tensor(boxes), mode="xyxy_plus").data for boxes in xyxy]
+        for actual, expected in _legacy_onnx_to_mask_pairs(ToMask(), vertices):
+            assert expected.sum() > 0
+            self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
 
 class TestTransformBoxes2D(BaseTester):
     def test_transform_boxes(self, device, dtype):
@@ -1993,6 +2030,23 @@ class TestBbox3D(BaseTester):
         vectorized = Boxes3D(data).to_mask(5, 5, 6)
         assert loop.shape == vectorized.shape
         self.assert_close(loop, vectorized, atol=0.0, rtol=0.0)
+
+    @pytest.mark.device_agnostic
+    def test_to_mask_legacy_onnx_export_reads_its_input_6164(self):
+        # As for Boxes.to_mask: the legacy exporter traced the loop and exported a constant all-zero mask (#6164).
+        class ToMask(torch.nn.Module):
+            def forward(self, vertices: torch.Tensor) -> torch.Tensor:
+                return Boxes3D(vertices).to_mask(5, 6, 7)
+
+        xyzxyz = [
+            [[[1.0, 1.0, 1.0, 4.0, 3.0, 2.0], [0.0, 2.0, 3.0, 6.0, 5.0, 4.0]]],
+            [[[3.0, 0.0, 2.0, 5.0, 5.0, 3.0], [-2.0, -1.0, 0.0, 2.0, 1.0, 9.0]]],
+            [[[1.4, 1.6, 0.6, 3.5, 4.4, 2.4], [20.0, 20.0, 20.0, 25.0, 25.0, 25.0]]],
+        ]
+        vertices = [Boxes3D.from_tensor(torch.tensor(boxes), mode="xyzxyz_plus").data for boxes in xyzxyz]
+        for actual, expected in _legacy_onnx_to_mask_pairs(ToMask(), vertices):
+            assert expected.sum() > 0
+            self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
     def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
         # Convention pin: the copy path leaves the source untouched and returns a new object; the

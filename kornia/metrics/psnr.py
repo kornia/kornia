@@ -88,4 +88,6 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     dtype = torch.promote_types(image.dtype, target.dtype)
     image, target = image.to(dtype), target.to(dtype)
 
-    return 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))
+    # The legacy (TorchScript) ONNX exporter writes ``log10`` as a division by a ``(1,)`` constant, which turns the
+    # 0-d result into a one-element vector; the reshape keeps the scalar there and is a no-op view eagerly.
+    return (10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))).reshape(())
