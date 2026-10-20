@@ -523,7 +523,8 @@ class ONNXRuntimeMixin:
         We set the ONNX runtime session to use TensorrtExecutionProvider. If the installed onnxruntime build does not
         offer it, nothing raises: onnxruntime warns and the session runs on the CPU. A build that offers it but cannot
         load the TensorRT libraries, such as ``onnxruntime-gpu`` without TensorRT installed, raises onnxruntime's
-        ``RuntimeError`` and leaves the session unusable until another ``as_*`` call, such as :meth:`as_cpu`.
+        ``RuntimeError`` and leaves the session unusable: a call then raises ``TypeError`` until another ``as_*`` call,
+        such as :meth:`as_cpu` or :meth:`as_cuda`.
         For other TensorrtExecutionProvider configurations, or CUDA/cuDNN/ONNX/TensorRT version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html.
 
