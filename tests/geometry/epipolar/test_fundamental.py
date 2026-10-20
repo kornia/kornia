@@ -1218,3 +1218,48 @@ class TestRefineFundamentalLM(BaseTester):
             ],
         ]
         self.assert_close(cauchy, torch.tensor(expected, dtype=torch.float64), atol=1e-9, rtol=0)
+
+
+class TestClosestPointOnEpipolarLineAutocast(BaseTester):
+    """A caller's autocast region does not reach get_closest_point_on_epipolar_line (#6177)."""
+
+    @staticmethod
+    def _inputs(device, dtype=torch.float32):
+        generator = torch.Generator().manual_seed(6177)
+        Fm = torch.randn(2, 3, 3, generator=generator)
+        points1 = torch.rand(2, 10, 2, generator=generator) * 600
+        points2 = torch.rand(2, 10, 2, generator=generator) * 600
+        return points1.to(device, dtype), points2.to(device, dtype), Fm.to(device, dtype)
+
+    @pytest.mark.parametrize("autocast_dtype", [torch.bfloat16, torch.float16])
+    def test_autocast_does_not_change_the_result_6177(self, device, autocast_dtype):
+        # The epipolar lines came out of autocast in half precision and met the caller's float32 points in
+        # torch.linalg.cross, which raised "expected scalar type Float but found BFloat16".
+        if device.type == "cuda" and autocast_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        points1, points2, Fm = self._inputs(device)
+        expected = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("fm_dtype", [torch.float32, torch.float64])
+    def test_fm_takes_the_points_dtype_6177(self, device, dtype, fm_dtype):
+        # Autocast used to cast a float32 Fm to half-precision points' dtype; the function now does it itself, in and
+        # out of autocast, so the result has the points' dtype.
+        if device.type == "mps" and fm_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        points1, points2, Fm = self._inputs(device, dtype)
+        expected = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
+        actual = epi.get_closest_point_on_epipolar_line(points1, points2, Fm.to(fm_dtype))
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    def test_still_scriptable_6177(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        points1, points2, Fm = self._inputs(device, dtype)
+        scripted = torch.jit.script(epi.get_closest_point_on_epipolar_line)
+        self.assert_close(scripted(points1, points2, Fm), epi.get_closest_point_on_epipolar_line(points1, points2, Fm))

@@ -703,6 +703,8 @@ def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, F
     Convention:
         - Returns, in the second image, the point of the epipolar line of ``pts1`` closest to ``pts2``, for
           ``Fm`` in the :math:`x_2^\top F x_1 = 0` order of :func:`find_fundamental`.
+        - ``Fm`` takes the dtype of ``pts1``. A caller's autocast region does not change the result, outside
+          TorchScript.
 
     Args:
         pts1: points in the first image with shape :math:`(B, N, 2)` or :math:`(B, N, 3)`. If they are not
@@ -719,6 +721,18 @@ def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, F
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+    # A caller's autocast region would compute the epipolar lines in half precision and hand them, with the caller's
+    # float32 points, to torch.linalg.cross, which raised on the dtype mismatch. TorchScript has no context managers;
+    # a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        return _get_closest_point_on_epipolar_line(pts1, pts2, Fm)
+    with _autocast_disabled(Fm.device.type):
+        return _get_closest_point_on_epipolar_line(pts1, pts2, Fm)
+
+
+def _get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor) -> torch.Tensor:
+    # Autocast used to cast a float32 Fm to the dtype of half-precision points; outside it, Fm takes the points' dtype.
+    Fm = Fm.to(pts1.dtype)
     if pts1.shape[-1] == 2:
         pts1 = convert_points_to_homogeneous(pts1)
     if pts2.shape[-1] == 2:
