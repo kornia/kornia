@@ -407,9 +407,9 @@ class ONNXExportMixin:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
             ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
                 a fixed entry of `input_shape` differs from the explicit `pseudo_shape`; or if the model declares one
-                output per image, as ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
-                ``filter_as_zero`` do, and the exported batch is dynamic. That check runs after the export and before
-                anything is saved.
+                output per image, as ``ObjectDetector`` and ``EdgeDetector`` with a per-image post-processor and
+                ``BoxFiltering`` without ``filter_as_zero`` do, and the exported batch is dynamic. That check runs
+                after the export and before anything is saved.
             FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
                 checked before the export runs.
 
@@ -442,10 +442,11 @@ class ONNXExportMixin:
               from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
               argument replaces them.
             - The exporters turn a list output into a fixed number of graph outputs, one per item of the traced
-              batch. ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
-              ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the batch, and an export whose
-              batch comes out dynamic raises. Other models are not checked: the default ``_onnx_fixed_batch_hint``
-              declares nothing, so a list output keeps the traced batch's number of outputs at any batch size.
+              batch. ``ObjectDetector`` and ``EdgeDetector`` with a per-image post-processor and ``BoxFiltering``
+              without ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the batch, and an export
+              whose batch comes out dynamic raises. Other models are not checked: the default
+              ``_onnx_fixed_batch_hint`` declares nothing, so a list output keeps the traced batch's number of outputs
+              at any batch size.
             - The model is exported with `torch.onnx.export`, with constant folding enabled.
 
         """
