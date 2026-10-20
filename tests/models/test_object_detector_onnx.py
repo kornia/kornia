@@ -106,7 +106,8 @@ class TestObjectDetectorPerImageONNX(BaseTester):
     def test_per_image_tuple_exports_a_fixed_batch_6186(self, dynamo):
         """Export the tuple case like the list case: one output per image of a fixed traced batch."""
         pytest.importorskip("onnx")
-        pytest.importorskip("onnxscript")
+        if dynamo:
+            pytest.importorskip("onnxscript")
         ort = pytest.importorskip("onnxruntime")
 
         exported = _export(_TuplePerImage(), dynamo=dynamo)

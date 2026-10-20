@@ -198,7 +198,9 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         )
 
     @torch.inference_mode()
-    def forward(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
+    def forward(
+        self, images: Union[torch.Tensor, list[torch.Tensor]]
+    ) -> Union[torch.Tensor, list[torch.Tensor], tuple[torch.Tensor, ...]]:
         """Detect objects in a given list of images.
 
         Args:
@@ -206,7 +208,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`,
+            list or tuple of detections found in each image. For item in a batch, shape is :math:`(D, 6)`,
             where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
 
