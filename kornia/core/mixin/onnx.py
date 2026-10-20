@@ -306,6 +306,14 @@ def _removed_buffer_hooks() -> Iterator[None]:
                 del hooks[key]
 
 
+def _has_dynamic_batch(onnx_model: onnx.ModelProto) -> bool:
+    """Return whether the first graph input of ``onnx_model`` has a batch dimension without a fixed size."""
+    if not onnx_model.graph.input:
+        return False
+    dims = onnx_model.graph.input[0].type.tensor_type.shape.dim
+    return len(dims) > 0 and not dims[0].HasField("dim_value")
+
+
 class ONNXExportMixin:
     """Mixin class that provides ONNX export functionality for objects that support it.
 
@@ -379,7 +387,10 @@ class ONNXExportMixin:
         Raises:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
             ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
-                a fixed entry of `input_shape` differs from the explicit `pseudo_shape`.
+                a fixed entry of `input_shape` differs from the explicit `pseudo_shape`; or if the model declares one
+                output per image, as ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
+                ``filter_as_zero`` do, and the exported batch is dynamic. That check runs after the export and before
+                anything is saved.
             FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
                 checked before the export runs.
 
@@ -411,6 +422,11 @@ class ONNXExportMixin:
             - The dimensions marked `-1` are exported as dynamic: through `dynamic_shapes` on the dynamo exporter
               from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
               argument replaces them.
+            - The exporters turn a list output into a fixed number of graph outputs, one per item of the traced
+              batch. ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
+              ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the batch, and an export whose
+              batch comes out dynamic raises. Other models are not checked: the default ``_onnx_fixed_batch_hint``
+              declares nothing, so a list output keeps the traced batch's number of outputs at any batch size.
             - The model is exported with `torch.onnx.export`, with constant folding enabled.
 
         """
@@ -496,12 +512,34 @@ class ONNXExportMixin:
             )
             onnx_model = onnx.load(tmp_path)
 
+        # The batch of a per-image-list export can still come out dynamic: a ``dynamic_axes`` or ``dynamic_shapes``
+        # keyword replaces the dynamic dimensions derived from ``input_shape``, and a direct call of this method can
+        # mark the batch -1. The exported graph is checked rather than the arguments, whose forms differ between the
+        # exporters and between torch releases.
+        if _has_dynamic_batch(onnx_model):
+            hint = self._onnx_fixed_batch_hint(module, dummy_input)
+            if hint is not None:
+                raise ValueError(
+                    f"{type(module).__name__} returns one output per image, so its ONNX export needs a fixed batch, "
+                    "but the exported batch is dynamic (a -1 batch in input_shape, or a dynamic_axes or "
+                    f"dynamic_shapes argument). Fix the batch there. {hint}"
+                )
+
         # Later entries overwrite earlier ones, so the caller's metadata wins over the class's.
         metadata = [*self.ADDITIONAL_METADATA, *(additional_metadata or [])]
         onnx_model = kornia.onnx.utils.add_metadata(onnx_model, metadata)
         if save:
             onnx.save(onnx_model, onnx_name)
         return onnx_model
+
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        """Return how to export ``module`` for a dynamic batch if it returns one output per image, else ``None``.
+
+        :meth:`to_onnx` calls it only when the exported graph has a dynamic batch, and raises when it returns a hint.
+        The default returns ``None`` and so checks nothing: a class whose model can return one output per image
+        overrides it.
+        """
+        return None
 
     def _create_dummy_input(
         self, input_shape: list[int], pseudo_shape: Optional[list[int]] = None
