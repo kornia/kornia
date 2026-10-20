@@ -29,17 +29,15 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_availa
 # ONNX Runtime's CPU provider is exercised regardless of the selected device or dtype.
 pytestmark = pytest.mark.device_agnostic
 
+_TORCH_EXPORT_MARKS = [
+    pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+    pytest.mark.skipif(torch_version_lt(2, 9, 0), reason="to_onnx uses dynamic_shapes from torch 2.9"),
+]
+
 _EXPORTERS = [
     pytest.param(False, id="torchscript"),
-    pytest.param(
-        True,
-        # conftest.py deselects IDs containing "dynamo" unless KORNIA_TEST_OPTIMIZER is set.
-        id="torch_export",
-        marks=[
-            pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
-            pytest.mark.skipif(torch_version_lt(2, 9, 0), reason="to_onnx uses dynamic_shapes from torch 2.9"),
-        ],
-    ),
+    # conftest.py deselects IDs containing "dynamo" unless KORNIA_TEST_OPTIMIZER is set.
+    pytest.param(True, id="torch_export", marks=_TORCH_EXPORT_MARKS),
 ]
 
 
@@ -128,12 +126,15 @@ class TestObjectDetectorPerImageONNX(BaseTester):
                 session.run(None, {"input": torch.rand(other, 3, 32, 32).numpy()})
 
     @pytest.mark.timeout(120)
-    def test_batched_tuple_keeps_a_dynamic_batch_6186(self):
+    @pytest.mark.parametrize("dynamo", _EXPORTERS)
+    def test_batched_tuple_keeps_a_dynamic_batch_6186(self, dynamo):
         """A batched pair is not per-image, so it keeps exporting for a dynamic batch."""
         pytest.importorskip("onnx")
+        if dynamo:
+            pytest.importorskip("onnxscript")
         pytest.importorskip("onnxruntime")
 
-        exported = _export(_BatchedPair(), dynamo=False)
+        exported = _export(_BatchedPair(), dynamo=dynamo)
         dims = exported.graph.input[0].type.tensor_type.shape.dim
         assert dims[0].dim_param
         assert len(exported.graph.output) == 2
@@ -145,7 +146,20 @@ class TestObjectDetectorPerImageONNX(BaseTester):
         self.assert_close(torch.from_numpy(outputs[0]), logits)
         self.assert_close(torch.from_numpy(outputs[1]), boxes)
 
-    def test_dynamic_batch_is_rejected_for_a_per_image_tuple_6186(self):
+    @pytest.mark.parametrize(
+        "export_kwargs",
+        [
+            pytest.param({"dynamo": False, "dynamic_axes": {"input": {0: "batch"}}}, id="torchscript"),
+            pytest.param(
+                {"dynamo": True, "dynamic_shapes": ({0: "batch"},)},
+                id="torch_export",
+                marks=_TORCH_EXPORT_MARKS,
+            ),
+        ],
+    )
+    def test_dynamic_batch_is_rejected_for_a_per_image_tuple_6186(self, export_kwargs):
         """Point a caller asking for a dynamic batch to a post-processor that returns one tensor."""
+        if export_kwargs["dynamo"]:
+            pytest.importorskip("onnxscript")
         with pytest.raises(ValueError, match="confidence_filtering=False"):
-            _export(_TuplePerImage(), dynamo=False, dynamic_axes={"input": {0: "batch"}})
+            _export(_TuplePerImage(), **export_kwargs)
