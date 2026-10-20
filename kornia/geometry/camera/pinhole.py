@@ -21,6 +21,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.core.utils import _torch_inverse_cast
+from kornia.geometry.camera.perspective import _check_unproject_depth_shape
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 
@@ -441,6 +442,9 @@ class PinholeCamera:
             tensor([[0.4963, 0.7682, 1.0000]])
 
         """
+        if not isinstance(depth, torch.Tensor):
+            raise TypeError(f"Input depth type is not a torch.Tensor. Got {type(depth)}")
+        _check_unproject_depth_shape(point_2d, depth)
         P_inv = _torch_inverse_cast(self._projection_matrix())
         return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
 

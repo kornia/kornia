@@ -656,6 +656,34 @@ class TestPinholeCamera(BaseTester):
         point_3d_hat = pinhole.unproject(point_2d, depth)
         self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("depth_shape", [(1,), (1, 1), (2, 1)])
+    def test_pinhole_unproject_rejects_depth_shape_mismatch(self, depth_shape, device, dtype):
+        pinhole = kornia.geometry.camera.PinholeCamera(
+            _k44(device, dtype),
+            _e44(device, dtype),
+            torch.tensor([6], device=device),
+            torch.tensor([8], device=device),
+        )
+        point_2d = torch.zeros(1, 2, 2, device=device, dtype=dtype)
+        depth = torch.ones(depth_shape, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="must match the leading shape"):
+            pinhole.unproject(point_2d, depth)
+
+    @pytest.mark.parametrize("depth_shape", [(), (1, 2)])
+    def test_pinhole_unproject_rejects_depth_without_singleton_coordinate(self, depth_shape, device, dtype):
+        pinhole = kornia.geometry.camera.PinholeCamera(
+            _k44(device, dtype),
+            _e44(device, dtype),
+            torch.tensor([6], device=device),
+            torch.tensor([8], device=device),
+        )
+        point_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        depth = torch.ones(depth_shape, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match=r"must be in the shape of \(\*, 1\)"):
+            pinhole.unproject(point_2d, depth)
+
     def test_pinhole_camera_device(self, device, dtype):
         batch_size = 5
         intrinsics = torch.rand((batch_size, 4, 4), device=device, dtype=dtype)

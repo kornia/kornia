@@ -26,6 +26,15 @@ from kornia.geometry.conversions import (
 )
 
 
+def _check_unproject_depth_shape(point_2d: torch.Tensor, depth: torch.Tensor) -> None:
+    if depth.ndim == 0 or depth.shape[-1] != 1:
+        raise ValueError(f"Input depth must be in the shape of (*, 1). Got {depth.shape}")
+    if depth.shape[:-1] != point_2d.shape[:-1]:
+        raise ValueError(
+            f"Input depth must match the leading shape of point_2d. Got {depth.shape} and {point_2d.shape}"
+        )
+
+
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     r"""Project a 3d point onto the 2d camera plane.
 
@@ -109,8 +118,7 @@ def unproject_points(
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depth type is not a torch.Tensor. Got {type(depth)}")
 
-    if not depth.shape[-1] == 1:
-        raise ValueError(f"Input depth must be in the shape of (*, 1). Got {depth.shape}")
+    _check_unproject_depth_shape(point_2d, depth)
 
     xy: torch.Tensor = normalize_points_with_intrinsics(point_2d, camera_matrix)
     xyz: torch.Tensor = convert_points_to_homogeneous(xy)

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -133,6 +134,24 @@ class TestUnprojectPoints(BaseTester):
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, 3, -1, -1)
         point_3d = kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix)
         assert point_3d.shape == (2, 3, 3)
+
+    @pytest.mark.parametrize("depth_shape", [(1,), (1, 1), (2, 1)])
+    def test_unproject_rejects_depth_shape_mismatch(self, depth_shape, device, dtype):
+        points_2d = torch.zeros(1, 2, 2, device=device, dtype=dtype)
+        depth = torch.ones(depth_shape, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="must match the leading shape"):
+            kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix)
+
+    @pytest.mark.parametrize("depth_shape", [(), (1, 2)])
+    def test_unproject_rejects_depth_without_singleton_coordinate(self, depth_shape, device, dtype):
+        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        depth = torch.ones(depth_shape, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match=r"must be in the shape of \(\*, 1\)"):
+            kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix)
 
     def test_unproject_center(self, device, dtype):
         point_2d = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
