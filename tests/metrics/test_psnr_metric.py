@@ -100,6 +100,19 @@ class TestPsnr(BaseTester):
         assert image.grad.dtype == dtypes[0]
         assert target.grad.dtype == dtypes[1]
 
+    def test_tensor_max_val_keeps_its_shape(self, device, dtype):
+        # A tensor max_val broadcasts against the pooled MSE, one PSNR per data range, and the result keeps its shape:
+        # (2,) stays (2,), (1,) stays (1,), and a 0-d tensor gives a 0-d result like a float.
+        generator = torch.Generator().manual_seed(0)
+        a = torch.rand(2, 3, 8, 8, generator=generator).to(device, dtype)
+        b = torch.rand(2, 3, 8, 8, generator=generator).to(device, dtype)
+        assert kornia.metrics.psnr(a, b, torch.tensor([1.0, 255.0], device=device)).shape == (2,)
+        max_val = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        expected = torch.stack([kornia.metrics.psnr(a, b, 1.0), kornia.metrics.psnr(a, b, 2.0)])
+        self.assert_close(kornia.metrics.psnr(a, b, max_val), expected)
+        assert kornia.metrics.psnr(a, b, max_val[:1]).shape == (1,)
+        assert kornia.metrics.psnr(a, b, max_val[0]).shape == ()
+
     def test_exception_shape_mismatch(self, device, dtype):
         a = torch.ones(4, device=device, dtype=dtype)
         b = torch.ones(8, device=device, dtype=dtype)

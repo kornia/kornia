@@ -893,11 +893,10 @@ class Boxes:
             else:  # (N, 4, 2)
                 mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
 
-            # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
+            # Flatten mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them. ``flatten`` rather than
+            # ``view(-1, height, width)``, which cannot infer BxN when a side of the image is 0.
             # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-            for mask_channel, box_xyxy in zip(
-                mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()
-            ):
+            for mask_channel, box_xyxy in zip(mask.flatten(0, -3), clipped_boxes_xyxy.view(-1, 4).round().int()):
                 # Mask channel dimensions: (height, width)
                 mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
 
@@ -1578,8 +1577,9 @@ class Boxes3D:
             masks = z_mask[:, :, None, None] & y_mask[:, None, :, None] & x_mask[:, None, None, :]
             return masks.to(mask.dtype).view(mask.shape)
 
-        # Reshape mask to (BxN, D, H, W) and boxes to (BxN, 6) to iterate over all of them.
-        for mask_channel, box_xyzxyz in zip(mask.view(-1, depth, height, width), xyzxyz):
+        # Flatten mask to (BxN, D, H, W) to iterate over the (BxN, 6) boxes. ``flatten`` rather than
+        # ``view(-1, depth, height, width)``, which cannot infer BxN when a side of the volume is 0.
+        for mask_channel, box_xyzxyz in zip(mask.flatten(0, -4), xyzxyz):
             # Mask channel dimensions: (depth, height, width)
             mask_channel[
                 box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]
