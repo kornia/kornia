@@ -30,10 +30,10 @@ AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[g
 AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[enhance.JPEGCodecDifferentiable]
 AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[enhance.JPEGCodecDifferentiable[batch]]
 AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[enhance.JPEGCodecDifferentiable[custom_qt]]
-# #TBD-survey-explain-not-fullgraph: the survey recorded these as compiling without a graph break, but Dynamo cannot
+# #6194: the survey recorded these as compiling without a graph break, but Dynamo cannot
 # capture them in one graph on any measured torch (a loop over a data-dependent count, a host read of tensor values).
 AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[bbox.nms]
 AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[image.draw_rectangle]
-# #TBD-patch-sequential-inductor-mismatch: inductor computes a different image than eager for PatchSequential
+# #6195: inductor computes a different image than eager for PatchSequential
 # with patchwise_apply=False (an inductor miscompile; reproduces without kornia), since #4460.
 AssertionError	tests/test_inductor_conformance.py::test_inductor_matches_eager[PatchSequential[not-patchwise]]
