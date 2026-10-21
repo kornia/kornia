@@ -422,19 +422,21 @@ class TestMixConventions(BaseTester):
             with pytest.raises(RuntimeError, match="must be divisible by grid"):
                 K.RandomJigsaw(grid=grid, p=p)(image)
 
-    @pytest.mark.device_agnostic
-    def test_wart_mix_class_handlers_ignore_a_replayed_partial_gate_4775(self):
-        # #4775: flips when the class handler honours batch_prob, i.e. row 1 is labelled [20, 20, 0].
-        image = torch.arange(3.0).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
-        labels = torch.tensor([10, 20, 30])
+    def test_convention_mix_class_handlers_honour_a_replayed_partial_gate_4775(self, device):
+        # #4775: class handler honours batch_prob, i.e. an unselected row is labelled
+        # with its own class twice and lambda 0. The recorded params stay on the CPU, as a replay passes them.
+        image = torch.arange(3.0, device=device).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
+        labels = torch.tensor([10, 20, 30], device=device)
         aug = K.RandomMixUpV2(p=1.0, lambda_val=(0.25, 0.25), data_keys=["input", "class"])
         aug(image, labels)
         params = dict(aug._params)
         params["mixup_pairs"] = torch.tensor([1, 2, 0])
         params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
         output, mixed = aug(image, labels, params=params)
-        self.assert_close(output[:, 0, 0, 0], torch.tensor([0.25, 1.0, 1.5]))  # row 1 keeps its image
-        self.assert_close(mixed, torch.tensor([[10.0, 20.0, 0.25], [20.0, 30.0, 0.25], [30.0, 10.0, 0.25]]))
+        self.assert_close(output[:, 0, 0, 0], torch.tensor([0.25, 1.0, 1.5], device=device))  # row 1 keeps its image
+        self.assert_close(
+            mixed, torch.tensor([[10.0, 20.0, 0.25], [20.0, 20.0, 0.0], [30.0, 10.0, 0.25]], device=device)
+        )
         # RandomCutMixV2 has the same handler split: a 2 x 2 cut, and row 1 is gated off.
         aug = K.RandomCutMixV2(p=1.0, use_correct_lambda=True, data_keys=["input", "class"])
         aug(image, labels)
@@ -444,7 +446,52 @@ class TestMixConventions(BaseTester):
         params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
         output, mixed = aug(image, labels, params=params)
         self.assert_close(output[1], image[1])
-        self.assert_close(mixed[0], torch.tensor([[10.0, 20.0, 0.75], [20.0, 30.0, 0.75], [30.0, 10.0, 0.75]]))
+        self.assert_close(
+            mixed[0], torch.tensor([[10.0, 20.0, 0.75], [20.0, 20.0, 0.0], [30.0, 10.0, 0.75]], device=device)
+        )
+
+        # Multi-mix CutMix (num_mix=2) with interleaved selected and unselected rows:
+        aug_multi = K.RandomCutMixV2(num_mix=2, p=1.0, use_correct_lambda=True, data_keys=["input", "class"])
+        aug_multi(image, labels)
+        params_multi = dict(aug_multi._params)
+        params_multi["mix_pairs"] = torch.tensor([[1, 2, 0], [2, 0, 1]])
+        params_multi["crop_src"] = (
+            torch.tensor([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]).expand(2, 3, 4, 2).clone()
+        )
+        params_multi["batch_prob"] = torch.tensor([0.0, 1.0, 0.0])
+        output_multi, mixed_multi = aug_multi(image, labels, params=params_multi)
+        self.assert_close(output_multi[0], image[0])
+        self.assert_close(output_multi[2], image[2])
+        # Row 0 and 2 are unselected: own label twice with lambda 0 across all mixes
+        expected_mix0 = torch.tensor([[10.0, 10.0, 0.0], [20.0, 30.0, 0.75], [30.0, 30.0, 0.0]], device=device)
+        expected_mix1 = torch.tensor([[10.0, 10.0, 0.0], [20.0, 10.0, 0.75], [30.0, 30.0, 0.0]], device=device)
+        self.assert_close(mixed_multi[0], expected_mix0)
+        self.assert_close(mixed_multi[1], expected_mix1)
+
+    @pytest.mark.device_agnostic
+    def test_convention_mix_partial_gate_keeps_class_labels_it_cannot_blend_4775(self):
+        # A subclass whose class handlers do not both return one row per sample keeps its transformed labels
+        # under a partial gate: one label per sample that applies the gate itself, or a table next to the
+        # default pass-through. Three rows, so a (3, 1) gate would broadcast against either without raising.
+        class OneLabelPerSample(K.RandomMixUpV2):
+            def apply_transform_class(self, input, params, flags):
+                return torch.where(params["batch_prob"] > 0.5, input.flip(0), input)
+
+            def apply_non_transform_class(self, input, params, flags):
+                return input
+
+        class TableNextToPassThrough(K.RandomMixUpV2):
+            def apply_non_transform_class(self, input, params, flags):
+                return input
+
+        image = torch.rand(3, 1, 4, 4)
+        labels = torch.tensor([10, 20, 30])
+        for cls in (OneLabelPerSample, TableNextToPassThrough):
+            aug = cls(p=1.0, data_keys=["input", "class"])
+            aug(image, labels)
+            params = {**aug._params, "batch_prob": torch.tensor([1.0, 0.0, 1.0])}
+            _, out = aug(image, labels, params=params)
+            assert torch.equal(out, aug.apply_transform_class(labels, aug._params, aug.flags))
 
     @pytest.mark.device_agnostic
     def test_convention_cutmix_compatibility_lambda_warns(self):
