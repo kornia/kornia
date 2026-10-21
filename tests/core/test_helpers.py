@@ -459,6 +459,13 @@ class TestExportHelpers:
         assert_close(copied.y.grad, torch.ones_like(v))
         m.y.sum().backward()
         assert_close(v.grad, torch.full_like(v, 2.0))
+        # Under graph capture register_module_state stores the tensor as a plain attribute, copied the same way.
+        m.__dict__["traced"] = v * 3
+        traced = copy.deepcopy(m).traced
+        assert traced.grad_fn is None
+        assert traced.requires_grad
+        assert_close(traced.detach(), m.traced.detach(), rtol=0, atol=0)
+        del m.__dict__["traced"]
         # One deep copy keeps shared objects shared, also a reference from the module back to itself.
         first, second = copy.deepcopy([m, m])
         assert first is second

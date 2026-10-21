@@ -834,9 +834,12 @@ def _deepcopy_module_state(module: torch.nn.Module, memo: Dict[int, Any]) -> tor
     torch cannot deep-copy a tensor with autograd history, so a buffer holding one would make ``copy.deepcopy``
     raise. The copy holds such a buffer as a new leaf that keeps ``requires_grad``, still registered as a buffer,
     which is what a ``torch.save`` / ``torch.load`` round trip gives; the copy has no history, so no gradient flows
-    back through it. Everything else is deep-copied as usual. Assign it as the class's ``__deepcopy__``.
+    back through it. The same applies to a plain tensor attribute, which is where :func:`register_module_state`
+    stores the tensor under graph capture. Everything else is deep-copied as usual. Assign it as the class's
+    ``__deepcopy__``.
     """
-    for tensor in module.buffers(recurse=False):
+    attributes = [value for value in module.__dict__.values() if isinstance(value, torch.Tensor)]
+    for tensor in [*module.buffers(recurse=False), *attributes]:
         if tensor.grad_fn is not None and id(tensor) not in memo:
             memo[id(tensor)] = tensor.detach().clone().requires_grad_(tensor.requires_grad)
     copied = module.__class__.__new__(module.__class__)
