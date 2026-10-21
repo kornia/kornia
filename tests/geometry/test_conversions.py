@@ -1773,6 +1773,7 @@ class TestQuaternionExpToLog(BaseTester):
     def test_gradient_at_a_zero_vector_part_is_the_limit_6207(self, device, w):
         # At v = 0 the log was v * 0 / eps, so its gradient with respect to v was 0 instead of the limit I / w of the
         # map log(q) ~ v / w: a rotation fitted through the log map from the identity never moved.
+        _skip_if_dtype_unavailable(device, torch.float64)
         quaternion = torch.tensor([w, 0.0, 0.0, 0.0], device=device, dtype=torch.float64)
         jac = torch.autograd.functional.jacobian(kornia.geometry.conversions.quaternion_exp_to_log, quaternion)
         expected = torch.cat([torch.zeros(3, 1, dtype=torch.float64), torch.eye(3, dtype=torch.float64) / w], dim=1)
@@ -1785,6 +1786,7 @@ class TestQuaternionExpToLog(BaseTester):
     def test_fit_from_the_identity_moves_6207(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("the fit needs float32 or float64 steps")
+        _skip_if_dtype_unavailable(device, dtype)
         target = torch.tensor([0.1, -0.2, 0.3], device=device, dtype=dtype)
         quaternion = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
         optimizer = torch.optim.SGD([quaternion], lr=0.5)
