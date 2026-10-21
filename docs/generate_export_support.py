@@ -121,8 +121,8 @@ STATUS = {
         "compat-ok-random",
         "yes (random)",
         (
-            "ran (under torch.compile, possibly with graph breaks); a random operator, so only output shape and"
-            " finiteness are compared"
+            "ran: the exported graph in onnxruntime, or the compiled call, which may have graph breaks; a random"
+            " operator, so only output shape and finiteness are compared"
         ),
     ),
     "mismatch": ("compat-mismatch", "mismatch", "captured and ran, but the result differs from eager execution"),
