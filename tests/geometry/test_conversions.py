@@ -3023,6 +3023,26 @@ class TestNormalizePixelCoordinates(BaseTester):
         expected = torch.tensor([[-1.0, -1.0], [-0.33333333, -0.33333333], [1.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(out, expected)
 
+    def test_convention_edge_aligned_formula(self, device, dtype):
+        # normalize_pixel_coordinates with align_corners=False maps x -> (2*x + 1)/W - 1
+        pts = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0]], device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, 4, align_corners=False)
+
+        expected = torch.tensor([[-0.75, -0.75], [-0.25, -0.25], [0.75, 0.75]], device=device, dtype=dtype)
+        self.assert_close(out, expected)
+
+    def test_convention_grid_sample_with_align_corners_false(self, device, dtype):
+        # Feeding edge-aligned normalized coordinates to grid_sample with align_corners=False
+        # samples back exact pixel values.
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        pts = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0]], device=device, dtype=dtype)
+        grid = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, 4, align_corners=False).view(1, 1, 3, 2)
+
+        sampled = torch.nn.functional.grid_sample(img, grid, align_corners=False).flatten()
+
+        self.assert_close(sampled, torch.tensor([0.0, 5.0, 15.0], device=device, dtype=dtype))
+
     def test_convention_positional_order_is_height_then_width(self, device, dtype):
         # Convention pin: the positional signature is (pixel_coordinates, height, width), which is
         # the reverse of the per-point (x, y) -> (width, height) scaling order: slot 0 is scaled by
@@ -3217,6 +3237,17 @@ class TestDenormalizePixelCoordinates(BaseTester):
         expected = torch.tensor([[3.0, 0.0]], device=device, dtype=dtype)
         self.assert_close(out, expected)
 
+    def test_convention_edge_aligned_inverse(self, device, dtype):
+        # denormalize_pixel_coordinates with align_corners=False is the edge-aligned inverse,
+        # x = ((x_norm + 1) * W - 1) / 2
+        # For H = 2, W = 4, pts_norm = [[1.0, -1.0]] -> [((1 + 1)*4 - 1)/2, ((-1 + 1)*2 - 1)/2] = [3.5, -0.5]
+        pts_norm = torch.tensor([[1.0, -1.0]], device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.denormalize_pixel_coordinates(pts_norm, 2, 4, align_corners=False)
+
+        expected = torch.tensor([[3.5, -0.5]], device=device, dtype=dtype)
+        self.assert_close(out, expected)
+
     def test_convention_roundtrip_denormalize_of_normalize(self, device, dtype):
         # Convention pin: denormalize(normalize(p)) == p on a non-degenerate, non-square,
         # non-identity image size, so the two formulas are exact mutual inverses.
@@ -3227,6 +3258,11 @@ class TestDenormalizePixelCoordinates(BaseTester):
         out = kornia.geometry.conversions.denormalize_pixel_coordinates(norm, 5, 7)
 
         self.assert_close(out, pts)
+
+        # Also test roundtrip with align_corners=False
+        norm_edge = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 5, 7, align_corners=False)
+        out_edge = kornia.geometry.conversions.denormalize_pixel_coordinates(norm_edge, 5, 7, align_corners=False)
+        self.assert_close(out_edge, pts)
 
     def test_convention_3d_component_order_and_roundtrip(self, device, dtype):
         # Convention pin (denormalize_pixel_coordinates3d has no test class of its own): same
@@ -3243,6 +3279,11 @@ class TestDenormalizePixelCoordinates(BaseTester):
         norm = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 3, 5, 9)
         out = kornia.geometry.conversions.denormalize_pixel_coordinates3d(norm, 3, 5, 9)
         self.assert_close(out, pts)
+
+        # Also test 3D roundtrip with align_corners=False
+        norm_edge = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 3, 5, 9, align_corners=False)
+        out_edge = kornia.geometry.conversions.denormalize_pixel_coordinates3d(norm_edge, 3, 5, 9, align_corners=False)
+        self.assert_close(out_edge, pts)
 
     def test_singleton_axes_are_exact_inverses(self, device, dtype):
         pts = torch.tensor([[0.0, 0.0], [0.25, -0.5]], device=device, dtype=dtype)

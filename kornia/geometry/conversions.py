@@ -1425,7 +1425,7 @@ def quaternion_from_euler(
 
 
 def normalize_pixel_coordinates(
-    pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
+    pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8, align_corners: bool = True
 ) -> torch.Tensor:
     r"""Map pixel coordinates so that the first and last pixel of each axis become -1 and 1.
 
@@ -1437,17 +1437,15 @@ def normalize_pixel_coordinates(
           indexes columns and is scaled by ``width``, ``y`` indexes rows and is
           scaled by ``height``. The positional argument order is the other way
           round — ``(pixel_coordinates, height, width)``
-        - the mapping is **corner-aligned**,
+        - the mapping depends on ``align_corners``:
+          when ``align_corners=True`` (the default), coordinates are **corner-aligned**,
           ``x_norm = 2 * x / (width - 1) - 1``: for ``width = 4`` the columns
-          ``0``, ``1``, ``3`` map to ``-1``, ``-1/3``, ``+1``. This is the
-          ``align_corners=True`` convention;
-          :func:`torch.nn.functional.grid_sample` at its default
-          ``align_corners=False`` would instead place the first and last of
-          those values at pixels ``-0.5`` and ``3.5`` — half a pixel outside
-          the image on each side — so ``align_corners=True`` must be passed
-          explicitly when feeding this output to it. Note that kornia's own
-          :func:`~kornia.geometry.transform.remap` resolves
-          ``align_corners=None`` to ``False``
+          ``0``, ``1``, ``3`` map to ``-1``, ``-1/3``, ``+1``. This matches
+          :func:`torch.nn.functional.grid_sample` with ``align_corners=True``.
+          When ``align_corners=False``, coordinates are **edge-aligned**,
+          ``x_norm = (2 * x + 1) / width - 1``: for ``width = 4`` the columns
+          ``0``, ``1``, ``3`` map to ``-0.75``, ``-0.25``, ``+0.75``. This matches
+          :func:`torch.nn.functional.grid_sample` with ``align_corners=False``.
         - a singleton axis uses scale ``1`` and offset ``0``: its only valid
           pixel coordinate maps to the normalized centre, and the unit-scale
           extension keeps this function exactly invertible outside that lone
@@ -1470,6 +1468,8 @@ def normalize_pixel_coordinates(
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
         eps: deprecated compatibility parameter. It is ignored.
+        align_corners: whether to normalize so that extrema coordinates (-1, 1) refer to
+            pixel centers (True) or pixel edges (False). Default is True.
 
     Return:
         the normalized pixel coordinates with shape :math:`(*, 2)`.
@@ -1488,10 +1488,16 @@ def normalize_pixel_coordinates(
         warnings.warn("`eps` is deprecated and ignored by `normalize_pixel_coordinates`.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
-        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
-        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
-        tx = 0.0 if width == 1 else -1.0
-        ty = 0.0 if height == 1 else -1.0
+        if align_corners:
+            sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+            sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+            tx = 0.0 if width == 1 else -1.0
+            ty = 0.0 if height == 1 else -1.0
+        else:
+            sx = 2.0 / width
+            sy = 2.0 / height
+            tx = (1.0 - width) / width
+            ty = (1.0 - height) / height
         if torch.jit.is_scripting():
             anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
             factor = torch.stack([anchor * sx, anchor * sy])
@@ -1510,13 +1516,17 @@ def normalize_pixel_coordinates(
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
         one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
         zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
-        factor = torch.stack(
-            [
-                torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
-                torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
-            ]
-        )
-        offset = torch.stack([torch.where(width_t == 1, zero, -one), torch.where(height_t == 1, zero, -one)])
+        if align_corners:
+            factor = torch.stack(
+                [
+                    torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
+                    torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
+                ]
+            )
+            offset = torch.stack([torch.where(width_t == 1, zero, -one), torch.where(height_t == 1, zero, -one)])
+        else:
+            factor = torch.stack([2.0 / width_t, 2.0 / height_t])
+            offset = torch.stack([(one - width_t) / width_t, (one - height_t) / height_t])
         factor = factor.to(out_dtype)
         offset = offset.to(out_dtype)
 
@@ -1524,11 +1534,9 @@ def normalize_pixel_coordinates(
 
 
 def denormalize_pixel_coordinates(
-    pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
+    pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8, align_corners: bool = True
 ) -> torch.Tensor:
     r"""Denormalize pixel coordinates.
-
-    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Convention:
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
@@ -1536,9 +1544,10 @@ def denormalize_pixel_coordinates(
 
         - the inverse of
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`,
-          ``x = (width - 1) * (x_norm + 1) / 2``, with the same ``(x, y)``
-          component order and the same ``(pixel_coordinates, height, width)``
-          positional order
+          with the same ``(x, y)`` component order, the same
+          ``(pixel_coordinates, height, width)`` positional order, and matching ``align_corners``.
+          When ``align_corners=True`` (default), ``x = (width - 1) * (x_norm + 1) / 2``.
+          When ``align_corners=False``, ``x = ((x_norm + 1) * width - 1) / 2``.
 
         - singleton axes, non-positive-size validation, tracing assumptions, and
           the deprecated ``eps`` parameter follow the normalization function
@@ -1548,6 +1557,8 @@ def denormalize_pixel_coordinates(
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
         eps: deprecated compatibility parameter. It is ignored.
+        align_corners: whether coordinates were normalized with corner-alignment (True) or edge-alignment (False).
+            Default is True.
 
     Return:
         the denormalized pixel coordinates with shape :math:`(*, 2)`.
@@ -1570,10 +1581,16 @@ def denormalize_pixel_coordinates(
         )
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
-        sx = 1.0 if width == 1 else (width - 1.0) / 2.0
-        sy = 1.0 if height == 1 else (height - 1.0) / 2.0
-        tx = 0.0 if width == 1 else sx
-        ty = 0.0 if height == 1 else sy
+        if align_corners:
+            sx = 1.0 if width == 1 else (width - 1.0) / 2.0
+            sy = 1.0 if height == 1 else (height - 1.0) / 2.0
+            tx = 0.0 if width == 1 else sx
+            ty = 0.0 if height == 1 else sy
+        else:
+            sx = width / 2.0
+            sy = height / 2.0
+            tx = (width - 1.0) / 2.0
+            ty = (height - 1.0) / 2.0
         if torch.jit.is_scripting():
             anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
             factor = torch.stack([anchor * sx, anchor * sy])
@@ -1592,10 +1609,16 @@ def denormalize_pixel_coordinates(
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
         one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
         zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
-        sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
-        sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
-        factor = torch.stack([sx_t, sy_t])
-        offset = torch.stack([torch.where(width_t == 1, zero, sx_t), torch.where(height_t == 1, zero, sy_t)])
+        if align_corners:
+            sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
+            sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
+            factor = torch.stack([sx_t, sy_t])
+            offset = torch.stack([torch.where(width_t == 1, zero, sx_t), torch.where(height_t == 1, zero, sy_t)])
+        else:
+            sx_t = width_t / 2.0
+            sy_t = height_t / 2.0
+            factor = torch.stack([sx_t, sy_t])
+            offset = torch.stack([(width_t - one) / 2.0, (height_t - one) / 2.0])
         factor = factor.to(out_dtype)
         offset = offset.to(out_dtype)
 
@@ -1603,7 +1626,7 @@ def denormalize_pixel_coordinates(
 
 
 def normalize_pixel_coordinates3d(
-    pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
+    pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8, align_corners: bool = True
 ) -> torch.Tensor:
     r"""Map 3d pixel coordinates so that the first and last sample of each axis become -1 and 1.
 
@@ -1612,11 +1635,11 @@ def normalize_pixel_coordinates3d(
           **depth first, then x, then y**, *not* ``(x, y, z)``. This is the
           order :func:`~kornia.geometry.grid.create_meshgrid3d` produces. The
           three components are scaled by ``depth - 1``, ``width - 1`` and
-          ``height - 1`` respectively, so with ``depth=3, height=5, width=9``
+          ``height - 1`` respectively when ``align_corners=True``, so with ``depth=3, height=5, width=9``
           the coordinate ``[2., 8., 4.]`` maps to ``[1., 1., 1.]``
         - the positional argument order is
           ``(pixel_coordinates, depth, height, width)``
-        - corner-aligned and unclamped in each axis exactly as in
+        - unclamped in each axis, matching the 2D
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`
         - singleton axes, non-positive-size validation, tracing assumptions, and
           the deprecated ``eps`` parameter likewise follow that function
@@ -1627,6 +1650,8 @@ def normalize_pixel_coordinates3d(
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
         eps: deprecated compatibility parameter. It is ignored.
+        align_corners: whether to normalize so that extrema coordinates (-1, 1) refer to
+            voxel centers (True) or voxel edges (False). Default is True.
 
     Return:
         the normalized pixel coordinates.
@@ -1644,12 +1669,20 @@ def normalize_pixel_coordinates3d(
         )
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
-        sd = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
-        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
-        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
-        td = 0.0 if depth == 1 else -1.0
-        tx = 0.0 if width == 1 else -1.0
-        ty = 0.0 if height == 1 else -1.0
+        if align_corners:
+            sd = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
+            sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+            sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+            td = 0.0 if depth == 1 else -1.0
+            tx = 0.0 if width == 1 else -1.0
+            ty = 0.0 if height == 1 else -1.0
+        else:
+            sd = 2.0 / depth
+            sx = 2.0 / width
+            sy = 2.0 / height
+            td = (1.0 - depth) / depth
+            tx = (1.0 - width) / width
+            ty = (1.0 - height) / height
         if torch.jit.is_scripting():
             anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
             factor = torch.stack([anchor * sd, anchor * sx, anchor * sy])
@@ -1669,20 +1702,30 @@ def normalize_pixel_coordinates3d(
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
         one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
         zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
-        factor = torch.stack(
-            [
-                torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0)),
-                torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
-                torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
-            ]
-        )
-        offset = torch.stack(
-            [
-                torch.where(depth_t == 1, zero, -one),
-                torch.where(width_t == 1, zero, -one),
-                torch.where(height_t == 1, zero, -one),
-            ]
-        )
+        if align_corners:
+            factor = torch.stack(
+                [
+                    torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0)),
+                    torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
+                    torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
+                ]
+            )
+            offset = torch.stack(
+                [
+                    torch.where(depth_t == 1, zero, -one),
+                    torch.where(width_t == 1, zero, -one),
+                    torch.where(height_t == 1, zero, -one),
+                ]
+            )
+        else:
+            factor = torch.stack([2.0 / depth_t, 2.0 / width_t, 2.0 / height_t])
+            offset = torch.stack(
+                [
+                    (one - depth_t) / depth_t,
+                    (one - width_t) / width_t,
+                    (one - height_t) / height_t,
+                ]
+            )
         factor = factor.to(out_dtype)
         offset = offset.to(out_dtype)
 
@@ -1690,17 +1733,17 @@ def normalize_pixel_coordinates3d(
 
 
 def denormalize_pixel_coordinates3d(
-    pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
+    pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8, align_corners: bool = True
 ) -> torch.Tensor:
     r"""Denormalize 3d pixel coordinates.
 
     Convention:
         - the inverse of
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`,
-          with the same ``(d, x, y)`` component order and the same
-          ``(pixel_coordinates, depth, height, width)`` positional order: with
-          ``depth=3, height=5, width=9`` the input ``[0., 0., 0.]`` maps back to
-          ``[1., 4., 2.]``
+          with the same ``(d, x, y)`` component order, the same
+          ``(pixel_coordinates, depth, height, width)`` positional order, and matching ``align_corners``.
+          When ``align_corners=True`` (default), with ``depth=3, height=5, width=9`` the input ``[0., 0., 0.]``
+          maps back to ``[1., 4., 2.]``
 
         - singleton axes, non-positive-size validation, tracing assumptions, and
           the deprecated ``eps`` parameter follow the 2-D counterpart
@@ -1711,6 +1754,8 @@ def denormalize_pixel_coordinates3d(
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
         eps: deprecated compatibility parameter. It is ignored.
+        align_corners: whether coordinates were normalized with corner-alignment (True) or edge-alignment (False).
+            Default is True.
 
     Return:
         the denormalized pixel coordinates.
@@ -1728,12 +1773,20 @@ def denormalize_pixel_coordinates3d(
         )
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
-        sd = 1.0 if depth == 1 else (depth - 1.0) / 2.0
-        sx = 1.0 if width == 1 else (width - 1.0) / 2.0
-        sy = 1.0 if height == 1 else (height - 1.0) / 2.0
-        td = 0.0 if depth == 1 else sd
-        tx = 0.0 if width == 1 else sx
-        ty = 0.0 if height == 1 else sy
+        if align_corners:
+            sd = 1.0 if depth == 1 else (depth - 1.0) / 2.0
+            sx = 1.0 if width == 1 else (width - 1.0) / 2.0
+            sy = 1.0 if height == 1 else (height - 1.0) / 2.0
+            td = 0.0 if depth == 1 else sd
+            tx = 0.0 if width == 1 else sx
+            ty = 0.0 if height == 1 else sy
+        else:
+            sd = depth / 2.0
+            sx = width / 2.0
+            sy = height / 2.0
+            td = (depth - 1.0) / 2.0
+            tx = (width - 1.0) / 2.0
+            ty = (height - 1.0) / 2.0
         if torch.jit.is_scripting():
             anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
             factor = torch.stack([anchor * sd, anchor * sx, anchor * sy])
@@ -1753,17 +1806,24 @@ def denormalize_pixel_coordinates3d(
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
         one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
         zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
-        sd_t = torch.where(depth_t == 1, one, (depth_t - 1.0) / 2.0)
-        sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
-        sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
-        factor = torch.stack([sd_t, sx_t, sy_t])
-        offset = torch.stack(
-            [
-                torch.where(depth_t == 1, zero, sd_t),
-                torch.where(width_t == 1, zero, sx_t),
-                torch.where(height_t == 1, zero, sy_t),
-            ]
-        )
+        if align_corners:
+            sd_t = torch.where(depth_t == 1, one, (depth_t - 1.0) / 2.0)
+            sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
+            sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
+            factor = torch.stack([sd_t, sx_t, sy_t])
+            offset = torch.stack(
+                [
+                    torch.where(depth_t == 1, zero, sd_t),
+                    torch.where(width_t == 1, zero, sx_t),
+                    torch.where(height_t == 1, zero, sy_t),
+                ]
+            )
+        else:
+            sd_t = depth_t / 2.0
+            sx_t = width_t / 2.0
+            sy_t = height_t / 2.0
+            factor = torch.stack([sd_t, sx_t, sy_t])
+            offset = torch.stack([(depth_t - one) / 2.0, (width_t - one) / 2.0, (height_t - one) / 2.0])
         factor = factor.to(out_dtype)
         offset = offset.to(out_dtype)
 

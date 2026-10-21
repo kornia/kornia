@@ -1,0 +1,1 @@
+`remap` now forwards `align_corners` to `normalize_pixel_coordinates`, fixing an issue where an identity pixel map resampled the image when `align_corners` was `False` or `None` (#4504). Added `align_corners` parameter to `normalize_pixel_coordinates`, `denormalize_pixel_coordinates`, `normalize_pixel_coordinates3d`, and `denormalize_pixel_coordinates3d`.
