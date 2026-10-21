@@ -317,6 +317,37 @@ def test_symmetric_magnitude_negates_rather_than_zeroing(op, factor):
     assert not (mags == 0).any(), f"{factor}: {(mags == 0).sum()} of {mags.numel()} draws were zeroed"
 
 
+@pytest.mark.parametrize(
+    ("op", "factor", "dim"), [(ops.TranslateX, "translate_x", -1), (ops.TranslateY, "translate_y", -2)]
+)
+def test_translate_set_magnitude_is_a_fraction_of_the_image_6215(op, factor, dim):
+    # #6215: a set magnitude, learned or passed as ``mag``, replaced the generator's draw after the draw had been
+    # converted to pixels, so ``TranslateX(initial_magnitude=0.2)`` translated by 0.2 pixels while the same 0.2
+    # sampled from ``magnitude_range`` translated by a fifth of the image. A non-square shape tells the axes apart.
+    shape = torch.Size([4, 3, 64, 48])
+    expected = torch.full((4,), 0.2 * shape[dim])
+    sampled = op(None, 1.0, magnitude_range=(0.2, 0.2)).forward_parameters(shape)[factor]
+    learned = op(initial_magnitude=0.2, initial_probability=1.0).forward_parameters(shape)[factor]
+    passed = op(None, 1.0).forward_parameters(shape, mag=torch.tensor(0.2))[factor]
+    for params in (sampled, learned, passed):
+        assert_close(params.abs(), expected)
+
+
+def test_translate_learned_magnitude_gradient_6215():
+    # The conversion to pixels stays differentiable: the learned fraction's gradient matches central differences.
+    image = torch.rand(2, 3, 16, 24, generator=torch.Generator().manual_seed(0), dtype=torch.float64)
+
+    def loss(magnitude: float) -> torch.Tensor:
+        operation = ops.TranslateX(initial_magnitude=magnitude, initial_probability=1.0, symmetric_megnitude=False)
+        return operation, (operation(image) * torch.linspace(0, 1, 24, dtype=torch.float64)).sum()
+
+    operation, value = loss(0.2)
+    value.backward()
+    eps = 1e-4
+    numeric = (loss(0.2 + eps)[1] - loss(0.2 - eps)[1]) / (2 * eps)
+    assert_close(operation._magnitude.grad.double()[0], numeric.detach(), rtol=1e-3, atol=1e-3)
+
+
 # AutoAugment sub-policies are ``(name, probability, magnitude_bin)``; the other two are
 # ``(name, min_magnitude, max_magnitude)``. RandAugment and TrivialAugment allow only one
 # operation per sub-policy, so a mixed draw has to come from two of them -- and cannot

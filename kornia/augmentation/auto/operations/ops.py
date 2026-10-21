@@ -15,12 +15,19 @@
 # limitations under the License.
 #
 
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase
+
+
+def _fraction_to_pixels(mag: Optional[torch.Tensor], size: int) -> Optional[torch.Tensor]:
+    # RandomTranslate's generator samples a fraction of the image and stores it in pixels, so a magnitude that
+    # replaces the draw has to be converted the same way.
+    return None if mag is None else mag * size
+
 
 __all__ = [
     "AutoContrast",
@@ -524,8 +531,12 @@ class ShearY(OperationBase):
 class TranslateX(OperationBase):
     """Apply translate operation along x-axis.
 
+    The magnitude is a fraction of the image width, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`; the wrapped augmentation translates by that fraction
+    of the width in pixels.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a fraction of the image width.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -554,12 +565,31 @@ class TranslateX(OperationBase):
             symmetric_megnitude=symmetric_megnitude,
         )
 
+    def forward_parameters(
+        self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Sample parameters, converting a set magnitude from a fraction of the width to pixels.
+
+        Args:
+            batch_shape: Input batch shape used for sampling.
+            mag: Optional magnitude override, a fraction of the image width.
+
+        Returns:
+            Parameter dictionary consumed by :meth:`forward`.
+        """
+        mag = _fraction_to_pixels(self.magnitude if mag is None else mag, batch_shape[-1])
+        return super().forward_parameters(batch_shape, mag)
+
 
 class TranslateY(OperationBase):
     """Apply translate operation along y-axis.
 
+    The magnitude is a fraction of the image height, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`; the wrapped augmentation translates by that fraction
+    of the height in pixels.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a fraction of the image height.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -587,3 +617,18 @@ class TranslateY(OperationBase):
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
+
+    def forward_parameters(
+        self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Sample parameters, converting a set magnitude from a fraction of the height to pixels.
+
+        Args:
+            batch_shape: Input batch shape used for sampling.
+            mag: Optional magnitude override, a fraction of the image height.
+
+        Returns:
+            Parameter dictionary consumed by :meth:`forward`.
+        """
+        mag = _fraction_to_pixels(self.magnitude if mag is None else mag, batch_shape[-2])
+        return super().forward_parameters(batch_shape, mag)
