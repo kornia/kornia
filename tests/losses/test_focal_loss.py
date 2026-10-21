@@ -33,6 +33,24 @@ one_hot_module = importlib.import_module("kornia.losses.one_hot")
 
 
 class TestBinaryFocalLossWithLogits(BaseTester):
+    def test_exception_inputs(self, device, dtype):
+        from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
+
+        pred = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+
+        with pytest.raises(TypeCheckError):
+            kornia.losses.binary_focal_loss_with_logits(None, target)
+
+        with pytest.raises(TypeCheckError):
+            kornia.losses.binary_focal_loss_with_logits(pred, [1, 2, 3])
+
+        with pytest.raises(DeviceError):
+            kornia.losses.binary_focal_loss_with_logits(pred, target.to("meta"))
+
+        with pytest.raises(ShapeError):
+            kornia.losses.binary_focal_loss_with_logits(pred, target[:, :2])
+
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_value_same_as_torch_bce_loss(self, device, dtype, reduction, ignore_index):
@@ -191,6 +209,24 @@ class TestBinaryFocalLossWithLogits(BaseTester):
 
 
 class TestFocalLoss(BaseTester):
+    def test_exception_inputs(self, device, dtype):
+        from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
+
+        pred = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        target = torch.randint(0, 3, (2, 4, 4), device=device)
+
+        with pytest.raises(TypeCheckError):
+            kornia.losses.focal_loss(None, target, 0.5)
+
+        with pytest.raises(TypeCheckError):
+            kornia.losses.focal_loss(pred, [1, 2, 3], 0.5)
+
+        with pytest.raises(DeviceError):
+            kornia.losses.focal_loss(pred, target.to("meta"), 0.5)
+
+        with pytest.raises(ShapeError):
+            kornia.losses.focal_loss(torch.rand(4, device=device, dtype=dtype), target, 0.5)
+
     @pytest.mark.parametrize("reduction", ["mean", "sum"])
     @pytest.mark.parametrize("shape", [(2, 4), (2, 4, 3, 5), (0, 4, 3)])
     @pytest.mark.parametrize("ignore_index", [None, -100, 0])
