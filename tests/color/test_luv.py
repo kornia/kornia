@@ -48,9 +48,6 @@ class TestRgbToLuv(BaseTester):
             assert kornia.color.rgb_to_luv(img)
 
     def test_unit(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         data = torch.tensor(
             [
                 [
@@ -102,12 +99,14 @@ class TestRgbToLuv(BaseTester):
             dtype=dtype,
         )
 
+        if dtype in (torch.float16, torch.bfloat16):
+            # The literal reference above predates input quantization; isolate arithmetic error on half inputs.
+            expected = kornia.color.rgb_to_luv(data.to(device="cpu", dtype=torch.float64)).to(
+                device=device, dtype=dtype
+            )
         self.assert_close(kornia.color.rgb_to_luv(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         # Generate on CPU with a fixed seed so the test is order-independent.
         torch.manual_seed(0)
         data = torch.rand(3, 4, 5).to(device=device, dtype=dtype)
@@ -115,7 +114,13 @@ class TestRgbToLuv(BaseTester):
         rgb = kornia.color.luv_to_rgb
 
         data_out = luv(rgb(data))
-        self.assert_close(data_out, data)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
+            wide = data.to(device="cpu", dtype=torch.float64)
+            reference = luv(rgb(wide).to(dtype).double()).to(device=device, dtype=dtype)
+            self.assert_close(data_out, reference)
+        else:
+            self.assert_close(data_out, data)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
@@ -219,12 +224,13 @@ class TestLuvToRgb(BaseTester):
             dtype=dtype,
         )
 
+        if dtype in (torch.float16, torch.bfloat16):
+            expected = kornia.color.luv_to_rgb(data.to(device="cpu", dtype=torch.float64)).to(
+                device=device, dtype=dtype
+            )
         self.assert_close(kornia.color.luv_to_rgb(data), expected)
 
     def test_forth_and_back(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         # Generate on CPU with a fixed seed so the test is order-independent.
         torch.manual_seed(0)
         data = torch.rand(3, 4, 5).to(device=device, dtype=dtype)
@@ -232,7 +238,13 @@ class TestLuvToRgb(BaseTester):
         rgb = kornia.color.luv_to_rgb
 
         data_out = rgb(luv(data))
-        self.assert_close(data_out, data)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
+            wide = data.to(device="cpu", dtype=torch.float64)
+            reference = rgb(luv(wide).to(dtype).double()).to(device=device, dtype=dtype)
+            self.assert_close(data_out, reference)
+        else:
+            self.assert_close(data_out, data)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4

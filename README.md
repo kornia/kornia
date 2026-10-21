@@ -86,15 +86,15 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
 [`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.14.0.
-There are **250 float16 and 274 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **243 float16 and 256 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. The remaining work is tracked in [#4153](https://github.com/kornia/kornia/issues/4153).
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends.
 
 | Module | float16 | bfloat16 | Known failures (fp16 / bf16) | Notes |
 |--------|:-------:|:--------:|:----------------------------:|-------|
-| `kornia.color` | ⚠️ | ⚠️ | 1 / 9 | float16: RGB255 round-trip accuracy; bfloat16: Lab, Luv and RGB255 accuracy |
-| `kornia.filters` | ⚠️ | ⚠️ | 6 / 8 | Canny and Gaussian kernel/blur accuracy; CPU FFT convolution computes in float32 |
-| `kornia.enhance` | ✅ | ⚠️ | 0 / 1 | bfloat16: ZCA accuracy; JPEG computes half inputs in float32 and returns the input dtype |
+| `kornia.color` | ✅ | ✅ | 0 / 0 | Lab/Luv and surface-normal conversions compute half inputs in float32 and return the input dtype |
+| `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and CPU FFT convolution compute half inputs in float32 and return the input dtype |
+| `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32 computation |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
 | `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 48 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 31 | Rotation matrices, affine/perspective warps and homography-warper accuracy |

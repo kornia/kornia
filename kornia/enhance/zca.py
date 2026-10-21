@@ -48,6 +48,10 @@ class ZCAWhitening(nn.Module):
     where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the corresponding
     eigenvalues of :math:`\Sigma`. After the transform is applied, the output is reshaped to same shape.
 
+    Float16 and bfloat16 inputs are fitted and transformed in float32, with only the transformed output rounded
+    to the input dtype. The fitted buffers stay float32; explicitly casting the module to half precision discards
+    that accuracy.
+
     The fitted mean and transforms are buffers: ``state_dict`` saves them, ``.to()`` moves and casts them, and
     loading a fitted state into an unfitted module fits it. An unfitted module holds no tensors, so the loaded
     ones keep the device and dtype they were saved with; move the module after loading. A checkpoint saved
@@ -220,7 +224,12 @@ class ZCAWhitening(nn.Module):
         if self.transform_inv is None:
             raise TypeError("The transform inverse should be a torch.Tensor. Got None.")
 
-        mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)
+        if x.dtype in (torch.float16, torch.bfloat16) and not torch.jit.is_scripting() and x.device.type != "meta":
+            # The transformed mean is part of the fit too: autocasting it loses accuracy before linear_transform.
+            with torch.autocast(device_type=x.device.type, enabled=False):
+                mean_inv = -self.mean_vector.float().mm(self.transform_matrix.float())
+        else:
+            mean_inv = -self.mean_vector.mm(self.transform_matrix)
 
         return linear_transform(x, self.transform_inv, mean_inv, self.dim)
 
@@ -233,7 +242,7 @@ def zca_mean(
     Convention:
         See :class:`ZCAWhitening`: dim selects samples and all other axes form features.
         Fitting runs with autocast disabled (not under TorchScript). Float16 and bfloat16 fitting uses float32
-        arithmetic; the mean and transforms keep the input dtype.
+        arithmetic and returns float32 mean and transforms to avoid cancellation when applying a rank-deficient fit.
 
     The output can be used with :func:`linear_transform`. See :class:`ZCAWhitening` for details.
 
@@ -324,10 +333,6 @@ def zca_mean(
         with torch.autocast(device_type=inp.device.type, enabled=False):
             T, mean, T_inv = _zca_mean(inp_permute, num_features, unbiased, eps, return_inverse)
 
-    dtype = inp.dtype
-    if dtype in (torch.float16, torch.bfloat16):
-        # The unnormalised scatter can overflow half precision even when the covariance and transform fit.
-        return T.to(dtype), mean.to(dtype), T_inv.to(dtype) if T_inv is not None else None
     return T, mean, T_inv
 
 
@@ -431,7 +436,8 @@ def linear_transform(
     Convention:
         dim selects rows (samples); all other dimensions form a feature row.
         The result is (X - mean) @ transform_matrix with the original layout
-        restored.
+        restored. Half inputs are centered and multiplied in float32 with autocast disabled (outside TorchScript),
+        then rounded to the input dtype. Keep the fitted transform and mean in float32 to preserve their accuracy.
 
     .. math::
 
@@ -493,8 +499,18 @@ def linear_transform(
     inp_permute = inp.permute(new_order)
     inp_flat = inp_permute.reshape((-1, num_features))
 
-    inp_center = inp_flat - mean_vector
-    inp_transformed = inp_center.mm(transform_matrix)
+    output_dtype = inp.dtype
+    if output_dtype in (torch.float16, torch.bfloat16):
+        inp_center = inp_flat.float() - mean_vector.float()
+        if torch.jit.is_scripting() or inp.device.type == "meta":
+            inp_transformed = inp_center.mm(transform_matrix.float())
+        else:
+            with torch.autocast(device_type=inp.device.type, enabled=False):
+                inp_transformed = inp_center.mm(transform_matrix.float())
+        inp_transformed = inp_transformed.to(output_dtype)
+    else:
+        inp_center = inp_flat - mean_vector
+        inp_transformed = inp_center.mm(transform_matrix)
 
     inp_transformed = inp_transformed.reshape(inp_permute.size())
 

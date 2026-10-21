@@ -138,8 +138,8 @@ def canny(
           :math:`\sqrt{(8 s)^2 + \epsilon}` at an interior pixel, about ``8 * abs(s)``. This is about eight times
           what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square root. On an
           image in :math:`[0, 1]` it is not bounded by 1: a unit step reaches 4 without the blur and about 2.59 with
-          the default one. In float16 the squared gradient overflows past 65504, which a step of 64 already reaches
-          without the blur, so keep a float16 image in :math:`[0, 1]` rather than scaling it and the thresholds up.
+          the default one. Float16 and bfloat16 inputs are computed in float32, with enclosing autocast disabled;
+          only the final magnitude and edges are rounded to the input dtype.
         - The thresholds compare against that magnitude and are strict: a pixel is weak above ``low_threshold`` and
           strong above ``high_threshold``. :ref:`Filtering <filtering-conventions>` maps them onto OpenCV and
           scikit-image.
@@ -200,18 +200,18 @@ def canny(
     # conversion keeps the fractional grey a uint8 conversion would round away
     input = _to_floating(input)
 
-    # To Grayscale
-    if input.shape[1] == 3:
-        input = rgb_to_grayscale(input)
-
+    output_dtype = input.dtype
+    if output_dtype in (torch.float16, torch.bfloat16):
+        input = input.float()
+        if torch.jit.is_scripting() or input.device.type == "meta":
+            gradients = _canny_gradients(input, kernel_size, sigma)
+        else:
+            with torch.autocast(device_type=input.device.type, enabled=False):
+                gradients = _canny_gradients(input, kernel_size, sigma)
+    else:
+        gradients = _canny_gradients(input, kernel_size, sigma)
     device = input.device
     dtype = input.dtype
-
-    # Gaussian filter
-    blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
-
-    # Compute the gradients
-    gradients: torch.Tensor = spatial_gradient(blurred, normalized=False)
 
     # Unpack the edges
     gx: torch.Tensor = gradients[:, :, 0]
@@ -275,7 +275,7 @@ def canny(
     high: torch.Tensor = magnitude > high_threshold
 
     # Cast before scaling: a boolean times a Python float exports as aten.mul.Scalar, which onnxscript < 0.7.2 cannot
-    # translate. The result is 0, 0.5 or 1, exact in every floating dtype; the last cast keeps an integer input's dtype.
+    # translate. The result is 0, 0.5 or 1, exact in every floating dtype.
     edges = ((low.to(dtype) + high.to(dtype)) * 0.5).to(dtype)
 
     # Hysteresis
@@ -305,7 +305,19 @@ def canny(
         # The weak pixels left touch no strong pixel.
         edges = (edges == 1).to(dtype)
 
-    return magnitude, edges
+    return magnitude.to(output_dtype), edges.to(output_dtype)
+
+
+def _canny_gradients(
+    input: torch.Tensor,
+    kernel_size: tuple[int, int] | int,
+    sigma: tuple[float, float] | torch.Tensor,
+) -> torch.Tensor:
+    """Convert to grayscale, blur and differentiate in the working dtype."""
+    if input.shape[1] == 3:
+        input = rgb_to_grayscale(input)
+    blurred = gaussian_blur2d(input, kernel_size, sigma)
+    return spatial_gradient(blurred, normalized=False)
 
 
 class Canny(nn.Module):
