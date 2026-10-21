@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
+from kornia.core.exceptions import BaseError, DeviceError, ShapeError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -231,6 +231,16 @@ class TestMeanAbsoluteDisparityError(BaseTester):
             kornia.metrics.mean_absolute_disparity_error(sample, sample, mask)
         assert "broadcastable" in str(errinfo.value)
 
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_absolute_disparity_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_absolute_disparity_error(
+                sample, sample, valid_mask=torch.ones(4, 4, dtype=torch.bool, device="meta")
+            )
+        assert "Device mismatch" in str(errinfo.value)
+
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.mean_absolute_disparity_error(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo.value)
@@ -303,6 +313,16 @@ class TestRootMeanSquaredDisparityError(BaseTester):
         with pytest.raises(TypeCheckError) as errinfo:
             kornia.metrics.root_mean_squared_disparity_error(None, sample)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.root_mean_squared_disparity_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.root_mean_squared_disparity_error(
+                sample, sample, valid_mask=torch.ones(4, 4, dtype=torch.bool, device="meta")
+            )
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.root_mean_squared_disparity_error(sample, 2.0 * sample, reduction="foo")
@@ -399,6 +419,16 @@ class TestMeanBadPixelError(BaseTester):
         with pytest.raises(TypeCheckError) as errinfo:
             kornia.metrics.mean_bad_pixel_error(None, sample)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_bad_pixel_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_bad_pixel_error(
+                sample, sample, valid_mask=torch.ones(4, 4, dtype=torch.bool, device="meta")
+            )
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.mean_bad_pixel_error(sample, 2.0 * sample, reduction="foo")
@@ -568,6 +598,14 @@ class TestKittiD1Error(BaseTester):
         with pytest.raises(BaseError) as errinfo:
             kornia.metrics.kitti_d1_error(sample, sample, valid_mask=mask)
         assert "broadcastable" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.kitti_d1_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.kitti_d1_error(sample, sample, valid_mask=torch.ones(4, 4, dtype=torch.bool, device="meta"))
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.kitti_d1_error(sample, 2.0 * sample, reduction="foo")
