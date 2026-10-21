@@ -375,18 +375,11 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         :meth:`to_onnx` defaults to a batch of one image. Use ``filter_as_zero=True`` to export a dynamic batch
         as one ``(B, D, 6)`` tensor.
 
-    Note:
-        ``classes_to_keep`` and ``confidence_threshold`` are non-persistent buffers: ``.to(device)`` moves them with
-        the module, and they are not part of its ``state_dict``.
-
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
     ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[List[int]] = [5, 20, 6]
-
-    classes_to_keep: Optional[torch.Tensor]
-    confidence_threshold: Optional[torch.Tensor]
 
     def __init__(
         self,
@@ -396,16 +389,8 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
     ) -> None:
         super().__init__()
         self.filter_as_zero = filter_as_zero
-        # Buffers, so that `.to(device)` moves them with the module. They are not persistent: the `state_dict` stays
-        # empty. `None` is a valid buffer value and means no class filtering, respectively a threshold of 0.
-        self.register_buffer(
-            "classes_to_keep", None if classes_to_keep is None else torch.as_tensor(classes_to_keep), persistent=False
-        )
-        self.register_buffer(
-            "confidence_threshold",
-            None if confidence_threshold is None else torch.as_tensor(confidence_threshold),
-            persistent=False,
-        )
+        self.classes_to_keep = None if classes_to_keep is None else torch.as_tensor(classes_to_keep)
+        self.confidence_threshold = None if confidence_threshold is None else torch.as_tensor(confidence_threshold)
 
     def forward(
         self,
@@ -444,7 +429,9 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             classes_to_keep = self.classes_to_keep
         if classes_to_keep is not None:
             class_ids = boxes[:, :, 0:1]  # [B, D, 1]
-            classes_to_keep = classes_to_keep.view(1, 1, -1)  # [1, 1, C] for broadcasting
+            # `.to(device)` leaves the class list on the device it was built on, so follow the boxes. The 0-d
+            # threshold needs no move: a 0-d CPU tensor works next to boxes on any device.
+            classes_to_keep = classes_to_keep.to(boxes.device).view(1, 1, -1)  # [1, 1, C] for broadcasting
             class_mask = (class_ids == classes_to_keep).any(dim=-1)  # [B, D]
         else:
             # If no class filtering is needed, just use a mask of all `True`
@@ -534,20 +521,6 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         if not isinstance(module, BoxFiltering) or module.filter_as_zero:
             return None
         return "Use filter_as_zero=True to export a dynamic batch as one (B, D, 6) output."
-
-    def _create_dummy_input(
-        self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
-    ) -> Union[tuple[Any, ...], torch.Tensor]:
-        # Trace on the device of the filter's tensors. `ONNXExportMixin.to_onnx` follows only a floating buffer, and
-        # `classes_to_keep` holds integers: a CPU dummy input would meet it on another device after `.to(device)`.
-        device = next((buffer.device for buffer in self.buffers()), None)
-        return torch.rand(
-            *[
-                ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
-                for i, dim in enumerate(input_shape)
-            ],
-            device=device,
-        )
 
 
 class RTDETRDetectorBuilder:

@@ -119,7 +119,7 @@ class TestBoxFiltering:
 
 
 class TestBoxFilteringDevice(BaseTester):
-    """``classes_to_keep`` and ``confidence_threshold`` follow the module on ``.to(device)`` (#6180)."""
+    """The filter runs on the boxes' device after ``.to(device)``, and what worked before keeps working (#6180)."""
 
     @staticmethod
     def _boxes(device, dtype):
@@ -129,31 +129,17 @@ class TestBoxFilteringDevice(BaseTester):
         boxes[..., 0] = torch.arange(20) % 5
         return boxes.to(device=device, dtype=dtype)
 
-    def test_tensors_are_buffers_outside_the_state_dict_6180(self):
-        module = BoxFiltering(0.5, classes_to_keep=[0, 1, 2])
-        assert {name for name, _ in module.named_buffers()} == {"classes_to_keep", "confidence_threshold"}
-        # Non-persistent: loading or saving a detector's weights is unaffected.
-        assert len(module.state_dict()) == 0
-
-    def test_unset_filters_register_no_buffer_6180(self):
-        module = BoxFiltering()
-        assert module.classes_to_keep is None
-        assert module.confidence_threshold is None
-        assert len(list(module.buffers())) == 0
-
     @pytest.mark.parametrize("kwargs", [{"classes_to_keep": [0, 1, 2]}, {"confidence_threshold": 0.5}])
-    def test_tensors_move_with_the_module_6180(self, kwargs):
-        """The ``meta`` device stands in for CUDA: a tensor left on the CPU raises, as it does next to CUDA boxes."""
+    def test_runs_next_to_meta_boxes_6180(self, kwargs):
+        """The ``meta`` device stands in for CUDA: a class list left on the CPU raised, as next to CUDA boxes."""
         module = BoxFiltering(filter_as_zero=True, **kwargs).to("meta")
-        for tensor in module.buffers():
-            assert tensor.device.type == "meta"
         out = module(torch.rand(2, 20, 6, device="meta"))
         assert out.device.type == "meta"
         assert out.shape == (2, 20, 6)
 
     @pytest.mark.parametrize("filter_as_zero", [False, True])
     def test_matches_cpu_after_moving_the_module_6180(self, device, dtype, filter_as_zero):
-        """With the CUDA fixture this is the scenario of the issue: it raised before the tensors became buffers."""
+        """With the CUDA fixture this is the issue's scenario: it raised before the class list followed the boxes."""
         kwargs = {"confidence_threshold": 0.5, "classes_to_keep": [0, 1, 2], "filter_as_zero": filter_as_zero}
         expected = BoxFiltering(**kwargs)(self._boxes("cpu", dtype))
         actual = BoxFiltering(**kwargs).to(device)(self._boxes(device, dtype))
@@ -169,3 +155,37 @@ class TestBoxFilteringDevice(BaseTester):
             for got, want in zip(actual, expected):
                 assert got.device.type == device.type
                 self.assert_close(got.cpu(), want)
+
+    def test_classes_passed_to_forward_follow_the_boxes_6180(self, device, dtype):
+        boxes = self._boxes(device, dtype)
+        out = BoxFiltering(0.5, filter_as_zero=True)(boxes, None, torch.tensor([0, 1, 2]))
+        keep = (boxes[..., 1] > 0.5) & (boxes[..., 0] < 3)
+        self.assert_close(out, boxes * keep[..., None])
+
+    @pytest.mark.parametrize("value", [0.5, 0, torch.tensor(0.5), torch.tensor(0.5, dtype=torch.float64), None])
+    def test_threshold_assigned_after_construction_6180(self, device, dtype, value):
+        """A Python number assigned to the threshold keeps working, also after ``.to(device)``.
+
+        A 0-d CPU threshold works next to boxes on any device, a float64 one also on MPS, which holds no float64.
+        """
+        boxes = self._boxes(device, dtype)
+        module = BoxFiltering(0.9, classes_to_keep=[0, 1, 2], filter_as_zero=True).to(device)
+        module.confidence_threshold = value
+        threshold = 0.0 if value is None else float(value)
+        keep = (boxes[..., 1] > threshold) & (boxes[..., 0] < 3)
+        assert 0 < keep.sum() < keep.numel()
+        self.assert_close(module(boxes), boxes * keep[..., None])
+
+    def test_half_module_keeps_the_threshold_6180(self):
+        """``.half()`` leaves the threshold alone: 0.3 is 0.30004883 in float16, which would drop this box."""
+        boxes = self._boxes("cpu", torch.float32)
+        boxes[0, 0, 1] = 0.30002
+        expected = BoxFiltering(0.3, filter_as_zero=True)(boxes)
+        assert expected[0, 0, 1] == boxes[0, 0, 1]
+        self.assert_close(BoxFiltering(0.3, filter_as_zero=True).half()(boxes), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("kwargs", [{}, {"confidence_threshold": 0.5, "classes_to_keep": [0, 1, 2]}])
+    def test_jit_6180(self, device, dtype, kwargs):
+        module = BoxFiltering(filter_as_zero=True, **kwargs).to(device)
+        boxes = self._boxes(device, dtype)
+        self.assert_close(torch.jit.script(module)(boxes), module(boxes))

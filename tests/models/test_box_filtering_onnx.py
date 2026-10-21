@@ -98,14 +98,6 @@ class TestBoxFilteringONNX(BaseTester):
             with pytest.raises(ort.capi.onnxruntime_pybind11_state.InvalidArgument, match=f"Expected: {batch}"):
                 session.run(None, {"input": _detections(other, 20).numpy()})
 
-    def test_dummy_input_follows_the_filter_device_6180(self):
-        """Trace next to the filter's tensors: ``classes_to_keep`` is no floating buffer for the mixin to follow."""
-        module = BoxFiltering(classes_to_keep=[0, 1]).to("meta")
-        dummy_input = module._create_dummy_input([2, 20, 6])
-        assert dummy_input.device.type == "meta"
-        assert dummy_input.shape == (2, 20, 6)
-        assert BoxFiltering(classes_to_keep=[0, 1])._create_dummy_input([2, 20, 6]).device.type == "cpu"
-
     @pytest.mark.parametrize("input_shape", [[-1, -1, 6], [-1, 20, 6]])
     def test_list_export_rejects_a_dynamic_batch_6077(self, input_shape):
         """Point callers asking for a dynamic batch to the tensor-output mode."""
