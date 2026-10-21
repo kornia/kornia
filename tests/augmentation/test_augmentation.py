@@ -5305,6 +5305,35 @@ class TestDenormalize(BaseTester):
 
 
 class TestRandomFisheye(BaseTester):
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradients(self, device, dtype, gamma_value):
+        center_x = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        center_y = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        gamma = torch.full((2,), gamma_value, device=device, dtype=dtype, requires_grad=True)
+        image = torch.arange(63, device=device, dtype=dtype).reshape(1, 1, 7, 9) / 63
+
+        output = RandomFisheye(center_x, center_y, gamma, p=1.0)(image)
+        gradients = torch.autograd.grad(output.sum(), (center_x, center_y, gamma))
+        assert torch.isfinite(output).all()
+        for gradient in gradients:
+            assert torch.isfinite(gradient).all()
+
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradcheck(self, device, gamma_value):
+        image = torch.arange(63, device=device, dtype=torch.float64).reshape(1, 1, 7, 9) / 63
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+
+        def apply(center_x, center_y, gamma):
+            params = {"center_x": center_x, "center_y": center_y, "gamma": gamma, "batch_prob": image.new_ones(1)}
+            return aug(image, params=params)
+
+        self.gradcheck(
+            apply,
+            (bounds[:1], bounds[:1], torch.tensor([gamma_value], device=device)),
+            nondet_tol=1e-5,
+        )
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         center_x = torch.tensor([-0.3, 0.3])
