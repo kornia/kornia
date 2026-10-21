@@ -502,7 +502,7 @@ class TestMixConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_cutmix_same_on_batch_draws_each_mix_independently_4805(self):
-        from kornia.geometry.bbox import infer_bbox_shape
+        from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
         # #4805: same_on_batch shares each mix's geometry across rows, not across mixes.
         torch.manual_seed(0)
@@ -511,16 +511,34 @@ class TestMixConventions(BaseTester):
         aug = K.RandomCutMixV2(
             num_mix=2, same_on_batch=True, p=1.0, use_correct_lambda=True, data_keys=["input", "class"]
         )
-        _, mixed = aug(image, labels)
+        output, mixed = aug(image, labels)
         pairs, crops = aug._params["mix_pairs"], aug._params["crop_src"]
         assert not torch.equal(pairs[0], pairs[1])
         assert not torch.equal(crops[0, 0], crops[1, 0])
+        expected_image = image.clone()
         for mix in range(2):
             assert torch.equal(crops[mix], crops[mix, 0].expand_as(crops[mix]))
             self.assert_close(mixed[mix, :, 1], labels.index_select(0, pairs[mix]).float())
-            width, height = infer_bbox_shape(crops[mix, 0].unsqueeze(0))
+            height, width = infer_bbox_shape(crops[mix, 0].unsqueeze(0))
             expected_lambda = 1 - width * height / 64
             self.assert_close(mixed[mix, :, 2], expected_lambda.expand(4))
+            # each mix pastes its own cut from the original image, a later mix over an earlier one
+            cut = bbox_to_mask(crops[mix], 8, 8).bool().unsqueeze(1)
+            expected_image = torch.where(cut, image[pairs[mix]], expected_image)
+        self.assert_close(output, expected_image, rtol=0, atol=0)
+
+        # Each mix draws its own size and its own x and y start: over a few seeds, each of them differs between the
+        # two mixes at least once (a fixed cut_size isolates the starts from the sizes).
+        differs = torch.zeros(3, dtype=torch.bool)
+        shape = torch.Size([4, 1, 64, 48])
+        for seed in range(10):
+            torch.manual_seed(seed)
+            free = K.RandomCutMixV2(num_mix=2, same_on_batch=True, p=1.0, use_correct_lambda=True)
+            heights, widths = infer_bbox_shape(free.forward_parameters(shape)["crop_src"][:, 0])
+            fixed = K.RandomCutMixV2(num_mix=2, same_on_batch=True, p=1.0, cut_size=(0.5, 0.5), use_correct_lambda=True)
+            start = fixed.forward_parameters(shape)["crop_src"][:, 0, 0]  # (num_mix, 2) top-left of row 0
+            differs |= torch.stack([(heights[0] != heights[1]) | (widths[0] != widths[1]), *(start[0] != start[1])])
+        assert differs.all()
 
     @pytest.mark.device_agnostic
     def test_convention_cutmix_placement_is_drawn_per_cut_4712(self):
