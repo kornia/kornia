@@ -126,6 +126,11 @@ class VisualPrompter:
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> None:
+        """Build the configured SAM model and its preprocessing transforms.
+
+        A missing config selects pretrained ViT-H. The model and normalization statistics use the requested
+        device and dtype; unsupported configuration types raise ``NotImplementedError``.
+        """
         super().__init__()
         if config is None:
             config = SamConfig(model_type="vit_h", pretrained=True)

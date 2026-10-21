@@ -99,15 +99,20 @@ class TestVisualPrompter(BaseTester):
             VisualPrompter(config)
 
     def test_default_config(self, monkeypatch):
+        """Default construction requests pretrained ViT-H without downloading weights in this test."""
         captured_configs = []
 
         class FakeSam:
+            """Minimal SAM stand-in exposing the encoder size needed during construction."""
+
             image_encoder = SimpleNamespace(img_size=1024)
 
             def to(self, **kwargs):
+                """Accept device and dtype requests without allocating model parameters."""
                 return self
 
         def fake_from_config(config):
+            """Record the selected configuration and return the lightweight SAM stand-in."""
             captured_configs.append(config)
             return FakeSam()
 
