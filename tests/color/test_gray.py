@@ -175,7 +175,7 @@ class TestRgbToGrayscale(BaseTester):
         assert kornia.color.rgb_to_grayscale(img).shape == (batch_size, 1, height, width)
 
     def test_exception(self, device, dtype):
-        from kornia.core.exceptions import TypeCheckError
+        from kornia.core.exceptions import ShapeError, TypeCheckError
 
         with pytest.raises(TypeCheckError):
             assert kornia.color.rgb_to_grayscale([0.0])
@@ -192,6 +192,18 @@ class TestRgbToGrayscale(BaseTester):
         rgb_weights = torch.tensor([0.2, 0.8])
         with pytest.raises(ValueError):
             assert kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
+
+        with pytest.raises(TypeCheckError):
+            assert kornia.color.rgb_to_grayscale(img, rgb_weights=[0.299, 0.587, 0.114])
+
+        with pytest.raises(ShapeError):
+            assert kornia.color.rgb_to_grayscale(img, rgb_weights=torch.ones(1, 3))
+
+        with pytest.raises(TypeCheckError):
+            kornia.color.RgbToGrayscale(rgb_weights=[0.299, 0.587, 0.114])
+
+        with pytest.raises(ShapeError):
+            kornia.color.RgbToGrayscale(rgb_weights=torch.tensor([0.2, 0.8]))
 
     def test_unsupported_dtype_raises(self, device):
         # int32 is not uint8 and not a float dtype -> TypeError
