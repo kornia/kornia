@@ -287,8 +287,9 @@ Transformation matrices and homographies
 - :func:`kornia.geometry.transform.homography_warp` is different on every
   axis: it takes the **destination→source** homography, **normalized** to
   ``[-1, 1]`` by default (``normalized_homography=True``), and defaults to
-  ``align_corners=False``. Convert a pixel source→destination homography by
-  normalizing it FIRST with
+  ``align_corners=False``. ``normalized_coordinates=False`` takes the same
+  destination→source homography in pixels. Convert a pixel
+  source→destination homography by normalizing it FIRST with
   :func:`kornia.geometry.conversions.normalize_homography` (which expects
   the forward src→dst homography) and inverting AFTER — inverting first
   with unswapped sizes is silently wrong whenever the source and
