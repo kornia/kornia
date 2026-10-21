@@ -120,7 +120,10 @@ STATUS = {
     "ok-unverified": (
         "compat-ok-random",
         "yes (random)",
-        "captured and ran; a random operator, so only output shape and finiteness are compared",
+        (
+            "ran (under torch.compile, possibly with graph breaks); a random operator, so only output shape and"
+            " finiteness are compared"
+        ),
     ),
     "mismatch": ("compat-mismatch", "mismatch", "captured and ran, but the result differs from eager execution"),
     "fail": ("compat-fail", "no", "capture or conversion failed; the Details column says why"),
@@ -369,6 +372,28 @@ def _exclusions(data: dict, promise: ModuleType) -> str:
     return "\n\n".join(blocks)
 
 
+def _failure_counts(promise: ModuleType, p: object, tests: tuple[str, ...]) -> dict[str, int]:
+    """Per enforced torch release, the manifest entries of ``p`` for the per-case ``tests``."""
+    counts = {}
+    for release in sorted(promise.ENFORCED_TORCH_RELEASES, key=_release_key):
+        path = promise.manifest_path(p, release)
+        entries = promise.known_failures(p, path) if path.exists() else []
+        counts[release] = sum(entry.test in tests for entry in entries)
+    return counts
+
+
+def _except_known(counts: dict[str, int]) -> str:
+    """``except the known failures listed below (1 on torch 2.9, none on torch 2.14)``."""
+    per_release = ", ".join(f"{n or 'none'} on torch {release}" for release, n in counts.items())
+    return f"except the known failures listed below ({per_release})"
+
+
+def _os_name(os: str) -> str:
+    if os.startswith("ubuntu"):
+        return "Linux"
+    raise ValueError(f"no display name for the CI runner {os!r}")
+
+
 def _known_failures(data: dict, promise: ModuleType) -> str:
     """The manifest entries of every enforced torch release: per tracking issue and check, the releases and cases."""
     records = {c["name"]: c for c in data["cases"]}
@@ -409,7 +434,7 @@ failures and fails once one of them passes, so the list stays current.
 
 
 def _statement(data: dict, packages: list[str]) -> str:
-    """The "What kornia promises" section, from the promise the conformance tests check."""
+    """The "What Kornia promises" section, from the promise the conformance tests check."""
     promise = promise_module()
     records = {c["name"]: c for c in data["cases"]}
     totals = {}
@@ -417,6 +442,10 @@ def _statement(data: dict, packages: list[str]) -> str:
         names = promise.promised_cases(p)
         totals[p.field] = (len(names), len({(records[n]["package"], records[n]["operator"]) for n in names}))
     releases = sorted(promise.ENFORCED_TORCH_RELEASES, key=_release_key)
+    onnx_except = _except_known(_failure_counts(promise, promise.ONNX, ("test_export_matches_eager",)))
+    legacy_except = _except_known(_failure_counts(promise, promise.ONNX, ("test_legacy_export_is_not_wrong",)))
+    compile_except = _except_known(_failure_counts(promise, promise.COMPILE, promise.COMPILE.case_tests))
+    per_day = {1: "once a day", 2: "twice a day"}[promise.CI_RUNS_PER_DAY]
     m = TORCH_25_DYNAMO_ONNX
     return f"""\
 .. _export-support-promise:
@@ -425,13 +454,15 @@ What Kornia promises
 --------------------
 
 Kornia's continuous integration checks the promises of this section. They cover *configurations* of the
-survey below, each one operator with one concrete set of inputs and keyword arguments.
+survey below, each one operator with one concrete set of inputs and keyword arguments, and they hold for
+inference: modules in eval mode, under ``torch.no_grad()``, as CI runs them.
 
 **ONNX export.** The {totals["onnx"][0]} promised configurations ({totals["onnx"][1]} operators) export with
-the ``torch.export``-based exporter, ``torch.onnx.export(..., dynamo=True)``, and onnxruntime matches eager
-execution: the same dtype, and values within the configuration's tolerance, on torch {releases[0]} and later. A
-legacy (TorchScript) export of a promised operator is never silently wrong: it either matches eager or fails
-loudly.
+the ``torch.export``-based exporter, ``torch.onnx.export(..., dynamo=True)`` at opset {promise.ONNX_OPSET} (the
+opset ``to_onnx`` requests) and the survey's static input shapes, and onnxruntime matches eager execution: the
+same dtype, and values within the configuration's tolerance, on torch {releases[0]} and later, {onnx_except}. On
+torch {_and(releases)}, a legacy (TorchScript) export of a promised configuration is never silently wrong: it
+either matches eager or fails loudly, {legacy_except}.
 
 On torch 2.5 to 2.8 the ``to_onnx`` method of Kornia's exportable modules keeps torch's default exporter, which
 there is the legacy one: pass ``dynamo=True`` for the promised exporter. A one-time measurement on torch
@@ -440,12 +471,15 @@ then pass with the dynamo exporter.
 
 **torch.compile.** The {totals["compile"][0]} promised configurations ({totals["compile"][1]} operators) compile
 with ``torch.compile(..., fullgraph=True)`` and the default inductor backend at the survey's static input shapes,
-and match eager execution: the same dtype, and values within the configuration's tolerance.
+and match eager execution: the same dtype, and values within the configuration's tolerance, {compile_except}.
 
-**Where it is checked.** On CPU in float32, on Linux with Python 3.11 and torch {_and(releases)}, twice a day on
-``main`` and on every pull request for the packages it touches. Not promised: CUDA, MPS, ``float16`` and
-``bfloat16``, dynamic shapes under ``torch.compile``, ``kornia.models``, ``kornia.contrib``, anything built with
-pretrained weights, operators outside the :doc:`stable core <stability>`, and operators not listed here.
+**Where it is checked.** On CPU in {promise.CI_DTYPE}, on {_os_name(promise.CI_OS)} with Python
+{promise.CI_PYTHON}: torch {_and(list(promise.CI_TORCH_SCHEDULED))} {per_day} on ``main``, and torch
+{_and(list(promise.CI_TORCH_PULL_REQUEST))} on every pull request, for the packages it touches. Not promised:
+CUDA, MPS, ``float16`` and ``bfloat16``, dynamic shapes (under ONNX export or ``torch.compile``), training mode
+and autograd through a compiled graph (inputs that require grad, a backward pass), ``kornia.models``,
+``kornia.contrib``, anything built with pretrained weights, operators outside the :doc:`stable core
+<stability>`, and operators not listed here.
 
 The survey tables mark each promised configuration with :{PROMISED_ROLE}:`promised` under its ONNX or
 torch.compile result. By package:
@@ -515,8 +549,9 @@ def render_page(data: dict) -> str:
         sections.append("\n".join(block))
 
     return f"""\
-.. This page is generated at build time by docs/generate_export_support.py from
-   docs/source/_data/export_support.json. Edit those, not this file.
+.. This page is generated at build time by docs/generate_export_support.py: the promise from
+   testing/conformance_promise.py and the conformance manifests in testing/known_failure_xfails/, the
+   survey from docs/source/_data/export_support.json. Edit those, not this file.
 
 {roles}
 
@@ -540,9 +575,8 @@ The survey
 .. note::
 
    The survey records one measurement, taken on {data.get("generated_at", "")} with torch {data.get("torch", "")}.
-   Kornia's continuous integration checks only the configurations marked *promised*; any other entry may no longer
-   hold for the current release, so export or compile your own pipeline and compare it with eager before relying
-   on it.
+   Kornia promises only the configurations marked *promised*; any other entry may no longer hold for the current
+   release, so export or compile your own pipeline and compare it with eager before relying on it.
 
 .. grid:: 1 3 3 3
    :gutter: 3

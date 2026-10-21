@@ -142,6 +142,10 @@ def test_known_failure_needs_its_tracking_issue(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match=r"manifest\.txt:5: no tracking issue"):
         load_known_failures(COMPILE, path)
+    # nor does one after a blank line, before any entry
+    path.write_text(f"# #5037: why\n\n# an unrelated note\n{entry.format('LongestMaxSize')}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"manifest\.txt:4: no tracking issue"):
+        load_known_failures(COMPILE, path)
     path.write_text(
         f"# #5037: why\n{entry.format('LongestMaxSize')}\n# pytorch/pytorch#1 (fixed upstream): why\n"
         f"{entry.format('SmallestMaxSize')}\n",
@@ -197,13 +201,24 @@ def test_survey_probe_records_failures_and_lets_test_outcomes_through(monkeypatc
         probe.export_step(wrap, inputs)
 
 
-@pytest.mark.parametrize("explained_breaks", [0, -1])
-def test_survey_probe_reports_ok_only_for_one_graph(monkeypatch: pytest.MonkeyPatch, explained_breaks: int) -> None:
+@pytest.mark.parametrize(
+    ("explained_breaks", "explained_reasons", "status", "reason"),
+    [
+        (0, [], "ok-breaks:0", "fullgraph=True: RuntimeError"),
+        (-1, [], "ok-breaks:0", "fullgraph=True: RuntimeError"),
+        (3, ["generic_jump TensorVariable()"], "ok-breaks:3", "generic_jump TensorVariable()"),
+    ],
+    ids=["no-break", "no-graph", "breaks"],
+)
+def test_survey_probe_reports_ok_only_for_one_graph(
+    monkeypatch: pytest.MonkeyPatch, explained_breaks: int, explained_reasons: list[str], status: str, reason: str
+) -> None:
     """The survey's compile ``ok`` means ``torch.compile(..., fullgraph=True)`` captured the case (#6194).
 
-    ``torch._dynamo.explain`` can count no graph break for a call Dynamo runs in Python: 0, or -1 when it captures no
-    graph at all, as for ``bbox.nms``. The survey records such a case as ``ok-breaks:0``, with the refusal of
-    ``fullgraph=True`` as its break reason; the conformance test (``fullgraph=True`` alone) records it as ``fail``.
+    A case ``fullgraph=True`` refuses gets ``torch._dynamo.explain``'s break count and reasons. Explain can count no
+    graph break for a call Dynamo runs in Python: 0, or -1 when it captures no graph at all, as for ``bbox.nms``; the
+    survey records such a case as ``ok-breaks:0``, with the refusal as its break reason. The conformance test
+    (``fullgraph=True`` alone) records every refused case as ``fail``.
     """
     probe = import_survey_module("probe_compile")
     harness = import_survey_module("harness")
@@ -217,15 +232,16 @@ def test_survey_probe_reports_ok_only_for_one_graph(monkeypatch: pytest.MonkeyPa
         return refuse if fullgraph else model
 
     def explain(model):
-        return lambda *args: types.SimpleNamespace(graph_break_count=explained_breaks, break_reasons=[])
+        reasons = [types.SimpleNamespace(reason=text) for text in explained_reasons]
+        return lambda *args: types.SimpleNamespace(graph_break_count=explained_breaks, break_reasons=reasons)
 
     monkeypatch.setattr(torch, "compile", compile_without_one_graph)
     monkeypatch.setattr(torch._dynamo, "explain", explain)
     record = probe.compile_step(case, wrap, inputs, ref)
-    assert (record["compile"], record["graph_breaks"]) == ("ok-breaks:0", 0), record
-    [reason] = record["break_reasons"]
-    assert reason.startswith("fullgraph=True: RuntimeError"), record
-    assert "Data dependent operator" in reason, record
+    assert (record["compile"], record["graph_breaks"]) == (status, max(explained_breaks, 0)), record
+    [recorded] = record["break_reasons"]
+    assert recorded.startswith(reason), record
+    assert ("Data dependent operator" in recorded) == (not explained_reasons), record
     assert probe.compile_step(case, wrap, inputs, ref, fullgraph=True)["compile"] == "fail"
     # a case fullgraph=True captures is ok in both
     monkeypatch.setattr(torch, "compile", lambda model, fullgraph=False, **kwargs: model)

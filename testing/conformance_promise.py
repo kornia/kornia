@@ -77,8 +77,27 @@ CASE_TEST_CHECKS = {
     "test_legacy_export_is_not_wrong": "ONNX export (legacy exporter)",
     "test_inductor_matches_eager": "torch.compile",
 }
-# The torch releases whose manifests the scheduled conformance jobs enforce (scheduled_test_cpu.yml).
-ENFORCED_TORCH_RELEASES = ("2.9", "2.14")
+# Where CI checks the promises: the onnx-conformance and compile-conformance jobs of scheduled_test_cpu.yml (on main,
+# CI_RUNS_PER_DAY times a day) and of pr_test_cpu.yml (pull requests). tests/test_generate_export_support.py checks
+# these against the workflows, and the support statement renders them.
+CI_TORCH_SCHEDULED = ("2.9.1", "2.14.0")
+CI_TORCH_PULL_REQUEST = ("2.14.0",)
+CI_RUNS_PER_DAY = 2
+CI_PYTHON = "3.11"
+CI_OS = "ubuntu-latest"
+CI_DTYPE = "float32"
+# The ONNX opset the conformance harness exports at: the one ``ONNXExportMixin.to_onnx`` requests (checked against
+# both by tests/test_generate_export_support.py).
+ONNX_OPSET = 18
+
+
+def release(version: str) -> str:
+    """The ``<major>.<minor>`` release of a torch version: ``"2.14.0+cpu"`` -> ``"2.14"``."""
+    return ".".join(version.split("+", maxsplit=1)[0].split(".")[:2])
+
+
+# The torch releases whose manifests the scheduled conformance jobs enforce.
+ENFORCED_TORCH_RELEASES = tuple(release(version) for version in CI_TORCH_SCHEDULED)
 
 # The stable core of docs/source/get-started/stability.rst, as the ``kornia.<package>`` names the snapshot records.
 # tests/scripts/test_conformance_packages.py checks it against that page and against the CI path mapping.
@@ -110,14 +129,16 @@ EXCLUDED: dict[str, dict[str, str]] = {
         # the host (a loop count, slice bounds), which torch.compile(..., fullgraph=True) cannot be relied on to
         # capture.
         "bbox.nms": (
-            "the number of loop iterations and the output size depend on the box values, so torch.compile cannot"
-            " capture it in one graph; a default torch.compile runs it eagerly (#6194)"
+            "for one box or more, the number of loop iterations and the output size depend on the box values, so"
+            " torch.compile cannot capture it in one graph; a default torch.compile runs it eagerly (#6194)"
         ),
         "image.draw_rectangle": (
-            "reads the rectangle coordinates back to the host, where torch.compile breaks the graph (#6194)"
+            "reads the rectangle coordinates back to the host, where a default torch.compile breaks the graph, and"
+            " fullgraph=True fails on most inputs (#6194)"
         ),
         "image.draw_rectangle[fill]": (
-            "reads the rectangle coordinates back to the host, where torch.compile breaks the graph (#6194)"
+            "reads the rectangle coordinates back to the host, where a default torch.compile breaks the graph, and"
+            " fullgraph=True fails on most inputs (#6194)"
         ),
     },
 }
@@ -207,8 +228,7 @@ def manifest_path(promise: Promise, version: str | None = None) -> Path:
 
     For example ``onnx_conformance_torch2.14.txt``.
     """
-    major, minor = (version or torch.__version__).split("+")[0].split(".")[:2]
-    return MANIFEST_DIR / f"{promise.marker}_torch{major}.{minor}.txt"
+    return MANIFEST_DIR / f"{promise.marker}_torch{release(version or torch.__version__)}.txt"
 
 
 @dataclass(frozen=True)
@@ -226,26 +246,28 @@ class KnownFailure:
 def known_failures(promise: Promise, path: Path) -> list[KnownFailure]:
     """Read ``<exception type>\\t<node ID>`` lines; every node ID must name a per-case test of a promised case.
 
-    Every entry must sit under a comment that opens with its tracking issue (``# #NNNN: ...``). The exception name is
-    checked by ``testing.conformance.load_known_failures``, which maps it to a type.
+    Every entry must sit under a comment that opens with its tracking issue (``# #NNNN: ...``); the comment lines
+    right below it continue it, and a comment that names no issue after an entry or a blank line starts a block
+    without one. The exception name is checked by ``testing.conformance.load_known_failures``, which maps it to a type.
     """
     node = re.compile(rf"^{re.escape(promise.test_file)}::(?P<test>\w+)\[(?P<case>.+)\]$")
     promised = promised_cases(promise)
     entries: list[KnownFailure] = []
     seen: set[str] = set()
     issue = ""
-    after_entry = False
+    block_ended = False  # an entry or a blank line since the last comment line
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line:
+            block_ended = True
             continue
         if line.startswith("#"):
             if citation := _CITATION.match(line):
                 issue = citation["issue"]
-            elif after_entry:  # a comment block of its own that names no issue
+            elif block_ended:  # a comment block of its own that names no issue
                 issue = ""
-            after_entry = False
+            block_ended = False
             continue
-        after_entry = True
+        block_ended = True
         try:
             exception, nodeid = line.split("\t", maxsplit=1)
         except ValueError as error:

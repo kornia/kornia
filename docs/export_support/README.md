@@ -36,7 +36,8 @@ For each case:
 
 Random operators cannot be compared value-for-value (the RNG stream differs inside the graph), so
 they are reported as *ok-unverified* when the captured program runs and returns finite outputs of
-the right shape.
+the right shape. Under `torch.compile` that does not mean one graph: a random case `fullgraph=True`
+refuses is compiled like the rest, with graph breaks, and nothing promises an *ok-unverified* case.
 
 The cases also drive the conformance tests of #5819. Every case the snapshot records as ONNX "ok"
 in a stable-core package, not tagged `pretrained` and not excluded (`EXCLUDED` in

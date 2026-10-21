@@ -703,9 +703,9 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         ``bfloat16`` does not overflow, but its rounding can move an IoU across ``iou_threshold``.
 
     Note:
-        ``torch.compile`` cannot capture ``nms`` in one graph: the number of loop iterations and the size of the
-        output depend on the box values. ``fullgraph=True`` raises, and a default ``torch.compile`` runs it eagerly,
-        so it is outside the :ref:`torch.compile promise <export-support-promise>`.
+        For one box or more, ``torch.compile`` cannot capture ``nms`` in one graph: the number of loop iterations and
+        the size of the output depend on the box values. ``fullgraph=True`` raises, and a default ``torch.compile``
+        runs it eagerly, so it is outside the :ref:`torch.compile promise <export-support-promise>`.
 
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other

@@ -105,12 +105,14 @@ never downloads.
 
 Known failures are strict xfails in `testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt`, one
 manifest per enforced torch release, in the `<exception>\t<node ID>` format of the other manifests, each entry under
-a comment that opens with its tracking issue (`# #NNNN: why`, or `# owner/repo#NNNN ...` upstream); loading a manifest
-rejects an entry without one, and the support statement lists each entry with that issue. The exception type names the
+a comment that opens with its tracking issue (`# #NNNN: why`, or `# owner/repo#NNNN ...` upstream; a comment naming no
+issue after an entry or a blank line starts a block without one); loading a manifest rejects an entry without one, and
+the support statement lists each entry with that issue. The exception type names the
 kind of failure (`STATUS_EXCEPTIONS` in `testing/conformance.py`): `AssertionError` for a result that differs from
 eager, `RuntimeError` for a failed export, checker or onnxruntime run (or, in the compile test, a failed compile),
-`ValueError` for a failed eager run, so a known failure that changes kind fails the run. Entries of packages a run does not select are not checked. Delete an entry
-when its case passes (a strict XPASS fails the run); a new failure of a promised operator is a regression to fix.
+`ValueError` for a failed eager run, so a known failure that changes kind fails the run. Entries of packages a run does
+not select are not checked. Delete an entry when its case passes (a strict XPASS fails the run); a new failure of a
+promised operator is a regression to fix.
 
 ### torch.compile conformance (#5819)
 
