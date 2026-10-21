@@ -138,7 +138,8 @@ def load(model_name: Union[onnx.ModelProto, str, os.PathLike], *, force_download
         force_download: If True, download the model again and replace the cached file, even when it is cached.
 
     Note:
-        Given an ``onnx.ModelProto``, the module holds that object itself; see the note of :class:`ONNXModule`.
+        Given an ``onnx.ModelProto``, the module holds that object itself; see the note of
+        :class:`~kornia.onnx.module.ONNXModule`.
 
     """
     return ONNXModule(model_name, force_download=force_download)

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, List, Optional, Tuple, Union
+from typing import Any, ClassVar, List, Optional, Union
 
 import torch
 from torch import nn
@@ -32,7 +32,8 @@ from kornia.core.mixin.onnx import (
     ONNXExportMixin,
     _eval_mode,
     _first_floating_tensor,
-    _preserved_output_caches,
+    _preserved_call_state,
+    _preserved_rng,
     _to_floating,
     _uses_dynamic_shapes,
 )
@@ -137,15 +138,16 @@ def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> 
     """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
 
     The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
-    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The output
-    cache of every image module inside it is left as it was.
+    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The
+    attributes that ``to_onnx`` keeps, such as an image module's output cache, hold what they held before, in every
+    module inside the detector, and so does the global random state.
     """
     reference = _first_floating_tensor(detector)
     if reference is not None:
         images = _to_floating(images, reference)
-    # The run must not leave its output in the cache of an image module inside the detector, as the export's own
-    # run does not.
-    with _eval_mode(detector), _preserved_output_caches(detector), torch.no_grad():
+    # The run must not leave its output or parameters in a module inside the detector, nor consume the global random
+    # state, as the export's own run does not.
+    with _eval_mode(detector), _preserved_call_state(detector), _preserved_rng(), torch.no_grad():
         return isinstance(detector(images), list)
 
 
@@ -281,7 +283,9 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
             exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
             the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
-            Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size.
+            Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size. A
+            ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a
+            ``ValueError`` after the export, before anything is saved.
 
             Without the pre- and post-processor, a model that declares ``ONNX_OUTPUT_NAMES``, as
             :class:`~kornia.models.rt_detr.RTDETR` does (``pred_logits`` and ``pred_boxes``), has its outputs exported
@@ -294,8 +298,10 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         # Exported for a dynamic batch, a per-image list comes out as the traced batch's detections, or the export
         # fails: such a detector is exported for one image.
         batch = -1
-        if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
-            batch = 1
+        # The probe's input draws from the global generator, as the export's dummy does, and gives back what it drew.
+        with _preserved_rng():
+            if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
+                batch = 1
         input_shape = [batch, 3, image_size or -1, image_size or -1]
 
         output_names = None if include_pre_and_post_processor else getattr(self.model, "ONNX_OUTPUT_NAMES", None)
@@ -320,6 +326,14 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             save=save,
             additional_metadata=additional_metadata,
             **kwargs,
+        )
+
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        if module is not self or not _returns_detections_per_image(self, dummy_input):
+            return None
+        return (
+            "Use a post-processor that returns one tensor for the batch, such as a DETRPostProcessor with "
+            "confidence_filtering=False, to export a dynamic batch."
         )
 
     def compile(
@@ -353,6 +367,10 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         filter_as_zero: whether to filter boxes as zero.
 
     Note:
+        The exported graph has one input, ``input``, the boxes. It filters at ``confidence_threshold``, held as a
+        constant, and at the eager default of ``0.0`` (keep boxes with a positive confidence) when none was given.
+
+    Note:
         Without ``filter_as_zero``, ONNX export produces one output tensor per image, so the batch must be fixed.
         :meth:`to_onnx` defaults to a batch of one image. Use ``filter_as_zero=True`` to export a dynamic batch
         as one ``(B, D, 6)`` tensor.
@@ -371,18 +389,8 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
     ) -> None:
         super().__init__()
         self.filter_as_zero = filter_as_zero
-        self.classes_to_keep = None
-        self.confidence_threshold = None
-        if classes_to_keep is not None:
-            self.classes_to_keep = (
-                classes_to_keep if isinstance(classes_to_keep, torch.Tensor) else torch.tensor(classes_to_keep)
-            )
-        if confidence_threshold is not None:
-            self.confidence_threshold = (
-                confidence_threshold or confidence_threshold
-                if isinstance(confidence_threshold, torch.Tensor)
-                else torch.tensor(confidence_threshold)
-            )
+        self.classes_to_keep = None if classes_to_keep is None else torch.as_tensor(classes_to_keep)
+        self.confidence_threshold = None if confidence_threshold is None else torch.as_tensor(confidence_threshold)
 
     def forward(
         self,
@@ -421,11 +429,13 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             classes_to_keep = self.classes_to_keep
         if classes_to_keep is not None:
             class_ids = boxes[:, :, 0:1]  # [B, D, 1]
-            classes_to_keep = classes_to_keep.view(1, 1, -1)  # [1, 1, C] for broadcasting
+            # `.to(device)` leaves the class list on the device it was built on, so follow the boxes. The 0-d
+            # threshold needs no move: a 0-d CPU tensor works next to boxes on any device.
+            classes_to_keep = classes_to_keep.to(boxes.device).view(1, 1, -1)  # [1, 1, C] for broadcasting
             class_mask = (class_ids == classes_to_keep).any(dim=-1)  # [B, D]
         else:
             # If no class filtering is needed, just use a mask of all `True`
-            class_mask = (confidence_mask * 0 + 1).bool()
+            class_mask = torch.ones_like(confidence_mask)
 
         # Combine the confidence and class masks
         combined_mask = confidence_mask & class_mask  # [B, D]
@@ -472,7 +482,12 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             The exported ONNX model.
 
         Raises:
-            ValueError: If ``input_shape`` marks the batch ``-1`` without ``filter_as_zero``.
+            ValueError: If ``input_shape`` marks the batch ``-1`` without ``filter_as_zero``, or a ``dynamic_axes``
+                or ``dynamic_shapes`` argument makes the exported batch dynamic without it.
+
+        Note:
+            The exported graph takes the boxes as its only input and filters at the threshold given to the
+            constructor, or at ``0.0`` when there is none, as eager does.
 
         Note:
             The exporters flatten the Python list into a fixed number of graph outputs. Without ``filter_as_zero``,
@@ -502,18 +517,10 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
             **kwargs,
         )
 
-    def _create_dummy_input(
-        self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
-    ) -> Union[Tuple[Any, ...], torch.Tensor]:
-        pseudo_input = torch.rand(
-            *[
-                ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
-                for i, dim in enumerate(input_shape)
-            ]
-        )
-        if self.confidence_threshold is None:
-            return pseudo_input, 0.1
-        return pseudo_input
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        if not isinstance(module, BoxFiltering) or module.filter_as_zero:
+            return None
+        return "Use filter_as_zero=True to export a dynamic batch as one (B, D, 6) output."
 
 
 class RTDETRDetectorBuilder:
