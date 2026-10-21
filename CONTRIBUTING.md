@@ -399,8 +399,8 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ### Working with AI
 
-- AI tools are welcome. Read their output, check it in the same way you would check your own work, and tell us briefly how they helped.
-- Useful details include what the tool did, what you changed afterward, and what you checked yourself. We do not need a percentage or an authorship category.
+- AI tools are welcome. Read their output, check it in the same way you would check your own work, and state in the pull request which part was done by a human, if any, and which by AI.
+- Useful details include whether you diagnosed the problem, designed the approach, edited the diff, or checked the result yourself, or whether an agent did the whole task from a prompt. We do not need a percentage.
 
 ### Communication
 
@@ -410,7 +410,7 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ## Pull Request
 
-Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
+Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and state which part was done by a human, if any, and which by AI. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
 
 For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
 
