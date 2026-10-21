@@ -500,9 +500,14 @@ class TestMutualInformationValidation(BaseTester):
         loss = loss_fn(signal, target)
         assert loss.shape == batch
         assert loss.dtype == dtype
-        assert loss_fn(signal, target, mask, mask).shape == batch
+        masked_loss = loss_fn(signal, target, mask, mask)
+        assert masked_loss.shape == batch
         assert module(target)(signal).shape == batch
+        assert module(target, mask)(signal, mask).shape == batch
         loss.sum().backward()
+        assert signal.grad.shape == signal.shape
+        signal.grad = None
+        masked_loss.sum().backward()
         assert signal.grad.shape == signal.shape
 
     def test_empty_signal(self, device, dtype, loss_fn, module, shape):
