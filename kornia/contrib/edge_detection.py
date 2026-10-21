@@ -254,8 +254,9 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         Raises:
             ValueError: With the pre- and post-processor, if the ``ResizePostProcessor`` resizes with ``"area"``:
                 adaptive average pooling cannot be exported with the input's size; or if the post-processor returns
-                a list with one map per image and a ``dynamic_axes`` or ``dynamic_shapes`` argument makes the exported
-                batch dynamic.
+                a list with one map per image and the exported batch is dynamic, from a ``dynamic_axes`` or
+                ``dynamic_shapes`` argument or, with the TorchScript exporter, because the list comes only for more
+                than one image.
 
         Note:
             With the pre- and post-processor, a detector whose post-processor returns a list with one map per image is
@@ -263,14 +264,14 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             dynamic batch would return the traced batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
             its own ``forward`` is not such a post-processor, since the export replaces it. Which kind of output any
             other post-processor returns is read from one forward pass of the detector for one image at the export
-            size, in eval mode, without gradients and outside the export. A tensor result is checked again at the
-            actual tracing batch before accepting a dynamic graph. A ``forward`` that returns a list at batch one is
-            therefore exported for one image even if it returns a tensor
-            under export, as a ``ResizePostProcessor`` subclass whose own ``forward`` calls
-            ``ResizePostProcessor.forward`` does.
-            Return the maps of the batch as one tensor to export a batch of any size. A ``dynamic_axes`` or
-            ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a ``ValueError`` after
-            the export, before anything is saved.
+            size, in eval mode, without gradients and outside the export. A ``forward`` that returns a list there is
+            therefore exported for one image even if it returns a tensor under export, as a ``ResizePostProcessor``
+            subclass whose own ``forward`` calls ``ResizePostProcessor.forward`` does. A tensor there is read again at
+            the batch a dynamic export traces, since the kind can depend on the batch size. Return the maps of the
+            batch as one tensor to export a batch of any size. A ``dynamic_axes`` or ``dynamic_shapes`` argument that
+            makes the batch of such an export dynamic raises a ``ValueError`` after the export, before anything is
+            saved. A post-processor that returns a list only for more than one image has no dynamic export either: the
+            TorchScript exporter's graph raises that ``ValueError``, and the dynamo exporter fails to trace it.
 
         """
         if onnx_name is None:

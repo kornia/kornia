@@ -323,6 +323,10 @@ class TestSuperResolutionONNXBatch(BaseTester):
     @pytest.mark.parametrize("export_kwargs", _EACH_EXPORTER)
     def test_per_image_network_exports_one_image_6197(self, export_kwargs):
         _importorskip_exporter(export_kwargs)
+        if export_kwargs["dynamo"] and torch_version_lt(2, 9, 0):
+            # As in test_per_image_pre_processor_exports_one_image_6161: on torch 2.5.1 the probe's eager call
+            # followed by this dynamo export broke every later dynamo export in the process.
+            pytest.skip("torch < 2.9: the dynamo exporter's PythonDispatcher state can break on this graph")
         ort = pytest.importorskip("onnxruntime")
         model = SuperResolution(_PerImageOutputs(), nn.Identity(), nn.Identity())
         model.input_image_size = model.output_image_size = 16

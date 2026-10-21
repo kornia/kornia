@@ -511,6 +511,25 @@ class TestEdgeDetector(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)
+    def test_onnx_with_a_batch_dependent_post_processor_rejects_a_dynamic_export_6197(self, tmp_path):
+        # A list only for more than one image: the one-image reading is a tensor, so the export is dynamic, and the
+        # check after it reads the traced batch of two.
+        pytest.importorskip("onnx")
+
+        class _ListBeyondOneImage(ResizePostProcessor):
+            def forward(self, imgs, original_sizes):
+                return imgs if imgs.shape[0] == 1 else list(imgs.split(1))
+
+        det = _small_edge_detector(_ListBeyondOneImage())
+        path = tmp_path / "edges.onnx"
+
+        with pytest.raises(ValueError, match="EdgeDetector returns one output per image"):
+            det.to_onnx(onnx_name=str(path), image_size=24, dynamo=False)
+
+        assert not path.exists()
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
     @pytest.mark.parametrize("export_kwargs", [*_EACH_EXPORTER, *_DYNAMIC_BATCH])
     def test_onnx_with_a_resize_post_processor_keeps_a_dynamic_batch_without_a_probe_6161(
         self, export_kwargs, monkeypatch
