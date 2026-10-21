@@ -223,6 +223,12 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
 def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Tensor:
     r"""Apply transformations to a set of points.
 
+    Convention:
+        Integer and boolean operands are promoted, not rejected, because a transform moves integer coordinates
+        (pixel indices from ``torch.nonzero`` or ``argmax``) to fractional ones. Integer points return in the
+        floating dtype of ``trans_01``, or in the default floating dtype when both operands are integer, and an integer
+        ``trans_01`` is applied in the dtype of the result. Floating points keep their dtype.
+
     Args:
         trans_01: tensor for transformations of shape
           :math:`(D+1, D+1)` or :math:`(B, D+1, D+1)`.
@@ -242,6 +248,15 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(points_1)
+    # Integer or boolean operands cannot hold the fractional coordinates a transform produces, so the result takes
+    # the points' floating dtype, else the transform's, else the default one (read off an empty tensor: TorchScript
+    # has no ``torch.get_default_dtype()``).
+    out_dtype = points_1.dtype
+    if not (points_1.is_floating_point() or points_1.is_complex()):
+        floating_trans = trans_01.is_floating_point() or trans_01.is_complex()
+        out_dtype = trans_01.dtype if floating_trans else torch.empty(0, device=points_1.device).dtype
+    if not (trans_01.is_floating_point() or trans_01.is_complex()):
+        trans_01 = trans_01.to(out_dtype)
     if trans_01.ndim == 2:
         trans_01 = trans_01.unsqueeze(0)
     # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a
@@ -258,7 +273,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     # yields the same empty set. Return early — the reshape below cannot infer ``-1`` from a
     # 0-element tensor, so this also avoids a spurious crash on valid empty inputs.
     if points_1.shape[-2] == 0:
-        return points_1
+        return points_1.to(out_dtype)
 
     # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
     shape_inp = list(points_1.shape)
@@ -274,8 +289,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # `torch.bmm` requires both operands to share a scalar type. Callers may pass coordinate
     # tensors in a different dtype than the transform matrix (e.g. fp32 bbox + fp16 image), so
-    # harmonise at the bmm site and restore the caller's coordinate dtype on return.
-    points_dtype = points_1_h.dtype
+    # harmonise at the bmm site and return in ``out_dtype``.
     # transform coordinates
     points_0_h = torch.bmm(points_1_h.to(trans_01.dtype), trans_01.permute(0, 2, 1))
     # to euclidean
@@ -284,7 +298,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     shape_inp[-2] = points_0.shape[-2]
     shape_inp[-1] = points_0.shape[-1]
     points_0 = points_0.reshape(shape_inp)
-    return points_0.to(points_dtype)
+    return points_0.to(out_dtype)
 
 
 def _nonzero(x: torch.Tensor) -> torch.Tensor:

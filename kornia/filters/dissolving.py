@@ -272,7 +272,9 @@ class StableDiffusionDissolving(ImageModule):
             )
             is_sdxl = True
         else:
-            raise NotImplementedError
+            raise NotImplementedError(
+                f"Unsupported Stable Diffusion version {version!r}. Supported versions are '1.4', '1.5', and 'xl'."
+            )
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000, is_sdxl=is_sdxl)
 
