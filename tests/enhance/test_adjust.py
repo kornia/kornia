@@ -1652,13 +1652,14 @@ def _weights(input):
 
 
 def _equalize_reference(input):
-    # Independent per-plane histogram: bincount instead of the batched scatter_add implementation.
+    # Independent per-plane histogram: bincount instead of the batched scatter_add implementation, counting each
+    # pixel in the 8-bit level its lookup reads, as PIL does.
     count_dtype = torch.float64 if input.dtype == torch.float64 else torch.float32
     planes = input.reshape(input.shape[0] * input.shape[1], -1)
     outputs = []
     for plane in planes:
         scaled = plane * 255.0
-        indices = (scaled * (256.0 / 255.0)).floor().long().clamp(0, 255)
+        indices = scaled.long().clamp(0, 255)
         hist = torch.bincount(indices, minlength=256).to(count_dtype)
         last_count = hist[hist.nonzero()[-1, 0]]
         step = torch.div(hist.sum() - last_count, 255, rounding_mode="trunc")

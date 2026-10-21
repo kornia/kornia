@@ -1137,8 +1137,8 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     Computes all per-plane histograms/LUTs in a single batched pass instead of a Python loop of
     ``B * C`` serial calls. Each pixel is counted in the LUT entry it reads, its 8-bit level
     ``(x * 255).long()`` computed in the input dtype, so a plane whose LUT step is not 0 comes out as
-    ``PIL.ImageOps.equalize`` of those levels while the counts are exact (up to 2**24 pixels per level
-    in float32); a plane whose step is 0 is returned unchanged.
+    ``PIL.ImageOps.equalize`` of those levels while the counts and their running sums are exact (a plane of
+    up to ``2**24`` pixels in float32); a plane whose step is 0 is returned unchanged.
 
     Args:
         input: image tensor shaped ``(B, C, *spatial)`` with values in ``[0, 1]``.
@@ -1166,9 +1166,8 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # bfloat16 rounds counts above 256.
     count_dtype = _normalize_to_float32_or_float64(scaled.dtype)
     # Per-plane 256-bin histogram on the index the lookup below reads, so every pixel is counted in its own
-    # entry, as PIL counts and reads one 8-bit level. The ``torch.histc(x, 256, 0, 255)`` placement used
-    # before, ``floor(256 x)``, counted every value in ``[k/256, k/255)``, about half of a continuous image,
-    # one bin above the entry it reads (#6181).
+    # entry, as PIL counts and reads one 8-bit level. ``torch.histc(x, 256, 0, 255)`` bins in ``floor(256 x)``,
+    # which puts every value in ``[k/256, k/255)``, about half of a continuous image, one bin above that entry.
     index = scaled.long()
     histo = torch.zeros(n, 256, device=input.device, dtype=count_dtype)
     histo.scatter_add_(1, index, torch.ones_like(scaled, dtype=count_dtype))
@@ -1218,7 +1217,8 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
        a 256-bin histogram. Each pixel is counted in the lookup-table entry it reads, its 8-bit level
        ``(x * 255).long()`` in the input dtype, so a float32 or float64 image gives ``PIL.ImageOps.equalize``
        of those levels. A channel whose lookup step is 0 is returned unchanged, and a float32 image counts in
-       float32, which is exact up to 2**24 pixels per level. An integer or boolean image raises
+       float32, which is exact while a channel holds at most ``2**24`` pixels (4096 x 4096). An integer or
+       boolean image raises
        :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
        ``image.float() / 255`` first. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
        raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel

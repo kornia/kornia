@@ -158,8 +158,8 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
 
     A value ``x`` is counted in bin ``(x * (bins - 1)).long()``, computed in the dtype of ``tiles`` as the
     tile lookups compute ``(x * 255).long()``, so every pixel is counted in the entry it reads, as OpenCV
-    counts and reads one 8-bit level. ``torch.histc``'s ``floor(x * bins)``, used before, counted every
-    value in ``[k/256, k/255)`` one bin above the entry it reads (#6181). One ``scatter_add_`` counts all
+    counts and reads one 8-bit level; ``torch.histc``'s ``floor(x * bins)`` would put every value in
+    ``[k/256, k/255)`` one bin above that entry. One ``scatter_add_`` counts all
     tiles, instead of one ``histc`` launch per tile, and keeps a static output shape so the function stays
     a single dynamo graph. Values outside ``[0, 1]`` and NaN are not counted, which the CPU ``histc`` also
     skips; they go to one extra overflow column per tile that is dropped.

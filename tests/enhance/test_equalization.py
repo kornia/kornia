@@ -350,7 +350,7 @@ class TestEqualization(BaseTester):
         res = enhance.equalize_clahe(img, clip_limit=0.0, grid_size=(1, 1))
         levels = [13, 26, 38, 51, 64, 76, 89, 102, 115, 128, 140, 153, 166, 178, 191, 204, 217, 230, 242, 255]
         expected = torch.tensor(levels, dtype=res.dtype, device=res.device) / 255
-        self.assert_close(res[0, 0, 0], expected, low_tolerance=True)
+        self.assert_close(res[0, 0, 0], expected, rtol=0, atol=0)
 
     def test_ahe(self, img):
         clip_limit: float = 0.0
@@ -405,7 +405,7 @@ class TestEqualization(BaseTester):
             dtype=res.dtype,
             device=res.device,
         )
-        self.assert_close(res[0, 0, 0], expected_row, low_tolerance=True)
+        self.assert_close(res[0, 0, 0], expected_row, rtol=0, atol=1e-4)
         self.assert_close(res_diff[0, 0, 0], expected_row_diff, low_tolerance=True)
 
     @pytest.mark.parametrize("count, expected_level", [(100, 100), (128, 128)])
