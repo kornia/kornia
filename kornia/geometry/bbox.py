@@ -23,7 +23,7 @@ from typing import Optional
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling
 
 from .linalg import transform_points
 
@@ -120,8 +120,9 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     if len(boxes.shape) == 4:
         boxes = boxes.reshape(-1, 8, 3)
 
-    # The value checks below read the data, which graph capture cannot do; skip them under export.
-    if is_exporting():
+    # The value checks below read the data, which graph capture cannot do; skip them under any capture
+    # (torch.compile, torch.export). TorchScript cannot call is_compiling(), and a scripted call keeps the checks.
+    if not torch.jit.is_scripting() and is_compiling():
         return True
 
     # Non-finite coordinates are rejected as a predicate result rather than through the ``allclose``
