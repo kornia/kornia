@@ -60,9 +60,10 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
 
     Convention:
         - ``pred`` holds logits ``(B, C, H, W)`` with ``C >= 2`` and the softmax over dim 1 is taken inside;
-          ``target`` holds class labels ``(B, H, W)`` in ``[0, C)`` with matching batch and spatial sizes.
-          There is no ``ignore_index`` and the labels are not validated: a label of ``-100`` is not ignored,
-          and the result for it is undefined.
+          ``target`` holds class labels ``(B, H, W)`` in ``[0, C)`` with the spatial size of ``pred``. The batch
+          sizes match, or ``pred`` holds one image, which is scored against every target. There is no
+          ``ignore_index`` and the labels are not validated: a label of ``-100`` is not ignored, and the result
+          for it is undefined.
         - Each image is scored on its own and the losses are averaged over the batch into a 0-d tensor; there is no
           ``reduction``. An image's loss is the mean over all ``C`` classes: a class absent from the image enters it
           with that image's largest probability for the class.
@@ -95,7 +96,8 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     if not pred.shape[1] > 1:
         raise ValueError(f"Invalid pred shape, we expect BxNxHxW, with N > 1. Got: {pred.shape}")
 
-    if not (pred.shape[0] == target.shape[0] and pred.shape[-2:] == target.shape[-2:]):
+    # A prediction batch of one is scored against every target, as the computation below broadcasts it.
+    if not ((pred.shape[0] == target.shape[0] or pred.shape[0] == 1) and pred.shape[-2:] == target.shape[-2:]):
         raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 
     if not pred.device == target.device:
