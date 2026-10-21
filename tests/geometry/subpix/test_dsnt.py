@@ -246,9 +246,7 @@ class TestSpatialSoftmax2d(BaseTester):
         assert torch.isfinite(probabilities).all(), "expected a finite distribution"
         self.assert_close(probabilities.sum(dim=(-2, -1)), torch.ones(1, 1, device=device, dtype=heatmap.dtype))
 
-        coordinates = kornia.geometry.subpix.spatial_soft_argmax2d(
-            heatmap, temperature, normalized_coordinates=False
-        )
+        coordinates = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap, temperature, normalized_coordinates=False)
         self.assert_close(coordinates, torch.tensor([[[32.0, 32.0]]], device=device, dtype=heatmap.dtype))
 
 
