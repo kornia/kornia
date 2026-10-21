@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import TypeCheckError
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.core.utils import is_exporting, register_module_state
+from kornia.core.utils import is_compiling, register_module_state
 from kornia.geometry.vector import Vector2
 
 
@@ -327,8 +327,9 @@ class So2(nn.Module):
         KORNIA_CHECK_IS_TENSOR(matrix)
         if len(matrix.shape) < 2 or matrix.shape[-2:] != (2, 2):
             raise ValueError(f"Input size must be (*, 2, 2). Got {matrix.shape}")
-        # Value validation reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting():
+        # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
+        # torch.export).
+        if not is_compiling():
             mask_diag = torch.allclose(matrix[..., 0, 0], matrix[..., 1, 1])
             mask_off_diag = torch.allclose(matrix[..., 0, 1], -matrix[..., 1, 0])
             if not (mask_diag and mask_off_diag):

@@ -86,6 +86,9 @@ The promises (stable core)
    order, angle units, homography conventions) are part of the API surface
    and covered by the same rules.
 
+What the stable core promises for ONNX export and ``torch.compile``, and where
+CI checks it, is stated on the :ref:`support page <export-support-promise>`.
+
 Versioning caveat
 -----------------
 

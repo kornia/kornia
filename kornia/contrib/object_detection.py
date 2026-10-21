@@ -28,15 +28,7 @@ from kornia.constants import _get_by_name
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import (
-    ONNXExportMixin,
-    _eval_mode,
-    _first_floating_tensor,
-    _preserved_call_state,
-    _preserved_rng,
-    _to_floating,
-    _uses_dynamic_shapes,
-)
+from kornia.core.mixin.onnx import ONNXExportMixin, _preserved_rng, _returns_per_image_outputs, _uses_dynamic_shapes
 from kornia.image.draw import draw_rectangle
 from kornia.models.base import ModelBase
 from kornia.models.processors import ResizePreProcessor
@@ -132,23 +124,6 @@ def results_from_detections(
             )
         )
     return results
-
-
-def _returns_detections_per_image(detector: nn.Module, images: torch.Tensor) -> bool:
-    """Return whether ``detector`` returns a list of per-image detections for ``images`` rather than one tensor.
-
-    The detector runs once, in eval mode and without gradients, on ``images`` moved to the dtype and device of its first
-    floating tensor, as the export's dummy input is. Its output decides, so any post-processor is covered. The
-    attributes that ``to_onnx`` keeps, such as an image module's output cache, hold what they held before, in every
-    module inside the detector, and so does the global random state.
-    """
-    reference = _first_floating_tensor(detector)
-    if reference is not None:
-        images = _to_floating(images, reference)
-    # The run must not leave its output or parameters in a module inside the detector, nor consume the global random
-    # state, as the export's own run does not.
-    with _eval_mode(detector), _preserved_call_state(detector), _preserved_rng(), torch.no_grad():
-        return isinstance(detector(images), list)
 
 
 class ObjectDetector(ModelBase, ONNXExportMixin):
@@ -279,13 +254,16 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
             kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
         Note:
-            With a post-processor that returns a list of per-image detections, as a
+            With a post-processor that returns a list or tuple of per-image detections, as a
             ``kornia.models.rt_detr.DETRPostProcessor`` that filters by confidence does, the model is
             exported for a batch of one image: no ONNX output holds a list as long as the batch. Which kind of output
-            the detector returns is read from one forward pass at the export size, in eval mode and without gradients.
-            Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any size. A
-            ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic raises a
-            ``ValueError`` after the export, before anything is saved.
+            the detector returns is read from one forward pass for one image at the export size, in eval mode and
+            without gradients, and a tuple as long as the batch from a second one at another batch size, which tells
+            per-image results from a fixed set of batched outputs such as ``(boxes, scores)``. A per-image result
+            requires a fixed batch; a tensor result is checked again at the actual tracing batch before accepting a
+            dynamic graph. Build an RT-DETR detector with ``confidence_filtering=False`` to export a batch of any
+            size. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an export dynamic
+            raises a ``ValueError`` after the export, before anything is saved.
 
             Without the pre- and post-processor, a model that declares ``ONNX_OUTPUT_NAMES``, as
             :class:`~kornia.models.rt_detr.RTDETR` does (``pred_logits`` and ``pred_boxes``), has its outputs exported
@@ -295,13 +273,15 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
         pseudo_shape = [1, 3, image_size or 352, image_size or 352]
-        # Exported for a dynamic batch, a per-image list comes out as the traced batch's detections, or the export
+        # Exported for a dynamic batch, a per-image sequence comes out as the traced batch's detections, or the export
         # fails: such a detector is exported for one image.
-        batch = -1
-        # The probe's input draws from the global generator, as the export's dummy does, and gives back what it drew.
-        with _preserved_rng():
-            if include_pre_and_post_processor and _returns_detections_per_image(self, torch.rand(pseudo_shape)):
-                batch = 1
+        per_image = None
+        if include_pre_and_post_processor:
+            # The probe's input draws from the global generator, as the export's dummy does, and gives back what it
+            # drew.
+            with _preserved_rng():
+                per_image = _returns_per_image_outputs(self, torch.rand(pseudo_shape))
+        batch = 1 if per_image else -1
         input_shape = [batch, 3, image_size or -1, image_size or -1]
 
         output_names = None if include_pre_and_post_processor else getattr(self.model, "ONNX_OUTPUT_NAMES", None)
@@ -316,20 +296,21 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
                 output_axes = {name: {0: "dim_0"} for name in kwargs["output_names"]}
                 kwargs["dynamic_axes"] = {"input": input_axes, **output_axes}
 
-        return ONNXExportMixin.to_onnx(
-            self,
-            onnx_name,
-            input_shape=input_shape,
-            output_shape=[-1, -1, 6],
-            pseudo_shape=pseudo_shape,
-            model=self if include_pre_and_post_processor else self.model,
-            save=save,
-            additional_metadata=additional_metadata,
-            **kwargs,
-        )
+        with self._onnx_output_kind_kept(per_image):
+            return ONNXExportMixin.to_onnx(
+                self,
+                onnx_name,
+                input_shape=input_shape,
+                output_shape=[-1, -1, 6],
+                pseudo_shape=pseudo_shape,
+                model=self if include_pre_and_post_processor else self.model,
+                save=save,
+                additional_metadata=additional_metadata,
+                **kwargs,
+            )
 
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
-        if module is not self or not _returns_detections_per_image(self, dummy_input):
+        if module is not self or not self._onnx_returns_per_image_outputs(dummy_input):
             return None
         return (
             "Use a post-processor that returns one tensor for the batch, such as a DETRPostProcessor with "

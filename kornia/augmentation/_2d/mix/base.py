@@ -74,11 +74,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         - ``batch_prob`` gates the result: a selected image is mixed and an unselected image keeps its input
           values, except where a concrete class changes the output size (see
           :class:`~kornia.augmentation.RandomMosaic`); the transplantation classes read ``acceptor_indices``
-          instead. The box handlers use the same gate. The class-label
-          handlers of :class:`~kornia.augmentation.RandomMixUpV2` and :class:`~kornia.augmentation.RandomCutMixV2`
-          ignore ``batch_prob``; their sampled gate is batch-wide, but a ``params`` whose ``batch_prob`` selects
-          only some rows labels the unselected, unchanged rows as mixed
-          (`#4775 <https://github.com/kornia/kornia/issues/4775>`_).
+          instead. The box and class-label handlers use the same gate: an unselected row's label describes an
+          unmixed image (its own class twice, with lambda 0).
 
     """
 
@@ -221,12 +218,22 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         self._validate_data_key(DataKey.CLASS)
         batch_prob = params["batch_prob"]
         to_apply = torch.atleast_1d(batch_prob > 0.5)
-        output = input
-        if sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform_class(input, params, flags)
-        if sum(to_apply) != 0:
-            output = self.apply_transform_class(input, params, flags)
-        return output
+        if sum(to_apply) == len(to_apply):
+            return self.apply_transform_class(input, params, flags)
+        if sum(to_apply) == 0:
+            return self.apply_non_transform_class(input, params, flags)
+
+        applied = self.apply_transform_class(input, params, flags)
+        non_applied = self.apply_non_transform_class(input, params, flags)
+        if applied.dim() < 2 or applied.shape != non_applied.shape:
+            # Not one row per sample in both handlers (e.g. a subclass returning one label per sample): keep the
+            # transformed labels, as ``transform_input`` keeps the transformed images when it cannot blend.
+            return applied
+
+        # The batch axis is -2 for both RandomMixUpV2 (B, 3) and RandomCutMixV2 (num_mix, B, 3).
+        view_shape = [1] * (applied.dim() - 2) + [-1, 1]
+        mask = _to_device_nonblocking(to_apply.view(*view_shape), applied.device)
+        return torch.where(mask, applied, non_applied)
 
     def apply_non_transform_mask(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

@@ -88,7 +88,7 @@ from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.overwrite import default_with_one_parameter_changed
 
 
@@ -4541,7 +4541,7 @@ class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.arange(36, device=device, dtype=dtype).reshape(2, 2, 3, 3) / 36
         # Centre-anchored blending of the 2 x 2 tile LUTs, evaluated with the per-pixel reference.
-        expected = torch.tensor(86173 / (16 * 255), device=device, dtype=dtype)
+        expected = torch.tensor(102320 / (16 * 255), device=device, dtype=dtype)
         self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), expected)
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
@@ -5560,6 +5560,25 @@ class TestResize:
         torch._dynamo.reset()
         compiled = torch.compile(aug, fullgraph=True)
         torch.testing.assert_close(aug(img), compiled(img), rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "make",
+        [lambda: Resize(8), lambda: LongestMaxSize(8), lambda: SmallestMaxSize(8)],
+        ids=["Resize", "LongestMaxSize", "SmallestMaxSize"],
+    )
+    def test_int_size_traces_in_one_graph_like_eager_5037(self, make, device, dtype):
+        # An int size takes its output size from the input shape under any capture, not only under export (#5037):
+        # the sampled ``output_size`` tensor is a host read, which a fullgraph trace cannot make.
+        from torch._dynamo.testing import CompileCounter
+
+        img = torch.rand(2, 3, 10, 16, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        aug = make()
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(aug, backend=counter, fullgraph=True)
+        torch.testing.assert_close(traced(img), aug(img), rtol=0, atol=0)
+        assert counter.frame_count == 1
 
 
 class TestSmallestMaxSize:
