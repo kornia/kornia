@@ -422,20 +422,21 @@ class TestMixConventions(BaseTester):
             with pytest.raises(RuntimeError, match="must be divisible by grid"):
                 K.RandomJigsaw(grid=grid, p=p)(image)
 
-    @pytest.mark.device_agnostic
-    def test_convention_mix_class_handlers_honour_a_replayed_partial_gate_4775(self):
+    def test_convention_mix_class_handlers_honour_a_replayed_partial_gate_4775(self, device):
         # #4775: class handler honours batch_prob, i.e. an unselected row is labelled
-        # with its own class twice and lambda 0.
-        image = torch.arange(3.0).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
-        labels = torch.tensor([10, 20, 30])
+        # with its own class twice and lambda 0. The recorded params stay on the CPU, as a replay passes them.
+        image = torch.arange(3.0, device=device).view(3, 1, 1, 1).expand(3, 1, 4, 4).clone()
+        labels = torch.tensor([10, 20, 30], device=device)
         aug = K.RandomMixUpV2(p=1.0, lambda_val=(0.25, 0.25), data_keys=["input", "class"])
         aug(image, labels)
         params = dict(aug._params)
         params["mixup_pairs"] = torch.tensor([1, 2, 0])
         params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
         output, mixed = aug(image, labels, params=params)
-        self.assert_close(output[:, 0, 0, 0], torch.tensor([0.25, 1.0, 1.5]))  # row 1 keeps its image
-        self.assert_close(mixed, torch.tensor([[10.0, 20.0, 0.25], [20.0, 20.0, 0.0], [30.0, 10.0, 0.25]]))
+        self.assert_close(output[:, 0, 0, 0], torch.tensor([0.25, 1.0, 1.5], device=device))  # row 1 keeps its image
+        self.assert_close(
+            mixed, torch.tensor([[10.0, 20.0, 0.25], [20.0, 20.0, 0.0], [30.0, 10.0, 0.25]], device=device)
+        )
         # RandomCutMixV2 has the same handler split: a 2 x 2 cut, and row 1 is gated off.
         aug = K.RandomCutMixV2(p=1.0, use_correct_lambda=True, data_keys=["input", "class"])
         aug(image, labels)
@@ -445,7 +446,9 @@ class TestMixConventions(BaseTester):
         params["batch_prob"] = torch.tensor([1.0, 0.0, 1.0])
         output, mixed = aug(image, labels, params=params)
         self.assert_close(output[1], image[1])
-        self.assert_close(mixed[0], torch.tensor([[10.0, 20.0, 0.75], [20.0, 20.0, 0.0], [30.0, 10.0, 0.75]]))
+        self.assert_close(
+            mixed[0], torch.tensor([[10.0, 20.0, 0.75], [20.0, 20.0, 0.0], [30.0, 10.0, 0.75]], device=device)
+        )
 
         # Multi-mix CutMix (num_mix=2) with interleaved selected and unselected rows:
         aug_multi = K.RandomCutMixV2(num_mix=2, p=1.0, use_correct_lambda=True, data_keys=["input", "class"])
@@ -460,8 +463,8 @@ class TestMixConventions(BaseTester):
         self.assert_close(output_multi[0], image[0])
         self.assert_close(output_multi[2], image[2])
         # Row 0 and 2 are unselected: own label twice with lambda 0 across all mixes
-        expected_mix0 = torch.tensor([[10.0, 10.0, 0.0], [20.0, 30.0, 0.75], [30.0, 30.0, 0.0]])
-        expected_mix1 = torch.tensor([[10.0, 10.0, 0.0], [20.0, 10.0, 0.75], [30.0, 30.0, 0.0]])
+        expected_mix0 = torch.tensor([[10.0, 10.0, 0.0], [20.0, 30.0, 0.75], [30.0, 30.0, 0.0]], device=device)
+        expected_mix1 = torch.tensor([[10.0, 10.0, 0.0], [20.0, 10.0, 0.75], [30.0, 30.0, 0.0]], device=device)
         self.assert_close(mixed_multi[0], expected_mix0)
         self.assert_close(mixed_multi[1], expected_mix1)
 
