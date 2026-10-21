@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import torch
@@ -110,14 +111,14 @@ def tversky_loss(
     if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
         raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
 
-    if alpha < 0.0:
-        raise ValueError(f"alpha must be non-negative. Got: {alpha}")
+    if not (alpha >= 0.0 and math.isfinite(alpha)):
+        raise ValueError(f"alpha must be non-negative and finite. Got: {alpha}")
 
-    if beta < 0.0:
-        raise ValueError(f"beta must be non-negative. Got: {beta}")
+    if not (beta >= 0.0 and math.isfinite(beta)):
+        raise ValueError(f"beta must be non-negative and finite. Got: {beta}")
 
-    if eps < 0.0:
-        raise ValueError(f"eps must be non-negative. Got: {eps}")
+    if not (eps >= 0.0 and math.isfinite(eps)):
+        raise ValueError(f"eps must be non-negative and finite. Got: {eps}")
 
     # Keep the ratio's backward pass in float32 through softmax for half inputs.
     reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
@@ -193,12 +194,12 @@ class TverskyLoss(nn.Module):
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: Optional[int] = -100) -> None:
         super().__init__()
-        if alpha < 0.0:
-            raise ValueError(f"alpha must be non-negative. Got: {alpha}")
-        if beta < 0.0:
-            raise ValueError(f"beta must be non-negative. Got: {beta}")
-        if eps < 0.0:
-            raise ValueError(f"eps must be non-negative. Got: {eps}")
+        if not (alpha >= 0.0 and math.isfinite(alpha)):
+            raise ValueError(f"alpha must be non-negative and finite. Got: {alpha}")
+        if not (beta >= 0.0 and math.isfinite(beta)):
+            raise ValueError(f"beta must be non-negative and finite. Got: {beta}")
+        if not (eps >= 0.0 and math.isfinite(eps)):
+            raise ValueError(f"eps must be non-negative and finite. Got: {eps}")
         self.alpha: float = alpha
         self.beta: float = beta
         self.eps: float = eps

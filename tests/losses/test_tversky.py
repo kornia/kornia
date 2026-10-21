@@ -257,6 +257,17 @@ class TestTverskyLoss(BaseTester):
         with pytest.raises(ValueError, match="eps must be non-negative"):
             kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=-1e-6)
 
+        with pytest.raises(ValueError, match="alpha must be non-negative"):
+            kornia.losses.tversky_loss(pred, target, alpha=float("nan"), beta=0.5)
+
+        with pytest.raises(ValueError, match="alpha must be non-negative"):
+            kornia.losses.TverskyLoss(alpha=float("nan"), beta=0.5)
+
+        # Constructor boundary tests: 0.0 is accepted for alpha, beta, and eps
+        assert kornia.losses.TverskyLoss(alpha=0.0, beta=0.5).alpha == 0.0
+        assert kornia.losses.TverskyLoss(alpha=0.5, beta=0.0).beta == 0.0
+        assert kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=0.0).eps == 0.0
+
         # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
