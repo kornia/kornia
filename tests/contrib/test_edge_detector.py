@@ -86,6 +86,17 @@ class _PerImageMaps(nn.Module):
         return [imgs[i : i + 1] for i in range(imgs.shape[0])]
 
 
+class _TupleMaps(nn.Module):
+    """A post-processor that returns a tuple: one map per image, or a fixed pair of batched maps (#6192, #6197)."""
+
+    def __init__(self, per_image: bool) -> None:
+        super().__init__()
+        self.per_image = per_image
+
+    def forward(self, imgs, original_sizes):
+        return tuple(imgs.split(1)) if self.per_image else (imgs, 2 * imgs)
+
+
 class _DrawingNormalisedModel(nn.Module):
     """A convolution behind a batch norm, which a forward pass in training mode would update, drawing in any mode."""
 
@@ -126,15 +137,15 @@ _DYNAMIC_BATCH = [
 def _count_probes(monkeypatch):
     """Count the runs that read the detector's output kind, wherever ``to_onnx`` or its check makes them."""
     mixin = importlib.import_module("kornia.core.mixin.onnx")
-    probe = mixin._returns_list
+    probe = mixin._returns_per_image_outputs
     calls = []
 
     def _counting(module, inputs):
         calls.append(type(module).__name__)
         return probe(module, inputs)
 
-    monkeypatch.setattr(kornia.contrib.edge_detection, "_returns_list", _counting)
-    monkeypatch.setattr(mixin, "_returns_list", _counting)
+    monkeypatch.setattr(kornia.contrib.edge_detection, "_returns_per_image_outputs", _counting)
+    monkeypatch.setattr(mixin, "_returns_per_image_outputs", _counting)
     return calls
 
 
@@ -511,6 +522,25 @@ class TestEdgeDetector(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("per_image", [True, False], ids=["per_image_tuple", "batched_pair"])
+    def test_onnx_with_a_tuple_post_processor_6197(self, per_image):
+        # A tuple as long as the batch at two batch sizes is one map per image, as ObjectDetector reads it (#6192), and
+        # is exported for one image; a fixed pair of batched maps keeps a dynamic batch.
+        pytest.importorskip("onnx")
+        det = _small_edge_detector(_TupleMaps(per_image))
+
+        op = det.to_onnx(image_size=24, save=False, dynamo=False)
+
+        batch = op.graph.input[0].type.tensor_type.shape.dim[0]
+        if per_image:
+            assert batch.dim_value == 1
+            assert len(op.graph.output) == 1
+        else:
+            assert batch.dim_param
+            assert len(op.graph.output) == 2
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
     def test_onnx_with_a_batch_dependent_post_processor_rejects_a_dynamic_export_6197(self, tmp_path):
         # A list only for more than one image: the one-image reading is a tensor, so the export is dynamic, and the
         # check after it reads the traced batch of two.
@@ -576,8 +606,8 @@ class TestEdgeDetector(BaseTester):
         def _no_probe(module, inputs):
             raise AssertionError("to_onnx ran the detector to read its output kind")
 
-        monkeypatch.setattr(kornia.contrib.edge_detection, "_returns_list", _no_probe)
-        monkeypatch.setattr(importlib.import_module("kornia.core.mixin.onnx"), "_returns_list", _no_probe)
+        monkeypatch.setattr(kornia.contrib.edge_detection, "_returns_per_image_outputs", _no_probe)
+        monkeypatch.setattr(importlib.import_module("kornia.core.mixin.onnx"), "_returns_per_image_outputs", _no_probe)
         det = _small_edge_detector()
 
         op = det.to_onnx(image_size=24, save=False, **export_kwargs)
@@ -669,7 +699,7 @@ class TestEdgeDetector(BaseTester):
             det.to_onnx(image_size=24, save=False, **override)
 
         assert calls == ["EdgeDetector"] * (2 if post_processor is _DoubledPostProcessor else 1)
-        assert "_onnx_list_output" not in det.__dict__
+        assert "_onnx_per_image_output" not in det.__dict__
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)

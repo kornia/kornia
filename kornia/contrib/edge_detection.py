@@ -26,7 +26,7 @@ from kornia.color.gray import grayscale_to_rgb
 from kornia.color.rgb import RgbToBgr
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import ONNXExportMixin, _has_forward_hooks, _preserved_rng, _returns_list
+from kornia.core.mixin.onnx import ONNXExportMixin, _has_forward_hooks, _preserved_rng, _returns_per_image_outputs
 from kornia.enhance.normalize import Normalize
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBase
@@ -268,14 +268,15 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         Raises:
             ValueError: With the pre- and post-processor, if the ``ResizePostProcessor`` resizes with ``"area"``:
                 adaptive average pooling cannot be exported with the input's size; or if the post-processor returns
-                a list with one map per image and the exported batch is dynamic, from a ``dynamic_axes`` or
+                a list (or tuple) with one map per image and the exported batch is dynamic, from a ``dynamic_axes`` or
                 ``dynamic_shapes`` argument or, with the TorchScript exporter, because the list comes only for more
                 than one image.
 
         Note:
-            With the pre- and post-processor, a detector whose post-processor returns a list with one map per image is
-            exported for a batch of one image: the exporters turn a list into one graph output per traced image, so a
-            dynamic batch would return the traced batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
+            With the pre- and post-processor, a detector whose post-processor returns a list with one map per image,
+            or a tuple as long as the batch at two batch sizes, is exported for a batch of one image: the exporters
+            turn such a sequence into one graph output per traced image, so a dynamic batch would return the traced
+            batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
             its own ``forward`` is not such a post-processor, since the export replaces it, as long as the detector
             keeps :meth:`forward` as this class defines it and no forward hook applies to it. Which kind of output
             any other detector returns is read from one forward pass of the detector for one image at the export
@@ -301,14 +302,14 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         try:
             # Exported for a dynamic batch, a list of per-image maps comes out as the traced batch's maps, or the
             # export fails: such a detector is exported for one image.
-            returns_list = None
+            per_image = None
             if include_pre_and_post_processor and not self._returns_one_tensor_on_export():
                 # The probe's input draws from the global generator, as the export's dummy does, and gives back what
                 # it drew.
                 with _preserved_rng():
-                    returns_list = _returns_list(self, torch.rand(pseudo_shape))
-            batch = 1 if returns_list else -1
-            with self._onnx_output_kind_kept(returns_list):
+                    per_image = _returns_per_image_outputs(self, torch.rand(pseudo_shape))
+            batch = 1 if per_image else -1
+            with self._onnx_output_kind_kept(per_image):
                 return ONNXExportMixin.to_onnx(
                     self,
                     onnx_name,
@@ -326,7 +327,11 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
         # The export replaces a ``ResizePostProcessor`` with one resize of the batch, a tensor: only another detector
         # is read, from what ``to_onnx`` read before the export.
-        if module is not self or self._returns_one_tensor_on_export() or not self._onnx_returns_list(dummy_input):
+        if (
+            module is not self
+            or self._returns_one_tensor_on_export()
+            or not self._onnx_returns_per_image_outputs(dummy_input)
+        ):
             return None
         return (
             "Use a post-processor that returns the maps of the batch as one tensor, or a ResizePostProcessor, which "

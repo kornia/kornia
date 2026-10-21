@@ -154,14 +154,15 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 
 
 def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
-    r"""Histogram every tile over ``[0, 1]`` in one pass, matching a per-tile CPU ``torch.histc``.
+    r"""Histogram every tile over ``[0, 1]`` in one pass, on the index its lookup table is read with.
 
-    One ``scatter_add_`` counts all tiles, instead of one ``histc`` launch per tile, and keeps a static
-    output shape so the function stays a single dynamo graph. The index is computed as ``histc``
-    computes it, in the same float32/float64 promotion as ``_torch_histc_cast``: ``floor(x * bins)``,
-    with ``x == 1`` in the last bin. Values outside ``[0, 1]`` and NaN are not counted, which the CPU
-    ``histc`` also skips; they go to one extra overflow column per tile that is dropped. (``histc`` on
-    MPS counts values marginally outside ``[0, 1]``, so there this matches CPU rather than MPS.)
+    A value ``x`` is counted in bin ``(x * (bins - 1)).long()``, computed in the dtype of ``tiles`` as the
+    tile lookups compute ``(x * 255).long()``, so every pixel is counted in the entry it reads, as OpenCV
+    counts and reads one 8-bit level; ``torch.histc``'s ``floor(x * bins)`` would put every value in
+    ``[k/256, k/255)`` one bin above that entry. One ``scatter_add_`` counts all
+    tiles, instead of one ``histc`` launch per tile, and keeps a static output shape so the function stays
+    a single dynamo graph. Values outside ``[0, 1]`` and NaN are not counted, which the CPU ``histc`` also
+    skips; they go to one extra overflow column per tile that is dropped.
 
     Args:
         tiles: flattened tiles. (T, P)
@@ -172,10 +173,11 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
 
     """
     num_tiles = tiles.shape[0]
+    # The index is computed in the dtype of ``tiles``, as the lookups compute theirs; only the counts are wider.
+    idx = (tiles * (bins - 1)).long().clamp_(0, bins - 1)
     x = tiles.to(_normalize_to_float32_or_float64(tiles.dtype))
     # clamp keeps [0, 1] unchanged and NaN as NaN, so the comparison is False exactly where histc skips.
     in_range = x.clamp(0, 1) == x
-    idx = (x * bins).to(torch.int64).clamp_(0, bins - 1)
     # this mask is what drops out-of-range values; without it they land in the first or last bin
     idx = torch.where(in_range, idx, bins)
     counts = torch.zeros(num_tiles, bins + 1, dtype=x.dtype, device=x.device)
@@ -519,12 +521,15 @@ def equalize_clahe(
 
     .. note::
        The input is expected as a floating-point image in :math:`[0, 1]`; each tile is equalized from a
-       256-bin lookup table. An integer or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError`
-       (a :exc:`TypeError`); convert 8-bit data with ``image.float() / 255`` first, as for
-       :func:`kornia.enhance.equalize`. Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise
-       a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel
-       from torch ``2.13``; on an older MPS release the condition is read on the host instead, one device
-       sync per call, and is skipped there under ``torch.compile``, as for :func:`kornia.enhance.equalize`.
+       256-bin lookup table. On the default path each pixel is counted in the entry it reads, its 8-bit
+       level ``(x * 255).long()`` in the input dtype, as OpenCV counts and reads one level;
+       ``slow_and_differentiable=True`` keeps its soft histogram centred on the levels ``k / 255``. An integer
+       or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert
+       8-bit data with ``image.float() / 255`` first, as for :func:`kornia.enhance.equalize`. Values the lookup
+       cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the range. The check is
+       ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older MPS release the
+       condition is read on the host instead, one device sync per call, and is skipped there under
+       ``torch.compile``, as for :func:`kornia.enhance.equalize`.
 
     """
     _check_floating_image(input, "equalize_clahe")

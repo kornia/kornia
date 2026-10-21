@@ -230,6 +230,17 @@ class _PerImageOutputs(nn.Module):
         return [imgs[i : i + 1] for i in range(imgs.shape[0])]
 
 
+class _TupleImages(nn.Module):
+    """A post-processor that returns a tuple: one image per input image, or a fixed pair of batched images (#6197)."""
+
+    def __init__(self, per_image: bool) -> None:
+        super().__init__()
+        self.per_image = per_image
+
+    def forward(self, imgs):
+        return tuple(imgs.split(1)) if self.per_image else (imgs, 2 * imgs)
+
+
 class _ImagesOneByOne(nn.Module):
     """A pre-processor that returns a list of ``(C, H, W)`` images, which ``forward`` runs one at a time (#6161)."""
 
@@ -267,15 +278,15 @@ def _small_super_resolution(post_processor: nn.Module, pre_processor: Optional[n
 def _count_probes(monkeypatch):
     """Count the runs that read the model's output kind, wherever ``to_onnx`` or its check makes them."""
     mixin = importlib.import_module("kornia.core.mixin.onnx")
-    probe = mixin._returns_list
+    probe = mixin._returns_per_image_outputs
     calls = []
 
     def _counting(module, inputs):
         calls.append(type(module).__name__)
         return probe(module, inputs)
 
-    monkeypatch.setattr(kornia.contrib.super_resolution, "_returns_list", _counting)
-    monkeypatch.setattr(mixin, "_returns_list", _counting)
+    monkeypatch.setattr(kornia.contrib.super_resolution, "_returns_per_image_outputs", _counting)
+    monkeypatch.setattr(mixin, "_returns_per_image_outputs", _counting)
     return calls
 
 
@@ -350,6 +361,24 @@ class TestSuperResolutionONNXBatch(BaseTester):
         with pytest.raises(ValueError, match="returns one output per image"):
             model.to_onnx(onnx_name=str(path), **override)
         assert not path.exists()
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("per_image", [True, False], ids=["per_image_tuple", "batched_pair"])
+    def test_tuple_post_processor_6197(self, per_image):
+        # A tuple as long as the batch at two batch sizes is one image per input image (#6192) and is exported for
+        # one image; a fixed pair of batched images keeps a dynamic batch.
+        pytest.importorskip("onnx")
+        model = _small_super_resolution(_TupleImages(per_image))
+
+        op = model.to_onnx(save=False, dynamo=False)
+
+        batch = op.graph.input[0].type.tensor_type.shape.dim[0]
+        if per_image:
+            assert batch.dim_value == 1
+            assert len(op.graph.output) == 1
+        else:
+            assert batch.dim_param
+            assert len(op.graph.output) == 2
 
     @pytest.mark.timeout(120)
     def test_batch_dependent_output_rejects_dynamic_export_6197(self, tmp_path):
@@ -531,8 +560,8 @@ class TestSuperResolutionONNXBatch(BaseTester):
         def _no_probe(module, inputs):
             raise AssertionError("to_onnx ran the model to read its output kind")
 
-        monkeypatch.setattr(kornia.contrib.super_resolution, "_returns_list", _no_probe)
-        monkeypatch.setattr(importlib.import_module("kornia.core.mixin.onnx"), "_returns_list", _no_probe)
+        monkeypatch.setattr(kornia.contrib.super_resolution, "_returns_per_image_outputs", _no_probe)
+        monkeypatch.setattr(importlib.import_module("kornia.core.mixin.onnx"), "_returns_per_image_outputs", _no_probe)
         model = _small_super_resolution(post_processor(), pre_processor())
 
         op = model.to_onnx(save=False, **export_kwargs)
@@ -586,7 +615,7 @@ class TestSuperResolutionONNXBatch(BaseTester):
             model.to_onnx(save=False, **override)
 
         assert calls == ["SuperResolution"] * (2 if post_processor is _Doubled else 1)
-        assert "_onnx_list_output" not in model.__dict__
+        assert "_onnx_per_image_output" not in model.__dict__
 
     @pytest.mark.timeout(120)
     def test_output_probe_leaves_the_model_as_it_was_6161(self):

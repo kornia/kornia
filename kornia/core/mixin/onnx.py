@@ -319,29 +319,38 @@ def _has_forward_hooks(module: nn.Module) -> bool:
     return any(child._forward_hooks or child._forward_pre_hooks for child in module.modules())
 
 
-def _returns_list(module: Any, inputs: Any) -> bool:
-    """Return whether ``module`` returns a Python list for ``inputs``, from one eager run.
+def _returns_per_image_outputs(module: Any, inputs: Any) -> bool:
+    """Return whether ``module`` returns one output per image for ``inputs``, from eager runs.
 
-    The export wrappers whose output can be one item per image (from a post-processor, or for ``SuperResolution``
-    from the network or a pre-processor) read the kind of their output with it: the exporters turn such a list into
-    one graph output per traced image. The module runs once, in eval mode and
-    without gradients, on ``inputs`` moved to the dtype and device of its first floating tensor, as the export's dummy
-    input is. Its output decides, so any post-processor is covered. The attributes that ``to_onnx`` keeps, such as an
-    image module's output cache, hold what they held before, in every module inside ``module``, and so does the global
-    random state; a buffer that ``forward`` itself updates is updated by this run too.
+    One output per image is a Python list, or a tuple whose length follows the batch: a tuple as long as the batch is
+    read again at another batch size, so a fixed set of batched outputs such as ``(boxes, scores)`` is not one. The
+    export wrappers whose output can be one item per image (from a post-processor, or for ``SuperResolution`` from the
+    network or a pre-processor) read the kind of their output with it: the exporters turn such a sequence into one
+    graph output per traced image. The module runs in eval mode and without gradients, on ``inputs`` moved to the
+    dtype and device of its first floating tensor, as the export's dummy input is. Its output decides, so any
+    post-processor is covered. The attributes that ``to_onnx`` keeps, such as an image module's output cache, hold
+    what they held before, in every module inside ``module``, and so does the global random state; a buffer that
+    ``forward`` itself updates is updated by these runs too.
     """
     reference = _first_floating_tensor(module)
     if reference is not None:
         inputs = _to_floating(inputs, reference)
-    # The run must not leave its output or parameters in a module inside ``module``, nor consume the global random
+    # The runs must not leave their output or parameters in a module inside ``module``, nor consume the global random
     # state, as the export's own run does not.
     with _eval_mode(module), _preserved_call_state(module), _preserved_rng(), torch.no_grad():
-        return isinstance(module(inputs), list)
+        output = module(inputs)
+        if isinstance(output, list):
+            return True
+        if not isinstance(output, tuple) or len(output) != inputs.shape[0]:
+            return False
+        other_batch = 2 if inputs.shape[0] == 1 else 1
+        other_output = module(inputs[:1].expand(other_batch, *inputs.shape[1:]).contiguous())
+        return isinstance(other_output, tuple) and len(other_output) == other_batch
 
 
 # The instance attribute in which ``ONNXExportMixin._onnx_output_kind_kept`` keeps a wrapper's output kind for the
 # duration of its export. It is written to ``__dict__`` and removed afterwards, so no class declares it.
-_ONNX_LIST_OUTPUT = "_onnx_list_output"
+_ONNX_PER_IMAGE_OUTPUT = "_onnx_per_image_output"
 
 
 def _has_dynamic_batch(onnx_model: onnx.ModelProto) -> bool:
@@ -426,8 +435,9 @@ class ONNXExportMixin:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
             ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
                 a fixed entry of `input_shape` differs from the explicit `pseudo_shape`; or if the model declares one
-                output per image, as an ``ObjectDetector``, ``EdgeDetector`` or ``SuperResolution`` whose output is a
-                per-image list and ``BoxFiltering`` without ``filter_as_zero`` do, and the exported batch is dynamic.
+                output per image, as an ``ObjectDetector``, ``EdgeDetector`` or ``SuperResolution`` exported with its
+                pre- and post-processor whose output is a per-image list or tuple and ``BoxFiltering`` without
+                ``filter_as_zero`` do, and the exported batch is dynamic.
                 That check runs after the export and before anything is saved.
             FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
                 checked before the export runs.
@@ -460,12 +470,12 @@ class ONNXExportMixin:
             - The dimensions marked `-1` are exported as dynamic: through `dynamic_shapes` on the dynamo exporter
               from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
               argument replaces them.
-            - The exporters turn a list output into a fixed number of graph outputs, one per item of the traced
-              batch. An ``ObjectDetector``, ``EdgeDetector`` or ``SuperResolution`` whose output is a per-image list
-              and ``BoxFiltering`` without ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the
-              batch, and an export whose batch comes out dynamic raises. Other models are not checked: the default
-              ``_onnx_fixed_batch_hint`` declares nothing, so a list output keeps the traced batch's number of outputs
-              at any batch size.
+            - The exporters turn a list or tuple output into a fixed number of graph outputs, one per item of the
+              traced batch. An ``ObjectDetector``, ``EdgeDetector`` or ``SuperResolution`` exported with its pre- and
+              post-processor whose output is a per-image list or tuple and ``BoxFiltering`` without
+              ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the batch, and an export whose
+              batch comes out dynamic raises. Other models are not checked: the default ``_onnx_fixed_batch_hint``
+              declares nothing, so a per-image output keeps the traced batch's number of outputs at any batch size.
             - The model is exported with `torch.onnx.export`, with constant folding enabled.
 
         """
@@ -581,32 +591,32 @@ class ONNXExportMixin:
         return None
 
     @contextlib.contextmanager
-    def _onnx_output_kind_kept(self, returns_list: Optional[bool]) -> Iterator[None]:
-        """Keep ``returns_list``, the output kind a wrapper's ``to_onnx`` read before its export, for the block.
+    def _onnx_output_kind_kept(self, per_image: Optional[bool]) -> Iterator[None]:
+        """Keep ``per_image``, the output kind a wrapper's ``to_onnx`` read before its export, for the block.
 
-        A positive list reading is enough to require a fixed batch. A tensor reading must be checked again on the
+        A per-image reading is enough to require a fixed batch. A tensor reading must be checked again on the
         actual tracing input, since the output kind can depend on the batch size. ``None`` keeps nothing. What was
         kept before comes back after the block, also when the export fails.
         """
         missing = object()
-        previous = self.__dict__.get(_ONNX_LIST_OUTPUT, missing)
-        self.__dict__[_ONNX_LIST_OUTPUT] = returns_list
+        previous = self.__dict__.get(_ONNX_PER_IMAGE_OUTPUT, missing)
+        self.__dict__[_ONNX_PER_IMAGE_OUTPUT] = per_image
         try:
             yield
         finally:
             if previous is missing:
-                del self.__dict__[_ONNX_LIST_OUTPUT]
+                del self.__dict__[_ONNX_PER_IMAGE_OUTPUT]
             else:
-                self.__dict__[_ONNX_LIST_OUTPUT] = previous
+                self.__dict__[_ONNX_PER_IMAGE_OUTPUT] = previous
 
-    def _onnx_returns_list(self, inputs: Any) -> bool:
-        """Require a fixed batch if an earlier probe returned a list, or if this run on ``inputs`` returns one.
+    def _onnx_returns_per_image_outputs(self, inputs: Any) -> bool:
+        """Require a fixed batch if an earlier probe read one output per image, or if this run on ``inputs`` does.
 
         A tensor result at batch one does not establish the output kind at the export's tracing batch.
         A direct call of :meth:`ONNXExportMixin.to_onnx` on a wrapper keeps nothing, so its check runs the model.
         """
-        kept = self.__dict__.get(_ONNX_LIST_OUTPUT)
-        return kept is True or _returns_list(self, inputs)
+        kept = self.__dict__.get(_ONNX_PER_IMAGE_OUTPUT)
+        return kept is True or _returns_per_image_outputs(self, inputs)
 
     def _create_dummy_input(
         self, input_shape: list[int], pseudo_shape: Optional[list[int]] = None

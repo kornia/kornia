@@ -56,6 +56,25 @@ def _lovasz_softmax_reference(logits, labels, weight=None):
 
 
 class TestLovaszSoftmaxLoss(BaseTester):
+    @pytest.mark.parametrize(("pred_batch", "target_batch"), [(2, 1), (2, 3), (3, 2)])
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_mismatched_batch(self, pred_batch, target_batch, as_module, device, dtype):
+        logits = torch.zeros(pred_batch, 2, 2, 3, device=device, dtype=dtype)
+        labels = torch.zeros(target_batch, 2, 3, device=device, dtype=torch.int64)
+        criterion = kornia.losses.LovaszSoftmaxLoss() if as_module else kornia.losses.lovasz_softmax_loss
+        with pytest.raises(ValueError, match="pred and target shapes must be the same"):
+            criterion(logits, labels)
+
+    @pytest.mark.parametrize("as_module", [False, True])
+    def test_prediction_batch_of_one_is_scored_against_every_target(self, as_module, device, dtype):
+        # The computation broadcasts a one-image prediction over the targets; it keeps working as the expanded call.
+        logits = torch.tensor([[[[2.0, -1.0, 0.5]], [[-1.0, 1.5, 0.0]]]], device=device, dtype=dtype)
+        labels = torch.tensor([[[0, 1, 1]], [[1, 0, 0]], [[0, 0, 1]]], device=device, dtype=torch.int64)
+        criterion = kornia.losses.LovaszSoftmaxLoss() if as_module else kornia.losses.lovasz_softmax_loss
+        expected = criterion(logits.expand(3, -1, -1, -1), labels)
+        self.assert_close(criterion(logits, labels), expected, rtol=0, atol=0)
+        assert expected > criterion(logits, labels[:1])
+
     def test_smoke(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 1, 1, device=device, dtype=dtype)

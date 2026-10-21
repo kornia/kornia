@@ -424,15 +424,17 @@ def test_detector_rechecks_tensor_output_at_the_tracing_batch_6161(post_processo
     """Only a positive list reading can be reused without checking the actual tracing batch."""
     pytest.importorskip("onnx")
     mixin = importlib.import_module("kornia.core.mixin.onnx")
-    probe = mixin._returns_list
+    probe = mixin._returns_per_image_outputs
     calls = []
 
     def _counting(module, inputs):
         calls.append(type(module).__name__)
         return probe(module, inputs)
 
-    monkeypatch.setattr(importlib.import_module("kornia.contrib.object_detection"), "_returns_list", _counting)
-    monkeypatch.setattr(mixin, "_returns_list", _counting)
+    monkeypatch.setattr(
+        importlib.import_module("kornia.contrib.object_detection"), "_returns_per_image_outputs", _counting
+    )
+    monkeypatch.setattr(mixin, "_returns_per_image_outputs", _counting)
     detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), post_processor())
 
     if "dynamic_axes" in override:
@@ -442,7 +444,7 @@ def test_detector_rechecks_tensor_output_at_the_tracing_batch_6161(post_processo
         detector.to_onnx(image_size=32, save=False, **override)
 
     assert calls == ["ObjectDetector"] * (2 if post_processor is _BatchedDetections else 1)
-    assert "_onnx_list_output" not in detector.__dict__
+    assert "_onnx_per_image_output" not in detector.__dict__
 
 
 @pytest.mark.timeout(120)
