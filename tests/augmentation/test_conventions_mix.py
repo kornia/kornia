@@ -469,6 +469,31 @@ class TestMixConventions(BaseTester):
         self.assert_close(mixed_multi[1], expected_mix1)
 
     @pytest.mark.device_agnostic
+    def test_convention_mix_partial_gate_keeps_class_labels_it_cannot_blend_4775(self):
+        # A subclass whose class handlers do not both return one row per sample keeps its transformed labels
+        # under a partial gate: one label per sample that applies the gate itself, or a table next to the
+        # default pass-through. Three rows, so a (3, 1) gate would broadcast against either without raising.
+        class OneLabelPerSample(K.RandomMixUpV2):
+            def apply_transform_class(self, input, params, flags):
+                return torch.where(params["batch_prob"] > 0.5, input.flip(0), input)
+
+            def apply_non_transform_class(self, input, params, flags):
+                return input
+
+        class TableNextToPassThrough(K.RandomMixUpV2):
+            def apply_non_transform_class(self, input, params, flags):
+                return input
+
+        image = torch.rand(3, 1, 4, 4)
+        labels = torch.tensor([10, 20, 30])
+        for cls in (OneLabelPerSample, TableNextToPassThrough):
+            aug = cls(p=1.0, data_keys=["input", "class"])
+            aug(image, labels)
+            params = {**aug._params, "batch_prob": torch.tensor([1.0, 0.0, 1.0])}
+            _, out = aug(image, labels, params=params)
+            assert torch.equal(out, aug.apply_transform_class(labels, aug._params, aug.flags))
+
+    @pytest.mark.device_agnostic
     def test_convention_cutmix_compatibility_lambda_warns(self):
         with pytest.warns(DeprecationWarning, match="use_correct_lambda"):
             K.RandomCutMixV2()

@@ -224,6 +224,10 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
         applied = self.apply_transform_class(input, params, flags)
         non_applied = self.apply_non_transform_class(input, params, flags)
+        if applied.dim() < 2 or applied.shape != non_applied.shape:
+            # Not one row per sample in both handlers (e.g. a subclass returning one label per sample): keep the
+            # transformed labels, as ``transform_input`` keeps the transformed images when it cannot blend.
+            return applied
 
         # The batch axis is -2 for both RandomMixUpV2 (B, 3) and RandomCutMixV2 (num_mix, B, 3).
         view_shape = [1] * (applied.dim() - 2) + [-1, 1]
