@@ -34,7 +34,7 @@ from torch.distributions import Distribution
 import kornia
 from kornia.core.download import load_state_dict_from_url
 
-from testing import conformance
+from testing import conformance, conformance_promise
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
     FailureRecorder,
@@ -289,7 +289,7 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
 def pytest_configure(config) -> None:
     """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
     config._conformance = {}
-    for promise in conformance.PROMISES:
+    for promise in conformance_promise.PROMISES:
         try:
             config._conformance[promise.marker] = conformance.selection(config, promise)
         except ValueError as error:
@@ -438,7 +438,7 @@ def pytest_collection_modifyitems(config, items):
     # The ONNX and torch.compile conformance tests (#5819) are opt-in: --onnx-conformance and --compile-conformance
     # name the packages whose promised operators they run. When one is given, conformance.KnownFailurePlugin turns its
     # known failures into strict xfails.
-    for promise in conformance.PROMISES:
+    for promise in conformance_promise.PROMISES:
         if config._conformance[promise.marker]:
             continue
         conformance_items = [item for item in items if item.get_closest_marker(promise.marker) is not None]
@@ -599,7 +599,7 @@ def pytest_addoption(parser):
             "(env: KORNIA_TEST_RUN_MPS_PROCESS_ABORT)"
         ),
     )
-    for promise in conformance.PROMISES:
+    for promise in conformance_promise.PROMISES:
         parser.addoption(
             promise.option,
             action="store",
