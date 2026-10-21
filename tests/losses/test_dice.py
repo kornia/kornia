@@ -20,6 +20,7 @@ import torch
 import torch.nn.functional as F
 
 import kornia
+from kornia.core.exceptions import BaseError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -270,6 +271,14 @@ class TestDiceLoss(BaseTester):
         assert grad.isfinite().all()
 
     def test_exception(self):
+        with pytest.raises(TypeCheckError) as errinf:
+            kornia.losses.DiceLoss()(None, torch.rand(1, 1, 1))
+        assert "Type mismatch: expected Tensor" in str(errinf.value)
+
+        with pytest.raises(TypeCheckError) as errinf:
+            kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), [1, 2, 3])
+        assert "Type mismatch: expected Tensor" in str(errinf.value)
+
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1), torch.rand(1, 1, 1))
         assert "Invalid pred shape, we expect BxNxHxW. Got:" in str(errinf)
@@ -292,6 +301,15 @@ class TestDiceLoss(BaseTester):
         # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             kornia.losses.DiceLoss()(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.dice_loss(torch.rand(1, 1, 1, 1), torch.randint(0, 1, (1, 1, 1)), eps=-1e-8)
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.DiceLoss(eps=-1e-8)
+
+        with pytest.raises(BaseError, match="The `average` has to be one of"):
+            kornia.losses.DiceLoss(average="invalid")
 
     def test_averaging_micro(self, device, dtype):
         """Keep the analytical micro-averaging reference finite in half precision."""
