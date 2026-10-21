@@ -234,6 +234,23 @@ class TestSpatialSoftmax2d(BaseTester):
         with pytest.raises(ValueError, match="Temperature should be positive"):
             kornia.geometry.subpix.spatial_softmax2d(input, temperature)
 
+    def test_sharp_temperature_does_not_overflow_float16(self, device):
+        # #6087: dividing the raw logits by a sharp temperature overflowed float16 (max|logit| / temperature >
+        # 65504) before softmax could stabilize them, so a finite heatmap returned NaN coordinates.
+        heatmap = torch.zeros(1, 1, 64, 64, device=device, dtype=torch.float16)
+        heatmap[..., 32, 31] = 10.0
+        heatmap[..., 32, 32] = 11.0
+        temperature = torch.tensor(1e-4, device=device, dtype=torch.float16)
+
+        probabilities = kornia.geometry.subpix.spatial_softmax2d(heatmap, temperature)
+        assert torch.isfinite(probabilities).all(), "expected a finite distribution"
+        self.assert_close(probabilities.sum(dim=(-2, -1)), torch.ones(1, 1, device=device, dtype=heatmap.dtype))
+
+        coordinates = kornia.geometry.subpix.spatial_soft_argmax2d(
+            heatmap, temperature, normalized_coordinates=False
+        )
+        self.assert_close(coordinates, torch.tensor([[[32.0, 32.0]]], device=device, dtype=heatmap.dtype))
+
 
 class TestSpatialExpectation2d(BaseTester):
     @pytest.fixture(
