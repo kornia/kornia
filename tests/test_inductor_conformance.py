@@ -35,26 +35,34 @@ set, so the tests here are named after inductor; this test does not use ``KORNIA
 
 from __future__ import annotations
 
+import types
+from pathlib import Path
+
 import pytest
 import torch
 
 from testing.conformance import (
-    COMPILE,
-    ENFORCED_TORCH_RELEASES,
     describe,
     import_survey_module,
     load_known_failures,
-    manifest_path,
     parametrize_cases,
     pin_problems,
     process_state,
     promised_case,
-    promised_cases,
     raise_for_status,
     registration_problems,
     run_compile_case,
     selection,
     state_changes,
+)
+from testing.conformance_promise import (
+    COMPILE,
+    ENFORCED_TORCH_RELEASES,
+    EXCLUDED,
+    exclusion_problems,
+    known_failures,
+    manifest_path,
+    promised_cases,
 )
 
 # Every case runs on CPU tensors, whatever ``--device`` says. The registries and the probe call torch.manual_seed,
@@ -66,9 +74,9 @@ pytestmark = [pytest.mark.device_agnostic, pytest.mark.usefixtures("restore_torc
 # module-wide: the process-state tests must see a filter the probe would add.
 quiet = pytest.mark.filterwarnings("ignore")
 
-# The compile promise of the 2026-09-02 snapshot: 832 cases of 637 operators.
-PROMISED_COUNT = 832
-PROMISED_DIGEST = "8461e5c612ed2c8aa696633f3dc9f4154bfcb8c1cc01f19a2ddb29610e9b188d"
+# The compile promise of the 2026-09-02 snapshot, less its exclusions: 829 cases of 635 operators.
+PROMISED_COUNT = 829
+PROMISED_DIGEST = "de2f308f80fad99ac1fccf38efaeb07088fe23b2c8dde9e21070e3c0a4e9c263"
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
@@ -94,10 +102,59 @@ def test_promised_set_is_pinned() -> None:
     assert not problems, "\n".join(problems)
 
 
+def test_stale_exclusion_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An exclusion must leave out a case the promise would cover without it; one that leaves nothing out is reported.
+
+    A regenerated snapshot that stops marking an excluded case ``ok`` drops it from the promise by itself (#6194).
+    """
+    assert not exclusion_problems(COMPILE)
+    stale = {
+        "transform.crop_by_boxes": "recorded with graph breaks",
+        "utils.create_meshgrid": "not a stable-core package",
+        "feature.OriNet": "built with pretrained weights",
+        "no.such.case": "not in the snapshot",
+    }
+    problems = exclusion_problems(COMPILE, {**EXCLUDED["compile"], **stale})
+    assert [problem.split(": ")[0] for problem in problems] == list(stale), problems
+    assert all("delete its entry from EXCLUDED['compile']" in problem for problem in problems), problems
+    # the pin test runs the guard on the real exclusions; none of these names is promised, so the pin itself holds
+    monkeypatch.setitem(EXCLUDED["compile"], "transform.crop_by_boxes", "recorded with graph breaks")
+    assert pin_problems(COMPILE, PROMISED_COUNT, PROMISED_DIGEST) == [problems[0]]
+
+
 @pytest.mark.parametrize("version", ENFORCED_TORCH_RELEASES)
 def test_known_failure_manifest_names_promised_cases(version: str) -> None:
     """The manifest of every enforced torch release parses, not only the running torch's, which the run reads."""
     load_known_failures(COMPILE, manifest_path(COMPILE, version))
+
+
+def test_known_failure_needs_its_tracking_issue(tmp_path: Path) -> None:
+    """Every manifest entry sits under a comment that opens with its tracking issue, which the support page cites."""
+    entry = "RuntimeError\ttests/test_inductor_conformance.py::test_inductor_matches_eager[{}]"
+    path = tmp_path / "manifest.txt"
+    path.write_text(f"# header\n{entry.format('LongestMaxSize')}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no tracking issue"):
+        load_known_failures(COMPILE, path)
+    # a comment block of its own after an entry does not inherit the issue above it
+    path.write_text(
+        f"# #5037: why\n# more of why\n{entry.format('LongestMaxSize')}\n# a note\n{entry.format('SmallestMaxSize')}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"manifest\.txt:5: no tracking issue"):
+        load_known_failures(COMPILE, path)
+    path.write_text(
+        f"# #5037: why\n{entry.format('LongestMaxSize')}\n# pytorch/pytorch#1 (fixed upstream): why\n"
+        f"{entry.format('SmallestMaxSize')}\n",
+        encoding="utf-8",
+    )
+    assert [(e.case, e.issue) for e in known_failures(COMPILE, path)] == [
+        ("LongestMaxSize", "#5037"),
+        ("SmallestMaxSize", "pytorch/pytorch#1"),
+    ]
+    # an excluded case is not promised, so no manifest may name it
+    path.write_text(f"# #6194: why\n{entry.format('bbox.nms')}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"'bbox\.nms' is not a promised case"):
+        load_known_failures(COMPILE, path)
 
 
 def test_survey_probe_import_leaves_process_state_alone() -> None:
@@ -138,6 +195,42 @@ def test_survey_probe_records_failures_and_lets_test_outcomes_through(monkeypatc
     )
     with pytest.raises(pytest.fail.Exception, match="pytest-timeout"):
         probe.export_step(wrap, inputs)
+
+
+@pytest.mark.parametrize("explained_breaks", [0, -1])
+def test_survey_probe_reports_ok_only_for_one_graph(monkeypatch: pytest.MonkeyPatch, explained_breaks: int) -> None:
+    """The survey's compile ``ok`` means ``torch.compile(..., fullgraph=True)`` captured the case (#6194).
+
+    ``torch._dynamo.explain`` can count no graph break for a call Dynamo runs in Python: 0, or -1 when it captures no
+    graph at all, as for ``bbox.nms``. The survey records such a case as ``ok-breaks:0``, with the refusal of
+    ``fullgraph=True`` as its break reason; the conformance test (``fullgraph=True`` alone) records it as ``fail``.
+    """
+    probe = import_survey_module("probe_compile")
+    harness = import_survey_module("harness")
+    case = harness.case("neg", "test", torch.neg, [torch.ones(2)])
+    wrap, inputs, ref = probe._reference(case)
+
+    def compile_without_one_graph(model, fullgraph=False, **kwargs):
+        def refuse(*args):
+            raise RuntimeError("Data dependent operator")
+
+        return refuse if fullgraph else model
+
+    def explain(model):
+        return lambda *args: types.SimpleNamespace(graph_break_count=explained_breaks, break_reasons=[])
+
+    monkeypatch.setattr(torch, "compile", compile_without_one_graph)
+    monkeypatch.setattr(torch._dynamo, "explain", explain)
+    record = probe.compile_step(case, wrap, inputs, ref)
+    assert (record["compile"], record["graph_breaks"]) == ("ok-breaks:0", 0), record
+    [reason] = record["break_reasons"]
+    assert reason.startswith("fullgraph=True: RuntimeError"), record
+    assert "Data dependent operator" in reason, record
+    assert probe.compile_step(case, wrap, inputs, ref, fullgraph=True)["compile"] == "fail"
+    # a case fullgraph=True captures is ok in both
+    monkeypatch.setattr(torch, "compile", lambda model, fullgraph=False, **kwargs: model)
+    assert probe.compile_step(case, wrap, inputs, ref)["compile"] == "ok"
+    assert probe.compile_step(case, wrap, inputs, ref, fullgraph=True)["compile"] == "ok"
 
 
 @pytest.mark.compile_conformance
