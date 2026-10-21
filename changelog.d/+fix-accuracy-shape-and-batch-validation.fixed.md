@@ -1,0 +1,1 @@
+`accuracy` validates input tensors, shapes, and matching batch sizes, raising `ShapeError` on mismatched batch sizes or invalid dimensions instead of silently broadcasting singleton targets or raising raw runtime errors.

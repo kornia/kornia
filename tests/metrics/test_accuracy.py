@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
 from kornia.metrics import accuracy
 
 from testing.base import BaseTester, supports_topk
@@ -59,6 +60,54 @@ class TestAccuracy:
         target = torch.tensor([[1]])
         result = accuracy(logits, target, topk=(5,))
         assert result[0].item() == 100.0
+
+    @pytest.mark.parametrize(("pred_batch", "target_batch"), [(1, 2), (2, 1), (2, 3), (3, 2)])
+    def test_mismatched_batch(self, pred_batch, target_batch):
+        logits = torch.zeros(pred_batch, 3)
+        target = torch.zeros(target_batch, dtype=torch.int64)
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    def test_singleton_target_batch_mismatch_does_not_broadcast(self):
+        # 2 predictions for class 1 with target [1] (batch 1) previously returned 200%
+        logits = torch.tensor([[0.0, 1.0], [0.0, 1.0]])
+        target = torch.tensor([1])
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    @pytest.mark.parametrize("pred_shape", [(3,), (2, 3, 4)])
+    def test_invalid_pred_shape(self, pred_shape):
+        logits = torch.zeros(pred_shape)
+        target = torch.zeros(logits.shape[0] if logits.ndim > 0 else 1, dtype=torch.int64)
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    @pytest.mark.parametrize("target_shape", [(2, 2), (2, 1, 1), ()])
+    def test_invalid_target_shape(self, target_shape):
+        logits = torch.zeros(2, 3)
+        target = torch.zeros(target_shape, dtype=torch.int64)
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    def test_non_tensor_inputs(self):
+        with pytest.raises(TypeCheckError):
+            accuracy([[0.0, 1.0]], torch.tensor([1]))  # type: ignore[arg-type]
+        with pytest.raises(TypeCheckError):
+            accuracy(torch.tensor([[0.0, 1.0]]), [1])  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("invalid_topk", [(), (0,), (-1,), (1, 0)])
+    def test_invalid_topk(self, invalid_topk):
+        logits = torch.tensor([[0.0, 1.0]])
+        target = torch.tensor([1])
+        with pytest.raises(Exception):
+            accuracy(logits, target, topk=invalid_topk)
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_device_mismatch(self):
+        logits = torch.zeros(2, 3, device="cpu")
+        target = torch.zeros(2, dtype=torch.int64, device="cuda")
+        with pytest.raises(DeviceError):
+            accuracy(logits, target)
 
 
 class TestConventionsAccuracy(BaseTester):

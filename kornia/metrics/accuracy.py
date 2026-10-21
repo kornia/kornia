@@ -15,17 +15,28 @@
 # limitations under the License.
 #
 
-from typing import List, Tuple
+from __future__ import annotations
+
+from typing import Tuple
 
 import torch
 
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_DEVICE,
+    KORNIA_CHECK_SAME_SIZE,
+    KORNIA_CHECK_SHAPE,
+)
 
-def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (1,)) -> List[torch.Tensor]:
+
+def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (1,)) -> list[torch.Tensor]:
     """Compute the accuracy over the k top predictions for the specified values of k.
 
     Convention:
         - ``pred`` holds one score per class, :math:`(B, C)`; only the order of the scores in a row matters.
-          ``target`` holds class indices, :math:`(B,)` or :math:`(B, 1)`.
+          ``target`` holds class indices, :math:`(B,)` or :math:`(B, 1)`. The batch sizes of ``pred`` and
+          ``target`` must match.
         - The result is a list with one 0-d float32 tensor per entry of ``topk``, in that order. Each is a
           **percentage** in :math:`[0, 100]`, not a fraction, taken over the whole batch: a sample counts for ``k``
           when its target is among its ``k`` highest scores, and a ``k`` above :math:`C` counts as :math:`C`.
@@ -43,6 +54,17 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
         [tensor(100.)]
 
     """
+    KORNIA_CHECK_IS_TENSOR(pred)
+    KORNIA_CHECK_IS_TENSOR(target)
+    KORNIA_CHECK_SAME_DEVICE(pred, target)
+    KORNIA_CHECK_SHAPE(pred, ["B", "C"])
+    if target.ndim == 2:
+        KORNIA_CHECK_SHAPE(target, ["B", "1"])
+    else:
+        KORNIA_CHECK_SHAPE(target, ["B"])
+    KORNIA_CHECK_SAME_SIZE(pred, target, dim=0)
+    KORNIA_CHECK(len(topk) > 0 and all(k > 0 for k in topk), "topk must be a non-empty sequence of positive integers")
+
     maxk = min(max(topk), pred.size()[1])
     batch_size = target.size(0)
     _, pred = pred.topk(maxk, 1, True, True)
