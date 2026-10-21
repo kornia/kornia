@@ -380,8 +380,9 @@ def run_case(c: dict[str, Any], dynamo: bool = True) -> dict[str, Any]:
         wrap = make_wrapper(target, c["kwargs"], len(c["inputs"]), c["method"])
         inputs = [x.detach().clone() for x in c["inputs"]]
         torch.manual_seed(SEED)
+        # Eager runs on a copy, so the exported wrapper holds none of the state that call leaves on a module.
         with torch.no_grad():
-            ref = wrap(*copy.deepcopy(inputs))
+            ref = copy.deepcopy(wrap)(*copy.deepcopy(inputs))
         rec["n_outputs"] = len(ref)
         rec["output_shapes"] = [list(x.shape) + [str(x.dtype).replace("torch.", "")] for x in ref]
     except Exception as e:

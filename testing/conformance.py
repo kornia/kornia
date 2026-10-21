@@ -95,6 +95,8 @@ ONNX = Promise(
 # so the compile promise's tests are named after inductor; only the option and the marker say "compile".
 COMPILE = Promise("torch.compile", "compile", "tests/test_inductor_conformance.py", ("test_inductor_matches_eager",))
 PROMISES = (ONNX, COMPILE)
+# The torch releases whose manifests the scheduled conformance jobs enforce (scheduled_test_cpu.yml).
+ENFORCED_TORCH_RELEASES = ("2.9", "2.14")
 
 # The stable core of docs/source/get-started/stability.rst, as the ``kornia.<package>`` names the snapshot records.
 # tests/scripts/test_conformance_packages.py checks it against that page and against the CI path mapping.

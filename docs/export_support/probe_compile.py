@@ -108,7 +108,12 @@ def _compare(ref: list[torch.Tensor], out: list[torch.Tensor], c: dict[str, Any]
 
 
 def _reference(c: dict[str, Any]) -> tuple[nn.Module, list[torch.Tensor], list[torch.Tensor]]:
-    """The case's wrapper, a copy of its inputs, and its eager outputs."""
+    """The case's wrapper, a copy of its inputs, and its eager outputs.
+
+    The eager call runs on a copy of the wrapper, so the returned one holds none of the state that call leaves on a
+    module (an augmentation's params, a crop's cached points): a compiled graph that skips computing such state
+    cannot pass by reading what eager left there.
+    """
     target = c["target"]
     if isinstance(target, nn.Module):
         target.eval()
@@ -116,7 +121,7 @@ def _reference(c: dict[str, Any]) -> tuple[nn.Module, list[torch.Tensor], list[t
     inputs = [x.detach().clone() for x in c["inputs"]]
     torch.manual_seed(SEED)
     with torch.no_grad():
-        ref = list(wrap(*copy.deepcopy(inputs)))
+        ref = list(copy.deepcopy(wrap)(*copy.deepcopy(inputs)))
     return wrap, inputs, ref
 
 

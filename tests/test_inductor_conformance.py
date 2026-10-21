@@ -40,8 +40,11 @@ import torch
 
 from testing.conformance import (
     COMPILE,
+    ENFORCED_TORCH_RELEASES,
     describe,
     import_survey_module,
+    load_known_failures,
+    manifest_path,
     parametrize_cases,
     pin_problems,
     process_state,
@@ -89,6 +92,12 @@ def test_promised_cases_are_registered(request: pytest.FixtureRequest) -> None:
 def test_promised_set_is_pinned() -> None:
     problems = pin_problems(COMPILE, PROMISED_COUNT, PROMISED_DIGEST)
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize("version", ENFORCED_TORCH_RELEASES)
+def test_known_failure_manifest_names_promised_cases(version: str) -> None:
+    """The manifest of every enforced torch release parses, not only the running torch's, which the run reads."""
+    load_known_failures(COMPILE, manifest_path(COMPILE, version))
 
 
 def test_survey_probe_import_leaves_process_state_alone() -> None:

@@ -33,9 +33,12 @@ from __future__ import annotations
 import pytest
 
 from testing.conformance import (
+    ENFORCED_TORCH_RELEASES,
     LEGACY_PASSES,
     ONNX,
     import_survey_module,
+    load_known_failures,
+    manifest_path,
     parametrize_cases,
     pin_problems,
     process_state,
@@ -93,6 +96,12 @@ def test_promised_cases_are_registered(request: pytest.FixtureRequest) -> None:
 def test_promised_set_is_pinned() -> None:
     problems = pin_problems(ONNX, PROMISED_COUNT, PROMISED_DIGEST)
     assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize("version", ENFORCED_TORCH_RELEASES)
+def test_known_failure_manifest_names_promised_cases(version: str) -> None:
+    """The manifest of every enforced torch release parses, not only the running torch's, which the run reads."""
+    load_known_failures(ONNX, manifest_path(ONNX, version))
 
 
 def test_survey_harness_leaves_process_state_alone() -> None:
