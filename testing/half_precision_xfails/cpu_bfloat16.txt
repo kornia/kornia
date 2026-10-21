@@ -14,7 +14,6 @@ call	builtins.AssertionError	tests/augmentation/_3d/test_random_rotation_3d.py::
 call	builtins.AssertionError	tests/augmentation/_3d/test_random_rotation_3d.py::TestRandomRotation3D::test_random_rotation[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/container/test_augmentation_sequential.py::TestAugmentationSequential::test_random_crops[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/container/test_augmentation_sequential.py::TestAugmentationSequential::test_random_erasing[cpu-bfloat16]
-call	builtins.AssertionError	tests/augmentation/test_augmentation.py::TestRandomClahe::test_smoke[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/test_augmentation.py::TestRandomGaussianIllumination::test_smoke[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/test_augmentation.py::TestRandomHue::test_sequential[cpu-bfloat16]
 call	builtins.AssertionError	tests/augmentation/test_augmentation.py::TestRandomRGBShift::test_random_rgb_shift[cpu-bfloat16]

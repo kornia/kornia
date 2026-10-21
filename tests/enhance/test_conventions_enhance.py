@@ -281,6 +281,47 @@ class TestEnhanceConventions(BaseTester):
         # Compare on the CPU: MPS has no float64.
         self.assert_close(out.cpu().double(), expected, rtol=0, atol=ulp / 2 + 1e-12)
 
+    # equalize, equalize3d and equalize_clahe count every pixel in the lookup-table entry it reads, its 8-bit level
+    # (x * 255).long() in the input dtype, so a continuous image gives exactly what its 8-bit levels give. They used to
+    # count it in floor(256 x), one bin above the entry it reads for every value in [k/256, k/255) (#6181).
+    @pytest.mark.parametrize(
+        ("op", "shape"),
+        [
+            (kornia.enhance.equalize, (2, 3, 64, 64)),
+            (kornia.enhance.equalize3d, (1, 2, 4, 32, 32)),
+            (lambda x: kornia.enhance.equalize_clahe(x, 40.0, (2, 2)), (1, 2, 32, 32)),  # 16 x 16 tiles
+            (lambda x: kornia.enhance.equalize_clahe(x, 40.0, (2, 2)), (1, 2, 30, 30)),  # 15 x 15 tiles
+        ],
+        ids=["equalize", "equalize3d", "clahe_even_tiles", "clahe_odd_tiles"],
+    )
+    def test_convention_equalize_counts_the_8bit_level_it_reads_6181(self, device, dtype, op, shape):
+        image = torch.rand(shape, generator=torch.Generator().manual_seed(6181)).to(device, dtype)
+        levels = (image * 255).long().to(dtype) / 255
+        assert torch.equal(op(image), op(levels))
+
+    # equalize is PIL's Equalize of the 8-bit levels its lookup reads, for continuous input as well. 13 of these 32
+    # values lie in [k/256, k/255); counting them in floor(256 x) put two of the columns up to 17 levels off (#6181).
+    # Snippet used to generate expected (Pillow 13.0.0; every row of the output is the same):
+    #   x = np.array(_PIL_VALUES, dtype=np.float32)
+    #   image = Image.fromarray(np.tile((x * np.float32(255)).astype(np.uint8), (33, 1)))
+    #   np.asarray(PIL.ImageOps.equalize(image))[0]
+    _PIL_VALUES = [
+        0.8563, 0.3588, 0.4575, 0.3561, 0.8804, 0.1501, 0.1975, 0.664, 0.5902, 0.133, 0.4056, 0.0907, 0.315, 0.7355,
+        0.1808, 0.1451, 0.4088, 0.7295, 0.0887, 0.3781, 0.8849, 0.8814, 0.2303, 0.7546, 0.1854, 0.2752, 0.9493, 0.3477,
+        0.636, 0.3706, 0.505, 0.765,
+    ]  # fmt: skip
+    _PIL_EXPECTED = [
+        223, 107, 149, 99, 231, 33, 58, 182, 165, 17, 132, 8, 83, 198, 41, 25, 140, 190, 0, 124, 248, 231, 66, 206, 50,
+        74, 255, 91, 173, 116, 157, 215,
+    ]  # fmt: skip
+
+    def test_convention_equalize_matches_pil_on_continuous_input_6181(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the expected levels are those of the float32 values, which half precision rounds first")
+        image = torch.tensor(self._PIL_VALUES, device=device, dtype=dtype).repeat(33, 1)[None, None]
+        expected = torch.tensor(self._PIL_EXPECTED, device=device, dtype=dtype).div(255).expand(33, 32)
+        assert torch.equal(kornia.enhance.equalize(image)[0, 0], expected)
+
     # Each op expects a floating-point image in [0, 1]. An integer image used to come back saturated, wrapped or
     # negative without an error, so it is now rejected with the conversion to use (#5981).
     _FLOAT_ONLY_OPS = {
