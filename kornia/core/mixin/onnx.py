@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import itertools
 import os
@@ -24,6 +25,7 @@ import tempfile
 from typing import (
     Any,
     ClassVar,
+    Iterator,
     Optional,
     Union,
 )
@@ -33,13 +35,134 @@ from torch import nn
 
 import kornia
 from kornia.core._compat import torch_version_ge
+from kornia.core.exceptions import ValueCheckError
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
+from kornia.core.utils import _warn_at_caller
 
 # The opset ``ONNXExportMixin.to_onnx`` requests: the one the dynamo exporter (the ``torch.onnx.export`` default from
 # torch 2.9) builds natively, so no version conversion runs. The legacy TorchScript exporter emits it directly as well.
 _ONNX_EXPORT_OPSET = 18
+
+
+def _host_array(value: Any, index: int) -> Any:
+    """Return ``value`` for an ONNX Runtime session: a torch tensor on the CPU as a numpy array sharing its memory."""
+    if not isinstance(value, torch.Tensor):
+        return value
+    if value.device.type != "cpu":
+        raise ValueError(
+            f"ONNX input {index} is a torch tensor on {value.device}, but the ONNX Runtime session is run on arrays "
+            "in host memory, whatever its execution provider. Move it to the CPU first, with .cpu()."
+        )
+    if value.layout != torch.strided:
+        raise TypeError(
+            f"ONNX input {index} is a {value.layout} tensor, which a numpy array cannot hold: convert it with "
+            ".to_dense() first."
+        )
+    try:
+        # resolve_conj and resolve_neg return the tensor itself unless a conjugate or negative view needs materializing
+        return value.detach().resolve_conj().resolve_neg().numpy()
+    except TypeError as error:  # a dtype numpy has no equivalent of: bfloat16, the float8 types, quantized types
+        raise TypeError(
+            f"ONNX input {index} is a {value.dtype} tensor, a dtype numpy has no equivalent of: convert it, e.g. "
+            "with .float() for a float32 graph."
+        ) from error
+
+
+def _prefix(index: int) -> str:
+    """Return the prefix that ``ONNXMixin._combine`` gives the names of the model at ``index``."""
+    return f"K{str(index).zfill(2)}-"
+
+
+def _name_pairs(entry: Any) -> Optional[list[tuple[Any, Any]]]:
+    """Return the ``(output, input)`` pairs of one ``io_maps`` entry as a list, or None if it is not pairs.
+
+    The entry may be any iterable of pairs (a list, a ``zip``, a set, ``dict.items()``, a generator, a numpy array),
+    which is read once; a pair is any sequence of two names that is not itself a string (so a string entry, whose
+    items are its characters, is not pairs either).
+    """
+    try:
+        pairs = []
+        for pair in entry:
+            if isinstance(pair, (str, bytes)) or len(pair) != 2:
+                return None
+            pairs.append((pair[0], pair[1]))
+    except (TypeError, KeyError, IndexError):
+        return None
+    return pairs
+
+
+def _io_map_pairs(io_maps: Any, joints: int, models: int) -> list[list[tuple[Any, Any]]]:
+    """Return the pairs of each joint of ``io_maps``, reading ``io_maps[i]`` for joint ``i`` as the merge always did.
+
+    Any container indexed by the joint works, a dict keyed by it too; entries past the last joint are not read.
+
+    Raises:
+        ValueCheckError: If ``io_maps`` has no entry for a joint, or an entry is not an iterable of name pairs.
+    """
+    pairs_per_joint = []
+    for joint in range(joints):
+        try:
+            entry = io_maps[joint]
+        except (IndexError, KeyError):
+            raise ValueCheckError(
+                f"io_maps needs one list of (output, input) name pairs per joint, {joints} for {models} models, and "
+                f"has no entry for joint {joint}."
+            ) from None
+        pairs = _name_pairs(entry)
+        if pairs is None:
+            raise ValueCheckError(
+                f"io_maps[{joint}] must be a list of (output, input) name pairs: io_maps holds one such list per joint "
+                f"between consecutive models, as in [[('output', 'input')]] for two models. Got {entry!r}."
+            )
+        pairs_per_joint.append(pairs)
+    return pairs_per_joint
+
+
+def _warn_on_joint_element_types(
+    combined: onnx.ModelProto, following: onnx.ModelProto, pairs: list[tuple[Any, Any]], joint: int
+) -> None:
+    """Warn if an output of model ``joint`` and the input of the next model it feeds differ in tensor element type.
+
+    ``merge_models`` drops the declared inputs it connects, so ONNX Runtime no longer checks them: the later model
+    runs on the earlier one's type, which a model whose first nodes take any type (a ``Cast``, a ``Shape``) accepts,
+    and any other fails with ONNX Runtime's own message. The merge goes on either way. Only tensor element types are
+    compared, where both ends declare one; the declared dimensions are not, since a graph can declare fixed sizes where
+    it accepts others.
+    """
+    outputs = {value.name: value.type for value in combined.graph.output}
+    inputs = {value.name: value.type for value in following.graph.input}
+    for output_name, input_name in pairs:
+        output_type = outputs.get(f"{_prefix(joint)}{output_name}")
+        input_type = inputs.get(f"{_prefix(joint + 1)}{input_name}")
+        if output_type is None or input_type is None:  # merge_models names the missing one
+            continue
+        # a type that is not a tensor (a sequence, an optional), or none at all, reads as UNDEFINED (0) here
+        output_elem, input_elem = output_type.tensor_type.elem_type, input_type.tensor_type.elem_type
+        if output_elem and input_elem and output_elem != input_elem:
+            _warn_at_caller(
+                f"The output {str(output_name)!r} of model {joint} is {onnx.TensorProto.DataType.Name(output_elem)}, "
+                f"but it feeds the input {str(input_name)!r} of model {joint + 1}, which is "
+                f"{onnx.TensorProto.DataType.Name(input_elem)}. The merged graph does not check a later model's "
+                "declared input types, so the chain runs on the earlier model's type, or fails in ONNX Runtime: the "
+                "tensor element types at each joint should agree. Convert one of the models, unless the later one "
+                "accepts both types."
+            )
+
+
+def _merge_opset_imports(model: onnx.ModelProto) -> None:
+    """Keep one ``opset_import`` entry per domain, in place.
+
+    ``onnx.compose.merge_models`` concatenates the entries of both models after checking that they agree, so a chain
+    of ``n`` models lists each domain ``n`` times; the version converter then updates only one of them, and the
+    converted graph no longer merges with a model of the target version. Entries that disagree, which the checker and
+    ONNX Runtime accept, keep the last version, the one both of them read and :meth:`ONNXMixin._opset_version`
+    returns; the version converter refuses such a model.
+    """
+    versions = {entry.domain: entry.version for entry in model.opset_import}
+    del model.opset_import[:]
+    model.opset_import.extend(onnx.helper.make_opsetid(domain, version) for domain, version in versions.items())
 
 
 def _first_floating_tensor(module: Any) -> Optional[torch.Tensor]:
@@ -59,6 +182,136 @@ def _to_floating(value: Any, reference: torch.Tensor) -> Any:
     if isinstance(value, tuple):
         return tuple(_to_floating(item, reference) for item in value)
     return value
+
+
+def _uses_dynamic_shapes(export_kwargs: dict[str, Any]) -> bool:
+    """Whether ``ONNXExportMixin.to_onnx`` declares its dynamic dimensions with ``dynamic_shapes``.
+
+    It does on the dynamo exporter from torch 2.9, which warns on ``dynamic_axes``, and uses ``dynamic_axes`` otherwise.
+    """
+    return bool(torch_version_ge(2, 9, 0) and export_kwargs.get("dynamo", True))
+
+
+@contextlib.contextmanager
+def _eval_mode(module: Any) -> Iterator[None]:
+    """Put ``module`` in eval mode for the block, then restore the training flag of each of its submodules."""
+    modes = [(m, m.training) for m in module.modules()] if isinstance(module, nn.Module) else []
+    try:
+        if isinstance(module, nn.Module):
+            module.eval()
+        yield
+    finally:
+        # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
+        # state. It also skips ``train()`` overrides: check any new ``train()`` override with side effects against
+        # this restore.
+        for submodule, training in modes:
+            submodule.training = training
+
+
+# The attributes in which a module keeps what its last call stored for later reads: the output cache that ``show()`` /
+# ``save()`` render; the parameters that ``inverse()`` and a replay use; an augmentation's transformation matrix, built
+# or lazy, with the params dict and values it was computed from, which the containers' annotation handlers match
+# against; a container's per-child matrices; and ``AugmentationSequential``'s input and mask dtypes. A test in
+# ``tests/core/test_onnx_mixin.py`` fails when an augmentation writes an attribute outside its constructor that is
+# neither listed here nor classified there.
+_PER_CALL_STATE = (
+    "_output_image",
+    "_params",
+    "_transform_matrix",
+    "_lazy_matrix_args",
+    "_transform_matrix_params",
+    "_transform_matrix_params_snapshot",
+    "_transform_matrices",
+    "input_dtype",
+    "mask_dtype",
+)
+
+
+def _items(value: Any) -> Any:
+    """Return a shallow copy of the items of a list or dict ``value``, else ``None``."""
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, dict):
+        return dict(value)
+    return None
+
+
+@contextlib.contextmanager
+def _preserved_call_state(module: Any) -> Iterator[None]:
+    """Keep the attributes in ``_PER_CALL_STATE`` of every module in ``module`` as they were before the block.
+
+    An export runs the module on its dummy input. The TorchScript exporter does so outside ``is_exporting()``, so each
+    module in the tree would store the dummy's output, parameters and matrices, and the dynamo exporter can put copies
+    back in place of them. Each listed attribute gets back the object it held, and one the block stored on a module
+    that had none is removed, so a class-level default shows through again. A list or dict also gets back its items:
+    under a capture, where ``is_exporting()`` skips their reset, the policy containers append to
+    ``_transform_matrices`` in place.
+    """
+    saved = (
+        [
+            (m, {name: (m.__dict__[name], _items(m.__dict__[name])) for name in _PER_CALL_STATE if name in m.__dict__})
+            for m in module.modules()
+        ]
+        if isinstance(module, nn.Module)
+        else []
+    )
+    try:
+        yield
+    finally:
+        for submodule, state in saved:
+            for name in _PER_CALL_STATE:
+                if name not in state:
+                    submodule.__dict__.pop(name, None)
+                    continue
+                value, items = state[name]
+                if isinstance(value, list):
+                    value[:] = items
+                elif isinstance(value, dict):
+                    value.clear()
+                    value.update(items)
+                submodule.__dict__[name] = value
+
+
+@contextlib.contextmanager
+def _preserved_rng() -> Iterator[None]:
+    """Put back the global random state the block draws from.
+
+    That is the CPU generator, every CUDA device's once CUDA is initialized (an augmentation moved to a device draws
+    there even without parameters), and the MPS generator where MPS is available.
+    """
+    cuda_devices = list(range(torch.cuda.device_count())) if torch.cuda.is_initialized() else []
+    with contextlib.ExitStack() as stack:
+        # ``fork_rng`` always restores the CPU generator; the device type picks the accelerator it also restores.
+        stack.enter_context(torch.random.fork_rng(devices=cuda_devices, device_type="cuda"))
+        if torch.backends.mps.is_available():
+            stack.enter_context(torch.random.fork_rng(devices=[0], device_type="mps"))
+        yield
+
+
+@contextlib.contextmanager
+def _removed_buffer_hooks() -> Iterator[None]:
+    """Remove the global buffer-registration hooks the block adds.
+
+    torch 2.9's non-strict ``torch.export`` registers one and removes it only when its trace succeeds, and the dynamo
+    ONNX exporter starts with that trace, also when a later strategy then exports the model. Left behind, the hook runs
+    in every later Dynamo trace that registers a buffer, which then raises ``Unsupported``.
+    """
+    hooks = getattr(torch.nn.modules.module, "_global_buffer_registration_hooks", None)
+    before = set(hooks) if hooks is not None else set()
+    try:
+        yield
+    finally:
+        if hooks is not None:
+            for key in set(hooks) - before:
+                del hooks[key]
+
+
+def _has_dynamic_batch(onnx_model: onnx.ModelProto) -> bool:
+    """Return whether the first graph input of ``onnx_model`` has a batch dimension without a fixed size."""
+    if not onnx_model.graph.input:
+        return False
+    dims = onnx_model.graph.input[0].type.tensor_type.shape.dim
+    return len(dims) > 0 and not dims[0].HasField("dim_value")
 
 
 class ONNXExportMixin:
@@ -105,8 +358,8 @@ class ONNXExportMixin:
 
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"Kornia-<ClassName>.onnx"`` is used, with the
+                name of the object's class. Classes that override ``to_onnx`` can use another default.
             input_shape:
                 The input shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_INPUTSHAPE` will be used, with its fixed entries (the channel count) taken
@@ -125,7 +378,7 @@ class ONNXExportMixin:
             model:
                 The model to export. If not provided, the current object will be used.
             save:
-                If to save the model or load it.
+                If True, write the model to ``onnx_name``; it is returned either way. If False, nothing is written.
             additional_metadata:
                 Additional metadata to add to the ONNX model. A key that is already present is overwritten.
             **kwargs:
@@ -134,7 +387,10 @@ class ONNXExportMixin:
         Raises:
             RuntimeError: If `ONNX_EXPORTABLE` is False.
             ValueError: If `input_shape` has a dynamic dimension and a rank other than the pseudo shape's, or
-                a fixed entry of `input_shape` differs from the explicit `pseudo_shape`.
+                a fixed entry of `input_shape` differs from the explicit `pseudo_shape`; or if the model declares one
+                output per image, as ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
+                ``filter_as_zero`` do, and the exported batch is dynamic. That check runs after the export and before
+                anything is saved.
             FileNotFoundError: If `save` is True and the directory of `onnx_name` does not exist. This is
                 checked before the export runs.
 
@@ -144,15 +400,33 @@ class ONNXExportMixin:
               The one opt-out is ``training=torch.onnx.TrainingMode.TRAINING``, which torch deprecates: the legacy
               TorchScript exporter (the default before torch 2.9, ``dynamo=False`` from it) then exports the
               training-mode graph. The dynamo exporter does not read ``training``.
+            - The export runs the model on the dummy input, but these attributes of every module in the exported
+              model keep the objects they held, with the same items, also when the export fails: the output cache
+              that ``show()`` and ``save()`` read, and the parameters and transformation matrices that an
+              augmentation's ``inverse()`` and ``transform_matrix`` read. Other attributes a module writes in its
+              ``forward`` can hold what the run on the dummy left.
+            - The global random state (the CPU generator, the CUDA devices' once CUDA is initialized, and the MPS
+              generator where MPS is available) is restored after the dummy is drawn and after the export, so the
+              draws that follow are the ones they would be without the export.
+            - A global buffer-registration hook that the export leaves behind is removed, also when the export
+              fails: torch 2.9's ``torch.export`` keeps it after a failed trace, and every later Dynamo trace in the
+              process that registers a buffer would raise ``Unsupported`` on it.
             - The export requests ONNX opset 18, which the dynamo exporter (the default of `torch.onnx.export`
               from torch 2.9) builds natively and the legacy TorchScript exporter emits directly. Pass
               `opset_version` to request another one.
-            - A dummy input tensor is created from the input shape, with each `-1` taken from the pseudo shape.
+            - A dummy input tensor is created from the input shape, with each `-1` taken from the pseudo shape and
+              raised to 2 if it is smaller: `torch.export` specializes an example size of 0 or 1, which can leave a
+              graph that declares the dimension dynamic but runs only at that size.
               It has the dtype and device of the model's first floating parameter or, for a model without one,
               of its first floating buffer; it is float32 on the CPU for a model with neither.
             - The dimensions marked `-1` are exported as dynamic: through `dynamic_shapes` on the dynamo exporter
               from torch 2.9, through `dynamic_axes` otherwise. A `dynamic_axes` or `dynamic_shapes` keyword
               argument replaces them.
+            - The exporters turn a list output into a fixed number of graph outputs, one per item of the traced
+              batch. ``ObjectDetector`` with a per-image post-processor and ``BoxFiltering`` without
+              ``filter_as_zero`` declare such an output: their own ``to_onnx`` fixes the batch, and an export whose
+              batch comes out dynamic raises. Other models are not checked: the default ``_onnx_fixed_batch_hint``
+              declares nothing, so a list output keeps the traced batch's number of outputs at any batch size.
             - The model is exported with `torch.onnx.export`, with constant folding enabled.
 
         """
@@ -189,7 +463,17 @@ class ONNXExportMixin:
                 raise FileNotFoundError(f"Cannot save the ONNX model to {onnx_name}: {directory} does not exist.")
 
         module = self if model is None else model
-        dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
+        if -1 in input_shape:
+            # ``torch.export`` specializes an example size of 0 or 1, so a dynamic dimension traced at 1 can come out
+            # fixed inside the graph while the graph input stays dynamic: on torch 2.9 DexiNed's ``Resize`` nodes kept
+            # the batch of 1 and failed in ONNX Runtime at any other batch size. Dynamic dimensions are traced at 2 or
+            # more.
+            pseudo_shape = [
+                max(size, 2) if dim == -1 else size for dim, size in zip(input_shape, resolved_pseudo_shape)
+            ]
+        # The dummy and the export's run on it draw from the global generators; both give back what they drew.
+        with _preserved_rng():
+            dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
         reference = _first_floating_tensor(module)
         if reference is not None:
             dummy_input = _to_floating(dummy_input, reference)
@@ -202,35 +486,44 @@ class ONNXExportMixin:
             "output_names": ["output"],
         }
         if "dynamic_axes" not in kwargs and "dynamic_shapes" not in kwargs:
-            # The dynamo exporter (the default from torch 2.9) takes ``dynamic_shapes`` and warns on ``dynamic_axes``.
-            if torch_version_ge(2, 9, 0) and kwargs.get("dynamo", True):
+            if _uses_dynamic_shapes(kwargs):
                 default_args["dynamic_shapes"] = self._create_dynamic_shapes(input_shape, dummy_input)
             else:
                 default_args["dynamic_axes"] = self._create_dynamic_axes(input_shape, output_shape)
         default_args.update(kwargs)
 
         # The dynamo exporter captures the model in whatever mode it is in, so a model left in training mode would
-        # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all.
-        modes = [(m, m.training) for m in module.modules()] if isinstance(module, nn.Module) else []
-        try:
-            if isinstance(module, nn.Module):
-                module.eval()
-            # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = os.path.join(tmp_dir, "model.onnx")
-                torch.onnx.export(
-                    module,
-                    dummy_input,
-                    tmp_path,
-                    **default_args,
+        # export active Dropout. Each submodule's own flag is restored, since ``train(True)`` would reset them all, and
+        # so is the state each module keeps from its last call, which the exporters' run on the dummy replaces.
+        # A file path rather than a buffer: exporting to ``io.BytesIO`` is deprecated from torch 2.9.
+        with (
+            _eval_mode(module),
+            _preserved_call_state(module),
+            _preserved_rng(),
+            _removed_buffer_hooks(),
+            tempfile.TemporaryDirectory() as tmp_dir,
+        ):
+            tmp_path = os.path.join(tmp_dir, "model.onnx")
+            torch.onnx.export(
+                module,
+                dummy_input,
+                tmp_path,
+                **default_args,
+            )
+            onnx_model = onnx.load(tmp_path)
+
+        # The batch of a per-image-list export can still come out dynamic: a ``dynamic_axes`` or ``dynamic_shapes``
+        # keyword replaces the dynamic dimensions derived from ``input_shape``, and a direct call of this method can
+        # mark the batch -1. The exported graph is checked rather than the arguments, whose forms differ between the
+        # exporters and between torch releases.
+        if _has_dynamic_batch(onnx_model):
+            hint = self._onnx_fixed_batch_hint(module, dummy_input)
+            if hint is not None:
+                raise ValueError(
+                    f"{type(module).__name__} returns one output per image, so its ONNX export needs a fixed batch, "
+                    "but the exported batch is dynamic (a -1 batch in input_shape, or a dynamic_axes or "
+                    f"dynamic_shapes argument). Fix the batch there. {hint}"
                 )
-                onnx_model = onnx.load(tmp_path)
-        finally:
-            # The flag is set directly on purpose: ``train()`` recurses into the children, which would lose a mixed
-            # state. It also skips ``train()`` overrides: check any new ``train()`` override with side effects against
-            # this restore.
-            for submodule, training in modes:
-                submodule.training = training
 
         # Later entries overwrite earlier ones, so the caller's metadata wins over the class's.
         metadata = [*self.ADDITIONAL_METADATA, *(additional_metadata or [])]
@@ -238,6 +531,15 @@ class ONNXExportMixin:
         if save:
             onnx.save(onnx_model, onnx_name)
         return onnx_model
+
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        """Return how to export ``module`` for a dynamic batch if it returns one output per image, else ``None``.
+
+        :meth:`to_onnx` calls it only when the exported graph has a dynamic batch, and raises when it returns a hint.
+        The default returns ``None`` and so checks nothing: a class whose model can return one output per image
+        overrides it.
+        """
+        return None
 
     def _create_dummy_input(
         self, input_shape: list[int], pseudo_shape: Optional[list[int]] = None
@@ -280,6 +582,8 @@ class ONNXRuntimeMixin:
             op: Onnx operation.
             providers:
                 Execution providers for ONNXRuntime (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
+                A provider that the installed onnxruntime build does not offer is skipped with onnxruntime's
+                ``UserWarning``, and the session runs on the CPU if none is left.
             session_options:
                 Optional ONNXRuntime session options for session configuration and optimizations, used as given.
                 If None, the session uses ``ORT_ENABLE_EXTENDED`` graph optimizations.
@@ -323,7 +627,8 @@ class ONNXRuntimeMixin:
     def as_cuda(self, device_id: int = 0, **kwargs: Any) -> None:
         """Set the session to run on CUDA.
 
-        We set the ONNX runtime session to use CUDAExecutionProvider.
+        We set the ONNX runtime session to use CUDAExecutionProvider. If the installed onnxruntime build does not
+        offer it, nothing raises: onnxruntime warns and the session runs on the CPU.
         For other CUDAExecutionProvider configurations, or CUDA/cuDNN/ONNX version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html.
 
@@ -342,7 +647,11 @@ class ONNXRuntimeMixin:
     def as_tensorrt(self, device_id: int = 0, **kwargs: Any) -> None:
         """Set the session to run on TensorRT.
 
-        We set the ONNX runtime session to use TensorrtExecutionProvider.
+        We set the ONNX runtime session to use TensorrtExecutionProvider. If the installed onnxruntime build does not
+        offer it, nothing raises: onnxruntime warns and the session runs on the CPU. A build that offers it but cannot
+        load the TensorRT libraries, such as ``onnxruntime-gpu`` without TensorRT installed, raises onnxruntime's
+        ``RuntimeError`` and leaves the session unusable: a call then raises ``TypeError`` until another ``as_*`` call,
+        such as :meth:`as_cpu` or :meth:`as_cuda`.
         For other TensorrtExecutionProvider configurations, or CUDA/cuDNN/ONNX/TensorRT version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html.
 
@@ -358,7 +667,8 @@ class ONNXRuntimeMixin:
     def as_openvino(self, device_type: str = "GPU", **kwargs: Any) -> None:
         """Set the session to run on OpenVINO.
 
-        We set the ONNX runtime session to use OpenVINOExecutionProvider.
+        We set the ONNX runtime session to use OpenVINOExecutionProvider. If the installed onnxruntime build does not
+        offer it, nothing raises: onnxruntime warns and the session runs on the CPU.
         For other OpenVINOExecutionProvider configurations, or CUDA/cuDNN/ONNX/TensorRT version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html.
 
@@ -372,23 +682,33 @@ class ONNXRuntimeMixin:
             ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
         )
 
-    def __call__(self, *inputs: np.ndarray) -> list[np.ndarray]:
+    def __call__(self, *inputs: Union[np.ndarray, torch.Tensor]) -> list[np.ndarray]:
         """Perform inference using the combined ONNX model.
 
         Args:
-            *inputs: Inputs to the ONNX model. The number of inputs must match the expected inputs of the session.
+            *inputs: Inputs to the ONNX model, in the order of ``get_session().get_inputs()``: numpy arrays, or
+                strided torch tensors on the CPU of a dtype numpy has (not bfloat16 or float8). A tensor is passed as
+                ``tensor.detach().numpy()``, which shares its memory (a conjugate or negative view is materialized
+                first). The number of inputs must match the expected inputs of the session.
 
         Returns:
-            list: The outputs from the ONNX model inference.
+            list: The outputs from the ONNX model inference, as numpy arrays for numpy and torch inputs alike.
 
         Raises:
-            ValueError: If the number of inputs differs from the length of ``get_session().get_inputs()``.
+            ValueError: If the number of inputs differs from the length of ``get_session().get_inputs()``, or an
+                input is a torch tensor on another device than the CPU: the session is run on arrays in host memory,
+                whatever its execution provider, so move such a tensor with ``.cpu()`` first.
+            TypeError: If an input is a bfloat16 tensor, which numpy has no dtype for (convert it, e.g. with
+                ``.float()``), or a sparse tensor (convert it with ``.to_dense()``).
 
         """
         ort_inputs = self._session.get_inputs()
         if len(inputs) != len(ort_inputs):
             raise ValueError(f"Expected {len(ort_inputs)} ONNX inputs, got {len(inputs)}.")
-        ort_input_values = {ort_input.name: input_value for ort_input, input_value in zip(ort_inputs, inputs)}
+        ort_input_values = {
+            ort_input.name: _host_array(input_value, index)
+            for index, (ort_input, input_value) in enumerate(zip(ort_inputs, inputs))
+        }
         return self._session.run(None, ort_input_values)
 
 
@@ -397,37 +717,53 @@ class ONNXMixin:
 
     def _load_op(
         self,
-        arg: Union[onnx.ModelProto, str],
+        arg: Union[onnx.ModelProto, str, os.PathLike],
         cache_dir: Optional[str] = None,
+        force_download: bool = False,
     ) -> onnx.ModelProto:
         """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
-            arg: Either an ONNX ModelProto object or a file path to an ONNX model.
+            arg: An ONNX ModelProto object; a ``str`` file path, ``hf://`` name or URL of an ONNX model; or an
+                :class:`os.PathLike` file path, which always names a local file. A local path may start with ``~``.
             cache_dir: Where to read onnx objects from if stored on disk.
+            force_download: If True, download an ``hf://`` name or a URL again, replacing the cached file, even when
+                it is cached. It has no effect on a ``ModelProto`` or a path to a local file.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
 
+        Raises:
+            TypeError: If ``arg`` is of another type, ``bytes`` included: ONNX Runtime reads ``bytes`` as a serialized
+                model, which ``onnx.load_model_from_string`` turns into a ModelProto.
+
         """
-        if isinstance(arg, str):
-            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
         if isinstance(arg, onnx.ModelProto):
             return arg
-        raise ValueError(f"Invalid argument type. Got {type(arg)}")
+        if isinstance(arg, (str, os.PathLike)):
+            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir, force_download=force_download)
+        hint = " For a serialized model, pass onnx.load_model_from_string(data)." if isinstance(arg, bytes) else ""
+        raise TypeError(
+            "Expected an onnx.ModelProto, a str (a file path, an 'hf://' name or a URL), or an os.PathLike file path, "
+            f"got {type(arg).__name__}.{hint}"
+        )
 
     def _load_ops(
         self,
-        *args: Union[onnx.ModelProto, str],
+        *args: Union[onnx.ModelProto, str, os.PathLike],
         cache_dir: Optional[str] = None,
+        force_download: bool = False,
     ) -> list[onnx.ModelProto]:
         """Load multiple ONNX models or operators and returns them as a list.
 
         Args:
-            *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
-                For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
+            *args: A variable number of ONNX models, each as :meth:`_load_op` takes it: ONNX ModelProto objects, or
+                file paths (``str`` or :class:`os.PathLike`). For Hugging Face-hosted models, use the format
+                'hf://model_name' (a ``str``). Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
             cache_dir: Where to read operations from if stored on disk.
+            force_download: If True, download every ``hf://`` name and URL again, replacing the cached files, even when
+                they are cached.
 
         Returns:
             list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
@@ -435,42 +771,65 @@ class ONNXMixin:
         """
         op_list = []
         for arg in args:
-            op_list.append(self._load_op(arg, cache_dir=cache_dir))
+            op_list.append(self._load_op(arg, cache_dir=cache_dir, force_download=force_download))
         return op_list
 
     def _combine(
         self,
-        *args: list[onnx.ModelProto],
-        io_maps: Optional[list[tuple[str, str]]] = None,
+        *args: onnx.ModelProto,
+        io_maps: Optional[list[list[tuple[str, str]]]] = None,
     ) -> onnx.ModelProto:
         """Combine the provided ONNX models into a single ONNX graph.
 
-        Optionally, map inputs and outputs between operators using the `io_map`.
+        The names in model ``i`` are prefixed with ``K<i>-`` (``K00-``, ``K01-``, ...) in the combined graph. The
+        metadata of the models are merged into one entry per key, which keeps its first position and takes the value
+        of the last model that sets it, as :func:`kornia.onnx.utils.add_metadata` overwrites a key. The models passed
+        in are not modified.
 
         Args:
-            args: list of onnx operations.
+            args: The ONNX models, in the order they run.
             io_maps:
-                A list of list of tuples representing input-output mappings for combining the models.
-                Example: [[(model1_output_name, model2_input_name)], [(model2_output_name, model3_input_name)]].
+                One list of ``(output, input)`` name pairs per joint: ``io_maps[i]`` connects outputs of model ``i``
+                to inputs of model ``i + 1``. Example: ``[[(model1_output_name, model2_input_name)],
+                [(model2_output_name, model3_input_name)]]``. Each entry may be any iterable of pairs (a ``zip``,
+                ``dict.items()``, ...), and ``io_maps`` anything indexed by the joint; entries past the last joint are
+                not read. If None, each joint connects ``"output"`` to ``"input"``.
 
         Returns:
             onnx.ModelProto: The combined ONNX model as a single ONNX graph.
 
+        Raises:
+            ValueError: If no model is given.
+            ValueCheckError: If ``io_maps`` has no entry for a joint, or an entry is not an iterable of name pairs.
+                It is a :exc:`ValueError` too.
+
+        Warns:
+            UserWarning: If an output and the input it feeds have different tensor element types. The merged graph
+                does not check a later model's declared input types, so the chain then runs on the earlier model's
+                type, or fails in ONNX Runtime.
+
         """
         if len(args) == 0:
             raise ValueError("No operators found.")
+        joints = len(args) - 1
+        pairs_per_joint = None if io_maps is None else _io_map_pairs(io_maps, joints, len(args))
 
-        combined_op = args[0]
-        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")
+        # merge_models refuses models whose metadata differ for a key, such as the "version" every kornia export
+        # carries. The metadata are merged here instead, and cleared on the prefixed copies that add_prefix returns.
+        metadata = {entry.key: entry.value for op in args for entry in op.metadata_props}
 
+        combined_op = onnx.compose.add_prefix(args[0], prefix=_prefix(0))
+        del combined_op.metadata_props[:]
         for i, op in enumerate(args[1:]):
-            next_op = onnx.compose.add_prefix(op, prefix=f"K{str(i + 1).zfill(2)}-")
-            if io_maps is None:
-                io_map = [(f"K{str(i).zfill(2)}-output", f"K{str(i + 1).zfill(2)}-input")]
-            else:
-                io_map = [(f"K{str(i).zfill(2)}-{it[0]}", f"K{str(i + 1).zfill(2)}-{it[1]}") for it in io_maps[i]]
+            next_op = onnx.compose.add_prefix(op, prefix=_prefix(i + 1))
+            del next_op.metadata_props[:]
+            pairs = [("output", "input")] if pairs_per_joint is None else pairs_per_joint[i]
+            _warn_on_joint_element_types(combined_op, next_op, pairs, i)
+            io_map = [(f"{_prefix(i)}{output}", f"{_prefix(i + 1)}{input_}") for output, input_ in pairs]
             combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)
 
+        onnx.helper.set_model_props(combined_op, metadata)
+        _merge_opset_imports(combined_op)
         return combined_op
 
     def _export(
@@ -523,11 +882,20 @@ class ONNXMixin:
             target_opset_version: The target OPSET version to convert to.
 
         """
-        if op.ir_version != target_ir_version or self._opset_version(op) != target_opset_version:
+        # only the targets given are compared: converting re-checks the model, so one that already has them is kept
+        ir_differs = target_ir_version is not None and op.ir_version != target_ir_version
+        opset_differs = target_opset_version is not None and self._opset_version(op) != target_opset_version
+        if ir_differs or opset_differs:
             # Check if all ops are supported in the current IR version
             model_bytes = io.BytesIO()
             onnx.save_model(op, model_bytes)
             loaded_model = onnx.load_model_from_string(model_bytes.getvalue())
+            # check_model rejects duplicate metadata keys, which files that kornia 0.9.0rc1 tagged twice hold: keep one
+            # entry per key with its last value, the one ONNX Runtime reads, as _combine does
+            metadata = {entry.key: entry.value for entry in loaded_model.metadata_props}
+            del loaded_model.metadata_props[:]
+            onnx.helper.set_model_props(loaded_model, metadata)
+            _merge_opset_imports(loaded_model)  # a graph combined by an earlier release lists each domain per model
             if target_opset_version is not None:
                 loaded_model = onnx.version_converter.convert_version(loaded_model, target_opset_version)
             onnx.checker.check_model(loaded_model)
@@ -539,8 +907,9 @@ class ONNXMixin:
 
     @staticmethod
     def _opset_version(op: onnx.ModelProto) -> Optional[int]:
-        """Return the version of the default (``ai.onnx``) operator set that ``op`` imports, or None."""
-        for entry in op.opset_import:
-            if entry.domain in ("", "ai.onnx"):
-                return entry.version
-        return None
+        """Return the version of the default (``ai.onnx``) operator set that ``op`` imports, or None.
+
+        Of several entries, the last one is returned, the one ``onnx.checker`` and ONNX Runtime read.
+        """
+        versions = [entry.version for entry in op.opset_import if entry.domain in ("", "ai.onnx")]
+        return versions[-1] if versions else None

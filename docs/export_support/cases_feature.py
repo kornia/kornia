@@ -24,7 +24,7 @@ import traceback
 
 import torch
 import torch.nn.functional as F
-from harness import case, run_cases
+from harness import case, err_str, run_cases
 
 import kornia.feature as KF
 
@@ -125,7 +125,8 @@ def try_build(name: str, fn):
         return fn(), None
     except Exception as e:
         traceback.print_exc()
-        return None, f"could not build/download {name}: {type(e).__name__}: {str(e)[:120]}"
+        # the root cause: a loader that tries several sources reports the last one's error only as its cause
+        return None, f"could not build/download {name}: {err_str(e)}"
 
 
 def pcase(name, group, builder, inputs, kwargs=None, **kw):
@@ -226,8 +227,21 @@ CASES += [
         {"PS": 16},
         note="PS baked",
     ),
-    case("feature.laf_is_valid", L, KF.laf_is_valid, [LAF], note="bool (B,N) output"),
-    case("feature.laf_is_inside_image", L, KF.laf_is_inside_image, [LAF, IMG], {"border": 2}, note="bool output"),
+    case(
+        "feature.laf_is_valid",
+        L,
+        KF.laf_is_valid,
+        [LAF * torch.tensor([1.0, 1.0, 0.0, 1.0, 0.0])[None, :, None, None]],
+        note="bool (B,N) output; LAFs 2 and 4 zeroed, so invalid",
+    ),
+    case(
+        "feature.laf_is_inside_image",
+        L,
+        KF.laf_is_inside_image,
+        [torch.cat([LAF, LAF_BIG], 1), IMG],
+        {"border": 2},
+        note="bool output; the LAFs placed in 64x80 fall outside the 32x40 image",
+    ),
     case("feature.laf_to_three_points", L, KF.laf_to_three_points, [LAF]),
     case("feature.laf_from_three_points", L, KF.laf_from_three_points, [KF.laf_to_three_points(LAF)]),
     case("feature.perspective_transform_lafs", L, KF.perspective_transform_lafs, [H_01, LAF]),

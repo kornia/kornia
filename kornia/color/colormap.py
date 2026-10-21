@@ -112,7 +112,7 @@ class ColorMap:
             using `ColorMapType` class.
         num_colors: Number of colors in the colormap.
         device: The device to put the generated colormap on.
-        dtype: The data type of the generated colormap.
+        dtype: The data type of the generated colormap. Defaults to ``torch.get_default_dtype()``.
 
     Returns:
         An object of the colormap with the num_colors length.
@@ -172,7 +172,8 @@ class ColorMap:
             A torch.Tensor representing the colormap.
 
         """
-        tensor_colors = torch.tensor(list(base_colormap), dtype=self._dtype, device=self._device).T
+        dtype = self._dtype if self._dtype is not None else torch.get_default_dtype()
+        tensor_colors = torch.tensor(list(base_colormap), dtype=dtype, device=self._device).T
         return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear")[0, ...]
 
     def __len__(self) -> int:

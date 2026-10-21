@@ -1,0 +1,1 @@
+`kornia.enhance.normalize` and `kornia.enhance.denormalize` accept a Python `int` `mean` or `std` and treat it as the equal `float`, as `Normalize` and `Denormalize` already did. `denormalize(x, 0, 255)` and `normalize(x, 0.5, 2)` raised `AttributeError: 'int' object has no attribute 'shape'`.

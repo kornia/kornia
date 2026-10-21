@@ -34,7 +34,7 @@ from kornia.geometry.epipolar.fundamental import (
 )
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
 from testing.two_view import two_view_scene
 
@@ -365,6 +365,66 @@ class TestFindFundamental(BaseTester):
         tol = {"rtol": 1e-3, "atol": 1e-5} if dtype == torch.float64 else {"rtol": 5e-2, "atol": 1e-4}  # f32 eigh: CPU
         assert grads[1][0, 3].abs() > 1e-3  # control: the dropped match moves F, so a zero gradient would be wrong
         self.assert_close(grads[0], grads[1], **tol)
+
+
+class TestFundamentalAutocast(BaseTester):
+    @pytest.mark.parametrize(
+        "method, num_points, weighted",
+        [("7POINT", 7, False), ("8POINT", 8, False), ("8POINT", 100, False), ("8POINT", 100, True)],
+    )
+    def test_autocast_does_not_reach_the_fit(self, device, method, num_points, weighted):
+        # A caller's bfloat16 autocast ran the 7- and 8-point matrix products in bfloat16: float32 points gave a
+        # bfloat16 fundamental matrix far from the float32 one, and CUDA's eigh, which has no bfloat16 kernel, raised.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        generator = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, num_points, 2, generator=generator) * torch.tensor([640.0, 480.0])
+        points2 = points1 + torch.tensor([30.0, -5.0]) + 4.0 * torch.randn(1, num_points, 2, generator=generator)
+        weights = torch.rand(1, num_points, generator=generator).to(device) if weighted else None
+        points1, points2 = points1.to(device), points2.to(device)
+        expected = epi.find_fundamental(points1, points2, weights, method=method)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = epi.find_fundamental(points1, points2, weights, method=method)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("weights_dtype", [None, "points", torch.float32])
+    def test_half_precision_points_fit_in_and_out_of_autocast(self, dtype, weights_dtype):
+        # CPU autocast ran eigh in float32, so half-precision points fitted under it; no device has a half-precision
+        # eigh kernel, so the 8-point fit promotes its normal matrix itself. Autocast also cast float32 weights
+        # together with the points, and the fit now casts them itself.
+        generator = torch.Generator().manual_seed(0)
+        points1 = torch.rand(1, 100, 2, generator=generator) * torch.tensor([640.0, 480.0])
+        points2 = points1 + torch.tensor([30.0, -5.0]) + 4.0 * torch.randn(1, 100, 2, generator=generator)
+        weights = torch.rand(1, 100, generator=generator)
+        points1, points2 = points1.to(dtype), points2.to(dtype)
+        if weights_dtype is None:
+            weights = expected_weights = None
+        else:
+            expected_weights = weights.to(dtype)
+            weights = expected_weights if weights_dtype == "points" else weights.to(weights_dtype)
+        expected = epi.find_fundamental(points1, points2, expected_weights)
+        outside = epi.find_fundamental(points1, points2, weights)
+        with torch.autocast("cpu", dtype=dtype):
+            inside = epi.find_fundamental(points1, points2, weights)
+        assert expected.dtype == dtype
+        for actual in (outside, inside):
+            assert actual.dtype == dtype
+            self.assert_close(actual, expected, atol=0, rtol=0)
+
+    def test_meta_device_infers_the_shape(self):
+        # torch.autocast raises for the meta device type, so the solvers enter it only inside an autocast region.
+        points = torch.empty(2, 9, 2, device="meta")
+        assert epi.find_fundamental(points, points).shape == (2, 3, 3)
+        assert epi.find_fundamental(points[:, :7], points[:, :7], method="7POINT").shape == (2, 3, 3, 3)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_eager_backend_traces_the_meta_device(self):
+        # Compiled shape inference worked on main; the autocast guard must not break it.
+        torch._dynamo.reset()
+        points = torch.empty(2, 9, 2, device="meta")
+        assert torch.compile(epi.find_fundamental, backend="eager", fullgraph=True)(points, points).shape == (2, 3, 3)
 
 
 class TestComputeCorrespondEpilines(BaseTester):
@@ -1158,3 +1218,59 @@ class TestRefineFundamentalLM(BaseTester):
             ],
         ]
         self.assert_close(cauchy, torch.tensor(expected, dtype=torch.float64), atol=1e-9, rtol=0)
+
+
+class TestClosestPointOnEpipolarLineMixedPrecision(BaseTester):
+    """A caller's autocast region does not reach get_closest_point_on_epipolar_line (#6177)."""
+
+    @staticmethod
+    def _inputs(device, dtype=torch.float32):
+        generator = torch.Generator().manual_seed(6177)
+        Fm = torch.randn(2, 3, 3, generator=generator)
+        points1 = torch.rand(2, 10, 2, generator=generator) * 600
+        points2 = torch.rand(2, 10, 2, generator=generator) * 600
+        return points1.to(device, dtype), points2.to(device, dtype), Fm.to(device, dtype)
+
+    @pytest.mark.parametrize("half_pts2", [False, True], ids=["float32_pts2", "half_pts2"])
+    @pytest.mark.parametrize("region_dtype", [torch.bfloat16, torch.float16], ids=["bfloat16", "float16"])
+    def test_a_mixed_precision_region_does_not_change_the_result_6177(self, device, region_dtype, half_pts2):
+        # The epipolar lines came out of autocast in half precision and met the caller's float32 points in
+        # torch.linalg.cross, which raised "expected scalar type Float but found BFloat16" on CPU and returned wrong
+        # values on MPS. A half-precision pts2, which autocast used to unify with the lines, keeps working. No
+        # "autocast" in the name: conftest skips those on MPS.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
+        bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
+        if region_dtype == torch.bfloat16 and not bfloat16_ok:
+            pytest.skip("no bfloat16 autocast on this device")
+        points1, points2, Fm = self._inputs(device)
+        if half_pts2:
+            points2 = points2.to(region_dtype)
+        expected = epi.get_closest_point_on_epipolar_line(points1, points2.float(), Fm)
+        with torch.autocast(device.type, dtype=region_dtype):
+            actual = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("operand", ["Fm", "pts2"])
+    @pytest.mark.parametrize("other_dtype", [torch.float32, torch.float64])
+    def test_fm_and_pts2_take_the_dtype_of_pts1_6177(self, device, dtype, other_dtype, operand):
+        # Autocast used to unify half-precision operands with float32 ones; the function now casts Fm and pts2 to the
+        # dtype of pts1 itself, in and out of autocast. A mixed pts2 raised on CPU and gave wrong values on MPS.
+        if device.type == "mps" and other_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        points1, points2, Fm = self._inputs(device, dtype)
+        expected = epi.get_closest_point_on_epipolar_line(points1, points2, Fm)
+        if operand == "Fm":
+            actual = epi.get_closest_point_on_epipolar_line(points1, points2, Fm.to(other_dtype))
+        else:
+            actual = epi.get_closest_point_on_epipolar_line(points1, points2.to(other_dtype), Fm)
+        assert actual.dtype == dtype
+        self.assert_close(actual, expected, atol=0, rtol=0)
+
+    def test_still_scriptable_6177(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        points1, points2, Fm = self._inputs(device, dtype)
+        scripted = torch.jit.script(epi.get_closest_point_on_epipolar_line)
+        self.assert_close(scripted(points1, points2, Fm), epi.get_closest_point_on_epipolar_line(points1, points2, Fm))

@@ -443,7 +443,7 @@ class TestStereoCamera(BaseTester):
     def test_wart_reproject_disparity_zero_disparity_returns_the_numerator_4555(self, device, dtype):
         # kornia#4555: zero disparity (a point at infinity) gives W = 0, and the masked homogeneous divide (the
         # #4267 rule) returns the numerator as a finite placeholder -- behind the camera on a real rig, and Q and
-        # -Q disagree there -- with nothing flagging it invalid. Update when #4555 adds a validity signal.
+        # -Q disagree there. Keep that default, while the opt-in reconstruction mask flags both placeholders.
         disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
         self.assert_close(
             self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity),
@@ -457,6 +457,11 @@ class TestStereoCamera(BaseTester):
         expected = torch.tensor([[[[1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
         self.assert_close(reproject_disparity_to_3D(disparity, q), expected)
         self.assert_close(reproject_disparity_to_3D(disparity, -q), -expected)
+        points, valid = reproject_disparity_to_3D(disparity, q, return_mask=True)
+        self.assert_close(points, expected)
+        assert not valid.any()
+        _, negative_valid = reproject_disparity_to_3D(disparity, -q, return_mask=True)
+        assert torch.equal(valid, negative_valid)
 
     def test_convention_reproject_disparity_uses_the_column_as_u_4269(self, device, dtype):
         # u is the column index and v the row index, as in cv2.reprojectImageTo3D: X = (u - cx) Z / fx,

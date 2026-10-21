@@ -16,8 +16,12 @@
 #
 
 import pytest
+import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.models.dexined import DexiNed
+
+from testing.base import assert_close
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
@@ -37,3 +41,25 @@ def test_dexined_to_onnx(tmp_path):
 
     assert isinstance(op, onnx.ModelProto)
     assert onnx_path.exists(), "ONNX file was not written to disk"
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+def test_dexined_onnx_matches_eager_at_other_shapes(export_kwargs):
+    """Batch, height and width are dynamic: other batches than the traced 2, H != W and odd sizes match eager."""
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    if export_kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+        pytest.importorskip("onnxscript")
+    torch.manual_seed(0)
+    model = DexiNed(pretrained=False).eval()
+    op = model.to_onnx(save=False, pseudo_shape=[1, 3, 32, 32], **export_kwargs)
+    session = ort.InferenceSession(op.SerializeToString(), providers=["CPUExecutionProvider"])
+
+    generator = torch.Generator().manual_seed(0)
+    for shape in [(1, 3, 32, 32), (3, 3, 48, 80), (1, 3, 33, 47), (2, 3, 65, 31)]:
+        images = torch.rand(*shape, generator=generator)
+        (edges,) = session.run(None, {session.get_inputs()[0].name: images.numpy()})
+        with torch.no_grad():
+            expected = model(images)
+        assert_close(torch.from_numpy(edges), expected, rtol=1e-4, atol=1e-4)

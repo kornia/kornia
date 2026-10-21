@@ -189,7 +189,9 @@ def get_laf_descriptors(
     # So we need to reshape a bit :)
     B, N, CH, H, W = patches.size()
     # `reshape`, not `view`: a descriptor may return a non-contiguous output, e.g. a channels-last convolution.
-    return _run_descriptor(patch_descriptor, patches.view(B * N, CH, H, W)).reshape(B, N, -1)
+    # The width is spelled out: a `-1` is ambiguous when the batch is empty.
+    descriptors = _run_descriptor(patch_descriptor, patches.view(B * N, CH, H, W))
+    return descriptors.reshape(B, N, descriptors.shape[1:].numel())
 
 
 class LAFDescriptor(nn.Module):

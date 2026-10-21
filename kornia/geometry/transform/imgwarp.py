@@ -25,6 +25,7 @@ import torch.nn.functional as F
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
 from kornia.core.utils import (
+    _autocast_disabled,
     _inverse_3x3_closed_form,
     _normalize_to_float32_or_float64,
     _torch_grid_sample,
@@ -787,6 +788,7 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - points: ``(x, y)``, pixel centers, origin at top-left; shape :math:`(B, 4, 2)`
         - returns the source→destination **pixel** homography :math:`(B, 3, 3)` that
           :func:`warp_perspective` takes
+        - a caller's autocast region does not change the result, outside TorchScript
 
     Args:
         points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
@@ -814,7 +816,12 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     # ``torch.linalg.solve``. Both yield the perspective transform mapping ``points_src`` onto
     # ``points_dst``; the closed form additionally needs no LAPACK/cusolver backend (so it runs on
     # the Jetson wheel, where ``linalg.solve`` dlopen-fails) and traces cleanly for ONNX.
-    return _get_perspective_transform_closed_form(points_src, points_dst)
+    # A caller's autocast region would run its products in half precision: about 1 px off at the corners of a 640 x
+    # 480 image. TorchScript has no context managers; a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        return _get_perspective_transform_closed_form(points_src, points_dst)
+    with _autocast_disabled(points_src.device.type):
+        return _get_perspective_transform_closed_form(points_src, points_dst)
 
 
 # TODO: move to kornia.geometry.affine
@@ -1524,7 +1531,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     from_origin_mat[..., :3, -1] += center
 
     to_origin_mat = from_origin_mat.clone()
-    to_origin_mat = _torch_inverse_cast(from_origin_mat)
+    # An identity plus a translation column is unit triangular, so it is always invertible.
+    to_origin_mat = _torch_inverse_cast(from_origin_mat, check_errors=False)
 
     # append translation with torch.zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
@@ -1999,7 +2007,8 @@ def homography_warp3d(
     # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
     # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
     # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
-    grid = grid[..., [1, 2, 0]]
+    # Stacked rather than indexed with a list, which is copied to the device with a blocking transfer.
+    grid = torch.stack((grid[..., 1], grid[..., 2], grid[..., 0]), -1)
     warped_grid = warp_grid3d(grid, src_homo_dst)
 
     return _torch_grid_sample(

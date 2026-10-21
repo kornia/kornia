@@ -336,6 +336,61 @@ class TestUnprojectMeshgrid(BaseTester):
 
 
 class TestDepthToNormals(BaseTester):
+    @pytest.mark.parametrize("depth_value", [0.125, 0.25])
+    def test_small_depth_plane(self, depth_value, device, dtype):
+        depth = torch.full((1, 1, 16, 16), depth_value, device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[1000.0, 0.0, 7.5], [0.0, 1000.0, 7.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+
+        normals = depth_to_normals(depth, camera_matrix)
+
+        expected = torch.zeros_like(normals)
+        expected[:, 2] = 1.0
+        assert normals.dtype == dtype
+        assert normals.device == device
+        self.assert_close(normals, expected)
+
+    @pytest.mark.parametrize("depth_value", [0.125, 1e-5])
+    def test_autocast_small_depth_plane(self, depth_value, device, dtype):
+        depth = torch.full((1, 1, 16, 16), depth_value, device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[1000.0, 0.0, 7.5], [0.0, 1000.0, 7.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        expected = depth_to_normals(depth, camera_matrix)
+
+        with torch.autocast(device.type):
+            normals = depth_to_normals(depth, camera_matrix)
+
+        self.assert_close(normals, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("camera_dtype", [torch.bfloat16, torch.float32], ids=["bfloat16", "float32"])
+    def test_bfloat16_depth_wider_than_256_pixels(self, camera_dtype, device):
+        # The pixel grid takes the depth dtype, and bfloat16 cannot hold column indices above 256.
+        depth = torch.full((1, 1, 4, 320), 2.0, device=device, dtype=torch.bfloat16)
+        camera_matrix = torch.tensor(
+            [[[500.0, 0.0, 159.5], [0.0, 500.0, 1.5], [0.0, 0.0, 1.0]]], device=device, dtype=camera_dtype
+        )
+
+        normals = depth_to_normals(depth, camera_matrix)
+
+        expected = torch.zeros_like(normals)
+        expected[:, 2] = 1.0
+        assert normals.dtype == torch.promote_types(torch.bfloat16, camera_dtype)
+        self.assert_close(normals, expected)
+
+    @pytest.mark.parametrize("input_dtype", [torch.int32, torch.int64])
+    def test_integer_depth_plane(self, input_dtype, device):
+        depth = torch.tensor([[[[12, 6, 4, 3]]]], device=device, dtype=input_dtype).expand(1, 1, 4, 4)
+        camera_matrix = torch.eye(3, device=device, dtype=input_dtype)[None]
+
+        normals = depth_to_normals(depth, camera_matrix)
+
+        # These points lie on X + Z = 12, with normal (1, 0, 1) / sqrt(2) pointing away from the camera.
+        expected = torch.tensor([1.0, 0.0, 1.0], device=device, dtype=torch.get_default_dtype()) / 2**0.5
+        assert normals.dtype == expected.dtype
+        self.assert_close(normals, expected.view(1, 3, 1, 1).expand_as(normals))
+
     @pytest.mark.parametrize(("height", "width"), [(1, 3), (3, 1), (1, 1), (0, 3), (3, 0), (0, 0)])
     @pytest.mark.parametrize("normalize_points", [False, True])
     def test_convention_normals_require_two_spatial_axes_4398(self, height, width, normalize_points, device, dtype):

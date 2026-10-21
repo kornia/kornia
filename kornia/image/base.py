@@ -22,7 +22,7 @@ from enum import Enum
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE, CheckMessage
 
 
 @dataclass(frozen=True)
@@ -134,7 +134,7 @@ class ImageLayout:
 def KORNIA_CHECK_IMAGE_LAYOUT(
     x: torch.Tensor,
     layout: ImageLayout,
-    msg: str | None = None,
+    msg: CheckMessage | None = None,
     raises: bool = True,
 ) -> bool:
     """Check tensor shape matches the expected ImageLayout.
@@ -142,7 +142,7 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
     Args:
         x: tensor to validate.
         layout: expected image layout.
-        msg: custom error message.
+        msg: custom error message, or a function that returns it; see :func:`~kornia.core.check.KORNIA_CHECK`.
         raises: if True, raise ShapeError on mismatch.
 
     Returns:

@@ -119,7 +119,7 @@ def threshold(
 
     KORNIA_CHECK(
         t in {int(x) for x in ThresholdType if x != ThresholdType.THRESH_OTSU},
-        f"Unsupported threshold type: {type}. Supported: BINARY, BINARY_INV, TRUNC, TOZERO, TOZERO_INV.",
+        lambda: f"Unsupported threshold type: {type}. Supported: BINARY, BINARY_INV, TRUNC, TOZERO, TOZERO_INV.",
     )
 
     # Make thresh/maxval tensors on same device/dtype for safe broadcasting

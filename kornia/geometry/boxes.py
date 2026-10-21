@@ -95,10 +95,21 @@ def _boxes_to_polygons(
     return polygons
 
 
-def _validate_box_coordinates(boxes: torch.Tensor) -> None:
-    """Validate that box coordinates are finite."""
-    if not torch.isfinite(boxes).all():
+def _validate_box_values(boxes: torch.Tensor, width: torch.Tensor, height: torch.Tensor) -> None:
+    """Raise the first of the non-finite, width and height errors, reading all three checks in one host transfer.
+
+    The three reductions run on the device of ``boxes`` and come back together, so a CUDA box costs one device
+    synchronization instead of three. The errors, their messages and their order are those of the separate checks.
+    """
+    non_finite, bad_width, bad_height = torch.stack(
+        ((~torch.isfinite(boxes)).any(), (width <= 0).any(), (height <= 0).any())
+    ).tolist()
+    if non_finite:
         raise ValueError("Some boxes have non-finite coordinates.")
+    if bad_width:
+        raise ValueError("Some boxes have negative widths or 0.")
+    if bad_height:
+        raise ValueError("Some boxes have negative heights or 0.")
 
 
 def _assert_finite_vertices(boxes: torch.Tensor) -> None:
@@ -134,11 +145,9 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
 
     # Value validation reads the data, which graph capture cannot do; skip it under export. The vertex modes check
     # finiteness asynchronously so that they stay fullgraph-compilable.
-    if validate_boxes and not is_exporting() and boxes.numel() > 0:
-        if mode.startswith("vertices"):
-            _assert_finite_vertices(boxes)
-        else:
-            _validate_box_coordinates(boxes)
+    # The coordinate modes check finiteness together with the extents below, in one host read.
+    if validate_boxes and not is_exporting() and boxes.numel() > 0 and mode.startswith("vertices"):
+        _assert_finite_vertices(boxes)
 
     if mode.startswith("vertices"):
         if mode == "vertices":
@@ -166,10 +175,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
 
         # Value validation reads the data, which graph capture cannot do; skip it under export.
         if validate_boxes and not is_exporting():
-            if (width <= 0).any():
-                raise ValueError("Some boxes have negative widths or 0.")
-            if (height <= 0).any():
-                raise ValueError("Some boxes have negative heights or 0.")
+            _validate_box_values(boxes, width, height)
 
         xmin, ymin = boxes[..., 0], boxes[..., 1]
         quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
@@ -877,7 +883,9 @@ class Boxes:
         # CPU Hotpath (loop)
         # -----------------
         # The loop slices with data-dependent bounds, which graph capture cannot do; export takes the vectorized path.
-        if device.type != "cuda" and not is_exporting():
+        # So does the legacy ONNX exporter, which traces outside ``is_exporting()``: it loses the loop's in-place
+        # writes into the mask and exports a constant all-zero mask with no graph input.
+        if device.type != "cuda" and not is_exporting() and not torch.jit.is_tracing():
             if self._is_batched:  # (B, N, 4, 2)
                 mask = torch.zeros(
                     (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
@@ -885,11 +893,10 @@ class Boxes:
             else:  # (N, 4, 2)
                 mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
 
-            # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
+            # Flatten mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them. ``flatten`` rather than
+            # ``view(-1, height, width)``, which cannot infer BxN when a side of the image is 0.
             # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-            for mask_channel, box_xyxy in zip(
-                mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()
-            ):
+            for mask_channel, box_xyxy in zip(mask.flatten(0, -3), clipped_boxes_xyxy.view(-1, 4).round().int()):
                 # Mask channel dimensions: (height, width)
                 mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
 
@@ -1235,9 +1242,7 @@ class Boxes3D:
         export trap `#4009 <https://github.com/kornia/kornia/issues/4009>`_. The integer-input split is
         `#4012 <https://github.com/kornia/kornia/issues/4012>`_ and the validator split with
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
-        Boxes from :func:`~kornia.geometry.bbox.bbox_generator3d` measure one larger than requested:
-        `#4018 <https://github.com/kornia/kornia/issues/4018>`_. The :meth:`to_tensor` default differs from
-        :meth:`Boxes.to_tensor`, which defaults to the stored mode:
+        The :meth:`to_tensor` default differs from :meth:`Boxes.to_tensor`, which defaults to the stored mode:
         `#4251 <https://github.com/kornia/kornia/issues/4251>`_.
 
     """
@@ -1558,9 +1563,10 @@ class Boxes3D:
         # Cast boxes coordinates to be integer to use them as bounds. Use round to handle decimal values.
         xyzxyz = clipped_boxes_xyzxyz.view(-1, 6).round().long()
 
-        if is_exporting():
+        if is_exporting() or torch.jit.is_tracing():
             # The loop below slices with data-dependent bounds, which graph capture cannot do; compare a
-            # coordinate grid against the bounds instead.
+            # coordinate grid against the bounds instead. The legacy ONNX exporter traces outside
+            # ``is_exporting()`` and loses the loop's in-place writes, exporting a constant all-zero mask.
             device = self._data.device
             zs = torch.arange(depth, device=device)
             ys = torch.arange(height, device=device)
@@ -1571,8 +1577,9 @@ class Boxes3D:
             masks = z_mask[:, :, None, None] & y_mask[:, None, :, None] & x_mask[:, None, None, :]
             return masks.to(mask.dtype).view(mask.shape)
 
-        # Reshape mask to (BxN, D, H, W) and boxes to (BxN, 6) to iterate over all of them.
-        for mask_channel, box_xyzxyz in zip(mask.view(-1, depth, height, width), xyzxyz):
+        # Flatten mask to (BxN, D, H, W) to iterate over the (BxN, 6) boxes. ``flatten`` rather than
+        # ``view(-1, depth, height, width)``, which cannot infer BxN when a side of the volume is 0.
+        for mask_channel, box_xyzxyz in zip(mask.flatten(0, -4), xyzxyz):
             # Mask channel dimensions: (depth, height, width)
             mask_channel[
                 box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]

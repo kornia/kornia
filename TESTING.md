@@ -42,6 +42,7 @@ pixi run test-quick
 | `--record-known-failures=PATH` | none | unset | Record a complete profile to a guarded, untracked candidate path |
 | `--known-failure-manifest=PATH` | none | unset | Replay a candidate manifest instead of the checked-in profile manifest |
 | `--run-device-agnostic` | `KORNIA_TEST_RUN_DEVICE_AGNOSTIC` | off | Run `@pytest.mark.device_agnostic` tests even when CPU is not in the device matrix |
+| `--onnx-conformance=PACKAGES` | `KORNIA_TEST_ONNX_CONFORMANCE` | unset | Run the ONNX conformance test for these stable-core packages (`geometry,color`, ...) or `all`; deselected otherwise (see below) |
 
 ## Test Structure
 
@@ -69,6 +70,36 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 | `@pytest.mark.device_agnostic` | Test runs once in a CPU-containing matrix because its logic does not use the selected accelerator. An accelerator-only run deselects it and says so on a line of its own at the start of the run, because the deselected set includes the ONNX and `torch.export` suites; `--run-device-agnostic` forces it back on |
 | `@pytest.mark.slow` | Long-running test; skipped unless `--runslow` is passed |
 | `@pytest.mark.tf32` | Known to fail under TF32 (see section below); xfail unless `--tf32` |
+| `@pytest.mark.onnx_conformance` | Part of the ONNX conformance test; deselected unless `--onnx-conformance` selects packages |
+
+### ONNX conformance (#5819)
+
+`tests/onnx/test_conformance.py` holds kornia's ONNX promise: every *promised* case -- a record of the survey
+snapshot `docs/source/_data/export_support.json` with ONNX status `ok` in a stable-core package
+(`docs/source/get-started/stability.rst`), without anything built from pretrained weights (registry tag `pretrained`)
+-- must export with `torch.onnx.export(..., dynamo=True)` and match eager execution in onnxruntime (the same dtype,
+values within the case's tolerance), and a legacy (TorchScript) export that succeeds must match as well; one that
+fails loudly passes. The cases are the survey's own (`docs/export_support/cases_*.py`, joined by name;
+`cases_models.py` is never imported) and run through `docs/export_support/harness.py`, so the test and the survey page
+cannot drift apart: `test_promised_cases_are_registered` fails when a promised case is missing or skipped in its
+registry, and `test_promised_set_is_pinned` when the promised names change.
+
+```bash
+pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=all
+pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=geometry,color
+```
+
+The run takes minutes, so it is opt-in. Pull requests run it on torch 2.14.0 for the packages their changes reach
+(`.github/scripts/onnx_conformance_packages.py`: a changed module selects its stable-core package and every
+stable-core package with a module that imports it, directly or not; `kornia/core`, `kornia/utils`, `kornia/onnx`, the
+survey and its snapshot, the stability page, the test and its support, and the dependency pins select `all`); the
+scheduled run on `main` checks `all` on torch 2.9.1 and 2.14.0. No promised case needs pretrained weights, and the test
+never downloads.
+
+Known failures are strict xfails in `testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt`, one
+manifest per enforced torch release, in the `<exception>\t<node ID>` format of the other manifests, each entry under
+a comment naming its tracking issue. Entries of packages a run does not select are not checked. Delete an entry when
+its case passes (a strict XPASS fails the run); a new failure of a promised operator is a regression to fix.
 
 ---
 

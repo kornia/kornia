@@ -16,7 +16,7 @@
 #
 
 import operator
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -67,14 +67,16 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select children to apply in random order. The selection probability aligns to the
-            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum.
+            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum or
+            than the number of children with a nonzero weight, mix augmentations not counted.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
-        random_apply_weights: a list of selection weights for each operation. The length shall be as
-            same as the number of operations. By default, operations are sampled uniformly.
+        random_apply_weights: a one-dimensional sequence or tensor of selection weights for each operation. The
+            length shall be as same as the number of operations. Integer and boolean weights are converted to floating
+            point. By default, operations are sampled uniformly.
         if_unsupported_ops: what ``inverse`` does on reaching a plain ``nn.Module``, which has no inverse:
             ``'raise'`` raises ``NotImplementedError`` naming it, before anything is inverted, and ``'skip'``
             leaves it applied and inverts the other members. Any other value raises ``ValueError``.
@@ -150,7 +152,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         if_unsupported_ops: str = "raise",
         disable_item_features: bool = True,
         disable_sequential_features: bool = False,
@@ -169,7 +171,14 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 "The length of `random_apply_weights` must be as same as the number of operations."
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
-        self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
+        # ``torch.multinomial`` samples floating-point weights only, so integer or boolean weights are converted; a
+        # tensor argument is tested against ``None`` rather than for its truth value, which is ambiguous.
+        weights = torch.as_tensor(random_apply_weights) if random_apply_weights is not None else torch.ones(len(self))
+        if weights.dim() != 1:
+            raise ValueError(f"`random_apply_weights` must be one-dimensional. Got shape {tuple(weights.shape)}.")
+        if not weights.is_floating_point():
+            weights = weights.to(torch.get_default_dtype())
+        self.random_apply_weights = weights
         self.if_unsupported_ops = if_unsupported_ops
         self._output_image = None
 
@@ -182,6 +191,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
     ) -> Union[Tuple[int, int], bool]:
         """Process the scenarios for random apply."""
+        requested = random_apply
         if isinstance(random_apply, bool) and random_apply is False:
             random_apply = False
         elif isinstance(random_apply, bool) and random_apply is True:
@@ -206,6 +216,13 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             and isinstance(random_apply[1], int)
         ):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
+        # The stored upper bound is exclusive. A negative count or an upper bound below the lower one used to fail
+        # only at call time, in torch.multinomial or torch.randint.
+        if random_apply is not False and (random_apply[0] < 0 or random_apply[1] <= random_apply[0]):
+            raise ValueError(
+                "random_apply must select a non-negative number of transformations, with the lower bound not above "
+                f"the upper one. Got {requested}."
+            )
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
@@ -230,23 +247,35 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights[mix_indices] = 0
 
         total_weight = multinomial_weights.sum()
-        if total_weight == 0:
+        # Without replacement, torch.multinomial cannot draw more indices than there are nonzero weights. A certain mix
+        # insertion below replaces the last drawn index, where torch.multinomial puts a member of weight 0, so one
+        # place more can then be drawn without replacement. That place is last because the draw keeps the top
+        # weight / Exp(1) scores, and a weight of 0 scores 0, below every positive weight.
+        num_nonzero = int(torch.count_nonzero(multinomial_weights).item())
+        mix_place = int(with_mix and len(mix_indices) != 0 and len(mix_indices) + num_samples >= len(self))
+        # A drawn count of 0 selects nothing, like all-zero weights; torch.multinomial rejects a count of 0.
+        if total_weight == 0 or num_samples == 0:
             indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
             indices = torch.multinomial(
                 multinomial_weights,
                 num_samples,
-                replacement=num_samples > total_weight.item(),
+                replacement=num_samples > total_weight.item() or num_samples > num_nonzero + mix_place,
             )
 
         mix_added = False
-        # Make the selection fair.
+        # Make the selection fair. A mix member takes one of the drawn places, so a drawn count of 0 adds none.
         if (
             with_mix
+            and num_samples > 0
             and len(mix_indices) != 0
             and (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item()
         ):
-            mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            # Draw among the mix members only: an ordinary member with weight 0 is also 0 in
+            # ``multinomial_weights`` and must not be inserted in their place.
+            mix_mask = torch.zeros_like(multinomial_weights, dtype=torch.float32)
+            mix_mask[mix_indices] = 1.0
+            mix_idx = torch.multinomial(mix_mask, 1)
             if len(indices) == 0:
                 indices = mix_idx
             else:
@@ -474,6 +503,8 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
 
     Note:
        Augmentations that change the spatial size provide `output_size` with shape (B, spatial_dims).
+       `PadTo` and `RandomMosaic(output_size=...)` provide none, so their configured size is used; with
+       `crop_if_exceeds=False`, `PadTo` keeps a dimension that is already larger.
        Empty crops and resizes have no sampled
        output-size rows, so their configured size is used only when the image forward path
        always applies the transform. Other probability branches retain the current empty-gate
@@ -508,6 +539,20 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         for p in data:
             batch_shape = _get_new_batch_shape(p, batch_shape, children.get(p.name))
         return batch_shape
+
+    # PadTo and RandomMosaic(output_size=...) return their configured size (PadTo(crop_if_exceeds=False): at least
+    # the input size) but emit no ``output_size``.
+    # No branch below matches them, so the final return passes the updated shape on.
+    if isinstance(module, (K.PadTo, K.RandomMosaic)):
+        size = module.flags["size" if isinstance(module, K.PadTo) else "output_size"]
+        if size is not None:
+            new_batch_shape = list(batch_shape)
+            dims = [operator.index(dim) for dim in size]
+            if isinstance(module, K.PadTo) and not module.flags.get("crop_if_exceeds", True):
+                # A dimension already larger than the target is kept, not cropped.
+                dims = [max(old, dim) for old, dim in zip(new_batch_shape[-len(dims) :], dims)]
+            new_batch_shape[-len(dims) :] = dims
+            batch_shape = torch.Size(new_batch_shape)
 
     if (
         batch_shape[0] == 0

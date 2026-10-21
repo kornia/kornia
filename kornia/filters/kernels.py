@@ -23,6 +23,7 @@ from typing import Optional, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
 
 
 def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False) -> None:
@@ -30,11 +31,15 @@ def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, a
         kernel_size = (kernel_size,)
 
     fmt = "even or odd" if allow_even else "odd"
-    for size in kernel_size:
-        KORNIA_CHECK(
-            isinstance(size, int) and (((size % 2 == 1) or allow_even) and size > min_value),
-            f"Kernel size must be an {fmt} integer bigger than {min_value}. Got {size} on {kernel_size}",
-        )
+    invalid = [
+        size
+        for size in kernel_size
+        if not (isinstance(size, int) and (((size % 2 == 1) or allow_even) and size > min_value))
+    ]
+    KORNIA_CHECK(
+        not invalid,
+        lambda: f"Kernel size must be an {fmt} integer bigger than {min_value}. Got {invalid[0]} on {kernel_size}",
+    )
 
 
 def _check_laplacian_kernel_size(kernel_size: tuple[int, ...] | int) -> None:
@@ -46,7 +51,10 @@ def _check_laplacian_kernel_size(kernel_size: tuple[int, ...] | int) -> None:
 
     KORNIA_CHECK(
         any(size != 1 for size in sizes),
-        f"A Laplacian kernel needs a size of at least 3 along one axis: a single tap is all zeros. Got {kernel_size}",
+        lambda: (
+            "A Laplacian kernel needs a size of at least 3 along one axis: a single tap is all zeros. Got "
+            f"{kernel_size}"
+        ),
     )
 
 
@@ -57,13 +65,17 @@ def _check_kernel_dtype(dtype: Optional[torch.dtype], name: str, taps: Optional[
         return
     KORNIA_CHECK(
         taps is not None,
-        f"{name} has fractional taps, which an integer dtype cannot hold. Got dtype={dtype}; use a floating dtype.",
+        lambda: (
+            f"{name} has fractional taps, which an integer dtype cannot hold. Got dtype={dtype}; use a floating dtype."
+        ),
     )
     low, high = (0, 1) if dtype == torch.bool else (torch.iinfo(dtype).min, torch.iinfo(dtype).max)
     KORNIA_CHECK(
         low <= taps[0] and taps[1] <= high,
-        f"{name} has taps from {taps[0]} to {taps[1]}, which dtype={dtype} cannot hold. Use a signed integer dtype "
-        "wide enough for them, or a floating one.",
+        lambda: (
+            f"{name} has taps from {taps[0]} to {taps[1]}, which dtype={dtype} cannot hold. Use a signed integer "
+            "dtype wide enough for them, or a floating one."
+        ),
     )
 
 
@@ -172,7 +184,8 @@ def gaussian(
 
     mean = float(window_size // 2) if mean is None else mean
     if isinstance(mean, (int, float)):
-        mean = torch.tensor([[float(mean)]], device=sigma.device, dtype=sigma.dtype)
+        # Filled on the device in eager mode, so a CUDA ``sigma`` gets no host copy that waits for queued work.
+        mean = _device_literal([[float(mean)]], device=sigma.device, dtype=sigma.dtype)
 
     KORNIA_CHECK_IS_TENSOR(mean)
     KORNIA_CHECK_SHAPE(mean, ["B", "1"])
@@ -379,7 +392,7 @@ def gaussian_discrete(
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     # The discrete Gaussian is defined at the integer offsets of the taps from the centre tap, so there is no even
     # window: the window must be odd, and holds the offsets 0 .. window_size // 2 on either side of the centre.
-    KORNIA_CHECK(window_size % 2 == 1, f"The discrete Gaussian kernel needs an odd window. Got {window_size}")
+    KORNIA_CHECK(window_size % 2 == 1, lambda: f"The discrete Gaussian kernel needs an odd window. Got {window_size}")
 
     output_dtype = sigma.dtype
     if not (sigma.dtype.is_floating_point or sigma.dtype.is_complex):
@@ -703,7 +716,7 @@ def get_spatial_gradient_kernel2d(
 
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
-    KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
+    KORNIA_CHECK(order in {1, 2}, lambda: f"Order should be 1 or 2. Got {order}")
     # the check is case-insensitive, so dispatch on the lower-case spelling as well
     mode = mode.lower()
 
@@ -750,7 +763,7 @@ def get_spatial_gradient_kernel3d(
 
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
-    KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
+    KORNIA_CHECK(order in {1, 2}, lambda: f"Order should be 1 or 2. Got {order}")
     # the check is case-insensitive, so dispatch on the lower-case spelling as well
     mode = mode.lower()
 
@@ -1307,6 +1320,11 @@ def get_hanning_kernel1d(
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
     x = torch.arange(kernel_size, device=device, dtype=dtype)
+    if dtype is None:
+        # The int64 ramp is converted to the default dtype explicitly, as the multiplication below promoted it on the
+        # CPU, without the int64-tensor-times-float ``aten.mul.Scalar`` that the torch 2.14 dynamo ONNX exporter cannot
+        # translate with onnxscript 0.7.1.
+        x = x.to(torch.get_default_dtype())
     return 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
 
 

@@ -31,8 +31,10 @@ from .kernels import _unpack_2d_ks
 
 
 def _check_subsample(subsample: int) -> None:
-    msg = f"`subsample` must be a positive integer. Got: {subsample!r}"
-    KORNIA_CHECK_TYPE(subsample, Integral, f"{msg} ({type(subsample).__name__})")
+    def msg() -> str:
+        return f"`subsample` must be a positive integer. Got: {subsample!r}"
+
+    KORNIA_CHECK_TYPE(subsample, Integral, lambda: f"{msg()} ({type(subsample).__name__})")
     # ``bool`` is an ``int``, and ``subsample=True`` would otherwise run as 1.
     KORNIA_CHECK(not isinstance(subsample, bool) and subsample >= 1, msg)
 
@@ -119,6 +121,10 @@ def _guided_blur_multichannel_guidance(
     subsample: int = 1,
     separable: bool = False,
 ) -> torch.Tensor:
+    # One compute dtype for the whole path: ``mean_I @ a`` needs ``mean_I`` in the dtype ``a`` is solved in, so a
+    # guidance narrower than ``input`` (float16, float32 or uint8 next to float64) is promoted to the pair's dtype.
+    # ``Tensor.to`` is a no-op when the dtypes already match, so every other pair is unaffected.
+    guidance = guidance.to(torch.promote_types(guidance.dtype, input.dtype))
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
     # The input channel count is spelled out instead of inferred with ``-1``: an empty batch has no elements, so

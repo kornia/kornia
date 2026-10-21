@@ -20,7 +20,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.transform import rotate, rotate3d
@@ -103,10 +103,7 @@ def get_motion_kernel2d(
         direction = direction[None]
 
     KORNIA_CHECK_SHAPE(direction, ["B"])
-    KORNIA_CHECK(
-        direction.size(0) == angle.size(0),
-        f"direction and angle must have the same length. Got {direction.size(0)} and {angle.size(0)}.",
-    )
+    KORNIA_CHECK_SAME_SIZE(direction, angle, msg="direction and angle must have the same length.")
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
@@ -247,10 +244,7 @@ def get_motion_kernel3d(
         direction = direction[None]
 
     KORNIA_CHECK_SHAPE(direction, ["B"])
-    KORNIA_CHECK(
-        direction.size(0) == angle.size(0),
-        f"direction and angle must have the same batch size. Got {direction.shape} and {angle.shape}.",
-    )
+    KORNIA_CHECK_SAME_SIZE(direction, angle, msg="direction and angle must have the same batch size.")
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0

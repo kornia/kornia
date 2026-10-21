@@ -15,12 +15,15 @@
 # limitations under the License.
 #
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
 from kornia.core.exceptions import BaseError, DeviceError, TypeCheckError
 from kornia.core.utils import (
     _adjugate_closed_form,
+    _autocast_disabled,
     _closed_form_inverse,
     _det_perm_closed_form,
     _extract_device_dtype,
@@ -983,3 +986,42 @@ def test_is_autocast_enabled_xpu():
         assert is_autocast_enabled()
 
     assert not is_autocast_enabled()
+
+
+def test_autocast_disabled_turns_off_only_an_enabled_region():
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        with _autocast_disabled("cpu"):
+            assert not torch.is_autocast_enabled("cpu")
+            assert (torch.ones(2, 2) @ torch.ones(2, 2)).dtype == torch.float32
+        assert torch.is_autocast_enabled("cpu")
+    assert not torch.is_autocast_enabled("cpu")
+
+
+@pytest.mark.parametrize("device_type", ["cpu", "cuda", "meta"])
+def test_autocast_disabled_outside_autocast_enters_nothing(device_type):
+    # Outside autocast there is nothing to turn off: entering torch.autocast(enabled=False) anyway costs a few
+    # microseconds per call, and for a device type without autocast, such as "meta", torch.autocast raises.
+    context = _autocast_disabled(device_type)
+    assert isinstance(context, nullcontext)
+    with context:
+        assert not is_autocast_enabled()
+
+
+@pytest.mark.parametrize("device_type", ["xla", "hpu"])
+def test_autocast_disabled_covers_other_autocast_device_types(device_type):
+    # find_affine turned off the autocast region of any device type before it used this helper.
+    with torch.autocast(device_type, dtype=torch.bfloat16), _autocast_disabled(device_type):
+        assert not torch.is_autocast_enabled(device_type)
+
+
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+def test_eager_backend_traces_autocast_disabled_on_meta():
+    # torch.is_autocast_enabled("meta") raises, and under torch.compile Dynamo reports that as its own internal error
+    # instead of routing it to an ``except`` in the traced function.
+    def fit(x):
+        with _autocast_disabled(x.device.type):
+            return x @ x.mT
+
+    torch._dynamo.reset()
+    x = torch.empty(2, 3, 3, device="meta")
+    assert torch.compile(fit, backend="eager", fullgraph=True)(x).shape == (2, 3, 3)

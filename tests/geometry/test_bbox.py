@@ -589,7 +589,7 @@ class TestBbox3D(BaseTester):
         boxes = bbox_generator3d(*args)
         assert boxes.shape == (1, 8, 3)
         self.assert_close(boxes[0, 0], torch.tensor([1, 2, 3], device=device, dtype=dtype))
-        self.assert_close(boxes[0, 6], torch.tensor([5, 7, 9], device=device, dtype=dtype))
+        self.assert_close(boxes[0, 6], torch.tensor([4, 6, 8], device=device, dtype=dtype))
 
     def test_smoke(self, device, dtype):
         # Sample two points of the 3d rect
@@ -757,25 +757,16 @@ class TestBbox3D(BaseTester):
             with pytest.raises(ShapeError):
                 call()
 
-    def test_wart_bbox_generator3d_extent_is_one_larger_than_requested_4018(self, device, dtype):
-        # Wart pin for kornia#4018: the 3D generator places the far corner at start + size, so
-        # width 3 from x=1 spans x=1..4 and infer_bbox_shape3d reads 4 on every axis, where the
-        # 2D generator with the same arguments spans x=1..3 and reads 3.
+    def test_bbox_generator3d_matches_bbox_generator_extent_4018(self, device, dtype):
+        # kornia#4018: 3D sizes are inclusive, just like the 2D generator. A size of 3 from x=1 spans x=1..3.
         start = torch.tensor([1.0], device=device, dtype=dtype)
         size = torch.tensor([3.0], device=device, dtype=dtype)
         boxes = bbox_generator3d(start, start, start, size, size, size)
-        expected_x = torch.tensor([[1.0, 4.0, 4.0, 1.0, 1.0, 4.0, 4.0, 1.0]], device=device, dtype=dtype)
+        expected_x = torch.tensor([[1.0, 3.0, 3.0, 1.0, 1.0, 3.0, 3.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(boxes[..., 0], expected_x, atol=0.0, rtol=0.0)
         for extent in infer_bbox_shape3d(boxes):
-            self.assert_close(extent, size + 1, atol=0.0, rtol=0.0)
-        for extent in infer_bbox_shape(bbox_generator(start, start, size, size)):
             self.assert_close(extent, size, atol=0.0, rtol=0.0)
-
-    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="kornia#4018: bbox_generator3d extent is size + 1")
-    def test_convention_bbox_generator3d_matches_bbox_generator_extent_4018(self, device, dtype):
-        start = torch.tensor([1.0], device=device, dtype=dtype)
-        size = torch.tensor([3.0], device=device, dtype=dtype)
-        for extent in infer_bbox_shape3d(bbox_generator3d(start, start, start, size, size, size)):
+        for extent in infer_bbox_shape(bbox_generator(start, start, size, size)):
             self.assert_close(extent, size, atol=0.0, rtol=0.0)
 
     def test_wart_bbox_to_mask3d_truncates_fractional_coordinates_4015(self, device, dtype):
@@ -838,6 +829,55 @@ class TestBbox3D(BaseTester):
 
 
 class TestNMS(BaseTester):
+    @pytest.mark.parametrize(
+        ("side", "offset", "expected"),
+        [(200, 0, [0, 2]), (512, 128, [0, 1, 2])],
+    )
+    def test_image_sized_boxes(self, device, dtype, side, offset, expected):
+        # Identical boxes have IoU 1; offset 512-pixel boxes have IoU 9/23.
+        boxes = torch.tensor(
+            [[0, 0, side, side], [offset, offset, side + offset, side + offset], [600, 0, 640, 40]],
+            device=device,
+            dtype=dtype,
+        )
+        scores = torch.tensor([0.875, 0.75, 0.5], device=device, dtype=dtype)
+        original = boxes.clone()
+        expected = torch.tensor(expected, device=device, dtype=torch.long)
+
+        for _ in range(2):
+            self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+        self.assert_close(boxes, original, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        ("box_dtype", "side", "origin"),
+        [
+            (torch.uint8, 100, 0),
+            (torch.int8, 100, -100),
+            (torch.int16, 200, 0),
+            (torch.int32, 200, 2**24),
+            (torch.int32, 50_000, 0),  # each area exceeds 2**31 - 1
+            (torch.int64, 200, 2**40),
+        ],
+    )
+    def test_integer_boxes(self, device, box_dtype, side, origin):
+        boxes = torch.tensor(
+            [[origin, origin, origin + side, origin + side]] * 2
+            + [[origin + side - 20, origin + side - 20, origin + side - 10, origin + side - 10]],
+            device=device,
+            dtype=box_dtype,
+        )
+        scores = torch.tensor([0.875, 0.75, 0.5], device=device)
+        expected = torch.tensor([0, 2], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+
+    def test_iou_just_above_threshold(self, device, dtype):
+        # The exact IoU is 8479 / 16793 = 0.5049, so 0.5 suppresses the second box. Computed in bfloat16, the areas,
+        # intersection and union round to an IoU of exactly 0.5, which kept it. The coordinates are exact in any dtype.
+        boxes = torch.tensor([[0, 0, 153, 162], [14, 40, 173, 202]], device=device, dtype=dtype)
+        scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
+        expected = torch.tensor([0], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+
     def test_convention_nms_uses_exclusive_xyxy_iou_4008(self, device, dtype):
         # The boxes overlap by 1 / 4 under exclusive xyxy arithmetic. At 0.3, NMS
         # keeps both; inclusive corner arithmetic would compute 4 / 9 and suppress

@@ -28,7 +28,6 @@ from harness import case, run_cases
 import kornia as K
 
 torch.manual_seed(0)
-torch.set_num_threads(4)
 
 # ----------------------------------------------------------------------------- helpers
 
@@ -555,7 +554,8 @@ A(
         "models.tiny_vit",
         None,
         [],
-        skip="eager RuntimeError (view '[1,8,8,64]' invalid) — TinyViT hard-codes H=W=img_size in its window attention",
+        skip="eager ValueError (a 64x48 input gives an 8x6 token grid; the stages are built for the 8x8 grid) — "
+        "TinyViT requires H=W=img_size",
     )
 )
 A(case("contrib.TinyViT", "contrib", None, [], skip="alias of kornia.models.tiny_vit.TinyViT (covered)"))
@@ -576,7 +576,7 @@ A(
         "models.vit",
         None,
         [],
-        skip="eager RuntimeError (pos-embed 17 vs 25 tokens) — VisionTransformer requires "
+        skip="eager ValueError (input image shape must be Bx3x32x32) — VisionTransformer requires "
         "H=W=image_size (fixed pos_embed)",
     )
 )
@@ -723,7 +723,7 @@ A(
         "models.processors",
         NaFlex(_pe_conv, torch.randn(16, 8)),
         [torch.rand(1, 3, 32, 32)],
-        note="num_patches == pos rows -> plain add",
+        note="4x4 patch grid == the 4x4 pos-embed grid -> plain add, no resize",
     )
 )
 
@@ -773,8 +773,8 @@ A(
         "models.vlm",
         None,
         [],
-        skip="eager RuntimeError (pos-embed 4 vs 6 patches) — vision tower requires H=W=image_size "
-        "(no pos-embed interpolation)",
+        skip="eager ValueError (input images must be 32x32: the position embeddings cover that size only) — "
+        "vision tower requires H=W=image_size (no pos-embed interpolation)",
     )
 )
 A(
@@ -783,7 +783,7 @@ A(
         "models.vlm",
         SigLip2ImagePreprocessor((32, 40)),
         [torch.rand(1, 3, 48, 64) * 255],
-        note="Rescale(1/255) + Resize bicubic antialias + Normalize; size baked",
+        note="Rescale(1/255) + Resize bilinear antialias (default; bicubic via interpolation=) + Normalize; size baked",
     )
 )
 A(
@@ -1160,9 +1160,7 @@ A(
             -1,
         ),
         [torch.rand(15) * 60],
-        note="property accessors on a (15,) detection vector; __init__ requires len(data) >= 15 "
-        "(message says 14) so a (N,15) "
-        "batch with N<15 is rejected",
+        note="property accessors on a (15,) detection vector; __init__ requires a last dimension of at least 15",
     )
 )
 A(case("contrib.FaceKeypoint", "contrib.wrappers", None, [], skip="enum"))
@@ -1175,8 +1173,8 @@ A(
         reuse(edge, _e_ed),
         lambda m: m,
         [torch.rand(1, 3, 48, 80) * 255],
-        note="Normalize -> DexiNed -> Sigmoid with ResizePreProcessor(64,64) and ResizePostProcessor (numpy tolist); "
-        "image_size=64 baked",
+        note="RgbToBgr + Normalize -> DexiNed -> Sigmoid with ResizePreProcessor(64,64) and ResizePostProcessor "
+        "(numpy tolist); image_size=64 baked",
         tags=("model", "pretrained"),
     )
 )
@@ -1187,7 +1185,7 @@ A(
         reuse(edge, _e_ed),
         lambda m: m.model,
         [torch.rand(1, 3, 64, 64)],
-        note="core nn.Sequential(Normalize, DexiNed, Sigmoid) without pre/post processors",
+        note="core nn.Sequential(nn.Sequential(RgbToBgr, Normalize), DexiNed, Sigmoid) without pre/post processors",
         tags=("model", "pretrained"),
     )
 )
@@ -1204,10 +1202,8 @@ A(
         reuse(od, _e_od),
         lambda m: m,
         [torch.rand(1, 3, 200, 320)],
-        note="ObjectDetector = ResizePreProcessor(256,256) + RTDETR + DETRPostProcessor; threshold 0 "
-        "-> all 300 boxes (1,300,6). "
-        "KORNIA BUG: builder passes `confidence_filtering or not is_in_onnx_export()` so confidence_filtering=False "
-        "is ignored at build time (list output); forward is @torch.inference_mode()",
+        note="ObjectDetector = ResizePreProcessor(640,640) + RTDETR + DETRPostProcessor (image_size=256 is ignored "
+        "with a model_name); threshold 0 -> all 300 boxes (1,300,6). forward is @torch.inference_mode()",
         tags=("model", "pretrained"),
     )
 )
@@ -1223,7 +1219,7 @@ A(
         reuse(od_f, _e_odf),
         lambda m: m,
         [torch.rand(1, 3, 200, 320)],
-        note="default confidence_filtering=True unless is_in_onnx_export(); list of (Di,6) tensors",
+        note="default confidence_filtering=True; list of (Di,6) tensors",
         tags=("model", "pretrained"),
     )
 )
@@ -1417,112 +1413,6 @@ A(
     )
 )
 A(case("sensors.camera.CameraModelBase/CameraModelType", "sensors.camera", None, [], skip="base class / enum"))
-
-# ============================================================================= kornia.image
-from kornia.image import ChannelsOrder, Image, ImageLayout, PixelFormat  # noqa: E402
-from kornia.image.base import ColorSpace  # noqa: E402
-
-
-def _mk_image(t: torch.Tensor, cs: ColorSpace = ColorSpace.RGB) -> Image:
-    layout = ImageLayout(ImageSize(t.shape[-2], t.shape[-1]), t.shape[-3], ChannelsOrder.CHANNELS_FIRST)
-    return Image(t, PixelFormat(cs, 32), layout)
-
-
-A(
-    case(
-        "image.Image.to_gray",
-        "image",
-        lambda t: _mk_image(t).to_gray().data,
-        [torch.rand(3, 16, 24)],
-        note="Image container (C,H,W) float32; RGB->gray",
-    )
-)
-A(case("image.Image.to_bgr", "image", lambda t: _mk_image(t).to_bgr().data, [torch.rand(3, 16, 24)]))
-A(
-    case(
-        "image.Image.to_rgb[from bgr]",
-        "image",
-        lambda t: _mk_image(t, ColorSpace.BGR).to_rgb().data,
-        [torch.rand(3, 16, 24)],
-    )
-)
-A(case("image.Image.float", "image", lambda t: _mk_image(t).float().data, [torch.rand(3, 16, 24)], note="dtype no-op"))
-A(case("image.Image.from_numpy/to_numpy/write/from_file", "image", None, [], skip="numpy / file IO"))
-A(case("image.ImageSize/ImageLayout/PixelFormat/ChannelsOrder", "image", None, [], skip="metadata dataclasses / enums"))
-A(
-    case(
-        "image.image_to_tensor/tensor_to_image/ImageToTensor/image_list_to_tensor",
-        "image",
-        None,
-        [],
-        skip="numpy <-> tensor conversion utilities (numpy input)",
-    )
-)
-A(case("image.image_to_string/print_image", "image", None, [], skip="return/print strings"))
-A(case("image.perform_keep_shape_image/video", "image", None, [], skip="decorators"))
-A(
-    case(
-        "image.draw_line",
-        "image",
-        K.image.draw_line,
-        [torch.zeros(3, 16, 24), torch.tensor([2, 3]), torch.tensor([20, 12]), torch.tensor([1.0, 0.5, 0.2])],
-        note="per-line pixels built on the device with nonzero; int(max) of the longest line reads a tensor value",
-    )
-)
-A(
-    case(
-        "image.draw_point2d",
-        "image",
-        K.image.draw_point2d,
-        [torch.zeros(3, 16, 24), torch.tensor([[2, 3], [10, 12], [20, 5]]), torch.tensor([1.0, 0.5, 0.2])],
-        note="`zip(*points)` iterates tensor rows in Python",
-    )
-)
-A(
-    case(
-        "image.draw_rectangle",
-        "image",
-        K.image.draw_rectangle,
-        [
-            torch.zeros(1, 3, 16, 24),
-            torch.tensor([[[2.0, 3.0, 12.0, 10.0], [5.0, 1.0, 20.0, 14.0]]]),
-            torch.tensor([1.0, 0.5, 0.2]),
-        ],
-        note="Python loop over batch and boxes with tensor-derived slicing",
-    )
-)
-A(
-    case(
-        "image.draw_rectangle[fill]",
-        "image",
-        K.image.draw_rectangle,
-        [torch.zeros(1, 3, 16, 24), torch.tensor([[[2.0, 3.0, 12.0, 10.0]]]), torch.tensor([1.0, 0.5, 0.2])],
-        {"fill": True},
-    )
-)
-A(
-    case(
-        "image.draw_convex_polygon",
-        "image",
-        K.image.draw_convex_polygon,
-        [
-            torch.zeros(1, 3, 16, 24),
-            torch.tensor([[[2.0, 2.0], [20.0, 4.0], [18.0, 14.0], [4.0, 12.0]]]),
-            torch.tensor([[1.0, 0.5, 0.2]]),
-        ],
-        note="polygon rasterisation via edge functions (vectorised)",
-    )
-)
-A(
-    case(
-        "image.make_grid",
-        "image",
-        K.image.make_grid,
-        [torch.rand(6, 3, 8, 12)],
-        {"n_row": 3, "padding": 2},
-        note="n_row, padding baked",
-    )
-)
 
 # ============================================================================= heavy SAM encoders last
 A(

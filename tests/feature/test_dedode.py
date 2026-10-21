@@ -25,6 +25,7 @@ from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
 from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
+from kornia.feature.dedode.transformer.layers.patch_embed import PatchEmbed
 from kornia.feature.dedode.utils import dedode_denormalize_pixel_coordinates
 
 from testing.base import BaseTester
@@ -61,6 +62,17 @@ class TestMemEffAttention(BaseTester):
 
         with pytest.raises(NotImplementedError, match="attn_bias is not supported"):
             attention(x, attn_bias=torch.zeros(1, 2, 5, 5, device=device, dtype=dtype))
+
+
+class TestPatchEmbed(BaseTester):
+    def test_jit_script(self, device, dtype):
+        # TorchScript compiles the patch-size checks, whose messages format the input shape rather than a lambda
+        embed = PatchEmbed(img_size=32, patch_size=4, in_chans=3, embed_dim=8).to(device, dtype)
+        x = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        scripted = torch.jit.script(embed)
+        self.assert_close(scripted(x), embed(x))
+        with pytest.raises(Exception, match="height is not a multiple of patch height 4"):
+            scripted(torch.rand(2, 3, 18, 20, device=device, dtype=dtype))
 
 
 class TestNestedTensorBlock(BaseTester):

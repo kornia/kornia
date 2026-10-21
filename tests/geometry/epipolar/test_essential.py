@@ -369,11 +369,17 @@ class TestFindEssential(BaseTester):
         (basis * 0.0).sum().backward()
         assert torch.isfinite(design.grad).all()
         assert (design.grad == 0).all()
-        # A nonzero incoming gradient has no finite derivative there, as for torch.linalg.svd. It must not
-        # come out as a silent zero, which is what the dropped gradient of #4855 looked like.
+        # A nonzero incoming gradient has no usable derivative there, as for torch.linalg.svd. It must not
+        # come out as a silent zero, which is what the dropped gradient of #4855 looked like. How it shows
+        # depends on the SVD: LAPACK returns the four zero singular values as exact zeros, so the backward
+        # divides by a zero gap and the gradient is not finite, while cuSOLVER's Jacobi SVD, torch's default
+        # on CUDA, leaves them at rounding level (1.6e-16 down to 1.5e-61) and the gradient is finite but
+        # near 6e60, as torch.linalg.svd's own backward is on the same input. Past 1 / eps, a gradient can
+        # only come from a gap at rounding level.
         design.grad = None
         epi.essential._NullSpaceBasis.apply(design)[0].sum().backward()
-        assert not torch.isfinite(design.grad).all()
+        usable = torch.isfinite(design.grad) & (design.grad.abs() < 1 / torch.finfo(design.dtype).eps)
+        assert not usable.all()
 
     def test_torch_func_grad(self, device):
         # torch.func transforms accept an autograd.Function only if it defines setup_context. With 5
@@ -1423,3 +1429,109 @@ class TestRefineEssentialLM(BaseTester):
         together = _refine_essential_lm(starts, h1, h2, None, "truncated", 1e-4, 15)
         alone = torch.cat([_refine_essential_lm(start[None], h1, h2, None, "truncated", 1e-4, 15) for start in starts])
         self.assert_close(together, alone, atol=1e-12, rtol=0)
+
+
+def _skip_without_bfloat16_autocast(device):
+    # A bfloat16 autocast region raises on a CUDA device without bfloat16 support, and other devices are not covered.
+    if device.type == "cuda" and not torch.cuda.is_bf16_supported():
+        pytest.skip("this CUDA device does not support bfloat16")
+    if device.type not in ("cpu", "cuda"):
+        pytest.skip("CPU and CUDA autocast")
+
+
+def _autocast_scene(device):
+    # A float32 two-view scene built outside any autocast region: K, a small motion, and 30 points in front of both
+    # cameras.
+    generator = torch.Generator().manual_seed(6146)
+    K = torch.tensor([[[300.0, 0.0, 50.0], [0.0, 300.0, 50.0], [0.0, 0.0, 1.0]]])
+    R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(torch.tensor([[0.05, -0.1, 0.02]]))
+    t = torch.tensor([[[0.5], [0.1], [0.0]]])
+    E_mat = epi.essential_from_Rt(torch.eye(3)[None], torch.zeros(1, 3, 1), R, t)
+    X = torch.rand(1, 30, 3, generator=generator) * 4 + torch.tensor([-2.0, -2.0, 5.0])
+    x1 = kornia.geometry.conversions.convert_points_from_homogeneous(X @ K.mT)
+    x2 = kornia.geometry.conversions.convert_points_from_homogeneous((X @ R.mT + t.mT) @ K.mT)
+    return [v.to(device) for v in (E_mat, K, x1, x2, R)]
+
+
+_AUTOCAST_CALLS = {
+    "decompose_essential_matrix": lambda E_mat, K, x1, x2: epi.decompose_essential_matrix(E_mat),
+    "decompose_essential_matrix_no_svd": lambda E_mat, K, x1, x2: epi.decompose_essential_matrix_no_svd(E_mat),
+    "motion_from_essential": lambda E_mat, K, x1, x2: epi.motion_from_essential(E_mat),
+    "motion_from_essential_choose_solution": lambda E_mat, K, x1, x2: epi.motion_from_essential_choose_solution(
+        E_mat, K, K, x1, x2
+    ),
+    "project_to_essential": lambda E_mat, K, x1, x2: epi.project_to_essential(E_mat),
+}
+
+
+class TestEssentialDecompositionAutocast(BaseTester):
+    """A caller's autocast region does not reach the essential-matrix decompositions (#6146), as for #6072's solvers."""
+
+    @pytest.mark.parametrize("name", list(_AUTOCAST_CALLS))
+    def test_autocast_does_not_change_the_result_6146(self, device, name):
+        # Under bfloat16 autocast, a float32 essential matrix was decomposed with bfloat16 matrix products: bfloat16
+        # rotations about 1.6e-3 off and no longer orthogonal, next to a float32 translation.
+        _skip_without_bfloat16_autocast(device)
+        E_mat, K, x1, x2, _ = _autocast_scene(device)
+        call = _AUTOCAST_CALLS[name]
+        expected = call(E_mat, K, x1, x2)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = call(E_mat, K, x1, x2)
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for out, ref in zip(actual, expected):
+            assert out.dtype == ref.dtype
+            self.assert_close(out, ref, atol=0, rtol=0)
+
+    def test_chosen_rotation_stays_a_rotation_under_autocast_6146(self, device):
+        _skip_without_bfloat16_autocast(device)
+        E_mat, K, x1, x2, R = _autocast_scene(device)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            R_out, t_out, _, count = epi.motion_from_essential_choose_solution(E_mat, K, K, x1, x2)
+        assert R_out.dtype == t_out.dtype == torch.float32
+        assert int(count) == 30
+        self.assert_close(R_out, R, atol=1e-5, rtol=0)
+        self.assert_close(R_out @ R_out.mT, torch.eye(3, device=device).expand_as(R_out), atol=1e-5, rtol=0)
+
+    def test_half_precision_intrinsics_under_autocast_6146(self, device):
+        # Autocast used to cast bfloat16 intrinsics and a float32 essential matrix to one dtype. With autocast off
+        # inside, the intrinsics are cast to the matrix's dtype, so the call still runs and gives the float32 result.
+        _skip_without_bfloat16_autocast(device)
+        E_mat, K, x1, x2, _ = _autocast_scene(device)
+        K_half = K.to(torch.bfloat16)
+        expected = epi.motion_from_essential_choose_solution(E_mat, K_half.float(), K_half.float(), x1, x2)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = epi.motion_from_essential_choose_solution(E_mat, K_half, K_half, x1, x2)
+        for out, ref in zip(actual, expected):
+            assert out.dtype == ref.dtype
+            self.assert_close(out, ref, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "fn",
+        [
+            epi.decompose_essential_matrix,
+            epi.decompose_essential_matrix_no_svd,
+            epi.motion_from_essential,
+            epi.project_to_essential,
+        ],
+        ids=lambda fn: fn.__name__,
+    )
+    def test_still_scriptable_6146(self, device, dtype, fn):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard; it must keep scripting.
+        E_mat = epi.essential_from_Rt(
+            torch.eye(3, device=device, dtype=dtype)[None],
+            torch.zeros(1, 3, 1, device=device, dtype=dtype),
+            kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+                torch.tensor([[0.05, -0.1, 0.02]], device=device, dtype=dtype)
+            ),
+            torch.tensor([[[0.5], [0.1], [0.0]]], device=device, dtype=dtype),
+        )
+        if dtype in (torch.float16, torch.bfloat16) and fn is not epi.decompose_essential_matrix_no_svd:
+            pytest.skip("calls torch.det or torch.linalg.svd, which have no half-precision CPU kernel")
+        scripted = torch.jit.script(fn)
+        expected = fn(E_mat)
+        actual = scripted(E_mat)
+        expected = expected if isinstance(expected, tuple) else (expected,)
+        actual = actual if isinstance(actual, tuple) else (actual,)
+        for out, ref in zip(actual, expected):
+            self.assert_close(out, ref)
