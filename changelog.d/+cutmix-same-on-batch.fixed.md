@@ -1,0 +1,1 @@
+`RandomCutMixV2` now draws an independent pairing and cut for each mix when `same_on_batch=True`, while sharing each mix's cut geometry across batch rows. Previously, multiple mixes repeated one cut but emitted duplicate donor labels.
