@@ -50,6 +50,12 @@ class _HausdorffERLossBase(nn.Module):
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
+        if alpha < 0.0:
+            raise ValueError(f"alpha must be non-negative. Got {alpha}.")
+        if k <= 0:
+            raise ValueError(f"k must be positive. Got {k}.")
+        if reduction not in ("mean", "sum", "none"):
+            raise NotImplementedError(f"reduction `{reduction}` has not been implemented yet.")
         self.alpha = alpha
         self.k = k
         self.reduction = reduction
@@ -107,6 +113,13 @@ class _HausdorffERLossBase(nn.Module):
             Estimated Hausdorff Loss.
 
         """
+        if not isinstance(pred, torch.Tensor):
+            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
+        if not isinstance(target, torch.Tensor):
+            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
+        if pred.device != target.device:
+            raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
+
         if not (pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1):
             raise ValueError(
                 "Prediction and target need to be of same size, and target should not be one-hot."
@@ -223,6 +236,10 @@ class HausdorffERLoss(_HausdorffERLossBase):
             Estimated Hausdorff Loss.
 
         """
+        if not isinstance(pred, torch.Tensor):
+            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
+        if not isinstance(target, torch.Tensor):
+            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
 
@@ -301,6 +318,10 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
             Estimated Hausdorff Loss.
 
         """
+        if not isinstance(pred, torch.Tensor):
+            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
+        if not isinstance(target, torch.Tensor):
+            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
         if pred.dim() != 5:
             raise ValueError(f"Only 3D images supported. Got {pred.dim()}.")
 

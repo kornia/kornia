@@ -46,6 +46,32 @@ class TestHausdorffLoss(BaseTester):
         loss(logits, labels)
 
     def test_exception_2d(self):
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss()(None, torch.zeros(1, 1, 1, 1, dtype=torch.long))
+        assert "pred type is not a torch.Tensor" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss()(torch.zeros(1, 2, 1, 1), [1, 2, 3])
+        assert "target type is not a torch.Tensor" in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss()(
+                torch.zeros(1, 2, 1, 1), torch.zeros(1, 1, 1, 1, dtype=torch.long, device="meta")
+            )
+        assert "pred and target must be in the same device" in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss(k=0)
+        assert "k must be positive" in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss(alpha=-1.0)
+        assert "alpha must be non-negative" in str(errinf)
+
+        with pytest.raises(NotImplementedError) as errinf:
+            kornia.losses.HausdorffERLoss(reduction="invalid")
+        assert "reduction `invalid` has not been implemented yet" in str(errinf)
+
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss()((torch.rand(1, 2, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
         assert "Only 2D images supported. Got " in str(errinf)
