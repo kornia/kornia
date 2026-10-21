@@ -63,7 +63,10 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
     else:
         KORNIA_CHECK_SHAPE(target, ["B"])
     KORNIA_CHECK_SAME_SIZE(pred, target, dim=0)
-    KORNIA_CHECK(len(topk) > 0 and all(k > 0 for k in topk), "topk must be a non-empty sequence of positive integers")
+    KORNIA_CHECK(
+        len(topk) > 0 and all(isinstance(k, int) and not isinstance(k, bool) and k > 0 for k in topk),
+        "topk must be a non-empty sequence of positive integers",
+    )
 
     maxk = min(max(topk), pred.size()[1])
     batch_size = target.size(0)
