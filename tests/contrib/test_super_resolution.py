@@ -33,6 +33,7 @@ from kornia.contrib.super_resolution import (
 )
 from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
+from kornia.models.rrdbnet import RRDBNet
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -387,12 +388,37 @@ class TestSuperResolutionONNXBatch(BaseTester):
             getattr(model, component).forward = ListIdentity().forward
         assert not model._returns_one_tensor_without_a_probe()
 
-    @pytest.mark.parametrize("component", ["model", "pre_processor", "post_processor", "wrapper"])
-    def test_forward_hooks_disable_tensor_shortcut_6197(self, component):
-        model = SuperResolution(nn.Identity(), nn.Identity(), nn.Identity())
-        target = model if component == "wrapper" else getattr(model, component)
-        target.register_forward_hook(lambda module, inputs, output: list(output.split(1)))
+    @pytest.mark.parametrize("component", ["model", "pre_processor", "post_processor", "wrapper", "nested"])
+    @pytest.mark.parametrize("kind", ["forward", "forward_pre"])
+    def test_forward_hooks_disable_tensor_shortcut_6197(self, component, kind):
+        network = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=4, num_block=1, num_grow_ch=4, scale=4)
+        model = SuperResolution(network, nn.Identity(), nn.Identity())
+        assert model._returns_one_tensor_without_a_probe()
+        targets = {"wrapper": model, "nested": network.conv_first}
+        target = targets.get(component) or getattr(model, component)
+        if kind == "forward":
+            target.register_forward_hook(lambda module, inputs, output: list(output.split(1)))
+        else:
+            target.register_forward_pre_hook(lambda module, inputs: inputs)
         assert not model._returns_one_tensor_without_a_probe()
+
+    @pytest.mark.parametrize("builder", [RRDBNetBuilder, SmallSRBuilder])
+    def test_builders_take_the_tensor_shortcut_6197(self, builder):
+        # A builder's model is exported without a probe, which for an RRDB model costs more than the export.
+        assert builder.build(pretrained=False)._returns_one_tensor_without_a_probe()
+
+    @pytest.mark.timeout(120)
+    def test_plain_callable_processor_is_probed_6197(self):
+        # A processor without ``forward`` is not a known one: the model is probed and, returning one tensor, keeps
+        # a dynamic batch.
+        pytest.importorskip("onnx")
+        model = SuperResolution(nn.Conv2d(3, 3, 1), lambda images: images * 1.0, nn.Identity())
+        model.input_image_size = model.output_image_size = 16
+        assert not model._returns_one_tensor_without_a_probe()
+
+        op = model.to_onnx(save=False, dynamo=False)
+
+        assert op.graph.input[0].type.tensor_type.shape.dim[0].dim_param
 
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("export_kwargs", _EACH_EXPORTER)

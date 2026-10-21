@@ -152,6 +152,19 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             and type(self.post_processor).forward is ResizePostProcessor.forward
         )
 
+    def _returns_one_tensor_on_export(self) -> bool:
+        """Whether an export returns the maps of the batch as one tensor, so ``to_onnx`` reads no output kind.
+
+        That holds for a post-processor the export replaces (:meth:`_resizes_back_on_export`) under this class's own
+        :meth:`forward`, with no forward hook on the detector or a module inside it. Any other detector is probed; with
+        such a post-processor the probe reads the eager per-image list and the detector is exported for one image.
+        """
+        return (
+            self._resizes_back_on_export()
+            and getattr(self.forward, "__func__", None) is EdgeDetector.forward
+            and not any(module._forward_hooks or module._forward_pre_hooks for module in self.modules())
+        )
+
     def _export_interpolation(self) -> str:
         """The post-processor's interpolation mode, which an export resizes the maps back with.
 
@@ -262,8 +275,9 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             With the pre- and post-processor, a detector whose post-processor returns a list with one map per image is
             exported for a batch of one image: the exporters turn a list into one graph output per traced image, so a
             dynamic batch would return the traced batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
-            its own ``forward`` is not such a post-processor, since the export replaces it. Which kind of output any
-            other post-processor returns is read from one forward pass of the detector for one image at the export
+            its own ``forward`` is not such a post-processor, since the export replaces it, as long as the detector
+            keeps :meth:`forward` as this class defines it and has no forward hooks. Which kind of output any other
+            detector returns is read from one forward pass of the detector for one image at the export
             size, in eval mode, without gradients and outside the export. A ``forward`` that returns a list there is
             therefore exported for one image even if it returns a tensor under export, as a ``ResizePostProcessor``
             subclass whose own ``forward`` calls ``ResizePostProcessor.forward`` does. A tensor there is read again at
@@ -271,7 +285,8 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             batch as one tensor to export a batch of any size. A ``dynamic_axes`` or ``dynamic_shapes`` argument that
             makes the batch of such an export dynamic raises a ``ValueError`` after the export, before anything is
             saved. A post-processor that returns a list only for more than one image has no dynamic export either: the
-            TorchScript exporter's graph raises that ``ValueError``, and the dynamo exporter fails to trace it.
+            TorchScript exporter's graph raises that ``ValueError``, the dynamo exporter of torch 2.9 and later fails to
+            trace it, and that of torch 2.5.1 fixes the batch at the two images it traces.
 
         """
         if onnx_name is None:
@@ -286,7 +301,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             # Exported for a dynamic batch, a list of per-image maps comes out as the traced batch's maps, or the
             # export fails: such a detector is exported for one image.
             returns_list = None
-            if include_pre_and_post_processor and not self._resizes_back_on_export():
+            if include_pre_and_post_processor and not self._returns_one_tensor_on_export():
                 # The probe's input draws from the global generator, as the export's dummy does, and gives back what
                 # it drew.
                 with _preserved_rng():
@@ -308,9 +323,9 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             self._exporting_to_onnx = previous
 
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
-        # The export replaces a ``ResizePostProcessor`` with one resize of the batch, a tensor: only another
-        # post-processor is read, from what ``to_onnx`` read before the export.
-        if module is not self or self._resizes_back_on_export() or not self._onnx_returns_list(dummy_input):
+        # The export replaces a ``ResizePostProcessor`` with one resize of the batch, a tensor: only another detector
+        # is read, from what ``to_onnx`` read before the export.
+        if module is not self or self._returns_one_tensor_on_export() or not self._onnx_returns_list(dummy_input):
             return None
         return (
             "Use a post-processor that returns the maps of the batch as one tensor, or a ResizePostProcessor, which "

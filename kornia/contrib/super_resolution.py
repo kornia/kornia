@@ -236,7 +236,8 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
 
         Raises:
             ValueError: With the pre- and post-processor, if the output is a list with one image per input image and
-                a ``dynamic_axes`` or ``dynamic_shapes`` argument makes the exported batch dynamic.
+                the exported batch is dynamic, from a ``dynamic_axes`` or ``dynamic_shapes`` argument or, with the
+                TorchScript exporter, because the list comes only for more than one image.
 
         Note:
             With the pre- and post-processor, an output that is a list with one image per input image is exported
@@ -288,10 +289,11 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         Unknown networks and overridden forwards need a probe even with the builders' processors. The builders'
         RRDB and SmallSR networks avoid an expensive extra forward when all implementations are unchanged.
         """
+        # A plain callable as a processor has no ``forward``: it is probed.
         forward = getattr(self.forward, "__func__", None)
-        network = getattr(self.model.forward, "__func__", None)
-        pre = getattr(self.pre_processor.forward, "__func__", None)
-        post = getattr(self.post_processor.forward, "__func__", None)
+        network = getattr(getattr(self.model, "forward", None), "__func__", None)
+        pre = getattr(getattr(self.pre_processor, "forward", None), "__func__", None)
+        post = getattr(getattr(self.post_processor, "forward", None), "__func__", None)
         return (
             not any(module._forward_hooks or module._forward_pre_hooks for module in self.modules())
             and forward is SuperResolution.forward

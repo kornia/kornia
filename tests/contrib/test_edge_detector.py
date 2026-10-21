@@ -530,6 +530,31 @@ class TestEdgeDetector(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("change", ["forward", "hook"])
+    def test_onnx_of_a_detector_whose_own_output_is_a_list_exports_one_image_6197(self, change):
+        # A ResizePostProcessor alone skips the probe, but a detector whose forward, or a hook on it, turns the maps
+        # into a per-image list is probed, and exported for one image.
+        pytest.importorskip("onnx")
+
+        class _ListDetector(EdgeDetector):
+            def forward(self, images):
+                return list(super().forward(images))
+
+        if change == "forward":
+            small = _small_edge_detector()
+            det = _ListDetector(small.model, small.pre_processor, small.post_processor)
+        else:
+            det = _small_edge_detector()
+            det.register_forward_hook(lambda module, inputs, output: list(output))
+        assert not det._returns_one_tensor_on_export()
+
+        op = det.to_onnx(image_size=24, save=False, dynamo=False)
+
+        assert op.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+        assert len(op.graph.output) == 1
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.timeout(120)
     @pytest.mark.parametrize("export_kwargs", [*_EACH_EXPORTER, *_DYNAMIC_BATCH])
     def test_onnx_with_a_resize_post_processor_keeps_a_dynamic_batch_without_a_probe_6161(
         self, export_kwargs, monkeypatch
