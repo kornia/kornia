@@ -604,14 +604,19 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_torchscript(self, align_corners, device, dtype):
-        # A scripted call computes the eager voxel grid, bit for bit.
+        # A scripted call computes the eager voxel grid, bit for bit on the CPU. On CUDA, torch.jit.script returns the
+        # cached function, so a second call with the same shapes runs TorchScript's GPU fuser, which rounds the fused
+        # grid arithmetic differently from eager (about 1e-6 in float32).
         volume = self._volume((2, 2, 5, 7, 9), device, dtype)
         _, src_homo_dst = self._homographies(device, dtype)
         scripted = torch.jit.script(proj.homography_warp3d)
 
         actual = scripted(volume, src_homo_dst, (4, 6, 8), align_corners=align_corners, normalized_coordinates=False)
         expected = self._warp(volume, src_homo_dst, (4, 6, 8), align_corners=align_corners)
-        self.assert_close(actual, expected, rtol=0, atol=0)
+        if device.type == "cpu":
+            self.assert_close(actual, expected, rtol=0, atol=0)
+        else:
+            self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
