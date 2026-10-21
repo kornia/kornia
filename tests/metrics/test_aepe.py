@@ -71,9 +71,13 @@ class TestAepe(BaseTester):
             _ = kornia.metrics.aepe(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo)
 
-        from kornia.core.exceptions import ShapeError
+        from kornia.core.exceptions import DeviceError, ShapeError
 
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+        with pytest.raises(DeviceError) as errinfo:
+            _ = kornia.metrics.aepe(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
         with pytest.raises(ShapeError) as errinfo:
             _ = kornia.metrics.aepe(sample, 2.0 * sample[..., 0], reduction="mean")
         assert (
@@ -81,6 +85,10 @@ class TestAepe(BaseTester):
             or "Expected shape" in str(errinfo.value)
             or "shape must be" in str(errinfo.value)
         )
+
+        with pytest.raises(ShapeError) as errinfo:
+            _ = kornia.metrics.aepe(sample, torch.ones(2, 2, 2, device=device, dtype=dtype))
+        assert "Shape mismatch" in str(errinfo.value)
 
     def test_smoke(self, device, dtype):
         input = torch.rand(3, 3, 2, device=device, dtype=dtype)

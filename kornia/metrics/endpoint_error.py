@@ -18,7 +18,12 @@
 import torch
 from torch import Tensor, nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import (
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_DEVICE,
+    KORNIA_CHECK_SAME_SHAPE,
+    KORNIA_CHECK_SHAPE,
+)
 
 
 def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
@@ -65,11 +70,10 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(target)
+    KORNIA_CHECK_SAME_DEVICE(input, target)
     KORNIA_CHECK_SHAPE(input, ["*", "2"])
     KORNIA_CHECK_SHAPE(target, ["*", "2"])
-    KORNIA_CHECK(
-        input.shape == target.shape, f"input and target shapes must be the same. Got: {input.shape} and {target.shape}"
-    )
+    KORNIA_CHECK_SAME_SHAPE(input, target)
 
     epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).sqrt()
 
