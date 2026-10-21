@@ -214,6 +214,10 @@ class TestTverskyLoss(BaseTester):
             criterion("not a tensor", torch.rand(1))
         assert "pred type is not a torch.Tensor. Got" in str(errinfo)
 
+        with pytest.raises(TypeError) as errinfo:
+            criterion(torch.rand(1, 1, 1, 1), "not a tensor")
+        assert "target type is not a torch.Tensor. Got" in str(errinfo)
+
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1), torch.rand(1))
         assert "Invalid pred shape, we expect BxNxHxW. Got:" in str(errinfo)
@@ -232,6 +236,26 @@ class TestTverskyLoss(BaseTester):
 
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (2, 4, 6)))
+
+        pred = torch.rand(2, 3, 4, 4)
+        target = torch.randint(0, 3, (2, 4, 4))
+        with pytest.raises(ValueError, match="alpha must be non-negative"):
+            kornia.losses.tversky_loss(pred, target, alpha=-0.1, beta=0.5)
+
+        with pytest.raises(ValueError, match="beta must be non-negative"):
+            kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=-0.1)
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=0.5, eps=-1e-6)
+
+        with pytest.raises(ValueError, match="alpha must be non-negative"):
+            kornia.losses.TverskyLoss(alpha=-0.1, beta=0.5)
+
+        with pytest.raises(ValueError, match="beta must be non-negative"):
+            kornia.losses.TverskyLoss(alpha=0.5, beta=-0.1)
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=-1e-6)
 
         # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):

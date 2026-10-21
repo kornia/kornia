@@ -95,6 +95,9 @@ def tversky_loss(
     if not isinstance(pred, torch.Tensor):
         raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}")
 
+    if not isinstance(target, torch.Tensor):
+        raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}")
+
     if not len(pred.shape) == 4:
         raise ValueError(f"Invalid pred shape, we expect BxNxHxW. Got: {pred.shape}")
 
@@ -106,6 +109,15 @@ def tversky_loss(
 
     if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
         raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
+
+    if alpha < 0.0:
+        raise ValueError(f"alpha must be non-negative. Got: {alpha}")
+
+    if beta < 0.0:
+        raise ValueError(f"beta must be non-negative. Got: {beta}")
+
+    if eps < 0.0:
+        raise ValueError(f"eps must be non-negative. Got: {eps}")
 
     # Keep the ratio's backward pass in float32 through softmax for half inputs.
     reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
@@ -181,6 +193,12 @@ class TverskyLoss(nn.Module):
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: Optional[int] = -100) -> None:
         super().__init__()
+        if alpha < 0.0:
+            raise ValueError(f"alpha must be non-negative. Got: {alpha}")
+        if beta < 0.0:
+            raise ValueError(f"beta must be non-negative. Got: {beta}")
+        if eps < 0.0:
+            raise ValueError(f"eps must be non-negative. Got: {eps}")
         self.alpha: float = alpha
         self.beta: float = beta
         self.eps: float = eps
