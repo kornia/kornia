@@ -250,11 +250,25 @@ def gaussian_discrete_erf(
     centre = (window_size - 1) / 2
     x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - centre).expand(batch_size, -1)
 
-    t = 0.70710678 / sigma.abs()
+    # A zero sigma is the unit-impulse limit. Use a finite placeholder while evaluating the error function so that
+    # its backward pass does not differentiate through an infinity, then select the limit below.
+    is_impulse = sigma == 0
+    safe_sigma = torch.where(is_impulse, torch.ones_like(sigma), sigma)
+    t = 0.70710678 / safe_sigma.abs()
     # t = torch.tensor(2, device=sigma.device, dtype=sigma.dtype).sqrt() / (sigma.abs() * 2)
 
     gauss = 0.5 * ((t * (x + 0.5)).erf() - (t * (x - 0.5)).erf())
     gauss = gauss.clamp(min=0)
+
+    if window_size > 0:
+        # The zero-sigma limit splits equally between both centre taps of an even window.
+        impulse = torch.zeros_like(gauss)
+        centre_index = window_size // 2
+        if window_size % 2:
+            impulse[..., centre_index] = 1.0
+        else:
+            impulse[..., centre_index - 1 : centre_index + 1] = 0.5
+        gauss = torch.where(is_impulse, impulse, gauss)
 
     return gauss / gauss.sum(-1, keepdim=True)
 

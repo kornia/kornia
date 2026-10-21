@@ -114,6 +114,20 @@ def test_gaussian_sigma_gradient_is_finite_at_zero_4589(window_size, device, dty
     assert_close(sigma.grad, torch.zeros_like(sigma.grad))
 
 
+@pytest.mark.parametrize("window_size", [3, 4])
+def test_gaussian_erf_sigma_zero_is_a_symmetric_finite_impulse(window_size, device, dtype):
+    sigma = torch.zeros(1, 1, device=device, dtype=dtype, requires_grad=True)
+
+    out = get_gaussian_erf_kernel1d(window_size, sigma, force_even=True)
+    expected = torch.zeros(1, window_size, device=device, dtype=dtype)
+    expected[..., (window_size - 1) // 2 : window_size // 2 + 1] = 1.0 / (2 - window_size % 2)
+    assert_close(out, expected)
+
+    (out * torch.arange(window_size, device=device, dtype=dtype)).sum().backward()
+    assert torch.isfinite(sigma.grad).all()
+    assert_close(sigma.grad, torch.zeros_like(sigma.grad))
+
+
 def test_gaussian_empty_window_stays_empty_4589(device, dtype):
     # kornia's convention for a degenerate shape is empty in, empty out. Subtracting the nearest
     # sample means reducing over the window, which has no identity when the window is empty.
