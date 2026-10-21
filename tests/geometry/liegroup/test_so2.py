@@ -433,6 +433,29 @@ class TestSo2(BaseTester):
         rotation = So2.exp(torch.tensor(0.3, device=device, dtype=dtype)).matrix().detach()
         self.assert_close(So2.from_matrix(rotation).log(), torch.tensor(0.3, device=device, dtype=dtype))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_from_matrix_check_skipped_under_any_capture_5037(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # from_matrix checks the rotation block on the host, which a fullgraph trace cannot do, so any capture skips
+        # the check, not only export (#5037), and reads the block as z = m00 + i m10. Eager still raises on a
+        # reflection; a traced call does not.
+        from torch._dynamo.testing import CompileCounter
+
+        def log(matrix: torch.Tensor) -> torch.Tensor:
+            return So2.from_matrix(matrix).log()
+
+        rotation = So2.exp(torch.tensor([0.3, -1.2], device=device, dtype=dtype)).matrix().detach()
+        reflection = torch.tensor([[1.0, 0.0], [0.0, -1.0]], device=device, dtype=dtype).expand(2, 2, 2)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(log, backend=counter, fullgraph=True)
+        self.assert_close(traced(rotation), log(rotation), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
+            log(reflection)
+        self.assert_close(traced(reflection), torch.zeros(2, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
     def test_so2_column_angle_is_squeezed_4932(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")

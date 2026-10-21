@@ -23,7 +23,7 @@ import torch
 from torch import Size
 
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.linalg import transform_points
 
 __all__ = ["Boxes", "Boxes3D", "VideoBoxes"]
@@ -173,8 +173,9 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        # Value validation reads the data, which graph capture cannot do; skip it under export.
-        if validate_boxes and not is_exporting():
+        # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
+        # torch.export).
+        if validate_boxes and not is_compiling():
             _validate_box_values(boxes, width, height)
 
         xmin, ymin = boxes[..., 0], boxes[..., 1]
@@ -699,6 +700,8 @@ class Boxes:
             validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the ``'xy*'`` modes,
                 which also reject non-positive extents in each mode's convention, and ``RuntimeError`` from
                 ``torch._assert_async`` for the vertex modes (skipped on MPS), which take no extent or shape check.
+                The ``'xy*'`` checks read the data, so graph capture (``torch.compile``, ``torch.export``) skips
+                them.
 
         Returns:
             :class:`Boxes` containing the converted inclusive vertex representation.
@@ -882,10 +885,11 @@ class Boxes:
         # -----------------
         # CPU Hotpath (loop)
         # -----------------
-        # The loop slices with data-dependent bounds, which graph capture cannot do; export takes the vectorized path.
-        # So does the legacy ONNX exporter, which traces outside ``is_exporting()``: it loses the loop's in-place
-        # writes into the mask and exports a constant all-zero mask with no graph input.
-        if device.type != "cuda" and not is_exporting() and not torch.jit.is_tracing():
+        # The loop slices with data-dependent bounds, which graph capture cannot do; any capture (torch.compile,
+        # torch.export) takes the vectorized path, which fills the same mask. So does the legacy ONNX exporter, which
+        # traces outside ``is_compiling()``: it loses the loop's in-place writes into the mask and exports a constant
+        # all-zero mask with no graph input.
+        if device.type != "cuda" and not is_compiling() and not torch.jit.is_tracing():
             if self._is_batched:  # (B, N, 4, 2)
                 mask = torch.zeros(
                     (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
@@ -1332,7 +1336,8 @@ class Boxes3D:
 
             validate_boxes: reject boxes with a non-finite coordinate, and boxes whose width, height or depth
                 is not positive when measured in the given mode's convention, so ``xmax == xmin`` is rejected in
-                ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``.
+                ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``. The checks read the data, so graph capture
+                (``torch.compile``, ``torch.export``) skips them.
 
         Returns:
             :class:`Boxes3D` containing the converted inclusive vertex representation, labelled with ``mode``.
@@ -1382,8 +1387,9 @@ class Boxes3D:
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        # Value validation reads the data, which graph capture cannot do; skip it under export.
-        if validate_boxes and not is_exporting():
+        # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
+        # torch.export).
+        if validate_boxes and not is_compiling():
             if not torch.isfinite(boxes).all():
                 raise ValueError("Some boxes have non-finite coordinates.")
             if (width <= 0).any():
@@ -1563,10 +1569,11 @@ class Boxes3D:
         # Cast boxes coordinates to be integer to use them as bounds. Use round to handle decimal values.
         xyzxyz = clipped_boxes_xyzxyz.view(-1, 6).round().long()
 
-        if is_exporting() or torch.jit.is_tracing():
-            # The loop below slices with data-dependent bounds, which graph capture cannot do; compare a
-            # coordinate grid against the bounds instead. The legacy ONNX exporter traces outside
-            # ``is_exporting()`` and loses the loop's in-place writes, exporting a constant all-zero mask.
+        if is_compiling() or torch.jit.is_tracing():
+            # The loop below slices with data-dependent bounds, which graph capture (torch.compile, torch.export)
+            # cannot do; compare a coordinate grid against the bounds instead, which fills the same mask. The legacy
+            # ONNX exporter traces outside ``is_compiling()`` and loses the loop's in-place writes, exporting a
+            # constant all-zero mask.
             device = self._data.device
             zs = torch.arange(depth, device=device)
             ys = torch.arange(height, device=device)

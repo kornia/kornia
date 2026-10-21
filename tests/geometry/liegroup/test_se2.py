@@ -833,6 +833,29 @@ class TestSe2(BaseTester):
         exported = torch.export.export(FromMatrix(), (matrix,)).module()
         self.assert_close(exported(matrix), expected)
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_convention_se2_from_matrix_omits_rotation_value_validation_under_any_capture_5037(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # As under export, a fullgraph trace cannot read the rotation values, so any capture omits the check (#5037)
+        # and keeps m00 + i m10; a valid pose traces in one graph and matches eager.
+        from torch._dynamo.testing import CompileCounter
+
+        def from_matrix(matrix: torch.Tensor) -> torch.Tensor:
+            return Se2.from_matrix(matrix).matrix()
+
+        pose = Se2.exp(torch.tensor([[1.0, 2.0, 0.3]], device=device, dtype=dtype)).matrix().detach()
+        reflection = torch.eye(3, device=device, dtype=dtype)
+        reflection[1, 1] = -1.0
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(from_matrix, backend=counter, fullgraph=True)
+        self.assert_close(traced(pose), from_matrix(pose), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        with pytest.raises(ValueError, match="Invalid SO2 rotation matrix"):
+            from_matrix(reflection[None])
+        self.assert_close(traced(reflection[None]), torch.eye(3, device=device, dtype=dtype)[None], atol=0.0, rtol=0.0)
+
     def test_se2_translation_is_a_tensor_for_every_constructor_4931(self, device, dtype):
         if dtype == torch.bfloat16:
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
