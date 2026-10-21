@@ -85,9 +85,15 @@ class TestLovaszSoftmaxLoss(BaseTester):
         assert criterion(logits, labels) is not None
 
     def test_exception(self):
-        from kornia.core.exceptions import ShapeError
+        from kornia.core.exceptions import ShapeError, TypeCheckError
 
         criterion = kornia.losses.LovaszSoftmaxLoss()
+
+        with pytest.raises(TypeCheckError):
+            criterion([1.0], torch.rand(1, 1, 1))
+
+        with pytest.raises(TypeCheckError):
+            criterion(torch.rand(1, 2, 1, 1), [1.0])
 
         with pytest.raises(ShapeError) as errinfo:
             criterion(torch.rand(1), torch.rand(1))

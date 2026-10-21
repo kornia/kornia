@@ -89,6 +89,9 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         >>> output.backward()
 
     """
+    KORNIA_CHECK_IS_TENSOR(pred)
+    KORNIA_CHECK_IS_TENSOR(target)
+
     KORNIA_CHECK_SHAPE(pred, ["B", "N", "H", "W"])
 
     KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])

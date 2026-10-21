@@ -20,7 +20,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
@@ -86,6 +86,9 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
         >>> output.backward()
 
     """
+    KORNIA_CHECK_IS_TENSOR(pred)
+    KORNIA_CHECK_IS_TENSOR(target)
+
     KORNIA_CHECK_SHAPE(pred, ["B", "1", "H", "W"])
 
     KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])
