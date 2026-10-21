@@ -847,6 +847,22 @@ class TestFitPlaneGradient(BaseTester):
         (plane.normal.data.sum() + plane.offset.data.sum()).backward()
         assert torch.isfinite(points.grad).all()
 
+    @pytest.mark.parametrize("scale", [1e-20, 1e22])
+    def test_extreme_coordinates_keep_the_normal_and_a_finite_gradient_6213(self, device, scale):
+        # X^T X of float32 points near 1e20 overflows; the gradient path must not turn the normal into NaN.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        board = _board_6213(5, 5, device, dtype=torch.float32)
+        points = (board * scale).requires_grad_(True)
+        plane = fit_plane(Vector3(points))
+        expected = fit_plane(Vector3(board)).normal.data
+        assert torch.isfinite(plane.normal.data).all()
+        self.assert_close(
+            (plane.normal.data * expected).sum(-1).abs(), torch.ones((), device=device), atol=1e-5, rtol=0
+        )
+        plane.normal.data.sum().backward()
+        assert torch.isfinite(points.grad).all()
+
     def test_value_is_the_svd_normal_6213(self, device, dtype):
         # The gradient path does not touch the value: the normal is still the SVD's third right singular vector.
         points = _board_6213(4, 6, device, dtype=torch.float32).to(dtype)

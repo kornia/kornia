@@ -294,12 +294,18 @@ def _plane_normal(points_centered: torch.Tensor, S: torch.Tensor, V: torch.Tenso
     normal = V[..., :, -1].detach()
     if not (torch.is_grad_enabled() and points_centered.requires_grad):
         return normal
-    cov = points_centered.mT @ points_centered
+    # The points are divided by their largest magnitude first, held constant: the normal is scale-invariant, and
+    # X^T X would overflow or underflow in the input dtype at coordinates near the square root of its range, where
+    # the SVD, computed in a wider dtype, still works. s_min is divided by the same scale.
+    scale = points_centered.detach().abs().amax(dim=(-2, -1), keepdim=True)
+    scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+    scaled = points_centered / scale
+    cov = scaled.mT @ scaled
     # C is normalised by its trace, which leaves the eigenvectors unchanged and keeps the cofactors in range.
     trace = cov.diagonal(dim1=-2, dim2=-1).sum(-1)[..., None, None]
     trace = torch.where(trace > 0, trace, torch.ones_like(trace))
     eye = torch.eye(3, device=cov.device, dtype=cov.dtype)
-    m = (cov - S[..., -1, None, None] ** 2 * eye) / trace
+    m = (cov - (S[..., -1, None, None] / scale) ** 2 * eye) / trace
     m0, m1, m2 = m[..., 0, :], m[..., 1, :], m[..., 2, :]
     # The columns of the adjugate of a symmetric 3 x 3 matrix are the cross products of pairs of its rows.
     cols = torch.stack(
@@ -313,6 +319,8 @@ def _plane_normal(points_centered: torch.Tensor, S: torch.Tensor, V: torch.Tenso
     # An undetermined plane, which only reaches here with the value checks off, keeps the SVD's value and gradient 0.
     adj_normal = col / torch.where(norm > 0, norm, torch.ones_like(norm))
     adj_normal = adj_normal * torch.where((adj_normal.detach() * normal).sum(-1, keepdim=True) < 0, -1.0, 1.0)
+    # The gradient path never changes the value: a non-finite vector would turn normal + (v - v) into NaN.
+    adj_normal = torch.where(torch.isfinite(adj_normal), adj_normal, torch.zeros_like(adj_normal))
     return normal + (adj_normal - adj_normal.detach())
 
 
