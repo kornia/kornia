@@ -27,6 +27,8 @@ from typing import ClassVar
 import torch
 from torch import nn
 
+from kornia.core.utils import _autocast_disabled
+
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
 
@@ -63,10 +65,10 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if image.dtype in (torch.float16, torch.bfloat16):
-        if torch.jit.is_scripting() or image.device.type == "meta":
+        if torch.jit.is_scripting():
             return _rgb_to_lab(image.float()).to(image.dtype)
         # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
-        with torch.autocast(device_type=image.device.type, enabled=False):
+        with _autocast_disabled(image.device.type):
             return _rgb_to_lab(image.float()).to(image.dtype)
     return _rgb_to_lab(image)
 
@@ -130,10 +132,10 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if image.dtype in (torch.float16, torch.bfloat16):
-        if torch.jit.is_scripting() or image.device.type == "meta":
+        if torch.jit.is_scripting():
             return _lab_to_rgb(image.float(), clip).to(image.dtype)
         # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
-        with torch.autocast(device_type=image.device.type, enabled=False):
+        with _autocast_disabled(image.device.type):
             return _lab_to_rgb(image.float(), clip).to(image.dtype)
     return _lab_to_rgb(image, clip)
 

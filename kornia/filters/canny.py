@@ -33,7 +33,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
-from kornia.core.utils import is_exporting
+from kornia.core.utils import _autocast_disabled, is_exporting
 
 from .filter import _to_floating
 from .gaussian import gaussian_blur2d
@@ -203,10 +203,10 @@ def canny(
     output_dtype = input.dtype
     if output_dtype in (torch.float16, torch.bfloat16):
         input = input.float()
-        if torch.jit.is_scripting() or input.device.type == "meta":
+        if torch.jit.is_scripting():
             gradients = _canny_gradients(input, kernel_size, sigma)
         else:
-            with torch.autocast(device_type=input.device.type, enabled=False):
+            with _autocast_disabled(input.device.type):
                 gradients = _canny_gradients(input, kernel_size, sigma)
     else:
         gradients = _canny_gradients(input, kernel_size, sigma)

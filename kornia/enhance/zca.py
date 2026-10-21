@@ -20,7 +20,7 @@ from typing import List, Optional, Tuple
 import torch
 from torch import nn
 
-from kornia.core.utils import _torch_svd_cast
+from kornia.core.utils import _autocast_disabled, _torch_svd_cast
 
 __all__ = ["ZCAWhitening", "linear_transform", "zca_mean", "zca_whiten"]
 
@@ -224,9 +224,9 @@ class ZCAWhitening(nn.Module):
         if self.transform_inv is None:
             raise TypeError("The transform inverse should be a torch.Tensor. Got None.")
 
-        if x.dtype in (torch.float16, torch.bfloat16) and not torch.jit.is_scripting() and x.device.type != "meta":
+        if x.dtype in (torch.float16, torch.bfloat16) and not torch.jit.is_scripting():
             # The transformed mean is part of the fit too: autocasting it loses accuracy before linear_transform.
-            with torch.autocast(device_type=x.device.type, enabled=False):
+            with _autocast_disabled(x.device.type):
                 mean_inv = -self.mean_vector.float().mm(self.transform_matrix.float())
         else:
             mean_inv = -self.mean_vector.mm(self.transform_matrix)
@@ -502,10 +502,10 @@ def linear_transform(
     output_dtype = inp.dtype
     if output_dtype in (torch.float16, torch.bfloat16):
         inp_center = inp_flat.float() - mean_vector.float()
-        if torch.jit.is_scripting() or inp.device.type == "meta":
+        if torch.jit.is_scripting():
             inp_transformed = inp_center.mm(transform_matrix.float())
         else:
-            with torch.autocast(device_type=inp.device.type, enabled=False):
+            with _autocast_disabled(inp.device.type):
                 inp_transformed = inp_center.mm(transform_matrix.float())
         inp_transformed = inp_transformed.to(output_dtype)
     else:

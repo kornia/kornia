@@ -166,8 +166,6 @@ class TestLuvToRgb(BaseTester):
             assert kornia.color.luv_to_rgb(img)
 
     def test_unit(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         data = torch.tensor(
             [
                 [
@@ -281,13 +279,12 @@ def test_luv_converters_float16_black_are_finite(function):
 @pytest.mark.parametrize(
     "half_dtype, scale, luv_atol, rgb_atol",
     [
-        # A subnormal float16 eps overflows the backward of rgb_to_luv (1e-5) and luv_to_rgb (1e-8).
-        (torch.float16, 1e-5, 5e-2, 2e-5),
-        (torch.float16, 1e-8, 5e-2, 2e-5),
-        # A float16 eps floor much larger than the smallest normal moves these values.
-        (torch.float16, 1e-3, 5e-2, 2e-5),
-        # bfloat16 represents the default eps and must keep it.
-        (torch.bfloat16, 1e-4, 2e-3, 2e-5),
+        # Half inputs are converted in float32 with the caller's eps, so dark pixels match the float32 conversion up to
+        # the rounding of the output. In float16, 1e-5 is subnormal and 1e-8 rounds to black.
+        (torch.float16, 1e-5, 1e-4, 2e-5),
+        (torch.float16, 1e-8, 1e-4, 2e-5),
+        (torch.float16, 1e-3, 1e-4, 2e-5),
+        (torch.bfloat16, 1e-4, 1e-4, 2e-5),
     ],
 )
 def test_luv_converters_half_dark_pixels_match_float32(half_dtype, scale, luv_atol, rgb_atol):

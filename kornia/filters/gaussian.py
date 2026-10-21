@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_compiling
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_autocast_enabled, is_compiling
 
 from .filter import _to_floating, filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
@@ -162,9 +162,9 @@ def gaussian_blur2d(
     input = _to_floating(input)
 
     if input.dtype in (torch.float16, torch.bfloat16):
-        if torch.jit.is_scripting() or input.device.type == "meta":
+        if torch.jit.is_scripting():
             return _gaussian_blur2d(input.float(), kernel_size, sigma, border_type, separable).to(input.dtype)
-        with torch.autocast(device_type=input.device.type, enabled=False):
+        with _autocast_disabled(input.device.type):
             return _gaussian_blur2d(input.float(), kernel_size, sigma, border_type, separable).to(input.dtype)
     return _gaussian_blur2d(input, kernel_size, sigma, border_type, separable)
 
