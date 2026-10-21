@@ -306,6 +306,19 @@ def _removed_buffer_hooks() -> Iterator[None]:
                 del hooks[key]
 
 
+def _has_forward_hooks(module: nn.Module) -> bool:
+    """Return whether a forward hook or pre-hook can change what ``module`` returns.
+
+    One on ``module`` or a module inside it counts, and so does a global one, which
+    ``torch.nn.modules.module.register_module_forward_hook`` and ``register_module_forward_pre_hook`` add for every
+    module. The export wrappers that skip reading their output kind for known modules read it whenever one is set.
+    """
+    hooks = torch.nn.modules.module
+    if hooks._global_forward_hooks or hooks._global_forward_pre_hooks:
+        return True
+    return any(child._forward_hooks or child._forward_pre_hooks for child in module.modules())
+
+
 def _returns_list(module: Any, inputs: Any) -> bool:
     """Return whether ``module`` returns a Python list for ``inputs``, from one eager run.
 

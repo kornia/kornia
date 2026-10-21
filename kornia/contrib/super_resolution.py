@@ -24,7 +24,7 @@ from torch import nn
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import ONNXExportMixin, _preserved_rng, _returns_list
+from kornia.core.mixin.onnx import ONNXExportMixin, _has_forward_hooks, _preserved_rng, _returns_list
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.rrdbnet import RRDBNet
@@ -247,11 +247,11 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
             :meth:`forward` runs through the network one at a time. Known tensor-output networks (the builders'
             RRDB and SmallSR networks, ``nn.Identity`` and ``nn.Conv2d``) with ``nn.Identity`` or ``ResizePreProcessor``
             before them and ``nn.Identity`` or ``OutputRangePostProcessor`` after them keep a dynamic batch without a
-            probe, provided the wrapper and each component retain their known ``forward`` implementations and have
-            no forward hooks. Other combinations are probed on one image at the export size in eval mode, without
-            gradients and outside the export. A list result requires a fixed batch; a tensor result is checked again
-            on the actual tracing batch before accepting a dynamic graph. A dynamic graph with per-image outputs
-            raises a ``ValueError`` after the export, before anything is saved.
+            probe, provided the wrapper and each component retain their known ``forward`` implementations and no
+            forward hook applies to them, a global one included. Other combinations are probed on one image at the
+            export size in eval mode, without gradients and outside the export. A list result requires a fixed batch;
+            a tensor result is checked again on the actual tracing batch before accepting a dynamic graph. A dynamic
+            graph with per-image outputs raises a ``ValueError`` after the export, before anything is saved.
 
         """
         if onnx_name is None:
@@ -295,7 +295,7 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         pre = getattr(getattr(self.pre_processor, "forward", None), "__func__", None)
         post = getattr(getattr(self.post_processor, "forward", None), "__func__", None)
         return (
-            not any(module._forward_hooks or module._forward_pre_hooks for module in self.modules())
+            not _has_forward_hooks(self)
             and forward is SuperResolution.forward
             and network in (nn.Identity.forward, nn.Conv2d.forward, RRDBNet.forward, SmallSRNetWrapper.forward)
             and pre in (nn.Identity.forward, ResizePreProcessor.forward)

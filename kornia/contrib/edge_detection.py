@@ -26,7 +26,7 @@ from kornia.color.gray import grayscale_to_rgb
 from kornia.color.rgb import RgbToBgr
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import ONNXExportMixin, _preserved_rng, _returns_list
+from kornia.core.mixin.onnx import ONNXExportMixin, _has_forward_hooks, _preserved_rng, _returns_list
 from kornia.enhance.normalize import Normalize
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBase
@@ -156,13 +156,14 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         """Whether an export returns the maps of the batch as one tensor, so ``to_onnx`` reads no output kind.
 
         That holds for a post-processor the export replaces (:meth:`_resizes_back_on_export`) under this class's own
-        :meth:`forward`, with no forward hook on the detector or a module inside it. Any other detector is probed; with
-        such a post-processor the probe reads the eager per-image list and the detector is exported for one image.
+        :meth:`forward`, with no forward hook on the detector, on a module inside it or on all modules. Any other
+        detector is probed; with such a post-processor the probe reads the eager per-image list and the detector is
+        exported for one image.
         """
         return (
             self._resizes_back_on_export()
             and getattr(self.forward, "__func__", None) is EdgeDetector.forward
-            and not any(module._forward_hooks or module._forward_pre_hooks for module in self.modules())
+            and not _has_forward_hooks(self)
         )
 
     def _export_interpolation(self) -> str:
@@ -276,8 +277,8 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             exported for a batch of one image: the exporters turn a list into one graph output per traced image, so a
             dynamic batch would return the traced batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
             its own ``forward`` is not such a post-processor, since the export replaces it, as long as the detector
-            keeps :meth:`forward` as this class defines it and has no forward hooks. Which kind of output any other
-            detector returns is read from one forward pass of the detector for one image at the export
+            keeps :meth:`forward` as this class defines it and no forward hook applies to it. Which kind of output
+            any other detector returns is read from one forward pass of the detector for one image at the export
             size, in eval mode, without gradients and outside the export. A ``forward`` that returns a list there is
             therefore exported for one image even if it returns a tensor under export, as a ``ResizePostProcessor``
             subclass whose own ``forward`` calls ``ResizePostProcessor.forward`` does. A tensor there is read again at

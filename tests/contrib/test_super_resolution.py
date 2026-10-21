@@ -402,6 +402,21 @@ class TestSuperResolutionONNXBatch(BaseTester):
             target.register_forward_pre_hook(lambda module, inputs: inputs)
         assert not model._returns_one_tensor_without_a_probe()
 
+    @pytest.mark.parametrize("kind", ["forward", "forward_pre"])
+    def test_global_hooks_disable_tensor_shortcut_6197(self, kind):
+        # register_module_forward_hook applies to every module, so it can turn the output into a list too.
+        model = SuperResolution(nn.Identity(), nn.Identity(), nn.Identity())
+        assert model._returns_one_tensor_without_a_probe()
+        if kind == "forward":
+            handle = nn.modules.module.register_module_forward_hook(lambda module, inputs, output: output)
+        else:
+            handle = nn.modules.module.register_module_forward_pre_hook(lambda module, inputs: inputs)
+        try:
+            assert not model._returns_one_tensor_without_a_probe()
+        finally:
+            handle.remove()
+        assert model._returns_one_tensor_without_a_probe()
+
     @pytest.mark.parametrize("builder", [RRDBNetBuilder, SmallSRBuilder])
     def test_builders_take_the_tensor_shortcut_6197(self, builder):
         # A builder's model is exported without a probe, which for an RRDB model costs more than the export.
