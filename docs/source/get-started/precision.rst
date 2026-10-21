@@ -7,7 +7,7 @@ CUDA, float16 and bfloat16 support
 The module table below counts entries in the Linux CPU known-failure manifests
 (`cpu_float16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_float16.txt>`_,
 `cpu_bfloat16.txt <https://github.com/kornia/kornia/blob/main/testing/half_precision_xfails/cpu_bfloat16.txt>`_), pinned to Python 3.11 and PyTorch 2.14.0.
-There are **250 float16 and 274 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+There are **243 float16 and 256 bfloat16 recorded failures**. These are parametrized test cases, not counts of
 unsupported functions. The remaining work is tracked in `#4153 <https://github.com/kornia/kornia/issues/4153>`_.
 No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends.
 
@@ -21,20 +21,21 @@ No CI job covers CUDA or MPS half precision; CPU results do not establish suppor
      - Known failures
      - Notes
    * - ``kornia.color``
-     - ⚠️
-     - ⚠️
-     - 1 / 9
-     - float16: RGB255 round-trip accuracy; bfloat16: Lab, Luv and RGB255 accuracy
+     - ✅
+     - ✅
+     - 0 / 0
+     - Lab/Luv conversions and ``rgb255_to_normals`` compute half inputs in float32 and return the input dtype
    * - ``kornia.filters``
-     - ⚠️
-     - ⚠️
-     - 6 / 8
-     - Canny and Gaussian kernel/blur accuracy; CPU FFT convolution computes in float32
+     - ✅
+     - ✅
+     - 0 / 0
+     - Canny, Gaussian kernels/blur and CPU FFT convolution compute half inputs in float32 and return the input dtype
    * - ``kornia.enhance``
      - ✅
-     - ⚠️
-     - 0 / 1
-     - bfloat16: ZCA accuracy; JPEG computes half inputs in float32 and returns the input dtype
+     - ✅
+     - 0 / 0
+     - ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32
+       computation
    * - ``kornia.morphology``
      - ✅
      - ✅
