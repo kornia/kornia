@@ -785,3 +785,75 @@ class TestConventionsFitPlane(BaseTester):
         for wrong in (points[:, :2], torch.cat([points, points[:, :1]], -1)):
             with pytest.raises(TypeError, match=r"vector must be \(\*, 3\)"):
                 fit_plane(wrong)
+
+
+def _board_6213(rows, cols, device, dtype=torch.float64, posed=True):
+    """Corners of a planar ``rows`` x ``cols`` checkerboard, optionally posed in front of a camera."""
+    ys, xs = torch.meshgrid(torch.arange(rows, dtype=dtype), torch.arange(cols, dtype=dtype), indexing="ij")
+    corners = torch.stack([xs.flatten(), ys.flatten(), torch.zeros(rows * cols, dtype=dtype)], -1) * 0.025
+    if posed:
+        from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+
+        rotation = axis_angle_to_rotation_matrix(torch.tensor([[0.3, -0.4, 0.2]], dtype=dtype))[0]
+        corners = corners @ rotation.T + torch.tensor([0.1, 0.2, 2.0], dtype=dtype)
+    return corners.to(device)
+
+
+def _plane_with_fixed_sign_6213(points, reference):
+    # The normal's sign is unspecified; fix it against a reference so that central differences are meaningful.
+    plane = fit_plane(Vector3(points))
+    normal, offset = plane.normal.data, plane.offset.data.reshape(*plane.normal.data.shape[:-1], 1)
+    sign = torch.where((normal.detach() * reference).sum(-1, keepdim=True) < 0, -1.0, 1.0)
+    return torch.cat([normal * sign, offset * sign], -1)
+
+
+class TestFitPlaneGradient(BaseTester):
+    """``fit_plane``'s gradient is finite when the two in-plane singular values are equal (#6213)."""
+
+    @pytest.mark.parametrize(
+        "rows, cols, posed", [(5, 5, True), (7, 7, True), (2, 2, False), (3, 3, False), (4, 6, True)]
+    )
+    def test_square_boards_have_the_central_difference_gradient_6213(self, device, rows, cols, posed):
+        # torch's SVD backward divides by s_i^2 - s_j^2 for every pair, so the bit-equal in-plane singular values of
+        # these square boards made every entry of the gradient NaN, although the normal is well defined.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        points = _board_6213(rows, cols, device, posed=posed)
+        reference = fit_plane(Vector3(points)).normal.data.detach()
+        jac = torch.autograd.functional.jacobian(lambda p: _plane_with_fixed_sign_6213(p, reference), points)
+        jac = jac.reshape(4, -1)
+        assert torch.isfinite(jac).all()
+        eps = 1e-7
+        columns = []
+        for i in range(points.numel()):
+            step = torch.zeros(points.numel(), device=device, dtype=points.dtype)
+            step[i] = eps
+            step = step.view_as(points)
+            columns.append(
+                (
+                    _plane_with_fixed_sign_6213(points + step, reference)
+                    - _plane_with_fixed_sign_6213(points - step, reference)
+                ).reshape(-1)
+                / (2 * eps)
+            )
+        self.assert_close(jac, torch.stack(columns, -1), atol=1e-6, rtol=1e-6)
+
+    def test_batched_square_boards_6213(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        board = _board_6213(5, 5, device)
+        points = torch.stack([board, board * 2, board + 1.0, board.flip(0)]).requires_grad_(True)
+        plane = fit_plane(Vector3(points))
+        (plane.normal.data.sum() + plane.offset.data.sum()).backward()
+        assert torch.isfinite(points.grad).all()
+
+    def test_value_is_the_svd_normal_6213(self, device, dtype):
+        # The gradient path does not touch the value: the normal is still the SVD's third right singular vector.
+        points = _board_6213(4, 6, device, dtype=torch.float32).to(dtype)
+        work = points.float() if dtype in (torch.float16, torch.bfloat16) else points
+        centered = work - work.mean(-2, keepdim=True)
+        expected = torch.linalg.svd(
+            centered.double() if centered.dtype == torch.float32 and device.type != "mps" else centered
+        )[2][-1]
+        normal = fit_plane(Vector3(points.clone().requires_grad_(True))).normal.data
+        assert (normal.detach().to(expected.dtype) * expected).sum().abs() > 1 - 1e-3

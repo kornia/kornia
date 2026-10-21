@@ -281,12 +281,49 @@ def _rank_tolerance(dtype: torch.dtype) -> float:
 
 # TODO: factor to avoid duplicated from line.py
 # https://github.com/strasdat/Sophus/blob/23.04-beta/cpp/sophus/geometry/fit_plane.h
+def _plane_normal(points_centered: torch.Tensor, S: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
+    """Return the unit normal ``V[..., :, -1]`` of the fit, with a gradient that is finite at equal in-plane values.
+
+    The value is the SVD's. Its gradient through torch's SVD backward is NaN when the two in-plane singular values are
+    equal, as for a square grid of points, although the normal is well defined while the smallest singular value is
+    simple. Up to scale, the normal is also any nonzero column of ``adj(C - s_min^2 I)`` with ``C = X^T X``, a
+    polynomial in the points, so the gradient is taken from the largest such column, aligned with the SVD normal, and
+    the value from the SVD: the detached-value pattern of #4229. ``s_min`` is a simple singular value, whose own
+    gradient is finite.
+    """
+    normal = V[..., :, -1].detach()
+    if not (torch.is_grad_enabled() and points_centered.requires_grad):
+        return normal
+    cov = points_centered.mT @ points_centered
+    # C is normalised by its trace, which leaves the eigenvectors unchanged and keeps the cofactors in range.
+    trace = cov.diagonal(dim1=-2, dim2=-1).sum(-1)[..., None, None]
+    trace = torch.where(trace > 0, trace, torch.ones_like(trace))
+    eye = torch.eye(3, device=cov.device, dtype=cov.dtype)
+    m = (cov - S[..., -1, None, None] ** 2 * eye) / trace
+    m0, m1, m2 = m[..., 0, :], m[..., 1, :], m[..., 2, :]
+    # The columns of the adjugate of a symmetric 3 x 3 matrix are the cross products of pairs of its rows.
+    cols = torch.stack(
+        [torch.linalg.cross(m1, m2, dim=-1), torch.linalg.cross(m2, m0, dim=-1), torch.linalg.cross(m0, m1, dim=-1)],
+        dim=-2,
+    )
+    norms = cols.norm(dim=-1)
+    pick = norms.detach().argmax(-1, keepdim=True)
+    col = torch.gather(cols, -2, pick[..., None].expand(*pick.shape, 3)).squeeze(-2)
+    norm = torch.gather(norms, -1, pick)
+    # An undetermined plane, which only reaches here with the value checks off, keeps the SVD's value and gradient 0.
+    adj_normal = col / torch.where(norm > 0, norm, torch.ones_like(norm))
+    adj_normal = adj_normal * torch.where((adj_normal.detach() * normal).sum(-1, keepdim=True) < 0, -1.0, 1.0)
+    return normal + (adj_normal - adj_normal.detach())
+
+
 def fit_plane(points: Vector3) -> Hyperplane:
     """Fit a plane from a set of points using SVD.
 
     Convention:
         Returns a :class:`Hyperplane` (see its conventions) through the centroid of the points, with a unit normal
         of unspecified sign. Each batch row is fitted on its own.
+        The gradient is finite whenever the plane is determined, also when the two in-plane singular values are
+        equal, as for a square grid of points.
 
     Args:
         points: a tensor or a :class:`~kornia.geometry.vector.Vector3` of 3D points, of shape :math:`(N, 3)` or
@@ -342,7 +379,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
         )
 
     # the first left eigenvector is the direction on the fited line
-    direction = V[..., :, -1]  # BxD
+    direction = _plane_normal(points_centered, S, V)  # BxD
     origin = mean[..., 0, :]  # BxD
     if half:
         offset = -batched_dot_product(direction, origin)
