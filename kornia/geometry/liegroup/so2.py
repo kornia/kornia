@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import TypeCheckError
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.core.utils import is_compiling, register_module_state
+from kornia.core.utils import _deepcopy_module_state, is_compiling, register_module_state
 from kornia.geometry.vector import Vector2
 
 
@@ -71,6 +71,9 @@ class So2(nn.Module):
           The complex checkpoint key ``_z`` and its shape are unchanged. ``.half()`` uses PyTorch's experimental
           complex32 dtype. Since PyTorch has no complex bfloat16 dtype, ``.bfloat16()`` and ``.to(torch.bfloat16)``
           keep the rotation's existing complex precision while following any requested device move.
+        - ``copy.deepcopy`` holds a ``z`` with autograd history, as from ``exp(theta)`` for a ``theta`` that
+          requires grad, as a new leaf that keeps ``requires_grad``, as for
+          :class:`~kornia.geometry.quaternion.Quaternion`.
 
     Example:
         >>> real = torch.tensor([0.6])
@@ -80,6 +83,9 @@ class So2(nn.Module):
         tensor([0.6000+0.8000j], requires_grad=True)
 
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, z: torch.Tensor) -> None:
         """Construct the base class.

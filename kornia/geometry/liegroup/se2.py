@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
-from kornia.core.utils import register_module_state
+from kornia.core.utils import _deepcopy_module_state, register_module_state
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.vector import Vector2
@@ -106,6 +106,7 @@ class Se2(nn.Module):
           keeping the rotation's existing complex precision; both follow any requested device move. Building a
           pose from bfloat16 values (``exp``, ``identity``, ``random``, ``from_matrix`` or ``trans*``) raises
           ``TypeCheckError``, as for ``So2``.
+        - ``copy.deepcopy`` copies the rotation and translation as for :class:`~kornia.geometry.liegroup.So2`.
 
     Example:
         >>> so2 = So2.identity(1)
@@ -118,6 +119,9 @@ class Se2(nn.Module):
         tensor([[1., 1.]], requires_grad=True)
 
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, rotation: So2, translation: Vector2 | torch.Tensor) -> None:
         """Construct the base class.

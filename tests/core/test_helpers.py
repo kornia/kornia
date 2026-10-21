@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import copy
+import io
 from contextlib import nullcontext
 
 import pytest
@@ -25,6 +27,7 @@ from kornia.core.utils import (
     _adjugate_closed_form,
     _autocast_disabled,
     _closed_form_inverse,
+    _deepcopy_module_state,
     _det_perm_closed_form,
     _extract_device_dtype,
     _inverse_3x3_closed_form,
@@ -44,7 +47,19 @@ from kornia.core.utils import (
     safe_solve_with_mask,
 )
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_close,
+    assert_deepcopy_copies_state_as_leaves,
+    dynamo_is_available,
+)
+
+
+class _DeepcopyState(torch.nn.Module):
+    """A module holding registered state, with the deep copy of the geometry modules (module level, so it pickles)."""
+
+    __deepcopy__ = _deepcopy_module_state
 
 
 def _issue_5476_batch(device, dtype):
@@ -412,6 +427,45 @@ class TestExportHelpers:
         assert moved.y.dtype == other
         moved.y.sum().backward()
         assert_close(v.grad, torch.full_like(v, 2.0))
+
+    def test_deepcopy_module_state_copies_history_as_leaves(self, device, dtype):
+        # torch cannot deep-copy a tensor with a grad_fn, so a module holding one as a buffer used to make
+        # copy.deepcopy raise. The copy now holds it as a new leaf that keeps requires_grad, still a buffer, as
+        # torch.save / torch.load does, and the rest of the module is deep-copied as usual.
+        m = _DeepcopyState()
+        v = torch.rand(3, device=device, dtype=dtype, requires_grad=True)
+        register_module_state(m, "y", v * 2)
+        register_module_state(m, "x", torch.rand(3, device=device, dtype=dtype))
+        m.tag = ["kept"]
+        m.eval()
+        with pytest.raises(RuntimeError, match="graph leaves"):
+            copy.deepcopy(m.y)
+        copied = assert_deepcopy_copies_state_as_leaves(m)
+        assert isinstance(copied.x, torch.nn.Parameter)
+        buffer = io.BytesIO()
+        torch.save(m, buffer)
+        buffer.seek(0)
+        loaded = torch.load(buffer, weights_only=False)
+        for name, tensor in loaded.state_dict(keep_vars=True).items():
+            assert type(copied.state_dict(keep_vars=True)[name]) is type(tensor)
+            assert copied.state_dict(keep_vars=True)[name].requires_grad == tensor.requires_grad
+        assert set(dict(loaded.named_buffers())) == set(dict(copied.named_buffers())) == {"y"}
+        assert copied.tag == ["kept"]
+        assert copied.tag is not m.tag
+        assert copied.training is False
+        # The copy has no history, and the original keeps its own.
+        copied.y.sum().backward()
+        assert v.grad is None
+        assert_close(copied.y.grad, torch.ones_like(v))
+        m.y.sum().backward()
+        assert_close(v.grad, torch.full_like(v, 2.0))
+        # One deep copy keeps shared objects shared, also a reference from the module back to itself.
+        first, second = copy.deepcopy([m, m])
+        assert first is second
+        m.cycle = [m]
+        assert copy.deepcopy(m).cycle[0].cycle is not m.cycle
+        cyclic = copy.deepcopy(m)
+        assert cyclic.cycle[0] is cyclic
 
     @pytest.mark.parametrize("state_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
     def test_register_module_state_rejects_non_floating(self, device, state_dtype):

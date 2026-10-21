@@ -25,7 +25,12 @@ from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_deepcopy_copies_state_as_leaves,
+    dynamo_is_available,
+)
 
 
 class TestSo2(BaseTester):
@@ -546,6 +551,18 @@ class TestSo2(BaseTester):
         else:
             (rotation * point).sum().backward()
             self.assert_close(angle.grad, -3 * angle.detach().sin() - angle.detach().cos())
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # The history of theta is held in a buffer, which torch cannot deep-copy; the copy holds it as a new
+        # leaf.
+        theta = torch.tensor([0.4, -1.2], device=device, dtype=dtype, requires_grad=True)
+        rotation = So2.exp(theta)
+        copied = assert_deepcopy_copies_state_as_leaves(rotation)
+        self.assert_close(copied.matrix().detach(), rotation.matrix().detach(), rtol=0, atol=0)
+        rotation.matrix().sum().backward()
+        assert theta.grad is not None
 
 
 class _So2PointTransform(torch.nn.Module):

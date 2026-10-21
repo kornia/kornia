@@ -25,7 +25,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
-from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
+from kornia.core.utils import _deepcopy_module_state, _torch_svd_cast, is_compiling, register_module_state
 from kornia.geometry.conversions import _normalize_last_dim
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
@@ -51,7 +51,12 @@ class ParametrizedLine(nn.Module):
         - :meth:`projection`, :meth:`squared_distance` and :meth:`distance` require a unit ``direction``.
         - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
           the stored direction, and the plane's normal need not be unit.
+        - ``copy.deepcopy`` holds an origin or a direction with autograd history as a new leaf that keeps
+          ``requires_grad``, as for :class:`~kornia.geometry.quaternion.Quaternion`.
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, origin: torch.Tensor, direction: torch.Tensor) -> None:
         """Initialize a parametrized line of direction and origin.
