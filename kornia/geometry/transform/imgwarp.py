@@ -654,23 +654,20 @@ def _pixel_grid_work_dtype(src_homo_dst: torch.Tensor) -> torch.dtype:
 def _warp_pixel_grid(src_homo_dst: torch.Tensor, height: int, width: int) -> torch.Tensor:
     """Warp the ``(height, width)`` grid of destination pixels by ``src_homo_dst`` into source pixel coordinates.
 
-    The grid is built and warped in :func:`_pixel_grid_work_dtype`, whatever the default dtype, and outside a caller's
-    autocast region: autocast would run the homography's matrix product in half precision, which rounds the pixel
-    coordinates of a 640 px wide grid to whole pixels in bfloat16. TorchScript uses elementwise products instead of
-    the autocast-eligible matrix product, since a scripted context does not disable the caller's eager autocast.
+    The grid is built and warped in :func:`_pixel_grid_work_dtype`, whatever the default dtype, with the projective
+    gauge and homogeneous division of :func:`warp_grid`. The homography is applied as a sum of elementwise column
+    products rather than a matrix product: a caller's autocast region would run a matrix product in half precision,
+    also in a scripted call, which cannot leave it, and round the pixel coordinates of a 640 px wide grid to whole
+    pixels in bfloat16. Autocast leaves elementwise products alone, so eager and scripted calls compute the same grid.
     """
     work_dtype = _pixel_grid_work_dtype(src_homo_dst)
     grid = create_meshgrid(height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype)
-    if torch.jit.is_scripting():
-        # The same projective gauge and homogeneous division as warp_grid, with a three-column
-        # product that autocast cannot narrow. Broadcasting covers both (N, 3, 3) and (N, 1, 3, 3).
-        matrix = src_homo_dst.to(work_dtype)
-        matrix = matrix / _unit_projective_scale(matrix)
-        matrix = matrix.reshape(src_homo_dst.shape[0], 1, 1, 3, 3)
-        warped = grid[..., :1] * matrix[..., 0] + grid[..., 1:] * matrix[..., 1] + matrix[..., 2]
-        return convert_points_from_homogeneous(warped)
-    with _autocast_disabled(src_homo_dst.device.type):
-        return warp_grid(grid, src_homo_dst.to(work_dtype))
+    matrix = src_homo_dst.to(work_dtype)
+    matrix = matrix / _unit_projective_scale(matrix)
+    # Broadcasting covers both (N, 3, 3) and (N, 1, 3, 3).
+    matrix = matrix.reshape(src_homo_dst.shape[0], 1, 1, 3, 3)
+    warped = grid[..., :1] * matrix[..., 0] + grid[..., 1:] * matrix[..., 1] + matrix[..., 2]
+    return convert_points_from_homogeneous(warped)
 
 
 def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, align_corners: bool) -> torch.Tensor:
@@ -1913,7 +1910,7 @@ def homography_warp(
         - with ``normalized_homography=False`` it is consumed as the source→destination **pixel** homography,
           exactly like :func:`warp_perspective`, and ``normalized_coordinates`` is ignored
         - with ``normalized_coordinates=False`` the pixel grid is warped and normalized in at least float32, also
-          under a half default dtype and outside a caller's autocast region, and then cast to the homography's dtype
+          under a half default dtype and in a caller's autocast region, and then cast to the homography's dtype
         - ``dsize`` is ``(h, w)``
         - align_corners: ``False`` by default (differs from :func:`warp_perspective`). Along a source axis longer
           than one pixel, a pixel homography samples the same positions under both settings, which then differ
@@ -1972,7 +1969,7 @@ def homography_warp(
             warped_grid = warp_grid(grid, src_homo_dst)
         else:
             # A pixel homography lands on source pixels, which grid_sample reads normalized. The pixel arithmetic
-            # runs in at least float32 and outside autocast, then the grid returns to the homography's dtype.
+            # runs in at least float32, unaffected by autocast, then the grid returns to the homography's dtype.
             warped_grid = _warp_pixel_grid(src_homo_dst, height, width)
             warped_grid = _normalize_warped_pixel_grid(
                 warped_grid, patch_src.shape[-2], patch_src.shape[-1], align_corners

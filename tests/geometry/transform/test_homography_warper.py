@@ -534,7 +534,8 @@ class TestHomographyWarper(BaseTester):
     def test_autocast_does_not_reach_the_pixel_grid(self, entry, device):
         # A caller's bfloat16 autocast ran the homography's matrix product in bfloat16 and rounded the pixel columns
         # of a 640 px grid to whole pixels (x = 257 sampled 256, 639 fell outside the image); a grid cached inside
-        # autocast kept the error outside it. The pixel grid is warped outside autocast.
+        # autocast kept the error outside it. The pixel grid is warped with elementwise products, which autocast
+        # leaves alone.
         if device.type not in ("cpu", "cuda"):
             pytest.skip("CPU and CUDA autocast")
         width = 640
@@ -561,8 +562,8 @@ class TestHomographyWarper(BaseTester):
     ):
         if device.type not in ("cpu", "cuda"):
             pytest.skip("CPU and CUDA autocast")
-        # Scripting does not isolate the bmm from a caller's autocast. At these widths its rounded
-        # pixel coordinates can sample padding even under an identity homography.
+        # A scripted call cannot leave a caller's autocast region, which would round the pixel coordinates of a
+        # matrix product at these widths and sample padding even under an identity homography.
         image = torch.arange(width, device=device, dtype=torch.float32).expand(2, 1, 2, width)
         src_homo_dst = eye_like(3, image)
         src_homo_dst[1, 0, 2] = -1.0
@@ -582,7 +583,7 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_pixel_coordinates_torchscript(self, device, dtype):
-        # The scripted coordinate product agrees with the eager matrix product.
+        # A scripted call computes the eager pixel grid, bit for bit.
         image = (torch.arange(2 * 5 * 7, device=device) % 11 / 11).to(dtype).view(1, 2, 5, 7)
         src_homo_dst = torch.tensor(
             [[[1.05, 0.02, 0.3], [0.01, 0.95, -0.4], [1e-3, -2e-3, 1.0]]], device=device, dtype=dtype
@@ -595,7 +596,7 @@ class TestHomographyWarper(BaseTester):
 
     @pytest.mark.parametrize("scale", [1.0, -0.5, 8.0])
     def test_pixel_coordinates_torchscript_backward(self, scale, device, dtype):
-        # Preserve projective scale invariance and gradients through the scripted column product.
+        # A scripted call keeps the eager values and gradients for scaled homographies.
         image = torch.linspace(0, 1, 35, device=device, dtype=dtype).view(1, 1, 5, 7).requires_grad_()
         matrix = torch.tensor([[[1.05, 0.02, 0.3], [0.01, 0.95, 0.4], [1e-3, 2e-3, 1.0]]], device=device, dtype=dtype)
         matrix = (matrix * scale).requires_grad_()

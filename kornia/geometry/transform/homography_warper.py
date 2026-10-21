@@ -87,8 +87,8 @@ class HomographyWarper(BaseWarper):
 
         - See the convention block of :func:`homography_warp`.
         - with ``normalized_coordinates=False`` a grid from :meth:`precompute_warp_grid` holds source pixel
-          coordinates computed as in :func:`homography_warp` (in at least float32, outside autocast), normalized at
-          sampling time with the size of the patch passed to ``forward`` and then cast to the homography's dtype
+          coordinates computed as in :func:`homography_warp` (in at least float32, unaffected by autocast), normalized
+          at sampling time with the size of the patch passed to ``forward`` and then cast to the homography's dtype
 
     Args:
         height: The height of the destination torch.Tensor.
@@ -145,7 +145,7 @@ class HomographyWarper(BaseWarper):
         if self.normalized_coordinates:
             self._warped_grid = warp_grid(self.grid, src_homo_dst)
             return
-        # Source pixels, from a pixel grid built and warped as in homography_warp (in at least float32, outside
+        # Source pixels, from a pixel grid built and warped as in homography_warp (in at least float32, unaffected by
         # autocast; not from self.grid, which a half default dtype has already rounded), kept until forward()
         # normalizes them with the patch size; the normalized grid then returns to the homography's dtype.
         self._warped_grid = _warp_pixel_grid(src_homo_dst, self.height, self.width)
