@@ -2320,7 +2320,7 @@ class TestVideoBoxes(BaseTester):
         video[0] = filtered[1]
         self.assert_close(video.to_tensor("xyxy")[:1], expected[:1])
         assert video.to_tensor("xyxy")[1, :, 1].count_nonzero() > 0
-        assert filtered.to_mask(5, 5)[:, 1].count_nonzero() == 0
+        assert filtered.to_mask(5, 5)[:, :, 1].count_nonzero() == 0
 
     """Public API and round-trip coverage for :class:`VideoBoxes` (#4016)."""
 
@@ -2419,7 +2419,7 @@ class TestVideoBoxes(BaseTester):
         # Pin #4016: VideoBoxes is exported and the overrides are documented.
         assert "VideoBoxes" in boxes_module.__all__
         assert VideoBoxes.__doc__ is not None
-        for name in ("from_tensor", "to_tensor", "clone"):
+        for name in ("from_tensor", "to_tensor", "clone", "compute_area", "to_mask"):
             assert getattr(VideoBoxes, name).__doc__ is not None
 
     def test_gradcheck(self, device):
@@ -2589,6 +2589,42 @@ class TestVideoBoxes(BaseTester):
             mask = video_boxes.to_mask(4, 5)
         except TypeError as error:
             raise AssertionError(str(error)) from error
-        # One extent per box, and the mask keeps the flattened-time convention (B*T, N, H, W).
+        # One extent per box, and both compute_area and to_mask restore the temporal axis.
         assert heights.numel() == widths.numel() == 6
-        assert mask.shape == (6, 1, 4, 5)
+        assert heights.shape == (2, 3, 1)
+        assert widths.shape == (2, 3, 1)
+        assert video_boxes.compute_area().shape == (2, 3, 1)
+        assert mask.shape == (2, 3, 1, 4, 5)
+
+    def test_compute_area_and_to_mask_restore_temporal_axis_5614(self, device, dtype):
+        # Issue #5614: compute_area and to_mask restore the temporal axis (B, T, N, ...).
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=2)
+        video = VideoBoxes.from_tensor(boxes)
+        heights, widths = video.get_boxes_shape()
+        area = video.compute_area()
+        mask = video.to_mask(6, 8)
+
+        assert area.shape == (2, 3, 2)
+        assert mask.shape == (2, 3, 2, 6, 8)
+        assert mask.dtype == dtype
+
+        # Sibling method combination no longer fails with mismatched shapes
+        ratio = area / (heights * widths)
+        assert ratio.shape == (2, 3, 2)
+
+        # filter_boxes_by_area correctly updates valid flags and zeroed coordinates
+        filtered = video.filter_boxes_by_area(min_area=100.0)
+        assert isinstance(filtered, VideoBoxes)
+        assert filtered.temporal_channel_size == 3
+        assert filtered.data.shape == video.data.shape
+        assert filtered.compute_area().shape == (2, 3, 2)
+        assert filtered.compute_area().count_nonzero() == 0
+
+    @pytest.mark.parametrize("shape", [(0, 3, 2), (2, 3, 0)])
+    def test_compute_area_and_to_mask_empty_batches_5614(self, shape, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype, batch=shape[0], time=shape[1], n_boxes=shape[2])
+        video = VideoBoxes.from_tensor(boxes)
+        area = video.compute_area()
+        mask = video.to_mask(4, 5)
+        assert area.shape == (shape[0], shape[1], shape[2])
+        assert mask.shape == (shape[0], shape[1], shape[2], 4, 5)
