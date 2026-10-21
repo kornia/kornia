@@ -265,6 +265,9 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
                 Additional metadata to add to the ONNX model.
             kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
+        Returns:
+            The exported ONNX model.
+
         Raises:
             ValueError: With the pre- and post-processor, if the ``ResizePostProcessor`` resizes with ``"area"``:
                 adaptive average pooling cannot be exported with the input's size; or if the post-processor returns
