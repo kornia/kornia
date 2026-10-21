@@ -316,8 +316,8 @@ CASES = [
     _ch(
         "sample_is_valid_for_homography",
         K.geometry.homography.sample_is_valid_for_homography,
-        [hp1_4, hp2_4],
-        note="returns bool (B,)",
+        [hp1_4.repeat(2, 1, 1), torch.cat([hp2_4, hp2_4 * torch.tensor([-1.0, 1.0])])],
+        note="returns bool (B,); the second sample is mirrored, so it is invalid",
     ),
     _ch("normalize_points", K.geometry.homography.normalize_points, [hp1]),
     _ch("safe_inverse_with_mask", K.geometry.homography.safe_inverse_with_mask, [H_gt]),

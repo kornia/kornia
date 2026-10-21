@@ -38,12 +38,19 @@ from typing import Any
 
 import torch
 import torch._dynamo
-from harness import SEED, _kornia_frames, close, err_str, make_wrapper, prepare_resume, to_np
+from harness import (
+    SEED,
+    _kornia_frames,
+    close,
+    configure_survey_process,
+    err_str,
+    make_wrapper,
+    prepare_resume,
+    shape_and_finite,
+    to_np,
+)
 from torch import nn
 
-torch.set_num_threads(4)
-torch._dynamo.config.cache_size_limit = 64
-torch._dynamo.config.suppress_errors = False
 TIMEOUT = 420
 
 
@@ -94,17 +101,6 @@ def _compare(ref: list[torch.Tensor], out: list[torch.Tensor], c: dict[str, Any]
         if not ok:
             bad.append(f"out{i}: {why}")
     return "; ".join(bad)[:400] if bad else None
-
-
-def _finite(out: list[torch.Tensor], ref: list[torch.Tensor]) -> str | None:
-    if len(out) != len(ref):
-        return f"{len(out)} outputs vs {len(ref)}"
-    for i, (a, b) in enumerate(zip(ref, out)):
-        if tuple(a.shape) != tuple(b.shape):
-            return f"out{i}: shape {tuple(b.shape)} vs {tuple(a.shape)}"
-        if b.is_floating_point() and not torch.isfinite(b).all():
-            return f"out{i}: non-finite values"
-    return None
 
 
 def run_case(c: dict[str, Any]) -> dict[str, Any]:
@@ -168,7 +164,7 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
         with torch.no_grad():
             out = list(compiled(*copy.deepcopy(inputs)))
         if not c["check"]:
-            why = _finite(out, ref)
+            why = shape_and_finite(ref, out)
             rec["compile"] = "ok-unverified" if why is None else "mismatch"
         else:
             why = _compare(ref, out, c)
@@ -187,6 +183,9 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
+    configure_survey_process()
+    torch._dynamo.config.cache_size_limit = 64
+    torch._dynamo.config.suppress_errors = False
     mod = importlib.import_module(sys.argv[1])
     out_json = sys.argv[2]
     only = sys.argv[3:] or None
