@@ -60,8 +60,7 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     Args:
         input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
-          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export. Float16
-          inputs are evaluated in float32 for the softmax and cast back to the input dtype.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
 
     Returns:
        a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
@@ -83,10 +82,12 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     if temperature is None:
         temperature = 1.0
     _check_positive_temperature(temperature)
-    compute_dtype = torch.float32 if input.dtype == torch.float16 else input.dtype
     if isinstance(temperature, torch.Tensor):
-        temperature = temperature.to(device=input.device, dtype=compute_dtype)
-    x = input.reshape(batch_size, channels, height * width).to(compute_dtype)
+        temperature = temperature.to(device=input.device, dtype=input.dtype)
+    x = input.reshape(batch_size, channels, height * width)
+    # softmax is shift-invariant: subtracting each map's maximum first keeps every scaled logit at or below 0, so
+    # dividing by a small temperature cannot overflow in any dtype.
+    x = x - x.amax(dim=-1, keepdim=True).detach()
 
     x_soft = F.softmax(x / temperature, dim=-1).to(input.dtype)
 
