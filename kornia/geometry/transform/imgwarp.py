@@ -37,6 +37,7 @@ from kornia.geometry.conversions import (
     axis_angle_to_rotation_matrix,
     convert_affinematrix_to_homography,
     convert_affinematrix_to_homography3d,
+    convert_points_from_homogeneous,
     normal_transform_pixel,
     normalize_homography,
     normalize_homography3d,
@@ -655,12 +656,19 @@ def _warp_pixel_grid(src_homo_dst: torch.Tensor, height: int, width: int) -> tor
 
     The grid is built and warped in :func:`_pixel_grid_work_dtype`, whatever the default dtype, and outside a caller's
     autocast region: autocast would run the homography's matrix product in half precision, which rounds the pixel
-    coordinates of a 640 px wide grid to whole pixels in bfloat16. TorchScript, which has no autocast, skips the guard.
+    coordinates of a 640 px wide grid to whole pixels in bfloat16. TorchScript uses elementwise products instead of
+    the autocast-eligible matrix product, since a scripted context does not disable the caller's eager autocast.
     """
     work_dtype = _pixel_grid_work_dtype(src_homo_dst)
     grid = create_meshgrid(height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype)
     if torch.jit.is_scripting():
-        return warp_grid(grid, src_homo_dst.to(work_dtype))
+        # The same projective gauge and homogeneous division as warp_grid, with a three-column
+        # product that autocast cannot narrow. Broadcasting covers both (N, 3, 3) and (N, 1, 3, 3).
+        matrix = src_homo_dst.to(work_dtype)
+        matrix = matrix / _unit_projective_scale(matrix)
+        matrix = matrix.reshape(src_homo_dst.shape[0], 1, 1, 3, 3)
+        warped = grid[..., :1] * matrix[..., 0] + grid[..., 1:] * matrix[..., 1] + matrix[..., 2]
+        return convert_points_from_homogeneous(warped)
     with _autocast_disabled(src_homo_dst.device.type):
         return warp_grid(grid, src_homo_dst.to(work_dtype))
 

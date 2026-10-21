@@ -553,9 +553,36 @@ class TestHomographyWarper(BaseTester):
         self.assert_close(cached_inside, expected, rtol=0, atol=0)
         self.assert_close(expected[..., 1:-1], image[..., 1:-1])
 
+    @pytest.mark.parametrize("autocast_dtype,width", [(torch.bfloat16, 640), (torch.float16, 4096)])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("local_homography", [True, False])
+    def test_pixel_coordinates_torchscript_autocast(
+        self, autocast_dtype, width, align_corners, local_homography, device
+    ):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        # Scripting does not isolate the bmm from a caller's autocast. At these widths its rounded
+        # pixel coordinates can sample padding even under an identity homography.
+        image = torch.arange(width, device=device, dtype=torch.float32).expand(2, 1, 2, width)
+        src_homo_dst = eye_like(3, image)
+        src_homo_dst[1, 0, 2] = -1.0
+        if not local_homography:
+            src_homo_dst = src_homo_dst.unsqueeze(1)
+        scripted = torch.jit.script(kornia.geometry.transform.homography_warp)
+        expected = kornia.geometry.transform.homography_warp(
+            image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
+        )
+
+        with torch.autocast(device.type, dtype=autocast_dtype):
+            actual = scripted(
+                image, src_homo_dst, (2, width), normalized_coordinates=False, align_corners=align_corners
+            )
+
+        assert actual.dtype == image.dtype
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
     def test_pixel_coordinates_torchscript(self, device, dtype):
-        # TorchScript has no autocast and no context managers; the scripted pixel path skips the autocast guard and
-        # matches eager.
+        # The scripted coordinate product agrees with the eager matrix product.
         image = (torch.arange(2 * 5 * 7, device=device) % 11 / 11).to(dtype).view(1, 2, 5, 7)
         src_homo_dst = torch.tensor(
             [[[1.05, 0.02, 0.3], [0.01, 0.95, -0.4], [1e-3, -2e-3, 1.0]]], device=device, dtype=dtype
@@ -565,6 +592,22 @@ class TestHomographyWarper(BaseTester):
         actual = scripted(image, src_homo_dst, (4, 6), normalized_coordinates=False)
         expected = kornia.geometry.transform.homography_warp(image, src_homo_dst, (4, 6), normalized_coordinates=False)
         self.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("scale", [1.0, -0.5, 8.0])
+    def test_pixel_coordinates_torchscript_backward(self, scale, device, dtype):
+        # Preserve projective scale invariance and gradients through the scripted column product.
+        image = torch.linspace(0, 1, 35, device=device, dtype=dtype).view(1, 1, 5, 7).requires_grad_()
+        matrix = torch.tensor([[[1.05, 0.02, 0.3], [0.01, 0.95, 0.4], [1e-3, 2e-3, 1.0]]], device=device, dtype=dtype)
+        matrix = (matrix * scale).requires_grad_()
+        scripted = torch.jit.script(kornia.geometry.transform.homography_warp)
+        expected = kornia.geometry.transform.homography_warp(image, matrix, (3, 4), normalized_coordinates=False)
+        actual = scripted(image, matrix, (3, 4), normalized_coordinates=False)
+        expected_grads = torch.autograd.grad(expected.sum(), (image, matrix))
+        actual_grads = torch.autograd.grad(actual.sum(), (image, matrix))
+
+        self.assert_close(actual, expected)
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
