@@ -1027,7 +1027,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             params = {}
         self.params = params
         self.matcher = LightGlue(self.feature_name, **params)
-        self.eval()
+        if not self.matcher.training:
+            self.eval()
 
     def forward(
         self,

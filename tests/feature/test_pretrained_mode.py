@@ -198,6 +198,12 @@ class TestPretrainedMode(BaseTester):
         assert {module.training for module in model.modules()} == {expected_training}
         for name, value in weights.items():
             self.assert_close(model.state_dict()[name], value)
+        if source == "url":
+            wrapper = LightGlueMatcher("superpoint", params=config)
+            assert wrapper.training is expected_training
+            assert {module.training for module in wrapper.modules()} == {expected_training}
+            for name, value in weights.items():
+                self.assert_close(wrapper.matcher.state_dict()[name], value)
 
     def test_composites_build_pretrained_eval_modules(self):
         # Self-contained pipelines (KeyNetAffNetHardNet and the other presets in _WEIGHTED) return in evaluation mode
