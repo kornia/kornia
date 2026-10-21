@@ -35,7 +35,7 @@ on:
         default: cpu
       test-path:
         # Run only this test file or directory (`pixi run test-module <test-path>`) instead of the
-        # whole suite (`pixi run test`, the default when empty). The ONNX conformance jobs use it.
+        # whole suite (`pixi run test`, the default when empty). The conformance jobs use it.
         required: false
         type: string
         default: ""

@@ -24,6 +24,10 @@ Per case records:
   compile: ok | ok-breaks:N | ok-unverified | mismatch | fail | eager-fail | skipped
            (torch.compile default inductor backend, fullgraph=False; N = dynamo graph breaks)
 plus the target's importable qualified name when it has one.
+
+``run_case(c, export=False, fullgraph=True)`` is the compile step alone with ``torch.compile(..., fullgraph=True)``,
+where a graph break fails the case: the check ``tests/test_inductor_conformance.py`` runs on the promised cases.
+Importing this module leaves the process alone (``main`` installs the per-case timeout and the survey's settings).
 """
 
 from __future__ import annotations
@@ -43,11 +47,11 @@ from harness import (
     _kornia_frames,
     close,
     configure_survey_process,
+    err_full,
     err_str,
     make_wrapper,
     prepare_resume,
     shape_and_finite,
-    to_np,
 )
 from torch import nn
 
@@ -70,12 +74,12 @@ def _alarm(signum, frame):
 
 
 _HAS_ALARM = hasattr(signal, "SIGALRM")  # POSIX only; on Windows the probes simply run without a timeout
-if _HAS_ALARM:
-    signal.signal(signal.SIGALRM, _alarm)
 
 
 def _set_alarm(seconds: int) -> None:
-    if _HAS_ALARM:
+    # only under main's handler: another process (a pytest session) keeps its own SIGALRM, and without a handler
+    # the signal would end the process
+    if _HAS_ALARM and signal.getsignal(signal.SIGALRM) is _alarm:
         signal.alarm(seconds)
 
 
@@ -97,13 +101,95 @@ def _compare(ref: list[torch.Tensor], out: list[torch.Tensor], c: dict[str, Any]
         return f"{len(out)} outputs vs {len(ref)}"
     bad = []
     for i, (a, b) in enumerate(zip(ref, out)):
-        ok, why = close(to_np(a), to_np(b), c["atol"], c["rtol"])
+        ok, why = close(a, b, c["atol"], c["rtol"])
         if not ok:
             bad.append(f"out{i}: {why}")
     return "; ".join(bad)[:400] if bad else None
 
 
-def run_case(c: dict[str, Any]) -> dict[str, Any]:
+def _reference(c: dict[str, Any]) -> tuple[nn.Module, list[torch.Tensor], list[torch.Tensor]]:
+    """The case's wrapper, a copy of its inputs, and its eager outputs.
+
+    The eager call runs on a copy of the wrapper, and the export and compile steps take their own copies, so none
+    reads the state another left on a module (an augmentation's params, a crop's cached points, an export's fake
+    tensors): a compiled graph that skips computing such state cannot pass by reading what eager left there, and the
+    case, which later tests reuse, stays as it was built.
+    """
+    target = c["target"]
+    if isinstance(target, nn.Module):
+        target.eval()
+    wrap = make_wrapper(target, c["kwargs"], len(c["inputs"]), c["method"])
+    inputs = [x.detach().clone() for x in c["inputs"]]
+    torch.manual_seed(SEED)
+    with torch.no_grad():
+        ref = list(copy.deepcopy(wrap)(*copy.deepcopy(inputs)))
+    return wrap, inputs, ref
+
+
+def export_step(wrap: nn.Module, inputs: list[torch.Tensor]) -> dict[str, Any]:
+    """``torch.export.export`` of the wrapper: the ``export`` fields of a record."""
+    rec: dict[str, Any] = {}
+    _set_alarm(TIMEOUT)
+    try:
+        torch.manual_seed(SEED)
+        with torch.no_grad():
+            torch.export.export(copy.deepcopy(wrap), tuple(copy.deepcopy(inputs)))
+        rec["export"] = "ok"
+    except Exception as e:  # not BaseException: KeyboardInterrupt and a test's outcome (pytest-timeout) end the run
+        rec.update(export="fail", export_error=err_str(e), export_where=_kornia_frames(e))
+    finally:
+        _set_alarm(0)
+    return rec
+
+
+def compile_step(
+    c: dict[str, Any], wrap: nn.Module, inputs: list[torch.Tensor], ref: list[torch.Tensor], fullgraph: bool = False
+) -> dict[str, Any]:
+    """``torch.compile`` (default inductor backend) of the wrapper, compared with ``ref``: the ``compile`` fields.
+
+    With ``fullgraph=False`` (the survey) ``torch._dynamo.explain`` counts the graph breaks first; with
+    ``fullgraph=True`` a graph break fails the compile, so a passing case has none. Dynamo is reset before and after.
+    """
+    rec: dict[str, Any] = {}
+    t1 = time.time()
+    _set_alarm(TIMEOUT)
+    try:
+        torch._dynamo.reset()
+        breaks = 0
+        if not fullgraph:
+            torch.manual_seed(SEED)
+            with torch.no_grad():
+                ex = torch._dynamo.explain(copy.deepcopy(wrap))(*copy.deepcopy(inputs))
+            breaks = int(ex.graph_break_count)
+            torch._dynamo.reset()
+        rec["graph_breaks"] = breaks
+        if breaks:
+            rec["break_reasons"] = sorted({str(r.reason)[:160] for r in ex.break_reasons})[:5]
+        compiled = torch.compile(copy.deepcopy(wrap), fullgraph=fullgraph)
+        torch.manual_seed(SEED)
+        with torch.no_grad():
+            out = list(compiled(*copy.deepcopy(inputs)))
+        if not c["check"]:
+            why = shape_and_finite(ref, out)
+            rec["compile"] = "ok-unverified" if why is None else "mismatch"
+        else:
+            why = _compare(ref, out, c)
+            rec["compile"] = ("ok" if breaks == 0 else f"ok-breaks:{breaks}") if why is None else "mismatch"
+        if why:
+            rec["compile_error"] = why
+    except Exception as e:  # the survey's own Timeout is one; a pytest outcome or KeyboardInterrupt is not
+        rec.update(
+            compile="fail", compile_error=err_str(e), compile_error_full=err_full(e), compile_where=_kornia_frames(e)
+        )
+    finally:
+        _set_alarm(0)
+        torch._dynamo.reset()
+    rec["compile_s"] = round(time.time() - t1, 1)
+    return rec
+
+
+def run_case(c: dict[str, Any], export: bool = True, fullgraph: bool = False) -> dict[str, Any]:
+    """Probe one case: eager reference, ``torch.export`` (unless ``export=False``), then ``torch.compile``."""
     rec: dict[str, Any] = {
         "name": c["name"],
         "group": c["group"],
@@ -116,74 +202,24 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
         return rec
     t0 = time.time()
     try:
-        target = c["target"]
-        if isinstance(target, nn.Module):
-            target.eval()
-        wrap = make_wrapper(target, c["kwargs"], len(c["inputs"]), c["method"])
-        inputs = [x.detach().clone() for x in c["inputs"]]
-        torch.manual_seed(SEED)
-        with torch.no_grad():
-            ref = list(wrap(*copy.deepcopy(inputs)))
+        wrap, inputs, ref = _reference(c)
     except Exception as e:
         if "PythonDispatcherTLS" in str(e):
             raise Poisoned(rec["name"]) from e
         st = "no-tensor-output" if "NO_TENSOR_OUTPUT" in str(e) else "eager-fail"
         rec.update(export=st, compile=st, error=err_str(e))
         return rec
-
-    # ---- torch.export
-    _set_alarm(TIMEOUT)
-    try:
-        torch.manual_seed(SEED)
-        with torch.no_grad():
-            torch.export.export(wrap, tuple(copy.deepcopy(inputs)))
-        rec["export"] = "ok"
-    except BaseException as e:
-        if isinstance(e, KeyboardInterrupt):
-            raise
-        rec.update(export="fail", export_error=err_str(e), export_where=_kornia_frames(e))
-    finally:
-        _set_alarm(0)
-    rec["export_s"] = round(time.time() - t0, 1)
-
-    # ---- torch.compile (dynamo capture stats, then inductor run)
-    t1 = time.time()
-    _set_alarm(TIMEOUT)
-    try:
-        torch._dynamo.reset()
-        torch.manual_seed(SEED)
-        with torch.no_grad():
-            ex = torch._dynamo.explain(wrap)(*copy.deepcopy(inputs))
-        breaks = int(ex.graph_break_count)
-        rec["graph_breaks"] = breaks
-        if breaks:
-            rec["break_reasons"] = sorted({str(r.reason)[:160] for r in ex.break_reasons})[:5]
-        torch._dynamo.reset()
-        compiled = torch.compile(wrap)
-        torch.manual_seed(SEED)
-        with torch.no_grad():
-            out = list(compiled(*copy.deepcopy(inputs)))
-        if not c["check"]:
-            why = shape_and_finite(ref, out)
-            rec["compile"] = "ok-unverified" if why is None else "mismatch"
-        else:
-            why = _compare(ref, out, c)
-            rec["compile"] = ("ok" if breaks == 0 else f"ok-breaks:{breaks}") if why is None else "mismatch"
-        if why:
-            rec["compile_error"] = why
-    except BaseException as e:
-        if isinstance(e, KeyboardInterrupt):
-            raise
-        rec.update(compile="fail", compile_error=err_str(e), compile_where=_kornia_frames(e))
-    finally:
-        _set_alarm(0)
-        torch._dynamo.reset()
-    rec["compile_s"] = round(time.time() - t1, 1)
+    if export:
+        rec.update(export_step(wrap, inputs))
+        rec["export_s"] = round(time.time() - t0, 1)
+    rec.update(compile_step(c, wrap, inputs, ref, fullgraph=fullgraph))
     return rec
 
 
 def main() -> None:
     configure_survey_process()
+    if _HAS_ALARM:
+        signal.signal(signal.SIGALRM, _alarm)
     torch._dynamo.config.cache_size_limit = 64
     torch._dynamo.config.suppress_errors = False
     mod = importlib.import_module(sys.argv[1])
