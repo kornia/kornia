@@ -24,7 +24,7 @@ No CI job covers CUDA or MPS half precision; CPU results do not establish suppor
      - ✅
      - ✅
      - 0 / 0
-     - Lab/Luv and surface-normal conversions compute half inputs in float32 and return the input dtype
+     - Lab/Luv conversions and ``rgb255_to_normals`` compute half inputs in float32 and return the input dtype
    * - ``kornia.filters``
      - ✅
      - ✅

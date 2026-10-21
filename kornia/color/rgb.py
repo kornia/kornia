@@ -319,7 +319,6 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 
     Convention:
         Maps normal components from [-1, 1] to RGB255 channels [0, 255], clamping the result.
-        Half inputs are computed in float32 and rounded to the input dtype once at return.
 
     Args:
         image: surface normals to be converted to RGB with quantization of shape :math:`(*,3,H,W)`.
@@ -334,11 +333,7 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_IS_COLOR(image)
 
-    dtype = image.dtype
-    if dtype in (torch.float16, torch.bfloat16):
-        image = image.float()
-    output = (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
-    return output.to(dtype) if dtype in (torch.float16, torch.bfloat16) else output
+    return (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
 
 
 def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:

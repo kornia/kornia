@@ -92,7 +92,7 @@ No CI job covers CUDA or MPS half precision; CPU results do not establish suppor
 
 | Module | float16 | bfloat16 | Known failures (fp16 / bf16) | Notes |
 |--------|:-------:|:--------:|:----------------------------:|-------|
-| `kornia.color` | ✅ | ✅ | 0 / 0 | Lab/Luv and surface-normal conversions compute half inputs in float32 and return the input dtype |
+| `kornia.color` | ✅ | ✅ | 0 / 0 | Lab/Luv conversions and `rgb255_to_normals` compute half inputs in float32 and return the input dtype |
 | `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and CPU FFT convolution compute half inputs in float32 and return the input dtype |
 | `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32 computation |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |

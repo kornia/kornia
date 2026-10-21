@@ -46,15 +46,27 @@ class TestHalfPrecisionAccuracy(BaseTester):
         assert actual.dtype == dtype
         self.assert_close(actual, reference, rtol=torch.finfo(dtype).eps, atol=2e-4)
 
-    @pytest.mark.parametrize("op", [kornia.color.normals_to_rgb255, kornia.color.rgb255_to_normals])
-    def test_normals(self, device, dtype, op):
+    def test_normals_to_rgb255(self, device, dtype):
+        # Half inputs are mapped in their own dtype, which rounds twice: within one unit in the last place of the
+        # correctly rounded result for every representable component in [-1, 1]. The check runs in float64, so it
+        # does not round itself.
+        values = torch.arange(-(2**15), 2**15, dtype=torch.int32).to(torch.int16).view(dtype)
+        values = values[torch.isfinite(values) & (values.abs() <= 1)]
+        data = values[: values.numel() // 3 * 3].reshape(3, 1, -1).to(device)
+        reference = kornia.color.normals_to_rgb255(data.to(device="cpu", dtype=torch.float64)).to(dtype)
+        actual = kornia.color.normals_to_rgb255(data)
+        assert actual.dtype == dtype
+        self.assert_close(actual.double(), reference.to(device).double(), rtol=torch.finfo(dtype).eps, atol=0)
+
+    def test_rgb255_to_normals(self, device, dtype):
         data = torch.tensor([[-0.75, 0, 0.75], [0.5, 0, -0.5], [0.25, 0, -0.25]], device=device, dtype=dtype).reshape(
             3, 1, 3
         )
-        if op is kornia.color.rgb255_to_normals:
-            data = ((data.float() + 1) * 127.5).to(dtype)
-        reference = op(data.to(device="cpu", dtype=torch.float64)).to(device=device, dtype=dtype)
-        actual = op(data)
+        data = ((data.float() + 1) * 127.5).to(dtype)
+        reference = kornia.color.rgb255_to_normals(data.to(device="cpu", dtype=torch.float64)).to(
+            device=device, dtype=dtype
+        )
+        actual = kornia.color.rgb255_to_normals(data)
         assert torch.isfinite(actual).all()
         self.assert_close(actual, reference, rtol=torch.finfo(dtype).eps / 2, atol=1e-5)
 
