@@ -257,11 +257,21 @@ class TestTverskyLoss(BaseTester):
         with pytest.raises(ValueError, match="eps must be non-negative"):
             kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=-1e-6)
 
-        with pytest.raises(ValueError, match="alpha must be non-negative"):
-            kornia.losses.tversky_loss(pred, target, alpha=float("nan"), beta=0.5)
+        for invalid_val in (float("nan"), float("inf")):
+            with pytest.raises(ValueError, match="alpha must be non-negative"):
+                kornia.losses.tversky_loss(pred, target, alpha=invalid_val, beta=0.5)
+            with pytest.raises(ValueError, match="alpha must be non-negative"):
+                kornia.losses.TverskyLoss(alpha=invalid_val, beta=0.5)
 
-        with pytest.raises(ValueError, match="alpha must be non-negative"):
-            kornia.losses.TverskyLoss(alpha=float("nan"), beta=0.5)
+            with pytest.raises(ValueError, match="beta must be non-negative"):
+                kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=invalid_val)
+            with pytest.raises(ValueError, match="beta must be non-negative"):
+                kornia.losses.TverskyLoss(alpha=0.5, beta=invalid_val)
+
+            with pytest.raises(ValueError, match="eps must be non-negative"):
+                kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=0.5, eps=invalid_val)
+            with pytest.raises(ValueError, match="eps must be non-negative"):
+                kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=invalid_val)
 
         # Constructor boundary tests: 0.0 is accepted for alpha, beta, and eps
         assert kornia.losses.TverskyLoss(alpha=0.0, beta=0.5).alpha == 0.0
