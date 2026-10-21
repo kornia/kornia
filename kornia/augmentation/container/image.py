@@ -24,7 +24,7 @@ from torch import nn
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase, _BasicAugmentationBase
 from kornia.augmentation.utils import override_parameters
-from kornia.augmentation.utils.random import _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
@@ -241,8 +241,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 torch.randint(
                     *self.random_apply,
                     (1,),
-                    generator=self._generator,
                     device=self._generator.device if self._generator is not None else None,
+                    **_generator_kwargs(self._generator),
                 ).item()
             )
         else:
@@ -271,7 +271,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 multinomial_weights,
                 num_samples,
                 replacement=num_samples > total_weight.item() or num_samples > num_nonzero + mix_place,
-                generator=self._generator,
+                **_generator_kwargs(self._generator),
             )
 
         mix_added = False
@@ -282,7 +282,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             and len(mix_indices) != 0
             and (
                 torch.rand(
-                    1, generator=self._generator, device=self._generator.device if self._generator is not None else None
+                    1,
+                    device=self._generator.device if self._generator is not None else None,
+                    **_generator_kwargs(self._generator),
                 )
                 < ((len(mix_indices) + len(indices)) / len(self))
             ).item()
@@ -291,7 +293,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             # ``multinomial_weights`` and must not be inserted in their place.
             mix_mask = torch.zeros_like(multinomial_weights, dtype=torch.float32)
             mix_mask[mix_indices] = 1.0
-            mix_idx = torch.multinomial(mix_mask, 1, generator=self._generator)
+            mix_idx = torch.multinomial(mix_mask, 1, **_generator_kwargs(self._generator))
             if len(indices) == 0:
                 indices = mix_idx
             else:
@@ -299,8 +301,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             indices = indices[
                 torch.randperm(
                     len(indices),
-                    generator=self._generator,
                     device=self._generator.device if self._generator is not None else None,
+                    **_generator_kwargs(self._generator),
                 )
             ]
             mix_added = True

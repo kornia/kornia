@@ -23,7 +23,7 @@ import torch
 
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.utils import _validate_input_dtype
-from kornia.augmentation.utils.random import _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.constants import DataKey
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.utils import _to_device_nonblocking
@@ -343,8 +343,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
                         labels[
                             torch.randperm(
                                 len(labels),
-                                generator=self._generator,
                                 device=self._generator.device if self._generator is not None else None,
+                                **_generator_kwargs(self._generator),
                             )[0]
                         ]
                     )

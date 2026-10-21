@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
-from kornia.augmentation.utils.random import _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 
 __all__ = ["GaussianNoiseGenerator"]
 
@@ -85,7 +85,8 @@ class GaussianNoiseGenerator(RandomGeneratorBase):
         # on every forward. Byte-identical: the underlying ``randn`` draw is the same.
         gaussian_noise = (
             self.mean
-            + torch.randn((sample_B, C, H, W), device=device, dtype=dtype, generator=self._generator) * self.std
+            + torch.randn((sample_B, C, H, W), device=device, dtype=dtype, **_generator_kwargs(self._generator))
+            * self.std
         )
 
         return {"gaussian_noise": gaussian_noise}

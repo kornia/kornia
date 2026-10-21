@@ -28,7 +28,7 @@ from kornia.augmentation.utils import (
     _joint_range_check,
     _range_bound,
 )
-from kornia.augmentation.utils.random import _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 
 __all__ = ["ColorJitterGenerator"]
 
@@ -119,7 +119,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
             "order": torch.randperm(
                 4,
                 dtype=torch.long,
-                generator=self._generator,
                 device=self._generator.device if self._generator is not None else None,
+                **_generator_kwargs(self._generator),
             ),
         }

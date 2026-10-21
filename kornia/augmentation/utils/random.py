@@ -72,6 +72,17 @@ class _GeneratorMixin(torch.nn.Module):
                 module._generator = old
 
 
+def _generator_kwargs(generator: torch.Generator | None) -> dict[str, torch.Generator]:
+    """Pass a stream to a torch sampler only when one is bound.
+
+    ``torch.rand(..., generator=None)`` and its siblings select the ``.generator`` ATen overload, which
+    ``torch.export`` cannot trace with a symbolic size: the fake implementation calls the op on a meta tensor
+    and rejects the symbolic dimension. Leaving the argument out selects the default overload instead, so the
+    generator-free path keeps the operators the exporters already handled.
+    """
+    return {} if generator is None else {"generator": generator}
+
+
 def _with_generator(function: Callable[P, R]) -> Callable[P, R]:
     """Accept a call-local stream, restoring each child's persistent stream afterwards."""
     positional_count = function.__code__.co_argcount - 1

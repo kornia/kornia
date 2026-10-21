@@ -30,7 +30,7 @@ from kornia.augmentation.utils import (
     override_parameters,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.augmentation.utils.random import _GeneratorMixin, _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _GeneratorMixin, _with_generator
 from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -230,7 +230,9 @@ class _BasicAugmentationBase(_GeneratorMixin, nn.Module):
         elif p_batch == 0:
             batch_prob = torch.zeros(1, device=self.device, dtype=self.dtype)
         else:
-            batch_prob = (torch.rand(1, device=self.device, generator=self._generator) < p_batch).to(self.dtype)
+            batch_prob = (torch.rand(1, device=self.device, **_generator_kwargs(self._generator)) < p_batch).to(
+                self.dtype
+            )
 
         # Per-sample gate. `p` and `same_on_batch` are Python values, so these branches are
         # resolved at trace time (no graph break).
@@ -241,10 +243,14 @@ class _BasicAugmentationBase(_GeneratorMixin, nn.Module):
             elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
         elif same_on_batch:
             elem_prob = (
-                (torch.rand(1, device=self.device, generator=self._generator) < p).to(self.dtype).expand(batch_shape[0])
+                (torch.rand(1, device=self.device, **_generator_kwargs(self._generator)) < p)
+                .to(self.dtype)
+                .expand(batch_shape[0])
             )
         else:
-            elem_prob = (torch.rand(batch_shape[0], device=self.device, generator=self._generator) < p).to(self.dtype)
+            elem_prob = (torch.rand(batch_shape[0], device=self.device, **_generator_kwargs(self._generator)) < p).to(
+                self.dtype
+            )
 
         # Branchless combine (replaces the data-dependent `if batch_prob.sum() == 1`).
         # batch_prob is (1,) in {0, 1}: a selected batch yields elem_prob, a deselected one

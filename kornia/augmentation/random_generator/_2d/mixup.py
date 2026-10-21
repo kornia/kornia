@@ -22,7 +22,7 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
-from kornia.augmentation.utils.random import _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["MixupGenerator"]
@@ -84,7 +84,7 @@ class MixupGenerator(RandomGeneratorBase):
             batch_size,
             device=self.device,
             dtype=_dtype,
-            generator=self._generator,
+            **_generator_kwargs(self._generator),
         ).long()
         mixup_lambdas: torch.Tensor = _adapted_rsampling(
             (batch_size,), self.lambda_sampler, same_on_batch, generator=self._generator

@@ -23,7 +23,7 @@ from torch.distributions import Uniform
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
-from kornia.augmentation.utils.random import _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -98,7 +98,7 @@ class MosaicGenerator(RandomGeneratorBase):
             torch.randperm(
                 batch_size * (perm_times - 1),
                 device=self.device,
-                generator=self._generator,
+                **_generator_kwargs(self._generator),
             ).to(_device)
             % batch_size
         )
