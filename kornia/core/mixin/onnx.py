@@ -570,9 +570,9 @@ class ONNXExportMixin:
     def _onnx_output_kind_kept(self, returns_list: Optional[bool]) -> Iterator[None]:
         """Keep ``returns_list``, the output kind a wrapper's ``to_onnx`` read before its export, for the block.
 
-        :meth:`_onnx_returns_list` gives it back to ``_onnx_fixed_batch_hint`` after the export, so the model runs once
-        to read its output kind, not twice. ``None`` keeps nothing. What was kept before comes back after the block,
-        also when the export fails.
+        A positive list reading is enough to require a fixed batch. A tensor reading must be checked again on the
+        actual tracing input, since the output kind can depend on the batch size. ``None`` keeps nothing. What was
+        kept before comes back after the block, also when the export fails.
         """
         missing = object()
         previous = self.__dict__.get(_ONNX_LIST_OUTPUT, missing)
@@ -586,12 +586,13 @@ class ONNXExportMixin:
                 self.__dict__[_ONNX_LIST_OUTPUT] = previous
 
     def _onnx_returns_list(self, inputs: Any) -> bool:
-        """Return whether this object returns a list: the kind kept for the current export, else one run on ``inputs``.
+        """Require a fixed batch if an earlier probe returned a list, or if this run on ``inputs`` returns one.
 
+        A tensor result at batch one does not establish the output kind at the export's tracing batch.
         A direct call of :meth:`ONNXExportMixin.to_onnx` on a wrapper keeps nothing, so its check runs the model.
         """
         kept = self.__dict__.get(_ONNX_LIST_OUTPUT)
-        return _returns_list(self, inputs) if kept is None else kept
+        return kept is True or _returns_list(self, inputs)
 
     def _create_dummy_input(
         self, input_shape: list[int], pseudo_shape: Optional[list[int]] = None

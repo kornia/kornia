@@ -321,6 +321,77 @@ class TestSuperResolutionONNXBatch(BaseTester):
 
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize("export_kwargs", _EACH_EXPORTER)
+    def test_per_image_network_exports_one_image_6197(self, export_kwargs):
+        _importorskip_exporter(export_kwargs)
+        ort = pytest.importorskip("onnxruntime")
+        model = SuperResolution(_PerImageOutputs(), nn.Identity(), nn.Identity())
+        model.input_image_size = model.output_image_size = 16
+        op = model.to_onnx(save=False, **export_kwargs)
+        assert op.graph.input[0].type.tensor_type.shape.dim[0].dim_value == 1
+        images = torch.rand(3, 3, 16, 16)
+        outputs = _run_onnx(op, images[:1])
+        assert len(outputs) == 1
+        self.assert_close(torch.from_numpy(outputs[0]), images[:1])
+        with pytest.raises(ort.capi.onnxruntime_pybind11_state.InvalidArgument):
+            _run_onnx(op, images)
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("override", _DYNAMIC_BATCH)
+    def test_per_image_network_rejects_dynamic_export_6197(self, override, tmp_path):
+        _importorskip_exporter(override)
+        model = SuperResolution(_PerImageOutputs(), nn.Identity(), nn.Identity())
+        model.input_image_size = model.output_image_size = 16
+        path = tmp_path / "sr.onnx"
+        with pytest.raises(ValueError, match="returns one output per image"):
+            model.to_onnx(onnx_name=str(path), **override)
+        assert not path.exists()
+
+    @pytest.mark.timeout(120)
+    def test_batch_dependent_output_rejects_dynamic_export_6197(self, tmp_path):
+        pytest.importorskip("onnx")
+
+        class BatchDependentOutputs(nn.Module):
+            def forward(self, images):
+                return images if images.shape[0] == 1 else list(images.split(1))
+
+        model = _small_super_resolution(BatchDependentOutputs())
+        path = tmp_path / "sr.onnx"
+        with pytest.raises(ValueError, match="returns one output per image"):
+            model.to_onnx(onnx_name=str(path), dynamo=False)
+        assert not path.exists()
+
+    @pytest.mark.parametrize("component", ["model", "pre_processor", "post_processor", "wrapper"])
+    @pytest.mark.parametrize("override", ["subclass", "instance"])
+    def test_forward_overrides_disable_tensor_shortcut_6197(self, component, override):
+        class ListIdentity(nn.Identity):
+            def forward(self, images):
+                return list(images.split(1))
+
+        class ListSuperResolution(SuperResolution):
+            def forward(self, images):
+                return list(images.split(1))
+
+        model = SuperResolution(nn.Identity(), nn.Identity(), nn.Identity())
+        if component == "wrapper":
+            if override == "subclass":
+                model = ListSuperResolution(nn.Identity(), nn.Identity(), nn.Identity())
+            else:
+                model.forward = ListIdentity().forward
+        elif override == "subclass":
+            setattr(model, component, ListIdentity())
+        else:
+            getattr(model, component).forward = ListIdentity().forward
+        assert not model._returns_one_tensor_without_a_probe()
+
+    @pytest.mark.parametrize("component", ["model", "pre_processor", "post_processor", "wrapper"])
+    def test_forward_hooks_disable_tensor_shortcut_6197(self, component):
+        model = SuperResolution(nn.Identity(), nn.Identity(), nn.Identity())
+        target = model if component == "wrapper" else getattr(model, component)
+        target.register_forward_hook(lambda module, inputs, output: list(output.split(1)))
+        assert not model._returns_one_tensor_without_a_probe()
+
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize("export_kwargs", _EACH_EXPORTER)
     def test_per_image_post_processor_exports_one_image_6161(self, export_kwargs):
         # The exporters turn a list into one graph output per traced image. Exported for a dynamic batch, the
         # TorchScript graph returned the traced batch's two images at any batch size, and the dynamo exporter failed;
@@ -456,9 +527,9 @@ class TestSuperResolutionONNXBatch(BaseTester):
             ),
         ],
     )
-    def test_reads_the_output_kind_once_6161(self, post_processor, override, monkeypatch):
-        # ``to_onnx`` runs the model once to read its output kind, and the check after the export reuses that reading
-        # rather than running it again on the dummy batch. The reading is not kept after the export.
+    def test_rechecks_tensor_output_at_the_tracing_batch_6161(self, post_processor, override, monkeypatch):
+        # A list result already requires a fixed batch. A tensor result is checked again on the tracing batch.
+        # Neither reading is kept after the export.
         _importorskip_exporter(override)
         calls = _count_probes(monkeypatch)
         model = _small_super_resolution(post_processor())
@@ -469,7 +540,7 @@ class TestSuperResolutionONNXBatch(BaseTester):
         else:
             model.to_onnx(save=False, **override)
 
-        assert calls == ["SuperResolution"]
+        assert calls == ["SuperResolution"] * (2 if post_processor is _Doubled else 1)
         assert "_onnx_list_output" not in model.__dict__
 
     @pytest.mark.timeout(120)

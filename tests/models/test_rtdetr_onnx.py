@@ -420,8 +420,8 @@ class _NormalisedDetections(_ScoredDetections):
         ),
     ],
 )
-def test_detector_reads_the_output_kind_once_6161(post_processor, override, monkeypatch):
-    """``to_onnx`` runs the detector once to read its output kind; the check after the export reuses that reading."""
+def test_detector_rechecks_tensor_output_at_the_tracing_batch_6161(post_processor, override, monkeypatch):
+    """Only a positive list reading can be reused without checking the actual tracing batch."""
     pytest.importorskip("onnx")
     mixin = importlib.import_module("kornia.core.mixin.onnx")
     probe = mixin._returns_list
@@ -441,7 +441,7 @@ def test_detector_reads_the_output_kind_once_6161(post_processor, override, monk
     else:
         detector.to_onnx(image_size=32, save=False, **override)
 
-    assert calls == ["ObjectDetector"]
+    assert calls == ["ObjectDetector"] * (2 if post_processor is _BatchedDetections else 1)
     assert "_onnx_list_output" not in detector.__dict__
 
 
@@ -450,7 +450,7 @@ def test_detector_reads_the_output_kind_once_6161(post_processor, override, monk
 def test_detector_output_probe_runs_in_eval_mode_on_the_models_dtype(per_image):
     """The forward pass that reads the output kind keeps statistics and each training flag, in the model's dtype.
 
-    A batched detector exports a dynamic batch, whose check after the export (#6111) reuses that reading.
+    A batched detector exports a dynamic batch, whose check after the export (#6111) probes the tracing input too.
     """
     pytest.importorskip("onnx")
     pytest.importorskip("onnxscript")
@@ -533,3 +533,19 @@ def test_resnet_d_onnx_odd_sizes(tmp_path, dynamo):
         expected = model(images)
     for actual, fmap in zip(outputs, expected):
         assert_close(torch.from_numpy(actual), fmap, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.timeout(120)
+def test_detector_batch_dependent_output_rejects_dynamic_export_6197(tmp_path):
+    pytest.importorskip("onnx")
+
+    class BatchDependentDetections(_BatchedDetections):
+        def forward(self, logits, boxes, sizes):
+            outputs = super().forward(logits, boxes, sizes)
+            return outputs if outputs.shape[0] == 1 else list(outputs.unbind(0))
+
+    detector = ObjectDetector(_ScoredDetections(), ResizePreProcessor(32, 32), BatchDependentDetections())
+    path = tmp_path / "detector.onnx"
+    with pytest.raises(ValueError, match="returns one output per image"):
+        detector.to_onnx(image_size=32, onnx_name=str(path), dynamo=False)
+    assert not path.exists()

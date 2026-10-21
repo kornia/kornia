@@ -601,9 +601,9 @@ class TestEdgeDetector(BaseTester):
             ),
         ],
     )
-    def test_onnx_reads_the_output_kind_once_6161(self, post_processor, override, monkeypatch):
-        # ``to_onnx`` runs the detector once to read its output kind, and the check after the export reuses that
-        # reading rather than running it again on the dummy batch. The reading is not kept after the export.
+    def test_onnx_rechecks_tensor_output_at_the_tracing_batch_6161(self, post_processor, override, monkeypatch):
+        # A list result already requires a fixed batch. A tensor result is checked again on the tracing batch.
+        # Neither reading is kept after the export.
         _importorskip_exporter(override)
         calls = _count_probes(monkeypatch)
         det = _small_edge_detector(post_processor())
@@ -614,7 +614,7 @@ class TestEdgeDetector(BaseTester):
         else:
             det.to_onnx(image_size=24, save=False, **override)
 
-        assert calls == ["EdgeDetector"]
+        assert calls == ["EdgeDetector"] * (2 if post_processor is _DoubledPostProcessor else 1)
         assert "_onnx_list_output" not in det.__dict__
 
     @pytest.mark.device_agnostic

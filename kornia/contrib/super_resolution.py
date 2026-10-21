@@ -242,14 +242,15 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
             With the pre- and post-processor, an output that is a list with one image per input image is exported
             for a batch of one image: the exporters turn a list into one graph output per traced image, so a dynamic
             batch would return the traced batch's images at any batch size. The list comes from a post-processor that
-            returns one, or from a pre-processor that returns a list of images, which :meth:`forward` runs through the
-            network one at a time. The builders' pre-processors, ``nn.Identity`` and ``ResizePreProcessor``, hand the
-            network one tensor, and their post-processors, ``nn.Identity`` and ``OutputRangePostProcessor``, keep it
-            one (each without a ``forward`` of a subclass's own), so that combination keeps a dynamic batch without a
-            probe. Which kind of output any other combination returns is read from one call of :meth:`forward` for
-            one image at the export size, in eval mode, without gradients and outside the export, which the check
-            after the export reuses. A ``dynamic_axes`` or ``dynamic_shapes`` argument that makes the batch of such an
-            export dynamic raises a ``ValueError`` after the export, before anything is saved.
+            returns one, from the network itself, or from a pre-processor that returns a list of images, which
+            :meth:`forward` runs through the network one at a time. Known tensor-output networks (the builders'
+            RRDB and SmallSR networks, ``nn.Identity`` and ``nn.Conv2d``) with ``nn.Identity`` or ``ResizePreProcessor``
+            before them and ``nn.Identity`` or ``OutputRangePostProcessor`` after them keep a dynamic batch without a
+            probe, provided the wrapper and each component retain their known ``forward`` implementations and have
+            no forward hooks. Other combinations are probed on one image at the export size in eval mode, without
+            gradients and outside the export. A list result requires a fixed batch; a tensor result is checked again
+            on the actual tracing batch before accepting a dynamic graph. A dynamic graph with per-image outputs
+            raises a ``ValueError`` after the export, before anything is saved.
 
         """
         if onnx_name is None:
@@ -282,25 +283,30 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
             )
 
     def _returns_one_tensor_without_a_probe(self) -> bool:
-        """Whether the pre- and post-processor are the builders', which keep a tensor batch one tensor.
+        """Whether the wrapper, network and processors have known tensor-batch forward implementations.
 
-        ``nn.Identity`` and ``ResizePreProcessor`` hand the network one tensor for a tensor batch, so :meth:`forward`
-        does not run it image by image, and ``nn.Identity`` and ``OutputRangePostProcessor`` keep its output a tensor.
-        :meth:`to_onnx` then runs no forward pass to read the output kind: for an RRDB model that pass costs more than
-        the export.
+        Unknown networks and overridden forwards need a probe even with the builders' processors. The builders'
+        RRDB and SmallSR networks avoid an expensive extra forward when all implementations are unchanged.
         """
-        pre = type(self.pre_processor).forward
-        post = type(self.post_processor).forward
-        return (pre is nn.Identity.forward or pre is ResizePreProcessor.forward) and (
-            post is nn.Identity.forward or post is OutputRangePostProcessor.forward
+        forward = getattr(self.forward, "__func__", None)
+        network = getattr(self.model.forward, "__func__", None)
+        pre = getattr(self.pre_processor.forward, "__func__", None)
+        post = getattr(self.post_processor.forward, "__func__", None)
+        return (
+            not any(module._forward_hooks or module._forward_pre_hooks for module in self.modules())
+            and forward is SuperResolution.forward
+            and network in (nn.Identity.forward, nn.Conv2d.forward, RRDBNet.forward, SmallSRNetWrapper.forward)
+            and pre in (nn.Identity.forward, ResizePreProcessor.forward)
+            and post in (nn.Identity.forward, OutputRangePostProcessor.forward)
         )
 
     def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
         if module is not self or self._returns_one_tensor_without_a_probe() or not self._onnx_returns_list(dummy_input):
             return None
         return (
-            "Use a pre-processor that hands the network the batch as one tensor and a post-processor that keeps it "
-            "one, such as nn.Identity or ResizePreProcessor and OutputRangePostProcessor, to export a dynamic batch."
+            "Use a network that returns one tensor for the batch, with a pre-processor that hands it one tensor and "
+            "a post-processor that keeps it one, such as nn.Identity or ResizePreProcessor and "
+            "OutputRangePostProcessor, to export a dynamic batch."
         )
 
 

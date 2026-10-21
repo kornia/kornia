@@ -263,8 +263,9 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
             dynamic batch would return the traced batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
             its own ``forward`` is not such a post-processor, since the export replaces it. Which kind of output any
             other post-processor returns is read from one forward pass of the detector for one image at the export
-            size, in eval mode, without gradients and outside the export, which the check after the export reuses. A
-            ``forward`` that returns a list there is therefore exported for one image even if it returns a tensor
+            size, in eval mode, without gradients and outside the export. A tensor result is checked again at the
+            actual tracing batch before accepting a dynamic graph. A ``forward`` that returns a list at batch one is
+            therefore exported for one image even if it returns a tensor
             under export, as a ``ResizePostProcessor`` subclass whose own ``forward`` calls
             ``ResizePostProcessor.forward`` does.
             Return the maps of the batch as one tensor to export a batch of any size. A ``dynamic_axes`` or
