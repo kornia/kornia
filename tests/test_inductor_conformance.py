@@ -146,3 +146,25 @@ def test_survey_probe_leaves_process_state_alone() -> None:
     assert record["compile"] == "ok", describe(record, "compile")
     changes = state_changes(before, process_state())
     assert not changes, f"compiling a case changed {changes}"
+
+
+@pytest.mark.compile_conformance
+@quiet
+def test_survey_probe_rejects_conjugated_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A real compiled promised case must fail conformance if its imaginary component is corrupted."""
+    case = promised_case(COMPILE, "geometry.liegroup.So2.exp.z")
+    original_compile = torch.compile
+
+    def conjugating_compile(*args, **kwargs):
+        compiled = original_compile(*args, **kwargs)
+
+        def conjugated(*inputs):
+            return tuple(output.conj().resolve_conj() for output in compiled(*inputs))
+
+        return conjugated
+
+    monkeypatch.setattr(torch, "compile", conjugating_compile)
+    record = run_compile_case(case)
+    assert record["graph_breaks"] == 0, record
+    assert record["compile"] == "mismatch", describe(record, "compile")
+    assert "max abs diff" in record["compile_error"], record

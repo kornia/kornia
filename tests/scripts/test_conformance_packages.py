@@ -62,7 +62,7 @@ def _selected(paths, promise="onnx"):
         ["conftest.py"],
     ],
 )
-@pytest.mark.parametrize("promise", ["onnx", "compile"])
+@pytest.mark.parametrize("promise", ["onnx", "compile"], ids=["onnx", "inductor"])
 def test_select_all(changed, promise):
     assert select(changed, promise=promise) == "all"
 
@@ -77,6 +77,7 @@ def test_select_all(changed, promise):
         ("testing/known_failure_xfails/compile_conformance_torch2.14.txt", "compile"),
         ("testing/known_failure_xfails/compile_conformance_torch2.9.txt", "compile"),
     ],
+    ids=["onnx-test", "onnx-current", "onnx-previous", "inductor-test", "inductor-current", "inductor-previous"],
 )
 def test_select_all_for_the_promise_of_a_changed_test_or_manifest(changed, promise):
     # A promise's own test or manifest selects all of its cases, and nothing of the other promise.
@@ -97,12 +98,12 @@ def test_select_all_for_the_promise_of_a_changed_test_or_manifest(changed, promi
         [],
     ],
 )
-@pytest.mark.parametrize("promise", ["onnx", "compile"])
+@pytest.mark.parametrize("promise", ["onnx", "compile"], ids=["onnx", "inductor"])
 def test_select_nothing(changed, promise):
     assert select(changed, promise=promise) == ""
 
 
-@pytest.mark.parametrize("promise", ["onnx", "compile"])
+@pytest.mark.parametrize("promise", ["onnx", "compile"], ids=["onnx", "inductor"])
 def test_select_follows_importers_in_the_repository(promise):
     # The PSNR losses call kornia.metrics.psnr: a fix there must run the losses' known failures too (#6165).
     assert _selected(["kornia/metrics/psnr.py"], promise) >= {"metrics", "losses"}

@@ -209,6 +209,8 @@ def close(a: Any, b: Any, atol: float, rtol: float) -> tuple[bool, str]:
     """Compare a reference ``a`` with a candidate ``b``, tensors or arrays: the same shape and dtype, then the values.
 
     The dtypes are compared before any conversion (``to_np`` widens bfloat16), the values within ``atol`` / ``rtol``.
+    Complex values are compared componentwise, including their NaN patterns: a NaN in one component must not hide
+    a mismatch in the other.
     """
     dtype_a, dtype_b = _dtype_name(a), _dtype_name(b)
     a = to_np(a) if isinstance(a, torch.Tensor) else np.asarray(a)
@@ -220,6 +222,12 @@ def close(a: Any, b: Any, atol: float, rtol: float) -> tuple[bool, str]:
     if bool in (a.dtype, b.dtype):
         ok = bool(np.array_equal(a, b))
         return ok, "" if ok else f"{int((a != b).sum())} bool mismatches"
+    if np.iscomplexobj(a):
+        for component in ("real", "imag"):
+            ok, why = close(getattr(a, component), getattr(b, component), atol, rtol)
+            if not ok:
+                return False, f"{component}: {why}"
+        return True, ""
     a64, b64 = a.astype(np.float64), b.astype(np.float64)
     nan_a, nan_b = np.isnan(a64), np.isnan(b64)
     if nan_a.any() or nan_b.any():
