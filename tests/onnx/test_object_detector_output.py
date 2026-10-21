@@ -20,9 +20,10 @@ import pytest
 import torch
 from torch import nn
 
-from kornia.contrib.object_detection import ObjectDetector, _returns_detections_per_image
+from kornia.contrib.object_detection import ObjectDetector
 from kornia.core import ImageModule
 from kornia.core._compat import torch_version_lt
+from kornia.core.mixin.onnx import _returns_per_image_outputs
 from kornia.models.processors import ResizePreProcessor
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
@@ -70,7 +71,7 @@ class TestObjectDetectorOutputSequence(BaseTester):
     )
     def test_probe(self, batch, output_kind, expected):
         detector = _detector(output_kind)
-        assert _returns_detections_per_image(detector, torch.rand(batch, 3, 16, 16)) is expected
+        assert _returns_per_image_outputs(detector, torch.rand(batch, 3, 16, 16)) is expected
 
     @pytest.mark.parametrize("dynamo", [False, True])
     @pytest.mark.parametrize("output_kind", ["list", "tuple"])
@@ -154,7 +155,7 @@ class TestObjectDetectorOutputSequence(BaseTester):
         detector = ObjectDetector(RandomScored(), ResizePreProcessor(16, 16), _Post("tuple")).train()
         images = torch.rand(1, 3, 16, 16)
         state = torch.get_rng_state().clone()
-        assert _returns_detections_per_image(detector, images)
+        assert _returns_per_image_outputs(detector, images)
         assert torch.equal(state, torch.get_rng_state())
         assert all(module.training for module in detector.modules())
 
@@ -168,7 +169,7 @@ class TestObjectDetectorOutputSequence(BaseTester):
         pre(torch.rand(1, 3, 8, 8))
         cache = pre.__dict__["_output_image"]
 
-        assert _returns_detections_per_image(detector, torch.rand(1, 3, 16, 16))
+        assert _returns_per_image_outputs(detector, torch.rand(1, 3, 16, 16))
         assert pre.__dict__["_output_image"] is cache
 
     def test_tuple_probe_accepts_contiguous_only_preprocessor(self):
@@ -180,4 +181,4 @@ class TestObjectDetectorOutputSequence(BaseTester):
         detector = ObjectDetector(_Scored(), FlattenPre(), _Post("tuple"))
         images = torch.rand(1, 3, 16, 16)
         assert len(detector(images)) == 1
-        assert _returns_detections_per_image(detector, images)
+        assert _returns_per_image_outputs(detector, images)
