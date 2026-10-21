@@ -13,12 +13,3 @@ AssertionError	tests/onnx/test_conformance.py::test_export_matches_eager[Augment
 AssertionError	tests/onnx/test_conformance.py::test_export_matches_eager[AugmentationSequential[mask]]
 AssertionError	tests/onnx/test_conformance.py::test_export_matches_eager[ManyToManyAugmentationDispather]
 AssertionError	tests/onnx/test_conformance.py::test_export_matches_eager[ManyToOneAugmentationDispather]
-# #6164: the legacy exporter traces the CPU loop of Boxes.to_mask / Boxes3D.to_mask and writes a
-# constant all-zero mask with no graph input.
-AssertionError	tests/onnx/test_conformance.py::test_legacy_export_is_not_wrong[boxes.Boxes.to_mask]
-AssertionError	tests/onnx/test_conformance.py::test_legacy_export_is_not_wrong[boxes.Boxes3D.to_mask]
-# #6165: the legacy exporter gives torch.log10 of a 0-d tensor the shape (1,), so the PSNR graphs
-# return (1,) instead of a scalar.
-AssertionError	tests/onnx/test_conformance.py::test_legacy_export_is_not_wrong[losses.PSNRLoss]
-AssertionError	tests/onnx/test_conformance.py::test_legacy_export_is_not_wrong[losses.psnr_loss]
-AssertionError	tests/onnx/test_conformance.py::test_legacy_export_is_not_wrong[metrics.psnr]
