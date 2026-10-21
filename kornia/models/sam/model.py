@@ -33,6 +33,7 @@ from typing import Any, Optional
 
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -279,16 +280,25 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         which cannot be directly exported via :func:`torch.onnx.export`.
 
         This override exports only the **image encoder** subgraph
-        (``self.image_encoder``), which is a pure ``(B, 3, H, W) -> (B, C, H', W')``
-        tensor-to-tensor module and fully ONNX-compatible.  The encoder embeddings
-        can then be fed into a separate prompt-encoder / mask-decoder pipeline.
+        (``self.image_encoder``), a ``(B, 3, H, W) -> (B, C, H', W')`` tensor-to-tensor
+        module whose graph input is named ``input`` and output ``image_embeddings``. The prompt
+        encoder and the mask decoder are not exported. The encoder embeddings
+        can be fed into a separate prompt-encoder / mask-decoder pipeline.
+
+        On torch 2.14, whose default exporter is the dynamo exporter, a ViT image encoder (SAM ViT-B, ViT-L, ViT-H)
+        needs ``onnxscript`` 0.7.2 or later: with 0.7.1 the export raises :class:`torch.onnx.OnnxExporterError`
+        (https://github.com/kornia/kornia/issues/5947). A TinyViT encoder (MobileSAM) exports with 0.7.1.
 
         Args:
             onnx_name: Path for the saved ``.onnx`` file.  Defaults to
                 ``"Kornia-Sam-ImageEncoder.onnx"``.
             pseudo_shape: Concrete input shape used to trace the encoder, e.g.
                 ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``. The batch is
-                exported as dynamic, so a batch below 2 is traced at 2.
+                exported as dynamic, so a batch below 2 is traced at 2. A TinyViT image encoder
+                (MobileSAM) on the legacy TorchScript exporter (the default before torch 2.9, or
+                ``dynamo=False``) is the exception: that graph runs at the traced batch only, so it is
+                traced at this shape's batch and declares it static. With a caller's ``dynamic_axes``, such an
+                encoder is still traced at this shape's batch and runs at that batch only.
             save: Whether to write the model to disk.  Default ``True``.
             **kwargs: Additional keyword arguments forwarded to
                 :func:`torch.onnx.export`.
@@ -302,16 +312,17 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         if pseudo_shape is None:
             pseudo_shape = [1, 3, 1024, 1024]
         kwargs.setdefault("output_names", ["image_embeddings"])
-        kwargs.setdefault(
-            "dynamic_axes",
-            {
-                "input": {0: "batch"},
-                "image_embeddings": {0: "batch"},
-            },
-        )
+        input_shape = [-1, 3, -1, -1]
+        dynamic_axes: dict[str, dict[int, str]] = {"input": {0: "batch"}, "image_embeddings": {0: "batch"}}
+        if isinstance(self.image_encoder, TinyViT) and not kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            # The TorchScript exporter keeps the traced batch in TinyViT's attention reshapes, so the graph runs at
+            # that batch only: a fixed batch is traced at the pseudo shape's size rather than at 2, and declared.
+            input_shape = [pseudo_shape[0], 3, -1, -1]
+            dynamic_axes = {}
+        kwargs.setdefault("dynamic_axes", dynamic_axes)
         return super().to_onnx(
             onnx_name=onnx_name,
-            input_shape=[-1, 3, -1, -1],
+            input_shape=input_shape,
             pseudo_shape=pseudo_shape,
             model=self.image_encoder,
             save=save,

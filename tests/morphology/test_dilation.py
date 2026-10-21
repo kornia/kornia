@@ -162,6 +162,46 @@ class TestDilate(BaseTester):
         assert actual.dtype == expected.dtype
         assert torch.equal(actual, expected)
 
+    @pytest.mark.parametrize("se_dtype", [torch.bool, torch.uint8, torch.int8, torch.int64])
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution", "auto"])
+    def test_non_float_structuring_element_matches_float(self, device, dtype, se_dtype, engine):
+        # Every engine adds a bool or integer structuring element in the compute dtype, so it gives the float
+        # structuring element's result, as in :func:`erosion`.
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+        values = [[0, 1, 0], [1, 2, 1], [0, 1, 0]]
+        if se_dtype in (torch.int8, torch.int64):
+            values[0][0] = -128
+        structuring_element = torch.tensor(values, device=device).to(se_dtype)
+
+        expected = dilation(tensor, kernel, structuring_element=structuring_element.to(dtype), engine=engine)
+        actual = dilation(tensor, kernel, structuring_element=structuring_element, engine=engine)
+
+        assert actual.dtype == tensor.dtype
+        assert torch.equal(actual, expected)
+
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    @pytest.mark.parametrize("non_flat", [False, True])
+    def test_non_contiguous_kernel(self, device, dtype, engine, non_flat):
+        # A transposed kernel or structuring element is a strided view, which every engine must read by its
+        # values. ``convolution`` flattened the kernel with ``view`` and raised on one.
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        kernel = torch.tensor([[1.0, 0.0, 0.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype).T
+        structuring_element = None
+        if non_flat:
+            structuring_element = torch.tensor([[0.0, 1.0, 0.0], [2.0, 0.0, 3.0]], device=device, dtype=dtype).T
+        assert not kernel.is_contiguous()
+
+        expected = dilation(
+            tensor,
+            kernel.contiguous(),
+            structuring_element=structuring_element.contiguous() if structuring_element is not None else None,
+            engine=engine,
+        )
+        actual = dilation(tensor, kernel, structuring_element=structuring_element, engine=engine)
+
+        assert torch.equal(actual, expected)
+
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
         # Every documented border_type must pass the validation (#4736).

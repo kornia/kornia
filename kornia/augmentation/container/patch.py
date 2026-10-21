@@ -119,6 +119,12 @@ class PatchSequential(ImageSequential):
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_patch_sequential.html>`__.
 
+    .. warning::
+        Under ``torch.compile`` with the default inductor backend, torch earlier than 2.15 returns wrong values when a
+        child reads the patches at other positions, a flip for example, after an earlier child has written them
+        (`pytorch/pytorch#198270 <https://github.com/pytorch/pytorch/issues/198270>`__). Eager execution,
+        the ``aot_eager`` backend and torch 2.15 or later are not affected.
+
     Examples:
         >>> import kornia.augmentation as K
         >>> input = torch.randn(2, 3, 224, 224)

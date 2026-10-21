@@ -143,6 +143,8 @@ Follow the methodology contract and new-benchmark checklist in [benchmarks/READM
 
 ONNX support is a real subsystem, not a generic export afterthought. Inspect `kornia/onnx/`, its mixins in `kornia/core/`, and existing ONNX tests before changing export behavior. Development uses the optional `onnx`, `onnxruntime`, and `onnxscript` packages. Test both graph construction/export and runtime behavior when the change affects both.
 
+The stable-core operators the survey records as exporting are promised (#5819): `tests/onnx/test_conformance.py` exports each with the dynamo exporter and the legacy one and compares onnxruntime with eager. It is opt-in, `pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=<package>|all`; run it for the packages a change touches and the packages that import them (`git diff --name-only origin/main... | python .github/scripts/onnx_conformance_packages.py` prints that selection), and see [TESTING.md](TESTING.md) for its known-failure manifests.
+
 ## Helping users diagnose problems
 
 Start with a minimal reproduction and the narrowest relevant test. Do not claim a failure is pre-existing until you have compared against the relevant base revision safely.

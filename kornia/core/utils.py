@@ -19,6 +19,7 @@
 import importlib.util
 import platform
 import sys
+import warnings
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, fields, is_dataclass
@@ -729,6 +730,19 @@ _torch_is_exporting = getattr(torch.compiler, "is_exporting", None)
 def _in_torch_or_kornia(frame: FrameType) -> bool:
     """Whether ``frame`` runs code of torch or kornia, to attribute a warning to the first frame outside them."""
     return str(frame.f_globals.get("__name__", "")).split(".", 1)[0] in ("torch", "kornia")
+
+
+def _warn_at_caller(message: str) -> None:
+    """Warn with a ``UserWarning`` attributed to the first frame outside kornia and torch.
+
+    For a warning raised where no fixed ``stacklevel`` names the user's line: inside a ``forward`` that
+    ``nn.Module.__call__`` reaches through torch frames, or in code that other kornia classes call too.
+    """
+    level = 2  # warnings.warn's stacklevel for the frame that called this function
+    frame: Optional[FrameType] = sys._getframe(1)
+    while frame is not None and _in_torch_or_kornia(frame):
+        frame, level = frame.f_back, level + 1
+    warnings.warn(message, UserWarning, stacklevel=level if frame is not None else 2)
 
 
 @torch.jit.unused

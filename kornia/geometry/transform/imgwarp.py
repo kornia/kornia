@@ -25,6 +25,7 @@ import torch.nn.functional as F
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
 from kornia.core.utils import (
+    _autocast_disabled,
     _inverse_3x3_closed_form,
     _normalize_to_float32_or_float64,
     _torch_grid_sample,
@@ -787,6 +788,7 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - points: ``(x, y)``, pixel centers, origin at top-left; shape :math:`(B, 4, 2)`
         - returns the source→destination **pixel** homography :math:`(B, 3, 3)` that
           :func:`warp_perspective` takes
+        - a caller's autocast region does not change the result, outside TorchScript
 
     Args:
         points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
@@ -814,7 +816,12 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     # ``torch.linalg.solve``. Both yield the perspective transform mapping ``points_src`` onto
     # ``points_dst``; the closed form additionally needs no LAPACK/cusolver backend (so it runs on
     # the Jetson wheel, where ``linalg.solve`` dlopen-fails) and traces cleanly for ONNX.
-    return _get_perspective_transform_closed_form(points_src, points_dst)
+    # A caller's autocast region would run its products in half precision: about 1 px off at the corners of a 640 x
+    # 480 image. TorchScript has no context managers; a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        return _get_perspective_transform_closed_form(points_src, points_dst)
+    with _autocast_disabled(points_src.device.type):
+        return _get_perspective_transform_closed_form(points_src, points_dst)
 
 
 # TODO: move to kornia.geometry.affine
