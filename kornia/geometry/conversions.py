@@ -1356,7 +1356,14 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     safe_scalar = torch.where(at_origin, torch.ones_like(quaternion_scalar), quaternion_scalar)
     theta = torch.atan2(norm_v, safe_scalar)
 
-    quaternion_log: torch.Tensor = (quaternion_vector * theta / norm_q).to(orig_dtype)
+    # At v = 0 the expression is v * 0 / eps, whose derivative with respect to v is 0, although theta / ||v|| tends to
+    # 1 / w: for w > 0 the log map there is v / w, with Jacobian I / w in v and 0 in w. Use v / w at those points, a
+    # zero value as before, and keep the expression unchanged everywhere else.
+    at_axis = (norm_v == 0) & (quaternion_scalar > 0)
+    safe_w = torch.where(at_axis, quaternion_scalar, torch.ones_like(quaternion_scalar))
+    quaternion_log: torch.Tensor = torch.where(
+        at_axis, quaternion_vector / safe_w, quaternion_vector * theta / norm_q
+    ).to(orig_dtype)
 
     return quaternion_log
 
