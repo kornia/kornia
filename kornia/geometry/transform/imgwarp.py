@@ -39,6 +39,7 @@ from kornia.geometry.conversions import (
     convert_affinematrix_to_homography3d,
     convert_points_from_homogeneous,
     normal_transform_pixel,
+    normal_transform_pixel3d,
     normalize_homography,
     normalize_homography3d,
     normalize_pixel_coordinates,
@@ -723,6 +724,50 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     # the grid is copied to input device and casted to the same type
     flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxDxHxWx3
     return flow.view(batch_size, depth, height, width, 3)  # NxDxHxWx3
+
+
+def _warp_pixel_grid3d(src_homo_dst: torch.Tensor, depth: int, height: int, width: int) -> torch.Tensor:
+    """Warp the ``(depth, height, width)`` grid of destination voxels by ``src_homo_dst`` into source voxels.
+
+    The 3-D counterpart of :func:`_warp_pixel_grid`: the grid is built and warped in :func:`_pixel_grid_work_dtype`,
+    whatever the default dtype, with the projective gauge and homogeneous division of :func:`warp_grid3d`, as a sum of
+    elementwise column products that a caller's autocast region leaves alone, scripted or not. The result is
+    :math:`(N, D, H, W, 3)` in the ``(x, y, z)`` order the homography and ``grid_sample`` read.
+    """
+    work_dtype = _pixel_grid_work_dtype(src_homo_dst)
+    grid = create_meshgrid3d(
+        depth, height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype
+    )
+    matrix = src_homo_dst.to(work_dtype)
+    matrix = matrix / _unit_projective_scale(matrix)
+    # Broadcasting covers both (N, 4, 4) and (N, 1, 4, 4).
+    matrix = matrix.reshape(src_homo_dst.shape[0], 1, 1, 1, 4, 4)
+    # create_meshgrid3d is (d, x, y); the homography acts on (x, y, z).
+    x, y, z = grid[..., 1:2], grid[..., 2:3], grid[..., 0:1]
+    warped = x * matrix[..., 0] + y * matrix[..., 1] + z * matrix[..., 2] + matrix[..., 3]
+    return convert_points_from_homogeneous(warped)
+
+
+def _normalize_warped_pixel_grid3d(
+    grid: torch.Tensor, depth: int, height: int, width: int, align_corners: bool
+) -> torch.Tensor:
+    """Map a ``(N, D, H, W, 3)`` grid of ``(x, y, z)`` source voxels to the ``[-1, 1]`` coordinates of ``grid_sample``.
+
+    ``depth``, ``height`` and ``width`` are the source's. With ``align_corners=True`` the map is
+    :func:`~kornia.geometry.conversions.normal_transform_pixel3d`, the one :func:`warp_perspective3d` conjugates its
+    voxel homography with, applied per axis. With ``False`` it is the half-voxel map ``(2v + 1) / size - 1``.
+    """
+    if align_corners:
+        norm = normal_transform_pixel3d(depth, height, width, device=grid.device, dtype=grid.dtype)[0]
+        scale = torch.stack((norm[0, 0], norm[1, 1], norm[2, 2]))
+        offset = torch.stack((norm[0, 3], norm[1, 3], norm[2, 3]))
+        return grid * scale + offset
+    # normal_transform_pixel3d has no align_corners yet, so the half-voxel map is written out here; #4503 gives the
+    # helper align_corners, and normal_transform_pixel3d(..., align_corners=False) then replaces these lines.
+    x = (2.0 * grid[..., 0:1] + 1.0) / width - 1.0
+    y = (2.0 * grid[..., 1:2] + 1.0) / height - 1.0
+    z = (2.0 * grid[..., 2:3] + 1.0) / depth - 1.0
+    return torch.cat((x, y, z), -1)
 
 
 # TODO: move to kornia.geometry.projective
@@ -2008,10 +2053,10 @@ def homography_warp3d(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by normalized 3D homographies.
+    r"""Warp image patches or tensors by 3D homographies.
 
     Convention:
-        - input: :math:`(N, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
+        - input: :math:`(N, C, D, H, W)`; ``dsize`` is the output size ``(d, h, w)``
         - ``src_homo_dst`` is the destination→source homography :math:`(N, 4, 4)`, in normalized
           :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), and acts on
           ``(x, y, z, 1)`` column vectors: ``x`` indexes ``W``, ``y`` indexes ``H``, ``z`` indexes
@@ -2020,7 +2065,17 @@ def homography_warp3d(
           ``(d, x, y)`` (see :func:`~kornia.geometry.grid.create_meshgrid3d`), so the sampling grid
           is reordered here before the homography is applied; nothing else in the module changes
           its order
-        - align_corners: ``False`` by default
+        - with ``normalized_coordinates=False`` ``src_homo_dst`` is in **voxel** coordinates, voxel
+          centres at integers, in the same ``(x, y, z)`` order: it maps the voxel ``(x, y, z)`` of the
+          ``dsize`` output to the source voxel it samples, so an identity returns the ``dsize`` window
+          of the input that starts at voxel ``(0, 0, 0)``. The warped voxel grid is normalized with the
+          source size under ``align_corners`` before ``grid_sample``
+        - with ``normalized_coordinates=False`` the voxel grid is warped and normalized in at least
+          float32, also under a half default dtype and in a caller's autocast region, and then cast to
+          the homography's dtype
+        - align_corners: ``False`` by default. With ``normalized_coordinates=False`` and a source axis
+          longer than one voxel, a voxel homography samples the same positions under both settings,
+          which then differ only in ``padding_mode="reflection"``
         - padding_mode: ``'zeros'`` by default
         - negative output dimensions raise ``ValueError``
 
@@ -2028,11 +2083,12 @@ def homography_warp3d(
         patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
         src_homo_dst: The homography or torch.stack of homographies from destination to source of shape
           :math:`(N, 4, 4)`.
-        dsize: The depth, height and width of the volume to warp.
+        dsize: output size ``(d, h, w)``.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
-        normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
+        normalized_coordinates: whether ``src_homo_dst`` is in normalized :math:`[-1, 1]` coordinates
+          (``True``) or in voxel coordinates (``False``).
 
     Return:
         Patch sampled at locations from source to destination.
@@ -2055,20 +2111,28 @@ def homography_warp3d(
     if _runs_in_float32(patch_src, src_homo_dst):
         patch_src, src_homo_dst = patch_src.float(), src_homo_dst.float()
     depth, height, width = dsize
-    grid = create_meshgrid3d(
-        depth,
-        height,
-        width,
-        normalized_coordinates=normalized_coordinates,
-        device=patch_src.device,
-        dtype=torch.promote_types(patch_src.dtype, src_homo_dst.dtype),
-    )
-    # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
-    # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
-    # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
-    # Stacked rather than indexed with a list, which is copied to the device with a blocking transfer.
-    grid = torch.stack((grid[..., 1], grid[..., 2], grid[..., 0]), -1)
-    warped_grid = warp_grid3d(grid, src_homo_dst)
+    if normalized_coordinates:
+        grid = create_meshgrid3d(
+            depth,
+            height,
+            width,
+            normalized_coordinates=True,
+            device=patch_src.device,
+            dtype=torch.promote_types(patch_src.dtype, src_homo_dst.dtype),
+        )
+        # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
+        # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
+        # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
+        # Stacked rather than indexed with a list, which is copied to the device with a blocking transfer.
+        grid = torch.stack((grid[..., 1], grid[..., 2], grid[..., 0]), -1)
+        warped_grid = warp_grid3d(grid, src_homo_dst)
+    else:
+        # A voxel homography lands on source voxels, which grid_sample reads normalized. The voxel arithmetic runs
+        # in at least float32, unaffected by autocast, then the grid returns to the homography's dtype.
+        warped_grid = _warp_pixel_grid3d(src_homo_dst, depth, height, width)
+        warped_grid = _normalize_warped_pixel_grid3d(
+            warped_grid, patch_src.shape[-3], patch_src.shape[-2], patch_src.shape[-1], align_corners
+        ).to(src_homo_dst.dtype)
 
     return _torch_grid_sample(
         patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
