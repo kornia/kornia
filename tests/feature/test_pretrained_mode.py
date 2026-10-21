@@ -35,15 +35,21 @@ from kornia.feature import (
     SOLD2,
     DeDoDe,
     DeFMO,
+    DoGAffNetHardNet,
+    DoGHardNet,
+    GFTTAffNetHardNet,
     HardNet,
     HardNet8,
+    HesAffNetHardNet,
     HyNet,
     KeyNet,
     KeyNetAffNetHardNet,
     KeyNetDetector,
+    KeyNetHardNet,
     LAFAffNetShapeEstimator,
     LAFDescriptor,
     LightGlue,
+    LightGlueMatcher,
     LoFTR,
     OriNet,
     SOLD2_detector,
@@ -89,6 +95,13 @@ _WEIGHTED = [
     pytest.param(lambda: LoFTR("outdoor"), id="LoFTR"),
     pytest.param(XFeat.from_pretrained, id="XFeat"),
     pytest.param(lambda: ALIKED.from_pretrained("aliked-n16"), id="ALIKED"),
+    pytest.param(lambda: GFTTAffNetHardNet(num_features=8), id="GFTTAffNetHardNet"),
+    pytest.param(lambda: HesAffNetHardNet(num_features=8), id="HesAffNetHardNet"),
+    pytest.param(lambda: DoGHardNet(num_features=8), id="DoGHardNet"),
+    pytest.param(lambda: DoGAffNetHardNet(num_features=8), id="DoGAffNetHardNet"),
+    pytest.param(lambda: KeyNetHardNet(num_features=8), id="KeyNetHardNet"),
+    pytest.param(lambda: KeyNetAffNetHardNet(num_features=8), id="KeyNetAffNetHardNet"),
+    pytest.param(LightGlueMatcher, id="LightGlueMatcher"),
     pytest.param(DISK.from_pretrained, id="DISK", marks=pytest.mark.slow),
     # The pair of the DeDoDe.from_pretrained doctest, which CI prefetches; the default G descriptor is 2.2 GB.
     pytest.param(
@@ -186,17 +199,37 @@ class TestPretrainedMode(BaseTester):
         for name, value in weights.items():
             self.assert_close(model.state_dict()[name], value)
 
-    @pytest.mark.slow
     def test_composites_build_pretrained_eval_modules(self):
-        # The containers (LocalFeature, KeyNetDetector, LAFOrienter, LAFDescriptor) never set their own mode; the
-        # learned networks they hold are built with their weights and come back in evaluation mode.
+        # Self-contained pipelines (KeyNetAffNetHardNet and the other presets in _WEIGHTED) return in evaluation mode
+        # at the root and across all submodules. KeyNetDetector and LAFDescriptor take caller modules, so they put only
+        # their default pretrained KeyNet / HardNet in evaluation mode, report training=True at the root, and preserve
+        # the mode of any module passed in.
         learned = (HardNet, OriNet, LAFAffNetShapeEstimator, KeyNet)
         composite = KeyNetAffNetHardNet(num_features=8)
         networks = [m for m in composite.modules() if isinstance(m, learned)]
         assert {type(m) for m in networks} == set(learned)
-        assert not any(m.training for net in networks for m in net.modules())
+        assert not composite.training
+        assert not any(m.training for m in composite.modules())
+
+        detector = KeyNetDetector(num_features=8)
+        assert detector.training is True
+        assert not detector.model.training
+        assert not any(m.training for m in detector.model.modules())
+        for training in (True, False):
+            ori = nn.Identity().train(training)
+            aff = nn.Identity().train(not training)
+            det = KeyNetDetector(num_features=8, ori_module=ori, aff_module=aff)
+            assert det.training is True
+            assert det.ori.training is training
+            assert det.aff.training is (not training)
 
         descriptor = LAFDescriptor(None)
+        assert descriptor.training is True
         networks = [m for m in descriptor.modules() if isinstance(m, learned)]
         assert [type(m) for m in networks] == [HardNet]
         assert not any(m.training for m in networks[0].modules())
+        for training in (True, False):
+            patch_desc = nn.Identity().train(training)
+            wrapped = LAFDescriptor(patch_desc)
+            assert wrapped.training is True
+            assert wrapped.descriptor.training is training
