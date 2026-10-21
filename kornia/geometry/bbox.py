@@ -702,6 +702,11 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         squares exceed the ``float16`` maximum of 65504, and two 32768-pixel squares exceed ``int32``.
         ``bfloat16`` does not overflow, but its rounding can move an IoU across ``iou_threshold``.
 
+    Note:
+        ``torch.compile`` cannot capture ``nms`` in one graph: the number of loop iterations and the size of the
+        output depend on the box values. ``fullgraph=True`` raises, and a default ``torch.compile`` runs it eagerly,
+        so it is outside the :ref:`torch.compile promise <export-support-promise>`.
+
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other
         :mod:`kornia.geometry.bbox` operations and is documented in

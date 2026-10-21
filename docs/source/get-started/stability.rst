@@ -85,6 +85,11 @@ The promises (stable core)
    :doc:`conventions </get-started/conventions>` (tensor layout, coordinate
    order, angle units, homography conventions) are part of the API surface
    and covered by the same rules.
+6. **Export and compile are checked.** The promised operators export to ONNX
+   and compile with ``torch.compile(..., fullgraph=True)``, matching eager
+   execution, and CI checks them: :ref:`What Kornia promises
+   <export-support-promise>` states which operators, torch releases and
+   devices that covers.
 
 Versioning caveat
 -----------------

@@ -15,24 +15,35 @@
 # limitations under the License.
 #
 
-"""Render docs/source/get-started/export-support.rst from docs/source/_data/export_support.json.
+"""Render docs/source/get-started/export-support.rst: kornia's ONNX and torch.compile promise, then the survey.
 
-The JSON is a committed snapshot of the graph-capture survey in ``docs/export_support/``: every public
-operator, model and augmentation probed with the dynamo ONNX exporter, ``torch.export`` and
-``torch.compile``. Refresh it with ``python docs/export_support/run.py`` (see that package's README)
-and commit the result; this module turns it into the survey page at docs-build time, the same way
+The promise (#5819) comes from ``testing/conformance_promise.py``, the same computation the conformance tests check:
+the promised configurations, the ones left out and why, the enforced torch releases and the known failures of each.
+
+The survey comes from ``docs/source/_data/export_support.json``, a committed snapshot of the graph-capture survey in
+``docs/export_support/``: every public operator, model and augmentation probed with the dynamo ONNX exporter,
+``torch.export`` and ``torch.compile``. Refresh it with ``python docs/export_support/run.py`` (see that package's
+README) and commit the result; this module turns both into the page at docs-build time, the same way
 ``generate_adoption.py`` renders the Adoption page.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import re
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+from types import ModuleType
 
 REPO = Path(__file__).resolve().parents[1]
 DATA = REPO / "docs" / "source" / "_data" / "export_support.json"
 OUT = REPO / "docs" / "source" / "get-started" / "export-support.rst"
+
+# A one-time measurement, not re-checked by CI (#5819): the ONNX configurations promised that day, exported with the
+# dynamo exporter on torch 2.5.1, where to_onnx keeps the legacy exporter by default.
+TORCH_25_DYNAMO_ONNX = {"date": "2026-10-20", "torch": "2.5.1", "passed": 801, "promised": 848}
 
 # Display order of the major packages; anything else follows alphabetically.
 PACKAGE_ORDER = [
@@ -104,7 +115,7 @@ STATUS = {
     "ok-breaks": (
         "compat-ok-breaks",
         "yes, graph breaks",
-        "compiles and matches eager, but dynamo falls back to Python at one or more graph breaks",
+        "compiles and matches eager, but not in one graph: Dynamo falls back to Python at graph breaks",
     ),
     "ok-unverified": (
         "compat-ok-random",
@@ -121,6 +132,46 @@ STATUS = {
 }
 
 SUPPORTED = {"ok", "ok-breaks", "ok-unverified"}
+
+# The marker of a promised configuration in the survey tables.
+PROMISED_ROLE = "kornia-promised"
+
+
+def promise_module() -> ModuleType:
+    """``testing/conformance_promise.py`` of this checkout: the promise the conformance tests check.
+
+    Loaded from its file rather than imported: ``testing`` is not part of the installed package, ``conf.py`` runs this
+    generator before it puts the repository root on ``sys.path``, and an editable install can put another checkout's
+    ``testing`` there first. ``testing.conformance`` itself needs pytest, which the Read the Docs build does not
+    install; this module does not.
+    """
+    name = "_kornia_conformance_promise"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, REPO / "testing" / "conformance_promise.py")
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load {REPO / 'testing' / 'conformance_promise.py'}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module  # dataclasses look their module up there
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def _issue_links(text: str) -> str:
+    """Turn ``#NNNN`` and ``owner/repo#NNNN`` into links to the GitHub issue."""
+
+    def link(match: re.Match[str]) -> str:
+        repo = match["repo"] or "kornia/kornia"
+        return f"`{match[0]} <https://github.com/{repo}/issues/{match['number']}>`__"
+
+    return re.sub(r"(?<![\w/])(?:(?P<repo>[\w.-]+/[\w.-]+))?#(?P<number>\d+)\b", link, text)
+
+
+def _release_key(release: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in release.split("."))
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def _applicable(case: dict) -> bool:
@@ -161,7 +212,7 @@ def _operator_cell(case: dict) -> str:
     return label
 
 
-def _details(case: dict) -> str:
+def _details(case: dict, excluded: dict[str, dict[str, str]]) -> str:
     # columns that share one cause are named together: "ONNX, export, compile: ..."
     by_detail: dict[str, list[str]] = {}
     for column, key in (("ONNX", "onnx"), ("export", "export"), ("compile", "compile")):
@@ -169,12 +220,22 @@ def _details(case: dict) -> str:
         if detail:
             by_detail.setdefault(detail, []).append(column)
     parts = [f"**{', '.join(columns)}:** {_escape(detail)}" for detail, columns in by_detail.items()]
+    parts += [
+        f"**{column}:** not promised: {_issue_links(_escape(reason))}"
+        for column, key in (("ONNX", "onnx"), ("compile", "compile"))
+        if (reason := excluded[key].get(case["name"]))
+    ]
     if case.get("where"):
         parts.append(f"``{case['where']}``")
     return " · ".join(parts)
 
 
-def _table(cases: list[dict]) -> str:
+def _status_cell(case: dict, key: str, promised: dict[str, set[str]]) -> str:
+    cell = _cell(case[key], case.get("graph_breaks", 0) if key == "compile" else 0)
+    return f"{cell} :{PROMISED_ROLE}:`promised`" if case["name"] in promised.get(key, ()) else cell
+
+
+def _table(cases: list[dict], promised: dict[str, set[str]], excluded: dict[str, dict[str, str]]) -> str:
     rows = [
         "   * - Operator",
         "     - ONNX",
@@ -186,10 +247,10 @@ def _table(cases: list[dict]) -> str:
     for c in cases:
         rows += [
             f"   * - {_operator_cell(c)}",
-            f"     - {_cell(c['onnx'])}",
+            f"     - {_status_cell(c, 'onnx', promised)}",
             f"     - {_cell(c['export'])}",
-            f"     - {_cell(c['compile'], c.get('graph_breaks', 0))}",
-            f"     - {_details(c) or ' '}",
+            f"     - {_status_cell(c, 'compile', promised)}",
+            f"     - {_details(c, excluded) or ' '}",
         ]
     return "\n".join(rows)
 
@@ -266,7 +327,140 @@ def _legend(cases: list[dict]) -> str:
     for status, (role, text, meaning) in STATUS.items():
         if status in used:
             rows += [f"   * - :{role}:`{text}`", f"     - {meaning}"]
+    rows += [
+        f"   * - :{PROMISED_ROLE}:`promised`",
+        "     - part of the promise above, checked by Kornia's continuous integration",
+    ]
     return "\n".join(rows)
+
+
+def _promise_tables(data: dict, promise: ModuleType, packages: list[str]) -> str:
+    """Per package, the promised operators and configurations of each promise."""
+    records = {c["name"]: c for c in data["cases"]}
+    promises = promise.PROMISES
+    counts: dict[str, dict[str, tuple[int, int]]] = {}
+    for p in promises:
+        by_package: dict[str, list[dict]] = defaultdict(list)
+        for name in promise.promised_cases(p):
+            by_package[records[name]["package"]].append(records[name])
+        counts[p.field] = {pkg: (len({c["operator"] for c in cs}), len(cs)) for pkg, cs in by_package.items()}
+    rows = ["   * - Package"] + [f"     - {p.name}: operators (configurations)" for p in promises]
+    for pkg in [pkg for pkg in packages if any(pkg in counts[p.field] for p in promises)]:
+        rows.append(f"   * - :ref:`{pkg} <export-support-{_slug(pkg)}>`")
+        for p in promises:
+            ops, configurations = counts[p.field].get(pkg, (0, 0))
+            rows.append(f"     - {ops} ({configurations})" if configurations else "     - —")
+    return "\n".join(rows)
+
+
+def _exclusions(data: dict, promise: ModuleType) -> str:
+    """The configurations each promise leaves out although the survey marks them as passing, with the reason."""
+    records = {c["name"]: c for c in data["cases"]}
+    blocks = []
+    for p in promise.PROMISES:
+        excluded = promise.EXCLUDED[p.field]
+        if not excluded:
+            continue
+        items = [f"- {_operator_cell(records[name])}: {_issue_links(reason)}." for name, reason in excluded.items()]
+        blocks.append(
+            f"**Left out of the {p.name} promise.** The survey marks these configurations as passing, but they are not"
+            " promised:\n\n" + "\n".join(items)
+        )
+    return "\n\n".join(blocks)
+
+
+def _known_failures(data: dict, promise: ModuleType) -> str:
+    """The manifest entries of every enforced torch release: per tracking issue and check, the releases and cases."""
+    records = {c["name"]: c for c in data["cases"]}
+    releases = sorted(promise.ENFORCED_TORCH_RELEASES, key=_release_key)
+    failing: dict[tuple[str, str], dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    for p in promise.PROMISES:
+        for release in releases:
+            path = promise.manifest_path(p, release)
+            if path.exists():
+                for entry in promise.known_failures(p, path):
+                    failing[(entry.case, entry.test)][entry.issue].append(release)
+    if not failing:
+        return (
+            "**Known failures.** None: every promised configuration passes on every enforced torch release, and CI"
+            " fails as soon as one does not."
+        )
+    groups: dict[tuple[str, str, tuple[str, ...]], list[str]] = defaultdict(list)
+    for (case, test), issues in failing.items():
+        for issue, on in issues.items():
+            groups[(issue, test, tuple(on))].append(case)
+    rows = ["   * - Tracked in", "     - Check", "     - Fails on torch", "     - Configurations"]
+    for (issue, test, on), cases in sorted(groups.items(), key=lambda group: group[0]):
+        rows += [
+            f"   * - {_issue_links(issue)}",
+            f"     - {promise.CASE_TEST_CHECKS[test]}",
+            f"     - {', '.join(on)}",
+            f"     - {', '.join(_operator_cell(records[case]) for case in cases)}",
+        ]
+    return f"""\
+**Known failures.** Promised configurations that fail on an enforced torch release. CI expects each of these
+failures and fails once one of them passes, so the list stays current.
+
+.. list-table::
+   :header-rows: 1
+   :widths: auto
+
+{chr(10).join(rows)}"""
+
+
+def _statement(data: dict, packages: list[str]) -> str:
+    """The "What kornia promises" section, from the promise the conformance tests check."""
+    promise = promise_module()
+    records = {c["name"]: c for c in data["cases"]}
+    totals = {}
+    for p in promise.PROMISES:
+        names = promise.promised_cases(p)
+        totals[p.field] = (len(names), len({(records[n]["package"], records[n]["operator"]) for n in names}))
+    releases = sorted(promise.ENFORCED_TORCH_RELEASES, key=_release_key)
+    m = TORCH_25_DYNAMO_ONNX
+    return f"""\
+.. _export-support-promise:
+
+What Kornia promises
+--------------------
+
+Kornia's continuous integration checks the promises of this section. They cover *configurations* of the
+survey below, each one operator with one concrete set of inputs and keyword arguments.
+
+**ONNX export.** The {totals["onnx"][0]} promised configurations ({totals["onnx"][1]} operators) export with
+the ``torch.export``-based exporter, ``torch.onnx.export(..., dynamo=True)``, and onnxruntime matches eager
+execution: the same dtype, and values within the configuration's tolerance, on torch {releases[0]} and later. A
+legacy (TorchScript) export of a promised operator is never silently wrong: it either matches eager or fails
+loudly.
+
+On torch 2.5 to 2.8 the ``to_onnx`` method of Kornia's exportable modules keeps torch's default exporter, which
+there is the legacy one: pass ``dynamo=True`` for the promised exporter. A one-time measurement on torch
+{m["torch"]} ({m["date"]}, not re-checked by CI): {m["passed"]} of the {m["promised"]} configurations promised
+then pass with the dynamo exporter.
+
+**torch.compile.** The {totals["compile"][0]} promised configurations ({totals["compile"][1]} operators) compile
+with ``torch.compile(..., fullgraph=True)`` and the default inductor backend at the survey's static input shapes,
+and match eager execution: the same dtype, and values within the configuration's tolerance.
+
+**Where it is checked.** On CPU in float32, on Linux with Python 3.11 and torch {_and(releases)}, twice a day on
+``main`` and on every pull request for the packages it touches. Not promised: CUDA, MPS, ``float16`` and
+``bfloat16``, dynamic shapes under ``torch.compile``, ``kornia.models``, ``kornia.contrib``, anything built with
+pretrained weights, operators outside the :doc:`stable core <stability>`, and operators not listed here.
+
+The survey tables mark each promised configuration with :{PROMISED_ROLE}:`promised` under its ONNX or
+torch.compile result. By package:
+
+.. list-table::
+   :header-rows: 1
+   :widths: auto
+   :class: kornia-compat-summary
+
+{_promise_tables(data, promise, packages)}
+
+{_exclusions(data, promise)}
+
+{_known_failures(data, promise)}
+"""
 
 
 def render_page(data: dict) -> str:
@@ -276,15 +470,19 @@ def render_page(data: dict) -> str:
         by_package[c["package"]].append(c)
     packages = [p for p in PACKAGE_ORDER if p in by_package] + sorted(p for p in by_package if p not in PACKAGE_ORDER)
     total = _counts(cases)
-    roles = "\n".join(f".. role:: {role}" for role, _, _ in STATUS.values())
+    roles = "\n".join(f".. role:: {role}" for role in [*(role for role, _, _ in STATUS.values()), PROMISED_ROLE])
     n_ok_all = sum(
         1 for c in cases if c["onnx"] in SUPPORTED and c["export"] in SUPPORTED and c["compile"] in SUPPORTED
     )
     ops = _operator_counts(cases)
+    promise = promise_module()
+    promised = {p.field: set(promise.promised_cases(p)) for p in promise.PROMISES}
+    excluded = promise.EXCLUDED
     description = (
-        f"A dated survey of which Kornia operators exported to ONNX, captured with torch.export and ran under "
-        f"torch.compile: {len(cases)} probed configurations across {len(packages)} packages, with the reason for "
-        f"every failure. A measurement, not a support guarantee."
+        f"What Kornia promises for ONNX export and torch.compile, checked in CI for {len(promised['onnx'])} and "
+        f"{len(promised['compile'])} stable-core configurations, and a dated survey of which operators exported to "
+        f"ONNX, captured with torch.export and ran under torch.compile: {len(cases)} probed configurations across "
+        f"{len(packages)} packages, with the reason for every failure."
     )
 
     sections = []
@@ -311,7 +509,7 @@ def render_page(data: dict) -> str:
                 "   :widths: auto",
                 "   :class: kornia-compat-table",
                 "",
-                _table(section_cases),
+                _table(section_cases, promised, excluded),
                 "",
             ]
         sections.append("\n".join(block))
@@ -324,23 +522,27 @@ def render_page(data: dict) -> str:
 
 .. _export-support:
 
-ONNX, torch.compile and torch.export survey
-===========================================
+ONNX, torch.compile and torch.export support
+============================================
 
 .. meta::
    :description: {description}
 
-Every public operator, model and augmentation in kornia was run through the three graph-capture
-paths PyTorch offers, and this page lists the result for each one, package by package, with the
-cause of every failure. Use the search box to find an operator, or the summary table to jump to a
-package.
+This page states what Kornia promises for ONNX export and ``torch.compile``, then lists a survey
+that ran every public operator, model and augmentation in kornia through the three graph-capture
+paths PyTorch offers: the result for each one, package by package, with the cause of every failure.
+Use the search box to find an operator, or the summary table to jump to a package.
+
+{_statement(data, packages)}
+The survey
+----------
 
 .. note::
 
-   This page records one measurement, not a support guarantee. It was taken on {data.get("generated_at", "")}
-   with torch {data.get("torch", "")}, and Kornia's test suite checks only part of what it lists as working, so
-   an entry may no longer hold for the current release. Export or compile your own pipeline and compare it with
-   eager before relying on it.
+   The survey records one measurement, taken on {data.get("generated_at", "")} with torch {data.get("torch", "")}.
+   Kornia's continuous integration checks only the configurations marked *promised*; any other entry may no longer
+   hold for the current release, so export or compile your own pipeline and compare it with eager before relying
+   on it.
 
 .. grid:: 1 3 3 3
    :gutter: 3
@@ -391,7 +593,7 @@ in brackets after the operator. Augmentations are probed twice: with their sampl
 in as graph inputs (a deterministic graph) and with the sampling inside the graph (``[random]``).
 Registry entries that are not tensor graphs at all (file I/O, enums, Python containers, stubs) are
 not listed.
-The survey lives in ``docs/export_support/`` and this page is rendered from its committed result;
+The survey lives in ``docs/export_support/`` and its tables are rendered from its committed result;
 nothing refreshes that result automatically.
 
 Legend
@@ -404,12 +606,13 @@ Legend
 
 {_legend(cases)}
 
-Every entry on this page, a pass as much as a failure, is a fact about a specific torch, exporter and
-kornia version, not a promise: most *no* entries are missing ONNX lowerings upstream (``torch.linalg.svd``, ``solve``,
-``lu_factor``, ``eigh``, ``qr``, ``histc``), data-dependent output sizes (matchers that return a
-variable number of pairs, detectors that keep the top-k responses above a threshold, NMS), or
-Python control flow that reads tensor values. See :doc:`onnx` for how to chain exported graphs and
-:doc:`gpu-acceleration` for ``torch.compile`` in practice.
+Every survey entry, a pass as much as a failure, is a fact about a specific torch, exporter and
+kornia version; what Kornia promises is the section above. Most *no* entries are missing ONNX
+lowerings upstream (``torch.linalg.svd``, ``solve``, ``lu_factor``, ``eigh``, ``qr``, ``histc``),
+data-dependent output sizes (matchers that return a variable number of pairs, detectors that keep
+the top-k responses above a threshold, NMS), or Python control flow that reads tensor values. See
+:doc:`onnx` for how to chain exported graphs and :doc:`gpu-acceleration` for ``torch.compile`` in
+practice.
 
 .. raw:: html
 

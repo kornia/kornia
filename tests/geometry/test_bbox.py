@@ -888,6 +888,17 @@ class TestNMS(BaseTester):
         actual = nms(boxes, scores, iou_threshold=0.3)
         self.assert_close(actual, torch.tensor([1, 0], device=device, dtype=torch.long), atol=0.0, rtol=0.0)
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # A default torch.compile cannot capture the data-dependent loop in one graph and runs nms eagerly: the same
+        # indices, which keep the descending-score order.
+        boxes = torch.tensor(
+            [[10, 10, 20, 20], [15, 5, 15, 25], [100, 100, 150, 150], [100, 100, 150, 150]], device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.9, 0.8, 0.7, 0.95], device=device, dtype=dtype)
+        expected = torch.tensor([3, 0, 1], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+        self.assert_close(torch_optimizer(nms)(boxes, scores, 0.5), expected, atol=0, rtol=0)
+
     def test_empty(self, device):
         boxes = torch.empty((0, 4), device=device)
         scores = torch.empty((0,), device=device)
