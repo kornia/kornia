@@ -22,9 +22,10 @@ from torch import nn
 
 from kornia.contrib.object_detection import ObjectDetector, _returns_detections_per_image
 from kornia.core import ImageModule
+from kornia.core._compat import torch_version_lt
 from kornia.models.processors import ResizePreProcessor
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class _Scored(nn.Module):
@@ -42,6 +43,8 @@ class _Post(nn.Module):
         if self.output_kind == "batched_pair":
             return logits, boxes
         detections = torch.cat((logits, boxes), dim=-1)
+        if self.output_kind == "one_tuple":
+            return (detections,)
         if self.output_kind == "list":
             return [detections[i] for i in range(detections.shape[0])]
         return tuple(detections[i] for i in range(detections.shape[0]))
@@ -61,7 +64,10 @@ def _session(exported):
 
 class TestObjectDetectorOutputSequence(BaseTester):
     @pytest.mark.parametrize("batch", [1, 2])
-    @pytest.mark.parametrize("output_kind, expected", [("list", True), ("tuple", True), ("batched_pair", False)])
+    # A 1-tuple of batched detections has the length of a batch of one: only the other batch size tells it apart.
+    @pytest.mark.parametrize(
+        "output_kind, expected", [("list", True), ("tuple", True), ("batched_pair", False), ("one_tuple", False)]
+    )
     def test_probe(self, batch, output_kind, expected):
         detector = _detector(output_kind)
         assert _returns_detections_per_image(detector, torch.rand(batch, 3, 16, 16)) is expected
@@ -86,17 +92,29 @@ class TestObjectDetectorOutputSequence(BaseTester):
         with pytest.raises(ort.capi.onnxruntime_pybind11_state.InvalidArgument):
             session.run(None, {"input": torch.rand(3, 3, 16, 16).numpy()})
 
+    @pytest.mark.parametrize(
+        "export_kwargs",
+        [
+            pytest.param({"dynamo": False, "dynamic_axes": {"input": {0: "batch"}}}, id="torchscript"),
+            pytest.param(
+                {"dynamo": True, "dynamic_shapes": ({0: "batch"},)},
+                # conftest.py deselects IDs containing "dynamo" unless KORNIA_TEST_OPTIMIZER is set.
+                id="torch_export",
+                marks=[
+                    pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+                    pytest.mark.skipif(torch_version_lt(2, 9, 0), reason="to_onnx uses dynamic_shapes from torch 2.9"),
+                ],
+            ),
+        ],
+    )
     @pytest.mark.parametrize("output_kind", ["list", "tuple"])
-    def test_dynamic_per_image_batch_rejected(self, output_kind, tmp_path):
+    def test_dynamic_per_image_batch_rejected(self, output_kind, export_kwargs, tmp_path):
         pytest.importorskip("onnx")
+        if export_kwargs["dynamo"]:
+            pytest.importorskip("onnxscript")
         output_path = tmp_path / "detector.onnx"
         with pytest.raises(ValueError, match="post-processor that returns one tensor"):
-            _detector(output_kind).to_onnx(
-                onnx_name=str(output_path),
-                image_size=16,
-                dynamo=False,
-                dynamic_axes={"input": {0: "batch"}},
-            )
+            _detector(output_kind).to_onnx(onnx_name=str(output_path), image_size=16, **export_kwargs)
         assert not output_path.exists()
 
     @pytest.mark.parametrize("dynamo", [False, True])
