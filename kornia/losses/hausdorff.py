@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Callable
 
 import torch
@@ -50,8 +51,10 @@ class _HausdorffERLossBase(nn.Module):
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
-        if alpha < 0.0:
-            raise ValueError(f"alpha must be non-negative. Got {alpha}.")
+        if not (alpha >= 0.0 and math.isfinite(alpha)):
+            raise ValueError(f"alpha must be non-negative and finite. Got {alpha}.")
+        if not isinstance(k, int) or isinstance(k, bool):
+            raise TypeError(f"k must be an integer. Got {type(k).__name__}.")
         if k <= 0:
             raise ValueError(f"k must be positive. Got {k}.")
         if reduction not in ("mean", "sum", "none"):

@@ -45,14 +45,17 @@ class TestHausdorffLoss(BaseTester):
 
         loss(logits, labels)
 
-    def test_exception_2d(self):
+    @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
+    def test_input_type_validation(self, loss_cls):
         with pytest.raises(TypeError) as errinf:
-            kornia.losses.HausdorffERLoss()(None, torch.zeros(1, 1, 1, 1, dtype=torch.long))
+            loss_cls()(None, torch.zeros(1, 1, 1, 1, dtype=torch.long))
         assert "pred type is not a torch.Tensor" in str(errinf)
 
         with pytest.raises(TypeError) as errinf:
-            kornia.losses.HausdorffERLoss()(torch.zeros(1, 2, 1, 1), [1, 2, 3])
+            loss_cls()(torch.zeros(1, 2, 1, 1), [1, 2, 3])
         assert "target type is not a torch.Tensor" in str(errinf)
+
+    def test_exception_2d(self):
 
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss()(
@@ -60,12 +63,24 @@ class TestHausdorffLoss(BaseTester):
             )
         assert "pred and target must be in the same device" in str(errinf)
 
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss(k=1.5)
+        assert "k must be an integer" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss(k="10")
+        assert "k must be an integer" in str(errinf)
+
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss(k=0)
         assert "k must be positive" in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss(alpha=-1.0)
+        assert "alpha must be non-negative" in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss(alpha=float("nan"))
         assert "alpha must be non-negative" in str(errinf)
 
         with pytest.raises(NotImplementedError) as errinf:
