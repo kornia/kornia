@@ -380,7 +380,8 @@ def run_case(c: dict[str, Any], dynamo: bool = True) -> dict[str, Any]:
         wrap = make_wrapper(target, c["kwargs"], len(c["inputs"]), c["method"])
         inputs = [x.detach().clone() for x in c["inputs"]]
         torch.manual_seed(SEED)
-        # Eager runs on a copy, so the exported wrapper holds none of the state that call leaves on a module.
+        # Eager and the export each run on their own copy: the export reads none of the state the eager call leaves
+        # on a module, and neither leaves state (a dynamo export's fake tensors) on the case, which later tests reuse.
         with torch.no_grad():
             ref = copy.deepcopy(wrap)(*copy.deepcopy(inputs))
         rec["n_outputs"] = len(ref)
@@ -393,7 +394,7 @@ def run_case(c: dict[str, Any], dynamo: bool = True) -> dict[str, Any]:
         torch.manual_seed(SEED)
         # the legacy exporter traces with the real tensors, so an operator that updates its input in place would
         # otherwise leave onnxruntime fed with the updated values
-        model = export(wrap, copy.deepcopy(inputs), dynamo=dynamo)
+        model = export(copy.deepcopy(wrap), copy.deepcopy(inputs), dynamo=dynamo)
     except Exception as e:
         rec.update(
             status="export-fail",

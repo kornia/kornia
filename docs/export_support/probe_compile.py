@@ -110,9 +110,10 @@ def _compare(ref: list[torch.Tensor], out: list[torch.Tensor], c: dict[str, Any]
 def _reference(c: dict[str, Any]) -> tuple[nn.Module, list[torch.Tensor], list[torch.Tensor]]:
     """The case's wrapper, a copy of its inputs, and its eager outputs.
 
-    The eager call runs on a copy of the wrapper, so the returned one holds none of the state that call leaves on a
-    module (an augmentation's params, a crop's cached points): a compiled graph that skips computing such state
-    cannot pass by reading what eager left there.
+    The eager call runs on a copy of the wrapper, and the export and compile steps take their own copies, so none
+    reads the state another left on a module (an augmentation's params, a crop's cached points, an export's fake
+    tensors): a compiled graph that skips computing such state cannot pass by reading what eager left there, and the
+    case, which later tests reuse, stays as it was built.
     """
     target = c["target"]
     if isinstance(target, nn.Module):
@@ -132,7 +133,7 @@ def export_step(wrap: nn.Module, inputs: list[torch.Tensor]) -> dict[str, Any]:
     try:
         torch.manual_seed(SEED)
         with torch.no_grad():
-            torch.export.export(wrap, tuple(copy.deepcopy(inputs)))
+            torch.export.export(copy.deepcopy(wrap), tuple(copy.deepcopy(inputs)))
         rec["export"] = "ok"
     except Exception as e:  # not BaseException: KeyboardInterrupt and a test's outcome (pytest-timeout) end the run
         rec.update(export="fail", export_error=err_str(e), export_where=_kornia_frames(e))
@@ -158,13 +159,13 @@ def compile_step(
         if not fullgraph:
             torch.manual_seed(SEED)
             with torch.no_grad():
-                ex = torch._dynamo.explain(wrap)(*copy.deepcopy(inputs))
+                ex = torch._dynamo.explain(copy.deepcopy(wrap))(*copy.deepcopy(inputs))
             breaks = int(ex.graph_break_count)
             torch._dynamo.reset()
         rec["graph_breaks"] = breaks
         if breaks:
             rec["break_reasons"] = sorted({str(r.reason)[:160] for r in ex.break_reasons})[:5]
-        compiled = torch.compile(wrap, fullgraph=fullgraph)
+        compiled = torch.compile(copy.deepcopy(wrap), fullgraph=fullgraph)
         torch.manual_seed(SEED)
         with torch.no_grad():
             out = list(compiled(*copy.deepcopy(inputs)))
