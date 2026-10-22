@@ -143,6 +143,16 @@ class TestNearestXterm:
         assert out == image_to_string(image)
         assert out.count("48;5;16m") < 20  # not every pixel black
 
+    def test_every_uint8_level_prints_like_its_cpu_copy(self, device):
+        # An integer image is matched at its exact 0-255 value on every device. Dividing by 255 and multiplying back
+        # moved 126 of the 256 levels off their integer on CUDA (a scalar division is a reciprocal multiplication
+        # there), so pixels at a colour boundary printed differently from the CPU copy.
+        levels = torch.arange(256, dtype=torch.uint8).reshape(16, 16)
+        image = torch.stack([levels, levels.flip(0), levels.t()])
+        assert image_to_string(image.to(device)) == image_to_string(image)
+        gray = levels[None]
+        assert image_to_string(gray.to(device)) == image_to_string(gray)
+
     def test_distances_are_computed_in_bounded_chunks(self, monkeypatch):
         # no (pixels, 240) distance matrix has more rows than _PIXELS_PER_CHUNK, whatever the image size
         sizes = []
