@@ -3047,8 +3047,13 @@ class TestRANSACDegensac(BaseTester):
         calls = []
         original = ransac_module._plane_parallax_search
         monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
-        # plane_fraction=0 puts every inlier at a random depth: no dominant plane.
-        for seed in range(6):
+        # plane_fraction=0 puts every inlier at a random depth: no dominant plane. Which seeds draw an H-degenerate
+        # record setter depends on the device's generator and batch sizes, not only on the scene (#6263): CPU and CUDA
+        # fire on different seeds, and on some CUDA setups none of the first six does. So the first six seeds always
+        # run, further seeds run until a recovery has happened, and every seed that runs must keep the accuracy.
+        for seed in range(30):
+            if seed >= 6 and calls:
+                break
             kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.0, seed, device=device, dtype=dtype)
             F, mask = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=True)(kp1, kp2)
             F_plain, mask_plain = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=False)(kp1, kp2)
@@ -3056,9 +3061,7 @@ class TestRANSACDegensac(BaseTester):
             error, error_plain = _off_plane_error(F, clean1, clean2), _off_plane_error(F_plain, clean1, clean2)
             assert error <= error_plain + 0.01, f"seed {seed}"
             assert abs(int(mask.sum()) - int(mask_plain.sum())) <= 0.01 * len(mask), f"seed {seed}"
-        # The recovered path ran. On CUDA, these six seeds draw no H-degenerate record setter from CUDA's generator
-        # and larger batches (it does over more seeds); the accuracy checks above still apply.
-        assert calls or device.type == "cuda"
+        assert calls  # the recovered path ran
 
     def test_recovered_incumbent_does_not_hide_later_records(self, device, dtype, monkeypatch):
         # The stub's first model outscores every raw model. A trigger tied to the incumbent's score would stop
