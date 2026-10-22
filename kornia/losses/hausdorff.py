@@ -18,11 +18,13 @@
 from __future__ import annotations
 
 import math
+import operator
 from typing import Callable
 
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.core.utils import is_compiling
 
 
@@ -51,12 +53,17 @@ class _HausdorffERLossBase(nn.Module):
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
-        if not (alpha >= 0.0 and math.isfinite(alpha)):
-            raise ValueError(f"alpha must be non-negative and finite. Got {alpha}.")
-        if not isinstance(k, int) or isinstance(k, bool):
-            raise TypeError(f"k must be an integer. Got {type(k).__name__}.")
-        if k <= 0:
-            raise ValueError(f"k must be positive. Got {k}.")
+        if not math.isfinite(alpha):
+            raise ValueError(f"alpha must be finite. Got {alpha}.")
+        if isinstance(k, bool):
+            raise TypeError("k must be an integer. Got bool.")
+        try:
+            # NumPy integers and integer 0-d tensors are integers too.
+            k = operator.index(k)
+        except TypeError:
+            raise TypeError(f"k must be an integer. Got {type(k).__name__}.") from None
+        if k < 0:
+            raise ValueError(f"k must be non-negative. Got {k}.")
         if reduction not in ("mean", "sum", "none"):
             raise NotImplementedError(f"reduction `{reduction}` has not been implemented yet.")
         self.alpha = alpha
@@ -116,12 +123,7 @@ class _HausdorffERLossBase(nn.Module):
             Estimated Hausdorff Loss.
 
         """
-        if not isinstance(pred, torch.Tensor):
-            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
-        if not isinstance(target, torch.Tensor):
-            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
-        if pred.device != target.device:
-            raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
+        KORNIA_CHECK_SAME_DEVICE(pred, target)
 
         if not (pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1):
             raise ValueError(
