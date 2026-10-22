@@ -1147,11 +1147,10 @@ class TestDepthFromDisparity(BaseTester):
         # evaluate function gradient
         self.gradcheck(kornia.geometry.depth.depth_from_disparity, (disparity, baseline, focal))
 
-    def test_wart_zero_disparity_gives_a_finite_depth_4272(self, device, dtype):
-        # kornia#4272: depth_from_disparity computes ``baseline * focal / (disparity + 1e-8)``, so a zero
-        # disparity (the usual 'no match' fill) returns 5e9 for baseline 0.5 and focal 100, a function of the
-        # epsilon rather than inf. In float16 the 1e-8 rounds to 0 and the result is inf. Disparity 2 gives 25.
-        # Delete when #4272 is fixed.
+    def test_convention_zero_disparity_gives_a_finite_far_depth_4272(self, device, dtype):
+        # kornia#4272 (kept by ruling): depth_from_disparity computes ``baseline * focal / (disparity + 1e-8)``,
+        # so a zero disparity (the usual 'no match' fill) gives the finite far depth 5e9 for baseline 0.5 and
+        # focal 100, not inf. In float16 the 1e-8 rounds to 0 and the result is inf. Disparity 2 gives 25.
         disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
         depth = depth_from_disparity(disparity, 0.5, 100.0)
         if dtype == torch.float16:
@@ -1163,6 +1162,33 @@ class TestDepthFromDisparity(BaseTester):
             depth_from_disparity(torch.full((1, 1, 1, 1), 2.0, device=device, dtype=dtype), 0.5, 100.0),
             torch.full((1, 1, 1, 1), 25.0, device=device, dtype=dtype),
         )
+
+    def test_convention_zero_disparity_warps_as_a_point_at_infinity_4272(self, device, dtype):
+        # kornia#4272 (kept by ruling): the far depth of a zero disparity sends warp_frame_depth along the
+        # rotation-only homography K R K^-1, the limit for a point at infinity; an inf depth would give NaN.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half-precision pixel coordinates round across the image border in this comparison")
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        angle = torch.tensor(0.01, device=device, dtype=dtype)
+        src_trans_dst = _eye4(device, dtype).clone()
+        src_trans_dst[0, 0, 0] = angle.cos()
+        src_trans_dst[0, 0, 2] = angle.sin()
+        src_trans_dst[0, 2, 0] = -angle.sin()
+        src_trans_dst[0, 2, 2] = angle.cos()
+        src_trans_dst[0, 0, 3] = 0.1
+        image_src = torch.arange(48, device=device, dtype=dtype).view(1, 1, 6, 8)
+        depth_dst = depth_from_disparity(torch.zeros(1, 1, 6, 8, device=device, dtype=dtype), 0.5, 100.0)
+
+        warped = warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+
+        assert torch.isfinite(warped).all()
+        # Reference in CPU float64 (MPS has no float64).
+        k64, r64 = camera_matrix.cpu().double(), src_trans_dst[:, :3, :3].cpu().double()
+        h_inf = k64 @ r64 @ torch.linalg.inv(k64)
+        expected = kornia.geometry.transform.warp_perspective(image_src.cpu().double(), torch.linalg.inv(h_inf), (6, 8))
+        self.assert_close(warped, expected.to(device=device, dtype=dtype))
 
     @pytest.mark.parametrize("disparity_shape", [(2, 1, 2, 3), (2, 2, 3)])
     @pytest.mark.parametrize("per_batch", ["baseline", "focal", "both"])
