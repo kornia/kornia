@@ -453,7 +453,7 @@ class ShearX(OperationBase):
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         # the magnitude is the shear factor; map it to degrees as torchvision
         # does (atan keeps the sign)
-        return torch.rad2deg(torch.atan(magnitude))
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
@@ -494,7 +494,7 @@ class ShearY(OperationBase):
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         # the magnitude is the shear factor; map it to degrees as torchvision
         # does (atan keeps the sign)
-        return torch.rad2deg(torch.atan(magnitude))
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
