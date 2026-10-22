@@ -27,7 +27,12 @@ from kornia.geometry.pose import NamedPose
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_deepcopy_copies_state_as_leaves,
+    dynamo_is_available,
+)
 
 
 class TestSe3(BaseTester):
@@ -712,6 +717,16 @@ class TestSe3(BaseTester):
         assert t.min() >= 0, (t.min(), t.max())
         assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # A pose built from a tensor that requires grad holds that history in buffers, which torch cannot deep-copy.
+        # copy.deepcopy now holds it as new leaves, and the original still propagates to v.
+        v = torch.tensor([[1.0, -2.0, 3.0, 0.4, 0.2, -0.3]], device=device, dtype=dtype, requires_grad=True)
+        for pose in (Se3.exp(v), Se3(So3.exp(v[:, 3:]), torch.zeros(1, 3, device=device, dtype=dtype))):
+            copied = assert_deepcopy_copies_state_as_leaves(pose)
+            self.assert_close(copied.matrix().detach(), pose.matrix().detach(), rtol=0, atol=0)
+        Se3.exp(v).matrix().sum().backward()
+        assert v.grad is not None
 
 
 class TestSe3HalfPrecision(BaseTester):

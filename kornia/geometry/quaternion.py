@@ -26,6 +26,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_TYPE
+from kornia.core.utils import _deepcopy_module_state
 from kornia.geometry.conversions import (
     axis_angle_to_quaternion,
     euler_from_quaternion,
@@ -74,6 +75,9 @@ class Quaternion(nn.Module):
           an enclosing module's device and dtype conversions. Construction preserves the input tensor and its
           autograd history. ``Quaternion.to()`` returns a new quaternion; enclosing module conversions update the
           existing module's state.
+        - ``copy.deepcopy`` holds data with autograd history as a new leaf that keeps ``requires_grad``, still a
+          buffer, as ``torch.save`` and ``torch.load`` do: no gradient flows from the copy back to the original's
+          inputs. torch cannot deep-copy such a tensor itself.
         - Known defects: below a norm of ``1e-12``, ``matrix()`` and ``slerp`` give wrong results, and the zero
           quaternion's ``matrix()`` is the identity (`#3952 <https://github.com/kornia/kornia/issues/3952>`_).
 
@@ -93,6 +97,9 @@ class Quaternion(nn.Module):
                 [0., 0., 0.]])
 
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     _data: Union[torch.Tensor, nn.Parameter]
 

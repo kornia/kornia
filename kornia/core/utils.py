@@ -16,6 +16,7 @@
 #
 
 
+import copy
 import importlib.util
 import platform
 import sys
@@ -805,7 +806,8 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
     ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph capture
     (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX exporter) neither a parameter nor a
     buffer can be created inside the traced region, so the tensor is kept as a plain attribute of the module being
-    built.
+    built. torch cannot deep-copy such a buffer, so a module using it takes ``_deepcopy_module_state`` as its
+    ``__deepcopy__``.
 
     Raises:
         TypeCheckError: if ``x`` is neither a floating-point nor a complex tensor, nor an ``nn.Parameter``.
@@ -824,6 +826,26 @@ def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -
             module.register_buffer(name, x)
             return
     setattr(module, name, x)
+
+
+def _deepcopy_module_state(module: torch.nn.Module, memo: Dict[int, Any]) -> torch.nn.Module:
+    """``copy.deepcopy`` for a module whose state :func:`register_module_state` registered.
+
+    torch cannot deep-copy a tensor with autograd history, so a buffer holding one would make ``copy.deepcopy``
+    raise. The copy holds such a buffer as a new leaf that keeps ``requires_grad``, still registered as a buffer,
+    which is what a ``torch.save`` / ``torch.load`` round trip gives; the copy has no history, so no gradient flows
+    back through it. The same applies to a plain tensor attribute, which is where :func:`register_module_state`
+    stores the tensor under graph capture. Everything else is deep-copied as usual. Assign it as the class's
+    ``__deepcopy__``.
+    """
+    attributes = [value for value in module.__dict__.values() if isinstance(value, torch.Tensor)]
+    for tensor in [*module.buffers(recurse=False), *attributes]:
+        if tensor.grad_fn is not None and id(tensor) not in memo:
+            memo[id(tensor)] = tensor.detach().clone().requires_grad_(tensor.requires_grad)
+    copied = module.__class__.__new__(module.__class__)
+    memo[id(module)] = copied
+    copied.__dict__.update(copy.deepcopy(module.__dict__, memo))
+    return copied
 
 
 def dataclass_to_dict(obj: Any) -> Any:

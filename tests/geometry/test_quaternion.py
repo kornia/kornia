@@ -24,7 +24,12 @@ from torch.nn import Parameter
 
 from kornia.geometry.quaternion import Quaternion, average_quaternions
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_deepcopy_copies_state_as_leaves,
+    dynamo_is_available,
+)
 
 
 class TestQuaternion(BaseTester):
@@ -544,6 +549,16 @@ class TestQuaternion(BaseTester):
         euler = torch.stack(euler, -1)
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # Data with a grad_fn is registered as a buffer, which torch cannot deep-copy; the copy holds it as a new
+        # leaf.
+        w = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype, requires_grad=True)
+        q = Quaternion(w * 2)
+        copied = assert_deepcopy_copies_state_as_leaves(q)
+        self.assert_close(copied.data.detach(), q.data.detach(), rtol=0, atol=0)
+        q.data.sum().backward()
+        assert w.grad is not None
 
 
 def _to_tensor(x: Union[torch.Tensor, Quaternion]) -> torch.Tensor:

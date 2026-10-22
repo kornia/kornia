@@ -26,7 +26,13 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE, are_checks_enabled
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
-from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast, is_compiling, register_module_state
+from kornia.core.utils import (
+    _deepcopy_module_state,
+    _torch_linalg_svdvals,
+    _torch_svd_cast,
+    is_compiling,
+    register_module_state,
+)
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -54,11 +60,16 @@ class Hyperplane(nn.Module):
           :func:`fit_plane` on points without autograd history, has trainable parameters, and the distances and
           projections it returns require grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history
           keeps that history, and an integer tensor is stored as a buffer (ParametrizedLine rejects one).
+          ``copy.deepcopy`` holds a tensor with that history as a new leaf that keeps ``requires_grad``, as for
+          :class:`~kornia.geometry.quaternion.Quaternion`.
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
         d: The offset :math:`d`, a :class:`~kornia.geometry.vector.Scalar`.
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()

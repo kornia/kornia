@@ -27,7 +27,7 @@ from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_deepcopy_copies_state_as_leaves
 
 
 class TestSo3(BaseTester):
@@ -529,6 +529,16 @@ class TestSo3(BaseTester):
         Jr = So3.right_jacobian(vec)
         Jl = So3.left_jacobian(vec)
         self.assert_close(Jl, Jr.transpose(-1, -2))
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # So3 copies its quaternion, which holds the history of v in a buffer; the copy holds it as a new
+        # leaf.
+        v = torch.tensor([[0.4, 0.2, -0.3]], device=device, dtype=dtype, requires_grad=True)
+        rotation = So3.exp(v)
+        copied = assert_deepcopy_copies_state_as_leaves(rotation)
+        self.assert_close(copied.matrix().detach(), rotation.matrix().detach(), rtol=0, atol=0)
+        rotation.matrix().sum().backward()
+        assert v.grad is not None
 
 
 class _RotationHolder(nn.Module):

@@ -23,7 +23,7 @@ from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Scalar, Vector3
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_deepcopy_copies_state_as_leaves
 
 
 # TODO: implement the rest of methods
@@ -198,6 +198,8 @@ class TestFitPlane(BaseTester):
 
 
 # TODO: implement the rest of methods
+
+
 class TestHyperplane(BaseTester):
     @pytest.mark.parametrize("shape", [None, (1,), (2, 1)])
     def test_smoke(self, device, dtype, shape):
@@ -670,6 +672,18 @@ class TestHyperplane(BaseTester):
         finally:
             if checks_were_enabled:
                 enable_checks()
+
+    def test_deepcopy_with_autograd_history_4923(self, device, dtype):
+        # A plane built from tensors with a grad_fn holds them in buffers, which torch cannot deep-copy; the copy
+        # holds them as new leaves.
+        n = torch.tensor([0.0, 0.6, 0.8], device=device, dtype=dtype, requires_grad=True)
+        plane = Hyperplane.from_vector(
+            Vector3(n * 1), Vector3(torch.tensor([1.0, 2.0, 0.5], device=device, dtype=dtype))
+        )
+        copied = assert_deepcopy_copies_state_as_leaves(plane)
+        self.assert_close(copied.normal.data.detach(), plane.normal.data.detach(), rtol=0, atol=0)
+        plane.offset.data.sum().backward()
+        assert n.grad is not None
 
 
 class TestConventionsHyperplane(BaseTester):

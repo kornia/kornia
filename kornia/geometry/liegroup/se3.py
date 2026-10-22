@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
-from kornia.core.utils import register_module_state
+from kornia.core.utils import _deepcopy_module_state, register_module_state
 from kornia.geometry.liegroup.so3 import So3, _so3_rotate, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -86,7 +86,8 @@ class Se3(nn.Module):
           passed to the constructor is unwrapped. ``g * p`` returns a ``Vector3`` only when ``p`` is one.
         - ``state_dict()``, ``load_state_dict()`` and module device/dtype conversions include both the rotation
           and translation. Rotation state follows :class:`~kornia.geometry.quaternion.Quaternion`'s
-          buffer/parameter convention.
+          buffer/parameter convention. ``copy.deepcopy`` copies state with autograd history, such as that of
+          ``exp(v)`` for a ``v`` that requires grad, as new leaves, as described there for the quaternion.
         - ``a * b`` and ``g * p`` compute in float32 for float16/bfloat16 inputs and return the input dtype,
           rounding :math:`R p + t` once; ``matrix()`` and ``inverse()`` take the rotation from
           :class:`~kornia.geometry.liegroup.So3`, which does the same.
@@ -101,6 +102,9 @@ class Se3(nn.Module):
         tensor([1., 1., 1.], requires_grad=True)
 
     """
+
+    # Autograd history cannot be deep-copied, so a deep copy holds that state as new leaves.
+    __deepcopy__ = _deepcopy_module_state
 
     def __init__(self, rotation: Quaternion | So3, translation: Vector3 | torch.Tensor) -> None:
         """Construct the base class.
