@@ -460,6 +460,7 @@ def test_operation_base_deepcopy_after_use() -> None:
     ],
 )
 def test_auto_enhancer_matches_pil_6253(operation, factor, pixels, device, dtype):
+    """Match reference pixels and deterministic replay on the selected device."""
     image = (
         torch.tensor(
             [(32, 96, 160), (224, 64, 128), (80, 192, 48), (144, 112, 208)],
@@ -472,9 +473,9 @@ def test_auto_enhancer_matches_pil_6253(operation, factor, pixels, device, dtype
         / 255
     )
     expected = torch.tensor(pixels, device=device, dtype=dtype).reshape(2, 2, 3).permute(2, 0, 1).unsqueeze(0) / 255
-    aug = operation(initial_magnitude=factor, initial_probability=1.0, magnitude_range=(0.1, 1.9)).to(
-        device=device, dtype=dtype
-    )
+    # Keep learnable magnitudes with the default CPU parameter generator, as
+    # policy containers do; the enhancement transfers factors to the input device.
+    aug = operation(initial_magnitude=factor, initial_probability=1.0, magnitude_range=(0.1, 1.9)).to(dtype=dtype)
     params = aug.forward_parameters(image.shape)
     output = aug(image, params=params)
     # PIL quantizes intermediate grayscale and the final blend to uint8;
@@ -485,12 +486,13 @@ def test_auto_enhancer_matches_pil_6253(operation, factor, pixels, device, dtype
 
 @pytest.mark.parametrize("operation", [ops.Brightness, ops.Contrast, ops.Saturate])
 def test_auto_enhancer_keeps_magnitude_gradient_6253(operation, device, dtype):
+    """Keep finite nonzero magnitude gradients for each enhancement operation."""
     image = torch.tensor(
         [[[[0.2, 0.4]], [[0.5, 0.7]], [[0.3, 0.6]]]],
         device=device,
         dtype=dtype,
     )
-    aug = operation(initial_magnitude=0.7, initial_probability=1.0).to(device=device, dtype=dtype)
+    aug = operation(initial_magnitude=0.7, initial_probability=1.0).to(dtype=dtype)
     assert aug._magnitude is not None
     (gradient,) = torch.autograd.grad(aug(image).square().sum(), aug._magnitude)
     assert torch.isfinite(gradient).all()
@@ -501,6 +503,7 @@ def test_auto_enhancer_keeps_magnitude_gradient_6253(operation, device, dtype):
 
 @pytest.mark.parametrize("policy", ["auto", "rand", "trivial"])
 def test_policy_brightness_uses_multiplicative_factor_6253(policy, device, dtype):
+    """Use multiplicative brightness through all three policy containers."""
     image = torch.full((2, 3, 4, 5), 0.4, device=device, dtype=dtype)
     if policy == "auto":
         aug = AutoAugment(policy=[[("brightness", 1.0, 5)]])

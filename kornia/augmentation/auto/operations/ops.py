@@ -63,6 +63,7 @@ class _PILBrightness(RandomBrightness):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Apply the sampled PIL-style enhancement factor to the input."""
         factor = _to_device_nonblocking(params["brightness_factor"], input.device, input.dtype)
         return adjust_brightness_accumulative(_clamp_unit_range(input), factor)
 
@@ -75,6 +76,7 @@ class _PILContrast(RandomContrast):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Apply the sampled PIL-style enhancement factor to the input."""
         factor = _to_device_nonblocking(params["contrast_factor"], input.device, input.dtype)
         return adjust_contrast_with_mean_subtraction(_clamp_unit_range(input), factor)
 
@@ -87,6 +89,7 @@ class _PILSaturation(RandomSaturation):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Apply the sampled PIL-style enhancement factor to the input."""
         factor = _to_device_nonblocking(params["saturation_factor"], input.device, input.dtype)
         return adjust_saturation_with_gray_subtraction(_clamp_unit_range(input), factor)
 
