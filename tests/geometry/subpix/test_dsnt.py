@@ -243,6 +243,18 @@ class TestSpatialSoftmax2d(BaseTester):
         assert torch.isfinite(actual).all()
         self.assert_close(actual, reference)
 
+    @pytest.mark.parametrize("as_tensor", [False, True])
+    def test_float16_extreme_mixed_sign_logits(self, device, as_tensor):
+        input = torch.tensor([[[[-65504.0, 65504.0]]]], device=device, dtype=torch.float16)
+        temperature = torch.tensor(65504.0, device=device, dtype=input.dtype) if as_tensor else 65504.0
+
+        actual = kornia.geometry.subpix.spatial_softmax2d(input, temperature)
+        reference = torch.softmax(input.float().reshape(1, 1, -1) / 65504.0, dim=-1).view_as(input).to(input.dtype)
+
+        assert actual.dtype == input.dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, reference)
+
     @pytest.mark.parametrize("temperature", [0.0, -1.0, float("nan"), "tensor", "nan_tensor"])
     def test_nonpositive_temperature_raises(self, device, dtype, temperature):
         input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
