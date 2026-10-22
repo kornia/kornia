@@ -311,6 +311,25 @@ class TestDiceLoss(BaseTester):
         with pytest.raises(BaseError, match="The `average` has to be one of"):
             kornia.losses.DiceLoss(average="invalid")
 
+    def test_tensor_eps(self, device, dtype):
+        pred = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        target = torch.randint(0, 3, (2, 4, 4), device=device)
+        expected = kornia.losses.dice_loss(pred, target, average="macro", eps=1e-6)
+        self.assert_close(
+            kornia.losses.dice_loss(pred, target, average="macro", eps=torch.tensor(1e-6, device=device, dtype=dtype)),
+            expected,
+            rtol=0,
+            atol=0,
+        )
+        self.assert_close(
+            kornia.losses.dice_loss(
+                pred, target, average="macro", eps=torch.full((3,), 1e-6, device=device, dtype=dtype)
+            ),
+            expected,
+            rtol=0,
+            atol=0,
+        )
+
     def test_averaging_micro(self, device, dtype):
         """Keep the analytical micro-averaging reference finite in half precision."""
         num_classes = 2

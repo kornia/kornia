@@ -267,7 +267,9 @@ def dice_loss(
     if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
         raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
 
-    if eps < 0.0:
+    # Only a Python number is checked: a tensor eps worked before, and reading its value here would cost a host sync
+    # on every call and break a fullgraph compile.
+    if isinstance(eps, (int, float)) and eps < 0.0:
         raise ValueError(f"eps must be non-negative. Got: {eps}")
 
     num_of_classes = pred.shape[1]
@@ -383,7 +385,7 @@ class DiceLoss(nn.Module):
             weight: Optional class-weight tensor of shape :math:`(C,)`.
             ignore_index: Label value to exclude from loss computation.
         """
-        if eps < 0.0:
+        if isinstance(eps, (int, float)) and eps < 0.0:
             raise ValueError(f"eps must be non-negative. Got: {eps}")
         possible_average = {"micro", "macro"}
         KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
