@@ -382,11 +382,10 @@ class TestMeanIoUBBox(BaseTester):
         with pytest.raises(TypeCheckError):
             kornia.metrics.mean_iou_bbox(valid_boxes, list_boxes)  # type: ignore[arg-type]
 
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     def test_device_mismatch(self):
         """Reject boxes_1 and boxes_2 on different devices."""
         boxes_1 = torch.tensor([[0.0, 0.0, 4.0, 4.0]], device="cpu")
-        boxes_2 = torch.tensor([[0.0, 0.0, 4.0, 4.0]], device="cuda")
+        boxes_2 = torch.tensor([[0.0, 0.0, 4.0, 4.0]], device="meta")
         with pytest.raises(DeviceError):
             kornia.metrics.mean_iou_bbox(boxes_1, boxes_2)
 

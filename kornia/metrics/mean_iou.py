@@ -61,7 +61,8 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
         tensor([[1., 1., 1.]])
 
     """
-    KORNIA_CHECK(eps >= 0.0, "eps must be non-negative.")
+    if isinstance(eps, (int, float)):
+        KORNIA_CHECK(eps >= 0.0, "eps must be non-negative.")
 
     # we first compute the confusion matrix, which validates the labels and the class count
     conf_mat: torch.Tensor = confusion_matrix(pred, target, num_classes)
