@@ -24,6 +24,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation._2d.intensity.base import _clamp_unit_range
 from kornia.augmentation.random_generator import RectangleEraseGenerator
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.enhance import (
@@ -1459,6 +1460,37 @@ class TestIntensityColourConventions(BaseTester):
 
 
 class TestIntensityInputClamping(BaseTester):
+    @pytest.mark.parametrize("forward_mode", ["jvp", "dual"])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_input_clamp_preserves_forward_tangents(self, device, dtype, forward_mode, grad_enabled, requires_grad):
+        image = torch.tensor([-0.5, -0.0, 0.0, 0.25, 1.0, 1.5], device=device, dtype=dtype)
+        image.requires_grad_(requires_grad)
+        tangent = torch.tensor([2.0, 3.0, 4.0, 5.0, 6.0, 7.0], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 3.0, 4.0, 5.0, 6.0, 0.0], device=device, dtype=dtype)
+        # no_grad disables reverse-mode recording, but forward AD must still pass the tangent at both bounds.
+        with torch.set_grad_enabled(grad_enabled):
+            if forward_mode == "jvp":
+                values, actual = torch.func.jvp(_clamp_unit_range, (image,), (tangent,))
+            else:
+                with torch.autograd.forward_ad.dual_level():
+                    dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                    values, actual = torch.autograd.forward_ad.unpack_dual(_clamp_unit_range(dual))
+        self.assert_close(values, image.clamp(0.0, 1.0))
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_input_clamp_preserves_signed_zero_and_nan(self, device, dtype, grad_enabled, requires_grad):
+        image = torch.tensor([-0.0, 0.0, float("nan"), -float("inf"), float("inf")], device=device, dtype=dtype)
+        image.requires_grad_(requires_grad)
+        with torch.set_grad_enabled(grad_enabled):
+            actual = _clamp_unit_range(image)
+        assert torch.equal(torch.isnan(actual), torch.isnan(image))
+        finite = ~torch.isnan(image)
+        self.assert_close(actual[finite], image.clamp(0.0, 1.0)[finite])
+        assert torch.equal(torch.signbit(actual[:2]), torch.signbit(image[:2]))
+
     @pytest.mark.parametrize("name", ["ColorJiggle", "RandomGamma", "RandomPosterize"])
     def test_bicubic_overshoot_is_clamped_before_intensity(self, device, dtype, name):
         torch.manual_seed(0)

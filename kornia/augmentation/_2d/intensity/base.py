@@ -28,16 +28,20 @@ from kornia.geometry.keypoints import Keypoints
 def _clamp_unit_range(input: Tensor) -> Tensor:
     """Clamp ``input`` into ``[0, 1]`` with an identity gradient on the closed range.
 
-    ``torch.clamp``'s derivative at a bound is ``1`` on torch 2.5.1 and 2.9.1 and ``0`` on 2.14, and valid images
+    ``torch.clamp``'s derivative at a bound is ``1`` on torch 2.5.1 and 2.9.1 and ``0`` on 2.14.0, and valid images
     often hold exact ``0`` and ``1`` pixels. The values inside ``[0, 1]`` are therefore taken from ``input`` itself,
     so they keep their gradient on every torch version; values outside get the bound and a zero gradient.
 
     The values always equal ``input.clamp(0, 1)``, ``NaN`` and ``-0.0`` included, so a call that records no
-    gradient is that single clamp. A recording call selects ``input`` where the clamp left it unchanged: one
-    comparison against the clamped copy instead of two bound comparisons and their conjunction.
+    gradient and carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the
+    clamp left it unchanged: one comparison against the clamped copy instead of two bound comparisons and their
+    conjunction. Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``.
     """
     clamped = input.clamp(0.0, 1.0)
-    if not (torch.is_grad_enabled() and input.requires_grad):
+    if (
+        not (torch.is_grad_enabled() and input.requires_grad)
+        and torch.autograd.forward_ad.unpack_dual(input).tangent is None
+    ):
         return clamped
     return torch.where(clamped == input, input, clamped)
 
