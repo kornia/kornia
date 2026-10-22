@@ -1201,9 +1201,9 @@ class TestDepthFromDisparity(BaseTester):
         # the width instead. The size-1 and scalar forms are unaffected, and an empty batch stays empty.
         disparity = torch.ones(2, 1, 2, 3, device=device, dtype=dtype)
         three = torch.ones(3, device=device, dtype=dtype)
-        with pytest.raises(ShapeError, match="expected 2, got 3"):
+        with pytest.raises(ShapeError, match=r"expected \(2,\), got \[3\]"):
             depth_from_disparity(disparity, three, 100.0)
-        with pytest.raises(ShapeError, match="expected 2, got 3"):
+        with pytest.raises(ShapeError, match=r"expected \(2,\), got \[3\]"):
             depth_from_disparity(disparity, 0.5, three)
         with pytest.raises(ShapeError, match="expected 1, got 3"):
             depth_from_disparity(torch.ones(2, 3, device=device, dtype=dtype), three, 100.0)
@@ -1218,6 +1218,19 @@ class TestDepthFromDisparity(BaseTester):
         empty = torch.ones(0, 1, 2, 3, device=device, dtype=dtype)
         nothing = torch.ones(0, device=device, dtype=dtype)
         assert depth_from_disparity(empty, nothing, nothing).shape == (0, 1, 2, 3)
+
+    def test_dynamo_per_batch_check_is_dynamic_6244(self, device, dtype, torch_optimizer):
+        # The (B,) parameter check compares the batch as a number: as a string, the symbolic batch size could not be
+        # traced, and fullgraph=True with dynamic shapes raised torch._dynamo.exc.Unsupported (tp_repr_impl).
+        from torch._dynamo.testing import CompileCounter
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(depth_from_disparity, backend=counter, fullgraph=True, dynamic=True)
+        for batch in (2, 3):
+            disparity = torch.rand(batch, 1, 5, 7, device=device, dtype=dtype) + 0.5
+            baseline = torch.rand(batch, device=device, dtype=dtype) + 0.1
+            self.assert_close(compiled(disparity, baseline, 100.0), depth_from_disparity(disparity, baseline, 100.0))
+        assert counter.frame_count == 1
 
 
 class TestDepthFromPlaneEquation(BaseTester):
