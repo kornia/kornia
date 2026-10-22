@@ -23,6 +23,7 @@ from enum import Enum
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE, CheckMessage
+from kornia.core.exceptions import ShapeError
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,20 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
         True if shape matches, False otherwise (when raises=False).
 
     """
+    # A fractional size can never equal a tensor dimension, so it always
+    # mismatches; reject it instead of letting the comparison skip it.
+    for entry in (layout.channels, layout.image_size.height, layout.image_size.width):
+        if isinstance(entry, (int, float)):
+            number = float(entry)
+        elif isinstance(entry, torch.Tensor) and entry.numel() == 1:
+            number = float(entry.item())
+        else:
+            continue
+        if not number.is_integer():
+            if raises:
+                raise ShapeError(f"Layout size entry {entry} is not an integer.")
+            return False
+
     if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
         shape = [
             _layout_size_to_str(layout.channels),
