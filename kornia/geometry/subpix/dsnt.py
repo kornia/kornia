@@ -85,9 +85,10 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     if isinstance(temperature, torch.Tensor):
         temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.reshape(batch_size, channels, height * width)
-    # softmax is shift-invariant: subtracting each map's maximum first keeps every scaled logit at or below 0, so
-    # dividing by a small temperature cannot overflow in any dtype.
-    x = x - x.amax(dim=-1, keepdim=True).detach()
+    if x.shape[-1] > 0:
+        # softmax is shift-invariant: subtracting each map's maximum first keeps every scaled logit at or below 0,
+        # so dividing by a small temperature cannot overflow in any dtype.
+        x = x - x.amax(dim=-1, keepdim=True).detach()
 
     x_soft = F.softmax(x / temperature, dim=-1).to(input.dtype)
 

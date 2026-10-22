@@ -202,6 +202,13 @@ class TestSpatialSoftmax2d(BaseTester):
         assert actual.shape == shape
         assert actual.dtype == dtype
 
+    @pytest.mark.parametrize("shape", [(2, 3, 0, 5), (2, 3, 4, 0)])
+    def test_empty_spatial_dimension(self, device, dtype, shape):
+        input = torch.rand(shape, device=device, dtype=dtype)
+        actual = kornia.geometry.subpix.spatial_softmax2d(input)
+        assert actual.shape == shape
+        assert actual.dtype == dtype
+
     def test_dynamo(self, input, torch_optimizer):
         op = kornia.geometry.subpix.spatial_softmax2d
         op_optimized = torch_optimizer(op)
