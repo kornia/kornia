@@ -22,7 +22,7 @@ from enum import Enum
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_SHAPE, CheckMessage
+from kornia.core.check import KORNIA_CHECK_SHAPE, CheckMessage, are_checks_enabled
 from kornia.core.exceptions import ShapeError
 
 
@@ -167,6 +167,12 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
         True if shape matches, False otherwise (when raises=False).
 
     """
+    # Like KORNIA_CHECK_SHAPE, skip validation when checks are disabled in
+    # Python mode; TorchScript keeps validating.
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if not are_checks_enabled():
+            return True
+
     # A fractional size can never equal a tensor dimension, so it always
     # mismatches; reject it instead of letting the comparison skip it.
     for entry in (layout.channels, layout.image_size.height, layout.image_size.width):
