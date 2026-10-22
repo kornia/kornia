@@ -446,7 +446,7 @@ def adjust_gamma(
                 if input.dtype == torch.float32:
                     gamma = struct.unpack("f", struct.pack("f", gamma))[0]
                     gain = struct.unpack("f", struct.pack("f", gain))[0]
-                if input.requires_grad and 0.0 < gamma < 1.0:
+                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
                     # As in the tensor path below.
                     black = input == 0
                     power = torch.where(
@@ -479,9 +479,9 @@ def adjust_gamma(
 
     # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
     # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
-    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so an
-    # input that records no gradient skips the masking.
-    if input.requires_grad:
+    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
+    # masking only runs when autograd records a gradient for the input.
+    if torch.is_grad_enabled() and input.requires_grad:
         black = (input == 0) & (gamma > 0) & (gamma < 1)
         power = torch.where(
             black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
