@@ -131,6 +131,23 @@ class ImageLayout:
     channels_order: ChannelsOrder
 
 
+def _layout_size_to_str(value: int | float | torch.Tensor | str) -> str:
+    """Normalize an ``ImageLayout`` size entry for shape comparison.
+
+    ``ImageSize`` may hold ints, floats, or zero-dim tensors (#4263). ``str()`` of a float or tensor is not
+    all digits, so :func:`~kornia.core.check.KORNIA_CHECK_SHAPE` would skip the comparison and accept a
+    mismatching image (#6244). Integral numbers therefore compare by their integer value; anything else
+    keeps the historical string form.
+    """
+    if isinstance(value, (int, float)):
+        number = float(value)
+    elif isinstance(value, torch.Tensor) and value.numel() == 1:
+        number = float(value.item())
+    else:
+        return str(value)
+    return str(int(number)) if number.is_integer() else str(number)
+
+
 def KORNIA_CHECK_IMAGE_LAYOUT(
     x: torch.Tensor,
     layout: ImageLayout,
@@ -150,9 +167,17 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
 
     """
     if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
-        shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
+        shape = [
+            _layout_size_to_str(layout.channels),
+            _layout_size_to_str(layout.image_size.height),
+            _layout_size_to_str(layout.image_size.width),
+        ]
     elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-        shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
+        shape = [
+            _layout_size_to_str(layout.image_size.height),
+            _layout_size_to_str(layout.image_size.width),
+            _layout_size_to_str(layout.channels),
+        ]
     else:
         if raises:
             raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
