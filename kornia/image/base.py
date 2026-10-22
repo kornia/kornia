@@ -131,7 +131,7 @@ class ImageLayout:
     channels_order: ChannelsOrder
 
 
-def _layout_size_to_str(value: int | float | torch.Tensor | str) -> str:
+def _layout_size_to_str(value: float | torch.Tensor | str) -> str:
     """Normalize an ``ImageLayout`` size entry for shape comparison.
 
     ``ImageSize`` may hold ints, floats, or zero-dim tensors (#4263). ``str()`` of a float or tensor is not
