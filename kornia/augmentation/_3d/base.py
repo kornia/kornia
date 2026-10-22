@@ -23,6 +23,7 @@ from torch import float16, float32, float64
 import kornia
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
 
@@ -115,8 +116,7 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         in_tensor = self.transform_tensor(input)
 
@@ -124,8 +124,8 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         trans_matrix_identity = self.identity_matrix(in_tensor)
 
         if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))).to(
-                trans_matrix_applied.device
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))), trans_matrix_applied.device
             )
             trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:

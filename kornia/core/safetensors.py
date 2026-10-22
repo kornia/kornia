@@ -29,7 +29,7 @@ import json
 import mmap
 import os
 import reprlib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any, BinaryIO, NamedTuple
 
 import torch
@@ -352,7 +352,11 @@ def _read_and_check_header(path: str, f: BinaryIO) -> tuple[dict[str, _TensorEnt
     return parsed, data_start
 
 
-def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = "cpu") -> dict[str, torch.Tensor]:
+def load_safetensors(
+    path: str | os.PathLike[str],
+    device: str | torch.device = "cpu",
+    include: Callable[[str], bool] | None = None,
+) -> dict[str, torch.Tensor]:
     """Load a ``.safetensors`` checkpoint into a state dict.
 
     A pure-torch reader for the format described at
@@ -373,6 +377,9 @@ def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = 
     Args:
         path: the checkpoint to read.
         device: the device the returned tensors are placed on.
+        include: if given, only the tensors whose name it returns ``True`` for
+            are copied out of the file. The whole header is still validated, so a
+            corrupt entry is rejected even when it is not selected.
 
     Returns:
         The state dict, in the order the header lists it.
@@ -398,6 +405,8 @@ def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = 
         # offsets: the byte buffer starts at ``data_start``.
         with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_COPY) as buf:
             for name, (dtype, shape, start, _, numel) in parsed.items():
+                if include is not None and not include(name):
+                    continue
                 if numel == 0:
                     # ``torch.frombuffer`` rejects a count of 0, and an empty
                     # tensor stores no bytes to point at anyway.

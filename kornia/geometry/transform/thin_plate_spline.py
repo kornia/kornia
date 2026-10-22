@@ -18,9 +18,8 @@
 from __future__ import annotations
 
 import torch
-from torch import nn
 
-from kornia.core.utils import _torch_solve_cast
+from kornia.core.utils import _torch_grid_sample, _torch_solve_cast
 from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
@@ -289,7 +288,7 @@ def warp_image_tps(
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
-    warped_image: torch.Tensor = nn.functional.grid_sample(
+    warped_image: torch.Tensor = _torch_grid_sample(
         image, warped, padding_mode=padding_mode, align_corners=align_corners
     )
 

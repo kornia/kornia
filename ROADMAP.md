@@ -42,12 +42,13 @@ Four engineering north stars shape the roadmap below.
       default-value bugs, so downstream users face a single loud migration instead of
       a drizzle of breaking changes. The window runs *under* the
       [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html),
-      not around it: every semantic or default change gets the policy's deprecation
-      treatment (at least one minor release of warnings, landing at a 0.x minor
-      boundary) — "coordinated" means the changes are batched into one migration,
-      not that the deprecation rules are waived. Only clearly-broken-output bugs
-      (NaN, crashes) use the policy's correctness escape hatch and land early as
-      ordinary bugfixes.
+      not around it: a deliberate change to a default or convention gets the
+      policy's deprecation treatment (at least one minor release of warnings,
+      landing at a 0.x minor boundary) — "coordinated" means the changes are batched
+      into one migration, not that the deprecation rules are waived. Correctness
+      fixes (NaN, crashes, wrong math, or a result that contradicts what the
+      operation is documented to do) use the policy's escape hatch and land when
+      ready, with a release note that says what the old behavior was.
    3. **Freeze** — after the window, a **Tier A ("Kornia Core")** set is declared:
       symbols with the strongest guarantees (autograd, gradcheck, compile, dtype/
       device correctness, explicit conventions, semantic stability). Tier A starts

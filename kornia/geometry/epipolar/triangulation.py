@@ -22,7 +22,12 @@ from __future__ import annotations
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import _normalize_to_float32_or_float64, _torch_svd_cast, is_mps_tensor_safe
+from kornia.core.utils import (
+    _autocast_disabled,
+    _normalize_to_float32_or_float64,
+    _torch_svd_cast,
+    is_mps_tensor_safe,
+)
 from kornia.geometry.conversions import convert_points_from_homogeneous
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
@@ -122,6 +127,7 @@ def triangulate_points(
         - ``"svd"`` and ``"eigh"`` solve in float64, or in float32 for float16 and bfloat16 input and on MPS;
           ``"cofactor"`` solves in float32, or in float64 for float64 input. All return the input dtype;
           ``solver`` below compares their accuracy.
+        - A caller's autocast region does not change the result.
 
     Args:
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
@@ -171,7 +177,15 @@ def triangulate_points(
     KORNIA_CHECK_SHAPE(P2, ["*", "3", "4"])
     KORNIA_CHECK_SHAPE(points1, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(points2, ["*", "N", "2"])
+    # A caller's autocast region would run the solvers' products in half precision: eigh then has no kernel on MPS,
+    # and cofactor loses accuracy.
+    with _autocast_disabled(P1.device.type):
+        return _triangulate_points(P1, P2, points1, points2, solver)
 
+
+def _triangulate_points(
+    P1: torch.Tensor, P2: torch.Tensor, points1: torch.Tensor, points2: torch.Tensor, solver: str
+) -> torch.Tensor:
     # Build the four DLT constraint rows (each (*, N, 4)) via vectorized broadcasting.
     # P[..., r:r+1, :] broadcasts with points[..., c:c+1] → (*, N, 4).
     row0 = points1[..., 0:1] * P1[..., 2:3, :] - P1[..., 0:1, :]  # (*, N1, 4)

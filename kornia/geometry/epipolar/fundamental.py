@@ -23,7 +23,7 @@ from typing import Literal, Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
+from kornia.core.utils import _autocast_disabled, _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
 from kornia.geometry.solvers.polynomial_solver import _solve_cubic_real
@@ -496,15 +496,17 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
-    # Reference: Hartley and Zisserman, section 11.1.2; the cubic follows OpenCV's run7Point
-    # (https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp).
-    points1_norm, transform1 = normalize_points(points1)
-    points2_norm, transform2 = normalize_points(points2)
-    A = _epipolar_design_rows(points1_norm, points2_norm)
-    candidates, valid = _seven_point_candidates(A)
-    # F = T2^T F T1
-    fmatrix = normalize_transformation(transform2[:, None].mT @ candidates @ transform1[:, None])
-    return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix))
+    # Autocast would run the matrix products in half precision and return half-precision candidates.
+    with _autocast_disabled(points1.device.type):
+        # Reference: Hartley and Zisserman, section 11.1.2; the cubic follows OpenCV's run7Point
+        # (https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp).
+        points1_norm, transform1 = normalize_points(points1)
+        points2_norm, transform2 = normalize_points(points2)
+        A = _epipolar_design_rows(points1_norm, points2_norm)
+        candidates, valid = _seven_point_candidates(A)
+        # F = T2^T F T1
+        fmatrix = normalize_transformation(transform2[:, None].mT @ candidates @ transform1[:, None])
+        return torch.where(valid[..., None, None], fmatrix, torch.zeros_like(fmatrix))
 
 
 def run_8point(
@@ -533,51 +535,58 @@ def run_8point(
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         if weights.shape[1] != points1.shape[1]:
             raise AssertionError(weights.shape)
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(points1.dtype)
 
-    # Use the same correspondences for Hartley statistics and the weighted DLT system.
-    pts1n, T1 = normalize_points(points1, weights=weights)
-    pts2n, T2 = normalize_points(points2, weights=weights)
+    # Autocast would run the matrix products in half precision, where CUDA's eigh has no kernel.
+    with _autocast_disabled(points1.device.type):
+        # Use the same correspondences for Hartley statistics and the weighted DLT system.
+        pts1n, T1 = normalize_points(points1, weights=weights)
+        pts2n, T2 = normalize_points(points2, weights=weights)
 
-    # Design matrix rows A_i = [x2*x1, x2*y1, x2, y2*x1, y2*y1, y2, x1, y1, 1]
-    # Shape: A ∈ (B, N, 9)
-    A = _epipolar_design_rows(pts1n, pts2n)
+        # Design matrix rows A_i = [x2*x1, x2*y1, x2, y2*x1, y2*y1, y2, x1, y1, 1]
+        # Shape: A ∈ (B, N, 9)
+        A = _epipolar_design_rows(pts1n, pts2n)
 
-    B, N, _ = A.shape
+        B, N, _ = A.shape
 
-    if weights is None and N == 8:
-        # A minimal sample has an exact null vector.
-        h = _eight_point_null_vector(A)
-    else:
-        # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
-        if weights is None:
-            if N < use_einsum_at_more_than_points:
-                # Use GEMM on tall A: (B,9,N) @ (B,N,9)
-                M = A.transpose(-2, -1).contiguous() @ A
-            else:
-                # Accumulate via einsum (saves bandwidth for huge N)
-                M = torch.einsum("bni,bnj->bij", A, A)
+        if weights is None and N == 8:
+            # A minimal sample has an exact null vector.
+            h = _eight_point_null_vector(A)
         else:
-            # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence,
-            # and its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient
-            # through at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on
-            # every version.
-            w = torch.where(weights < 0, 0.0, weights)
-            if N < use_einsum_at_more_than_points:
-                # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the
-                # derivative of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in
-                # w, like the einsum branch below.
-                Aw = A * w.unsqueeze(-1)
-                M = Aw.transpose(-2, -1).contiguous() @ A
+            # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
+            if weights is None:
+                if N < use_einsum_at_more_than_points:
+                    # Use GEMM on tall A: (B,9,N) @ (B,N,9)
+                    M = A.transpose(-2, -1).contiguous() @ A
+                else:
+                    # Accumulate via einsum (saves bandwidth for huge N)
+                    M = torch.einsum("bni,bnj->bij", A, A)
             else:
-                # Weighted einsum
-                M = torch.einsum("bni,bnj,bn->bij", A, A, w)
+                # Negative weights count as zero. A weight of exactly 0 is the documented way to drop a correspondence,
+                # and its gradient should be the one-sided derivative from above. ``clamp_min(0)`` passes the gradient
+                # through at the bound on torch 2.5.1 and 2.9.1 but returns 0 on 2.14 (#4229); ``where`` passes it on
+                # every version.
+                w = torch.where(weights < 0, 0.0, weights)
+                if N < use_einsum_at_more_than_points:
+                    # Scale one factor by w instead of both by sqrt(w). Both build the same A^T W A, but the
+                    # derivative of sqrt is unbounded at 0, so a zero weight got a NaN gradient. This form is linear in
+                    # w, like the einsum branch below.
+                    Aw = A * w.unsqueeze(-1)
+                    M = Aw.transpose(-2, -1).contiguous() @ A
+                else:
+                    # Weighted einsum
+                    M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-        _evals, evecs = torch.linalg.eigh(M)  # ascending order
-        h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
-    F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
-    F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
+            # No device has a half-precision eigh kernel; CPU autocast used to promote this one to float32.
+            half = M.dtype in (torch.float16, torch.bfloat16)
+            _evals, evecs = torch.linalg.eigh(M.float() if half else M)  # ascending order
+            h = evecs[..., 0].to(M.dtype)  # (B,9), eigenvector for smallest λ
+        F_rank2 = _enforce_rank2(h.reshape(B, 3, 3))
+        F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 
-    return normalize_transformation(F)
+        return normalize_transformation(F)
 
 
 def find_fundamental(
@@ -598,6 +607,7 @@ def find_fundamental(
         - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
           negative weight counts as zero, and ``method="7POINT"`` ignores them.
         - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
+        - A caller's autocast region does not change the fit.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`: :math:`N \ge 8` for
@@ -650,13 +660,16 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
     # project points and retrieve lines components
     points_h = torch.transpose(points_h, dim0=-2, dim1=-1)
-    a, b, c = torch.chunk(F_mat @ points_h, dim=-2, chunks=3)
+    lines = F_mat @ points_h  # *x3xN
+    a, b, _ = torch.chunk(lines, dim=-2, chunks=3)
 
     # compute normal and compose equation line
     nu: torch.Tensor = a * a + b * b
     nu = torch.where(nu > 0.0, 1.0 / torch.sqrt(nu), torch.ones_like(nu))
 
-    line = torch.cat([a * nu, b * nu, c * nu], dim=-2)  # *x3xN
+    # The same values as concatenating ``a * nu``, ``b * nu`` and ``c * nu``, without the concatenation that
+    # TorchScript's CUDA fuser compiles into a group returning an int32 tensor for N = 0 after non-empty calls.
+    line = lines * nu  # *x3xN
     return torch.transpose(line, dim0=-2, dim1=-1)  # *xNx3
 
 
@@ -693,6 +706,8 @@ def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, F
     Convention:
         - Returns, in the second image, the point of the epipolar line of ``pts1`` closest to ``pts2``, for
           ``Fm`` in the :math:`x_2^\top F x_1 = 0` order of :func:`find_fundamental`.
+        - ``Fm`` and ``pts2`` take the dtype of ``pts1``. A caller's autocast region does not change the result,
+          outside TorchScript.
 
     Args:
         pts1: points in the first image with shape :math:`(B, N, 2)` or :math:`(B, N, 3)`. If they are not
@@ -709,6 +724,20 @@ def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, F
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+    # A caller's autocast region would compute the epipolar lines in half precision and hand them, with the caller's
+    # float32 points, to torch.linalg.cross, which raised on the dtype mismatch. TorchScript has no context managers;
+    # a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        return _get_closest_point_on_epipolar_line(pts1, pts2, Fm)
+    with _autocast_disabled(Fm.device.type):
+        return _get_closest_point_on_epipolar_line(pts1, pts2, Fm)
+
+
+def _get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor) -> torch.Tensor:
+    # Autocast used to unify half-precision operands with float32 ones; outside it, Fm and pts2 take the dtype of pts1.
+    # (torch.linalg.cross raises for mixed dtypes on CPU and returns wrong values on MPS.)
+    Fm = Fm.to(pts1.dtype)
+    pts2 = pts2.to(pts1.dtype)
     if pts1.shape[-1] == 2:
         pts1 = convert_points_to_homogeneous(pts1)
     if pts2.shape[-1] == 2:

@@ -20,16 +20,25 @@ import torch
 
 from kornia.feature import TFeat
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_conv2d
 
 
 class TestTFeat(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
-        tfeat = TFeat().to(device)
+        tfeat = TFeat(pretrained=False).to(device)
         tfeat.eval()  # batchnorm with size 1 is not allowed in train mode
         out = tfeat(inp)
         assert out.shape == (1, 128)
+
+    def test_empty_batch(self, device, dtype):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        model = TFeat(pretrained=False).to(device, dtype).eval()
+        one = model(torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        out = model(torch.zeros(0, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (0, one.shape[1])
+        assert out.dtype == one.dtype
+        assert out.device == one.device
 
     @pytest.mark.slow
     def test_pretrained(self, device):
@@ -41,14 +50,14 @@ class TestTFeat(BaseTester):
 
     def test_shape_batch(self, device):
         inp = torch.ones(4, 1, 32, 32, device=device)
-        tfeat = TFeat().to(device)
+        tfeat = TFeat(pretrained=False).to(device).eval()
         out = tfeat(inp)
         assert out.shape == (4, 128)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
-        tfeat = TFeat().to(patches.device, patches.dtype)
+        tfeat = TFeat(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(tfeat, (patches,), eps=1e-2, atol=1e-2)
 
     @pytest.mark.slow
@@ -58,3 +67,21 @@ class TestTFeat(BaseTester):
         tfeat = TFeat(True).to(patches.device, patches.dtype).eval()
         tfeat_jit = torch.jit.script(TFeat(True).to(patches.device, patches.dtype).eval())
         self.assert_close(tfeat_jit(patches), tfeat(patches))
+
+
+class TestConventionsTFeat(BaseTester):
+    """Pin for TFeat's output, the patch-descriptor family's one non-unit-norm row."""
+
+    def test_convention_tfeat_returns_its_tanh_layer_without_l2_normalisation(self, device, dtype):
+        # As in the reference (vbalnt/tfeat tfeat_model.py: Linear(64 * 8 * 8, 128), then Tanh, then nothing), each
+        # entry is a tanh output in [-1, 1] and the rows are not unit vectors: their norms are about 2 with random
+        # weights and about 9 with the pretrained ones. Normalise them where a threshold assumes unit vectors.
+        if not supports_conv2d(device, dtype):
+            pytest.skip(f"no conv2d kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        model = TFeat(pretrained=False).to(device, dtype).eval()
+        out = model(torch.rand(6, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (6, 128)
+        assert out.abs().max() <= 1.0
+        norms = out.float().norm(dim=1)
+        assert bool((norms > 1.2).all()), norms

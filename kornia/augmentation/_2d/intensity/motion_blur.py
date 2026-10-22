@@ -59,6 +59,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - a positive ``angle`` turns the blur line counter-clockwise as the image is displayed, as in
           :func:`kornia.filters.motion_blur` and :func:`kornia.filters.get_motion_kernel2d`.
         - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight evenly, and
@@ -153,6 +154,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             # entries are equal and taking the first is legit.) This branch is inherently
             # data-dependent and not fullgraph-compilable.
             kernel_size_list: List[int] = params["ksize_factor"].tolist()
+            if not kernel_size_list and input.shape[0] == 0:
+                # An empty batch draws no kernel size and has nothing to blur; motion blur keeps the shape (#4429).
+                return input.clone()
             idx: int = cast(int, params["idx"][0])
             kernel_size = kernel_size_list[idx]
         border_type = flags["border_type"].name.lower()

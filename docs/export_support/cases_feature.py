@@ -24,7 +24,7 @@ import traceback
 
 import torch
 import torch.nn.functional as F
-from harness import case, run_cases
+from harness import case, err_str, run_cases
 
 import kornia.feature as KF
 
@@ -37,6 +37,8 @@ IMG_BIG = torch.rand(1, 1, 64, 80)  # detectors need a pyramid
 IMG3_BIG = torch.rand(1, 3, 64, 80)
 IMG3_96 = torch.rand(1, 3, 64, 96)  # divisible by 16 and 32 (DISK / XFeat)
 IMG3_DEDODE = torch.rand(1, 3, 56, 84)  # divisible by 14
+# 8-pixel checkerboard: strong corners, so the Harris response (~1e-3 on noise) is large against the default atol
+IMG_CORNERS = ((torch.arange(32)[:, None] // 8 + torch.arange(40)[None, :] // 8) % 2).float()[None, None]
 PATCH32 = torch.rand(2, 1, 32, 32)
 PATCH41 = torch.rand(2, 1, 41, 41)
 PATCH19 = torch.rand(2, 1, 19, 19)
@@ -125,7 +127,8 @@ def try_build(name: str, fn):
         return fn(), None
     except Exception as e:
         traceback.print_exc()
-        return None, f"could not build/download {name}: {type(e).__name__}: {str(e)[:120]}"
+        # the root cause: a loader that tries several sources reports the last one's error only as its cause
+        return None, f"could not build/download {name}: {err_str(e)}"
 
 
 def pcase(name, group, builder, inputs, kwargs=None, **kw):
@@ -141,7 +144,7 @@ CASES: list = []
 # ----------------------------------------------------------------------------- responses
 R = "feature.responses"
 CASES += [
-    case("feature.harris_response", R, KF.harris_response, [IMG]),
+    case("feature.harris_response", R, KF.harris_response, [IMG_CORNERS]),
     case("feature.harris_response[sigmas]", R, KF.harris_response, [IMG, torch.tensor([1.5])], note="sigmas (B,) live"),
     case("feature.harris_response[diff]", R, KF.harris_response, [IMG], {"grads_mode": "diff"}),
     case("feature.gftt_response", R, KF.gftt_response, [IMG]),
@@ -155,7 +158,7 @@ CASES += [
         tags=("3d",),
     ),
     case("feature.dog_response_single", R, KF.dog_response_single, [IMG], {"sigma1": 1.0, "sigma2": 1.6}),
-    case("feature.CornerHarris", R, KF.CornerHarris(0.04), [IMG]),
+    case("feature.CornerHarris", R, KF.CornerHarris(0.04), [IMG_CORNERS]),
     case("feature.CornerGFTT", R, KF.CornerGFTT(), [IMG]),
     case("feature.BlobHessian", R, KF.BlobHessian(), [IMG]),
     case(
@@ -226,8 +229,21 @@ CASES += [
         {"PS": 16},
         note="PS baked",
     ),
-    case("feature.laf_is_valid", L, KF.laf_is_valid, [LAF], note="bool (B,N) output"),
-    case("feature.laf_is_inside_image", L, KF.laf_is_inside_image, [LAF, IMG], {"border": 2}, note="bool output"),
+    case(
+        "feature.laf_is_valid",
+        L,
+        KF.laf_is_valid,
+        [LAF * torch.tensor([1.0, 1.0, 0.0, 1.0, 0.0])[None, :, None, None]],
+        note="bool (B,N) output; LAFs 2 and 4 zeroed, so invalid",
+    ),
+    case(
+        "feature.laf_is_inside_image",
+        L,
+        KF.laf_is_inside_image,
+        [torch.cat([LAF, LAF_BIG], 1), IMG],
+        {"border": 2},
+        note="bool output; the LAFs placed in 64x80 fall outside the 32x40 image",
+    ),
     case("feature.laf_to_three_points", L, KF.laf_to_three_points, [LAF]),
     case("feature.laf_from_three_points", L, KF.laf_from_three_points, [KF.laf_to_three_points(LAF)]),
     case("feature.perspective_transform_lafs", L, KF.perspective_transform_lafs, [H_01, LAF]),

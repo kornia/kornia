@@ -15,13 +15,23 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
+import kornia
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
 
-from testing.base import BaseTester, supports_replicate_padding
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+
+
+def _skip_without_half_padding(device: torch.device, dtype: torch.dtype) -> None:
+    # torch 2.5.1 has no float16 CPU reflection_pad2d or replication_pad2d; these pins blur (reflect) and take
+    # gradients (replicate).
+    if not (supports_reflect_padding(device, dtype) and supports_replicate_padding(device, dtype)):
+        pytest.skip(f"no reflection or replication padding kernel for {dtype} on {device.type}")
 
 
 class TestPassLAF(BaseTester):
@@ -203,7 +213,7 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         if not supports_replicate_padding(device, torch.float16):
             pytest.skip(f"no float16 replicate-pad kernel on {device.type}")
         torch.manual_seed(0)
-        patches = torch.rand(4, 1, 32, 32, device=device)
+        patches = torch.rand(4, 1, 32, 32).to(device)
         ref = PatchDominantGradientOrientation(32).to(device)(patches)
         out = PatchDominantGradientOrientation(32).to(device, torch.float16)(patches.half())
         self.assert_close(out.float(), ref, atol=5e-2, rtol=0)
@@ -271,7 +281,7 @@ class TestOrientationKernelBuffer(BaseTester):
 class TestOriNet(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
-        ori = OriNet().to(device=device, dtype=inp.dtype).eval()
+        ori = OriNet(pretrained=False).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         assert ang.shape == torch.Size([1])
 
@@ -288,7 +298,7 @@ class TestOriNet(BaseTester):
         assert ang.shape == torch.Size([2])
 
     def test_print(self, device):
-        sift = OriNet(32)
+        sift = OriNet(pretrained=False)
         sift.__repr__()
 
     def test_toy(self, device):
@@ -303,7 +313,7 @@ class TestOriNet(BaseTester):
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 1, 32, 32
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        ori = OriNet().to(device=device, dtype=patches.dtype)
+        ori = OriNet(pretrained=False).to(device=device, dtype=patches.dtype).eval()
         self.gradcheck(ori, (patches,), fast_mode=False)
 
     def test_jit(self, device, dtype):
@@ -349,3 +359,101 @@ class TestLAFOrienter(BaseTester):
         laf[:, :, 0, 1] = 0
         laf[:, :, 1, 0] = 0
         self.gradcheck(LAFOrienter(8).to(device), (laf, patches), rtol=1e-3, atol=1e-3, nondet_tol=1e-3)
+
+
+def _conv_ramp(angle: float, height: int, width: int, x0: float, y0: float) -> torch.Tensor:
+    """Float64 CPU ramp through ``(x0, y0)`` whose gradient is ``angle`` degrees counter-clockwise from +x on screen.
+
+    With y pointing down that direction is ``(cos angle, -sin angle)`` in pixel coordinates.
+    """
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float64), torch.arange(width, dtype=torch.float64), indexing="ij"
+    )
+    t = math.radians(angle)
+    return (0.05 * (math.cos(t) * (xx - x0) - math.sin(t) * (yy - y0))).view(1, 1, height, width)
+
+
+class TestConventionsOrientation(BaseTester):
+    @pytest.mark.parametrize("content_angle", [0.0, 30.0])
+    def test_convention_laf_orienter_turns_the_frame_counter_clockwise_with_the_content(
+        self, device, dtype, content_angle
+    ):
+        # The output orientation is the input orientation plus the patch angle, which turns the LAF's x axis onto the
+        # dominant gradient: content turned +30 degrees counter-clockwise on screen reads +30, the sign of
+        # laf_from_center_scale_ori, whatever the input orientation (0, 40 or -75). Centre and scale are kept.
+        # Measured on CPU float32: at most 0.005 degrees off. Half precision rounds the ramp, its gradients, which vote
+        # into the 10-degree histogram and set the parabolic peak refinement, and the returned angle (bfloat16 spaces
+        # angles near 120 degrees by 0.5); the bound is one histogram bin in bfloat16, 2 degrees in float16.
+        _skip_without_half_padding(device, dtype)
+        tol = {torch.float16: 2.0, torch.bfloat16: 10.0}.get(dtype, 0.05)
+        orienter = LAFOrienter(32).to(device, dtype)
+        img = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).to(device, dtype)
+        centre = torch.tensor([[[47.0, 26.0]]], device=device, dtype=dtype)
+        scale = torch.full((1, 1, 1, 1), 12.0, device=device, dtype=dtype)
+        for input_angle in (0.0, 40.0, -75.0):
+            laf = kornia.feature.laf_from_center_scale_ori(
+                centre, scale, torch.tensor([[[input_angle]]], device=device, dtype=dtype)
+            )
+            out = orienter(laf, img)
+            self.assert_close(
+                kornia.feature.get_laf_orientation(out).flatten(),
+                torch.tensor([content_angle], device=device, dtype=dtype),
+                rtol=0.0,
+                atol=tol,
+            )
+            self.assert_close(out[..., 2], laf[..., 2], rtol=0.0, atol=0.0)
+            self.assert_close(kornia.feature.get_laf_scale(out), scale)
+        # relabelling: transposing the image mirrors the gradient direction a onto -90 - a
+        img_t = _conv_ramp(content_angle, 61, 83, 47.0, 26.0).transpose(-1, -2).contiguous().to(device, dtype)
+        laf_t = kornia.feature.laf_from_center_scale_ori(
+            centre.flip(-1), scale, torch.tensor([[[40.0]]], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            kornia.feature.get_laf_orientation(orienter(laf_t, img_t)).flatten(),
+            torch.tensor([-90.0 - content_angle], device=device, dtype=dtype),
+            rtol=0.0,
+            atol=tol,
+        )
+
+    def test_convention_orinet_offset_cancels_and_gain_acts_through_eps(self, device, dtype):
+        # OriNet subtracts each patch's mean and divides by its standard deviation plus 1e-6 before its layers, so an
+        # offset does not change the angle and a positive gain changes it only through that 1e-6; no pretrained
+        # weights are needed for that. With a standard deviation of 0.29, x and 3 x + 2 are 3.5e-7 rad apart in CPU
+        # float64.
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(0)
+            model = OriNet(pretrained=False).eval()
+        patches = torch.rand(3, 1, 32, 32, generator=torch.Generator().manual_seed(1)).to(device, dtype)
+        model = model.to(device, dtype)
+        # half precision rounds the returned angle: bfloat16 spaces the angles here (-1.78 to -1.94 rad) by 1 / 128
+        atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-5
+        self.assert_close(model(3 * patches + 2), model(patches), rtol=0.0, atol=atol)
+        if dtype not in (torch.float32, torch.float64):
+            return
+        # At a standard deviation of 1e-6 the 1e-6 halves the normalised contrast, and a gain of 3 raises that factor
+        # to 3 / 4: each angle moves by 1.65e-2 to 3.44e-2 rad (CPU and MPS float32, CPU float64).
+        low = 1e-6 * (patches - patches.mean(dim=(1, 2, 3), keepdim=True)) / patches.std(dim=(1, 2, 3), keepdim=True)
+        assert ((model(3 * low) - model(low)).abs() > 5e-3).all()
+        if dtype == torch.float64:
+            # The offset still cancels at that contrast (2.7e-12 rad); in float32, rounding 2 + low already changes it.
+            self.assert_close(model(low + 2), model(low), rtol=0.0, atol=1e-9)
+
+    def test_convention_pass_laf_returns_its_input_object(self, device, dtype):
+        # PassLAF returns the very tensor it was given, not a copy: an in-place edit of the output edits the input.
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[5.0, 7.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 2.0, device=device, dtype=dtype),
+            torch.tensor([[[30.0]]], device=device, dtype=dtype),
+        )
+        img = torch.zeros(1, 1, 12, 17, device=device, dtype=dtype)
+        assert PassLAF()(laf, img) is laf
+
+    def test_convention_dominant_gradient_angle_is_not_wrapped_past_pi(self, device, dtype):
+        # The angle is not wrapped into (-pi, pi]: a peak in the bin at pi refines up to half a bin past it, so the
+        # angle can exceed pi by up to pi / num_angular_bins. With 8 bins of 45 degrees, a ramp whose gradient points
+        # 195 degrees counter-clockwise on screen reads 192.8 degrees (CPU float64; 192.8 to 195.2 in every dtype, CPU
+        # and MPS), not -167.2.
+        _skip_without_half_padding(device, dtype)
+        patch = _conv_ramp(195.0, 32, 32, 15.5, 15.5).to(device, dtype)
+        angle = PatchDominantGradientOrientation(32, num_angular_bins=8).to(device, dtype)(patch).item()
+        assert math.pi < angle <= math.pi + math.pi / 8

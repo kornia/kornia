@@ -51,8 +51,10 @@ class GemmaRMSNorm(nn.Module):
             Tensor with the same shape as ``x`` after root-mean-square
             normalization and learned scaling.
         """
-        output = self._norm(x.float()).type_as(x)
-        return output * (1.0 + self.weight)
+        # Gemma normalizes and multiplies by (1 + weight) in float32, then casts: (x * w).to(dtype), not
+        # x.to(dtype) * w as Llama does
+        output = self._norm(x.float()) * (1.0 + self.weight.float())
+        return output.type_as(x)
 
 
 class GemmaRotaryEmbedding(nn.Module):
@@ -123,7 +125,8 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = nn.GELU()
+        # Gemma's hidden_act, gelu_pytorch_tanh
+        self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply the gated Gemma feed-forward projection.
@@ -275,7 +278,7 @@ class PaliGemma(nn.Module):
     def __init__(self, config: PaliGemmaConfig) -> None:
         super().__init__()
         self.config = config
-        self.padding_idx = config.ignore_index
+        self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
         if config.vision_config is None:
@@ -312,14 +315,23 @@ class PaliGemma(nn.Module):
     ) -> torch.Tensor:
         """Forward pass of the model.
 
+        The image tokens are prepended to the text tokens: the decoder input is the projected image features followed
+        by the text embeddings, scaled by ``sqrt(hidden_size)`` as in Gemma; the image features are not scaled.
+
         Args:
-            input_ids: Text tokens (batch, input_seq_len)
-            pixel_values: Images (batch, channels, height, width)
-            attention_mask: Optional attention mask.
+            input_ids: Text tokens only (batch, input_seq_len), without ``<image>`` placeholder tokens: the image
+                tokens are prepended to them, not substituted for placeholders.
+            pixel_values: Images (batch, channels, height, width), with height and width both equal to
+                ``config.vision_config.image_size``: the vision tower raises ``ValueError`` for any other size.
+            attention_mask: Optional attention mask over the image and text positions together, in a form
+                :func:`~torch.nn.functional.scaled_dot_product_attention` broadcasts against the
+                (batch, heads, total_seq_len, total_seq_len) scores, e.g. (batch, 1, total_seq_len, total_seq_len).
+                A (batch, input_seq_len) text padding mask raises.
             position_ids: Optional position IDs.
 
         Returns:
-            logits: Prediction scores (batch, total_seq_len, vocab_size).
+            logits: Prediction scores (batch, total_seq_len, vocab_size), where total_seq_len is the number of image
+            tokens plus input_seq_len: the logits include the image positions.
         """
         vision_outputs = self.vision_tower(pixel_values)
 
@@ -331,6 +343,13 @@ class PaliGemma(nn.Module):
         image_features = self.multi_modal_projector(image_features)
 
         inputs_embeds = self.embed_tokens(input_ids)
+        # Gemma scales the text embeddings by sqrt(hidden_size), a tensor in the embedding dtype; PaliGemma's image
+        # features enter unscaled (transformers divides them by the same factor before Gemma multiplies the sequence).
+        # torch.full fills it on the device; torch.tensor would copy a host value there, a sync on every forward.
+        normalizer = torch.full(
+            (), self.config.hidden_size**0.5, device=inputs_embeds.device, dtype=inputs_embeds.dtype
+        )
+        inputs_embeds = inputs_embeds * normalizer
 
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
 

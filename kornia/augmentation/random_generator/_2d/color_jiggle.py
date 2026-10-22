@@ -84,7 +84,9 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         self.contrast_sampler = UniformDistribution(contrast[0], contrast[1], validate_args=False)
         self.hue_sampler = UniformDistribution(hue[0], hue[1], validate_args=False)
         self.saturation_sampler = UniformDistribution(saturation[0], saturation[1], validate_args=False)
-        self.randperm = partial(torch.randperm, device=device, dtype=dtype)
+        # The order is an index permutation: draw it as int64, whatever the sampling dtype. torch draws the same
+        # permutation for every dtype, and CUDA has no bfloat16 randperm.
+        self.randperm = partial(torch.randperm, device=device, dtype=torch.long)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -99,5 +101,5 @@ class ColorJiggleGenerator(RandomGeneratorBase):
             "contrast_factor": contrast_factor.to(device=_device, dtype=_dtype),
             "hue_factor": hue_factor.to(device=_device, dtype=_dtype),
             "saturation_factor": saturation_factor.to(device=_device, dtype=_dtype),
-            "order": self.randperm(4).to(device=_device, dtype=_dtype).long(),
+            "order": self.randperm(4).to(device=_device),
         }

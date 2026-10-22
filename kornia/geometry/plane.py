@@ -53,7 +53,7 @@ class Hyperplane(nn.Module):
           an ``nn.Parameter``: a plane built from plain tensors, including the result of :meth:`through` and
           :func:`fit_plane` on points without autograd history, has trainable parameters, and the distances and
           projections it returns require grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history
-          keeps that history, and an integer tensor is stored as a buffer.
+          keeps that history, and an integer tensor is stored as a buffer (ParametrizedLine rejects one).
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
@@ -116,13 +116,12 @@ class Hyperplane(nn.Module):
         """
         return Scalar(self._d)
 
-    def abs_distance(self, p: Vector3) -> Scalar:
+    def abs_distance(self, p: Vector3 | torch.Tensor) -> Scalar:
         """Compute unsigned distances from points to the hyperplane.
 
         Args:
-            p: Point or batch of points wrapped as
-                :class:`~kornia.geometry.vector.Vector3`. The last coordinate
-                dimension represents ``(x, y, z)``.
+            p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
+                or :class:`torch.Tensor`. The last coordinate dimension represents ``(x, y, z)``.
 
         Returns:
             :class:`~kornia.geometry.vector.Scalar` with non-negative distance
@@ -132,8 +131,7 @@ class Hyperplane(nn.Module):
         return Scalar(self.signed_distance(p).abs())
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L145
-    # TODO: tests
-    def signed_distance(self, p: Vector3) -> Scalar:
+    def signed_distance(self, p: Vector3 | torch.Tensor) -> Scalar:
         """Compute signed distances from points to the hyperplane.
 
         The sign is determined by the stored normal vector. Points in the
@@ -141,25 +139,23 @@ class Hyperplane(nn.Module):
         negative values; points on the plane evaluate to zero.
 
         Args:
-            p: Point or batch of points as
-                :class:`~kornia.geometry.vector.Vector3`, or a compatible
-                tensor-like vector accepted by the dot-product routine.
+            p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
+                or :class:`torch.Tensor`. Gradients with respect to the points are preserved for both.
 
         Returns:
             :class:`~kornia.geometry.vector.Scalar` containing signed distance
             values for each input point.
         """
         KORNIA_CHECK(isinstance(p, (Vector3, torch.Tensor)))
-        return self.normal.dot(p) + self.offset
+        return Scalar(batched_dot_product(self.normal.data, _unwrap(p)) + self.offset.data)
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
-    # TODO: tests
-    def projection(self, p: Vector3) -> Vector3:
+    def projection(self, p: Vector3 | torch.Tensor) -> Vector3:
         """Project points onto the hyperplane along the normal direction.
 
         Args:
-            p: Point or batch of points wrapped as
-                :class:`~kornia.geometry.vector.Vector3`.
+            p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
+                or :class:`torch.Tensor`.
 
         Returns:
             :class:`~kornia.geometry.vector.Vector3` containing the closest
@@ -324,17 +320,23 @@ def fit_plane(points: Vector3) -> Hyperplane:
                 "fit_plane requires at least three points that are not identical; the given points are all identical."
             )
 
-    mean = points.mean(-2, True)
-    points_centered = points - mean
+    points_data = _unwrap(points)
+    # Half inputs are fitted in float32, which holds every half-precision value exactly, and only the plane is
+    # cast back. The first singular value grows with the square root of the number of points times their spread,
+    # so it overflows float16 for a point cloud in millimetres, and the offset's products cancel in half precision.
+    half = points_data.dtype in (torch.float16, torch.bfloat16)
+    points_work = points_data.float() if half else points_data
+    mean = points_work.mean(-2, True)
+    points_centered = points_work - mean
 
     # With at least three 3D points, reduced SVD retains all right singular vectors while
     # avoiding an unused N-by-N left factor, including when autograd saves it for backward.
-    _, S, V = _torch_svd_cast(_unwrap(points_centered), full_matrices=False)
+    _, S, V = _torch_svd_cast(points_centered, full_matrices=False)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin
-    # valid set working. ``_torch_svd_cast`` also covers float16 and bfloat16.
-    if checks and not bool((S[..., 1] > S[..., 0] * _rank_tolerance(S.dtype)).all()):
+    # valid set working. Keep the input-dtype tolerance even when the fit uses higher precision.
+    if checks and not bool((S[..., 1] > S[..., 0] * _rank_tolerance(points_data.dtype)).all()):
         raise ValueCheckError(
             "fit_plane requires points that are not collinear; the given points do not determine a plane."
         )
@@ -342,5 +344,8 @@ def fit_plane(points: Vector3) -> Hyperplane:
     # the first left eigenvector is the direction on the fited line
     direction = V[..., :, -1]  # BxD
     origin = mean[..., 0, :]  # BxD
+    if half:
+        offset = -batched_dot_product(direction, origin)
+        return Hyperplane(Vector3(direction.to(points_data.dtype)), Scalar(offset.to(points_data.dtype)))
 
     return Hyperplane.from_vector(Vector3(direction), Vector3(origin))

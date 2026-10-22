@@ -761,6 +761,40 @@ class TestConventionsSpatialGradient(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, spatial_gradient3d(volume.float(), order=order), rtol=0, atol=0)
 
+    @pytest.mark.parametrize("order", [1, 2])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int16, torch.int32, torch.int64, torch.bool])
+    def test_convention_spatial_gradient_integer_input_is_differentiated_in_float32_5155(
+        self, int_dtype, order, device
+    ):
+        """#5155: an integer image is differentiated in float32, so uint8 differences do not wrap and the mixed
+        second derivatives keep their quarter taps."""
+        self._require_replicate_padding(device, torch.float32)
+        values = torch.randint(0, 256, (1, 2, 5, 6), generator=torch.Generator().manual_seed(0))
+        image = values.to(device=device, dtype=int_dtype)
+        actual = spatial_gradient(image, order=order)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, spatial_gradient(image.float(), order=order), rtol=0, atol=0)
+
+    def test_convention_sobel_integer_input_is_filtered_in_float32_5155(self, device):
+        """#5155: sobel inherits the float32 promotion from spatial_gradient."""
+        self._require_replicate_padding(device, torch.float32)
+        values = torch.randint(0, 256, (1, 2, 5, 6), generator=torch.Generator().manual_seed(0))
+        image = values.to(device=device, dtype=torch.uint8)
+        actual = sobel(image)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, sobel(image.float()), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_convention_spatial_gradient_integer_input_does_not_wrap_5155(self, normalized, device):
+        """#5155: with ``normalized=False`` an int16 result used to wrap silently; a 0/32767 checkerboard is where
+        that shows up as a 65536-sized error rather than as an exception."""
+        self._require_replicate_padding(device, torch.float32)
+        pattern = torch.tensor([[0, 32767, 0, 32767], [32767, 0, 32767, 0]] * 2, dtype=torch.int16)
+        image = pattern[None, None].to(device=device)
+        actual = spatial_gradient(image, normalized=normalized)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, spatial_gradient(image.float(), normalized=normalized), rtol=0, atol=0)
+
     def test_convention_sobel_magnitude_of_normalized_gradient_eps_inside_root(self, device, dtype):
         self._require_replicate_padding(device, dtype)
         # sobel = sqrt(gx^2 + gy^2 + eps) of the normalized gradient: slope (3, 2) -> sqrt(13), not 8 * sqrt(13)

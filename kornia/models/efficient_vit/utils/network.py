@@ -27,7 +27,7 @@ from typing import Any, Union
 def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tuple[int, ...]]:
     """Return padding values."""
     if isinstance(kernel_size, (tuple,)):
-        return tuple([get_same_padding(ks) for ks in kernel_size])  # type: ignore
+        return tuple([get_same_padding(ks) for ks in kernel_size])
 
     # assert kernel_size % 2 > 0, "kernel size should be odd number"
     return kernel_size // 2

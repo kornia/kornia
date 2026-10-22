@@ -89,7 +89,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                  If None, it will not overwrite the function-wise settings.
 
         random_apply: randomly select children to apply. The selected children run in random order and may repeat
-                      when the requested count exceeds the sum of the selection weights.
+                      when the requested count exceeds the sum of the selection weights or the number of
+                      children with a nonzero weight, mix augmentations not counted.
                       If int, a fixed number of transformations will be selected.
                       If (a,), x number of transformations (a <= x <= len(args)) will be selected.
                       If (a, b), x number of transformations (a <= x <= b) will be selected.
@@ -126,11 +127,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           :class:`~kornia.augmentation.AugmentationBase2D` convention.
         - ``data_keys`` names one entry per positional argument, case-insensitively: ``input`` (alias
           ``image``), ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints`` and ``label`` (alias
-          ``class``); any other name raises ``KeyError``. With ``data_keys=None`` the call takes a dict whose
-          keys are these names, optionally followed by a ``_`` or ``-`` suffix (``mask_2``, ``class_id``). The
-          longest matching name wins and a suffix needs its separator: ``bbox_xyxy2`` is a ``bbox`` key and must
-          hold vertices. Unrecognized keys (``images``, ``masks``, ``labels``) are returned unchanged, without a
-          warning. The input dict is not modified.
+          ``class``); any other name raises a ``ValueError`` that is also a ``KeyError``. With ``data_keys=None``
+          the call takes a dict whose keys are these names, optionally followed by a ``_`` or ``-`` suffix
+          (``mask_2``, ``class_id``). The longest matching name wins and a suffix needs its separator:
+          ``bbox_xyxy2`` is a ``bbox`` key and must hold vertices. Unrecognized keys (``images``, ``masks``,
+          ``labels``) are returned unchanged, without a warning. The input dict is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``;
           ``N = 0`` is accepted. 3D inputs are ``(D, H, W)`` or ``(B, C, D, H, W)``; rank 4 is rejected as
@@ -153,27 +154,28 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
           in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
           assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
-        - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
-          has limitations. Each list entry uses only ``batch_prob[i]`` as its gate, including for intensity
-          children. Per-sample list tensors are unsupported by warp operations, and full-batch tensors in that
-          list can become desynchronized from the image when the gate differs across samples. A list longer
-          than the batch raises ``IndexError``. Use separate ``mask`` data keys for separate full-batch masks.
-          ``.inverse()`` takes the list the forward pass returned and inverts it element by element with the
-          same per-entry gate. A flip round-trips each entry, subject to the working-dtype requirements above; other
-          warps lose the pixels they move out of the frame and, when they resample, restore the rest only
-          approximately. Tracked in `#4477 <https://github.com/kornia/kornia/issues/4477>`_.
+        - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
+          ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
+          may differ. Each entry uses its sample's gate, transform parameters and matrix, including in
+          nested sequences, auto-augment policies, replay and inverse. Full-batch mask tensors must use
+          separate ``mask`` data keys; a list with incompatible length or entry shape raises ``ValueError``,
+          also in an inverse without an image. Video, mix and 3D children, and a geometric
+          :class:`~kornia.augmentation.PatchSequential`, do not support mask lists and raise
+          ``NotImplementedError``. Inverse warps can only approximately restore resampled pixels and
+          cannot recover pixels moved out of the frame.
         - the ``mask``, box and ``keypoints`` handlers of a geometric child, or of a custom
           :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` subclass, receive the transform of the
-          call's ``params``: the one the child recorded when it last transformed an image with those params, or
-          else one recomputed from them, so a replay without the image or after a newer draw follows ``params``.
+          call's ``params``: the one the child recorded when it last transformed an image with those params, while no
+          value in them has been replaced or edited in place, or else one recomputed from them, so a replay without
+          the image, after a newer draw or after an edit follows ``params``. Inference tensors have no version
+          counter, so an in-place edit made inside ``torch.inference_mode`` is not seen; replace the value instead.
           The mask limitations above apply; a handler the subclass does not implement raises
           ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
           see the warning below.
         - ``.inverse()`` undoes the 2D geometric steps and leaves intensity, custom rigid and non-rigid steps
-          applied. Slice-mode crops and 3D geometric children raise ``NotImplementedError``, mix children
-          ``RuntimeError``. Tensor boxes come back as axis-aligned enclosures; pass
-          :class:`~kornia.geometry.boxes.Boxes` to keep rotated corners. Content lost to cropping, padding or
-          interpolation is not recovered.
+          applied. 3D geometric children raise ``NotImplementedError``, mix children ``RuntimeError``. Tensor
+          boxes come back as axis-aligned enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated
+          corners. Content lost to cropping, padding or interpolation is not recovered.
         - ``same_on_batch`` and ``keepdim`` default to ``None``, which keeps each child's own setting;
           ``True`` or ``False`` overrides it.
         - Nested :class:`AugmentationSequential` children contribute the matrix they record for the current call
@@ -333,7 +335,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         transformation_matrix_mode: str = "silent",
         extra_args: Optional[Dict[DataKey, Dict[str, Any]]] = None,
     ) -> None:
@@ -438,7 +440,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return eye_like(3, input)
 
-    def inverse(  # type: ignore[override]
+    def inverse(
         self,
         *args: Union[DataType, Dict[str, DataType]],
         params: Optional[List[ParamItem]] = None,
@@ -463,29 +465,27 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
         try:
-            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+            if params is None:
+                params = self._params
+            self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys, params=params)
 
-            in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+            in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
 
             if params is None:
-                if self._params is None:
-                    raise ValueError(
-                        "No parameters available for inversing, please run a forward pass first "
-                        "or passing valid params into this function."
-                    )
-                params = self._params
+                raise ValueError(
+                    "No parameters available for inversing, please run a forward pass first "
+                    "or passing valid params into this function."
+                )
 
             outputs: List[DataType] = in_args
             for param in params[::-1]:
                 module = self.get_submodule(param.name)
-                outputs = self.transform_op.inverse(  # type: ignore
-                    *outputs, module=module, param=param, extra_args=self.extra_args
-                )
-                if not isinstance(outputs, (list, tuple)):
-                    # Make sure we are unpacking a list whilst post-proc
+                outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=self.extra_args)
+                if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
+                    # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
 
-            outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
+            outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
 
         finally:
             self.transform_op.data_keys = original_data_keys
@@ -499,6 +499,22 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return outputs[0]
 
         return outputs
+
+    @staticmethod
+    def _validate_mask_list(mask: List[torch.Tensor], batch: int, size: Optional[torch.Size]) -> None:
+        """Validate the per-sample mask-list layout before any child runs."""
+        if len(mask) != batch:
+            raise ValueError(f"Mask list must contain one entry per sample ({batch}); got {len(mask)}.")
+        for i, entry in enumerate(mask):
+            if not isinstance(entry, torch.Tensor):
+                raise ValueError(f"Mask list entry {i} must be a torch.Tensor; got {type(entry).__name__}.")
+            if entry.ndim not in (2, 3, 4) or (entry.ndim == 4 and entry.shape[0] != 1):
+                raise ValueError(
+                    f"Mask list entry {i} must be (H, W), (C, H, W) or (1, C, H, W); "
+                    f"got {tuple(entry.shape)}. Use separate mask data keys for full-batch tensors."
+                )
+            if size is not None and entry.shape[-2:] != size:
+                raise ValueError(f"Mask list entry {i} must have spatial size {tuple(size)}; got {tuple(entry.shape)}.")
 
     def _validate_args_datakeys(
         self, *args: DataType, data_keys: List[DataKey], params: Optional[List[ParamItem]] = None
@@ -517,7 +533,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Set once at construction from this container's children; distinguishes a video from a 5D
         # ``(B, C, D, H, W)`` 3D image, which this function leaves untouched, as before.
         is_video = self.contains_video_sequential
-        if isinstance(image, torch.Tensor) and (image.ndim in (3, 4) or (image.ndim == 5 and is_video)):
+        if isinstance(image, torch.Tensor) and (image.ndim in (2, 3, 4) or (image.ndim == 5 and is_video)):
             image_batch: Optional[int] = image.shape[0] if image.ndim in (4, 5) else 1
             image_size = image.shape[-2:]
         elif image is None and params is not None and not self.contains_3d_augmentation:
@@ -533,6 +549,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         temporal_dim = videos[0]._temporal_channel if videos else 1
         for mask, key in zip(args, data_keys):
             if key not in _MSK_OPTIONS:
+                continue
+            if isinstance(mask, list):
+                self._validate_mask_list(mask, image_batch, image_size)
                 continue
             if not isinstance(mask, torch.Tensor):
                 continue
@@ -662,7 +681,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return out
 
-    def forward(  # type: ignore[override]
+    def forward(
         self,
         *args: Union[DataType, Dict[str, DataType]],
         params: Optional[List[ParamItem]] = None,
@@ -730,8 +749,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             for param in params:
                 module = self.get_submodule(param.name)
                 outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
-                if not isinstance(outputs, (list, tuple)):
-                    # Make sure we are unpacking a list whilst post-proc
+                if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
+                    # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
                 self._update_transform_matrix_by_module(module)
 
@@ -740,7 +759,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = [outputs[i] for i in restore_order]
                 self.transform_op.data_keys = original_data_keys
 
-            outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)  # type: ignore
+            outputs = self._arguments_postproc(args, outputs, data_keys=original_data_keys)
         finally:
             self.transform_op.data_keys = self.data_keys
         if not is_exporting():
@@ -778,7 +797,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert.
                 If None, convert every tensor, NumPy array and PIL image argument, and load a string as an image
-                path only if it is the first positional argument.
+                path only if it is the first positional argument, or the value of an ``input`` or ``image`` key
+                (``image_0`` too) in a dictionary input.
             output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
@@ -793,7 +813,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 keys, data_keys, args, _ = self._preproc_dict_data(inputs[0])
                 converted_dict = dict(inputs[0])
                 for key, arg, data_key in zip(keys, args, data_keys):
-                    if data_key in _IMG_OPTIONS and _is_numpy_array(arg):
+                    # The key marks a string as an image path, so a missing file raises instead of passing through.
+                    if data_key in _IMG_OPTIONS and (isinstance(arg, str) or self._is_valid_arg(arg)):
                         converted_dict[key] = self.to_tensor(arg)
                     else:
                         converted_dict[key] = self._convert_non_image(arg, data_key)
@@ -908,7 +929,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if data_key in _MSK_OPTIONS:
             # A PIL image or an image file converts like its NumPy array, so labels and palette indices are kept.
             if isinstance(arg, str) and self._is_valid_arg(arg):
-                with Image.open(arg) as mask:  # type: ignore
+                with Image.open(arg) as mask:
                     arg = np.array(mask)
             elif _is_pil_image(arg):
                 arg = np.array(arg)
@@ -978,7 +999,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # image in the call, ``None`` when there is none.
         working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
-            # A list keeps its per-entry gate semantics (see the class docstring); it is not broadcast.
+            # A list holds one mask per sample (see the class docstring); it is not broadcast.
             return [self._cast_mask(a, working) for a in arg]
         return self._broadcast_single_mask(self._cast_mask(arg, working), image_batch)
 

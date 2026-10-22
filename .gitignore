@@ -49,6 +49,9 @@ benchmarks/profile/
 .omc/
 docs/export_support/results/
 
+# pull request descriptions drafted as a file; the description belongs in the PR body
+/PR.md
+
 # kornia hub download cache (created by ONNXLoader / model downloads in the working directory)
 .kornia_hub/
 

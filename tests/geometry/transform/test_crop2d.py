@@ -21,7 +21,7 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 
-from testing.base import BaseTester, supports_bilinear_2d_grid_sample
+from testing.base import BaseTester, deterministic_algorithms_on_cuda, supports_bilinear_2d_grid_sample
 
 
 class TestCropAndResize(BaseTester):
@@ -623,8 +623,6 @@ class TestCropByIndices(BaseTester):
             dtype=torch.int64,
         )
         crop = kornia.geometry.transform.crop_by_indices
-        out = crop(img, src_box, size=size, shape_compensation=shape_compensation)
-        weights = torch.arange(1, out.numel() + 1, device=device, dtype=dtype).reshape(out.shape)
         full_output_copies = []
 
         class OutputCopies(TorchDispatchMode):
@@ -634,17 +632,25 @@ class TestCropByIndices(BaseTester):
                     full_output_copies.append(func)
                 return result
 
-        # Writing each row into a preallocated output made backward copy the whole output gradient once per row.
-        with OutputCopies():
-            (gradient,) = torch.autograd.grad(out, img, weights)
-        assert not full_output_copies
-        # A single image takes the batch-slicing path, so each row is checked against it.
-        for i in range(batch):
-            row = img[i : i + 1].detach().requires_grad_()
-            row_out = crop(row, src_box[i : i + 1], size=size, shape_compensation=shape_compensation)
-            (row_gradient,) = torch.autograd.grad(row_out, row, weights[i : i + 1])
-            self.assert_close(out[i : i + 1], row_out, rtol=0, atol=0)
-            self.assert_close(gradient[i : i + 1], row_gradient, rtol=0, atol=0)
+        # On CUDA the bilinear resize's backward (``upsample_bilinear2d_backward``) accumulates with atomics in no
+        # fixed order: the batched gradient took 4-6 distinct values over 200 identical backward passes, differing
+        # from a row's in the last bit. Deterministic algorithms give every pass one order, and the batched and
+        # per-row results then agree bit for bit on CUDA, as they do on CPU. The mode also selects the forward
+        # kernel, so both sides are computed inside it.
+        with deterministic_algorithms_on_cuda(device):
+            out = crop(img, src_box, size=size, shape_compensation=shape_compensation)
+            weights = torch.arange(1, out.numel() + 1, device=device, dtype=dtype).reshape(out.shape)
+            # Writing each row into a preallocated output made backward copy the whole output gradient once per row.
+            with OutputCopies():
+                (gradient,) = torch.autograd.grad(out, img, weights)
+            assert not full_output_copies
+            # A single image takes the batch-slicing path, so each row is checked against it.
+            for i in range(batch):
+                row = img[i : i + 1].detach().requires_grad_()
+                row_out = crop(row, src_box[i : i + 1], size=size, shape_compensation=shape_compensation)
+                (row_gradient,) = torch.autograd.grad(row_out, row, weights[i : i + 1])
+                self.assert_close(out[i : i + 1], row_out, rtol=0, atol=0)
+                self.assert_close(gradient[i : i + 1], row_gradient, rtol=0, atol=0)
 
     def test_crop_by_indices_no_resizing(self, device, dtype):
         inp = torch.tensor([[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7, 8, 9]]]], device=device, dtype=dtype)  # 1x3x3

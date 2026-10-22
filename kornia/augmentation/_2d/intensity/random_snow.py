@@ -20,9 +20,10 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.color import hls_to_rgb, rgb_to_hls
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomSnow(IntensityAugmentationBase2D):
@@ -44,20 +45,14 @@ class RandomSnow(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the input must have three channels: the effect is computed in HLS, and any other channel count
           raises on the forward pass.
         - ``snow_coefficient`` is checked against ``[0, 1]`` at construction, where ``brightness`` must be
           ``1`` or greater.
-        - the output as a whole is not clamped. Only a snow-covered pixel -- one whose lightness is below the
-          drawn ``snow_coefficient`` -- has its lightness scaled by ``brightness`` and clamped into ``[0, 1]``, so
-          it comes back white once its scaled lightness reaches ``1``. A pixel the snow misses goes through the
-          HLS round trip unclamped, except where the HLS saturation is undefined: a lightness of exactly ``1``
-          with a channel above ``1``, such as ``(1.5, 0.5, 0.5)``, comes back white.
-
-    .. warning::
-        An input whose values are all negative comes back as an all-zero image, and any pixel whose lightness is
-        zero or negative, such as ``(2.0, -2.0, -2.0)``, comes back black. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        - a pixel whose lightness is below ``snow_coefficient`` has its lightness scaled by
+          ``brightness``; it becomes white once that lightness reaches ``1``.
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)
@@ -91,6 +86,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = _clamp_unit_range(input)
         KORNIA_CHECK(input.shape[1] == 3, "Number of color channels should be 3.")
         KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
 
@@ -100,8 +96,8 @@ class RandomSnow(IntensityAugmentationBase2D):
 
         mask = torch.zeros_like(input_HLS)
         # Retrieve generated parameters
-        snow_coefficient = params["snow_coefficient"].to(input)
-        brightness = params["brightness"].to(input)
+        snow_coefficient = _to_device_nonblocking(params["snow_coefficient"], input.device, input.dtype)
+        brightness = _to_device_nonblocking(params["brightness"], input.device, input.dtype)
         snow_coefficient = snow_coefficient[:, None, None, None]
         brightness = brightness[:, None, None, None]
 
@@ -111,4 +107,4 @@ class RandomSnow(IntensityAugmentationBase2D):
         new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
         input_HLS = input_HLS * (1 - mask) + new_light
 
-        return hls_to_rgb(input_HLS)
+        return _clamp_unit_range(hls_to_rgb(input_HLS))

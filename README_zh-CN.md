@@ -57,7 +57,8 @@
 | [kornia.geometry](https://kornia.readthedocs.io/en/latest/geometry.html)         | 执行几何计算的模块，用于使用不同的相机模型执行图像变换、3D线性代数和转换 |
 | [kornia.losses](https://kornia.readthedocs.io/en/latest/losses.html)             | 损失函数模块                                                                             |
 | [kornia.morphology](https://kornia.readthedocs.io/en/latest/morphology.html)     | 执行形态学操作的模块                                                                                          |
-| [kornia.utils](https://kornia.readthedocs.io/en/latest/utils.html)               | 图像/张量常用工具以及metrics                                                                             |
+| [kornia.image](https://kornia.readthedocs.io/en/latest/image.html)               | 图像数据结构、绘制以及图像/张量常用工具                                                                           |
+| [kornia.metrics](https://kornia.readthedocs.io/en/latest/metrics.html)           | 评估指标模块                                                                                         |
 
 ## 支持我们
 

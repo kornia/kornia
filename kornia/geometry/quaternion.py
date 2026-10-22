@@ -74,8 +74,9 @@ class Quaternion(nn.Module):
           an enclosing module's device and dtype conversions. Construction preserves the input tensor and its
           autograd history. ``Quaternion.to()`` returns a new quaternion; enclosing module conversions update the
           existing module's state.
-        - Known defects: below a norm of ``1e-12``, ``matrix()`` and ``slerp`` give wrong results, and the zero
-          quaternion's ``matrix()`` is the identity (`#3952 <https://github.com/kornia/kornia/issues/3952>`_).
+        - Below a norm of ``1e-12``, ``matrix()`` and ``slerp`` read ``q`` through the norm floor of
+          :func:`~kornia.geometry.conversions.normalize_quaternion`, so they do not give the rotation of its
+          direction, and the zero quaternion's ``matrix()`` is the identity.
 
     Example:
         >>> q = Quaternion.identity(batch_size=4)
@@ -766,7 +767,8 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     # changing which eigenvector is selected when eigenvalues are close.
     max_idx = torch.argmax(eigenvalues)
     eigenvectors = eigenvectors.to(orig_dtype)
-    q_avg = eigenvectors[:, max_idx]
+    indices = max_idx.reshape(1, 1).expand(eigenvectors.shape[0], 1)
+    q_avg = torch.gather(eigenvectors, 1, indices).squeeze(1)
     q_avg = q_avg / q_avg.norm()
 
     return Quaternion(q_avg.unsqueeze(0))

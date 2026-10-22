@@ -18,8 +18,8 @@
 import pytest
 import torch
 
-from kornia.core.exceptions import BaseError
-from kornia.feature import convert_sift_descriptor_layout
+from kornia.core.exceptions import BaseError, ShapeError
+from kornia.feature import SIFTDescriptorFromPyramid, convert_sift_descriptor_layout, laf_from_center_scale_ori
 from kornia.feature.siftdesc import (
     DenseSIFTDescriptor,
     SIFTDescriptor,
@@ -102,6 +102,16 @@ class TestSIFTDescriptor(BaseTester):
         sift = SIFTDescriptor(32).to(device, dtype)
         out = sift(inp)
         assert out.shape == (1, 128)
+
+    @pytest.mark.parametrize("patch_size", [32, 15])
+    def test_empty_batch(self, device, dtype, patch_size):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        sift = SIFTDescriptor(patch_size).to(device, dtype)
+        one = sift(torch.ones(1, 1, patch_size, patch_size, device=device, dtype=dtype))
+        out = sift(torch.zeros(0, 1, patch_size, patch_size, device=device, dtype=dtype))
+        assert out.shape == (0, 128)
+        assert out.dtype == one.dtype
+        assert out.device == one.device
 
     def test_batch_shape(self, device, dtype):
         inp = torch.ones(2, 1, 15, 15, device=device, dtype=dtype)
@@ -678,3 +688,123 @@ class TestConvertSIFTDescriptorLayout(BaseTester):
             return convert_sift_descriptor_layout(d, "kornia", "opencv")
 
         self.assert_close(torch_optimizer(op, fullgraph=True)(descriptors), op(descriptors))
+
+
+def _sift_family_member(kind, device, dtype, image, **kwargs):
+    """Describe ``image`` with the ``kind`` SIFT descriptor; the descriptor axis is returned last."""
+    if kind == "patch":
+        return SIFTDescriptor(image.shape[-1], **kwargs).to(device, dtype)(image)
+    if kind == "dense":
+        return DenseSIFTDescriptor(**kwargs).to(device, dtype)(image).movedim(1, -1)
+    # two oriented, sheared frames off the image centre, both straddling the step edge of the fixtures below
+    lafs = laf_from_center_scale_ori(
+        torch.tensor([[[30.0, 20.0], [33.0, 31.0]]], device=device, dtype=dtype),
+        torch.tensor([[[[6.0]], [[5.0]]]], device=device, dtype=dtype),
+        torch.tensor([[[20.0], [-40.0]]], device=device, dtype=dtype),
+    )
+    lafs[..., 0, 1] += 1.0
+    return SIFTDescriptorFromPyramid(**kwargs).to(device, dtype)(image, lafs)
+
+
+class TestConventionsSIFTDescriptors(BaseTester):
+    """Pins for the SIFT family's patch size, clipping, RootSIFT default, flat-patch output and dense channel layout."""
+
+    def test_convention_sift_descriptor_takes_41_pixel_patches_by_default(self, device, dtype):
+        # Unlike the 32-pixel learned descriptors and the patch_size=32 default of LAFDescriptor / get_laf_descriptors;
+        # the size is validated.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        sift = SIFTDescriptor().to(device, dtype)
+        assert sift.patch_size == 41
+        assert sift(torch.rand(2, 1, 41, 41, device=device, dtype=dtype)).shape == (2, 128)
+        with pytest.raises(ShapeError):
+            sift(torch.rand(2, 1, 32, 32, device=device, dtype=dtype))
+
+    def test_convention_sift_clips_at_clipval_between_two_l2_normalisations(self, device, dtype):
+        # A vertical step between columns 24 and 25 of a 41-pixel patch: every gradient points along +x (angle bin 0)
+        # and lies in cell column 2 only (cells centred at 5, 15, 25 and 35, each pooling 17 pixels). Index
+        # a * 16 + cy * 4 + cx: entries 2, 6, 10 and 14. clipval=1.0 leaves the unit descriptor unclipped.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        patch = torch.zeros(1, 1, 41, 41, device=device, dtype=dtype)
+        patch[..., 25:] = 1.0
+        # Relabelling: the transposed patch has a horizontal step, angle bin 2 (+y, image rows grow downwards) in cell
+        # row 2, entries 32 + 8 + cx.
+        for image, entries in ((patch, [2, 6, 10, 14]), (patch.transpose(-1, -2), [40, 41, 42, 43])):
+            raw = SIFTDescriptor(rootsift=False, clipval=1.0).to(device, dtype)(image)[0]
+            out = SIFTDescriptor(rootsift=False).to(device, dtype)(image)[0]
+            assert (raw > 0.1).nonzero().flatten().tolist() == entries
+            self.assert_close(raw.norm(), torch.ones((), device=device, dtype=dtype))
+            assert raw[entries].min() > 0.2  # every entry is clipped
+            # the cells mirror about the patch centre, as the grid is centred there
+            self.assert_close(raw[entries[:2]], raw[entries[::-1][:2]])
+            # unequal before the clip (the window weights the middle cells more), so the 0.5 below is the clip's doing
+            assert (raw[entries] - 0.5).abs().max() > 0.01
+            # normalise, clip every entry at clipval = 0.2, normalise again: the four equal clipped entries become
+            # 0.5, so an output entry can exceed clipval
+            assert (out > 0.1).nonzero().flatten().tolist() == entries
+            self.assert_close(out[entries], torch.full((4,), 0.5, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("kind", ["patch", "dense", "pyramid"])
+    def test_convention_sift_family_defaults_to_rootsift_of_the_clipped_descriptor(self, device, dtype, kind):
+        # rootsift=True and clipval=0.2 by default in all three (pytorch-sift and OpenCV return plain SIFT): the
+        # default output is sqrt(L1-normalise(clipped SIFT) + 1e-10), where clipped SIFT is the unit descriptor
+        # clipped at 0.2 and renormalised. clipval=1.0 leaves a unit descriptor unclipped.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        torch.manual_seed(0)
+        size = {"patch": (3, 1, 41, 41), "dense": (1, 1, 30, 37), "pyramid": (1, 1, 48, 64)}[kind]
+        image = 0.2 * torch.rand(*size, device=device, dtype=dtype)
+        image[..., size[-1] // 2 + 4 :] += 1.0  # a step edge, so that the clipping acts
+        raw = _sift_family_member(kind, device, dtype, image, rootsift=False, clipval=1.0)
+        raw = raw.to(torch.promote_types(dtype, torch.float32))
+        assert raw.max() > 0.25
+        clipped = torch.nn.functional.normalize(raw.clamp(0.0, 0.2), dim=-1)
+        expected = (clipped / clipped.sum(dim=-1, keepdim=True) + 1e-10).sqrt()
+        self.assert_close(_sift_family_member(kind, device, dtype, image), expected.to(dtype))
+
+    @pytest.mark.parametrize("kind", ["patch", "dense", "pyramid"])
+    def test_convention_sift_family_describes_a_flat_patch_by_a_zero_vector(self, device, dtype, kind):
+        # A flat patch has no gradient, hence no orientation: its descriptor is zero rather than a unit vector, and
+        # its RootSIFT is sqrt(1e-10) = 1e-5 in every bin. A zero-LAF padding slot hands SIFTDescriptor (behind
+        # LAFDescriptor) such a patch. SIFTDescriptorFromPyramid instead treats a zero LAF as invalid and returns an
+        # exact zero descriptor whether or not rootsift is set.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        size = {"patch": (3, 1, 41, 41), "dense": (1, 1, 30, 37), "pyramid": (1, 1, 48, 64)}[kind]
+        image = torch.full(size, 0.5, device=device, dtype=dtype)
+        plain = _sift_family_member(kind, device, dtype, image, rootsift=False)
+        assert torch.equal(plain, torch.zeros_like(plain))
+        root = _sift_family_member(kind, device, dtype, image)
+        self.assert_close(root, torch.full_like(root, 1e-5), rtol=1e-2, atol=0.0)
+        if kind == "pyramid":
+            # a zero LAF next to a valid one, so that the invalid slot goes through the same pass as a real frame
+            lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=dtype)
+            lafs[0, 0] = torch.tensor([[6.0, 1.0, 30.0], [0.0, 6.0, 20.0]], device=device, dtype=dtype)
+            for rootsift in (False, True):
+                desc = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device, dtype)(image, lafs)[0]
+                assert torch.equal(desc[1], torch.zeros_like(desc[1]))
+                assert bool((desc[0] > 0).all()) == rootsift  # the valid slot of the flat image: 1e-5 or 0
+                oriented, _ = (
+                    SIFTDescriptorFromPyramid(rootsift=rootsift).to(device, dtype).orient_and_describe(image, lafs)
+                )
+                assert torch.equal(oriented[0, 1], lafs[0, 1])  # the padding frame comes back unchanged
+
+    def test_convention_dense_sift_channels_are_angle_major_like_sift_descriptor(self, device, dtype):
+        # Channel a * 16 + cy * 4 + cx, as SIFTDescriptor's entries. With the defaults output (i, j) is centred on
+        # input (i + 4.5, j + 4.5) and its four cell columns sit 4 pixels apart, each pooling 4 pixels: at j = 25 the
+        # cells pool columns 22-25, 26-29, 30-33 and 34-37. A vertical step between columns 35 and 36 has its
+        # gradients (angle bin 0, +x) in cell column 3 only: channels 3, 7, 11 and 15, equal (no Gaussian weight), 0.5.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-padding kernel for {dtype} on {device.type}")
+        image = torch.zeros(1, 1, 40, 53, device=device, dtype=dtype)
+        image[..., 36:] = 1.0
+        dense = DenseSIFTDescriptor(rootsift=False).to(device, dtype)
+        # Relabelling: transposing the image transposes the output map and turns the step horizontal, angle bin 2
+        # (+y) in cell row 3: channels 32 + 12 + cx.
+        for out, entries in (
+            (dense(image)[0, :, 12, 25], [3, 7, 11, 15]),
+            (dense(image.transpose(-1, -2))[0, :, 25, 12], [44, 45, 46, 47]),
+        ):
+            assert (out > 0.1).nonzero().flatten().tolist() == entries
+            self.assert_close(out[entries], torch.full((4,), 0.5, device=device, dtype=dtype))

@@ -17,8 +17,11 @@
 
 import pytest
 import torch
+from torch._dynamo.testing import CompileCounter
 
 from kornia.enhance.threshold import ThresholdType, threshold
+
+from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
 
 
 class TestThreshold:
@@ -75,6 +78,17 @@ class TestThreshold:
         x = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
         with pytest.raises(NotImplementedError):
             threshold(x, thresh=0.0, maxval=1.0, type=ThresholdType.THRESH_OTSU)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("ttype", [ThresholdType.THRESH_BINARY, ThresholdType.THRESH_TOZERO_INV])
+    def test_traces_in_one_graph_like_eager(self, ttype, device, dtype):
+        # The supported-type check must not iterate the enum class while tracing: torch 2.9's Dynamo cannot (#5819).
+        x = torch.rand(2, 3, 5, 7, device=device, dtype=dtype)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(threshold, backend=counter, fullgraph=True)
+        torch.testing.assert_close(traced(x, 0.5, 1.0, ttype), threshold(x, 0.5, 1.0, ttype), rtol=0, atol=0)
+        assert counter.frame_count == 1
 
     @pytest.mark.parametrize(
         "image_dtype, values, thresh, ttype, expected",

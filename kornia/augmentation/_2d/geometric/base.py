@@ -54,7 +54,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomTranslate`, :class:`RandomPerspective`, :class:`RandomElasticTransform` and
           :class:`RandomThinPlateSpline` (`#4412 <https://github.com/kornia/kornia/issues/4412>`_).
         - this base provides a matrix-based ``inverse`` interface. Whether a concrete augmentation can invert a
-          call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
+          call depends on its implementation: a subclass without ``inverse_transform`` raises ``NotImplementedError``.
           Inverse resampling cannot recover image or mask information lost through cropping, padding, or
           interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
           For an empty batch, image and mask inverse restore the spatial dimensions recorded in the parameters.
@@ -237,8 +237,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -310,8 +309,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs: Any,
     ) -> Boxes:
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
@@ -327,7 +325,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         elif to_apply.all():
             output = input.transform_boxes_(transform)
         else:
-            output[to_apply] = input[to_apply].transform_boxes_(transform[to_apply])
+            # Indexing with `to_apply` would select whole videos on the batch axis of a
+            # :class:`VideoBoxes`, while the gate has one entry per frame. Blend on the flat
+            # storage instead, as :meth:`transform_boxes` does, so a partial gate applies the
+            # inverse to exactly the frames that were augmented.
+            applied = input.clone().transform_boxes_(transform)
+            output = input.clone()
+            output._data = self._blend_by_prob(applied.data, input.data, to_apply)
+            output._valid = self._blend_by_prob(applied._valid, input._valid, to_apply)
 
         return output
 
@@ -350,8 +355,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         """
         output = input.clone()
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")

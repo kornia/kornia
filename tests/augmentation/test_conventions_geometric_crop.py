@@ -35,8 +35,12 @@ class TestGeometricCropConventions(BaseTester):
 
         slice_crop = K.CenterCrop(4, cropping_mode="slice")
         self.assert_close(slice_crop(x), expected)
-        with pytest.raises(NotImplementedError, match="only applicable for resample"):
-            slice_crop.inverse(expected)
+        # The inverse pastes the crop back onto a zero canvas of the input size.
+        restored = slice_crop.inverse(expected)
+        assert restored.shape == x.shape
+        self.assert_close(restored[..., 1:5, 2:6], expected)
+        self.assert_close(restored[..., :1, :], torch.zeros_like(restored[..., :1, :]))
+        self.assert_close(restored[..., :, :2], torch.zeros_like(restored[..., :, :2]))
 
         resample_crop = K.CenterCrop((4, 4), cropping_mode="resample")
         resample_output = resample_crop(x)
@@ -94,8 +98,7 @@ class TestGeometricCropConventions(BaseTester):
         assert resample.inverse(output).shape == x.shape
         slice_crop = K.RandomCrop((3, 3), p=1.0, cropping_mode="slice")
         slice_output = slice_crop(x)
-        with pytest.raises(NotImplementedError, match="only applicable for resample"):
-            slice_crop.inverse(slice_output)
+        self.assert_close(slice_crop.inverse(slice_output), x)
 
         image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
         nearest = K.RandomCrop((3, 3), resample="nearest", align_corners=False, p=1.0, cropping_mode="resample")
@@ -311,11 +314,7 @@ class TestGeometricCropConventions(BaseTester):
             crop = K.RandomResizedCrop(cropping_mode=mode, **kwargs)
             output = crop(x)
             assert output.shape == (1, 1, 3, 4)
-            if mode == "resample":
-                assert crop.inverse(output).shape == x.shape
-            else:
-                with pytest.raises(NotImplementedError, match="only applicable for resample"):
-                    crop.inverse(output)
+            assert crop.inverse(output).shape == x.shape
 
         nearest = K.RandomResizedCrop(
             size=(6, 8),
@@ -330,6 +329,166 @@ class TestGeometricCropConventions(BaseTester):
         params["src"] = torch.tensor([[[0, 0], [7, 0], [7, 5], [0, 5]]], device=device, dtype=dtype)
         params["dst"] = torch.tensor([[[0, 0], [7, 0], [7, 5], [0, 5]]], device=device, dtype=dtype)
         self.assert_close(nearest(x, params=params), x)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    @pytest.mark.parametrize("crop_cls", [K.CenterCrop, K.RandomCrop])
+    @pytest.mark.parametrize("size", [(1, 1), (1, 3), (3, 1)])
+    def test_convention_crop_inverse_with_a_one_pixel_axis(self, size, crop_cls, mode, align_corners, device, dtype):
+        # grid_sample cannot place a source axis of length 1: the inverse spread the crop's only row or column over
+        # the whole canvas (align_corners=True) or into the next pixel. It pastes the crop back like any other.
+        torch.manual_seed(0)
+        x = (torch.arange(1, 36, device=device, dtype=dtype) / 35).reshape(1, 1, 5, 7)
+        kwargs = {"p": 1.0} if crop_cls is K.RandomCrop else {}
+        crop = crop_cls(size, cropping_mode=mode, align_corners=align_corners, **kwargs)
+        output = crop(x)
+        left, top = crop._params["src"][0, 0].long().tolist()
+        expected = torch.zeros_like(x)
+        expected[..., top : top + size[0], left : left + size[1]] = x[..., top : top + size[0], left : left + size[1]]
+        self.assert_close(crop.inverse(output), expected, low_tolerance=True)
+        inverse_matrix = crop.compute_inverse_transformation(crop.transform_matrix)
+        self.assert_close(
+            crop.inverse_masks(output, crop._params, crop.flags, inverse_matrix), expected, low_tolerance=True
+        )
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_convention_random_crop_inverse_of_an_oversized_crop(self, mode, device, dtype):
+        # The inverse rebuilt the matrix from the crop output's shape, so the scale of an oversized crop was lost and
+        # the inverse took the top-left corner of the upscaled crop. It scales against the recorded canvas now.
+        ys, xs = torch.meshgrid(torch.arange(5), torch.arange(5), indexing="ij")
+        ramp = ((xs + 2 * ys) / 15)[None, None].to(device, dtype)
+        crop = K.RandomCrop((10, 10), p=1.0, cropping_mode=mode)
+        restored = crop.inverse(crop(ramp))
+        # Slice mode upsamples on the half-pixel grid, which clamps at the border.
+        self.assert_close(restored[..., 1:-1, 1:-1], ramp[..., 1:-1, 1:-1], low_tolerance=True)
+
+    @pytest.mark.parametrize("padding", [1, -1, (1, -1)])
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_convention_random_crop_mask_inverse_with_a_per_channel_fill(self, mode, padding, device, dtype):
+        # Removing the pre-crop padding from a mask went through the forward padding, whose per-channel image fill
+        # does not fit a one-channel mask, and raised.
+        crop = K.RandomCrop((3, 5), padding=padding, fill=(0.1, 0.2, 0.3), p=1.0, cropping_mode=mode)
+        seq = K.AugmentationSequential(crop, data_keys=["input", "mask"])
+        image = torch.rand(1, 3, 5, 7, device=device, dtype=dtype)
+        mask = torch.rand(1, 1, 5, 7, device=device, dtype=dtype)
+        restored_image, restored_mask = seq.inverse(*seq(image, mask), data_keys=["input", "mask"])
+        assert restored_image.shape == image.shape
+        assert restored_mask.shape == mask.shape
+
+    @pytest.mark.parametrize("padding", [-1, (1, -1), (-1, 2, 0, -1)])
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_convention_random_crop_inverse_restores_a_negatively_padded_canvas(self, mode, padding, device, dtype):
+        # Negative padding crops the input before the crop: the inverse pads that border back onto the canvas.
+        x = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7)
+        crop = K.RandomCrop((3, 5), padding=padding, p=1.0, cropping_mode=mode)
+        restored = crop.inverse(crop(x))
+        assert restored.shape == x.shape
+        if padding == -1:
+            expected = torch.zeros_like(x)
+            expected[..., 1:4, 1:6] = x[..., 1:4, 1:6]
+            self.assert_close(restored, expected, low_tolerance=True)
+
+    def test_convention_resized_crop_with_a_one_pixel_crop(self, device, dtype):
+        # A one-pixel crop axis has no corner-aligned scale. Slice mode repeats the pixel, and resample mode, which
+        # returned NaN, now repeats it too instead of sampling its neighbours; the inverse puts it back.
+        x = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7)
+        kwargs = {"size": (3, 3), "scale": (1.0, 1.0), "ratio": (1.0, 1.0), "align_corners": True, "p": 1.0}
+        slice_crop = K.RandomResizedCrop(cropping_mode="slice", **kwargs)
+        params = slice_crop.forward_parameters(x.shape)
+        params["src"] = torch.tensor([[[4.0, 3.0], [4.0, 3.0], [4.0, 3.0], [4.0, 3.0]]], device=device, dtype=dtype)
+        slice_output = slice_crop(x, params=params)
+        self.assert_close(slice_output, torch.full_like(slice_output, 25))
+        resample_output = K.RandomResizedCrop(cropping_mode="resample", **kwargs)(x, params=params)
+        self.assert_close(resample_output, slice_output)
+        expected = torch.zeros_like(x)
+        expected[..., 3, 4] = 25
+        self.assert_close(slice_crop.inverse(slice_output, params=params), expected, low_tolerance=True)
+
+    @pytest.mark.parametrize(("canvas", "column", "row"), [(256, 200, 180), (512, 256, 256), (512, 257, 300)])
+    def test_convention_resized_crop_with_a_one_pixel_crop_on_a_large_canvas(self, canvas, column, row, device, dtype):
+        # A scale large enough to push the next canvas pixel off the output overflowed the translation in float16
+        # (448 x 200 > 65504): the matrix held -inf and the inverse NaN. The one-pixel axis is a translation, and
+        # the inverse clears the canvas next to the crop by integer index: in bfloat16, 256 and 257 coincide.
+        x = torch.ones(1, 1, canvas, canvas, device=device, dtype=dtype)
+        kwargs = {"size": (224, 224), "scale": (1.0, 1.0), "ratio": (1.0, 1.0), "align_corners": True, "p": 1.0}
+        slice_crop = K.RandomResizedCrop(cropping_mode="slice", **kwargs)
+        params = slice_crop.forward_parameters(x.shape)
+        params["src"] = torch.tensor([[[column, row]] * 4], device=device, dtype=torch.float32)
+        slice_output = slice_crop(x, params=params)
+        assert torch.isfinite(slice_crop.transform_matrix).all()
+        resample_output = K.RandomResizedCrop(cropping_mode="resample", **kwargs)(x, params=params)
+        self.assert_close(resample_output, slice_output)
+        restored = slice_crop.inverse(slice_output, params=params)
+        if device.type == "mps" and dtype in (torch.float16, torch.bfloat16):
+            # MPS samples a half-precision image on a half-precision grid, about 0.1 px off on a 512-pixel axis, so
+            # only the place of the restored pixel is exact.
+            assert restored.count_nonzero() == 1
+            assert restored[..., row, column] > 0.5
+        else:
+            expected = torch.zeros_like(x)
+            expected[..., row, column] = 1
+            self.assert_close(restored, expected, low_tolerance=True)
+        # Border padding extends the crop's only pixel, which is the pixel itself.
+        self.assert_close(
+            slice_crop.inverse(slice_output, params=params, padding_mode="border"),
+            torch.ones_like(x),
+            low_tolerance=True,
+        )
+
+    @pytest.mark.parametrize("size", [(1, 1), (1, 3), (3, 1)])
+    def test_convention_resized_crop_with_a_one_pixel_output_axis(self, size, device, dtype):
+        # The box vertices are collinear along a one-pixel axis, and the solved matrix was NaN: resample mode
+        # returned NaN and the slice-mode inverse a canvas of NaN. Corner-aligned resizing samples the crop's first
+        # row or column there, so both modes return it and the inverse puts it back.
+        x = torch.arange(1, 36, device=device, dtype=dtype).reshape(1, 1, 5, 7)
+        kwargs = {"size": size, "scale": (1.0, 1.0), "ratio": (7 / 5, 7 / 5), "align_corners": True, "p": 1.0}
+        slice_crop = K.RandomResizedCrop(cropping_mode="slice", **kwargs)
+        slice_output = slice_crop(x)
+        resample_output = K.RandomResizedCrop(cropping_mode="resample", **kwargs)(x, params=slice_crop._params)
+        self.assert_close(resample_output, slice_output, low_tolerance=True)
+        expected = torch.zeros_like(x)
+        rows = slice(0, 1) if size[0] == 1 else slice(None)
+        columns = slice(0, 1) if size[1] == 1 else slice(None)
+        expected[..., rows, columns] = x[..., rows, columns]
+        self.assert_close(slice_crop.inverse(slice_output), expected, low_tolerance=True)
+        assert slice_crop.inverse(slice_output).isfinite().all()
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize(
+        "make_crop",
+        [
+            lambda ac: K.CenterCrop((8, 11), align_corners=ac, cropping_mode="slice"),
+            lambda ac: K.RandomCrop((8, 11), align_corners=ac, p=1.0, cropping_mode="slice"),
+            lambda ac: K.RandomCrop((8, 11), padding=(2, 1), align_corners=ac, p=1.0, cropping_mode="slice"),
+            lambda ac: K.RandomCrop((24, 33), pad_if_needed=True, align_corners=ac, p=1.0, cropping_mode="slice"),
+            lambda ac: K.RandomCrop((24, 33), align_corners=ac, p=1.0, cropping_mode="slice"),
+            lambda ac: K.RandomResizedCrop((12, 12), scale=(0.3, 0.5), align_corners=ac, p=1.0, cropping_mode="slice"),
+        ],
+        ids=["center", "random", "random-padding", "random-pad-if-needed", "random-oversized", "resized"],
+    )
+    def test_convention_slice_crop_inverse_follows_the_transform_matrix(self, make_crop, align_corners, device, dtype):
+        # Slice mode records the crop's transform_matrix like resample mode, and its inverse warps back with it. A
+        # bilinear resize and warp reproduce a linear ramp, so the ramp comes back wherever the crop covered it.
+        torch.manual_seed(0)
+        height, width = 20, 30
+        ys, xs = torch.meshgrid(torch.arange(height), torch.arange(width), indexing="ij")
+        ramp = (torch.stack([xs / width, ys / height, (xs + 2 * ys) / (width + 2 * height)])[None] * 0.9 + 0.05).to(
+            device, dtype
+        )
+        ramp = ramp.expand(2, -1, -1, -1).contiguous()
+        crop = make_crop(align_corners)
+        restored = crop.inverse(crop(ramp))
+        assert restored.shape == ramp.shape
+        # Canvas pixels that map at least one pixel inside the crop output.
+        # Mapped on the CPU in float64 (MPS has no float64).
+        points = torch.stack([xs.flatten(), ys.flatten(), torch.ones(height * width, dtype=torch.long)]).double()
+        mapped = crop.transform_matrix.cpu().double() @ points
+        out_height, out_width = crop(ramp, params=crop._params).shape[-2:]
+        u, v = mapped[:, 0] / mapped[:, 2], mapped[:, 1] / mapped[:, 2]
+        inside = (u >= 1) & (u <= out_width - 2) & (v >= 1) & (v <= out_height - 2)
+        inside = inside.view(2, 1, height, width).to(device).expand_as(ramp)
+        assert inside.any()
+        self.assert_close(restored[inside], ramp[inside], low_tolerance=True)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(

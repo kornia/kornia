@@ -27,6 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
+from kornia.core.utils import _autocast_disabled, _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -240,6 +241,9 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
           the columns tilts it towards ``-x``, one growing along the rows towards ``-y``.
         - the arguments mean what they mean for :func:`~kornia.geometry.depth.depth_to_3d`, and the result
           has its :math:`(B, 3, H, W)` layout.
+        - float16 and bfloat16 inputs are widened to float32 first. The result has the promoted dtype of ``depth`` and
+          ``camera_matrix``, or the default floating dtype when both are integer, and it does not follow an
+          enclosing autocast region: its dtype and values are the same inside autocast as outside.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`, with
@@ -274,11 +278,21 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
             expected_shape=["B", "1", "H >= 2", "W >= 2"],
         )
 
+    dtype = torch.promote_types(depth.dtype, camera_matrix.dtype)
+    # Compute in float32 when either input is half precision: bfloat16 cannot hold the pixel grid past 256 and the
+    # float16 cross product of small pixel tangents underflows. The grid takes ``depth``'s dtype, so cast each input.
+    if depth.dtype in (torch.float16, torch.bfloat16):
+        depth = depth.float()
+    if camera_matrix.dtype in (torch.float16, torch.bfloat16):
+        camera_matrix = camera_matrix.float()
+
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW
+    dtype = dtype if dtype.is_floating_point else xyz.dtype
 
-    # compute the pointcloud spatial gradients
-    gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
+    # Keep the gradient convolution in the point-cloud dtype under autocast.
+    with _autocast_disabled(xyz.device.type):
+        gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
     # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
     # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides
@@ -287,7 +301,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     b: torch.Tensor = gradients[:, :, 1].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
 
     normals: torch.Tensor = torch.linalg.cross(a, b, dim=-1)  # BxHxWx3
-    return F.normalize(normals, dim=-1, p=2).permute(0, 3, 1, 2)  # Bx3xHxW
+    return F.normalize(normals, dim=-1, p=2).to(dtype).permute(0, 3, 1, 2)  # Bx3xHxW
 
 
 def depth_from_plane_equation(
@@ -433,7 +447,7 @@ def warp_frame_depth(
     height, width = depth_dst.shape[-2:]
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
-    return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)
+    return _torch_grid_sample(image_src, points_2d_src_norm, align_corners=True)
 
 
 class DepthWarper(nn.Module):
@@ -683,7 +697,7 @@ class DepthWarper(nn.Module):
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
 
         """
-        return F.grid_sample(
+        return _torch_grid_sample(
             patch_dst,
             self.warp_grid(depth_src),
             mode=self.mode,
@@ -755,18 +769,25 @@ def depth_from_disparity(
     """Compute depth from disparity.
 
     Convention:
-        - the depth is ``baseline * focal / disparity``, elementwise: ``baseline`` is the distance between the
-          two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a baseline of
-          0.5 and a focal length of 100 gives a depth of 25.
+        - the depth is ``baseline * focal / (disparity + 1e-8)``, elementwise: ``baseline`` is the distance
+          between the two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a
+          baseline of 0.5 and a focal length of 100 gives a depth of 25. The ``1e-8`` lowers the depth by a
+          relative ``1e-8 / disparity``. Float32 rounds that away from a disparity of 0.25 up; below it the bias
+          shows, ``1e-6`` relative (10 float32 ulps) at a disparity of 0.01.
+        - a zero disparity (no stereo match, or a point at infinity) gives a finite far depth,
+          ``baseline * focal / 1e-8`` (``5e9`` for baseline 0.5 and focal 100), not ``inf``. Such a point warps
+          as a point at infinity, along the rotation-only homography, in
+          :func:`~kornia.geometry.depth.warp_frame_depth`, whereas an ``inf`` depth would turn into ``NaN`` in
+          :func:`~kornia.geometry.depth.depth_to_3d` wherever a ray component is zero. The far depth is a
+          placeholder, not a measurement: mask ``disparity > 0`` to tell matched pixels apart.
+        - in float16 the ``1e-8`` rounds to ``0`` and the far depth would overflow anyway, so a zero disparity
+          gives ``inf``. A float32 far depth turns back into ``inf`` wherever the warp casts it to float16, as a
+          float16 pose or float16 autocast does, so run the whole warp (depth, image, pose and camera matrix) in
+          float32, outside float16 autocast, when zero disparities flow into it.
         - ``baseline`` and ``focal`` are each a scalar (Python number, 0-d or :math:`(1,)` tensor) shared by the
           whole disparity, or a :math:`(B,)` tensor paired with ``disparity[b]``, which then needs a leading
           batch axis of size ``B`` (otherwise ``ShapeError``). The two may mix.
         - ``disparity`` is :math:`(*, H, W)` and the result has its shape. Its sign is not checked.
-
-    .. warning::
-        The divisor is ``disparity + 1e-8``, so a zero disparity (no stereo match) returns a large finite depth
-        set by the epsilon (``5e9`` for baseline ``0.5``, focal ``100``) rather than ``inf``, except where the
-        epsilon underflows: `#4272 <https://github.com/kornia/kornia/issues/4272>`_.
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.

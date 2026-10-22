@@ -46,6 +46,11 @@ class ThresholdType(IntEnum):
     THRESH_OTSU = 8
 
 
+# The fixed types ``threshold`` implements. Built once here: iterating the enum class inside ``threshold`` breaks
+# ``torch.compile(fullgraph=True)`` on torch 2.9 (Dynamo cannot trace ``EnumMeta.__iter__`` there).
+_FIXED_TYPES = frozenset(int(x) for x in ThresholdType if x != ThresholdType.THRESH_OTSU)
+
+
 def _integer_threshold(input: Tensor, thresh: Union[float, Tensor]) -> tuple[Tensor, Tensor]:
     """Return ``input > thresh`` and the value THRESH_TRUNC writes, for an integer ``input``.
 
@@ -118,8 +123,8 @@ def threshold(
         raise NotImplementedError("THRESH_OTSU is not implemented yet. Please use a fixed threshold type.")
 
     KORNIA_CHECK(
-        t in {int(x) for x in ThresholdType if x != ThresholdType.THRESH_OTSU},
-        f"Unsupported threshold type: {type}. Supported: BINARY, BINARY_INV, TRUNC, TOZERO, TOZERO_INV.",
+        t in _FIXED_TYPES,
+        lambda: f"Unsupported threshold type: {type}. Supported: BINARY, BINARY_INV, TRUNC, TOZERO, TOZERO_INV.",
     )
 
     # Make thresh/maxval tensors on same device/dtype for safe broadcasting

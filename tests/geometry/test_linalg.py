@@ -59,6 +59,48 @@ class TestTransformPoints(BaseTester):
         with pytest.raises(ValueError, match=r"differ by one unit\. Got torch\.Size\(.*\) and torch\.Size\(\[5, 2\]\)"):
             kgl.transform_points(transform, points)
 
+    @pytest.mark.parametrize("index_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    def test_integer_points_take_the_transform_dtype(self, index_dtype, device, dtype):
+        # Integer pixel indices (``torch.nonzero``, ``argmax``) move to fractional coordinates: the result takes the
+        # transform's floating dtype instead of being truncated back to the indices' dtype, also when it is empty.
+        shift = torch.tensor([[1.0, 0.0, 0.5], [0.0, 1.0, 1.5], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        pixels = torch.tensor([[[0, 0], [1, 1], [0, 1]]], device=device).to(index_dtype)
+        expected = torch.tensor([[[0.5, 1.5], [1.5, 2.5], [0.5, 2.5]]], device=device, dtype=dtype)
+
+        result = kgl.transform_points(shift, pixels)
+
+        assert result.dtype == dtype
+        self.assert_close(result, expected)
+        assert kgl.transform_points(shift, pixels[:, :0]).dtype == dtype
+
+    def test_integer_transform_does_not_truncate_the_points(self, device, dtype):
+        # Python integer literals build an int64 matrix; it is applied in the points' dtype.
+        translate = torch.tensor([[1, 0, 2], [0, 1, 1], [0, 0, 1]], device=device)
+        points = torch.tensor([[[0.5, 1.5], [2.25, 2.75]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[2.5, 2.5], [4.25, 3.75]]], device=device, dtype=dtype)
+
+        result = kgl.transform_points(translate, points)
+
+        assert result.dtype == dtype
+        self.assert_close(result, expected)
+
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_integer_operands_take_the_default_dtype(self, default_dtype, device):
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        # w = 2 halves the coordinates, which an integer result would truncate.
+        halve = torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 2]], device=device)
+        pixels = torch.tensor([[[3, 4], [1, 7]]], device=device)
+        old_default = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            result = kgl.transform_points(halve, pixels)
+        finally:
+            torch.set_default_dtype(old_default)
+
+        assert result.dtype == default_dtype
+        self.assert_close(result, pixels.to(default_dtype) / 2)
+
     @pytest.mark.parametrize("num_points", [2, 3])
     def test_unbatched_points_with_transform_batch_raise(self, num_points, device, dtype):
         # (N, D) points have no batch axis, so N == B must hit the batch check like N != B does
@@ -330,13 +372,16 @@ class TestRelativeTransformation(BaseTester):
         to_check_4 = torch.rand((4, 4), device=device, dtype=dtype)
         to_check_5 = torch.rand((3, 3), device=device, dtype=dtype)
 
-        # Testing if exception is thrown when both inputs have shape (3, 3)
-        with pytest.raises(ValueError):
-            _ = kornia.geometry.relative_transformation(to_check_5, to_check_5)
+        # Make only one operand invalid at a time: both guards have the same diagnostic.
+        # A second invalid operand must not hide removal of the first operand's guard.
+        for first, second in ((to_check_5, to_check_4), (to_check_4, to_check_5)):
+            with pytest.raises(ValueError, match="Input must be"):
+                _ = kornia.geometry.relative_transformation(first, second)
 
-        # Testing if exception is thrown when both inputs have shape (5, 10, 10)
-        with pytest.raises(ValueError):
-            _ = kornia.geometry.relative_transformation(to_check_2, to_check_2)
+        valid_batch = to_check_3[:5]
+        for first, second in ((to_check_2, valid_batch), (valid_batch, to_check_2)):
+            with pytest.raises(ValueError, match="Input must be"):
+                _ = kornia.geometry.relative_transformation(first, second)
 
         # Testing if exception is thrown when one input has shape (6, 4, 4)
         # whereas the other input has shape (4, 4)
@@ -518,7 +563,7 @@ class TestEuclideanDistance(BaseTester):
     def test_exception(self, device, dtype):
         pt1 = torch.tensor([0, 0, 0], device=device, dtype=dtype)
         pt2 = torch.rand(1, 2, device=device, dtype=dtype)
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             kgl.euclidean_distance(pt1, pt2)
 
     def test_gradcheck(self, device):

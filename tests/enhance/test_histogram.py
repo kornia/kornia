@@ -142,12 +142,8 @@ class TestImageHistogram2d(BaseTester):
 
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("return_pdf", [False, True])
-    def test_auto_centers_preserve_input_dtype(self, device, dtype, return_pdf):
-        """The float32-centers fix above (test_large_n_bins_float16_centers_not_collapsed)
-        must not itself change the function's public return dtype: before that fix, a
-        float16/bfloat16 image with centers=None returned float16/bfloat16 hist/pdf. Building
-        centers at float32 promotes u/kernel_values through ordinary PyTorch type promotion,
-        so hist/pdf must be explicitly cast back to image.dtype at the return boundary."""
+    def test_auto_centers_use_float32_for_low_precision_counts(self, device, dtype, return_pdf):
+        """Half-precision counts can exceed the dtype's finite range, so keep those counts in float32."""
         if device.type == "mps" and dtype == torch.bfloat16 and torch_version_lt(2, 14, 0):
             pytest.skip("bfloat16 on MPS is only exercised on torch >= 2.14 (the version of the blocking MPS job)")
         torch.manual_seed(0)
@@ -155,8 +151,23 @@ class TestImageHistogram2d(BaseTester):
 
         hist, pdf = TestImageHistogram2d.fcn(image, 0.0, 1.0, 64, kernel="gaussian", return_pdf=return_pdf)
 
-        assert hist.dtype == dtype
-        assert pdf.dtype == dtype
+        assert hist.dtype == torch.float32
+        assert pdf.dtype == torch.float32
+
+    @pytest.mark.parametrize("explicit_centers", [False, True])
+    def test_float16_large_image_counts_and_pdf_are_finite(self, device, explicit_centers):
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 512, 512, device=device, dtype=torch.float16) * 255.0
+        image[..., :256, :] = 0.0
+        centers = torch.arange(256, device=device, dtype=torch.float16) if explicit_centers else None
+
+        hist, pdf = TestImageHistogram2d.fcn(image, 0.0, 255.0, 256, centers=centers, return_pdf=True)
+
+        assert hist.dtype == torch.float32
+        assert pdf.dtype == torch.float32
+        assert torch.isfinite(hist).all()
+        assert torch.isfinite(pdf).all()
+        assert hist[..., 0].max() > 65504
 
     @pytest.mark.parametrize("dtype", [torch.uint8, torch.int32])
     def test_integer_image_is_not_cast_into_an_integer_histogram(self, device, dtype):
@@ -272,6 +283,64 @@ class TestImageHistogram2d(BaseTester):
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
+    @pytest.mark.parametrize("num_samples,num_bins", [(1024, 64), (65536, 2)])
+    def test_large_histogram_normalization(self, device, dtype, num_samples, num_bins):
+        # The first case overflows the normalization sum in float16; the second overflows each matrix entry.
+        samples = torch.linspace(0, 1, num_samples, device=device, dtype=torch.float32).to(dtype).unsqueeze(0)
+        if num_samples == 65536:
+            samples = torch.zeros_like(samples)
+        samples = samples.requires_grad_()
+        bins = torch.linspace(0, 1, num_bins, device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.2, device=device, dtype=dtype)
+        reference_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        reference_samples = samples.detach().to(reference_dtype).requires_grad_()
+        expected = TestHistogram2d.fcn(
+            reference_samples, reference_samples, bins.to(reference_dtype), bandwidth.to(reference_dtype)
+        )
+
+        actual = TestHistogram2d.fcn(samples, samples, bins, bandwidth)
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual.sum((-2, -1)), torch.ones(1, device=device, dtype=dtype))
+        self.assert_close(actual, expected.to(dtype))
+
+        weights = bins.view(1, -1, 1)
+        (actual * weights).sum().backward()
+        (expected * weights.to(reference_dtype)).sum().backward()
+        assert torch.isfinite(samples.grad).all()
+        self.assert_close(samples.grad, reference_samples.grad.to(dtype))
+
+    def test_gradient_of_a_256x256_image_matches_float64(self, device, dtype):
+        # The gradient reaches the samples through per-bin terms below the float16 normal range, so a float16 kernel
+        # evaluation loses it even when the joint counts accumulate in float32.
+        index = torch.arange(256 * 256, dtype=torch.float64)
+        x1 = (index * 0.6180339887498949) % 1
+        x2 = 0.7 * x1 + 0.3 * ((index * 0.4142135623730951) % 1)
+        inputs = [t.to(device=device, dtype=dtype) for t in (x1[None], x2[None], torch.linspace(0, 1, 64))]
+        bandwidth = torch.tensor(0.01, device=device, dtype=dtype)
+        weights = torch.linspace(-1, 1, 64 * 64).to(dtype).double().view(1, 64, 64)
+
+        def grads(x1, x2, bins, bandwidth):
+            x1, x2 = x1.detach().requires_grad_(), x2.detach().requires_grad_()
+            hist = TestHistogram2d.fcn(x1, x2, bins, bandwidth)
+            (hist * weights.to(hist)).sum().backward()
+            return torch.cat([x1.grad, x2.grad]).cpu().double()
+
+        # float64 reference on the CPU, from the same dtype-rounded inputs.
+        expected = grads(*(t.cpu().double() for t in (*inputs, bandwidth)))
+        actual = grads(*inputs, bandwidth)
+        tolerance = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        assert ((actual - expected).norm() / expected.norm()).item() < tolerance
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        samples = torch.linspace(0, 1, 1024, device=device, dtype=dtype).unsqueeze(0)
+        bins = torch.linspace(0, 1, 64, device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.2, device=device, dtype=dtype)
+        op = torch_optimizer(TestHistogram2d.fcn)
+        actual = op(samples, samples, bins, bandwidth)
+        self.assert_close(actual, TestHistogram2d.fcn(samples, samples, bins, bandwidth))
+        self.assert_close(actual.sum((-2, -1)), torch.ones(1, device=device, dtype=dtype))
+
     def test_shape(self, device, dtype):
         inp1 = torch.ones(1, 16, device=device, dtype=dtype)
         inp2 = torch.ones(1, 16, device=device, dtype=dtype)
@@ -320,6 +389,29 @@ class TestHistogram2d(BaseTester):
 
 class TestHistogram(BaseTester):
     fcn = kornia.enhance.histogram
+
+    @pytest.mark.parametrize("bandwidth_dtype", ["input", "float32"])
+    def test_gradient_of_65536_samples_matches_float64(self, device, dtype, bandwidth_dtype):
+        # The gradient reaches the samples through per-bin kernel terms that scale like 1 / N and fall below the
+        # float16 normal range. A float32 bandwidth tensor, as in the docstring example, must not skip the fix.
+        index = torch.arange(65536, dtype=torch.float64)
+        x = ((index * 0.6180339887498949) % 1)[None].to(device=device, dtype=dtype)
+        bins = torch.linspace(0, 1, 64, device=device, dtype=dtype)
+        bandwidth = torch.tensor(0.01, device=device, dtype=dtype if bandwidth_dtype == "input" else torch.float32)
+        weights = torch.linspace(-1, 1, 64, dtype=torch.float64).to(dtype)
+
+        def grad(x, bins, bandwidth):
+            x = x.detach().requires_grad_()
+            hist = TestHistogram.fcn(x, bins, bandwidth)
+            assert hist.dtype == x.dtype
+            (hist * weights.to(hist)).sum().backward()
+            return x.grad.cpu().double()
+
+        # float64 reference on the CPU, from the same dtype-rounded inputs.
+        expected = grad(x.cpu().double(), bins.cpu().double(), bandwidth.cpu().double())
+        actual = grad(x, bins, bandwidth)
+        tolerance = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        assert ((actual - expected).norm() / expected.norm()).item() < tolerance
 
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 16, device=device, dtype=dtype)

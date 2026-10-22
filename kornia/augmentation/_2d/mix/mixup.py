@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, DType
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomMixUpV2(MixAugmentationBaseV2):
@@ -122,9 +123,12 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
+        input_permute = input.index_select(dim=0, index=_to_device_nonblocking(params["mixup_pairs"], input.device))
 
-        lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(input.device, dtype=input.dtype)
+        # Moved before it is expanded: the copy is B values instead of a full-size buffer, and every element of the
+        # broadcast holds the same value either way.
+        lam = _to_device_nonblocking(params["mixup_lambdas"].view(-1, 1, 1, 1), input.device, input.dtype)
+        lam = lam.expand_as(input)
         return input * (1 - lam) + input_permute * lam
 
     def apply_non_transform_class(
@@ -144,7 +148,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     def apply_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        labels_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
+        labels_permute = input.index_select(dim=0, index=_to_device_nonblocking(params["mixup_pairs"], input.device))
 
         image_dtype = DType.to_torch(int(params["dtype"].item()))
         calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
@@ -152,7 +156,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
             [
                 input.to(device=input.device, dtype=calc_dtype),
                 labels_permute.to(device=input.device, dtype=calc_dtype),
-                params["mixup_lambdas"].to(device=input.device, dtype=calc_dtype),
+                _to_device_nonblocking(params["mixup_lambdas"], input.device, calc_dtype),
             ],
             -1,
         )

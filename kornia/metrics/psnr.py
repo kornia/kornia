@@ -90,5 +90,11 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     image, target = image.to(compute_dtype), target.to(compute_dtype)
 
-    result = 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))
-    return result.to(dtype) if dtype in (torch.float16, torch.bfloat16) else result
+    # The legacy (TorchScript) ONNX exporter writes ``log10`` as a division by a ``(1,)`` constant, which turns a 0-d
+    # result into a one-element vector. Reshaping to the shape of the ratio keeps the eager shape there (``()`` for a
+    # scalar ``max_val``, the shape of a tensor one) and is a no-op view eagerly.
+    ratio = max_val**2 / mse(image, target, reduction="mean")
+    result = 10.0 * torch.log10(ratio)
+    if dtype in (torch.float16, torch.bfloat16):
+        result = result.to(dtype)
+    return result.reshape(ratio.shape)

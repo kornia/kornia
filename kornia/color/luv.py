@@ -27,6 +27,8 @@ from typing import ClassVar
 import torch
 from torch import nn
 
+from kornia.core.utils import _autocast_disabled
+
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
 
@@ -40,14 +42,14 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     color is computed using the D65 illuminant and Observer 2.
 
     Convention:
+        Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
         Input is nonlinear sRGB in RGB order at axis -3. Output is CIE L*u*v* with D65 / 2°
         reference white.
 
     Args:
         image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
-            :math:`2^{-14}`, the smallest normal float16 value, is raised to it: smaller values underflow to
-            zero or overflow the backward pass.
+        eps: For numerical stability when dividing. Half inputs use float32 arithmetic, so the default
+            epsilon remains representable without a dtype-dependent floor.
 
     Returns:
         Luv version of the image with shape :math:`(*, 3, H, W)`.
@@ -63,10 +65,17 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # float16 cannot represent the default eps, and a too-small eps can overflow its backward.
-    if image.dtype == torch.float16 and eps > 0.0:
-        eps = max(eps, 6.103515625e-05)
+    if image.dtype in (torch.float16, torch.bfloat16):
+        if torch.jit.is_scripting():
+            return _rgb_to_luv(image.float(), eps).to(image.dtype)
+        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        with _autocast_disabled(image.device.type):
+            return _rgb_to_luv(image.float(), eps).to(image.dtype)
+    return _rgb_to_luv(image, eps)
 
+
+def _rgb_to_luv(image: torch.Tensor, eps: float) -> torch.Tensor:
+    """Compute the conversion in the working dtype."""
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
 
@@ -101,14 +110,14 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Convert a Luv image to RGB.
 
     Convention:
+        Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
         Input channels are CIE L*, u*, v* at axis -3 with D65 / 2° reference white. The result
         is nonlinear sRGB.
 
     Args:
         image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing. For float16 input a positive ``eps`` below
-            :math:`2^{-14}`, the smallest normal float16 value, is raised to it: smaller values underflow to
-            zero or overflow the backward pass.
+        eps: For numerical stability when dividing. Half inputs use float32 arithmetic, so the default
+            epsilon remains representable without a dtype-dependent floor.
 
     Returns:
         Luv version of the image with shape :math:`(*, 3, H, W)`.
@@ -124,10 +133,17 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # float16 cannot represent the default eps, and a too-small eps can overflow its backward.
-    if image.dtype == torch.float16 and eps > 0.0:
-        eps = max(eps, 6.103515625e-05)
+    if image.dtype in (torch.float16, torch.bfloat16):
+        if torch.jit.is_scripting():
+            return _luv_to_rgb(image.float(), eps).to(image.dtype)
+        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        with _autocast_disabled(image.device.type):
+            return _luv_to_rgb(image.float(), eps).to(image.dtype)
+    return _luv_to_rgb(image, eps)
 
+
+def _luv_to_rgb(image: torch.Tensor, eps: float) -> torch.Tensor:
+    """Compute the conversion in the working dtype."""
     L: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]

@@ -230,6 +230,37 @@ class TestKRtFromProjection(BaseTester):
         P_mat = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(epi.KRt_from_projection, (P_mat,), raise_exception=True, fast_mode=True)
 
+    def test_a_mixed_precision_region_does_not_reach_the_decomposition(self, device):
+        # A caller's autocast region ran the products in half precision, and torch.linalg.det (CPU) or qr (MPS)
+        # raised for the half-precision result (#6174). No "autocast" in the name: conftest skips those on MPS.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("CPU, CUDA and MPS autocast")
+        # MPS autocasts to float16, and so does a CUDA device without bfloat16, where bfloat16 autocast raises.
+        bfloat16_ok = device.type == "cpu" or (device.type == "cuda" and torch.cuda.is_bf16_supported())
+        P = torch.tensor(
+            [[[308.0, 139.0, 231.0, 84.0], [481.0, 161.0, 358.0, 341.0], [384.0, 387.0, 459.0, 102.0]]],
+            device=device,
+        )
+        expected = epi.KRt_from_projection(P)
+        with torch.autocast(device.type, dtype=torch.bfloat16 if bfloat16_ok else torch.float16):
+            actual = epi.KRt_from_projection(P)
+        for a, e in zip(actual, expected):
+            assert a.dtype == torch.float32
+            self.assert_close(a, e, atol=0, rtol=0)
+
+    def test_still_scriptable(self, device, dtype):
+        # TorchScript has no context managers, so a scripted call skips the autocast guard (#6174); it must keep
+        # scripting and give the eager result.
+        _skip_half(dtype, _NO_HALF_QR)
+        P = torch.tensor(
+            [[[308.0, 139.0, 231.0, 84.0], [481.0, 161.0, 358.0, 341.0], [384.0, 387.0, 459.0, 102.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        scripted = torch.jit.script(epi.KRt_from_projection)
+        for a, e in zip(scripted(P), epi.KRt_from_projection(P)):
+            self.assert_close(a, e)
+
 
 _NO_HALF_QR = "KRt_from_projection does not upcast half input, and torch.linalg.qr has no float16/bfloat16 kernel"
 
@@ -286,11 +317,11 @@ class TestConventionProjection(BaseTester):
         two_view = two_view_scene(device, dtype)
         # P must have exactly one batch dimension.
         for P_bad in (two_view["P2"][0], two_view["P2"][None]):
-            with pytest.raises(Exception):
+            with pytest.raises(IndexError):
                 epi.KRt_from_projection(P_bad)
         if dtype in (torch.float16, torch.bfloat16):
             # float16 and bfloat16 raise: the input is not upcast (projections_from_fundamental upcasts).
-            with pytest.raises(Exception):
+            with pytest.raises((RuntimeError, NotImplementedError)):
                 epi.KRt_from_projection(two_view["P2"])
             return
         K_true, R_true, t_true = two_view["K2"], two_view["R"], two_view["t"]
@@ -341,7 +372,7 @@ class TestConventionProjection(BaseTester):
         assert (_unit(F_reversed) * torch.sign((F_reversed * F).sum()) - _unit(F)).abs().max() > 0.1
         # F_mat must have exactly one batch dimension.
         for F_bad in (F[0], F[None]):
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 epi.projections_from_fundamental(F_bad)
 
     def test_convention_depth_from_point_is_camera_z(self, device, dtype):
@@ -399,7 +430,7 @@ class TestConventionProjection(BaseTester):
         self.assert_close(K_t[:, 0, 2] - K_t[:, 1, 2], torch.full_like(zeros, -1.0))
         # The image must be floating point (a design choice): an integer image raises instead of returning an
         # integer K.
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             epi.intrinsics_like(500.0, torch.zeros(1, 3, 4, 6, device=device, dtype=torch.uint8))
 
     def test_convention_krt_from_projection_scale_and_sign_of_P(self, device, dtype):

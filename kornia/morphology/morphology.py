@@ -73,6 +73,22 @@ def _can_reduce_in_place(padded: torch.Tensor, offsets: torch.Tensor) -> bool:
     return all(torch.autograd.forward_ad.unpack_dual(t).tangent is None for t in (padded, offsets))
 
 
+@torch.jit.unused
+def _unfold_reduces_values_only(
+    windows: torch.Tensor, neighborhood: torch.Tensor, flat: bool, recording_grad: bool
+) -> bool:
+    """Whether the ``unfold`` engine may reduce a flat window with ``amax``/``amin`` instead of ``max``/``min``.
+
+    Both return the same values but differ in derivatives: ``torch.max`` along a dimension routes the gradient or
+    tangent of a tied window to one cell, while ``amax`` splits it. So the swap needs a call that nothing
+    differentiates through: no backward graph, no forward-mode tangent, no ``torch.func`` transform and no trace,
+    which could later replay with gradients. Only CPU and CUDA take it, where ``amax`` propagates NaN like ``max``.
+    """
+    if not flat or recording_grad or windows.device.type not in ("cpu", "cuda"):
+        return False
+    return _can_reduce_in_place(windows, neighborhood)
+
+
 def _shift_cell(
     planes: torch.Tensor,
     plane: torch.Tensor,
@@ -375,13 +391,21 @@ def dilation(
     reduction_min: float = -float("inf")
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-        output = output + neighborhood.flip((0, 1))
-        output.masked_fill_(
-            kernel.flip((0, 1)).view(1, 1, 1, 1, se_h, se_w) == 0,
-            reduction_min,
-        )
-        output, _ = torch.max(output, 4)
-        output, _ = torch.max(output, 4)
+        excluded = kernel.flip((0, 1)).view(1, 1, 1, 1, se_h, se_w) == 0
+        values_only = False
+        if not torch.jit.is_scripting():
+            values_only = _unfold_reduces_values_only(output, neighborhood, structuring_element is None, recording_grad)
+        if values_only:
+            # One masked copy of the windows and one reduction without indices, where the general path adds the
+            # offsets, fills the excluded cells in a second pass and reduces twice. The flat offsets are zero, and
+            # adding them only turns ``-0.0`` into ``+0.0``; adding ``0.0`` after the reduction does the same, and
+            # the exact upcast to the compute dtype commutes with the maximum, so the output is unchanged.
+            output = torch.where(excluded, reduction_min, output).amax((-2, -1)).to(compute_dtype) + 0.0
+        else:
+            output = output + neighborhood.flip((0, 1))
+            output.masked_fill_(excluded, reduction_min)
+            output, _ = torch.max(output, 4)
+            output, _ = torch.max(output, 4)
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         h_pad, w_pad = output.shape[-2:]
@@ -414,7 +438,7 @@ def dilation(
             output = output.masked_fill(special == 3, float("nan"))
 
         output = output.masked_fill(
-            kernel.view(-1).flip(0).view(1, -1, 1, 1) == 0,
+            kernel.reshape(-1).flip(0).view(1, -1, 1, 1) == 0,
             reduction_min,
         )
 
@@ -559,13 +583,19 @@ def erosion(
     reduction_max: float = float("inf")
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-        output = output - neighborhood
-        output.masked_fill_(
-            kernel.view(1, 1, 1, 1, se_h, se_w) == 0,
-            reduction_max,
-        )
-        output, _ = torch.min(output, 4)
-        output, _ = torch.min(output, 4)
+        excluded = kernel.view(1, 1, 1, 1, se_h, se_w) == 0
+        values_only = False
+        if not torch.jit.is_scripting():
+            values_only = _unfold_reduces_values_only(output, neighborhood, structuring_element is None, recording_grad)
+        if values_only:
+            # As in :func:`dilation`; subtracting the zero offsets changes no value, not even a ``-0.0``.
+            output = torch.where(excluded, reduction_max, output).amin((-2, -1)).to(compute_dtype)
+        else:
+            # A bool structuring element has no subtraction; the cast changes no other value.
+            output = output - neighborhood.to(dtype=compute_dtype)
+            output.masked_fill_(excluded, reduction_max)
+            output, _ = torch.min(output, 4)
+            output, _ = torch.min(output, 4)
     elif engine == "convolution":
         B, C, H, W = tensor.size()
         Hpad, Wpad = output.shape[-2:]
@@ -598,7 +628,7 @@ def erosion(
             output = output.masked_fill(special == 3, float("nan"))
 
         output = output.masked_fill(
-            kernel.view(-1).view(1, -1, 1, 1) == 0,
+            kernel.reshape(-1).view(1, -1, 1, 1) == 0,
             reduction_max,
         )
 
@@ -611,7 +641,9 @@ def erosion(
         output = output.min(dim=1).values
         output = output.view(B, C, H, W)
     elif engine == "shift":
-        offsets = -neighborhood
+        # Negate in the compute dtype, as ``unfold`` and ``convolution`` subtract: an unsigned structuring
+        # element would wrap (``-uint8(2) == 254``), and a bool one has no negation.
+        offsets = -neighborhood.to(dtype=compute_dtype)
         inplace = False
         if not torch.jit.is_scripting():
             inplace = not recording_grad and _can_reduce_in_place(output, offsets)

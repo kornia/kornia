@@ -100,6 +100,9 @@ class AugmentationAuditStep:
     Parameters and flags are detached copies; ``occurrence`` is zero-based for
     each qualified module name. Shapes describe the image path. Flags include
     keyword overrides observed on that image call.
+
+    Convention:
+        See :ref:`augmentation-audit`.
     """
 
     name: str
@@ -130,6 +133,9 @@ class SpatialAudit:
     Statistics cover only finite errors, in pixels; a batch with no valid errors
     has NaN statistics and zero ``roundtrip_valid_count``. Diagnostics use float32
     for half inputs, otherwise the image dtype.
+
+    Convention:
+        See :ref:`augmentation-audit`.
     """
 
     input_index: int
@@ -161,6 +167,9 @@ class AugmentationAuditReport:
     ``inverse_matrix`` has NaNs for singular/nonfinite batches. No image inverse
     is evaluated: coordinate invertibility does not imply pixel reconstruction,
     particularly after cropping, interpolation or intensity changes.
+
+    Convention:
+        See :ref:`augmentation-audit`.
     """
 
     inputs: list[dict[str, Any]]
@@ -398,7 +407,7 @@ def audit(
 ) -> tuple[DataType | list[DataType] | dict[str, DataType], AugmentationAuditReport]:
     """Run an augmentation sequence once and return its outputs plus a geometry audit report.
 
-    The sequence must use one BCHW image first, followed by batched masks, boxes or
+    The sequence must use one BCHW image first, followed by batched masks (``(B, C, H, W)`` or ``(B, H, W)``), boxes or
     keypoints described by positional ``data_keys``. ``params`` and ``data_keys``
     have the same meaning as in :meth:`kornia.augmentation.AugmentationSequential.forward`.
     Unknown or non-rigid operations run normally and make composed geometry unavailable.
@@ -407,6 +416,10 @@ def audit(
     parameters, checks spatial round trips, and never evaluates image reconstruction.
     The returned outputs retain the ordinary forward structure, values and gradients.
     Do not audit the same stateful sequence concurrently.
+
+    Convention:
+        :ref:`augmentation-audit` states the direction of ``report.matrix``, the pixel-centre rectangle of the
+        out-of-frame test, the dtypes of the diagnostics and the inputs it accepts.
 
     Args:
         sequence: The 2D augmentation sequence to execute and inspect.
@@ -442,8 +455,8 @@ def audit(
             raise ValueError(f"audit does not support the data key {key.name}.")
         tensor = _coordinates(value, key)
         # All box coordinates have been converted to (B, N, 4, 2).
-        expected_ndim = 3 if key == DataKey.KEYPOINTS else 4
-        if tensor.ndim != expected_ndim or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
+        expected_ndims = (3,) if key == DataKey.KEYPOINTS else (3, 4) if key == DataKey.MASK else (4,)
+        if tensor.ndim not in expected_ndims or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
             raise ValueError("audit inputs must be batched with the same batch size and device as the image.")
         original = value.data if isinstance(value, (Boxes, Keypoints)) else cast(Tensor, value)
         metadata.append(

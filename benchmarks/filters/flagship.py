@@ -24,6 +24,7 @@ Covers the core image filters with fixed nominal parameters across backends
 kornia.filters            OpenCV (uint8 HWC per-image loop)  others
 ========================  =================================  ====================================================
 gaussian_blur2d           cv2.GaussianBlur                   albumentations, torchvision, skimage, kornia-rs, PIL
+spatial_gradient          cv2.Sobel(dx/dy), float32 scale=1/8, replicate border
 sobel                     cv2.Sobel(dx/dy) -> cv2.magnitude  skimage, kornia-rs
 laplacian                 cv2.Laplacian                      skimage
 median_blur               cv2.medianBlur                     albumentations, skimage, kornia-rs, PIL
@@ -50,24 +51,29 @@ Canny thresholds are each library's standard
 defaults — kornia 0.1/0.2 on the unnormalised Sobel magnitude of [0, 1] floats, OpenCV 100/200 on uint8
 gradients — the domains differ, so that row compares regimes, not identical outputs. kornia's canny converts to
 grayscale internally per its definition; the OpenCV canny loop therefore includes ``cv2.cvtColor``
-(sobel runs per-channel in both). Throughput is img/s.
+(sobel runs per-channel in both). ``spatial_gradient`` returns normalized x/y Sobel derivatives
+per channel; OpenCV receives prepared float32 [0, 1] images, uses scale=1/8 and replicate padding,
+and returns two HWC arrays per image. Kornia returns (B, C, 2, H, W). Throughput is img/s.
 
 The Laplacian columns are different operators: Kornia uses an L1-normalized all-ones window with
 center ``1 - kernel_area``; OpenCV sums second Sobel derivatives and scikit-image's kernel differs
-as well. Sobel normalization differs across libraries. Median uses zero padding in
-Kornia/scikit-image and replicated borders in OpenCV. The scikit-image Gaussian uses ``mode='mirror'`` (the
-SciPy mode matching PyTorch reflect padding) and ``truncate=2 / 1.5`` for a 5x5 support. Its rank
+as well. Sobel normalization differs across libraries. Median uses mirror borders in Kornia (torch's ``reflect``)
+and scikit-image (``mode='mirror'``), and replicated borders in OpenCV. The scikit-image Gaussian uses
+``mode='mirror'`` (the SciPy mode matching PyTorch reflect padding) and ``truncate=2 / 1.5`` for a 5x5 support. Its rank
 mean is a uint8 footprint-based box filter with truncated boundary footprints. These are
 native-regime throughput comparisons, not output-equivalent comparisons.
 
-kornia-rs 0.1.14 exposes Gaussian and box blur; 0.1.15rc5 adds median
-blur and Sobel to the Python API. The median operator accepts only 3x3 or 5x5 uint8 images and
-uses replicated borders. Its Sobel is f32 magnitude; its normalization and borders can differ
-from Kornia. kornia-rs also exposes a bilateral filter only for single-channel uint8 images. The
-grayscale bilateral row converts the common RGB image to precomputed mean grayscale before timing:
-Kornia and scikit-image use normalized float, while kornia-rs receives the rounded uint8 value and
-uses ``sigma_color=25.5`` to represent 0.1 in that domain. kornia-rs matches OpenCV's circular
-diameter-5 neighborhood; Kornia's 5x5 filter has square support.
+kornia-rs Canny includes RGB-to-gray conversion, thresholds 100/200 and L1 gradients, matching
+the OpenCV call scope; its grayscale rounding can differ. These native uint8 thresholds are not
+Kornia's normalized defaults. kornia-rs exposes Gaussian, box and median blur and Sobel in its
+Python API. The median operator
+accepts only 3x3 or 5x5 uint8 images and uses replicated borders. Its Sobel is f32 magnitude; its
+normalization and borders can differ from Kornia. kornia-rs also exposes a bilateral filter only for
+single-channel uint8 images. The grayscale bilateral row converts the common RGB image to
+precomputed mean grayscale before timing: Kornia and scikit-image use normalized float, while
+kornia-rs receives the rounded uint8 value and uses ``sigma_color=25.5`` to represent 0.1 in that
+domain. kornia-rs matches OpenCV's circular diameter-5 neighborhood; Kornia's 5x5 filter has square
+support.
 
 Albumentations ``UnsharpMask`` is an unsharp-mask algorithm but is not Kornia-equivalent: it clips
 and blends through a blurred threshold mask, while Kornia is exactly ``2 * input - gaussian_blur``.
@@ -112,6 +118,7 @@ from common import (
     finish_run,
     image_batch,
     image_row_fields,
+    kornia_rs_fn,
     optional_import,
     run_batch_sweep,
     setup_run,
@@ -123,6 +130,7 @@ import kornia.filters as KF
 AVAILABLE_OPS = (
     "gaussian_blur2d",
     "sobel",
+    "spatial_gradient",
     "laplacian",
     "median_blur",
     "box_blur",
@@ -250,12 +258,7 @@ def build_specialized_ops(
 
 def krs_fn(name: str) -> Optional[Callable[..., object]]:
     """Resolve a kornia-rs function across wheel layouts (imgproc submodule vs top-level)."""
-    try:
-        import kornia_rs
-    except Exception:
-        return None
-    ns = getattr(kornia_rs, "imgproc", kornia_rs)
-    return getattr(ns, name, getattr(kornia_rs, name, None))
+    return kornia_rs_fn(name)
 
 
 def build_ops(
@@ -319,6 +322,23 @@ def build_ops(
         )
         ops["gaussian_blur2d"] = row
 
+    if include("spatial_gradient"):
+        row = kornia_row("spatial_gradient", lambda: KF.spatial_gradient(batch_f, mode="sobel", normalized=True))
+        row["opencv"] = (
+            (
+                lambda: [
+                    (
+                        cv2.Sobel(im, cv2.CV_32F, 1, 0, ksize=3, scale=1 / 8, borderType=cv2.BORDER_REPLICATE),
+                        cv2.Sobel(im, cv2.CV_32F, 0, 1, ksize=3, scale=1 / 8, borderType=cv2.BORDER_REPLICATE),
+                    )
+                    for im in imgs_f
+                ]
+            )
+            if cv2
+            else None
+        )
+        ops["spatial_gradient"] = row
+
     if include("sobel"):
         krs_sobel = krs_fn("sobel")
         row = kornia_row("sobel", lambda: KF.sobel(batch_f))
@@ -360,9 +380,7 @@ def build_ops(
             else None
         )
         row["scikit-image"] = (
-            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="constant", cval=0) for im in imgs_f])
-            if skf
-            else None
+            (lambda: [skf.median(im, footprint=footprint_5_hwc, mode="mirror") for im in imgs_f]) if skf else None
         )
         ops["median_blur"] = row
 
@@ -396,7 +414,12 @@ def build_ops(
         )
         row["albumentations"] = None
         row["torchvision v2"] = None
-        row["kornia-rs"] = None
+        krs_canny, krs_gray = krs_fn("canny"), krs_fn("gray_from_rgb")
+        row["kornia-rs"] = (
+            (lambda: [krs_canny(krs_gray(im), 100.0, 200.0, l2_gradient=False) for im in imgs_u8])
+            if krs_canny and krs_gray
+            else None
+        )
         ops["canny"] = row
 
     ops.update(
@@ -439,9 +462,11 @@ def main() -> None:
         regimes=[
             (
                 "kornia/torchvision: batched float BCHW; "
-                "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), except kornia-rs Sobel float32; "
+                "albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU), "
+                "except kornia-rs Sobel and opencv spatial_gradient float32; "
                 "scikit-image: normalized float HWC per-image loop except uint8 rank mean"
-            )
+            ),
+            "spatial_gradient: normalized x/y Sobel, OpenCV float32 [0,1], scale=1/8, replicate padding",
         ],
         missing=missing,
     )
@@ -453,8 +478,9 @@ def main() -> None:
                 f"# NOTE: scikit-image restoration not available ({skimage_restoration_error}) "
                 "— bilateral rows are skipped"
             )
-    if krs_fn("gaussian_blur") is None:
-        print("# NOTE: kornia-rs filter APIs not available — its column is skipped")
+    for name in ("gaussian_blur", "box_blur", "sobel", "median_blur", "bilateral_filter", "canny", "gray_from_rgb"):
+        if krs_fn(name) is None:
+            print(f"# NOTE: kornia-rs/{name} unavailable — affected cells are skipped")
 
     backends = [
         "kornia (eager)",

@@ -59,8 +59,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
 
     Convention:
         - ``pred`` holds one logit channel ``(B, 1, H, W)`` and ``target`` the labels ``(B, H, W)``, 1 for the
-          foreground and 0 for the background. The loss is computed per image and averaged over the batch into a
-          0-d tensor; there is no ``reduction``.
+          foreground and 0 for the background. The batch and spatial sizes must match. The loss is computed per image
+          and averaged over the batch into a 0-d tensor; there is no ``reduction``.
         - The loss is the Lovász extension of the Jaccard loss at the hinge errors :math:`\max(0, 1 - z (2t - 1))`
           of logit :math:`z` and label :math:`t`, not :math:`1 - \text{IoU}`: logits of :math:`\pm 1` that are
           positive on the predicted foreground give :math:`2 (1 - \text{IoU})` of that prediction, and correct
@@ -90,7 +90,7 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
 
     KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])
 
-    if not pred.shape[-2:] == target.shape[-2:]:
+    if not (pred.shape[0] == target.shape[0] and pred.shape[-2:] == target.shape[-2:]):
         raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 
     if not pred.device == target.device:

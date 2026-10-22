@@ -65,6 +65,26 @@ class TestRawToRgb(BaseTester):
         with pytest.raises(ValueError):
             assert kornia.color.raw_to_rgb(img, kornia.color.CFA.GR)
 
+    @pytest.mark.parametrize("cfa", list(kornia.color.CFA))
+    def test_transposed_batch(self, device, dtype, cfa):
+        image = torch.rand(2, 3, 1, 4, 6, device=device, dtype=dtype).transpose(0, 1)
+        assert not image.is_contiguous()
+        expected = torch.stack(
+            [torch.stack([kornia.color.raw_to_rgb(frame, cfa) for frame in batch]) for batch in image]
+        )
+        actual = kornia.color.raw_to_rgb(image, cfa)
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.color.rgb_to_raw(actual, cfa), image)
+
+    def test_transposed_batch_gradcheck(self, device):
+        image = torch.rand(2, 2, 1, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(lambda x: kornia.color.raw_to_rgb(x.transpose(0, 1), kornia.color.CFA.BG), (image,))
+
+    def test_transposed_batch_dynamo(self, device, dtype, torch_optimizer):
+        image = torch.rand(2, 3, 1, 4, 6, device=device, dtype=dtype).transpose(0, 1)
+        op = kornia.color.raw_to_rgb
+        self.assert_close(torch_optimizer(op)(image, kornia.color.CFA.BG), op(image, kornia.color.CFA.BG))
+
     # With he current implementations we should get back an identical raw representation when doing raw -> rgb -> raw
     # Note that with more advanced implementations this may not necessarily be true or desirable
     def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201

@@ -438,3 +438,21 @@ class TestConventionsMedianBlur(BaseTester):
             out = median_blur(image, kernel_size).detach()
             assert torch.equal(out.isnan(), image.detach().isnan())
             self.assert_close(out.nan_to_num(), image.detach().nan_to_num())
+
+    @pytest.mark.parametrize("border_type", ["reflect", "constant"])
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int16, torch.int32, torch.int64, torch.bool])
+    def test_convention_median_blur_integer_image_is_filtered_in_float32_5155(self, input_dtype, border_type, device):
+        """An integer or bool image is filtered in float32 and returns float32 on its own scale (#5155)."""
+        # A median selects one of its window's values, so the result equals the float32 one exactly. On the CPU the
+        # 3x3 window runs the selection network and the (3, 5) one the convolution + median path.
+        generator = torch.Generator().manual_seed(0)
+        low = -128 if input_dtype.is_signed else 0
+        high = 2 if input_dtype == torch.bool else 256
+        image = torch.randint(low, high, (2, 3, 9, 13), generator=generator).to(device, input_dtype)
+        for kernel_size in (3, (3, 5)):
+            expected = median_blur(image.float(), kernel_size, border_type)
+            out = median_blur(image, kernel_size, border_type)
+            assert out.dtype == torch.float32
+            self.assert_close(out, expected, rtol=0, atol=0)
+            self.assert_close(MedianBlur(kernel_size, border_type)(image), expected, rtol=0, atol=0)
+        assert median_blur(image[:, :0], 3, border_type).dtype == torch.float32
