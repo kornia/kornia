@@ -60,7 +60,8 @@ class RandAugment(PolicyAugmentBase):
           ``(0, max)`` with a random sign per row: ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. A
           ``translate_x`` / ``translate_y`` value is a fraction of the image width / height, applied in pixels.
           The operation's magnitude mapping is the identity for every default entry except ``shear_x`` /
-          ``shear_y``, which multiply by ``180`` (``27`` degrees at ``m=15`` for the default range), and
+          ``shear_y``, which map the shear factor to degrees with ``rad2deg(atan(x))`` (about ``8.5`` degrees at
+          ``m=15`` for the default range), and
           ``posterize``, which truncates to integer bits. ``posterize`` also runs its range backwards,
           ``high - (high - low) * m / 30``, so a larger ``m`` keeps fewer bits (``7``, ``6`` and ``4`` at ``m=7``,
           ``15`` and ``29``).
