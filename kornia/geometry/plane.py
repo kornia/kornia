@@ -26,7 +26,14 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE, are_checks_enabled
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
-from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast, is_compiling, register_module_state
+from kornia.core.utils import (
+    _right_singular_vector,
+    _svd_work_dtype,
+    _torch_linalg_svdvals,
+    _torch_svd_cast,
+    is_compiling,
+    register_module_state,
+)
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -281,57 +288,12 @@ def _rank_tolerance(dtype: torch.dtype) -> float:
 
 # TODO: factor to avoid duplicated from line.py
 # https://github.com/strasdat/Sophus/blob/23.04-beta/cpp/sophus/geometry/fit_plane.h
-def _plane_normal(points_centered: torch.Tensor, S: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
-    """Return the unit normal ``V[..., :, -1]`` of the fit, with a gradient that is finite at equal in-plane values.
-
-    The value is the SVD's. Its gradient through torch's SVD backward is NaN when the two in-plane singular values are
-    equal, as for a square grid of points, although the normal is well defined while the smallest singular value is
-    simple. Up to scale, the normal is also any nonzero column of ``adj(C - s_min^2 I)`` with ``C = X^T X``, a
-    polynomial in the points, so the gradient is taken from the largest such column, aligned with the SVD normal, and
-    the value from the SVD: the detached-value pattern of #4229. ``s_min`` is a simple singular value, whose own
-    gradient is finite.
-    """
-    normal = V[..., :, -1].detach()
-    if not (torch.is_grad_enabled() and points_centered.requires_grad):
-        return normal
-    # The points are divided by their largest magnitude first, held constant: the normal is scale-invariant, and
-    # X^T X would overflow or underflow in the input dtype at coordinates near the square root of its range, where
-    # the SVD, computed in a wider dtype, still works. s_min is divided by the same scale.
-    scale = points_centered.detach().abs().amax(dim=(-2, -1), keepdim=True)
-    scale = torch.where(scale > 0, scale, torch.ones_like(scale))
-    scaled = points_centered / scale
-    cov = scaled.mT @ scaled
-    # C is normalised by its trace, which leaves the eigenvectors unchanged and keeps the cofactors in range.
-    trace = cov.diagonal(dim1=-2, dim2=-1).sum(-1)[..., None, None]
-    trace = torch.where(trace > 0, trace, torch.ones_like(trace))
-    eye = torch.eye(3, device=cov.device, dtype=cov.dtype)
-    m = (cov - (S[..., -1, None, None] / scale) ** 2 * eye) / trace
-    m0, m1, m2 = m[..., 0, :], m[..., 1, :], m[..., 2, :]
-    # The columns of the adjugate of a symmetric 3 x 3 matrix are the cross products of pairs of its rows.
-    cols = torch.stack(
-        [torch.linalg.cross(m1, m2, dim=-1), torch.linalg.cross(m2, m0, dim=-1), torch.linalg.cross(m0, m1, dim=-1)],
-        dim=-2,
-    )
-    norms = cols.norm(dim=-1)
-    pick = norms.detach().argmax(-1, keepdim=True)
-    col = torch.gather(cols, -2, pick[..., None].expand(*pick.shape, 3)).squeeze(-2)
-    norm = torch.gather(norms, -1, pick)
-    # An undetermined plane, which only reaches here with the value checks off, keeps the SVD's value and gradient 0.
-    adj_normal = col / torch.where(norm > 0, norm, torch.ones_like(norm))
-    adj_normal = adj_normal * torch.where((adj_normal.detach() * normal).sum(-1, keepdim=True) < 0, -1.0, 1.0)
-    # The gradient path never changes the value: a non-finite vector would turn normal + (v - v) into NaN.
-    adj_normal = torch.where(torch.isfinite(adj_normal), adj_normal, torch.zeros_like(adj_normal))
-    return normal + (adj_normal - adj_normal.detach())
-
-
 def fit_plane(points: Vector3) -> Hyperplane:
     """Fit a plane from a set of points using SVD.
 
     Convention:
         Returns a :class:`Hyperplane` (see its conventions) through the centroid of the points, with a unit normal
         of unspecified sign. Each batch row is fitted on its own.
-        The gradient is finite whenever the plane is determined, also when the two in-plane singular values are
-        equal, as for a square grid of points.
 
     Args:
         points: a tensor or a :class:`~kornia.geometry.vector.Vector3` of 3D points, of shape :math:`(N, 3)` or
@@ -375,19 +337,22 @@ def fit_plane(points: Vector3) -> Hyperplane:
     points_centered = points_work - mean
 
     # With at least three 3D points, reduced SVD retains all right singular vectors while
-    # avoiding an unused N-by-N left factor, including when autograd saves it for backward.
-    _, S, V = _torch_svd_cast(points_centered, full_matrices=False)
+    # avoiding an unused N-by-N left factor. The SVD is of the detached points: the normal's gradient comes from
+    # _right_singular_vector, which stays finite when the two in-plane singular values are equal.
+    work = points_centered.detach().to(_svd_work_dtype(points_centered))
+    _, S, V = _torch_svd_cast(work, full_matrices=False)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin
     # valid set working. Keep the input-dtype tolerance even when the fit uses higher precision.
-    if checks and not bool((S[..., 1] > S[..., 0] * _rank_tolerance(points_data.dtype)).all()):
+    S_work = S.to(points_work.dtype)
+    if checks and not bool((S_work[..., 1] > S_work[..., 0] * _rank_tolerance(points_data.dtype)).all()):
         raise ValueCheckError(
             "fit_plane requires points that are not collinear; the given points do not determine a plane."
         )
 
     # the first left eigenvector is the direction on the fited line
-    direction = _plane_normal(points_centered, S, V)  # BxD
+    direction = _right_singular_vector(points_centered, S, V, -1).to(points_work.dtype)  # BxD
     origin = mean[..., 0, :]  # BxD
     if half:
         offset = -batched_dot_product(direction, origin)
