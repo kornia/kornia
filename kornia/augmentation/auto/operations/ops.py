@@ -451,8 +451,9 @@ class ShearX(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.rad2deg(torch.atan(magnitude))
 
     def __init__(
         self,
@@ -491,8 +492,9 @@ class ShearY(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.rad2deg(torch.atan(magnitude))
 
     def __init__(
         self,
