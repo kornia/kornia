@@ -90,7 +90,8 @@ class KimiVLBuilder:
                 checkpoint is cached.
 
         Returns:
-            KimiVLModel instance with pretrained weights.
+            KimiVLModel instance with pretrained weights, in evaluation mode, since it always loads weights (see
+            :ref:`pretrained-models-conventions`).
 
         .. note::
             Only Kimi-VL-A3B-Instruct is currently supported.
@@ -98,4 +99,4 @@ class KimiVLBuilder:
         state_dict = _download_weights(_KIMI_VL_A3B_INSTRUCT_REPO_ID, cache_dir)
         model = KimiVLBuilder.from_config(_kimi_vl_a3b_instruct_config())
         model.load_state_dict(state_dict, strict=True)
-        return model
+        return model.eval()

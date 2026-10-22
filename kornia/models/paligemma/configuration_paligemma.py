@@ -40,6 +40,7 @@ class PaliGemmaConfig:
         rope_theta: The base period of the RoPE embeddings.
         ignore_index: Index to ignore in the loss function.
         image_token_index: Token index used for image placeholders.
+        pad_token_id: Index of the padding token, whose embedding row is zero and receives no gradient. Gemma's is 0.
     """
 
     vision_config: Optional[SigLip2VisionConfig] = field(default_factory=SigLip2VisionConfig)
@@ -54,3 +55,4 @@ class PaliGemmaConfig:
     rope_theta: float = 10000.0
     ignore_index: int = -100
     image_token_index: int = 256000
+    pad_token_id: int = 0

@@ -141,7 +141,16 @@ def build_ops(
     if include("RandomAffine"):
         row = kornia_row("RandomAffine", KA.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0))
         row["torchvision v2"] = (
-            tv(T2.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2))) if T2 else None
+            tv(
+                T2.RandomAffine(
+                    degrees=30.0,
+                    translate=(0.1, 0.1),
+                    scale=(0.8, 1.2),
+                    interpolation=T2.InterpolationMode.BILINEAR,
+                )
+            )
+            if T2
+            else None
         )
         row["albumentations"] = (
             alb(A.Affine(rotate=(-30.0, 30.0), translate_percent=(0.0, 0.1), scale=(0.8, 1.2), p=1.0)) if A else None

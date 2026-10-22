@@ -235,7 +235,7 @@ class StableDiffusionDissolving(ImageModule):
         DDIMScheduler = diffusers.DDIMScheduler
 
         # Load the scheduler and model pipeline from diffusers library
-        scheduler = DDIMScheduler(  # type:ignore
+        scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
@@ -257,22 +257,24 @@ class StableDiffusionDissolving(ImageModule):
 
         if version == "1.4":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
             )
         elif version == "1.5":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
             )
         elif version == "xl":
             StableDiffusionXLPipeline = diffusers.StableDiffusionXLPipeline
-            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(
                 "stabilityai/stable-diffusion-xl-base-1.0", scheduler=scheduler, **kwargs
             )
             is_sdxl = True
         else:
-            raise NotImplementedError
+            raise NotImplementedError(
+                f"Unsupported Stable Diffusion version {version!r}. Supported versions are '1.4', '1.5', and 'xl'."
+            )
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000, is_sdxl=is_sdxl)
 

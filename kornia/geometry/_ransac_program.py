@@ -272,10 +272,10 @@ def build_lm_program(model_type: str, score_type: str, max_lo_iters: int, refine
         pad_scores = torch.full((_POOL,), -2.0, dtype=torch.float64, device=device)
         pad_counts = torch.zeros(_POOL, dtype=torch.int64, device=device)
 
-        def cond(drawn, batch, max_samples, best_score, pool, pool_scores):  # type: ignore[no-untyped-def]
+        def cond(drawn, batch, max_samples, best_score, pool, pool_scores):
             return drawn < max_samples
 
-        def body(drawn, batch, max_samples, best_score, pool, pool_scores):  # type: ignore[no-untyped-def]
+        def body(drawn, batch, max_samples, best_score, pool, pool_scores):
             current = torch.minimum(batch, max_samples - drawn)
             size = current.item()
             torch._check(size >= 1)
@@ -543,11 +543,11 @@ def _load_or_save_artifact(
 
     with _compiled_autocast_disabled(), _dynamo_config():
         try:
-            artifact = compiled.aot_compile((example_inputs, {}))  # type: ignore[attr-defined]
+            artifact = compiled.aot_compile((example_inputs, {}))
         except TensorifyScalarRestartAnalysis:
             # torch.compile restarts its analysis once when a Python scalar cannot become a tensor; aot_compile
             # (torch 2.14) raises instead, and succeeds when called again.
-            artifact = compiled.aot_compile((example_inputs, {}))  # type: ignore[attr-defined]
+            artifact = compiled.aot_compile((example_inputs, {}))
     directory = os.path.dirname(path)
     os.makedirs(directory, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=".tmp-", suffix=".bin", dir=directory)

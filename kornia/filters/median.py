@@ -24,6 +24,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 
+from .filter import _to_floating
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_binary_kernel2d
 
 _VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
@@ -123,6 +124,9 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
         - A window of more than one pixel that holds a NaN or an infinity returns NaN, even where the median of its
           values is finite; a 1x1 window returns its pixel, infinity included.
         - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
+        - An integer or bool image is filtered in float32 and the result is float32 on its own scale, like
+          :func:`~kornia.filters.box_blur`; a floating image keeps its dtype. A median selects one of its window's
+          values, so the result equals that of ``input.float()`` exactly.
 
     Args:
         input: the input image with shape :math:`(B,C,H,W)`.
@@ -155,6 +159,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx), min_value=0)
+    input = _to_floating(input)
     if input.shape[1] == 0:
         return input
     # ATen's per-pixel median reduction dominates inference for small windows.

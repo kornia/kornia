@@ -88,7 +88,7 @@ from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.overwrite import default_with_one_parameter_changed
 
 
@@ -484,7 +484,6 @@ class TestCenterCropAlternative(CommonTests):
             params={"size": (2, 3), "align_corners": True},
         )
 
-    @pytest.mark.xfail(reason="size=(1,2) results in RuntimeError: solve_cpu: For batch 0: U(3,3) is zero, singular U.")
     def test_random_p_1(self):
         torch.manual_seed(42)
 
@@ -4541,7 +4540,8 @@ class TestRandomChannelShuffle(BaseTester):
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.arange(36, device=device, dtype=dtype).reshape(2, 2, 3, 3) / 36
-        expected = torch.tensor(1913 / 85, device=device, dtype=dtype)
+        # Centre-anchored blending of the 2 x 2 tile LUTs, evaluated with the per-pixel reference.
+        expected = torch.tensor(102320 / (16 * 255), device=device, dtype=dtype)
         self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), expected)
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
@@ -4582,10 +4582,12 @@ class TestRandomClahe(BaseTester):
         self.assert_close(actual, expected)
         if slow_and_differentiable:
             weights = torch.rand_like(actual)
-            self.assert_close(
-                torch.autograd.grad(actual, input_data, weights)[0],
-                torch.autograd.grad(expected, input_data, weights)[0],
-            )
+            grad_actual = torch.autograd.grad(actual, input_data, weights)[0]
+            grad_expected = torch.autograd.grad(expected, input_data, weights)[0]
+            # The gradients reach a few hundred, so rounding leaves absolute noise above the float32 atol on
+            # entries near zero; compare relative to the largest entry.
+            scale = grad_expected.abs().max()
+            self.assert_close(grad_actual / scale, grad_expected / scale)
 
     def test_clip_limit_on_the_input_device(self, device, dtype):
         # The per-sample thresholds are computed in float64, on the CPU for an MPS clip tensor. A single
@@ -5331,6 +5333,24 @@ class TestRandomFisheye(BaseTester):
 
 
 class TestRandomElasticTransform(BaseTester):
+    def test_zero_padding_with_replayed_noise(self, device, dtype):
+        image = torch.ones(1, 1, 5, 5, device=device, dtype=dtype)
+        noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
+        noise[:, 0] = 1.0
+        params = {"noise": noise, "batch_prob": torch.ones(1, device=device, dtype=dtype)}
+        aug = RandomElasticTransform(
+            kernel_size=(1, 1),
+            sigma=(1.0, 1.0),
+            alpha=(0.8, 0.0),
+            resample="nearest",
+            padding_mode="zeros",
+            p=1.0,
+        )
+        expected = torch.ones_like(image)
+        expected[..., -2:] = 0.0
+        self.assert_close(aug(image, params=params), expected)
+        self.assert_close(aug(image, params=aug._params), expected)
+
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomElasticTransform(p=1.0)
@@ -5475,6 +5495,54 @@ class TestPadTo(BaseTester):
         assert out.shape == (1, 1, 4, 5)
         self.assert_close(aug.inverse(out), img)
 
+    def test_crop_if_exceeds_true_crops_larger_input(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=True)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+        self.assert_close(out, img[..., :4, :5])
+
+    def test_crop_if_exceeds_false_keeps_larger_input_unchanged(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 6)
+        self.assert_close(out, img)
+        self.assert_close(aug.inverse(out), img)
+
+    def test_crop_if_exceeds_false_mixed_dims(self, device, dtype):
+        # height (6) exceeds target (4); width (2) is below target (5)
+        img = torch.rand(1, 1, 6, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 5)
+        # the exceeding height dimension is left untouched, and the original
+        # content is preserved with zeros padded onto the short width dimension
+        self.assert_close(out[..., :2], img)
+        self.assert_close(out[..., 2:], torch.zeros(1, 1, 6, 3, device=device, dtype=dtype))
+        self.assert_close(aug.inverse(out), img)
+
+    def test_default_crops_larger_input(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        out = PadTo(size=(4, 5))(img)
+        assert out.shape == (1, 1, 4, 5)
+        self.assert_close(out, img[..., :4, :5])
+
+    def test_flags_without_crop_if_exceeds_keep_cropping(self, device, dtype):
+        # A PadTo pickled before ``crop_if_exceeds`` existed unpickles with no such key in ``flags``.
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        del aug.flags["crop_if_exceeds"]
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        self.assert_close(aug(img), img[..., :4, :5])
+
+    @pytest.mark.parametrize("crop_if_exceeds", [True, False])
+    def test_dynamo(self, device, dtype, torch_optimizer, crop_if_exceeds):
+        # The input is taller and narrower than the target: one call crops (or keeps) the height and pads the width.
+        img = torch.rand(2, 3, 6, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=crop_if_exceeds)
+        compiled = torch_optimizer(aug, fullgraph=True)
+        self.assert_close(compiled(img), aug(img))
+
 
 class TestResize:
     def test_smoke(self, device, dtype):
@@ -5492,6 +5560,25 @@ class TestResize:
         torch._dynamo.reset()
         compiled = torch.compile(aug, fullgraph=True)
         torch.testing.assert_close(aug(img), compiled(img), rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "make",
+        [lambda: Resize(8), lambda: LongestMaxSize(8), lambda: SmallestMaxSize(8)],
+        ids=["Resize", "LongestMaxSize", "SmallestMaxSize"],
+    )
+    def test_int_size_traces_in_one_graph_like_eager_5037(self, make, device, dtype):
+        # An int size takes its output size from the input shape under any capture, not only under export (#5037):
+        # the sampled ``output_size`` tensor is a host read, which a fullgraph trace cannot make.
+        from torch._dynamo.testing import CompileCounter
+
+        img = torch.rand(2, 3, 10, 16, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        aug = make()
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(aug, backend=counter, fullgraph=True)
+        torch.testing.assert_close(traced(img), aug(img), rtol=0, atol=0)
+        assert counter.frame_count == 1
 
 
 class TestSmallestMaxSize:
@@ -6401,6 +6488,42 @@ class TestRandomJPEG(BaseTester):
         img_jpeg_mean_grad_ref = torch.tensor([0.1919], device=device)
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
+
+
+class TestRandomJPEGEmptyBatch(BaseTester):
+    # Not marked slow like TestRandomJPEG: an empty batch never reaches the codec, so these run on every CI leg.
+
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_empty_batch(self, p, same_on_batch, device, dtype):
+        # #4429: the differentiable JPEG codec rejects an empty batch, so the augmentation short-circuits it and
+        # keeps the shape like the other classes in the empty-batch convention.
+        image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        output = RandomJPEG(p=p, same_on_batch=same_on_batch)(image)
+        assert output.shape == image.shape
+        assert output.dtype == dtype
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize(
+        ("params_batch", "batch", "error", "match"),
+        [(0, 2, RuntimeError, r"amin\(\)"), (2, 0, ValueError, r"Invalid input tensor, it is empty\.")],
+    )
+    def test_empty_batch_shortcut_needs_an_empty_batch(self, params_batch, batch, error, match, device, dtype):
+        # Replaying parameters drawn for another batch size raises as it did before the empty-batch shortcut; a
+        # non-empty batch with no drawn quality must not come back uncoded.
+        aug = RandomJPEG(p=1.0)
+        params = aug.forward_parameters(torch.Size((params_batch, 3, 8, 10)))
+        with pytest.raises(error, match=match):
+            aug(torch.rand(batch, 3, 8, 10, device=device, dtype=dtype), params=params)
+
+    @pytest.mark.parametrize("shape", [(0, 1, 8, 10), (0, 3, 0, 10), (0, 3, 8, 0)])
+    def test_empty_batch_keeps_the_input_checks(self, shape, device, dtype):
+        # The codec needs three channels and a non-empty image at every batch size, so these empty batches still
+        # raise as they did before the empty-batch shortcut.
+        with pytest.raises(ValueError, match=r"it is empty|expected 3"):
+            RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
 
 
 @pytest.mark.slow

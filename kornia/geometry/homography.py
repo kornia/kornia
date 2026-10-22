@@ -22,7 +22,13 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
+from kornia.core.utils import (
+    _autocast_disabled,
+    _extract_device_dtype,
+    _torch_svd_cast,
+    safe_inverse_with_mask,
+    safe_solve_with_mask,
+)
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
@@ -326,7 +332,7 @@ def _homography_rows(p1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     Two rows per correspondence, ``[0, -p1, y2 p1]`` and ``[p1, 0, -x2 p1]``, so that ``row . vec(H) = 0`` for
     ``points2 ~ H p1`` with ``H`` row-major; only the first two coordinates of ``points2`` are read.
     """
-    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf  # noqa: E501
+    # DIAPO 11: https://www.uio.no/studier/emner/matnat/its/nedlagte-emner/UNIK4690/v16/forelesninger/lecture_4_3-estimating-homographies-from-feature-correspondences.pdf
     zeros = torch.zeros_like(p1)
     ax = torch.cat([zeros, -p1, points2[..., 1:2] * p1], dim=-1)
     ay = torch.cat([p1, zeros, -points2[..., 0:1] * p1], dim=-1)
@@ -509,6 +515,7 @@ def find_homography_dlt(
           correspondence from the equations, and only relative weights matter.
         - ``solver="lu"`` and ``"svd"`` give the same homography on exact data, to roundoff scaled by the
           conditioning of the system; on noisy data they solve different least-squares problems and differ.
+        - A caller's autocast region does not change the fit.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
@@ -519,14 +526,23 @@ def find_homography_dlt(
 
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element whose weighted DLT system is
+        not finite, because a weight or a point is not finite (zero-weight points included) or an entry overflows,
+        is NaN for both solvers and on every device; the other elements are unaffected. If the SVD of
+        ``solver="svd"`` fails to converge on a finite system, the whole batch is NaN and a ``RuntimeWarning`` is
+        issued.
 
     """
     device, dtype = _extract_device_dtype([points1, points2])
-    A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
-    return _homography_from_dlt_system(
-        A, weights, transform1, _inverse_normalization(transform2), solver, device, dtype
-    )
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(points1.dtype)
+    # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
+    with _autocast_disabled(points1.device.type):
+        A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
+        return _homography_from_dlt_system(
+            A, weights, transform1, _inverse_normalization(transform2), solver, device, dtype
+        )
 
 
 def _inverse_normalization(transform: torch.Tensor) -> torch.Tensor:
@@ -588,6 +604,27 @@ def _rank8_null_vector(normal: torch.Tensor) -> torch.Tensor:
     return torch.where(rank8[:, None], null, torch.full_like(null, float("nan")))
 
 
+def _svd_null_vector(normal: torch.Tensor) -> torch.Tensor:
+    """Right singular vector of the smallest singular value of each ``(B, 9, 9)`` matrix, NaN where it is undefined.
+
+    A matrix with a non-finite entry has no null vector, and the backends disagree on what its SVD returns:
+    CPU ``torch.linalg.svd`` raises for the whole batch, while CUDA can return a finite vector, such as a basis
+    vector, for a matrix with a single NaN entry. Such matrices are decomposed as zeros and their vectors are
+    replaced by NaN, so on every backend the finite matrices keep their vectors and the others are NaN, as with
+    the LU solver (#4770). If the SVD still fails on a finite batch, every vector is NaN and a warning is issued;
+    there is no partial result to keep.
+    """
+    finite = normal.isfinite().flatten(1).all(-1)
+    safe = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
+    try:
+        _, _, V = _torch_svd_cast(safe)
+    except RuntimeError:
+        warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
+        return torch.full_like(normal[..., 0], float("nan"))
+    null = V[..., -1]
+    return torch.where(finite[:, None], null, torch.full_like(null, float("nan")))
+
+
 def _homography_from_dlt_system(
     A: torch.Tensor,
     weights: Optional[torch.Tensor],
@@ -620,12 +657,7 @@ def _homography_from_dlt_system(
         A = A.transpose(-2, -1) @ A if w_full is None else (A.transpose(-2, -1) * w_full) @ A
 
     if solver == "svd":
-        try:
-            _, _, V = _torch_svd_cast(A)
-        except RuntimeError:
-            warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
-            return torch.empty((A.shape[0], 3, 3), device=device, dtype=dtype)
-        H = V[..., -1].view(-1, 3, 3)
+        H = _svd_null_vector(A).view(-1, 3, 3)
     elif solver == "lu":
         if not minimal_lu:
             B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
@@ -692,7 +724,7 @@ def find_homography_dlt_iterated(
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
     Convention:
-        - Direction and ``H[2, 2] = 1`` as :func:`find_homography_dlt`. Each solve after the first re-weights
+        - Direction, ``H[2, 2] = 1`` and autocast as :func:`find_homography_dlt`. Each solve after the first re-weights
           with the Gaussian kernel ``exp(-e**2 / (2 * soft_inl_th**2))`` of the symmetric transfer error ``e``
           (the root of the summed squared forward and backward transfer errors), so ``soft_inl_th`` is a
           standard deviation in pixels: a correspondence with ``e = soft_inl_th`` keeps weight ``exp(-1/2)``.
@@ -706,20 +738,26 @@ def find_homography_dlt_iterated(
         n_iter: number of solves, including the initial one.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`, NaN for a batch element as in
+        :func:`find_homography_dlt`.
 
     """
     device, dtype = _extract_device_dtype([points1, points2])
-    # Weighted Hartley normalization changes with each set of IRLS weights.
-    A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
-    transform2_inv = _inverse_normalization(transform2)
-    H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
-    for _ in range(n_iter - 1):
-        squared_errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, True)
-        weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
-        A, transform1, transform2 = _homography_dlt_system(points1, points2, weights_new)
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(points1.dtype)
+    # Autocast would run the solves and the re-weighting errors in half precision.
+    with _autocast_disabled(points1.device.type):
+        # Weighted Hartley normalization changes with each set of IRLS weights.
+        A, transform1, transform2 = _homography_dlt_system(points1, points2, weights)
         transform2_inv = _inverse_normalization(transform2)
-        H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
+        H: torch.Tensor = _homography_from_dlt_system(A, weights, transform1, transform2_inv, "lu", device, dtype)
+        for _ in range(n_iter - 1):
+            squared_errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, True)
+            weights_new: torch.Tensor = torch.exp(-squared_errors / (2.0 * (soft_inl_th**2)))
+            A, transform1, transform2 = _homography_dlt_system(points1, points2, weights_new)
+            transform2_inv = _inverse_normalization(transform2)
+            H = _homography_from_dlt_system(A, weights_new, transform1, transform2_inv, "lu", device, dtype)
     return H
 
 
@@ -782,17 +820,26 @@ def find_homography_lines_dlt(
           ``[start, end]`` pair of ``(x, y)`` points, and ``weights`` has one entry per segment.
         - Both endpoints of image-1 segment ``i`` are constrained to lie, after mapping by ``H``, on the line
           through image-2 segment ``i``, so the endpoints need not be point correspondences.
+        - Each segment gives two constraints on the eight degrees of freedom of ``H``, so at least four segments
+          are needed, as :func:`find_homography_dlt` needs four points.
+        - A caller's autocast region does not change the fit.
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
-          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`. ``N`` must be at least 4.
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
           :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
         weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
           Zero-weight segments are excluded from Hartley normalization.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element whose weighted DLT system is
+        not finite, because a weight or an endpoint is not finite (zero-weight segments included) or an entry
+        overflows, is NaN on every device; the other elements are unaffected. If the SVD fails to converge on a
+        finite system, the whole batch is NaN and a ``RuntimeWarning`` is issued.
+
+    Raises:
+        AssertionError: if fewer than four segments are given, as in :func:`find_homography_dlt`.
 
     """
     if len(ls1.shape) == 3:
@@ -802,59 +849,64 @@ def find_homography_lines_dlt(
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
     KORNIA_CHECK_SHAPE(ls2, ["B", "N", "2", "2"])
     BS, N = ls1.shape[:2]
-    device, dtype = _extract_device_dtype([ls1, ls2])
+    # Fewer segments leave the DLT system under-determined: its null space then holds an arbitrary
+    # homography, or NaN for none at all (#5991).
+    if N < 4:
+        raise AssertionError(f"find_homography_lines_dlt needs at least 4 line segments, got {N}: {ls1.shape}")
+    # Raises unless both segment sets share a device and a dtype.
+    _extract_device_dtype([ls1, ls2])
 
     points1 = ls1.reshape(BS, 2 * N, 2)
     points2 = ls2.reshape(BS, 2 * N, 2)
 
     if weights is not None and weights.shape != ls1.shape[:2]:
         raise AssertionError(weights.shape)
-    endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
-    points1_norm, transform1 = normalize_points(points1, weights=endpoint_weights)
-    points2_norm, transform2 = normalize_points(points2, weights=endpoint_weights)
-    # Pair each segment's own endpoints: the flattened points are [start_0, end_0, start_1, end_1, ...].
-    segments1_norm = points1_norm.reshape(BS, N, 2, 2)
-    segments2_norm = points2_norm.reshape(BS, N, 2, 2)
-    lst1, le1 = segments1_norm[:, :, 0], segments1_norm[:, :, 1]
-    lst2, le2 = segments2_norm[:, :, 0], segments2_norm[:, :, 1]
+    # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
+    if weights is not None:
+        weights = weights.to(ls1.dtype)
+    # Autocast would run the DLT's matrix products in half precision and return a half-precision homography.
+    with _autocast_disabled(ls1.device.type):
+        endpoint_weights = weights.repeat_interleave(2, dim=1) if weights is not None else None
+        points1_norm, transform1 = normalize_points(points1, weights=endpoint_weights)
+        points2_norm, transform2 = normalize_points(points2, weights=endpoint_weights)
+        # Pair each segment's own endpoints: the flattened points are [start_0, end_0, start_1, end_1, ...].
+        segments1_norm = points1_norm.reshape(BS, N, 2, 2)
+        segments2_norm = points2_norm.reshape(BS, N, 2, 2)
+        lst1, le1 = segments1_norm[:, :, 0], segments1_norm[:, :, 1]
+        lst2, le2 = segments2_norm[:, :, 0], segments2_norm[:, :, 1]
 
-    xs1, ys1 = torch.chunk(lst1, dim=-1, chunks=2)  # BxNx1
-    xs2, ys2 = torch.chunk(lst2, dim=-1, chunks=2)  # BxNx1
-    xe1, ye1 = torch.chunk(le1, dim=-1, chunks=2)  # BxNx1
-    xe2, ye2 = torch.chunk(le2, dim=-1, chunks=2)  # BxNx1
+        xs1, ys1 = torch.chunk(lst1, dim=-1, chunks=2)  # BxNx1
+        xs2, ys2 = torch.chunk(lst2, dim=-1, chunks=2)  # BxNx1
+        xe1, ye1 = torch.chunk(le1, dim=-1, chunks=2)  # BxNx1
+        xe2, ye2 = torch.chunk(le2, dim=-1, chunks=2)  # BxNx1
 
-    A = ys2 - ye2
-    B = xe2 - xs2
-    C = xs2 * ye2 - xe2 * ys2
+        A = ys2 - ye2
+        B = xe2 - xs2
+        C = xs2 * ye2 - xe2 * ys2
 
-    eps: float = 1e-8
+        eps: float = 1e-8
 
-    # http://diis.unizar.es/biblioteca/00/09/000902.pdf
-    ax = torch.cat([A * xs1, A * ys1, A, B * xs1, B * ys1, B, C * xs1, C * ys1, C], dim=-1)
-    ay = torch.cat([A * xe1, A * ye1, A, B * xe1, B * ye1, B, C * xe1, C * ye1, C], dim=-1)
-    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
+        # http://diis.unizar.es/biblioteca/00/09/000902.pdf
+        ax = torch.cat([A * xs1, A * ys1, A, B * xs1, B * ys1, B, C * xs1, C * ys1, C], dim=-1)
+        ay = torch.cat([A * xe1, A * ye1, A, B * xe1, B * ye1, B, C * xe1, C * ye1, C], dim=-1)
+        # The row count is spelled out: a ``-1`` cannot be inferred for an empty batch.
+        A = torch.cat((ax, ay), dim=-1).reshape(BS, 2 * N, ax.shape[-1])
 
-    if weights is None:
-        # All points are equally important
-        A = A.transpose(-2, -1) @ A
-    else:
-        # We should use provided weights
-        if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
-            raise AssertionError(weights.shape)
-        # Scale each segment's two design rows by its weight instead of materializing the
-        # (B, 2N, 2N) diagonal weight matrix, whose storage grows quadratically with N.
-        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
-        A = (A.transpose(-2, -1) * w_full) @ A
+        if weights is None:
+            # All points are equally important
+            A = A.transpose(-2, -1) @ A
+        else:
+            # We should use provided weights
+            if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
+                raise AssertionError(weights.shape)
+            # Scale each segment's two design rows by its weight instead of materializing the
+            # (B, 2N, 2N) diagonal weight matrix, whose storage grows quadratically with N.
+            w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+            A = (A.transpose(-2, -1) * w_full) @ A
 
-    try:
-        _, _, V = _torch_svd_cast(A)
-    except RuntimeError:
-        warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
-        return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
-
-    H = V[..., -1].view(-1, 3, 3)
-    H = _inverse_normalization(transform2) @ (H @ transform1)
-    return normalize_transformation(H, eps)
+        H = _svd_null_vector(A).view(-1, 3, 3)
+        H = _inverse_normalization(transform2) @ (H @ transform1)
+        return normalize_transformation(H, eps)
 
 
 def find_homography_lines_dlt_iterated(
@@ -868,8 +920,10 @@ def find_homography_lines_dlt_iterated(
           the image-2 line. A zero-length image-2 segment gets weight zero.
 
     Args:
-        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
-        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
+        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`, as in :func:`find_homography_lines_dlt`.
+        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
+          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
         weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
         soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel of
@@ -877,12 +931,25 @@ def find_homography_lines_dlt_iterated(
         n_iter: number of solves, including the initial one.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element is NaN when one of its
+        solves is, as in :func:`find_homography_lines_dlt`. In float16, segments with coordinates in the hundreds
+        of pixels overflow the re-weighting distances of :func:`line_segment_transfer_error_one_way` and give NaN
+        this way.
+
+    Raises:
+        AssertionError: if fewer than four segments are given, as in :func:`find_homography_lines_dlt`.
 
     """
-    H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
-    for _ in range(n_iter - 1):
-        squared_distances: torch.Tensor = _line_segment_squared_distance_one_way(ls1, ls2, H)
-        weights_new: torch.Tensor = torch.exp(-squared_distances / (2.0 * (soft_inl_th**2)))
-        H = find_homography_lines_dlt(ls1, ls2, weights_new)
+    # Promote unbatched segments as find_homography_lines_dlt does: the re-weighting below needs the batch axis.
+    if len(ls1.shape) == 3:
+        ls1 = ls1[None]
+    if len(ls2.shape) == 3:
+        ls2 = ls2[None]
+    # Autocast would run the re-weighting distances in half precision.
+    with _autocast_disabled(ls1.device.type):
+        H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
+        for _ in range(n_iter - 1):
+            squared_distances: torch.Tensor = _line_segment_squared_distance_one_way(ls1, ls2, H)
+            weights_new: torch.Tensor = torch.exp(-squared_distances / (2.0 * (soft_inl_th**2)))
+            H = find_homography_lines_dlt(ls1, ls2, weights_new)
     return H

@@ -40,10 +40,21 @@ class SOLD2_detector(nn.Module):
     This is based on the original code from the paper "SOLD²: Self-supervised
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
+    Convention:
+        - The input is a grayscale image :math:`(B, 1, H, W)`, in :math:`[0, 1]` for the pretrained weights, with
+          ``H`` and ``W`` multiples of 8; other sizes raise an error or give heatmaps of another size.
+          ``junction_heatmap`` and ``line_heatmap`` are :math:`(B, H, W)`.
+        - ``line_segments`` holds one :math:`(N, 2, 2)` tensor per image: the two endpoints of each segment as
+          ``(row, col)`` in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`), so ``flip(-1)`` gives ``(x, y)``. The endpoints
+          of a segment, and the segments by their first endpoint, are in raster order: the smaller row first or, on
+          the same row, the smaller column, whatever the junction scores.
+        - The endpoints are junction pixels. The default junction refinement (``use_junction_refinement`` of
+          ``LineDetectorCfg``) moves each of them by at most 1 pixel per axis, in 0.25 pixel steps.
+
     Args:
         config (DetectorCfg): Configuration object containing all parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px. Using a dataclass ensures type safety and clearer
-            parameter management.
+            which are tuned for images in the range 400~800 px.
         pretrained (bool): If True, download and set pretrained weights to the model.
 
     Returns:
@@ -51,7 +62,7 @@ class SOLD2_detector(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 1, 128, 128)
-        >>> sold2_detector = SOLD2_detector(pretrained=False)
+        >>> sold2_detector = SOLD2_detector(pretrained=False).eval()
         >>> line_segments = sold2_detector(img)["line_segments"]
 
     """
@@ -80,10 +91,11 @@ class SOLD2_detector(nn.Module):
             pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
-        self.eval()
 
         # Initialize the line detector with a configuration from the dataclass
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
+        if pretrained:
+            self.eval()
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Adapt pretrained checkpoint keys to this module implementation.

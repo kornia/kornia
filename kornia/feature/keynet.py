@@ -63,11 +63,11 @@ class _FeatureExtractor(nn.Module):
     It loads both, the handcrafted and learnable blocks
     """
 
-    def __init__(self) -> None:
+    def __init__(self, num_filters: int = 8) -> None:
         super().__init__()
 
         self.hc_block = _HandcraftedBlock()
-        self.lb_block = _LearnableBlock()
+        self.lb_block = _LearnableBlock(num_filters=num_filters)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_hc = self.hc_block(x)
@@ -100,12 +100,12 @@ class _LearnableBlock(nn.Sequential):
     It defines the learnable blocks within the Key.Net
     """
 
-    def __init__(self, in_channels: int = 10) -> None:
+    def __init__(self, in_channels: int = 10, num_filters: int = 8) -> None:
         super().__init__()
 
-        self.conv0 = _KeyNetConvBlock(in_channels)
-        self.conv1 = _KeyNetConvBlock()
-        self.conv2 = _KeyNetConvBlock()
+        self.conv0 = _KeyNetConvBlock(in_channels, num_filters)
+        self.conv1 = _KeyNetConvBlock(num_filters, num_filters)
+        self.conv2 = _KeyNetConvBlock(num_filters, num_filters)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # These narrow convolutions benefit from channel-contiguous activations on
@@ -144,9 +144,17 @@ class KeyNet(nn.Module):
 
     .. image:: _static/img/KeyNet.png
 
+    Convention:
+        - The input is a grayscale image, and the pretrained weights expect it in ``[0, 1]``, as the Key.Net
+          reference scales its images. The response is not proportional to the intensity, so an image in
+          ``[0, 255]`` gives other detections.
+        - The response is a non-negative map of the input's size.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
-        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
+        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
+            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
 
     Returns:
         KeyNet response score.
@@ -157,7 +165,7 @@ class KeyNet(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: Optional[KeyNet_conf] = None) -> None:
+    def __init__(self, pretrained: bool = True, keynet_conf: Optional[KeyNet_conf] = None) -> None:
         super().__init__()
         if keynet_conf is None:
             keynet_conf = keynet_default_config
@@ -167,7 +175,7 @@ class KeyNet(nn.Module):
         kernel_size = keynet_conf["kernel_size"]
         padding = kernel_size // 2
 
-        self.feature_extractor = _FeatureExtractor()
+        self.feature_extractor = _FeatureExtractor(num_filters)
         self.last_conv = nn.Sequential(
             nn.Conv2d(
                 in_channels=num_filters * self.num_levels, out_channels=1, kernel_size=kernel_size, padding=padding
@@ -178,7 +186,7 @@ class KeyNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """X - input image."""
@@ -201,10 +209,16 @@ class KeyNetDetector(MultiResolutionDetector):
 
     .. image:: _static/img/keynet.jpg
 
+    Convention:
+        A :class:`~kornia.feature.MultiResolutionDetector` with :class:`~kornia.feature.KeyNet` as its response; see
+        their Convention blocks for the frame of the detections and for the input range.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
         num_features: Number of features to detect.
-        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
+        keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing. A
+            ``num_filters``, ``num_levels`` or ``kernel_size`` other than the default changes the architecture: pass
+            ``pretrained=False`` with it, since the strict load of the weights raises ``RuntimeError``.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
@@ -218,7 +232,7 @@ class KeyNetDetector(MultiResolutionDetector):
 
     def __init__(
         self,
-        pretrained: bool = False,
+        pretrained: bool = True,
         num_features: int = 2048,
         keynet_conf: Optional[KeyNet_conf] = None,
         ori_module: Optional[nn.Module] = None,

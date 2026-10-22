@@ -6,7 +6,39 @@ kornia.geometry.ransac
 
 .. currentmodule:: kornia.geometry.ransac
 
-Robust model fitting with RANSAC (Random Sample Consensus), used to estimate homographies, fundamental and essential matrices from noisy correspondences.
+Robust model fitting with RANSAC (Random Sample Consensus), used to estimate affine transforms, homographies, fundamental and essential matrices from noisy correspondences.
+
+Affine transforms
+-----------------
+
+``model_type="affine"`` estimates a full 2D affine transform, including translation,
+from three non-collinear source points. It returns a source-to-target ``(3, 3)``
+matrix with bottom row ``[0, 0, 1]`` and a boolean ``(N,)`` inlier mask.
+``inl_th`` is a Euclidean distance in the target points' units.
+Affine fitting and residual scoring compute in at least float32, even inside an
+autocast context, and the returned matrix retains the input dtype. At least four
+inliers are required to accept a model; otherwise the result is the all-zero
+failure matrix and an all-false mask.
+
+.. code-block:: python
+
+    from kornia.geometry import RANSAC
+
+    estimator = RANSAC("affine", inl_th=2.0, seed=0)
+    matrix, inliers = estimator(points1, points2)
+    warp_matrix = matrix[:2]  # 2x3 form accepted by warp_affine after batching
+
+Affine estimation supports uniform and PROSAC sampling, MSAC and inlier-count
+scoring, and the existing ``local_optimization="dlt"`` loop. Here the refit is
+linear least squares with free translation using
+:func:`~kornia.geometry.solvers.find_affine`; ``"lm"``, ``compile=True`` and
+DEGENSAC are not supported. ``max_lo_iters=0`` disables local optimization.
+Like the other model types, each call estimates one model for one correspondence
+set; ``batch_size`` batches hypotheses, not independent problems.
+
+AdaLAM shares the linear fitting primitive but retains its specialized loop:
+its local 2x2 models are constrained by a matched seed, and its variable-size
+neighborhoods, sampling and confidence-based inlier selection are unchanged.
 
 Batches, scores, and refinement
 -------------------------------
@@ -61,8 +93,8 @@ Line-segment homographies use the squared mean distance from the transferred
 endpoints to the target segment's line; zero-length target segments are outliers.
 Their local optimization re-weights segments by the same distance.
 
-A model is accepted only with more inliers than its minimal sample (four
-correspondences for homographies, five for essential and seven or eight for
+A model is accepted only with more inliers than its minimal sample (three
+correspondences for affine transforms, four for homographies, five for essential and seven or eight for
 fundamental matrices): a model fitted to a sample always fits that sample, so
 only further inliers show a consensus. Without one, the estimator returns the
 all-zero matrix and an empty mask.

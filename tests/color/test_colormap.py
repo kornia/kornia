@@ -40,6 +40,30 @@ def test_autumn(device, dtype):
     assert_close(actual, expected)
 
 
+class TestColorMap(BaseTester):
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_integer_base_uses_default_float_dtype(self, device, default_dtype):
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64.")
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            actual = ColorMap(base=[[0, 0, 0], [1, 1, 1]], num_colors=3, device=device)
+            expected = torch.tensor([[0.0, 0.5, 1.0]] * 3, device=device)
+
+            assert actual.colors.dtype == default_dtype
+            self.assert_close(actual.colors, expected)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+
+    def test_integer_base_respects_explicit_dtype(self, device, dtype):
+        actual = ColorMap(base=[[0, 0, 0], [1, 1, 1]], num_colors=3, device=device, dtype=dtype)
+        expected = torch.tensor([[0.0, 0.5, 1.0]] * 3, device=device, dtype=dtype)
+
+        assert actual.colors.dtype == dtype
+        self.assert_close(actual.colors, expected)
+
+
 class TestApplyColorMap(BaseTester):
     def test_smoke(self, device, dtype):
         input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]], device=device, dtype=dtype)
@@ -144,6 +168,28 @@ class TestApplyColorMap(BaseTester):
             expected_shape = (1, shape[-3] * 3, shape[-2], shape[-1])
 
         assert actual.shape == expected_shape
+
+    @pytest.mark.parametrize(
+        "shape,expected_shape",
+        [
+            ((0, 1, 4, 5), (0, 3, 4, 5)),
+            ((0, 2, 4, 5), (0, 6, 4, 5)),
+            ((2, 0, 4, 5), (2, 0, 4, 5)),
+            ((0, 4, 5), (1, 0, 4, 5)),
+            ((2, 1, 0, 5), (2, 3, 0, 5)),
+            ((1, 2, 0, 0), (1, 6, 0, 0)),
+        ],
+    )
+    @pytest.mark.parametrize("integer_input", [False, True])
+    def test_empty_input(self, shape, expected_shape, integer_input, device, dtype):
+        # An empty tensor raised in reshape(B, C, -1), and a float one without pixels in amax.
+        cm = ColorMap(base="viridis", device=device, dtype=dtype)
+        input_tensor = torch.zeros(shape, device=device, dtype=torch.uint8 if integer_input else dtype)
+        for op in (lambda x: apply_colormap(x, cm), ApplyColorMap(colormap=cm)):
+            actual = op(input_tensor)
+            assert actual.shape == expected_shape
+            assert actual.device == input_tensor.device
+            assert actual.dtype == dtype
 
     @pytest.mark.skip(reason="jacobian mismatch")
     def test_gradcheck(self, device):

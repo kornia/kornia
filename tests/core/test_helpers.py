@@ -15,12 +15,15 @@
 # limitations under the License.
 #
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
 from kornia.core.exceptions import BaseError, DeviceError, TypeCheckError
 from kornia.core.utils import (
     _adjugate_closed_form,
+    _autocast_disabled,
     _closed_form_inverse,
     _det_perm_closed_form,
     _extract_device_dtype,
@@ -409,6 +412,30 @@ class TestExportHelpers:
         assert moved.y.dtype == other
         moved.y.sum().backward()
         assert_close(v.grad, torch.full_like(v, 2.0))
+
+    @pytest.mark.parametrize("state_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    def test_register_module_state_rejects_non_floating(self, device, state_dtype):
+        # Only a floating-point or complex tensor can be optimizable state: any other dtype raises a kornia error
+        # that names it, instead of torch's autograd RuntimeError (#5201).
+        m = torch.nn.Module()
+        x = torch.tensor([1, 0, 1], device=device).to(state_dtype)
+        with pytest.raises(TypeCheckError, match=f"got {state_dtype}") as err:
+            register_module_state(m, "_x", x)
+        assert err.value.actual_type == state_dtype
+        assert not hasattr(m, "_x")
+
+    def test_register_module_state_keeps_an_integer_parameter(self, device):
+        # A caller's own nn.Parameter is kept whatever its dtype, as before the dtype check.
+        m = torch.nn.Module()
+        p = torch.nn.Parameter(torch.tensor([1, 2], device=device), requires_grad=False)
+        register_module_state(m, "p", p)
+        assert m.p is p
+
+    def test_register_module_state_complex_leaf_is_parameter(self, device):
+        m = torch.nn.Module()
+        register_module_state(m, "z", torch.tensor([0.6 + 0.8j], device=device))
+        assert isinstance(m.z, torch.nn.Parameter)
+        assert m.z.dtype == torch.complex64
 
 
 class TestHistcCast(BaseTester):
@@ -959,3 +986,42 @@ def test_is_autocast_enabled_xpu():
         assert is_autocast_enabled()
 
     assert not is_autocast_enabled()
+
+
+def test_autocast_disabled_turns_off_only_an_enabled_region():
+    with torch.autocast("cpu", dtype=torch.bfloat16):
+        with _autocast_disabled("cpu"):
+            assert not torch.is_autocast_enabled("cpu")
+            assert (torch.ones(2, 2) @ torch.ones(2, 2)).dtype == torch.float32
+        assert torch.is_autocast_enabled("cpu")
+    assert not torch.is_autocast_enabled("cpu")
+
+
+@pytest.mark.parametrize("device_type", ["cpu", "cuda", "meta"])
+def test_autocast_disabled_outside_autocast_enters_nothing(device_type):
+    # Outside autocast there is nothing to turn off: entering torch.autocast(enabled=False) anyway costs a few
+    # microseconds per call, and for a device type without autocast, such as "meta", torch.autocast raises.
+    context = _autocast_disabled(device_type)
+    assert isinstance(context, nullcontext)
+    with context:
+        assert not is_autocast_enabled()
+
+
+@pytest.mark.parametrize("device_type", ["xla", "hpu"])
+def test_autocast_disabled_covers_other_autocast_device_types(device_type):
+    # find_affine turned off the autocast region of any device type before it used this helper.
+    with torch.autocast(device_type, dtype=torch.bfloat16), _autocast_disabled(device_type):
+        assert not torch.is_autocast_enabled(device_type)
+
+
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+def test_eager_backend_traces_autocast_disabled_on_meta():
+    # torch.is_autocast_enabled("meta") raises, and under torch.compile Dynamo reports that as its own internal error
+    # instead of routing it to an ``except`` in the traced function.
+    def fit(x):
+        with _autocast_disabled(x.device.type):
+            return x @ x.mT
+
+    torch._dynamo.reset()
+    x = torch.empty(2, 3, 3, device="meta")
+    assert torch.compile(fit, backend="eager", fullgraph=True)(x).shape == (2, 3, 3)

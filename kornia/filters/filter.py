@@ -20,7 +20,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _to_device_nonblocking
 from kornia.filters.kernels import normalize_kernel2d
 
 _VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
@@ -64,14 +65,7 @@ def _to_floating(input: torch.Tensor) -> torch.Tensor:
 
 def _check_kernel_batch(input: torch.Tensor, kernel: torch.Tensor) -> None:
     """Check that the kernel batch is 1 or the input batch."""
-    # Format the sizes only on failure: an f-string evaluated on every call makes Dynamo specialize the batch size,
-    # so a dynamic-shape torch.compile would recompile for each new batch.
-    if kernel.shape[0] not in (1, input.shape[0]):
-        KORNIA_CHECK(
-            False,
-            "The kernel batch must be 1 or the input batch. "
-            f"Got a kernel batch of {kernel.shape[0]} for an input batch of {input.shape[0]}",
-        )
+    KORNIA_CHECK_SAME_SIZE(kernel, input, allow_one=True, msg="The kernel batch must be 1 or the input batch.")
 
 
 def filter2d(
@@ -102,6 +96,8 @@ def filter2d(
         - A :math:`(1, kH, kW)` kernel is shared by the whole batch, and a :math:`(B, kH, kW)` kernel gives each
           sample its own, shared by the sample's channels; there are no per-channel kernels. Any other kernel batch
           raises.
+          An empty batch accepts either a shared kernel or an empty per-sample kernel and retains the usual output
+          spatial size, dtype promotion and gradient connections to both input and kernel.
         - ``normalized=True`` divides each kernel by the sum of its absolute values, so a zero-sum derivative kernel
           keeps its sign.
         - ``border_type``, ``padding`` and ``behaviour`` are case-insensitive: ``'REFLECT'``, ``'SAME'`` and
@@ -173,9 +169,9 @@ def filter2d(
     # prepare kernel
     b, c, h, w = input.shape
     if behaviour == "conv":
-        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel.flip((-2, -1))[:, None, ...], input.device, input.dtype)
     else:
-        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel[:, None, ...], input.device, input.dtype)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
@@ -191,6 +187,11 @@ def filter2d(
     if padding == "same":
         padding_shape: list[int] = _compute_padding([height, width])
         input = F.pad(input, padding_shape, mode=border_type)
+
+    # An empty per-sample kernel needs one structural row for nonzero convolution groups. Reduce after
+    # normalization to avoid normalizing a zero kernel, while keeping the original kernel in the autograd graph.
+    if tmp_kernel.shape[0] == 0:
+        tmp_kernel = tmp_kernel.sum(dim=0, keepdim=True)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
@@ -360,9 +361,9 @@ def filter3d(
     # prepare kernel
     b, c, d, h, w = input.shape
     if behaviour == "conv":
-        tmp_kernel = kernel.flip((-3, -2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel.flip((-3, -2, -1))[:, None, ...], input.device, input.dtype)
     else:
-        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel[:, None, ...], input.device, input.dtype)
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
@@ -374,6 +375,10 @@ def filter3d(
     depth, height, width = tmp_kernel.shape[-3:]
     padding_shape: list[int] = _compute_padding([depth, height, width])
     input_pad = F.pad(input, padding_shape, mode=border_type)
+
+    # As in filter2d, preserve the empty kernel's gradient connection without using zero convolution groups.
+    if tmp_kernel.shape[0] == 0:
+        tmp_kernel = tmp_kernel.sum(dim=0, keepdim=True)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, depth, height, width)
@@ -498,14 +503,16 @@ def fft_conv(
     # without padding the kernel has to fit inside the input, as F.conv2d requires in filter2d
     KORNIA_CHECK(
         padding == "same" or (kh <= h and kw <= w),
-        f"With padding='valid' the kernel must not be larger than the input. Got a {kh} x {kw} kernel for a {h} x {w}"
-        " input",
+        lambda: (
+            f"With padding='valid' the kernel must not be larger than the input. Got a {kh} x {kw} kernel for a "
+            f"{h} x {w} input"
+        ),
     )
 
     if behaviour == "conv":
-        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel.flip((-2, -1))[:, None, ...], input.device, input.dtype)
     else:
-        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+        tmp_kernel = _to_device_nonblocking(kernel[:, None, ...], input.device, input.dtype)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)

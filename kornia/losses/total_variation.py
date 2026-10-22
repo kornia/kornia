@@ -32,7 +32,7 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
           summed.
         - The default ``reduction='sum'`` adds the differences. ``'mean'`` averages each term over its own count,
           :math:`(H - 1) W` vertical and :math:`H (W - 1)` horizontal differences, and adds the two means; it is not
-          the sum divided by :math:`H W`. There is no ``'none'``.
+          the sum divided by :math:`H W`. An axis with no adjacent pixels contributes zero. There is no ``'none'``.
           :ref:`Losses and metrics <losses-metrics-conventions>` compares both with torchmetrics.
 
     Args:
@@ -84,12 +84,12 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
     res2 = pixel_dif2.abs().flatten(-2)
 
     if reduction == "mean":
-        if img.is_floating_point():
-            res1 = res1.to(img).mean(dim=-1)
-            res2 = res2.to(img).mean(dim=-1)
-        else:
-            res1 = res1.float().mean(dim=-1)
-            res2 = res2.float().mean(dim=-1)
+        if not img.is_floating_point():
+            res1 = res1.float()
+            res2 = res2.float()
+        # A singleton spatial axis has no differences: sum the empty term to zero instead of averaging it to NaN.
+        res1 = res1.mean(dim=-1) if res1.shape[-1] > 0 else res1.sum(dim=-1)
+        res2 = res2.mean(dim=-1) if res2.shape[-1] > 0 else res2.sum(dim=-1)
     elif reduction == "sum":
         res1 = res1.sum(dim=-1)
         res2 = res2.sum(dim=-1)

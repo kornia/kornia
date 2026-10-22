@@ -20,7 +20,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.transform import rotate, rotate3d
@@ -103,10 +103,7 @@ def get_motion_kernel2d(
         direction = direction[None]
 
     KORNIA_CHECK_SHAPE(direction, ["B"])
-    KORNIA_CHECK(
-        direction.size(0) == angle.size(0),
-        f"direction and angle must have the same length. Got {direction.size(0)} and {angle.size(0)}.",
-    )
+    KORNIA_CHECK_SAME_SIZE(direction, angle, msg="direction and angle must have the same length.")
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
@@ -114,7 +111,8 @@ def get_motion_kernel2d(
     step = (1 - 2 * direction) / (kernel_size - 1)
     positions = torch.arange(kernel_size, device=direction.device, dtype=direction.dtype)
     k = direction[:, None] + step[:, None] * positions
-    kernel = F.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
+    # Pad only the kernel axes: torch 2.5.1 and 2.9.1 reject any pad of an empty batch axis, even a zero one.
+    kernel = F.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2])
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
     KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Got {kernel.shape}")
@@ -246,10 +244,7 @@ def get_motion_kernel3d(
         direction = direction[None]
 
     KORNIA_CHECK_SHAPE(direction, ["B"])
-    KORNIA_CHECK(
-        direction.size(0) == angle.size(0),
-        f"direction and angle must have the same batch size. Got {direction.shape} and {angle.shape}.",
-    )
+    KORNIA_CHECK_SAME_SIZE(direction, angle, msg="direction and angle must have the same batch size.")
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
@@ -259,9 +254,8 @@ def get_motion_kernel3d(
     # kernel[:, kernel_size // 2, kernel_size // 2, :] = torch.stack(
     #     [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
     k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
-    kernel = F.pad(
-        k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0]
-    )
+    # Pad only the kernel axes, as in get_motion_kernel2d.
+    kernel = F.pad(k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2])
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
     KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Got {kernel.shape}")

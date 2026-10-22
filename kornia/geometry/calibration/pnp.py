@@ -22,7 +22,7 @@ from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
-from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast
+from kornia.core.utils import _autocast_disabled, _torch_linalg_svdvals, _torch_svd_cast
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
 
@@ -104,6 +104,7 @@ def solve_pnp_dlt(
         - fewer than 6 points or 6 nonzero ``weights``, or a ``world_points``, ``img_points`` or ``intrinsics``
           in a dtype other than float32/float64, raise :class:`~kornia.core.exceptions.BaseError` naming the
           argument; a degenerate ``world_points`` raises :class:`AssertionError` from the check above.
+        - a caller's autocast region does not change the result: float32 inputs are solved in float32.
 
     Args:
         world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
@@ -158,7 +159,7 @@ def solve_pnp_dlt(
     # References:
     # ============
     # 1. https://team.inria.fr/lagadic/camera_localization/tutorial-pose-dlt-opencv.html
-    # 2. https://github.com/opencv/opencv/blob/68d15fc62edad980f1ffa15ee478438335f39cc3/modules/calib3d/src/calibration.cpp # noqa: E501
+    # 2. https://github.com/opencv/opencv/blob/68d15fc62edad980f1ffa15ee478438335f39cc3/modules/calib3d/src/calibration.cpp
     # 3. http://rpg.ifi.uzh.ch/docs/teaching/2020/03_camera_calibration.pdf
     # 4. http://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
     # 5. https://www.ece.mcmaster.ca/~shirani/vision/hartley_ch7.pdf
@@ -178,7 +179,7 @@ def solve_pnp_dlt(
     KORNIA_CHECK_SAME_SHAPE(world_points[:, :, 0], img_points[:, :, 0])
     KORNIA_CHECK(
         world_points.shape[1] >= 6,
-        f"world_points must hold at least 6 points (N >= 6), got N = {world_points.shape[1]}.",
+        lambda: f"world_points must hold at least 6 points (N >= 6), got N = {world_points.shape[1]}.",
     )
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights)
@@ -206,89 +207,93 @@ def solve_pnp_dlt(
         num_used = num_used.to(point_weights.dtype)
         check_scale = (rel_weights * torch.sqrt(num_used / point_weights.sum(dim=1, keepdim=True)))[..., None]
 
-    # Getting normalized world points.
-    world_points_norm, world_transform_norm = _mean_isotropic_scale_normalize(world_points, weights=point_weights)
+    # A caller's autocast region would run the products below in half precision: torch.det, which has no half-precision
+    # CPU kernel, then raised, and float32 inputs would no longer be solved in float32.
+    with _autocast_disabled(world_points.device.type):
+        # Getting normalized world points.
+        world_points_norm, world_transform_norm = _mean_isotropic_scale_normalize(world_points, weights=point_weights)
 
-    # Checking if world_points_norm (of any element of the batch) has rank = 3. This
-    # function cannot be used if all world points (of any element of the batch) lie
-    # on a line or if all world points (of any element of the batch) lie on a plane.
-    s = _torch_linalg_svdvals(world_points_norm if check_scale is None else check_scale * world_points_norm)
-    if torch.any(s[:, -1] < svd_eps):
-        raise AssertionError(
-            "The last singular value of one/more of the elements of the batch is smaller "
-            f"than {svd_eps}. This function cannot be used if all world_points (of any "
-            "element of the batch) lie on a line or if all world_points (of any "
-            "element of the batch) lie on a plane."
-        )
-    world_points_norm_h = convert_points_to_homogeneous(world_points_norm)
+        # Checking if world_points_norm (of any element of the batch) has rank = 3. This
+        # function cannot be used if all world points (of any element of the batch) lie
+        # on a line or if all world points (of any element of the batch) lie on a plane.
+        s = _torch_linalg_svdvals(world_points_norm if check_scale is None else check_scale * world_points_norm)
+        if torch.any(s[:, -1] < svd_eps):
+            raise AssertionError(
+                "The last singular value of one/more of the elements of the batch is smaller "
+                f"than {svd_eps}. This function cannot be used if all world_points (of any "
+                "element of the batch) lie on a line or if all world_points (of any "
+                "element of the batch) lie on a plane."
+            )
+        world_points_norm_h = convert_points_to_homogeneous(world_points_norm)
 
-    # Normalizing img_points_inv
-    img_points_inv = normalize_points_with_intrinsics(img_points, intrinsics)
-    img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv, weights=point_weights)
-    inv_img_transform_norm = torch.inverse(img_transform_norm)
+        # Normalizing img_points_inv
+        img_points_inv = normalize_points_with_intrinsics(img_points, intrinsics)
+        img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv, weights=point_weights)
+        inv_img_transform_norm = torch.inverse(img_transform_norm)
 
-    # Setting up the system (the matrix A in Ax=0)
-    system = torch.zeros((B, 2 * N, 12), dtype=world_points.dtype, device=world_points.device)
-    system[:, 0::2, 0:4] = world_points_norm_h
-    system[:, 1::2, 4:8] = world_points_norm_h
-    system[:, 0::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 0:1]
-    system[:, 1::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 1:2]
+        # Setting up the system (the matrix A in Ax=0)
+        system = torch.zeros((B, 2 * N, 12), dtype=world_points.dtype, device=world_points.device)
+        system[:, 0::2, 0:4] = world_points_norm_h
+        system[:, 1::2, 4:8] = world_points_norm_h
+        system[:, 0::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 0:1]
+        system[:, 1::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 1:2]
 
-    # Apply weights to the system if provided
-    if weights is not None:
-        weights_expanded = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * N, 1)
-        # Multiply the system matrix by the expanded weights
-        system = weights_expanded * system
+        # Apply weights to the system if provided
+        if weights is not None:
+            weights_expanded = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * N, 1)
+            # Multiply the system matrix by the expanded weights
+            system = weights_expanded * system
 
-    # Getting the solution vectors.
-    _, _, v = _torch_svd_cast(system)
-    solution = v[..., -1]
+        # Getting the solution vectors.
+        # Only the right singular vectors are used; reduced SVD avoids saving the unused (2N, 2N) U.
+        _, _, v = _torch_svd_cast(system, full_matrices=False)
+        solution = v[..., -1]
 
-    # Reshaping the solution vectors to the correct shape.
-    solution = solution.reshape(B, 3, 4)
+        # Reshaping the solution vectors to the correct shape.
+        solution = solution.reshape(B, 3, 4)
 
-    # Creating solution_4x4
-    solution_4x4 = eye_like(4, solution)
-    solution_4x4[:, :3, :] = solution
+        # Creating solution_4x4
+        solution_4x4 = eye_like(4, solution)
+        solution_4x4[:, :3, :] = solution
 
-    # De-normalizing the solution
-    intermediate = torch.bmm(solution_4x4, world_transform_norm)
-    solution = torch.bmm(inv_img_transform_norm, intermediate[:, :3, :])
+        # De-normalizing the solution
+        intermediate = torch.bmm(solution_4x4, world_transform_norm)
+        solution = torch.bmm(inv_img_transform_norm, intermediate[:, :3, :])
 
-    # We obtained one solution for each element of the batch. We may
-    # need to multiply each solution with a scalar. This is because
-    # if x is a solution to Ax=0, then cx is also a solution. We can
-    # find the required scalars by using the properties of
-    # rotation matrices. We do this in two parts:
+        # We obtained one solution for each element of the batch. We may
+        # need to multiply each solution with a scalar. This is because
+        # if x is a solution to Ax=0, then cx is also a solution. We can
+        # find the required scalars by using the properties of
+        # rotation matrices. We do this in two parts:
 
-    # First, we fix the sign by making sure that the determinant of
-    # the all the rotation matrices are non-negative (since determinant
-    # of a rotation matrix should be 1).
-    det = torch.det(solution[:, :3, :3])
-    ones_tensor = torch.ones_like(det)
-    sign_fix = torch.where(det < 0, ones_tensor * -1, ones_tensor)
-    solution = solution * sign_fix[:, None, None]
+        # First, we fix the sign by making sure that the determinant of
+        # the all the rotation matrices are non-negative (since determinant
+        # of a rotation matrix should be 1).
+        det = torch.det(solution[:, :3, :3])
+        ones_tensor = torch.ones_like(det)
+        sign_fix = torch.where(det < 0, ones_tensor * -1, ones_tensor)
+        solution = solution * sign_fix[:, None, None]
 
-    # Then, we make sure that norm of the 0th columns of the rotation
-    # matrices are 1. Do note that the norm of any column of a rotation
-    # matrix should be 1. Here we use the 0th column to calculate norm_col.
-    # We then multiply solution with mul_factor.
-    norm_col = torch.norm(input=solution[:, :3, 0], p=2, dim=1)
-    mul_factor = (1 / norm_col)[:, None, None]
-    temp = solution * mul_factor
+        # Then, we make sure that norm of the 0th columns of the rotation
+        # matrices are 1. Do note that the norm of any column of a rotation
+        # matrix should be 1. Here we use the 0th column to calculate norm_col.
+        # We then multiply solution with mul_factor.
+        norm_col = torch.norm(input=solution[:, :3, 0], p=2, dim=1)
+        mul_factor = (1 / norm_col)[:, None, None]
+        temp = solution * mul_factor
 
-    # To make sure that the rotation matrix would be orthogonal, we apply
-    # QR decomposition.
-    ortho, right = linalg_qr(temp[:, :3, :3])
+        # To make sure that the rotation matrix would be orthogonal, we apply
+        # QR decomposition.
+        ortho, right = linalg_qr(temp[:, :3, :3])
 
-    # We may need to fix the signs of the columns of the ortho matrix.
-    # If right[i, j, j] is negative, then we need to flip the signs of
-    # the column ortho[i, :, j]. The below code performs the necessary
-    # operations in a better way.
-    mask = eye_like(3, ortho)
-    col_sign_fix = torch.sign(mask * right)
-    rot_mat = torch.bmm(ortho, col_sign_fix)
+        # We may need to fix the signs of the columns of the ortho matrix.
+        # If right[i, j, j] is negative, then we need to flip the signs of
+        # the column ortho[i, :, j]. The below code performs the necessary
+        # operations in a better way.
+        mask = eye_like(3, ortho)
+        col_sign_fix = torch.sign(mask * right)
+        rot_mat = torch.bmm(ortho, col_sign_fix)
 
-    # Preparing the final output.
-    # TODO: Implement algorithm to refine the solution.
-    return torch.cat([rot_mat, temp[:, :3, 3:4]], dim=-1)
+        # Preparing the final output.
+        # TODO: Implement algorithm to refine the solution.
+        return torch.cat([rot_mat, temp[:, :3, 3:4]], dim=-1)

@@ -93,6 +93,10 @@ def ssim3d(
         Integer images are converted to float32 before computing the local moments.
         Half-precision inputs are evaluated in float32 for numerical stability.
         Filtering runs with autocast disabled; the result uses the promoted input dtype.
+        On CUDA the float32 filtering follows ``torch.backends.cudnn.allow_tf32``, which PyTorch enables by default.
+        cuDNN can then filter a single-channel volume with a TF32 kernel, which rounds the inputs of the local
+        moments to 10 mantissa bits. The variances are differences of those moments, so in flat regions the map can
+        be off by more than ``1e-2``. Set ``torch.backends.cudnn.allow_tf32 = False`` when float32 accuracy matters.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)

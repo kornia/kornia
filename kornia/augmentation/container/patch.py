@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -27,6 +27,8 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -36,6 +38,23 @@ from .ops import InputSequentialOps
 from .params import ParamItem, PatchParamItem
 
 __all__ = ["PatchSequential"]
+
+
+def _patch_indices(indices: Union[List[int], torch.Tensor], device: torch.device) -> torch.Tensor:
+    """Return the patch ``indices`` as a long tensor on ``device``, without a host-to-device copy that waits.
+
+    Indexing a CUDA tensor with a Python list copies the list to the device and waits for every queued kernel.
+    ``forward_parameters`` stores evenly spaced indices, which ``torch.arange`` builds on the device; any other list is
+    a device literal. Both index exactly the patches the list names.
+    """
+    if isinstance(indices, torch.Tensor):
+        return _to_device_nonblocking(indices, device)
+    values = [int(i) for i in indices]
+    if len(values) > 1:
+        step = values[1] - values[0]
+        if step > 0 and all(v == values[0] + k * step for k, v in enumerate(values)):
+            return torch.arange(values[0], values[-1] + 1, step, device=device)
+    return _device_literal(values, device=device, dtype=torch.long)
 
 
 class PatchSequential(ImageSequential):
@@ -68,7 +87,8 @@ class PatchSequential(ImageSequential):
             if ``True`` and ``random_apply=False``, the number of args must equal the number of patches.
             if ``False``, the image processing args will be applied as a sequence to all patches.
         random_apply: randomly select children to apply in random order. Selections may repeat when the requested
-            count is larger than the sum of the selection weights.
+            count is larger than the sum of the selection weights or than the number of children with a nonzero
+            weight, mix augmentations not counted.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
@@ -97,6 +117,12 @@ class PatchSequential(ImageSequential):
 
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_patch_sequential.html>`__.
+
+    .. warning::
+        Under ``torch.compile`` with the default inductor backend, torch earlier than 2.15 returns wrong values when a
+        child reads the patches at other positions, a flip for example, after an earlier child has written them
+        (`pytorch/pytorch#198270 <https://github.com/pytorch/pytorch/issues/198270>`__). Eager execution,
+        the ``aot_eager`` backend and torch 2.15 or later are not affected.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -158,7 +184,7 @@ class PatchSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
 
@@ -191,7 +217,7 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
-        self._params: Optional[List[PatchParamItem]]  # type: ignore[assignment]
+        self._params: Optional[List[PatchParamItem]]
 
     @staticmethod
     def _validate_grid_size(grid_size: Tuple[int, int]) -> None:
@@ -342,7 +368,7 @@ class PatchSequential(ImageSequential):
             restored_tensor = F.pad(restored_tensor, [-max(i, 0) for i in pad])
         return restored_tensor
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore[override]
+    def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:
         """Generate patch-level parameters for a forward pass.
 
         Args:
@@ -402,10 +428,11 @@ class PatchSequential(ImageSequential):
 
         """
         if self.random_apply:
-            with_mix = False
+            # A mix augmentation may be drawn until one has been added, so at most one is applied in this call.
+            with_mix = True
             for i in range(batch_shape[0]):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
-                with_mix = mix_added
+                with_mix = with_mix and not mix_added
                 for s in seq:
                     if isinstance(s[1], (_AugmentationBase, SequentialBase, K.MixAugmentationBaseV2)):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
@@ -434,14 +461,15 @@ class PatchSequential(ImageSequential):
         for patch_param in params:
             # input, out_param = self.apply_by_param(input, params=patch_param)
             module = self.get_submodule(patch_param.param.name)
-            _input = input[patch_param.indices]
+            indices = _patch_indices(patch_param.indices, input.device)
+            _input = input[indices]
             output = InputSequentialOps.transform(_input, module, patch_param.param, extra_args={})
             # Mix operations may promote to their parameter dtype; the patch buffer retains the image dtype.
-            input[patch_param.indices] = output.to(input)
+            input[indices] = output.to(input)
 
         return input.reshape(in_shape)
 
-    def transform_inputs(  # type: ignore[override]
+    def transform_inputs(
         self, input: torch.Tensor, params: Optional[List[PatchParamItem]], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Apply patch-wise augmentation to an input tensor.
@@ -464,7 +492,7 @@ class PatchSequential(ImageSequential):
 
         return input
 
-    def inverse_inputs(  # type: ignore[override]
+    def inverse_inputs(
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Inverse the patch pipeline when supported.
@@ -485,7 +513,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_masks(  # type: ignore[override]
+    def transform_masks(
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Transform masks for intensity-only patch pipelines.
@@ -506,7 +534,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
-    def inverse_masks(  # type: ignore[override]
+    def inverse_masks(
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Inverse mask transforms for supported patch pipelines.
@@ -527,7 +555,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_boxes(  # type: ignore[override]
+    def transform_boxes(
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Transform boxes for intensity-only patch pipelines.
@@ -548,7 +576,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
-    def inverse_boxes(  # type: ignore[override]
+    def inverse_boxes(
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Inverse box transforms for supported patch pipelines.
@@ -569,7 +597,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_keypoints(  # type: ignore[override]
+    def transform_keypoints(
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Transform keypoints for intensity-only patch pipelines.
@@ -590,7 +618,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for keypoints cannot be used with geometric transformations.")
 
-    def inverse_keypoints(  # type: ignore[override]
+    def inverse_keypoints(
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Inverse keypoint transforms for supported patch pipelines.
@@ -612,7 +640,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def inverse(  # type: ignore[override]
+    def inverse(
         self,
         input: torch.Tensor,
         params: Optional[List[PatchParamItem]] = None,
@@ -628,7 +656,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def forward(self, input: torch.Tensor, params: Optional[List[PatchParamItem]] = None) -> torch.Tensor:  # type: ignore[override]
+    def forward(self, input: torch.Tensor, params: Optional[List[PatchParamItem]] = None) -> torch.Tensor:
         """Augment an image batch, optionally replaying previously generated patch parameters."""
         if isinstance(input, (tuple,)):
             raise ValueError("tuple input is not currently supported.")

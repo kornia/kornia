@@ -49,34 +49,98 @@ from testing.base import (
 )
 
 
+# Generated with Python math: w = [exp(-(i - mean)**2 / (2 * sigma**2)) for i in range(size)];
+# expected = [v / sum(w) for v in w], with mean = size // 2 when unspecified.
 @pytest.mark.parametrize(
     "window_size, sigma, mean, expected",
     [
-        (5, 1.0, None, torch.tensor([[0.0545, 0.2442, 0.4026, 0.2442, 0.0545]])),
+        (5, 1.0, None, [0.05448868455, 0.244201342003, 0.402619946894, 0.244201342003, 0.05448868455]),
         (
             11,
             5.0,
             None,
-            torch.tensor([[0.0663, 0.0794, 0.0914, 0.1010, 0.1072, 0.1094, 0.1072, 0.1010, 0.0914, 0.0794, 0.0663]]),
+            [
+                0.06634166574,
+                0.079425394123,
+                0.091360949823,
+                0.100969464792,
+                0.107213067802,
+                0.10937891544,
+                0.107213067802,
+                0.100969464792,
+                0.091360949823,
+                0.079425394123,
+                0.06634166574,
+            ],
         ),
         (
             11,
             5.0,
             8.0,
-            torch.tensor([[0.0343, 0.0463, 0.0600, 0.0747, 0.0895, 0.1029, 0.1138, 0.1208, 0.1232, 0.1208, 0.1138]]),
+            [
+                0.034263492805,
+                0.046250877542,
+                0.059984154618,
+                0.074744859274,
+                0.089485843327,
+                0.102933220947,
+                0.113758802295,
+                0.120793253768,
+                0.12323343936,
+                0.120793253768,
+                0.113758802295,
+            ],
         ),
         (
             11,
             11.0,
             3.0,
-            torch.tensor([[0.0926, 0.0946, 0.0957, 0.0961, 0.0957, 0.0946, 0.0926, 0.0900, 0.0867, 0.0828, 0.0785]]),
+            [
+                0.092623025915,
+                0.094556631274,
+                0.095736116673,
+                0.096132538951,
+                0.095736116673,
+                0.094556631274,
+                0.092623025915,
+                0.089982225006,
+                0.086697241637,
+                0.082844679454,
+                0.078511767227,
+            ],
         ),
     ],
 )
 def test_gaussian(window_size, sigma, mean, expected, device, dtype):
-    expected = expected.to(device=device, dtype=dtype)
+    expected = torch.tensor([expected], device=device, dtype=dtype)
     result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
-    assert_close(result, expected, atol=1e-4, rtol=1e-4)
+    assert_close(result, expected)
+
+
+def test_gaussian_mixed_native_precision_mean(device):
+    if device.type == "mps":
+        pytest.skip("MPS does not support float64")
+    sigma = torch.tensor([[1.3]], device=device, dtype=torch.float32)
+    mean = torch.tensor([[2.123456789]], device=device, dtype=torch.float64)
+    actual = gaussian(5, sigma, mean=mean)
+    expected = gaussian(5, sigma.double(), mean=mean)
+    assert actual.dtype == torch.float64
+    # Sigma's native float32 arithmetic precedes promotion by the float64 mean.
+    assert_close(actual, expected, rtol=1e-7, atol=1e-8)
+
+
+@pytest.mark.device_agnostic
+@pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+def test_gaussian_half_default_dtype(half_dtype):
+    expected = gaussian(11, 1.3, mean=3.0, dtype=torch.float64).to(half_dtype)
+    previous = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(half_dtype)
+        actual = gaussian(11, 1.3, mean=3.0)
+        assert actual.dtype == half_dtype
+        assert_close(actual, expected, rtol=0, atol=0)
+    finally:
+        torch.set_default_dtype(previous)
 
 
 @pytest.mark.parametrize(
@@ -736,7 +800,7 @@ class TestGaussianBlur2d(BaseTester):
         # a torch reshape error
         for rows in (2, 3):
             sigma = torch.full((rows, 2), 1.5, device=device, dtype=dtype)
-            with pytest.raises(BaseError, match=f"sigma batch of {rows} for an input batch of 4"):
+            with pytest.raises(BaseError, match=rf"(?s)expected 4 or 1, got {rows}\..*sigma must have a batch of 1 or"):
                 gaussian_blur2d(sample, (3, 3), sigma, separable=separable)
         # one row for the whole batch and one row per sample run
         for rows in (1, 4):
@@ -756,7 +820,7 @@ class TestGaussianBlur2d(BaseTester):
         sigma = (1.5, 1.5)
         output_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=True)
         output_non_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=False)
-        assert_close(output_sep, output_non_sep, atol=1e-4, rtol=1e-4)
+        assert_close(output_sep, output_non_sep)
 
     def test_different_kernel_sizes(self, device, dtype):
         """Test with various kernel sizes."""

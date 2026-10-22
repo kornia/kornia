@@ -20,6 +20,7 @@ from __future__ import annotations
 import math
 import warnings
 
+import numpy as np
 import pytest
 import torch
 
@@ -471,31 +472,115 @@ class Test3DAugmentationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_crop3d_validates_size_before_a_disabled_gate(self):
-        # The exception types are split between the two classes (#4417); this pin is about the order only.
+        # #4417: validation still precedes the probability gate and sees the padded spatial size.
+        """Validate an oversized crop even when the probability gate disables the transform."""
         volume = torch.rand(1, 1, 4, 5, 6)
-        with pytest.raises((AssertionError, ValueError)):
+        with pytest.raises(ValueError, match="size"):
             K.CenterCrop3D((5, 6, 7), p=0.0)(volume)
-        with pytest.raises((AssertionError, ValueError)):
+        with pytest.raises(ValueError, match="size"):
             K.RandomCrop3D((9, 9, 9), padding=1, p=0.0)(volume)
         # (6, 5, 6) fits the padded (6, 7, 8) volume but not the (4, 5, 6) input: validation sees the padded one.
         self.assert_close(K.RandomCrop3D((6, 5, 6), padding=1, p=0.0)(volume), volume, rtol=0, atol=0)
-        with pytest.raises((AssertionError, ValueError)):
+        with pytest.raises(ValueError, match="size"):
             K.RandomCrop3D((6, 5, 6), p=0.0)(volume)
 
     @pytest.mark.device_agnostic
-    def test_wart_crop3d_siblings_disagree_on_size_errors_4417(self):
-        # #4417: flips when the two classes validate `size` the same way; which assertion fails depends on the
-        # direction of the fix.
+    @pytest.mark.parametrize(
+        "augmentation,size",
+        [
+            (K.CenterCrop3D, ()),
+            (K.CenterCrop3D, (2,)),
+            (K.CenterCrop3D, (2, 2)),
+            (K.CenterCrop3D, (2, 2, 2, 2)),
+            (K.CenterCrop3D, 2.0),
+            (K.CenterCrop3D, None),
+            (K.RandomCrop3D, 2),
+            (K.RandomCrop3D, 2.0),
+            (K.RandomCrop3D, None),
+            (K.RandomCrop3D, "234"),
+            (K.RandomCrop3D, {2, 3, 4}),
+            (K.RandomCrop3D, ()),
+            (K.RandomCrop3D, (2,)),
+            (K.RandomCrop3D, (2, 2)),
+            (K.RandomCrop3D, (2, 2, 2, 2)),
+        ],
+    )
+    def test_crop3d_size_format_errors_4417(self, augmentation, size):
+        """Report malformed crop sizes consistently across 3D crop entry points."""
+        with pytest.raises(TypeError, match=r"size.*\(D, H, W\)") as exc_info:
+            augmentation(size)
+        assert repr(size) in str(exc_info.value)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("container", [tuple, list])
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    @pytest.mark.parametrize("value", [2.0, 2.5, "2", None])
+    def test_random_crop3d_size_elements_must_be_integers_4417(self, container, axis, value):
+        """Reject non-integer crop dimensions before generating random boxes."""
+        size = [2, 2, 2]
+        size[axis] = value
+        size = container(size)
+        with pytest.raises(TypeError, match=r"size.*\(D, H, W\).*integers") as exc_info:
+            K.RandomCrop3D(size)
+        assert repr(size) in str(exc_info.value)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    @pytest.mark.parametrize("value", [2.0, 2.5, "2", None])
+    def test_center_crop3d_size_elements_must_be_integers_4417(self, axis, value):
+        """Reject non-integer dimensions on each axis before storing a center-crop size."""
+        size = [2, 2, 2]
+        size[axis] = value
+        size = tuple(size)
+        with pytest.raises(TypeError, match=r"size.*\(D, H, W\).*integers") as exc_info:
+            K.CenterCrop3D(size)
+        assert repr(size) in str(exc_info.value)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("augmentation", [K.CenterCrop3D, K.RandomCrop3D])
+    def test_crop3d_integer_like_size_elements_4417(self, augmentation):
+        # NumPy integers and 0-d integer tensors index like ints, so the element checks keep them working.
+        volume = torch.arange(240.0).reshape(2, 1, 4, 5, 6)
+        torch.manual_seed(0)
+        expected = augmentation((2, 3, 4))(volume)
+        for size in ((np.int64(2), np.int32(3), np.int64(4)), (torch.tensor(2), 3, 4)):
+            torch.manual_seed(0)
+            self.assert_close(augmentation(size)(volume), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("augmentation", [K.CenterCrop3D, K.RandomCrop3D])
+    @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_crop3d_oversized_errors_4417(self, augmentation, size, p, batch_size, device, dtype):
+        """Include the input and requested sizes when a crop exceeds the volume."""
+        volume = torch.zeros(batch_size, 1, 4, 5, 6, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input") as exc_info:
+            augmentation(size, p=p)(volume)
+        message = str(exc_info.value)
+        assert f"size={size}" in message
+        assert "input_size=(4, 5, 6)" in message
+        assert "tensor(" not in message
+
+    @pytest.mark.device_agnostic
+    def test_crop3d_integer_size_support_4417(self):
+        # Accepting an int in RandomCrop3D is still the separate compatibility-window decision.
+        """Keep scalar integer sizes supported by center crops and unsupported by random crops."""
         volume = torch.rand(1, 1, 4, 5, 6)
-        with pytest.raises(AssertionError):
-            K.CenterCrop3D((5, 5, 6), p=1.0)(volume)
-        with pytest.raises(ValueError, match=r"cannot be smaller than crop size"):
-            K.RandomCrop3D((5, 5, 6), p=1.0)(volume)
         assert K.CenterCrop3D(2, p=1.0)(volume).shape == (1, 1, 2, 2, 2)
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError, match="size"):
             K.RandomCrop3D(2, p=1.0)(volume)
-        with pytest.raises(IndexError):
-            K.CenterCrop3D((2, 2), p=1.0)(volume)
+
+    @pytest.mark.parametrize(
+        "augmentation,size",
+        [(K.CenterCrop3D, (4, 5, 6)), (K.RandomCrop3D, (4, 5, 6)), (K.RandomCrop3D, [4, 5, 6])],
+    )
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_crop3d_equal_size_is_valid_4417(self, augmentation, batch_size, size, device, dtype):
+        """Allow a crop matching all three input dimensions."""
+        if not supports_nearest_3d_grid_sample(device, dtype):
+            pytest.skip("3D nearest grid_sample is unavailable for this device/dtype")
+        volume = torch.arange(120, device=device, dtype=dtype).reshape(1, 1, 4, 5, 6).repeat(batch_size, 1, 1, 1, 1)
+        self.assert_close(augmentation(size, p=1.0, resample="nearest")(volume), volume, atol=0, rtol=0)
 
     @pytest.mark.parametrize(
         "padding,size,marker",
@@ -720,14 +805,14 @@ class Test3DAugmentationConventions(BaseTester):
             K.RandomMotionBlur3D(1, 35.0, 0.5, p=1.0)(torch.rand(1, 1, 5, 5, 5))
 
     @pytest.mark.device_agnostic
-    def test_convention_identity_warp_is_roundoff_exact_only_in_full_precision(self):
-        # In half precision the sampling grid is itself rounded, so a large volume moves far beyond roundoff.
+    def test_convention_identity_warp_is_roundoff_exact_on_cpu_5751(self):
+        # A CPU half-precision warp runs in float32 (#5751), so a large volume comes back up to the output rounding.
         large = torch.rand(1, 1, 32, 48, 96)
         assert float((K.RandomRotation3D(0.0, p=1.0)(large) - large).abs().max()) < 1e-3
-        if supports_bilinear_3d_grid_sample(torch.device("cpu"), torch.bfloat16):
-            half = large.to(torch.bfloat16)
+        for dtype in (torch.float16, torch.bfloat16):
+            half = large.to(dtype)
             for aug in (K.RandomRotation3D(0.0, p=1.0), K.RandomAffine3D(0.0, p=1.0)):
-                assert float((aug(half) - half).abs().max()) > 0.1
+                assert float((aug(half) - half).abs().max()) < torch.finfo(dtype).eps
 
     @pytest.mark.device_agnostic
     def test_convention_center_crop3d_centres_each_axis_with_its_own_offset(self):

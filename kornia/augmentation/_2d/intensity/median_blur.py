@@ -40,6 +40,7 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.median_blur`. An
           even entry is rejected at construction with that function's odd-size error.
         - the output is not clamped. The window is reflect-padded by :func:`kornia.filters.median_blur` by

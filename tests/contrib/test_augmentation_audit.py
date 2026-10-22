@@ -38,6 +38,19 @@ class TestAugmentationAudit(BaseTester):
         assert contrib.AugmentationAuditReport.__module__ == "kornia.contrib.augmentation_audit"
         assert not hasattr(K.AugmentationSequential, "audit")
 
+    def test_bhw_mask_is_accepted_like_bchw(self, device, dtype):
+        # AugmentationSequential takes (B, H, W) masks (#5602); audit rejected them as "not batched".
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        img = torch.rand(2, 3, 30, 40, device=device, dtype=dtype)
+        mask = (torch.rand(2, 30, 40, device=device) > 0.5).to(dtype)
+        out3, report3 = audit(seq, img, mask)
+        out4, report4 = audit(seq, img, mask[:, None])
+        assert report3.steps
+        assert len(report3.steps) == len(report4.steps)
+        assert report3.inputs[1]["shape"] == (2, 30, 40)
+        assert report4.inputs[1]["shape"] == (2, 1, 30, 40)
+        self.assert_close(out3[1].reshape(2, 30, 40), out4[1].reshape(2, 30, 40))
+
     def test_flip_and_actual_keypoints(self, device, dtype):
         image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
         points = torch.tensor([[[1.0, 2.0], [11.0, 4.0]]], device=device, dtype=dtype).expand(2, -1, -1)
@@ -585,17 +598,16 @@ class TestAugmentationAudit(BaseTester):
         )
         aug = K.AugmentationSequential(module, data_keys=["input", "keypoints", "bbox"])
         outputs, report = audit(aug, image, points, boxes, params=[ParamItem("RandomCrop_0", params)])
-        selected = (params["batch_prob"] > 0.5).to(device=image.device)
-        static = p == 1.0
+        # Static p=1 transforms every row whatever an overridden batch_prob holds (#5585).
+        selected = (params["batch_prob"] > 0.5).to(device=image.device) | (p == 1.0)
         # Public matrices include padding; the dynamic gate leaves skipped rows as identity.
         public_shift = image.new_tensor([pad[0] - x, pad[2] - y]).expand(2, -1)
-        public_shift = torch.where((selected | static)[:, None], public_shift, 0)
+        public_shift = torch.where(selected[:, None], public_shift, 0)
         self.assert_close(module.transform_matrix[:, :2, 2], public_shift)
-        # An explicitly overridden batch_prob still gates labels even for static p=1.
-        label_shift = torch.where(selected[:, None], public_shift, 0)
-        self.assert_close(outputs[1], points + label_shift[:, None])
-        self.assert_close(outputs[2].data, boxes.data + label_shift[:, None, None])
-        transformed = torch.ones_like(selected) if static else selected
+        # Labels follow the same decision as the image and the matrix.
+        self.assert_close(outputs[1], points + public_shift[:, None])
+        self.assert_close(outputs[2].data, boxes.data + public_shift[:, None, None])
+        transformed = selected
         padded = torch.nn.functional.pad(image, pad)
         expected_images = []
         image_shift = image.new_zeros((2, 2))
@@ -612,19 +624,25 @@ class TestAugmentationAudit(BaseTester):
         assert report.geometry_status == "available"
         diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
         self.assert_close(report.matrix[:, :2, 2], image_shift.to(diagnostic_dtype))
-        # Measure against the observed pixel mapping. With static p=1, an overridden
-        # batch_prob can still return untransformed labels beside a transformed image.
+        # Measure against the observed pixel mapping.
         restored_points = outputs[1][:, 0].to(diagnostic_dtype) - image_shift.to(diagnostic_dtype)
         error = torch.linalg.vector_norm(restored_points - points[:, 0].to(diagnostic_dtype), dim=-1)
         self.assert_close(report.spatial[0].roundtrip_max, error)
         restored_boxes = outputs[2].data.to(diagnostic_dtype) - image_shift[:, None, None, :].to(diagnostic_dtype)
         box_error = torch.linalg.vector_norm(restored_boxes - boxes.data.to(diagnostic_dtype), dim=-1).amax(-1).amax(-1)
         self.assert_close(report.spatial[1].roundtrip_max, box_error)
-        if bool((error > report.roundtrip_tolerance).any()):
-            assert "round-trip error exceeds" in report.summary()
-        if batch_prob is None or bool(selected.all()) or not bool(selected.any()):
-            # Whole-batch application or skip keeps labels aligned with the image (#4473).
-            self.assert_close(error, torch.zeros_like(error))
+        # Whole-batch application or skip keeps labels aligned with the image (#4473).
+        self.assert_close(error, torch.zeros_like(error))
+
+    def test_roundtrip_error_warning_for_tensor_boxes_under_rotation(self, device, dtype):
+        # Tensor boxes keep only the axis-aligned envelope of a rotated box, so the round trip is lossy and the
+        # audit warns. This keeps the warning covered now that no crop gate produces an image/label mismatch.
+        image = torch.zeros(2, 1, 20, 20, device=device, dtype=dtype)
+        boxes = image.new_tensor([[[[4, 6], [14, 6], [14, 10], [4, 10]]]]).expand(2, -1, -1, -1).clone()
+        aug = K.AugmentationSequential(K.RandomRotation((45.0, 45.0), p=1.0), data_keys=["input", "bbox"])
+        _, report = audit(aug, image, boxes)
+        assert float(report.spatial[0].roundtrip_max.max()) > report.roundtrip_tolerance
+        assert "round-trip error exceeds" in report.summary()
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     @pytest.mark.parametrize(

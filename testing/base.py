@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import math
 import sys
+import types
+from contextlib import contextmanager
 from functools import cache
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 import pytest
 import torch
@@ -39,6 +41,27 @@ DYNAMIC_EXPORT_UNAVAILABLE_REASON = (
 )
 
 
+@contextmanager
+def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
+    """Run the block with deterministic algorithms on CUDA, and restore the caller's mode afterwards.
+
+    Some CUDA backward kernels accumulate with atomics, so two backward passes of one graph can round differently.
+    Deterministic algorithms fix the accumulation order (CPU kernels already have one). ``warn_only`` keeps an op
+    without a deterministic CUDA kernel running, as it does by default; it only warns. A strict mode the caller
+    already set is kept.
+    """
+    if device.type != "cuda":
+        yield
+        return
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(True, warn_only=warn_only if enabled else True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
 def dynamo_is_available() -> bool:
     """Return whether this Torch/Python pair can run Dynamo-backed capture."""
     return not (
@@ -53,6 +76,22 @@ def dynamic_export_is_available() -> bool:
     ``torch.export.Dim`` and the ``dynamic_shapes`` argument both landed in PyTorch 2.2.
     """
     return dynamo_is_available() and hasattr(getattr(torch, "export", None), "Dim")
+
+
+def script_uncached(fn: Callable[..., Any]) -> torch.jit.ScriptFunction:
+    """``torch.jit.script`` a fresh copy of ``fn``, with no profiling history from earlier calls.
+
+    ``torch.jit.script`` caches one compiled function per Python function, and the profiling executor specializes
+    and fuses it on the shapes of the calls it has seen, so a test that scripts a shared function inherits whatever
+    other tests ran before it. A copy with the same code object, globals and annotations compiles to the same
+    graph but starts its own history, which makes a test of a call sequence deterministic.
+    """
+    copy = types.FunctionType(fn.__code__, fn.__globals__, fn.__name__, fn.__defaults__, fn.__closure__)
+    copy.__annotations__ = dict(fn.__annotations__)
+    copy.__kwdefaults__ = fn.__kwdefaults__
+    copy.__module__ = fn.__module__
+    copy.__qualname__ = fn.__qualname__
+    return torch.jit.script(copy)
 
 
 # {dtype: (rtol, atol)}

@@ -75,6 +75,21 @@ def mask_border_with_padding(
         m[b_idx, :, :, :, w1 - bd :] = v
 
 
+def _off_border(n: int, h: int, w: int, b: int, device: torch.device, pad_mask: Optional[torch.Tensor]) -> torch.Tensor:
+    """``(n, h * w)`` cells that :func:`mask_border` (or, with ``pad_mask``, :func:`mask_border_with_padding`) keeps."""
+    rows = torch.arange(h, device=device)[None, :, None]
+    cols = torch.arange(w, device=device)[None, None, :]
+    if pad_mask is None:
+        h_end = torch.full((n, 1, 1), h, device=device)
+        w_end = torch.full((n, 1, 1), w, device=device)
+    else:
+        # the valid extent of each sample, read from its padding mask as mask_border_with_padding does
+        h_end = pad_mask.sum(1).max(-1)[0].int().view(n, 1, 1)
+        w_end = pad_mask.sum(-1).max(-1)[0].int().view(n, 1, 1)
+    keep = (rows >= b) & (cols >= b) & (rows < h_end - b) & (cols < w_end - b) if b > 0 else rows >= 0
+    return keep.expand(n, h, w).reshape(n, h * w)
+
+
 def compute_max_candidates(p_m0: torch.Tensor, p_m1: torch.Tensor) -> torch.Tensor:
     """Compute the max candidates of all pairs within a batch.
 
@@ -157,28 +172,45 @@ class CoarseMatching(nn.Module):
         # F.normalize
         feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
+        # Each coarse mask is independently optional; an absent mask means all cells are valid.
+        invalid = None
+        if mask_c0 is not None:
+            invalid = ~mask_c0.bool()[..., None]
+        if mask_c1 is not None:
+            invalid_c1 = ~mask_c1.bool()[:, None]
+            invalid = invalid_c1 if invalid is None else invalid | invalid_c1
+
         if self.match_type == "dual_softmax":
-            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
-            if mask_c0 is not None and mask_c1 is not None:
-                invalid = ~(mask_c0[..., None] * mask_c1[:, None]).bool()
+            # Scale after contraction: scaling an operand can overflow float16, including when autocast converts
+            # float32 features for the einsum. In-place division avoids another similarity-sized allocation.
+            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1).div_(self.temperature)
+            if invalid is not None:
                 sim_matrix.masked_fill_(invalid, _masked_similarity(sim_matrix.dtype))
+            if sim_matrix.dtype == torch.float16:
+                # Native softmax normalizes without returning the column sum in float16, where long columns can
+                # overflow. Check the similarity dtype as autocast can produce float16 from float32 features.
                 conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
-                # A pair of masked cells gets the confidence 1 / (L * S) from the two softmaxes:
-                # a row or column that is masked entirely is uniform there, and all its other
-                # entries are exactly 0, so the pair is also a mutual nearest neighbour. Whenever
-                # `thr` is below 1 / (L * S), `get_coarse_match` would return it as a match, with
-                # keypoints in the padding of both images (#5740). A masked pair is never a match.
-                conf_matrix.masked_fill_(invalid, 0.0)
             else:
-                conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+                # softmax(dim=1) as exp(sim - column max) / column sum: PyTorch's dim-1 softmax kernel is several
+                # times slower on (L, S) similarity matrices than these contiguous passes.
+                conf_matrix = F.softmax(sim_matrix, 2)
+                if sim_matrix.requires_grad:
+                    col_exp = torch.exp(sim_matrix - sim_matrix.amax(dim=1, keepdim=True))
+                    conf_matrix = col_exp / col_exp.sum(dim=1, keepdim=True) * conf_matrix
+                else:
+                    # Without autograd, in place: two (L, S) matrices alive instead of four, which also keeps the
+                    # CUDA caching allocator from re-reserving them for every new pair of image sizes.
+                    col_exp = sim_matrix.sub_(sim_matrix.amax(dim=1, keepdim=True)).exp_()
+                    conf_matrix.mul_(col_exp.div_(col_exp.sum(dim=1, keepdim=True)))
+            # Fully masked rows/columns can still receive softmax mass; masked cells are never valid matches.
+            if invalid is not None:
+                conf_matrix.masked_fill_(invalid, 0.0)
 
         elif self.match_type == "sinkhorn":
             # sinkhorn, dustbin included
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
-            if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix[:, :L, :S].masked_fill_(
-                    ~(mask_c0[..., None] * mask_c1[:, None]).bool(), _masked_similarity(sim_matrix.dtype)
-                )
+            if invalid is not None:
+                sim_matrix[:, :L, :S].masked_fill_(invalid, _masked_similarity(sim_matrix.dtype))
 
             # build uniform prior & use sinkhorn
             log_assign_matrix = self.log_optimal_transport(sim_matrix, self.bin_score, self.skh_iters)
@@ -194,6 +226,11 @@ class CoarseMatching(nn.Module):
 
             if self.config["sparse_spvs"]:
                 data.update({"conf_matrix_with_bin": assign_matrix.clone()})
+
+            if invalid is not None:
+                # A transport solver may assign a tiny probability to an invalid cell despite its finite logit. Out of
+                # place: `conf_matrix` is a view of the `exp` output, which autograd saves for the backward pass.
+                conf_matrix = conf_matrix.masked_fill(invalid, 0.0)
 
         data.update({"conf_matrix": conf_matrix})
 
@@ -228,34 +265,28 @@ class CoarseMatching(nn.Module):
             "w1c": data["hw1_c"][1],
         }
         _device = conf_matrix.device
-        # 1. confidence thresholding. A zero confidence is never a match, even for a negative `thr`: `mconf == 0` marks
-        # the training ground-truth pads below and is dropped from the keypoints, but not from `b_ids`.
-        mask = conf_matrix > max(self.thr, 0.0)
+        # A cell i of image 0 and the first column j of its row maximum are a match when the confidence exceeds the
+        # threshold (a zero confidence never does, even for a negative `thr`: `mconf == 0` marks the training
+        # ground-truth pads below and is dropped from the keypoints, but not from `b_ids`), both cells are off the
+        # border, and the confidence is also the maximum of column j (mutual nearest neighbour). This is the first
+        # column satisfying all four conditions unless the row maximum is tied exactly, without materialising
+        # (N, L, S) boolean masks.
         N = conf_matrix.shape[0]
-        mask = mask.reshape(N, axes_lengths["h0c"], axes_lengths["w0c"], axes_lengths["h1c"], axes_lengths["w1c"])
-        # mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
-        #                 **axes_lengths)
-        if "mask0" not in data:
-            mask_border(mask, self.border_rm, False)
-        else:
-            mask_border_with_padding(mask, self.border_rm, False, data["mask0"], data["mask1"])
-        mask = mask.reshape(N, axes_lengths["h0c"] * axes_lengths["w0c"], axes_lengths["h1c"] * axes_lengths["w1c"])
-        # rearrange(mask, 'b h0c w0c h1c w1c -> b (h0c w0c) (h1c w1c)',
-        #                 **axes_lengths)
-
-        # 2. mutual nearest
-        mask = (
-            mask
-            * (conf_matrix == conf_matrix.max(dim=2, keepdim=True)[0])
-            * (conf_matrix == conf_matrix.max(dim=1, keepdim=True)[0])
+        mconf_rows, all_j_ids = conf_matrix.max(dim=2)
+        col_max = conf_matrix.amax(dim=1)
+        # mask_border_with_padding (both padding masks) when the data carries mask0, mask_border otherwise
+        pad0, pad1 = (data["mask0"], data["mask1"]) if "mask0" in data else (None, None)
+        border0 = _off_border(N, axes_lengths["h0c"], axes_lengths["w0c"], self.border_rm, _device, pad0)
+        border1 = _off_border(N, axes_lengths["h1c"], axes_lengths["w1c"], self.border_rm, _device, pad1)
+        mask_v = (
+            (mconf_rows > max(self.thr, 0.0))
+            & (torch.gather(col_max, 1, all_j_ids) == mconf_rows)
+            & border0
+            & torch.gather(border1, 1, all_j_ids)
         )
-
-        # 3. find all valid coarse matches
-        # this only works when at most one `True` in each row
-        mask_v, all_j_ids = mask.max(dim=2)
         b_ids, i_ids = torch.where(mask_v)
         j_ids = all_j_ids[b_ids, i_ids]
-        mconf = conf_matrix[b_ids, i_ids, j_ids]
+        mconf = mconf_rows[b_ids, i_ids]
 
         # 4. Random sampling of training samples for fine-level LoFTR
         # (optional) F.pad samples with gt coarse-level matches
@@ -264,7 +295,7 @@ class CoarseMatching(nn.Module):
             # The sampling is performed across all pairs in a batch without manually balancing
             # #samples for fine-level increases w.r.t. batch_size
             if "mask0" not in data:
-                num_candidates_max = mask.size(0) * max(mask.size(1), mask.size(2))
+                num_candidates_max = conf_matrix.size(0) * max(conf_matrix.size(1), conf_matrix.size(2))
             else:
                 num_candidates_max = compute_max_candidates(data["mask0"], data["mask1"])
             num_matches_train = num_candidates_max * self.train_coarse_percent
@@ -293,7 +324,7 @@ class CoarseMatching(nn.Module):
             # silently upcast the padded mconf below via torch.cat's type promotion.
             mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device, dtype=mconf.dtype)
 
-            b_ids, i_ids, j_ids, mconf = (  # type: ignore
+            b_ids, i_ids, j_ids, mconf = (
                 torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)
                 for x, y in zip(
                     [b_ids, i_ids, j_ids, mconf],
@@ -305,20 +336,22 @@ class CoarseMatching(nn.Module):
         coarse_matches = {"b_ids": b_ids, "i_ids": i_ids, "j_ids": j_ids}
 
         # 4. Update with matches in original image resolution: coarse cell (x, y) of either image sits on pixel
-        # (stride_c * x, stride_c * y) for any image size
+        # (stride_c * x, stride_c * y) for any image size. The keypoints are built in at least float32 before any
+        # scaling: bfloat16 holds no odd integer above 256 and float16 none above 2048.
+        coord_dtype = torch.promote_types(conf_matrix.dtype, torch.float32)
         scale = data["stride_c"]
-        scale0 = scale * data["scale0"][b_ids] if "scale0" in data else scale
-        scale1 = scale * data["scale1"][b_ids] if "scale1" in data else scale
-        mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1) * scale0
-        mkpts1_c = torch.stack([j_ids % data["hw1_c"][1], j_ids // data["hw1_c"][1]], dim=1) * scale1
+        scale0 = scale * data["scale0"][b_ids].to(coord_dtype) if "scale0" in data else scale
+        scale1 = scale * data["scale1"][b_ids].to(coord_dtype) if "scale1" in data else scale
+        mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1).to(coord_dtype) * scale0
+        mkpts1_c = torch.stack([j_ids % data["hw1_c"][1], j_ids // data["hw1_c"][1]], dim=1).to(coord_dtype) * scale1
 
         # These matches is the current prediction (for visualization)
         coarse_matches.update(
             {
                 "gt_mask": mconf == 0,
                 "m_bids": b_ids[mconf != 0],  # mconf == 0 => gt matches
-                "mkpts0_c": mkpts0_c[mconf != 0].to(dtype=conf_matrix.dtype),
-                "mkpts1_c": mkpts1_c[mconf != 0].to(dtype=conf_matrix.dtype),
+                "mkpts0_c": mkpts0_c[mconf != 0],
+                "mkpts1_c": mkpts1_c[mconf != 0],
                 "mconf": mconf[mconf != 0],
             }
         )

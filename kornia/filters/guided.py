@@ -26,12 +26,15 @@ from torch.nn.functional import interpolate
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 from .blur import box_blur
+from .filter import _to_floating
 from .kernels import _unpack_2d_ks
 
 
 def _check_subsample(subsample: int) -> None:
-    msg = f"`subsample` must be a positive integer. Got: {subsample!r}"
-    KORNIA_CHECK_TYPE(subsample, Integral, f"{msg} ({type(subsample).__name__})")
+    def msg() -> str:
+        return f"`subsample` must be a positive integer. Got: {subsample!r}"
+
+    KORNIA_CHECK_TYPE(subsample, Integral, lambda: f"{msg()} ({type(subsample).__name__})")
     # ``bool`` is an ``int``, and ``subsample=True`` would otherwise run as 1.
     KORNIA_CHECK(not isinstance(subsample, bool) and subsample >= 1, msg)
 
@@ -118,8 +121,15 @@ def _guided_blur_multichannel_guidance(
     subsample: int = 1,
     separable: bool = False,
 ) -> torch.Tensor:
+    # One compute dtype for the whole path: ``mean_I @ a`` needs ``mean_I`` in the dtype ``a`` is solved in, so a
+    # guidance narrower than ``input`` (float16, float32 or uint8 next to float64) is promoted to the pair's dtype.
+    # ``Tensor.to`` is a no-op when the dtypes already match, so every other pair is unaffected.
+    guidance = guidance.to(torch.promote_types(guidance.dtype, input.dtype))
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
+    # The input channel count is spelled out instead of inferred with ``-1``: an empty batch has no elements, so
+    # ``reshape``/``view`` cannot infer that size and raise (#4429).
+    C_in = input.shape[1]
 
     mean_I = box_blur(guidance_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
     II = (guidance_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
@@ -134,7 +144,7 @@ def _guided_blur_multichannel_guidance(
         mean_p = box_blur(input_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
         Ip = (input_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
         corr_Ip = box_blur(Ip, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
-        cov_Ip = torch.addcmul(corr_Ip.reshape(B, H, W, C, -1), mean_p.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
+        cov_Ip = torch.addcmul(corr_Ip.reshape(B, H, W, C, C_in), mean_p.unsqueeze(-2), mean_I.unsqueeze(-1), value=-1)
 
     if isinstance(eps, torch.Tensor):
         _eps = torch.eye(C, device=guidance.device, dtype=guidance.dtype).view(1, 1, 1, C, C) * eps.view(-1, 1, 1, 1, 1)
@@ -163,7 +173,7 @@ def _guided_blur_multichannel_guidance(
     if subsample > 1:
         mean_a = interpolate(mean_a, size=guidance.shape[-2:], mode="bilinear")
         mean_b = interpolate(mean_b, size=guidance.shape[-2:], mode="bilinear")
-    mean_a = mean_a.view(B, C, -1, *guidance.shape[-2:])
+    mean_a = mean_a.view(B, C, C_in, *guidance.shape[-2:])
 
     # torch.einsum might not be contiguous, thus mean_b is the first argument
     return mean_b + torch.einsum("BCHW,BCcHW->BcHW", guidance, mean_a)
@@ -194,6 +204,15 @@ def guided_blur(
         - ``eps`` is added to the local variance of ``guidance``, so it is in squared guidance units: guidance and
           input scaled by ``s``, filtered with ``eps * s**2``, give the result scaled by ``s``.
           :ref:`Filtering <filtering-conventions>` maps the arguments onto OpenCV's ``guidedFilter``.
+        - An integer or bool ``guidance`` or ``input`` is converted to float32 before the covariance products, on its
+          own scale, and the result has the promoted dtype of the two: a float16 ``input`` with a uint8 ``guidance``
+          returns float32, where :func:`~kornia.filters.joint_bilateral_blur` keeps ``input``'s dtype. With grayscale
+          guidance, a tensor-valued ``eps`` also participates in result dtype promotion; multichannel guidance
+          retains the promoted dtype of ``guidance`` and ``input``.
+        - A float16 or bfloat16 ``guidance`` or ``input`` is converted to float32 before the window statistics, and
+          the coefficients are solved in float32 as well (in float64 with a float64 tensor ``eps``). Autocast is
+          disabled inside the filter, so a float32 call in an autocast region returns float32. The result has the
+          dtype of the rule above.
 
     Arguments:
         guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
@@ -243,8 +262,30 @@ def guided_blur(
             "guidance and input should have the same batch size and spatial dimensions",
         )
 
+    input_is_guidance = input is guidance
+    guidance = _to_floating(guidance)
+    input = guidance if input_is_guidance else _to_floating(input)
+    output_dtype = torch.promote_types(guidance.dtype, input.dtype)
+    # E[g*g] - E[g]*E[g] loses the local variance in half precision, before
+    # even a promoted solve can help. Promote before all window statistics.
+    if guidance.dtype in (torch.float16, torch.bfloat16):
+        guidance = guidance.float()
+    if input_is_guidance:
+        input = guidance
+    elif input.dtype in (torch.float16, torch.bfloat16):
+        input = input.float()
+
     if guidance.shape[1] == 1:
-        return _guided_blur_grayscale_guidance(
+        blur = _guided_blur_grayscale_guidance
+        if isinstance(eps, torch.Tensor):
+            output_dtype = torch.promote_types(output_dtype, eps.dtype)
+    else:
+        blur = _guided_blur_multichannel_guidance
+    # Autocast would lower the box-filter convolutions back to half precision. A meta tensor carries only a shape and
+    # ``torch.autocast("meta")`` raises, so the CPU autocast stands in for it.
+    device_type = "cpu" if guidance.device.type == "meta" else guidance.device.type
+    with torch.autocast(device_type=device_type, enabled=False):
+        return blur(
             guidance,
             input,
             kernel_size,
@@ -252,16 +293,7 @@ def guided_blur(
             border_type,
             subsample,
             separable=separable,
-        )
-    return _guided_blur_multichannel_guidance(
-        guidance,
-        input,
-        kernel_size,
-        eps,
-        border_type,
-        subsample,
-        separable=separable,
-    )
+        ).to(output_dtype)
 
 
 class GuidedBlur(nn.Module):

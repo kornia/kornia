@@ -173,8 +173,14 @@ class TestCanny(BaseTester):
         )
 
         magnitude, edges = canny(inp)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Magnitude literals describe unquantized inputs; the edge mask is checked independently below.
+            expected_magnitude = canny(inp.to(device="cpu", dtype=torch.float64))[0].to(device=device, dtype=dtype)
 
-        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            self.assert_close(magnitude, expected_magnitude)
+        else:
+            self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
         self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_magnitude_hyst(self, device, dtype):
@@ -227,8 +233,16 @@ class TestCanny(BaseTester):
         )
 
         magnitude, edges = canny(inp, hysteresis=True)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Magnitude literals describe unquantized inputs; the edge mask is checked independently below.
+            expected_magnitude = canny(inp.to(device="cpu", dtype=torch.float64), hysteresis=True)[0].to(
+                device=device, dtype=dtype
+            )
 
-        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            self.assert_close(magnitude, expected_magnitude)
+        else:
+            self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
         self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_magnitude_hyst_false(self, device, dtype):
@@ -281,8 +295,16 @@ class TestCanny(BaseTester):
         )
 
         magnitude, edges = canny(inp, hysteresis=False)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Magnitude literals describe unquantized inputs; the edge mask is checked independently below.
+            expected_magnitude = canny(inp.to(device="cpu", dtype=torch.float64), hysteresis=False)[0].to(
+                device=device, dtype=dtype
+            )
 
-        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            self.assert_close(magnitude, expected_magnitude)
+        else:
+            self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
         self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_magnitude_threshold(self, device, dtype):
@@ -335,8 +357,16 @@ class TestCanny(BaseTester):
         )
 
         magnitude, edges = canny(inp, low_threshold=0.3, high_threshold=0.9)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Magnitude literals describe unquantized inputs; the edge mask is checked independently below.
+            expected_magnitude = canny(
+                inp.to(device="cpu", dtype=torch.float64), low_threshold=0.3, high_threshold=0.9
+            )[0].to(device=device, dtype=dtype)
 
-        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            self.assert_close(magnitude, expected_magnitude)
+        else:
+            self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
         self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
@@ -777,9 +807,11 @@ class TestConventionsCanny(BaseTester):
         rgb = torch.rand(2, 3, 11, 13, generator=generator).to(device=device, dtype=dtype)
         magnitude, edges = canny(rgb)
         assert magnitude.shape == edges.shape == (2, 1, 11, 13)
-        magnitude_grey, edges_grey = canny(rgb_to_grayscale(rgb))
-        self.assert_close(magnitude, magnitude_grey)
-        self.assert_close(edges, edges_grey)
+        # Canny promotes before grayscale conversion; rounding grayscale first can change suppression ties.
+        working_rgb = rgb.float() if dtype in (torch.float16, torch.bfloat16) else rgb
+        magnitude_grey, edges_grey = canny(rgb_to_grayscale(working_rgb))
+        self.assert_close(magnitude, magnitude_grey.to(dtype))
+        self.assert_close(edges, edges_grey.to(dtype))
         # channel 0 is read as red: the same data in BGR order gives other edges
         _, edges_bgr = canny(rgb.flip(1))
         assert not torch.equal(edges_bgr, edges)

@@ -12,6 +12,17 @@ kornia.core
 
 .. autofunction:: kornia.core.utils.batched_forward
 
+Device and autocast helpers
+---------------------------
+
+.. autofunction:: kornia.core.utils.get_cuda_device_if_available
+
+.. autofunction:: kornia.core.utils.get_mps_device_if_available
+
+.. autofunction:: kornia.core.utils.get_cuda_or_mps_device_if_available
+
+.. autofunction:: kornia.core.utils.is_autocast_enabled
+
 Weights
 -------
 
@@ -33,6 +44,27 @@ callable that lets the download half reject a truncated cache entry.
 .. autofunction:: load_safetensors
 
 .. autofunction:: check_safetensors
+
+Validation
+----------
+
+.. currentmodule:: kornia.core.check
+
+The ``KORNIA_CHECK*`` helpers validate inputs and raise the errors below. A check on sizes compares them with
+:func:`KORNIA_CHECK_SAME_SIZE`, :func:`KORNIA_CHECK_SIZES` or :func:`KORNIA_CHECK_SHAPE`, which build their message only
+when the check fails. Any other message that formats a tensor size or an ``int`` argument is passed as a function,
+``KORNIA_CHECK(condition, lambda: f"...")``: an f-string argument is built on every call, and under a dynamic-shape
+``torch.compile`` that specializes the value, so each new value would compile a new graph.
+
+.. autofunction:: KORNIA_CHECK
+
+.. autofunction:: KORNIA_CHECK_SHAPE
+
+.. autofunction:: KORNIA_CHECK_SAME_SHAPE
+
+.. autofunction:: KORNIA_CHECK_SAME_SIZE
+
+.. autofunction:: KORNIA_CHECK_SIZES
 
 Exceptions
 ----------
