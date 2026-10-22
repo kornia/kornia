@@ -782,8 +782,8 @@ def depth_from_disparity(
           placeholder, not a measurement: mask ``disparity > 0`` to tell matched pixels apart.
         - in float16 the ``1e-8`` rounds to ``0`` and the far depth would overflow anyway, so a zero disparity
           gives ``inf``. A float32 far depth turns back into ``inf`` wherever the warp casts it to float16, as a
-          float16 pose or float16 autocast does, so run the whole warp (depth, image, pose) in float32, outside
-          float16 autocast, when zero disparities flow into it.
+          float16 pose or float16 autocast does, so run the whole warp (depth, image, pose and camera matrix) in
+          float32, outside float16 autocast, when zero disparities flow into it.
         - ``baseline`` and ``focal`` are each a scalar (Python number, 0-d or :math:`(1,)` tensor) shared by the
           whole disparity, or a :math:`(B,)` tensor paired with ``disparity[b]``, which then needs a leading
           batch axis of size ``B`` (otherwise ``ShapeError``). The two may mix.
