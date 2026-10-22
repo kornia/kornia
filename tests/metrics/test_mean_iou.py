@@ -435,21 +435,20 @@ class TestHalfBoxConversion(BaseTester):
         # A real-input pair from #6204: widths/heights are tens of pixels, not sub-spacing boxes.
         boxes = torch.tensor(
             [[70.375, 289.5, 39.0625, 22.375], [55.65625, 290.5, 54.375, 30.03125]],
-            device=device,
             dtype=torch.float64,
         )
         if box_format == "cxcywh":
             boxes[:, :2] += boxes[:, 2:] / 2
-        boxes = boxes.to(dtype)
+        boxes = boxes.to(device=device, dtype=dtype)
         # Build corners independently in double precision from the SAME quantized input boxes.
-        reference = boxes.double()
+        reference = boxes.cpu().double()
         origin = reference[:, :2]
         if box_format == "cxcywh":
             origin = origin - reference[:, 2:] / 2
         end = origin + reference[:, 2:]
         overlap = (torch.minimum(end[0], end[1]) - torch.maximum(origin[0], origin[1])).clamp_min(0).prod()
         area = reference[:, 2:].prod(dim=-1)
-        expected = (overlap / (area.sum() - overlap)).to(dtype).reshape(1, 1)
+        expected = (overlap / (area.sum() - overlap)).to(device=device, dtype=dtype).reshape(1, 1)
 
         actual = kornia.metrics.mean_iou_bbox(boxes[:1], boxes[1:], box_format)
         assert actual.dtype == dtype
