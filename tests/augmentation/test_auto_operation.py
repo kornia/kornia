@@ -441,9 +441,12 @@ def test_operation_base_deepcopy_after_use() -> None:
 
 
 # Generated with Pillow 12.3.0:
+# from PIL import Image, ImageEnhance
 # image = Image.new("RGB", (2, 2))
 # image.putdata([(32, 96, 160), (224, 64, 128), (80, 192, 48), (144, 112, 208)])
-# list(ImageEnhance.Brightness/Contrast/Color(image).enhance(factor).getdata())
+# for enhancer in (ImageEnhance.Brightness, ImageEnhance.Contrast, ImageEnhance.Color):
+#     for factor in (0.3, 1.9):
+#         print(list(enhancer(image).enhance(factor).getdata()))
 # Source: PIL.ImageEnhance, the reference enhancer formulas used by the policies.
 @pytest.mark.parametrize(
     "operation,factor,pixels",
