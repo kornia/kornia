@@ -20,7 +20,6 @@ from torch import Tensor, nn
 
 from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
-    KORNIA_CHECK_SAME_DEVICE,
     KORNIA_CHECK_SAME_SHAPE,
     KORNIA_CHECK_SHAPE,
 )
@@ -70,7 +69,6 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(target)
-    KORNIA_CHECK_SAME_DEVICE(input, target)
     KORNIA_CHECK_SHAPE(input, ["*", "2"])
     KORNIA_CHECK_SHAPE(target, ["*", "2"])
     KORNIA_CHECK_SAME_SHAPE(input, target)
