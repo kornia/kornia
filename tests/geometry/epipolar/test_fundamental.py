@@ -34,7 +34,7 @@ from kornia.geometry.epipolar.fundamental import (
 )
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, script_uncached
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
 from testing.two_view import two_view_scene
 
@@ -428,6 +428,18 @@ class TestFundamentalAutocast(BaseTester):
 
 
 class TestComputeCorrespondEpilines(BaseTester):
+    def test_scripted_empty_after_nonempty_keeps_dtype(self, device, dtype):
+        # TorchScript's CUDA fuser used to compile ``cat([a * nu, b * nu, c * nu])`` into a group that, once it had
+        # specialized on non-empty calls, returned an int32 tensor for N = 0.
+        scripted = script_uncached(epi.compute_correspond_epilines)
+        F_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
+        for num_points in (5, 5, 5, 0, 5, 0, 7, 0):
+            points = torch.rand(2, num_points, 2, device=device, dtype=dtype)
+            lines = scripted(points, F_mat)
+            assert lines.dtype == dtype
+            assert lines.shape == (2, num_points, 3)
+            self.assert_close(lines, epi.compute_correspond_epilines(points, F_mat))
+
     def test_smoke(self, device, dtype):
         point = torch.rand(1, 1, 2, device=device, dtype=dtype)
         F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
