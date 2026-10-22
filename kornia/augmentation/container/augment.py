@@ -188,7 +188,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         :class:`~kornia.augmentation.RandomElasticTransform` warps the image **and** a ``mask`` key with it,
         but returns keypoints and boxes unchanged, and
         :class:`~kornia.augmentation.RandomThinPlateSpline` and :class:`~kornia.augmentation.RandomFisheye`
-        return keypoints and boxes unchanged and raise a bare ``NotImplementedError`` on a ``mask`` key.
+        return keypoints and boxes unchanged and raise ``NotImplementedError`` on a ``mask`` key,
+        with a message identifying the unsupported augmentation (including at ``p=0``).
         Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
     .. note::
