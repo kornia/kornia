@@ -22,7 +22,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.core.check import disable_checks, enable_checks
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.image import ColorSpace
 from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize, PixelFormat
@@ -77,11 +77,13 @@ class TestImage(BaseTester):
         # with checks disabled, KORNIA_CHECK_IMAGE_LAYOUT returns True like KORNIA_CHECK_SHAPE
         data = torch.rand(3, 4, 5)
         layout = ImageLayout(image_size=ImageSize(4.5, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST)
+        was_enabled = are_checks_enabled()
         disable_checks()
         try:
             assert KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
         finally:
-            enable_checks()
+            if was_enabled:
+                enable_checks()
 
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
@@ -378,7 +380,7 @@ class TestImage(BaseTester):
                 Image(data, pf, layout)
 
     def test_pixel_format_checks_follow_disable_checks(self):
-        from kornia.core.check import disable_checks, enable_checks
+        from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 
         layout = ImageLayout(ImageSize(4, 5), 1, ChannelsOrder.CHANNELS_FIRST)
         disable_checks()
