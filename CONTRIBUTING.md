@@ -16,6 +16,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 ## Practical guidelines
 
 - Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
+- You do not need to ask before working on an issue that is not reserved. Say on the issue that you are taking it, then open a pull request, as a draft if you still have questions. If a claim has no pull request after two weeks, anyone may take the issue; say so on the issue when you do.
 - Some issues say they are reserved for a maintainer implementation, and some already have an open pull request. Please comment on the issue or on that pull request instead of opening another one.
 - Open an issue with a reproducer before fixing a numerical edge case that realistic inputs do not reach, such as half-precision overflow at magnitudes far beyond image or coordinate ranges, or a matrix scaled by `1e15`. Each such fix costs a full review across dtypes and devices and adds a promotion path to maintain, so we decide first whether it is worth that cost. One issue can list several cases. Wrong results on realistic inputs are welcome directly as pull requests.
 - Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
@@ -399,8 +400,8 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ### Working with AI
 
-- AI tools are welcome. Read their output, check it in the same way you would check your own work, and tell us briefly how they helped.
-- Useful details include what the tool did, what you changed afterward, and what you checked yourself. We do not need a percentage or an authorship category.
+- AI tools are welcome. Read their output, check it in the same way you would check your own work, and state in the pull request which part was done by a human, if any, and which by AI.
+- Useful details include whether you diagnosed the problem, designed the approach, edited the diff, or checked the result yourself, or whether an agent did the whole task from a prompt. We do not need a percentage.
 
 ### Communication
 
@@ -410,7 +411,7 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ## Pull Request
 
-Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
+Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and state which part was done by a human, if any, and which by AI. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
 
 For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
 

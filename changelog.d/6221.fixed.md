@@ -1,0 +1,1 @@
+`GFTTAffNetHardNet`, `HesAffNetHardNet`, `DoGHardNet`, `DoGAffNetHardNet`, `KeyNetHardNet`, `KeyNetAffNetHardNet` and `LightGlueMatcher` now return in evaluation mode (`training=False`), matching `LocalFeatureMatcher` and the pretrained-model convention; outputs are unchanged because their pretrained networks were already in evaluation mode.

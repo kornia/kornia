@@ -16,11 +16,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Map a pull request's changed paths to the ``--onnx-conformance`` selection of its CI run (#5819).
+"""Map a pull request's changed paths to the package selection of its conformance runs (#5819).
 
-Reads the changed paths on stdin (one per line, as ``git diff --name-only`` prints them, or separated by any
-whitespace: no kornia path contains a space) and prints ``all``, a comma-separated list of stable-core packages, or
-nothing when no change can affect a promised operator (the conformance job is then skipped).
+``python conformance_packages.py onnx`` prints the ``--onnx-conformance`` value, ``python conformance_packages.py
+compile`` the ``--compile-conformance`` one. Reads the changed paths on stdin (one per line, as ``git diff --name-only``
+prints them, or separated by any whitespace: no kornia path contains a space) and prints ``all``, a comma-separated list
+of stable-core packages, or nothing when no change can affect a promised operator (the conformance job is then
+skipped).
 
 A changed module under ``kornia/`` selects the stable-core package it belongs to and every stable-core package with a
 module that imports it, directly or through other modules. The import graph is read from the checkout with ``ast``:
@@ -31,15 +33,18 @@ selects ``losses``, whose PSNR losses call it, while a ``kornia/contrib`` module
 nothing.
 
 ``all`` is selected by code every package runs (``kornia/core``, ``kornia/utils``, ``kornia/onnx``, the modules
-directly under ``kornia/``), by the sources of the promise and its test (the survey snapshot, the stability page, the
-survey under ``docs/export_support/``, ``testing/``, the test, the root ``conftest.py``, this script, the workflows that
-run it) and by the dependency pins.
+directly under ``kornia/``), by the sources of the promises and their tests (the survey snapshot, the stability page,
+the survey under ``docs/export_support/``, ``testing/``, the promise's own test, the root ``conftest.py``, this script,
+the workflows that run it) and by the dependency pins. The two promises differ only in their own test file and
+known-failure manifests (``testing/known_failure_xfails/<onnx|compile>_conformance_*``), which select ``all`` for their
+promise and nothing for the other.
 
 Standard library only: the ``changes`` job runs it before any environment is installed.
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
 import functools
 import sys
@@ -49,8 +54,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-# The stable core of docs/source/get-started/stability.rst; the same tuple as testing/onnx_conformance.py, which
-# tests/scripts/test_onnx_conformance_packages.py checks.
+# The stable core of docs/source/get-started/stability.rst; the same tuple as testing/conformance_promise.py, which
+# tests/scripts/test_conformance_packages.py checks.
 STABLE_CORE = (
     "geometry",
     "augmentation",
@@ -77,8 +82,7 @@ ALL_PREFIXES = (
 ALL_FILES = (
     "docs/source/_data/export_support.json",
     "docs/source/get-started/stability.rst",
-    "tests/onnx/test_conformance.py",
-    ".github/scripts/onnx_conformance_packages.py",
+    ".github/scripts/conformance_packages.py",
     ".github/workflows/tests.yml",
     ".github/workflows/pr_test_cpu.yml",
     ".github/workflows/scheduled_test_cpu.yml",
@@ -86,6 +90,13 @@ ALL_FILES = (
     "pyproject.toml",
     "uv.lock",
 )
+# Each promise's own test, by the snapshot field it promises (testing/conformance_promise.py PROMISES).
+TEST_FILES = {
+    "onnx": "tests/onnx/test_conformance.py",
+    "compile": "tests/test_inductor_conformance.py",
+}
+# Each promise's known-failure manifests: an edit selects all of that promise and nothing of the other.
+MANIFEST_PREFIX = "testing/known_failure_xfails/{}_conformance_"
 
 
 def module_index(root: Path) -> dict[str, Path]:
@@ -182,14 +193,24 @@ def _graph(root: Path) -> tuple[dict[str, str], dict[str, set[str]]]:
     return {path.relative_to(root).as_posix(): module for module, path in index.items()}, importers(index)
 
 
-def select(paths: Iterable[str], root: Path = REPO) -> str:
-    """Return the ``--onnx-conformance`` value for a set of changed paths, ``""`` when nothing is selected."""
+def select(paths: Iterable[str], root: Path = REPO, *, promise: str) -> str:
+    """Return the ``--<promise>-conformance`` value for a set of changed paths, ``""`` when nothing is selected."""
     changed: set[str] = set()
     for raw in paths:
         path = raw.strip()
         if not path:
             continue
-        if path.startswith(ALL_PREFIXES) or path in ALL_FILES or path.startswith("pixi."):
+        manifest_of = [other for other in TEST_FILES if path.startswith(MANIFEST_PREFIX.format(other))]
+        if manifest_of:
+            if manifest_of == [promise]:
+                return "all"
+            continue
+        if (
+            path.startswith(ALL_PREFIXES)
+            or path in ALL_FILES
+            or path == TEST_FILES[promise]
+            or path.startswith("pixi.")
+        ):
             return "all"
         parts = path.split("/")
         if parts[0] != "kornia":
@@ -220,9 +241,12 @@ def select(paths: Iterable[str], root: Path = REPO) -> str:
     return ",".join(p for p in STABLE_CORE if p in packages)
 
 
-def main() -> int:
-    """Print the selection for the changed paths read from stdin."""
-    print(select(sys.stdin.read().split()))
+def main(argv: list[str] | None = None) -> int:
+    """Print the selection of a promise for the changed paths read from stdin."""
+    parser = argparse.ArgumentParser(description="Print the conformance package selection for changed paths on stdin.")
+    parser.add_argument("promise", choices=sorted(TEST_FILES), help="the conformance test the selection is for")
+    args = parser.parse_args(argv)
+    print(select(sys.stdin.read().split(), promise=args.promise))
     return 0
 
 

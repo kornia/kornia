@@ -146,6 +146,10 @@ boxes_xyxy = torch.tensor([[[2.0, 3.0, 20.0, 25.0], [10.0, 5.0, 35.0, 30.0]]])  
 boxes_quad = Boxes.from_tensor(boxes_xyxy, mode="xyxy").data  # (1,2,4,2)
 boxes3d_xyzxyz = torch.tensor([[[1.0, 2.0, 1.0, 10.0, 12.0, 6.0], [3.0, 3.0, 2.0, 14.0, 14.0, 7.0]]])  # (1,2,6)
 boxes3d_hexa = Boxes3D.from_tensor(boxes3d_xyzxyz, mode="xyzxyz").data  # (1,2,8,3)
+# depths, heights and widths all distinct, for the shape cases: a graph that swapped two of them would not match
+boxes3d_hexa_shapes = Boxes3D.from_tensor(
+    torch.tensor([[[1.0, 2.0, 1.0, 10.0, 12.0, 6.0], [3.0, 3.0, 2.0, 14.0, 9.0, 9.0]]]), mode="xyzxyz"
+).data  # (1,2,8,3): (d, h, w) = (5, 10, 9) and (7, 6, 11)
 nms_boxes = torch.tensor([[10.0, 10.0, 20.0, 20.0], [15.0, 5.0, 15.0, 25.0], [100.0, 100.0, 150.0, 150.0]])
 nms_scores = torch.tensor([0.9, 0.8, 0.7])
 kpts = torch.tensor([[[5.0, 6.0], [20.0, 10.0], [30.0, 25.0]]])  # (1,3,2)
@@ -509,10 +513,7 @@ CASES = [
         "transform.HomographyWarper[pixel]",
         G,
         T.HomographyWarper(H, W, normalized_coordinates=False),
-        # The normal_transform_pixel factor works around #6170 (the pixel grid reaches grid_sample unnormalized, so
-        # a pixel homography samples outside the image and the output is a constant zero); drop it when #6170 is fixed.
-        [img, K.geometry.conversions.normal_transform_pixel(H, W) @ homo33_pert],
-        note="homography includes normal_transform_pixel until #6170 is fixed",
+        [img, homo33_pert],
     ),
     case(
         "transform.HomographyWarper[precomputed]",
@@ -625,7 +626,7 @@ CASES += [
         note="size baked; input (N,8,3)",
     ),
     case("bbox.infer_bbox_shape", G, infer_bbox_shape, [boxes_quad[0]]),
-    case("bbox.infer_bbox_shape3d", G, infer_bbox_shape3d, [boxes3d_hexa[0]], tags=("3d",)),
+    case("bbox.infer_bbox_shape3d", G, infer_bbox_shape3d, [boxes3d_hexa_shapes[0]], tags=("3d",)),
     case("bbox.transform_bbox", G, transform_bbox, [homo33, boxes_xyxy], note="mode=xyxy default (B,N,4)"),
     case(
         "bbox.transform_bbox[xywh]",
@@ -801,7 +802,7 @@ CASES += [
         "boxes.Boxes3D.get_boxes_shape",
         G,
         lambda b: Boxes3D(b, mode="xyzxyz_plus").get_boxes_shape(),
-        [boxes3d_hexa],
+        [boxes3d_hexa_shapes],
         tags=("3d",),
     ),
     case(

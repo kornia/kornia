@@ -134,12 +134,15 @@ class CutmixGenerator(RandomGeneratorBase):
                 (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
             )
             mix_pairs: torch.Tensor = (
-                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, same_on_batch)
+                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, False)
                 .to(device=_device, dtype=_dtype)
                 .argsort(dim=1)
             )
 
-        cutmix_betas: torch.Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
+        if same_on_batch:
+            cutmix_betas = _adapted_rsampling((self.num_mix,), self.beta_sampler, False).repeat_interleave(batch_size)
+        else:
+            cutmix_betas = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, False)
 
         # Note: torch.clamp does not accept torch.Tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
         # Argument 1 to "clamp" of "_TensorBase" has incompatible type "torch.Tensor"; expected "float"
@@ -149,19 +152,17 @@ class CutmixGenerator(RandomGeneratorBase):
         cut_height = (cutmix_rate * height).floor().to(device=_device, dtype=_dtype)
         cut_width = (cutmix_rate * width).floor().to(device=_device, dtype=_dtype)
 
-        if same_on_batch:
-            cut_height = cut_height[0]
-            cut_width = cut_width[0]
-
-        # One start position per cut, like the sizes above; with same_on_batch the helper repeats a single draw.
+        # One size and start per row when independent; one per mix, repeated over rows when same_on_batch.
         # Legal starts run 0 .. side - cut_side inclusive; the clamp only guards a u -> 1 float round-up.
         _gen_shape = (batch_size * self.num_mix,)
-        x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            width - cut_width + 1
-        )
-        y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            height - cut_height + 1
-        )
+        if same_on_batch:
+            x_start = _adapted_rsampling((self.num_mix,), self.rand_sampler, False).repeat_interleave(batch_size)
+            y_start = _adapted_rsampling((self.num_mix,), self.rand_sampler, False).repeat_interleave(batch_size)
+        else:
+            x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
+            y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
+        x_start = x_start.to(device=_device, dtype=_dtype) * (width - cut_width + 1)
+        y_start = y_start.to(device=_device, dtype=_dtype) * (height - cut_height + 1)
         x_start = torch.minimum(x_start.floor(), width - cut_width)
         y_start = torch.minimum(y_start.floor(), height - cut_height)
 

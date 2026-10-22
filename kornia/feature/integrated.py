@@ -560,6 +560,7 @@ class GFTTAffNetHardNet(LocalFeature):
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
+        self.eval()
 
 
 class HesAffNetHardNet(LocalFeature):
@@ -596,6 +597,7 @@ class HesAffNetHardNet(LocalFeature):
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
+        self.eval()
 
 
 def _dog_detector(
@@ -655,6 +657,7 @@ class DoGHardNet(LocalFeature):
         detector = _dog_detector(num_features, upright, None, compile_modules).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scaling_coef=2.0)
+        self.eval()
 
 
 class DoGAffNetHardNet(LocalFeature):
@@ -688,6 +691,7 @@ class DoGAffNetHardNet(LocalFeature):
         detector = _dog_detector(num_features, upright, aff_module, compile_modules).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scaling_coef=2.0)
+        self.eval()
 
 
 class KeyNetHardNet(LocalFeature):
@@ -722,6 +726,7 @@ class KeyNetHardNet(LocalFeature):
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scale_laf)
+        self.eval()
 
 
 class KeyNetAffNetHardNet(LocalFeature):
@@ -756,6 +761,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scale_laf)
+        self.eval()
 
 
 class LocalFeatureMatcher(nn.Module):
@@ -1021,6 +1027,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             params = {}
         self.params = params
         self.matcher = LightGlue(self.feature_name, **params)
+        if not self.matcher.training:
+            self.eval()
 
     def forward(
         self,

@@ -23,7 +23,7 @@ from typing import Optional
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling
 
 from .linalg import transform_points
 
@@ -120,8 +120,9 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     if len(boxes.shape) == 4:
         boxes = boxes.reshape(-1, 8, 3)
 
-    # The value checks below read the data, which graph capture cannot do; skip them under export.
-    if is_exporting():
+    # The value checks below read the data, which graph capture cannot do; skip them under any capture
+    # (torch.compile, torch.export). TorchScript cannot call is_compiling(), and a scripted call keeps the checks.
+    if not torch.jit.is_scripting() and is_compiling():
         return True
 
     # Non-finite coordinates are rejected as a predicate result rather than through the ``allclose``
@@ -701,6 +702,11 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         or ``int32`` coordinates in ``int64``. In their own dtype the sum of two areas overflows: two 181-pixel
         squares exceed the ``float16`` maximum of 65504, and two 32768-pixel squares exceed ``int32``.
         ``bfloat16`` does not overflow, but its rounding can move an IoU across ``iou_threshold``.
+
+    Note:
+        For one box or more, ``torch.compile`` cannot capture ``nms`` in one graph: the number of loop iterations and
+        the size of the output depend on the box values. ``fullgraph=True`` raises, and a default ``torch.compile``
+        runs it eagerly, so it is outside the :ref:`torch.compile promise <export-support-promise>`.
 
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other

@@ -22,22 +22,22 @@ from pathlib import Path
 
 import pytest
 
-from testing import onnx_conformance
+from testing import conformance, conformance_promise
 
 # `.github/scripts/` is neither a package nor on the path; see tests/scripts/test_check_torch_env.py for why this
 # stays a per-module insert.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / ".github" / "scripts"))
 
-from onnx_conformance_packages import STABLE_CORE, select
+from conformance_packages import STABLE_CORE, TEST_FILES, select
 
 REPO = Path(__file__).parent.parent.parent
-SCRIPT = REPO / ".github" / "scripts" / "onnx_conformance_packages.py"
+SCRIPT = REPO / ".github" / "scripts" / "conformance_packages.py"
 
 pytestmark = pytest.mark.device_agnostic
 
 
-def _selected(paths):
-    result = select(paths)
+def _selected(paths, promise="onnx"):
+    result = select(paths, promise=promise)
     return set(result.split(",")) if result else set()
 
 
@@ -52,8 +52,9 @@ def _selected(paths):
         ["docs/export_support/cases_misc.py"],
         ["docs/source/_data/export_support.json"],
         ["docs/source/get-started/stability.rst"],
-        ["testing/known_failure_xfails/onnx_conformance_torch2.14.txt"],
-        ["tests/onnx/test_conformance.py"],
+        ["testing/known_failure_xfails/mps_float32.txt"],
+        ["testing/conformance.py"],
+        [".github/scripts/conformance_packages.py"],
         [".github/workflows/pr_test_cpu.yml"],
         ["uv.lock"],
         ["pixi.toml"],
@@ -61,8 +62,30 @@ def _selected(paths):
         ["conftest.py"],
     ],
 )
-def test_select_all(changed):
-    assert select(changed) == "all"
+@pytest.mark.parametrize("promise", ["onnx", "compile"], ids=["onnx", "inductor"])
+def test_select_all(changed, promise):
+    assert select(changed, promise=promise) == "all"
+
+
+@pytest.mark.parametrize(
+    ("changed", "promise"),
+    [
+        ("tests/onnx/test_conformance.py", "onnx"),
+        ("testing/known_failure_xfails/onnx_conformance_torch2.14.txt", "onnx"),
+        ("testing/known_failure_xfails/onnx_conformance_torch2.9.txt", "onnx"),
+        ("tests/test_inductor_conformance.py", "compile"),
+        ("testing/known_failure_xfails/compile_conformance_torch2.14.txt", "compile"),
+        ("testing/known_failure_xfails/compile_conformance_torch2.9.txt", "compile"),
+    ],
+    ids=["onnx-test", "onnx-current", "onnx-previous", "inductor-test", "inductor-current", "inductor-previous"],
+)
+def test_select_all_for_the_promise_of_a_changed_test_or_manifest(changed, promise):
+    # A promise's own test or manifest selects all of its cases, and nothing of the other promise.
+    other = "compile" if promise == "onnx" else "onnx"
+    assert select([changed], promise=promise) == "all"
+    assert select([changed], promise=other) == ""
+    # ... while a module changed with it still selects its packages for the other one
+    assert _selected([changed, "kornia/morphology/morphology.py"], other) == {"morphology"}
 
 
 @pytest.mark.parametrize(
@@ -75,18 +98,20 @@ def test_select_all(changed):
         [],
     ],
 )
-def test_select_nothing(changed):
-    assert select(changed) == ""
+@pytest.mark.parametrize("promise", ["onnx", "compile"], ids=["onnx", "inductor"])
+def test_select_nothing(changed, promise):
+    assert select(changed, promise=promise) == ""
 
 
-def test_select_follows_importers_in_the_repository():
+@pytest.mark.parametrize("promise", ["onnx", "compile"], ids=["onnx", "inductor"])
+def test_select_follows_importers_in_the_repository(promise):
     # The PSNR losses call kornia.metrics.psnr: a fix there must run the losses' known failures too (#6165).
-    assert _selected(["kornia/metrics/psnr.py"]) >= {"metrics", "losses"}
-    assert "metrics" not in _selected(["kornia/losses/psnr.py"])
-    assert _selected(["kornia/geometry/transform/imgwarp.py"]) >= {"geometry", "augmentation", "feature"}
+    assert _selected(["kornia/metrics/psnr.py"], promise) >= {"metrics", "losses"}
+    assert "metrics" not in _selected(["kornia/losses/psnr.py"], promise)
+    assert _selected(["kornia/geometry/transform/imgwarp.py"], promise) >= {"geometry", "augmentation", "feature"}
     # PatchSequential crops with kornia.contrib.extract_patches; the DexiNed filter re-exports kornia.models.dexined.
-    assert _selected(["kornia/contrib/extract_patches.py"]) >= {"augmentation"}
-    assert _selected(["kornia/models/dexined.py"]) >= {"filters"}
+    assert _selected(["kornia/contrib/extract_patches.py"], promise) >= {"augmentation"}
+    assert _selected(["kornia/models/dexined.py"], promise) >= {"filters"}
 
 
 def _write(root, files):
@@ -122,12 +147,14 @@ def test_select_resolves_each_import_form(tmp_path):
             "kornia/filters/d.py": "from kornia.models.dex import N\n",  # a name from a module
         },
     )
-    assert select(["kornia/metrics/psnr.py"], tmp_path) == "losses,metrics"
-    assert select(["kornia/color/hsv.py"], tmp_path) == "augmentation,color"
-    assert select(["kornia/geometry/y.py"], tmp_path) == "geometry,feature"
-    assert select(["kornia/models/dex.py"], tmp_path) == "filters"
-    assert select(["kornia/contrib/c.py", "kornia/models/sam.py"], tmp_path) == ""
-    assert select(["kornia/color/removed.py"], tmp_path) == "color"  # a deleted module stands for its package
+    assert select(["kornia/metrics/psnr.py"], tmp_path, promise="onnx") == "losses,metrics"
+    assert select(["kornia/color/hsv.py"], tmp_path, promise="onnx") == "augmentation,color"
+    assert select(["kornia/geometry/y.py"], tmp_path, promise="onnx") == "geometry,feature"
+    assert select(["kornia/models/dex.py"], tmp_path, promise="onnx") == "filters"
+    assert select(["kornia/contrib/c.py", "kornia/models/sam.py"], tmp_path, promise="onnx") == ""
+    assert (
+        select(["kornia/color/removed.py"], tmp_path, promise="onnx") == "color"
+    )  # a deleted module stands for its package
 
 
 def test_select_follows_importers_of_a_deleted_nested_module(tmp_path):
@@ -144,7 +171,7 @@ def test_select_follows_importers_of_a_deleted_nested_module(tmp_path):
             "kornia/feature/uses.py": "from kornia.geometry.transform.removed import warp\n",
         },
     )
-    assert select(["kornia/geometry/transform/removed.py"], tmp_path) == "geometry,feature"
+    assert select(["kornia/geometry/transform/removed.py"], tmp_path, promise="onnx") == "geometry,feature"
 
 
 @pytest.mark.parametrize(
@@ -156,7 +183,7 @@ def test_select_follows_importers_of_a_deleted_nested_module(tmp_path):
 )
 def test_cli_reads_stdin(stdin):
     result = subprocess.run(  # noqa: S603 -- the current test interpreter on the script under test.
-        [sys.executable, str(SCRIPT)],
+        [sys.executable, str(SCRIPT), "onnx"],
         input=stdin,
         capture_output=True,
         text=True,
@@ -168,7 +195,7 @@ def test_cli_reads_stdin(stdin):
 def test_cli_reads_whitespace_separated_paths():
     # One echo line with several paths must select what the paths select one per line.
     result = subprocess.run(  # noqa: S603 -- the current test interpreter on the script under test.
-        [sys.executable, str(SCRIPT)],
+        [sys.executable, str(SCRIPT), "compile"],
         input="kornia/morphology/morphology.py kornia/core/check.py\n",
         capture_output=True,
         text=True,
@@ -177,9 +204,22 @@ def test_cli_reads_whitespace_separated_paths():
     assert result.stdout == "all\n"
 
 
+def test_cli_requires_a_promise():
+    result = subprocess.run(  # noqa: S603 -- the current test interpreter on the script under test.
+        [sys.executable, str(SCRIPT)],
+        input="kornia/morphology/morphology.py\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "promise" in result.stderr
+
+
 def test_stable_core_matches_the_test_and_the_stability_page():
-    assert STABLE_CORE == onnx_conformance.STABLE_CORE
-    assert set(onnx_conformance.REGISTRIES_OF) == set(STABLE_CORE)
+    assert STABLE_CORE == conformance_promise.STABLE_CORE
+    assert set(conformance.REGISTRIES_OF) == set(STABLE_CORE)
+    assert TEST_FILES == {promise.field: promise.test_file for promise in conformance_promise.PROMISES}
     page = (REPO / "docs" / "source" / "get-started" / "stability.rst").read_text(encoding="utf-8")
     paragraph = page.split("**Stable core**", 1)[1].split("\n\n", 1)[0]
     assert set(re.findall(r"``kornia\.(\w+)``", paragraph)) == set(STABLE_CORE)
