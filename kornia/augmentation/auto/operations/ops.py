@@ -15,12 +15,22 @@
 # limitations under the License.
 #
 
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation._2d.intensity.base import _clamp_unit_range
+from kornia.augmentation._2d.intensity.brightness import RandomBrightness
+from kornia.augmentation._2d.intensity.contrast import RandomContrast
+from kornia.augmentation._2d.intensity.saturation import RandomSaturation
 from kornia.augmentation.auto.operations.base import OperationBase
+from kornia.core.utils import _to_device_nonblocking
+from kornia.enhance import (
+    adjust_brightness_accumulative,
+    adjust_contrast_with_mean_subtraction,
+    adjust_saturation_with_gray_subtraction,
+)
 
 __all__ = [
     "AutoContrast",
@@ -43,6 +53,42 @@ __all__ = [
     "TranslateY",
     "VerticalFlip",
 ]
+
+
+class _PILBrightness(RandomBrightness):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        factor = _to_device_nonblocking(params["brightness_factor"], input.device, input.dtype)
+        return adjust_brightness_accumulative(_clamp_unit_range(input), factor)
+
+
+class _PILContrast(RandomContrast):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        factor = _to_device_nonblocking(params["contrast_factor"], input.device, input.dtype)
+        return adjust_contrast_with_mean_subtraction(_clamp_unit_range(input), factor)
+
+
+class _PILSaturation(RandomSaturation):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        factor = _to_device_nonblocking(params["saturation_factor"], input.device, input.dtype)
+        return adjust_saturation_with_gray_subtraction(_clamp_unit_range(input), factor)
 
 
 class AutoContrast(OperationBase):
@@ -68,7 +114,11 @@ class AutoContrast(OperationBase):
 
 
 class Brightness(OperationBase):
-    """Apply brightness operation.
+    """Apply PIL-style multiplicative brightness for automatic augmentation.
+
+    Unlike :class:`~kornia.augmentation.RandomBrightness`, the factor multiplies
+    the input. The policy factors match the PIL ImageEnhance convention.
+
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
@@ -89,7 +139,7 @@ class Brightness(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
+            _PILBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("brightness_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -97,7 +147,11 @@ class Brightness(OperationBase):
 
 
 class Contrast(OperationBase):
-    """Apply contrast operation.
+    """Apply PIL-style contrast by blending towards the mean grayscale value.
+
+    Unlike :class:`~kornia.augmentation.RandomContrast`, the factor scales the
+    difference from the mean rather than multiplying the input directly.
+
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
@@ -118,7 +172,7 @@ class Contrast(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomContrast(magnitude_range, same_on_batch=False, p=initial_probability),
+            _PILContrast(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("contrast_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -155,7 +209,11 @@ class Hue(OperationBase):
 
 
 class Saturate(OperationBase):
-    """Apply saturation operation.
+    """Apply PIL-style color enhancement by blending with grayscale.
+
+    Unlike :class:`~kornia.augmentation.RandomSaturation`, this blends RGB
+    values with grayscale rather than scaling HSV saturation.
+
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
@@ -176,7 +234,7 @@ class Saturate(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
+            _PILSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("saturation_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,

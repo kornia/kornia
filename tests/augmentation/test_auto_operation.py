@@ -438,3 +438,75 @@ def test_operation_base_deepcopy_after_use() -> None:
             aug.eval()
 
         copy.deepcopy(aug)
+
+
+# Generated with Pillow 12.3.0:
+# image = Image.new("RGB", (2, 2))
+# image.putdata([(32, 96, 160), (224, 64, 128), (80, 192, 48), (144, 112, 208)])
+# list(ImageEnhance.Brightness/Contrast/Color(image).enhance(factor).getdata())
+# Source: PIL.ImageEnhance, the reference enhancer formulas used by the policies.
+@pytest.mark.parametrize(
+    "operation,factor,pixels",
+    [
+        (ops.Brightness, 0.3, [(9, 28, 48), (67, 19, 38), (24, 57, 14), (43, 33, 62)]),
+        (ops.Brightness, 1.9, [(60, 182, 255), (255, 121, 243), (152, 255, 91), (255, 212, 255)]),
+        (ops.Contrast, 0.3, [(93, 112, 132), (151, 103, 122), (108, 141, 98), (127, 117, 146)]),
+        (ops.Contrast, 1.9, [(0, 74, 196), (255, 13, 135), (44, 255, 0), (165, 104, 255)]),
+        (ops.Saturate, 0.3, [(68, 87, 106), (150, 102, 121), (123, 157, 113), (136, 126, 155)]),
+        (ops.Saturate, 1.9, [(0, 106, 228), (255, 14, 136), (24, 237, 0), (153, 93, 255)]),
+    ],
+)
+def test_auto_enhancer_matches_pil_6253(operation, factor, pixels, device, dtype):
+    image = (
+        torch.tensor(
+            [(32, 96, 160), (224, 64, 128), (80, 192, 48), (144, 112, 208)],
+            device=device,
+            dtype=dtype,
+        )
+        .reshape(2, 2, 3)
+        .permute(2, 0, 1)
+        .unsqueeze(0)
+        / 255
+    )
+    expected = torch.tensor(pixels, device=device, dtype=dtype).reshape(2, 2, 3).permute(2, 0, 1).unsqueeze(0) / 255
+    aug = operation(initial_magnitude=factor, initial_probability=1.0, magnitude_range=(0.1, 1.9)).to(
+        device=device, dtype=dtype
+    )
+    params = aug.forward_parameters(image.shape)
+    output = aug(image, params=params)
+    # PIL quantizes intermediate grayscale and the final blend to uint8;
+    # Kornia keeps float intermediates. Compare at the same 8-bit precision.
+    assert_close((output * 255).round(), (expected * 255).round(), rtol=0, atol=1 + 255 * torch.finfo(dtype).eps)
+    assert_close(aug(image, params=params), output, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("operation", [ops.Brightness, ops.Contrast, ops.Saturate])
+def test_auto_enhancer_keeps_magnitude_gradient_6253(operation, device, dtype):
+    image = torch.tensor(
+        [[[[0.2, 0.4]], [[0.5, 0.7]], [[0.3, 0.6]]]],
+        device=device,
+        dtype=dtype,
+    )
+    aug = operation(initial_magnitude=0.7, initial_probability=1.0).to(device=device, dtype=dtype)
+    assert aug._magnitude is not None
+    (gradient,) = torch.autograd.grad(aug(image).square().sum(), aug._magnitude)
+    assert torch.isfinite(gradient).all()
+    assert gradient.abs().sum() > 0
+    assert aug.op.p == 1.0
+    assert aug.op.p_batch == 1.0
+
+
+@pytest.mark.parametrize("policy", ["auto", "rand", "trivial"])
+def test_policy_brightness_uses_multiplicative_factor_6253(policy, device, dtype):
+    image = torch.full((2, 3, 4, 5), 0.4, device=device, dtype=dtype)
+    if policy == "auto":
+        aug = AutoAugment(policy=[[("brightness", 1.0, 5)]])
+    elif policy == "rand":
+        aug = RandAugment(n=1, m=12, policy=[[("brightness", 0.1, 1.9)]])
+    else:
+        aug = TrivialAugment(policy=[[("brightness", 0.1, 1.9)]])
+    aug = aug.to(device=device, dtype=dtype)
+    params = aug.forward_parameters(image.shape)
+    factor = params[0].data[0].data["brightness_factor"].to(image)
+    expected = (image * factor[:, None, None, None]).clamp(0, 1)
+    assert_close(aug(image, params=params), expected)

@@ -1,0 +1,1 @@
+Automatic augmentation brightness, contrast and color operations now use the PIL-style enhancement formulas matched by their policy factor ranges. Previously they used additive brightness, direct contrast multiplication and HSV saturation scaling. Standalone `RandomBrightness`, `RandomContrast` and `RandomSaturation` keep their documented behavior.
