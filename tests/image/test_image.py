@@ -33,6 +33,30 @@ from testing.base import BaseTester
 
 
 class TestImage(BaseTester):
+    @pytest.mark.parametrize("size_kind", ["int", "float", "tensor"])
+    def test_layout_check_compares_numeric_sizes_of_any_type(self, size_kind):
+        # https://github.com/kornia/kornia/issues/6244
+        def make_size(h, w):
+            if size_kind == "int":
+                return ImageSize(h, w)
+            if size_kind == "float":
+                return ImageSize(float(h), float(w))
+            return ImageSize(torch.tensor(h), torch.tensor(w))
+
+        data = torch.rand(3, 4, 5)
+        pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=32)
+        layout = ImageLayout(image_size=make_size(9, 9), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST)
+        with pytest.raises(ShapeError):
+            Image(data, pixel_format, layout)
+
+        img = Image(
+            data,
+            pixel_format,
+            ImageLayout(image_size=make_size(4, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST),
+        )
+        assert img.height == 4
+        assert img.width == 5
+
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=8)
