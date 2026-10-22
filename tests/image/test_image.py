@@ -57,6 +57,21 @@ class TestImage(BaseTester):
         assert img.height == 4
         assert img.width == 5
 
+    @pytest.mark.parametrize("size_kind", ["float", "tensor"])
+    def test_layout_check_rejects_fractional_sizes(self, size_kind):
+        # a fractional size can never equal a tensor dimension
+        def make_size(h, w):
+            if size_kind == "float":
+                return ImageSize(float(h), float(w))
+            return ImageSize(torch.tensor(h), torch.tensor(w))
+
+        data = torch.rand(3, 4, 5)
+        pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=32)
+        layout = ImageLayout(image_size=make_size(4.5, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST)
+        with pytest.raises(ShapeError):
+            Image(data, pixel_format, layout)
+        assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
+
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=8)
