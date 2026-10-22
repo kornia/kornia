@@ -282,6 +282,25 @@ class TestTverskyLoss(BaseTester):
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
 
+    def test_tensor_weights(self, device, dtype):
+        pred = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        target = torch.randint(0, 3, (2, 4, 4), device=device)
+        expected = kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=0.5)
+        self.assert_close(
+            kornia.losses.tversky_loss(pred, target, alpha=torch.tensor(0.5, device=device, dtype=dtype), beta=0.5),
+            expected,
+            rtol=0,
+            atol=0,
+        )
+        self.assert_close(
+            kornia.losses.tversky_loss(
+                pred, target, alpha=torch.full((3,), 0.5, device=device, dtype=dtype), beta=0.5
+            ),
+            expected,
+            rtol=0,
+            atol=0,
+        )
+
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_all_zeros(self, device, dtype, ignore_index):
         num_classes = 3
