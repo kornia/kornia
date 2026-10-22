@@ -380,7 +380,7 @@ class TestImage(BaseTester):
                 Image(data, pf, layout)
 
     def test_pixel_format_checks_follow_disable_checks(self):
-        from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+        from kornia.core.check import disable_checks, enable_checks
 
         layout = ImageLayout(ImageSize(4, 5), 1, ChannelsOrder.CHANNELS_FIRST)
         disable_checks()
