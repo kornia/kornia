@@ -1,0 +1,4 @@
+`AugmentationSequential` with a `VideoSequential(RandomMosaic)` and video boxes no longer raises `IndexError`. Each
+frame's boxes now follow the mosaic of that frame, as image boxes do, with `same_on_frame=True` or `False` and with
+`p < 1`. Frames that a partial gate leaves with fewer boxes than the mixed ones are zero-padded in the dense output,
+as for image boxes. `VideoSequential` now hands its children frame-level `Boxes` over the video's frames.
