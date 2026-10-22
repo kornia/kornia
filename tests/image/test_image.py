@@ -22,6 +22,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
+from kornia.core.check import disable_checks, enable_checks
 from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.image import ColorSpace
 from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ImageLayout, ImageSize, PixelFormat
@@ -71,6 +72,19 @@ class TestImage(BaseTester):
         with pytest.raises(ShapeError):
             Image(data, pixel_format, layout)
         assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
+
+
+    def test_layout_check_skips_fractional_when_checks_disabled(self):
+        # with checks disabled, KORNIA_CHECK_IMAGE_LAYOUT returns True like KORNIA_CHECK_SHAPE
+        data = torch.rand(3, 4, 5)
+        layout = ImageLayout(
+            image_size=ImageSize(4.5, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST
+        )
+        disable_checks()
+        try:
+            assert KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
+        finally:
+            enable_checks()
 
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
