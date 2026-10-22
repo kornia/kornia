@@ -347,20 +347,27 @@ def max_blur_pool2d(
 
 
 def _check_floating_feature_map(input: torch.Tensor, op: str) -> None:
-    """Reject an integer or bool input: the blur pools are network layers and expect a floating feature map.
+    """Reject non-floating inputs: the blur pools are network layers and expect a floating feature map.
 
     The binomial kernel is cast to the input's dtype, so an integer input truncated every tap to 0 and came back as
     zeros on CPU, and raised from cuDNN or the max pool on CUDA. Unlike the image filters (#5669), the blur pools do
     not promote integer input. The check reads only the dtype, so it stays ``torch.compile(fullgraph=True)``-safe, and
-    ``disable_checks()`` skips it like every kornia check.
+    ``disable_checks()`` skips it in Python. As in the core checks, scripted calls always validate and use a
+    plain error message because TorchScript cannot compile the checks flag or exception metadata.
     """
-    if input.is_floating_point() or not are_checks_enabled():
+    if input.is_floating_point():
         return
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if not are_checks_enabled():
+            return
+    if torch.jit.is_scripting():
+        raise TypeCheckError(
+            op + " is a network layer and expects a floating-point feature map. Convert it first, e.g. input.float()."
+        )
     raise TypeCheckError(
         f"{op} is a network layer and expects a floating-point feature map, got {input.dtype}. "
         "Convert it first, for example input.float().",
         actual_type=input.dtype,
-        expected_type=(torch.float16, torch.bfloat16, torch.float32, torch.float64),
     )
 
 

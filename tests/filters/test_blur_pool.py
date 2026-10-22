@@ -703,6 +703,26 @@ class TestConventionsBlurPool(BaseTester):
             self.assert_close(edge_aware_blur_pool2d(ones, kernel_size), ones)
 
 
+@pytest.mark.parametrize("module_cls", [BlurPool2D, MaxBlurPool2D])
+class TestBlurPoolScript(BaseTester):
+    def test_script_roundtrip(self, module_cls, device, dtype):
+        module = module_cls(3).to(device=device, dtype=dtype)
+        image = torch.rand(1, 2, 8, 10, device=device, dtype=dtype)
+        scripted = torch.jit.script(module)
+        buffer = io.BytesIO()
+        torch.jit.save(scripted, buffer)
+        buffer.seek(0)
+        restored = torch.jit.load(buffer, map_location=device)
+        self.assert_close(restored(image), module(image))
+
+    @pytest.mark.parametrize("input_dtype", [torch.uint8, torch.int32, torch.bool])
+    def test_script_rejects_nonfloating_input(self, module_cls, device, input_dtype):
+        scripted = torch.jit.script(module_cls(3).to(device=device))
+        image = torch.ones(1, 1, 8, 8, device=device, dtype=input_dtype)
+        with pytest.raises(torch.jit.Error, match=r"TypeCheckError: .*expects a floating-point feature map"):
+            scripted(image)
+
+
 class TestBlurPoolIntegerInput:
     # The blur pools are network layers and expect a floating feature map. An integer kernel cast used to truncate
     # every binomial tap to 0: BlurPool2D and MaxBlurPool2D returned zeros on CPU, the functions raised a dtype
@@ -722,8 +742,8 @@ class TestBlurPoolIntegerInput:
     @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32, torch.bool])
     def test_integer_input_raises(self, call, int_dtype, device):
         image = (torch.arange(64, device=device).reshape(1, 1, 8, 8) % 7).to(int_dtype)
-        with pytest.raises(
-            TypeCheckError, match=f"network layer and expects a floating-point feature map, got {int_dtype}"
-        ):
+        with pytest.raises(TypeCheckError, match="network layer and expects a floating-point feature map") as error:
             call(image)
+        assert str(int_dtype) in str(error.value)
+        assert error.value.actual_type == int_dtype
         assert call(image.float()).dtype == torch.float32
