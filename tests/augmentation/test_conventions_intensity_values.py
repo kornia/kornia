@@ -1481,15 +1481,15 @@ class TestIntensityInputClamping(BaseTester):
 
     @pytest.mark.parametrize("grad_enabled", [False, True])
     @pytest.mark.parametrize("requires_grad", [False, True])
-    def test_input_clamp_preserves_signed_zero_and_nan(self, device, dtype, grad_enabled, requires_grad):
+    def test_input_clamp_matches_clamp_on_zeros_nan_and_inf(self, device, dtype, grad_enabled, requires_grad):
         image = torch.tensor([-0.0, 0.0, float("nan"), -float("inf"), float("inf")], device=device, dtype=dtype)
         image.requires_grad_(requires_grad)
         with torch.set_grad_enabled(grad_enabled):
             actual = _clamp_unit_range(image)
         assert torch.equal(torch.isnan(actual), torch.isnan(image))
         finite = ~torch.isnan(image)
+        # The sign of a zero is not pinned: clamp gives +0.0 for -0.0 on MPS and under Inductor, -0.0 in eager CPU/CUDA.
         self.assert_close(actual[finite], image.clamp(0.0, 1.0)[finite])
-        assert torch.equal(torch.signbit(actual[:2]), torch.signbit(image[:2]))
 
     @pytest.mark.parametrize("name", ["ColorJiggle", "RandomGamma", "RandomPosterize"])
     def test_bicubic_overshoot_is_clamped_before_intensity(self, device, dtype, name):

@@ -32,10 +32,12 @@ def _clamp_unit_range(input: Tensor) -> Tensor:
     often hold exact ``0`` and ``1`` pixels. The values inside ``[0, 1]`` are therefore taken from ``input`` itself,
     so they keep their gradient on every torch version; values outside get the bound and a zero gradient.
 
-    The values always equal ``input.clamp(0, 1)``, ``NaN`` and ``-0.0`` included, so a call that records no
-    gradient and carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the
-    clamp left it unchanged: one comparison against the clamped copy instead of two bound comparisons and their
-    conjunction. Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``.
+    The values always equal ``input.clamp(0, 1)``, ``NaN`` included, so a call that records no gradient and
+    carries no forward-mode tangent is that single clamp. Otherwise, select ``input`` where the clamp left it
+    unchanged: one comparison against the clamped copy instead of two bound comparisons and their conjunction.
+    Forward-mode tangents must keep the identity derivative even inside ``torch.no_grad()``. The sign of a zero is
+    not part of the contract: ``clamp`` returns ``+0.0`` for ``-0.0`` on MPS and under Inductor (CPU and CUDA),
+    while eager CPU and CUDA keep ``-0.0``.
     """
     clamped = input.clamp(0.0, 1.0)
     if (
