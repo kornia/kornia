@@ -47,6 +47,7 @@ class LayerCollector(Collector):
         processing: str = "none",
     ) -> None:
         self.layers: Optional[List[str]] = layers
+        self.active_layers: List[str] = []
         self.processing: str = processing
         self.model: Optional[nn.Module] = None
         self.features: Dict[str, Tensor] = {}
@@ -82,10 +83,10 @@ class LayerCollector(Collector):
             if missing_layers:
                 raise ValueError(f"Layers not found in model: {missing_layers}")
 
-        self.layers = layers
+        self.active_layers = list(layers)
 
         try:
-            for name in layers:
+            for name in self.active_layers:
                 handle = layer_dict[name].register_forward_hook(self._hook_fn(name))
                 self.handles.append(handle)
         except Exception:
@@ -148,6 +149,7 @@ class LayerCollector(Collector):
         self.handles = []
         self.clear()
         self.model = None
+        self.active_layers = []
 
     def __call__(self, **inputs: Tensor) -> Dict[str, Tensor]:
         """Run the attached model and return its collected representations.
@@ -171,4 +173,4 @@ class LayerCollector(Collector):
         self.clear()
         with torch.no_grad():
             self.model(**inputs)
-        return self.features
+        return {name: feature.clone() for name, feature in self.features.items()}
