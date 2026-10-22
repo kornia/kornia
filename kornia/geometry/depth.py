@@ -769,18 +769,22 @@ def depth_from_disparity(
     """Compute depth from disparity.
 
     Convention:
-        - the depth is ``baseline * focal / disparity``, elementwise: ``baseline`` is the distance between the
-          two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a baseline of
-          0.5 and a focal length of 100 gives a depth of 25.
+        - the depth is ``baseline * focal / (disparity + 1e-8)``, elementwise: ``baseline`` is the distance
+          between the two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a
+          baseline of 0.5 and a focal length of 100 gives a depth of 25. The ``1e-8`` is below float32 resolution
+          for any realistic disparity.
+        - a zero disparity (no stereo match, or a point at infinity) gives a finite far depth,
+          ``baseline * focal / 1e-8`` (``5e9`` for baseline 0.5 and focal 100), not ``inf``. Such a point warps
+          as a point at infinity, along the rotation-only homography, in
+          :func:`~kornia.geometry.depth.warp_frame_depth`, whereas an ``inf`` depth would turn into ``NaN`` in
+          :func:`~kornia.geometry.depth.depth_to_3d` wherever a ray component is zero. The far depth is a
+          placeholder, not a measurement: mask ``disparity > 0`` to tell matched pixels apart.
+        - in float16 the ``1e-8`` rounds to ``0`` and the far depth would overflow anyway, so a zero disparity
+          gives ``inf``. Compute the depth in float32 when zero disparities flow into a warp.
         - ``baseline`` and ``focal`` are each a scalar (Python number, 0-d or :math:`(1,)` tensor) shared by the
           whole disparity, or a :math:`(B,)` tensor paired with ``disparity[b]``, which then needs a leading
           batch axis of size ``B`` (otherwise ``ShapeError``). The two may mix.
         - ``disparity`` is :math:`(*, H, W)` and the result has its shape. Its sign is not checked.
-
-    .. warning::
-        The divisor is ``disparity + 1e-8``, so a zero disparity (no stereo match) returns a large finite depth
-        set by the epsilon (``5e9`` for baseline ``0.5``, focal ``100``) rather than ``inf``, except where the
-        epsilon underflows: `#4272 <https://github.com/kornia/kornia/issues/4272>`_.
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.
