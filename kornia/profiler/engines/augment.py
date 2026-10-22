@@ -163,7 +163,8 @@ class AugmentationPipeline:
                 invalid type, or if constructor arguments cannot be bound
                 to the augmentation constructor.
             ValueError: If an augmentation name or execution mode is unknown,
-                or if incompatible configuration formats are combined.
+                if incompatible configuration formats are combined, or if
+                individual mode contains duplicate augmentation names.
         """
         if mode not in {"sequential", "individual"}:
             raise ValueError(f"Unknown mode: {mode}")
@@ -187,8 +188,15 @@ class AugmentationPipeline:
                 },
             ]
 
+        seen_names: set[str] = set()
         for config in augmentations_config:
-            self.augmentations.append(_build_augmentation(config))
+            name, augmentation = _build_augmentation(config)
+
+            if self.mode == "individual" and name in seen_names:
+                raise ValueError("Augmentation names must be unique in individual mode.")
+
+            seen_names.add(name)
+            self.augmentations.append((name, augmentation))
 
         if self.mode == "sequential":
             modules = [module for _, module in self.augmentations]

@@ -266,11 +266,11 @@ class Profiler:
         self._df = pandas.DataFrame(results)
 
     def print(self) -> None:
-        """Log the computed results, or indicate that none are available."""
+        """Print the computed results, or indicate that none are available."""
         if self._df is not None:
-            logger.info("\n%s", self._df)
+            print(self._df)
         else:
-            logger.info("No results computed yet.")
+            print("No results computed yet.")
 
     def save_as_report(self, path: str) -> None:
         """Save computed results as a CSV or JSON report.

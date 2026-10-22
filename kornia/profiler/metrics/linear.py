@@ -15,18 +15,18 @@
 # limitations under the License.
 #
 
-import torch.nn.functional as F
+import torch
 from torch import Tensor
 
 from kornia.profiler.metrics.base import Metric
 
 
 def linear_cka(x: Tensor, y: Tensor) -> Tensor:
-    r"""Compute the linear similarity between two representation tensors.
+    r"""Compute linear Centered Kernel Alignment (CKA).
 
-    Each input is centered along its feature dimension and L2-normalized
-    before the element-wise product is summed across features. The resulting
-    similarity scores are averaged across the batch.
+    Each representation is centered across the batch dimension. Linear CKA
+    is computed as the squared Frobenius norm of the cross-covariance-like
+    product, normalized by the Frobenius norms of the two self-products.
 
     Args:
         x: First representation tensor of shape ``(B, D)``, where ``B`` is
@@ -35,26 +35,30 @@ def linear_cka(x: Tensor, y: Tensor) -> Tensor:
             in shape.
 
     Returns:
-        A scalar tensor containing the mean similarity across the batch.
+        A scalar tensor containing the linear CKA similarity.
     """
-    x = x - x.mean(dim=1, keepdim=True)
-    y = y - y.mean(dim=1, keepdim=True)
+    x = x - x.mean(dim=0, keepdim=True)
+    y = y - y.mean(dim=0, keepdim=True)
 
-    x = F.normalize(x, dim=1)
-    y = F.normalize(y, dim=1)
+    xy = x.T @ y
+    xx = x.T @ x
+    yy = y.T @ y
 
-    return (x * y).sum(dim=1).mean()
+    numerator = xy.square().sum()
+    denominator = torch.linalg.norm(xx) * torch.linalg.norm(yy)
+
+    return numerator / denominator.clamp_min(torch.finfo(denominator.dtype).eps)
 
 
 class LinearSimilarity(Metric):
-    r"""Compute linear similarity between two representation tensors.
+    r"""Compute linear CKA between two representation tensors.
 
     Inputs are flattened across all dimensions except the batch dimension
-    before the similarity calculation is performed.
+    before the CKA calculation is performed.
     """
 
     def forward(self, x: Tensor, y: Tensor) -> Tensor:
-        r"""Compute the mean linear similarity across the batch.
+        r"""Compute linear CKA between two representation tensors.
 
         Args:
             x: First representation tensor with shape ``(B, ...)``, where
@@ -63,7 +67,7 @@ class LinearSimilarity(Metric):
                 ``x`` in batch size and flattened feature dimension.
 
         Returns:
-            A scalar tensor containing the mean similarity across the batch.
+            A scalar tensor containing the linear CKA similarity.
         """
         x = x.reshape(x.size(0), -1)
         y = y.reshape(y.size(0), -1)
