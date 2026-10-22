@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["JPEGGenerator"]
@@ -62,9 +63,14 @@ class JPEGGenerator(RandomGeneratorBase):
 
         self.jpeg_quality_sampler = UniformDistribution(jpeg_quality[0], jpeg_quality[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.jpeg_quality])
-        jpeg_quality_value = _adapted_rsampling((batch_size,), self.jpeg_quality_sampler, same_on_batch)
+        jpeg_quality_value = _adapted_rsampling(
+            (batch_size,), self.jpeg_quality_sampler, same_on_batch, generator=self._generator
+        )
         return {"jpeg_quality": jpeg_quality_value.to(device=_device, dtype=_dtype)}

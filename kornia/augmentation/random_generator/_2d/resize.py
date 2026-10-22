@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
@@ -61,7 +62,10 @@ class ResizeGenerator(RandomGeneratorBase):
         self.device = device
         self.dtype = dtype
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device = self.device

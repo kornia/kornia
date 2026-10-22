@@ -93,10 +93,12 @@ class AugmentationBase2D(_AugmentationBase):
         - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
-        - reproducibility goes through torch's global generators; there is no per-instance generator.
-          ``generator=`` raises at construction, and ``forward`` silently drops it like any other unknown keyword
-          (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). :doc:`/get-started/conventions` states the
-          seeding, ``DataLoader``-worker, parameter-placement and serialization rules.
+        - sampling uses torch's global generators unless ``set_generator(g)`` binds an explicit stream, or
+          ``forward(..., generator=g)`` / ``forward_parameters(..., generator=g)`` supplies a call-local one.
+          Sampling uses the generator's device only where the sampler is already on that device; an image on an
+          accelerator can still use CPU sampling. Unknown non-generator keywords still follow the existing
+          override path (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). See
+          :doc:`/get-started/conventions` for stream isolation and the unsupported policy/model paths.
         - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale, stores the
           caller's dict by reference and, if ``batch_prob`` is absent, inserts an all-true gate into it. Replaying
           parameters reproduces the output, except for :class:`RandomDissolving`, whose VAE latents are drawn

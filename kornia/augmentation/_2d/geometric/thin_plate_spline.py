@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _sample_distribution
 from kornia.constants import SamplePadding
 from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
@@ -90,6 +91,13 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
         device = self.device
         dtype = self.dtype
+        dist = self.dist
+        if dist is not None and self._generator is not None:
+            # Explicit draws must use the configured sampling device. Keep the
+            # historical CPU distribution and draw order on the global RNG path.
+            dist = torch.distributions.Uniform(
+                dist.low.to(device=device), dist.high.to(device=device), validate_args=False
+            )
 
         # 5 TPS control points in normalized coordinates
         src = _constant_tensor(
@@ -98,13 +106,17 @@ class RandomThinPlateSpline(AugmentationBase2D):
             dtype=dtype,
         ).expand(B, 5, 2)
 
-        if self.dist is None:
+        if dist is None:
             noise = torch.zeros_like(src)
         elif self.same_on_batch:
-            noise = self.dist.rsample((1, 5, 2)).to(device=device, dtype=dtype)
+            noise = _sample_distribution(dist, torch.Size((1, 5, 2)), self._generator, True).to(
+                device=device, dtype=dtype
+            )
             noise = noise.expand(B, 5, 2)
         else:
-            noise = self.dist.rsample((B, 5, 2)).to(device=device, dtype=dtype)
+            noise = _sample_distribution(dist, torch.Size((B, 5, 2)), self._generator, True).to(
+                device=device, dtype=dtype
+            )
 
         dst = src + noise
 
