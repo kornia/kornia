@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import sys
+import types
 from contextlib import contextmanager
 from functools import cache
 from typing import Any, Callable, Iterator, Optional, Sequence, Union
@@ -75,6 +76,22 @@ def dynamic_export_is_available() -> bool:
     ``torch.export.Dim`` and the ``dynamic_shapes`` argument both landed in PyTorch 2.2.
     """
     return dynamo_is_available() and hasattr(getattr(torch, "export", None), "Dim")
+
+
+def script_uncached(fn: Callable[..., Any]) -> torch.jit.ScriptFunction:
+    """``torch.jit.script`` a fresh copy of ``fn``, with no profiling history from earlier calls.
+
+    ``torch.jit.script`` caches one compiled function per Python function, and the profiling executor specializes
+    and fuses it on the shapes of the calls it has seen, so a test that scripts a shared function inherits whatever
+    other tests ran before it. A copy with the same code object, globals and annotations compiles to the same
+    graph but starts its own history, which makes a test of a call sequence deterministic.
+    """
+    copy = types.FunctionType(fn.__code__, fn.__globals__, fn.__name__, fn.__defaults__, fn.__closure__)
+    copy.__annotations__ = dict(fn.__annotations__)
+    copy.__kwdefaults__ = fn.__kwdefaults__
+    copy.__module__ = fn.__module__
+    copy.__qualname__ = fn.__qualname__
+    return torch.jit.script(copy)
 
 
 # {dtype: (rtol, atol)}

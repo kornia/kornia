@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
@@ -101,16 +102,17 @@ def unproject_points_z1(
     """
     KORNIA_CHECK_SHAPE(points_in_cam_canonical, ["*", "2"])
 
+    # (u, v) -> (u, v, 1), then scale all three by the extension: the third component is ``1 * w``, exactly ``w``.
+    # Concatenating ``points * w`` with ``w`` instead gives the same values, but TorchScript's CUDA fuser compiles
+    # that mul + cat into a group that returns an int32 tensor for an empty batch once it has specialized on a
+    # non-empty one.
+    homogeneous = F.pad(points_in_cam_canonical, [0, 1], value=1.0)  # (..., 3)
     if extension is None:
-        extension = torch.ones(
-            points_in_cam_canonical.shape[:-1] + (1,),
-            device=points_in_cam_canonical.device,
-            dtype=points_in_cam_canonical.dtype,
-        )  # (..., 1)
-    elif extension.ndim == points_in_cam_canonical.ndim - 1:
+        return homogeneous
+    if extension.ndim == points_in_cam_canonical.ndim - 1:
         extension = extension[..., None]  # (..., 1)
 
-    return torch.cat([points_in_cam_canonical * extension, extension], dim=-1)
+    return homogeneous * extension
 
 
 def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:

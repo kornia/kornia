@@ -26,7 +26,7 @@ from kornia.geometry.camera.projection_orthographic import (
 )
 from kornia.geometry.camera.projection_z1 import dx_project_points_z1, project_points_z1, unproject_points_z1
 
-from testing.base import BaseTester
+from testing.base import BaseTester, script_uncached
 
 
 class TestProjectionZ1(BaseTester):
@@ -112,6 +112,21 @@ class TestProjectionZ1(BaseTester):
         self.assert_close(actual, expected)
         self.assert_close(project_points_z1(actual), points)
         self.assert_close(torch.jit.script(unproject_points_z1)(points, depth), expected)
+
+    @pytest.mark.parametrize("depth_form", ["none", "flat", "column"])
+    def test_unproject_scripted_empty_after_nonempty_keeps_dtype(self, device, dtype, depth_form):
+        # TorchScript's CUDA fuser used to compile ``cat([points * depth, depth])`` into a group that, once it had
+        # specialized on non-empty calls, returned an int32 tensor for an empty batch.
+        scripted = script_uncached(unproject_points_z1)
+        for batch in (2, 2, 2, 0, 3, 0, 1, 0):
+            points = torch.rand(batch, 2, device=device, dtype=dtype)
+            depth = None
+            if depth_form != "none":
+                depth = torch.rand((batch, 1) if depth_form == "column" else (batch,), device=device, dtype=dtype)
+            actual = scripted(points, depth)
+            assert actual.dtype == dtype
+            assert actual.shape == (batch, 3)
+            self.assert_close(actual, unproject_points_z1(points, depth))
 
     @pytest.mark.parametrize("column_depth", [False, True])
     def test_unproject_batched_depth_gradcheck(self, device, column_depth):
