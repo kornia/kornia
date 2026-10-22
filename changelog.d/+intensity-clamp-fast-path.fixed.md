@@ -1,0 +1,6 @@
+The `[0, 1]` input clamp that range-dependent 2D intensity augmentations gained in #5980 is cheaper. A call that
+records no gradient now costs a single `clamp`. A call that records one costs a comparison with the clamped copy and a
+selection, instead of two bound comparisons, their conjunction and a selection. Values and gradients are unchanged.
+On an i7-14700K CPU (4 threads, batch 8, 256×256, float32), `RandomBrightness` and `RandomContrast` take about
+300 µs per call instead of 830 µs, against about 240 µs in 0.8.3, which had no input clamp. On an RTX 4090 they are
+1.2–1.4× faster.

@@ -31,8 +31,15 @@ def _clamp_unit_range(input: Tensor) -> Tensor:
     ``torch.clamp``'s derivative at a bound is ``1`` on torch 2.5.1 and 2.9.1 and ``0`` on 2.14, and valid images
     often hold exact ``0`` and ``1`` pixels. The values inside ``[0, 1]`` are therefore taken from ``input`` itself,
     so they keep their gradient on every torch version; values outside get the bound and a zero gradient.
+
+    The values always equal ``input.clamp(0, 1)``, ``NaN`` and ``-0.0`` included, so a call that records no
+    gradient is that single clamp. A recording call selects ``input`` where the clamp left it unchanged: one
+    comparison against the clamped copy instead of two bound comparisons and their conjunction.
     """
-    return torch.where((input >= 0.0) & (input <= 1.0), input, input.clamp(0.0, 1.0))
+    clamped = input.clamp(0.0, 1.0)
+    if not (torch.is_grad_enabled() and input.requires_grad):
+        return clamped
+    return torch.where(clamped == input, input, clamped)
 
 
 class _PicklableCompileMixin:

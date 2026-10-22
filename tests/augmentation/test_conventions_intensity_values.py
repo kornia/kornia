@@ -1508,6 +1508,30 @@ class TestIntensityInputClamping(BaseTester):
         out.sum().backward()
         self.assert_close(image.grad, torch.ones_like(image))
 
+    # Without a recorded gradient the input clamp is a single torch.clamp; with one it selects the input where the
+    # clamp left it unchanged. Both must return the same values, and the recorded gradient is 1 inside [0, 1]
+    # and 0 outside.
+    @pytest.mark.parametrize(
+        "factory",
+        [lambda: K.RandomBrightness(brightness=(1.0, 1.0), p=1.0), lambda: K.ColorJiggle(0.0, 0.0, 0.0, 0.0, p=1.0)],
+        ids=["RandomBrightness", "ColorJiggle"],
+    )
+    def test_unit_range_input_clamp_matches_with_and_without_a_gradient(self, device, dtype, factory):
+        values = torch.tensor([-0.5, -0.0, 0.0, 0.25, 0.75, 1.0, 1.5, 2.0], device=device, dtype=dtype)
+        image = values.reshape(1, 1, 2, 4).expand(1, 3, 2, 4).contiguous()
+        expected = image.clamp(0.0, 1.0)
+        with torch.no_grad():
+            assert torch.equal(factory()(image), expected)
+        assert torch.equal(factory()(image), expected)
+        leaf = image.clone().requires_grad_()
+        out = factory()(leaf)
+        assert torch.equal(out.detach(), expected)
+        out.sum().backward()
+        interior = (image > 0.0) & (image < 1.0)
+        outside = (image < 0.0) | (image > 1.0)
+        assert torch.equal(leaf.grad[interior], torch.ones_like(leaf.grad[interior]))
+        assert torch.equal(leaf.grad[outside], torch.zeros_like(leaf.grad[outside]))
+
     @pytest.mark.parametrize("gamma", [0.5, 1.5])
     def test_gamma_gradient_outside_range_is_zero(self, device, dtype, gamma):
         image = torch.tensor([-0.5, 0.25, 0.5, 1.5], device=device, dtype=dtype).reshape(1, 1, 1, 4)
