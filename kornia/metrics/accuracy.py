@@ -17,7 +17,8 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+import operator
+from typing import Any, Tuple
 
 import torch
 
@@ -28,6 +29,16 @@ from kornia.core.check import (
     KORNIA_CHECK_SAME_SIZE,
     KORNIA_CHECK_SHAPE,
 )
+
+
+def _is_positive_index(k: Any) -> bool:
+    """Return whether ``k`` is a positive integer; NumPy integers and 0-d integer tensors count, bools do not."""
+    if isinstance(k, bool):
+        return False
+    try:
+        return operator.index(k) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (1,)) -> list[torch.Tensor]:
@@ -64,7 +75,7 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
         KORNIA_CHECK_SHAPE(target, ["B"])
     KORNIA_CHECK_SAME_SIZE(pred, target, dim=0)
     KORNIA_CHECK(
-        len(topk) > 0 and all(isinstance(k, int) and not isinstance(k, bool) and k > 0 for k in topk),
+        len(topk) > 0 and all(_is_positive_index(k) for k in topk),
         "topk must be a non-empty sequence of positive integers",
     )
 
