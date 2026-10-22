@@ -293,9 +293,7 @@ class TestTverskyLoss(BaseTester):
             atol=0,
         )
         self.assert_close(
-            kornia.losses.tversky_loss(
-                pred, target, alpha=torch.full((3,), 0.5, device=device, dtype=dtype), beta=0.5
-            ),
+            kornia.losses.tversky_loss(pred, target, alpha=torch.full((3,), 0.5, device=device, dtype=dtype), beta=0.5),
             expected,
             rtol=0,
             atol=0,
