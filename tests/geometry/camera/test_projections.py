@@ -113,6 +113,16 @@ class TestProjectionZ1(BaseTester):
         self.assert_close(project_points_z1(actual), points)
         self.assert_close(torch.jit.script(unproject_points_z1)(points, depth), expected)
 
+    @pytest.mark.parametrize("depth_shape", [(3,), (2, 3, 3)])
+    def test_unproject_rejects_a_depth_per_component(self, device, dtype, depth_shape):
+        from kornia.core.exceptions import ShapeError
+
+        # a depth whose trailing dimension is 3 would broadcast against (u, v, 1) and scale each component separately
+        points = torch.ones(2, 3, 2, device=device, dtype=dtype)
+        depth = torch.full(depth_shape, 2.0, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            unproject_points_z1(points, depth)
+
     @pytest.mark.parametrize("depth_form", ["none", "flat", "column"])
     def test_unproject_scripted_empty_after_nonempty_keeps_dtype(self, device, dtype, depth_form):
         # TorchScript's CUDA fuser used to compile ``cat([points * depth, depth])`` into a group that, once it had

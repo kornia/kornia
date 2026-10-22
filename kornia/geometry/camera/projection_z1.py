@@ -23,7 +23,6 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
-import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
@@ -83,12 +82,14 @@ def unproject_points_z1(
         - ``extension`` is the camera-frame ``z`` of the unprojected point: the canonical point is multiplied
           by it and it becomes the third component.
           :meth:`~kornia.sensors.camera.projection_model.Z1Projection.unproject` names the same argument
-          ``depth``. Both ``(...,)`` and ``(..., 1)`` extensions are accepted.
+          ``depth``. Both ``(...,)`` and ``(..., 1)`` extensions are accepted, and their leading dimensions
+          broadcast against the points'. One depth scales both coordinates: any other trailing size raises
+          ``ShapeError``.
 
     Args:
         points_in_cam_canonical: torch.Tensor representing the points to unproject with shape (..., 2).
         extension: torch.Tensor representing the extension (depth) of the points to unproject with shape
-            (..., 1) or (...), matching the points' leading dimensions. Defaults to unit depth.
+            (..., 1) or (...), broadcastable against the points' leading dimensions. Defaults to unit depth.
 
     Returns:
         torch.Tensor representing the unprojected points with shape (..., 3).
@@ -102,17 +103,17 @@ def unproject_points_z1(
     """
     KORNIA_CHECK_SHAPE(points_in_cam_canonical, ["*", "2"])
 
-    # (u, v) -> (u, v, 1), then scale all three by the extension: the third component is ``1 * w``, exactly ``w``.
-    # Concatenating ``points * w`` with ``w`` instead gives the same values, but TorchScript's CUDA fuser compiles
-    # that mul + cat into a group that returns an int32 tensor for an empty batch once it has specialized on a
-    # non-empty one.
-    homogeneous = F.pad(points_in_cam_canonical, [0, 1], value=1.0)  # (..., 3)
     if extension is None:
-        return homogeneous
+        # a ones column, not ``F.pad(..., value=1.0)``: see ``convert_points_to_homogeneous`` for MPS
+        return torch.cat([points_in_cam_canonical, torch.ones_like(points_in_cam_canonical[..., :1])], dim=-1)
     if extension.ndim == points_in_cam_canonical.ndim - 1:
         extension = extension[..., None]  # (..., 1)
-
-    return homogeneous * extension
+    KORNIA_CHECK_SHAPE(extension, ["*", "1"])
+    xy = points_in_cam_canonical * extension
+    # The depth is expanded to the product's leading shape, so a broadcast depth concatenates. That also keeps
+    # TorchScript's CUDA fuser from compiling ``cat([points * w, w])`` into a group that returns an int32 tensor for
+    # an empty batch once it has specialized on non-empty calls.
+    return torch.cat([xy, extension.expand(xy[..., :1].shape)], dim=-1)
 
 
 def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
