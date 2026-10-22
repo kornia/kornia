@@ -454,7 +454,7 @@ class TestSolvePnpDltGradient(BaseTester):
 
     def test_cube_corners_have_the_central_difference_gradient_6213(self, device):
         # The corners of a cube and its centre make singular values of the DLT system equal in some poses, where
-        # torch's SVD backward made the gradient with respect to the image points NaN (21 of these 64 on CPU).
+        # torch's SVD backward made the gradient with respect to the image points NaN (6 of these 64 on CPU).
         if device.type == "mps":
             pytest.skip("MPS has no float64")
         from kornia.geometry.conversions import axis_angle_to_rotation_matrix
