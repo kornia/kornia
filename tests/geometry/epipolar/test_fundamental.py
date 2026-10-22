@@ -431,6 +431,8 @@ class TestComputeCorrespondEpilines(BaseTester):
     def test_scripted_empty_after_nonempty_keeps_dtype(self, device, dtype):
         # TorchScript's CUDA fuser used to compile ``cat([a * nu, b * nu, c * nu])`` into a group that, once it had
         # specialized on non-empty calls, returned an int32 tensor for N = 0.
+        if device.type == "cuda" and dtype == torch.bfloat16:
+            pytest.skip("TorchScript's CUDA fuser fails to compile the bfloat16 group for a * a + b * b (NVRTC)")
         scripted = script_uncached(epi.compute_correspond_epilines)
         F_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
         for num_points in (5, 5, 5, 0, 5, 0, 7, 0):
