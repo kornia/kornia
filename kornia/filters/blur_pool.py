@@ -24,7 +24,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, are_checks_enabled
+from kornia.core.exceptions import TypeCheckError
 
 from .kernels import _check_kernel_size, get_pascal_kernel_2d
 
@@ -94,6 +95,7 @@ class BlurPool2D(nn.Module):
             the sizes given in the Shape section of the class. They depend only
             on the input size and ``self.stride``.
         """
+        _check_floating_feature_map(input, "BlurPool2D")
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
         # ONNX requires constant convolution groups and kernel shape, even with dynamic batch or spatial axes.
         channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
@@ -178,6 +180,7 @@ class MaxBlurPool2D(nn.Module):
             class. They depend only on the input size, ``self.max_pool_size``
             and ``self.stride``.
         """
+        _check_floating_feature_map(input, "MaxBlurPool2D")
         kernel = self.kernel.to(device=input.device, dtype=input.dtype)
         channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
         return _max_blur_pool_by_kernel2d(input, kernel.repeat((channels, 1, 1, 1)), self.stride, self.max_pool_size)
@@ -231,6 +234,7 @@ class EdgeAwareBlurPool2D(nn.Module):
             Edge-aware blurred tensor with the shape of ``input``,
             :math:`(B, C, H, W)`.
         """
+        _check_floating_feature_map(input, "EdgeAwareBlurPool2D")
         if epsilon is None:
             epsilon = 1e-6
         return edge_aware_blur_pool2d(
@@ -255,6 +259,9 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
           ``kernel_size`` is thereby anchored at ``(k - 1) // 2``, as in :func:`~kornia.filters.filter2d`.
           :ref:`Filtering <filtering-conventions>` compares the padding with antialiased-cnns, and the sampling with
           :func:`~kornia.geometry.transform.pyrdown`.
+        - The blur pools are network layers: an integer or bool input raises a
+          :class:`~kornia.core.exceptions.TypeCheckError` instead of being promoted to float32 as the image filters
+          promote it. A floating input keeps its dtype.
 
     Args:
         input: torch.Tensor to apply operation to.
@@ -283,6 +290,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
                   [0.0000, 0.0625, 0.3125]]]])
 
     """
+    _check_floating_feature_map(input, "blur_pool2d")
     channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
         (channels, 1, 1, 1)
@@ -306,7 +314,7 @@ def max_blur_pool2d(
     Convention:
         - The result equals ``blur_pool2d(F.max_pool2d(input, max_pool_size, stride=1), kernel_size, stride)``: the
           max pool runs at stride 1 without padding and ``stride`` belongs to the blur. See the Convention block on
-          :func:`~kornia.filters.blur_pool2d` for the kernel and the border.
+          :func:`~kornia.filters.blur_pool2d` for the kernel, the border and integer input, which raises.
 
     Args:
         input: torch.Tensor to apply operation to.
@@ -329,12 +337,31 @@ def max_blur_pool2d(
     """
     _warn_ceil_mode_deprecated(ceil_mode)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    _check_floating_feature_map(input, "max_blur_pool2d")
 
     channels = int(input.shape[1]) if torch.jit.is_tracing() else input.shape[1]
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
         (channels, 1, 1, 1)
     )
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size)
+
+
+def _check_floating_feature_map(input: torch.Tensor, op: str) -> None:
+    """Reject an integer or bool input: the blur pools are network layers and expect a floating feature map.
+
+    The binomial kernel is cast to the input's dtype, so an integer input truncated every tap to 0 and came back as
+    zeros on CPU, and raised from cuDNN or the max pool on CUDA. Unlike the image filters (#5669), the blur pools do
+    not promote integer input. The check reads only the dtype, so it stays ``torch.compile(fullgraph=True)``-safe, and
+    ``disable_checks()`` skips it like every kornia check.
+    """
+    if input.is_floating_point() or not are_checks_enabled():
+        return
+    raise TypeCheckError(
+        f"{op} is a network layer and expects a floating-point feature map, got {input.dtype}. "
+        "Convert it first, for example input.float().",
+        actual_type=input.dtype,
+        expected_type=(torch.float16, torch.bfloat16, torch.float32, torch.float64),
+    )
 
 
 def _warn_ceil_mode_deprecated(ceil_mode: bool | None) -> None:
@@ -408,7 +435,8 @@ def edge_aware_blur_pool2d(
     r"""Blur the input torch.Tensor while maintaining its edges.
 
     Convention:
-        - Nothing is downsampled: the output has the input's shape.
+        - Nothing is downsampled: the output has the input's shape. An integer or bool input raises, as in
+          :func:`~kornia.filters.blur_pool2d`.
         - A pixel is on an edge when, along ``x`` or ``y``, the channel mean of ``log2(input + epsilon)`` differs
           by more than ``log2(edge_threshold)`` between the pixels two before and two after it, so scaling the image
           does not move the edges while the intensities stay well above ``epsilon``. Pixels on the edge map,
@@ -434,6 +462,7 @@ def edge_aware_blur_pool2d(
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    _check_floating_feature_map(input, "edge_aware_blur_pool2d")
     edge_dilation_kernel_size = operator.index(edge_dilation_kernel_size)
     _check_kernel_size(edge_dilation_kernel_size)
     KORNIA_CHECK(edge_threshold > 1.0, f"edge_threshold must be greater than 1. Got {edge_threshold}")

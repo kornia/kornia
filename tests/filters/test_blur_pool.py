@@ -25,7 +25,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.filters import (
     BlurPool2D,
     EdgeAwareBlurPool2D,
@@ -165,17 +165,10 @@ class TestBlurPoolKernelState(BaseTester):
 
     @staticmethod
     def _integer_call(module, image):
-        # Integer output semantics remain a follow-up to #5669; even a failed call must preserve state.
-        if image.device.type == "mps":
-            with pytest.raises(RuntimeError, match="Convolution is supported only for Floating types"):
-                module(image)
-        else:
-            try:
-                module(image)
-            except RuntimeError as error:
-                # Other backends may lack Byte convolution/pooling kernels.
-                if "not implemented" not in str(error) or "Byte" not in str(error):
-                    raise
+        # The blur pools are network layers: an integer input raises on every device (they do not promote it as the
+        # image filters do since #5669), and the failed call must leave the stored kernel untouched.
+        with pytest.raises(TypeCheckError, match="network layer and expects a floating-point feature map"):
+            module(image)
 
     def test_dtype_call_order_5699(self, module_cls, device, dtype):
         module = module_cls(3).to(device=device)
@@ -708,3 +701,29 @@ class TestConventionsBlurPool(BaseTester):
         ones = torch.ones(1, 1, 15, 18, device=device, dtype=dtype)
         for kernel_size in (3, 5, 7, 9, 15):
             self.assert_close(edge_aware_blur_pool2d(ones, kernel_size), ones)
+
+
+class TestBlurPoolIntegerInput:
+    # The blur pools are network layers and expect a floating feature map. An integer kernel cast used to truncate
+    # every binomial tap to 0: BlurPool2D and MaxBlurPool2D returned zeros on CPU, the functions raised a dtype
+    # mismatch, and CUDA raised from cuDNN or the Byte max pool. Every entry point now raises the same TypeCheckError.
+    @pytest.mark.parametrize(
+        "call",
+        [
+            BlurPool2D(3),
+            MaxBlurPool2D(3),
+            EdgeAwareBlurPool2D(3),
+            lambda x: blur_pool2d(x, 3),
+            lambda x: max_blur_pool2d(x, 3),
+            lambda x: edge_aware_blur_pool2d(x, 3),
+        ],
+        ids=["BlurPool2D", "MaxBlurPool2D", "EdgeAwareBlurPool2D", "blur_pool2d", "max_blur_pool2d", "edge_aware"],
+    )
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32, torch.bool])
+    def test_integer_input_raises(self, call, int_dtype, device):
+        image = (torch.arange(64, device=device).reshape(1, 1, 8, 8) % 7).to(int_dtype)
+        with pytest.raises(
+            TypeCheckError, match=f"network layer and expects a floating-point feature map, got {int_dtype}"
+        ):
+            call(image)
+        assert call(image.float()).dtype == torch.float32
