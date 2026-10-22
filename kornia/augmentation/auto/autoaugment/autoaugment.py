@@ -127,8 +127,8 @@ class AutoAugment(PolicyAugmentBase):
           value. The wrapped operation samples a value inside its selected interval for every batch row;
           ``posterize`` then rounds to the nearest integer number of bits (so bin ``1``, spanning ``4.4`` to
           ``4.8``, produces ``4`` or ``5``), ``translate_x`` / ``translate_y`` multiply it by the image size in
-          pixels, and ``shear_x`` / ``shear_y``, whose scale is a shear fraction from ``-0.3`` to ``0.3``, multiply
-          it by ``180`` to give degrees.
+          pixels, and ``shear_x`` / ``shear_y``, whose scale is a shear factor from ``-0.3`` to ``0.3``, map
+          it to degrees with ``rad2deg(atan(x))``, as torchvision does.
 
     Args:
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
