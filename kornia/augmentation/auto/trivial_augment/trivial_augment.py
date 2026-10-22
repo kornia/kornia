@@ -57,7 +57,8 @@ class TrivialAugment(PolicyAugmentBase):
           independently for every batch row.
         - the operation wrapper's magnitude mapping applies, as under
           :class:`~kornia.augmentation.auto.RandAugment`. A ``("rotate", -30, 30)`` candidate draws angles in
-          ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``0.3 * 180`` degrees.
+          ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``rad2deg(atan(0.3))``,
+          about ``16.7`` degrees.
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
