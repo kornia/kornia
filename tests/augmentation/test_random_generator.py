@@ -2065,6 +2065,35 @@ class TestHalfPrecisionPositionSamplers:
         assert src[:, 0].tolist() == [[4.0] * ndim] * 2
 
 
+class TestIndexPermutationsInHalfPrecision:
+    # The ColorJiggle order and the MixUp pairs are index permutations, drawn as int64 whatever the sampling dtype.
+    # CUDA has no bfloat16 randperm, so a generator moved to bfloat16 -- directly, or by a container's or a model's
+    # .to() -- raised there; the CPU legs pin the dtype and the permutation. torch draws the same permutation for
+    # every dtype, so full-precision draws are unchanged.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_color_jiggle_order_is_an_int64_permutation(self, device, half_dtype):
+        generator = ColorJiggleGenerator(0.1, 0.1, 0.1, 0.1)
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        order = generator(torch.Size([2, 3, 4, 4]))["order"]
+        assert order.dtype == torch.int64
+        assert sorted(order.tolist()) == [0, 1, 2, 3]
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_mixup_pairs_are_an_int64_permutation(self, device, half_dtype):
+        generator = MixupGenerator(p=1.0)
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        pairs = generator(torch.Size([5, 3, 4, 4]))["mixup_pairs"]
+        assert pairs.dtype == torch.int64
+        assert sorted(pairs.tolist()) == [0, 1, 2, 3, 4]
+
+    def test_full_precision_orders_are_unchanged(self):
+        # Recorded on CPU float32 with the generator's former float32 randperm: the int64 draw is the same.
+        generator = ColorJiggleGenerator(0.1, 0.1, 0.1, 0.1)
+        torch.manual_seed(0)
+        orders = [generator(torch.Size([2, 3, 4, 4]))["order"].tolist() for _ in range(5)]
+        assert orders == [[1, 0, 3, 2], [1, 3, 0, 2], [1, 0, 3, 2], [3, 2, 0, 1], [1, 2, 3, 0]]
+
+
 class TestTruncateToStart:
     # The largest float32 below 1 rounds to 1.0 in float16 and in bfloat16, the largest float64 below 1 rounds to
     # 1.0 in float32. The start has to stay at the last valid position and come back in the extent's dtype.
