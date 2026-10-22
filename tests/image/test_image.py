@@ -73,13 +73,10 @@ class TestImage(BaseTester):
             Image(data, pixel_format, layout)
         assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
 
-
     def test_layout_check_skips_fractional_when_checks_disabled(self):
         # with checks disabled, KORNIA_CHECK_IMAGE_LAYOUT returns True like KORNIA_CHECK_SHAPE
         data = torch.rand(3, 4, 5)
-        layout = ImageLayout(
-            image_size=ImageSize(4.5, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST
-        )
+        layout = ImageLayout(image_size=ImageSize(4.5, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST)
         disable_checks()
         try:
             assert KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
