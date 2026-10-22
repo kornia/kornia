@@ -644,7 +644,9 @@ class TestCropByIndices(BaseTester):
             row_out = crop(row, src_box[i : i + 1], size=size, shape_compensation=shape_compensation)
             (row_gradient,) = torch.autograd.grad(row_out, row, weights[i : i + 1])
             self.assert_close(out[i : i + 1], row_out, rtol=0, atol=0)
-            self.assert_close(gradient[i : i + 1], row_gradient, rtol=0, atol=0)
+            # CUDA accumulates the batched and the single-image gradient in a different order: 1 ULP apart.
+            exact = {} if device.type == "cuda" else {"rtol": 0, "atol": 0}
+            self.assert_close(gradient[i : i + 1], row_gradient, **exact)
 
     def test_crop_by_indices_no_resizing(self, device, dtype):
         inp = torch.tensor([[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7, 8, 9]]]], device=device, dtype=dtype)  # 1x3x3
