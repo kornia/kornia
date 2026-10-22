@@ -319,10 +319,7 @@ def focal_loss(
             f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
             f"{pred.shape}",
         )
-        KORNIA_CHECK(
-            weight.device == pred.device,
-            f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
-        )
+        KORNIA_CHECK_SAME_DEVICE(weight, pred)
 
         weight = weight.view(broadcast_dims)
         loss_tmp = weight * loss_tmp
@@ -518,10 +515,7 @@ def binary_focal_loss_with_logits(
             f"pos_weight must hold one value per class of pred: got pos_weight of shape {pos_weight.shape} for pred "
             f"of shape {pred.shape}",
         )
-        KORNIA_CHECK(
-            pos_weight.device == pred.device,
-            f"pos_weight and pred must be in the same device. Got: {pos_weight.device} and {pred.device}",
-        )
+        KORNIA_CHECK_SAME_DEVICE(pos_weight, pred)
 
         pos_weight = pos_weight.view(broadcast_dims)
         pos_term = pos_weight * pos_term
@@ -534,10 +528,7 @@ def binary_focal_loss_with_logits(
             f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
             f"{pred.shape}",
         )
-        KORNIA_CHECK(
-            weight.device == pred.device,
-            f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
-        )
+        KORNIA_CHECK_SAME_DEVICE(weight, pred)
 
         weight = weight.view(broadcast_dims)
         loss_tmp = weight * loss_tmp

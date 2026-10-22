@@ -48,6 +48,14 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         with pytest.raises(DeviceError):
             kornia.losses.binary_focal_loss_with_logits(pred, target.to("meta"))
 
+        with pytest.raises(DeviceError):
+            kornia.losses.binary_focal_loss_with_logits(pred, target, weight=torch.ones(3, device="meta", dtype=dtype))
+
+        with pytest.raises(DeviceError):
+            kornia.losses.binary_focal_loss_with_logits(
+                pred, target, pos_weight=torch.ones(3, device="meta", dtype=dtype)
+            )
+
         with pytest.raises(ShapeError):
             kornia.losses.binary_focal_loss_with_logits(pred, target[:, :2])
 
@@ -223,6 +231,9 @@ class TestFocalLoss(BaseTester):
 
         with pytest.raises(DeviceError):
             kornia.losses.focal_loss(pred, target.to("meta"), 0.5)
+
+        with pytest.raises(DeviceError):
+            kornia.losses.focal_loss(pred, target, 0.5, weight=torch.ones(3, device="meta", dtype=dtype))
 
         with pytest.raises(ShapeError):
             kornia.losses.focal_loss(torch.rand(4, device=device, dtype=dtype), target, 0.5)
