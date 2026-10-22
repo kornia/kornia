@@ -1170,31 +1170,27 @@ class VideoBoxes(Boxes):
         self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
         return self
 
-    def to_tensor(
-        self, mode: Optional[str] = None, as_padded_sequence: bool = False
-    ) -> torch.Tensor | list[torch.Tensor]:
+    def to_tensor(self, mode: Optional[str] = None, as_padded_sequence: bool = False) -> torch.Tensor:
         r"""Cast :class:`VideoBoxes` to a tensor with the temporal axis restored.
 
         Args:
             mode: Output box format forwarded to :meth:`Boxes.to_tensor`. When
                 ``None``, uses the stored mode (``vertices_plus`` by default).
-            as_padded_sequence: Forwarded to :meth:`Boxes.to_tensor`. It only
-                changes the result of a list-backed container; a
-                :class:`VideoBoxes` built from a :math:`(B, T, N, 4, 2)` tensor
-                is not list-backed, so the value makes no difference there. The
-                keyword is accepted because the inherited :meth:`get_boxes_shape`
-                and :meth:`to_mask` pass it.
+            as_padded_sequence: Accepted because the inherited :meth:`get_boxes_shape`
+                and :meth:`to_mask` pass it; the result is one padded tensor either way.
+                A :class:`VideoBoxes` is built from a dense :math:`(B, T, N, 4, 2)` tensor,
+                so frames only hold different box counts after an augmentation pads them,
+                such as a mix under a partial gate. Per-frame trimmed tensors could not
+                carry the temporal axis, so the shorter frames come back padded, as
+                :meth:`Boxes.to_tensor` pads a list-backed container.
 
         Returns:
             Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
             :attr:`temporal_channel_size`.
         """
-        out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
+        out = cast(torch.Tensor, super().to_tensor(mode, as_padded_sequence=True))
         batch_size = self._data.shape[0] // self.temporal_channel_size
-        if isinstance(out, torch.Tensor):
-            return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
-        # If returns a list of boxes.
-        return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
+        return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
 
     def clone(self) -> VideoBoxes:
         """Create an independent copy of the video box container.

@@ -383,6 +383,32 @@ class TestVideoSequential:
             assert_close(out_boxes, expected.reshape(batch_size, frame_num, *expected.shape[1:]))
         assert partial == (p < 1.0)
 
+    def test_mosaic_video_boxes_object_input_exports_padded_6173(self, device, dtype):
+        # A VideoBoxes input comes back as VideoBoxes. After a partial gate its frames hold 4 or 1 boxes, and
+        # to_tensor() used to reshape each trimmed frame with the temporal axis and raise; it now returns the padded
+        # (B, T, N, 4, 2) tensor, equal to the dense tensor input's output.
+        from kornia.geometry.boxes import VideoBoxes
+
+        batch_size, frame_num = 3, 2
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomMosaic(p=0.5), same_on_frame=True), data_keys=["input", "bbox"]
+        )
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            _, dense = aug(video, boxes)
+            torch.manual_seed(seed)
+            _, wrapped = aug(video, VideoBoxes.from_tensor(boxes))
+            assert isinstance(wrapped, VideoBoxes)
+            partial |= wrapped._N is not None
+            exported = wrapped.to_tensor()
+            assert exported.shape == dense.shape
+            assert_close(exported, dense)
+            assert wrapped.to_tensor("xyxy").shape == (*dense.shape[:3], 4)
+        assert partial
+
     @staticmethod
     def _tagged_video(batch_size, frame_num, data_format, device, dtype):
         """Build a video whose pixel value is ``10 * (video + 1) + frame``.
