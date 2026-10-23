@@ -1253,6 +1253,35 @@ class TestConventionAugmentationBase2D(BaseTester):
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
         assert augmentation()(empty).shape == shape
 
+    @pytest.mark.parametrize(
+        ("augmentation", "input_shape", "output_size"),
+        [
+            pytest.param(lambda p: K.RandomCrop((4, 6), p=p), (3, 6, 8), (4, 6), id="RandomCrop"),
+            pytest.param(lambda p: K.RandomCrop((4, 6), padding=1, p=p), (3, 6, 8), (4, 6), id="RandomCrop-padding"),
+            pytest.param(lambda p: K.CenterCrop((4, 6), p=p), (3, 6, 8), (4, 6), id="CenterCrop"),
+            pytest.param(lambda p: K.RandomResizedCrop((4, 4), p=p), (3, 6, 8), (4, 4), id="RandomResizedCrop"),
+            pytest.param(lambda p: K.Resize((4, 5), p=p), (3, 6, 8), (4, 5), id="Resize-tuple"),
+            pytest.param(lambda p: K.Resize(10, side="long", p=p), (3, 6, 8), (7, 10), id="Resize-int-long"),
+            pytest.param(lambda p: K.LongestMaxSize(16, p=p), (3, 6, 8), (12, 16), id="LongestMaxSize"),
+            pytest.param(lambda p: K.SmallestMaxSize(12, p=p), (3, 6, 8), (12, 16), id="SmallestMaxSize"),
+            pytest.param(lambda p: K.RandomCrop3D((4, 4, 4), p=p), (1, 6, 8, 10), (4, 4, 4), id="RandomCrop3D"),
+            pytest.param(lambda p: K.CenterCrop3D((4, 4, 4), p=p), (1, 6, 8, 10), (4, 4, 4), id="CenterCrop3D"),
+        ],
+    )
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    def test_zero_batch_takes_configured_size_under_any_gate_4429(
+        self, augmentation, input_shape, output_size, p, device, dtype
+    ):
+        # An empty batch has no sample for the gate to skip, so a shape-changing augmentation returns its configured
+        # output size whatever ``p`` is (#4429), as 0.8.3 did for the 2D crops. A non-empty batch the gate skips
+        # entirely still comes back at its input size.
+        channels = input_shape[0]
+        aug = augmentation(p)
+        empty = torch.rand(0, *input_shape, device=device, dtype=dtype)
+        assert aug(empty).shape == (0, channels, *output_size)
+        skipped = torch.rand(2, *input_shape, device=device, dtype=dtype)
+        assert augmentation(0.0)(skipped).shape == skipped.shape
+
 
 _AUGMENTATIONS = [K.RandomEqualize, K.RandomEqualize3D, K.RandomPosterize, K.RandomSharpness]
 
