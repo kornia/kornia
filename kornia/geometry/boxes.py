@@ -633,11 +633,12 @@ class Boxes:
             out-of-range boxes replaced by zero coordinates.
         """
         area = self.compute_area()
-        keep = torch.ones_like(area, dtype=torch.bool)
+        area_flat = area.reshape(self._valid.shape)
+        keep = torch.ones_like(area_flat, dtype=torch.bool)
         if min_area is not None:
-            keep &= ~(area < min_area)
+            keep &= ~(area_flat < min_area)
         if max_area is not None:
-            keep &= ~(area > max_area)
+            keep &= ~(area_flat > max_area)
         obj = self if inplace else self.clone()
         obj._valid &= keep
         if min_area is not None or max_area is not None:
@@ -1090,6 +1091,8 @@ class VideoBoxes(Boxes):
           :meth:`Boxes.from_tensor` does for ``'vertices_plus'``.
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
+        - :meth:`compute_area` returns :math:`(B, T, N)` areas, and :meth:`to_mask` returns
+          :math:`(B, T, N, \text{height}, \text{width})` masks.
         - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
           one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`. Index
           assignment, ``video_boxes[key] = other``, writes the same whole videos.
@@ -1210,6 +1213,35 @@ class VideoBoxes(Boxes):
         obj._is_batched = self._is_batched
         obj.temporal_channel_size = self.temporal_channel_size
         return obj
+
+    def compute_area(self) -> torch.Tensor:
+        r"""Compute polygon area with the shoelace formula with the temporal axis restored.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.VideoBoxes`.
+
+        Returns:
+            Area for each box, shaped :math:`(B, T, N)`.
+        """
+        area = super().compute_area()
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        return area.reshape(batch_size, self.temporal_channel_size, *area.shape[1:])
+
+    def to_mask(self, height: int, width: int) -> torch.Tensor:
+        r"""Convert 2D video boxes to masks with the temporal axis restored.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.VideoBoxes`.
+
+        Args:
+            height: height of the masked image/images.
+            width: width of the masked image/images.
+
+        Returns:
+            The output mask tensor, shaped :math:`(B, T, N, \text{height}, \text{width})` and dtype of
+            :func:`Boxes.dtype`.
+        """
+        mask = super().to_mask(height, width)
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        return mask.reshape(batch_size, self.temporal_channel_size, *mask.shape[1:])
 
 
 class Boxes3D:
