@@ -446,8 +446,12 @@ class Rotate(OperationBase):
 class ShearX(OperationBase):
     """Apply shear operation along x-axis.
 
+    The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`. It is mapped to the wrapped augmentation's degrees with
+    ``rad2deg(atan(magnitude))``, so a magnitude of ``0.3`` shears by about ``16.7`` degrees.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a shear factor.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -458,8 +462,9 @@ class ShearX(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
@@ -486,8 +491,12 @@ class ShearX(OperationBase):
 class ShearY(OperationBase):
     """Apply shear operation along y-axis.
 
+    The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`. It is mapped to the wrapped augmentation's degrees with
+    ``rad2deg(atan(magnitude))``, so a magnitude of ``0.3`` shears by about ``16.7`` degrees.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a shear factor.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -498,8 +507,9 @@ class ShearY(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
