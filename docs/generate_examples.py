@@ -30,6 +30,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+from kornia_moons.feature import visualize_LAF
+from kornia.image import draw_rectangle, tensor_to_image
 from matplotlib.axes import Axes
 from PIL import Image
 
@@ -112,8 +114,9 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
     rectangle2[..., 0::2] = rectangle2[..., 0::2].clamp(0, imgs.shape[-1] - 1)
     rectangle2[..., 1::2] = rectangle2[..., 1::2].clamp(0, imgs.shape[-2] - 1)
-    return K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
+    imgs_draw = draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
+    return imgs_draw
 
 def main():
     # Download the tutorial examples for the main docs
@@ -266,7 +269,7 @@ def main():
 
         output = torch.cat([img_in[0], img_in[1], img_aug], dim=-1)
         # save the output image
-        out_np = K.image.tensor_to_image((output * 255.0).byte())
+        out_np = tensor_to_image((output * 255.0).byte())
         write_png(OUTPUT_PATH / f"{aug_name}.png", out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -287,7 +290,7 @@ def main():
 
         output = torch.cat([img_in[0], img_in[1], img_aug[0]], dim=-1)
         # save the output image
-        out_np = K.image.tensor_to_image((output * 255.0).byte())
+        out_np = tensor_to_image((output * 255.0).byte())
         write_png(OUTPUT_PATH / f"{aug_name}.png", out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -347,7 +350,7 @@ def main():
         output = torch.cat([inp[0], *(out[i] for i in range(out.size(0)))], dim=-1)
 
         # save the output image
-        out_np = K.image.tensor_to_image((output * 255.0).byte())
+        out_np = tensor_to_image((output * 255.0).byte())
         write_png(OUTPUT_PATH / f"{aug_name}.png", out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
