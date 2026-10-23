@@ -158,8 +158,7 @@ def depth_to_3d_v2(
           ``ShapeError``); with ``xyz_grid`` only its shape is checked.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - ``xyz_grid`` replaces the grid construction; pass what :func:`~kornia.geometry.depth.unproject_meshgrid`
-          returns for the same camera. With ``xyz_grid`` the calibration values of ``camera_matrix`` are never
-          read, only its ``(*, 3, 3)`` shape is checked.
+          returns for the same camera.
         - without ``xyz_grid``, the pixel grid is built in ``promote_types(depth.dtype, camera_matrix.dtype)``
           when either input is floating (the default floating dtype when both are integer), so half-precision
           depth does not round the pixel indices below the intrinsics' precision.
@@ -315,7 +314,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
 
     dtype = torch.promote_types(depth.dtype, camera_matrix.dtype)
     # Compute in float32 when either input is half precision: bfloat16 cannot hold the pixel grid past 256 and the
-    # float16 cross product of small pixel tangents underflows. The grid takes ``depth``'s dtype, so cast each input.
+    # float16 cross product of small pixel tangents underflows. The grid takes the promoted dtype, so cast each input.
     if depth.dtype in (torch.float16, torch.bfloat16):
         depth = depth.float()
     if camera_matrix.dtype in (torch.float16, torch.bfloat16):

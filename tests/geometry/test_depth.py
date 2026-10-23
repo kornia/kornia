@@ -354,6 +354,16 @@ class TestDepthTo3d(BaseTester):
             assert torch.equal(points, depth_to_3d(reference, camera_matrix))
             assert torch.equal(points_v2, depth_to_3d_v2(reference[:, 0], camera_matrix))
 
+    @pytest.mark.parametrize("depth_dtype", [torch.uint8, torch.int8])
+    def test_8bit_depth_does_not_wrap_the_column_index_6148(self, depth_dtype, device, dtype):
+        # A grid built in the depth's dtype wrapped the column index past 255 (uint8) or 127 (int8), so column 256
+        # unprojected like column 0. The grid now follows the intrinsics, as it does for int32 depth.
+        camera_matrix = _k_asymmetric(device, dtype)
+        depth = torch.full((1, 1, 2, 300), 3, device=device, dtype=depth_dtype)
+        reference = depth.to(torch.int32)
+        assert torch.equal(depth_to_3d(depth, camera_matrix), depth_to_3d(reference, camera_matrix))
+        assert torch.equal(depth_to_3d_v2(depth[:, 0], camera_matrix), depth_to_3d_v2(reference[:, 0], camera_matrix))
+
     def test_integer_depth_and_intrinsics_use_the_default_floating_dtype_6148(self, device, dtype):
         # Both inputs integer: promote_types does not support the unsigned/signed pair, so the grid falls back
         # to the default floating dtype instead of raising. MPS cannot compute in float64.
@@ -691,8 +701,9 @@ class TestWarpFrameDepth(BaseTester):
     def test_half_depth_with_float32_intrinsics_is_the_identity_6148(self, half_dtype, device, dtype):
         # kornia#6148 on the wrapper path: warp_frame_depth reaches the mixed-dtype fix through
         # depth_to_3d_v2, so an identity warp with half-precision depth and float32 intrinsics and
-        # transform reproduces the float32-depth image instead of sampling off-by-pixels.
-        height, width = 2, 640
+        # transform reproduces the float32-depth image instead of sampling off-by-pixels. float16 holds the
+        # column indices exactly up to 2048, so its case needs a wider image.
+        height, width = 2, (640 if half_dtype == torch.bfloat16 else 2051)
         camera_matrix = torch.tensor(
             [[[500.0, 0.0, 320.0], [0.0, 500.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=torch.float32
         )
