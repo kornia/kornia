@@ -355,7 +355,7 @@ class Boxes:
             # Padding counts follow the rows they describe, so the export trims or zeroes the new rows' padding
             # and keeps real boxes written over old padding.
             padding = self._padding_counts()
-            padding[key] = value._padding_counts()
+            padding[key] = value._padding_counts(self._data.shape[-3])
             self._N = padding.tolist()
         elif self._data.ndim == 3 and (self._row_padding or value._row_padding or value._N is not None):
             rows = torch.arange(self._data.shape[0], device=self.device).view(-1, 1, 1).expand_as(self._data)
@@ -381,14 +381,20 @@ class Boxes:
             real[written.reshape(-1)] = True
         self._row_padding = self._data.shape[0] - 1 - int(torch.where(real, positions, -1).amax())
 
-    def _padding_counts(self) -> torch.Tensor:
+    def _padding_counts(self, num_boxes: Optional[int] = None) -> torch.Tensor:
         """Return the trailing padding count of each batch row as a tensor, zero for rows without padding.
 
-        An unbatched object returns its own row's count as a scalar tensor.
+        An unbatched object returns its own row's count as a scalar tensor. When ``num_boxes`` is given,
+        account for a singleton box axis broadcasting to that many destination boxes: an all-padding singleton
+        becomes ``num_boxes`` padding rows, while a real singleton remains unpadded.
         """
         if self._N is not None:
-            return torch.as_tensor(self._N, device=self._data.device)
-        return torch.full(self._data.shape[:-3], self._row_padding, device=self._data.device, dtype=torch.long)
+            counts = torch.as_tensor(self._N, device=self._data.device)
+        else:
+            counts = torch.full(self._data.shape[:-3], self._row_padding, device=self._data.device, dtype=torch.long)
+        if num_boxes is not None and self._data.shape[-3] == 1:
+            counts = counts * num_boxes
+        return counts
 
     @property
     def shape(self) -> tuple[int, ...] | Size:
@@ -1254,7 +1260,7 @@ class VideoBoxes(Boxes):
         if self._N is not None or value._N is not None:
             # Per-frame padding (#6173) follows the written frames, as in Boxes.__setitem__.
             padding = self._padding_counts()
-            padding.view(n, size)[key] = value._padding_counts().view(m, size)
+            padding.view(n, size)[key] = value._padding_counts(self._data.shape[-3]).view(m, size)
             self._N = padding.tolist()
         return self
 

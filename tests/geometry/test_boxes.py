@@ -406,6 +406,26 @@ class TestBoxes2D(BaseTester):
         self.assert_close(exported[1], Boxes(rows)[1:2].to_tensor("xyxy")[0], atol=0.0, rtol=0.0)
         self.assert_close(exported[2], dense_before[2], atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("num_boxes", [0, 1, 3])
+    @pytest.mark.parametrize("padded_source", [False, True])
+    @pytest.mark.parametrize("batched_source", [False, True])
+    @pytest.mark.parametrize("selection", [0, slice(None, 1), [True, False]])
+    def test_setitem_broadcasts_padding_with_singleton_box_6173(
+        self, num_boxes, padded_source, batched_source, selection, device, dtype
+    ):
+        box = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        full = box.repeat(num_boxes, 1, 1)
+        target = Boxes([box[:0], full])
+        source_batch = Boxes([box[:0] if padded_source else box, box])
+        source = source_batch[:1] if batched_source else source_batch[0]
+        key = torch.tensor(selection, device=device) if isinstance(selection, list) else selection
+        target[key] = source
+        assert target._N == [num_boxes if padded_source else 0, 0]
+        exported = target.to_tensor("xyxy")
+        expected = Boxes(box[:0] if padded_source else full).to_tensor("xyxy")
+        self.assert_close(exported[0], expected, atol=0.0, rtol=0.0)
+        self.assert_close(exported[1], Boxes(full).to_tensor("xyxy"), atol=0.0, rtol=0.0)
+
     def test_setitem_restores_the_padding_of_an_integer_selection_6173(self, device, dtype):
         # An integer selection exports every row as a box, but writing it back restores its row's padding, so a
         # self-assignment changes nothing. A write over the selected padding makes those rows boxes, and a merge
@@ -2661,6 +2681,30 @@ class TestVideoBoxes(BaseTester):
         padded[1] = dense[0]
         assert padded._N == [1, 0, 0, 0]
         self.assert_close(padded.to_tensor("xyxy"), torch.stack([expected[0], dense_before[0]]), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("num_boxes", [0, 1, 3])
+    @pytest.mark.parametrize("padded_target", [False, True])
+    @pytest.mark.parametrize("selection", [0, slice(None), [True, False]])
+    def test_index_assignment_broadcasts_frame_padding_6173(self, num_boxes, padded_target, selection, device, dtype):
+        box = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        empty = box[:0]
+        full = box.repeat(num_boxes, 1, 1)
+        if padded_target:
+            target = VideoBoxes.from_tensor(torch.empty(2, 2, 0, 4, 2, device=device, dtype=dtype))
+            target = target.merge(Boxes([empty, empty, full, full]))
+        else:
+            target = VideoBoxes.from_tensor(full.reshape(1, 1, num_boxes, 4, 2).repeat(2, 2, 1, 1, 1))
+        source = VideoBoxes.from_tensor(torch.empty(1, 2, 0, 4, 2, device=device, dtype=dtype))
+        source = source.merge(Boxes([empty, box]))
+        key = torch.tensor(selection, device=device) if isinstance(selection, list) else selection
+        expected = target.to_tensor("xyxy").clone()
+        expected[key] = source.to_tensor("xyxy").expand(1, 2, num_boxes, 4)
+        target[key] = source
+        self.assert_close(target.to_tensor("xyxy"), expected, atol=0.0, rtol=0.0)
+        padding = torch.tensor([num_boxes, num_boxes, 0, 0] if padded_target else [0] * 4, device=device).view(2, 2)
+        padding[key] = torch.tensor([num_boxes, 0], device=device)
+        assert target._N == padding.flatten().tolist()
+        assert source._N == [1, 0]
 
     def test_to_mask_with_frame_padding_6173(self, device, dtype):
         # A video's export carries one padding count per frame, so the padding gives empty masks per frame, as in a
