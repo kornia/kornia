@@ -129,6 +129,11 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - For non-JIT modules, use `from __future__ import annotations`.
 - Avoid new runtime dependencies. If a dependency is genuinely useful, explain why the existing stack is insufficient and consider its install, build, and platform cost.
 
+## Responding to review
+
+- Treat a fix that a reviewer suggests, whether a maintainer, a bot or another agent, as a hypothesis about the cause. Before applying it, check whether kornia already maintains the invariant it protects. For example, `Boxes._valid` marks rows that are not boxes: every indexed read and write carries it and every export zeroes those rows, so rows that must never export as boxes do not need a separate count that each write path would have to keep in sync.
+- If two review rounds in a row report a regression that the previous fix round introduced, stop patching individual cases. State the invariant, find the code responsible for keeping it, and redesign before pushing another fix, reverting earlier rounds when that is simpler.
+
 ## Documentation and generated examples
 
 - A user-visible change adds a `changelog.d/<PR>.<type>.md` fragment (`added`, `fixed`, or `breaking`), not an edit to `CHANGELOG.md`. See [changelog.d/README.md](changelog.d/README.md) for naming before a PR exists and the release workflow. A breaking change says what used to happen as well as what happens now. Internal changes may omit a fragment with an explanation in the PR and the `no-changelog` label. Release PRs also use that label when consuming fragments. Only release PRs assemble and consume fragments.
