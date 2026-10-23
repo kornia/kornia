@@ -204,3 +204,11 @@ class TestPSNRHalfPrecision(BaseTester):
         assert torch.isfinite(grad_target).all()
         self.assert_close(grad_image, expected)
         self.assert_close(grad_target, -expected)
+
+    def test_tensor_max_val_keeps_its_result_dtype(self, device, dtype):
+        # A float32 tensor max_val gave a float32 PSNR for every image dtype before half precision moved to float32.
+        image = torch.tensor([1.0 / 512], device=device, dtype=dtype)
+        max_val = torch.tensor([1.0, 255.0], device=device)
+        actual = kornia.metrics.psnr(image, torch.zeros_like(image), max_val)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, max_val.new_tensor([20 * math.log10(512), 20 * math.log10(255 * 512)]))

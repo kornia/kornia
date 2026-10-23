@@ -96,5 +96,6 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     ratio = max_val**2 / mse(image, target, reduction="mean")
     result = 10.0 * torch.log10(ratio)
     if dtype in (torch.float16, torch.bfloat16):
-        result = result.to(dtype)
+        # A tensor max_val takes part in the result dtype, as it did when the images were computed in their own dtype.
+        result = result.to(torch.promote_types(dtype, max_val.dtype) if isinstance(max_val, torch.Tensor) else dtype)
     return result.reshape(ratio.shape)
