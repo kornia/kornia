@@ -48,20 +48,6 @@ def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[tor
     return output, stats
 
 
-def _zero_trailing_padding(boxes: torch.Tensor, padding: list[int]) -> torch.Tensor:
-    """Zero the last ``padding[i]`` rows of sample ``i`` in a ``(B, N, ...)`` box export.
-
-    Padding is stored as zero boxes, which are valid boxes: an exclusive ``'xyxy'``, ``'xywh'`` or ``'vertices'``
-    export turns one into ``[0, 0, 1, 1]``, and a geometric transform moves it, so a padded export would read as
-    real boxes. Zeroing after the export keeps the padding exactly zero in every mode.
-    """
-    num_boxes = boxes.shape[1]
-    real = torch.tensor([num_boxes - n for n in padding], device=boxes.device)
-    valid = torch.arange(num_boxes, device=boxes.device)[None] < real[:, None]
-    valid = valid.reshape(valid.shape + (1,) * (boxes.dim() - 2))
-    return torch.where(valid, boxes, torch.zeros((), device=boxes.device, dtype=boxes.dtype))
-
-
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
     """Transform 3D and 2D in kornia format by applying the transformation matrix M.
 
@@ -290,10 +276,6 @@ class Boxes:
         mode: str = "vertices_plus",
     ) -> None:
         self._N: Optional[list[int]] = None
-        # An integer index selects one row of a list-built batch as an unbatched object without ``_N``, whose exports
-        # treat every row as a box. It keeps the row's trailing padding count here only so that assigning it back into
-        # a batch restores that padding (#6173).
-        self._row_padding = 0
 
         if isinstance(boxes, list):
             boxes, self._N = _merge_box_list(boxes)
@@ -324,7 +306,6 @@ class Boxes:
         self.__dict__.update(state)
         if "_valid" not in state:  # pickled before filtering kept validity: every box is valid
             self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
-        self.__dict__.setdefault("_row_padding", 0)
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
@@ -333,68 +314,13 @@ class Boxes:
         # Select padding metadata with the same key as the box batch, including boolean masks.
         if self._N is not None:
             selected = torch.as_tensor(self._N, device=self._data.device)[key]
-            if selected.ndim == 0:
-                new_box._row_padding = int(selected)
-            else:
-                new_box._N = [int(n) for n in selected]
-        elif self._row_padding and new_box._data.shape[-3]:
-            # An unbatched selection can reorder boxes: only padding after the last selected real box is trailing.
-            real = torch.arange(self._data.shape[0], device=self.device)[key] < self._data.shape[0] - self._row_padding
-            positions = torch.arange(new_box._data.shape[-3], device=self.device)
-            padding = new_box._data.shape[-3] - 1 - torch.where(real, positions, -1).amax(dim=-1)
-            if new_box._is_batched:
-                new_box._N = padding.tolist()
-            else:
-                new_box._row_padding = int(padding)
+            new_box._N = None if selected.ndim == 0 else [int(n) for n in selected]
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
         self._data[key] = value._data
         self._valid[key] = value._valid
-        if self._data.ndim == 4 and (self._N is not None or value._N is not None or value._row_padding):
-            # Padding counts follow the rows they describe, so the export trims or zeroes the new rows' padding
-            # and keeps real boxes written over old padding.
-            padding = self._padding_counts()
-            padding[key] = value._padding_counts(self._data.shape[-3])
-            self._N = padding.tolist()
-        elif self._data.ndim == 3 and (self._row_padding or value._row_padding or value._N is not None):
-            rows = torch.arange(self._data.shape[0], device=self.device).view(-1, 1, 1).expand_as(self._data)
-            self._update_row_padding(rows[key], value)
         return self
-
-    def _update_row_padding(self, written: torch.Tensor, values: Optional[Boxes] = None) -> None:
-        """Update an unbatched row's trailing padding after a write, preserving a Boxes source's padding."""
-        if written.numel() == 0:
-            return
-        positions = torch.arange(self._data.shape[0], device=self.device)
-        real = positions < self._data.shape[0] - self._row_padding
-        if values is not None and (values._row_padding or values._N is not None):
-            source_real = torch.arange(values.data.shape[-3], device=self.device) < (
-                values.data.shape[-3] - values._padding_counts()[..., None]
-            )
-            source_real = source_real[..., None, None]
-            # Tensor assignment permits redundant leading singleton dimensions on its source.
-            while source_real.ndim > written.ndim:
-                source_real = source_real.squeeze(0)
-            real[written.reshape(-1)] = source_real.expand_as(written).reshape(-1)
-        else:
-            real[written.reshape(-1)] = True
-        self._row_padding = self._data.shape[0] - 1 - int(torch.where(real, positions, -1).amax())
-
-    def _padding_counts(self, num_boxes: Optional[int] = None) -> torch.Tensor:
-        """Return the trailing padding count of each batch row as a tensor, zero for rows without padding.
-
-        An unbatched object returns its own row's count as a scalar tensor. When ``num_boxes`` is given,
-        account for a singleton box axis broadcasting to that many destination boxes: an all-padding singleton
-        becomes ``num_boxes`` padding rows, while a real singleton remains unpadded.
-        """
-        if self._N is not None:
-            counts = torch.as_tensor(self._N, device=self._data.device)
-        else:
-            counts = torch.full(self._data.shape[:-3], self._row_padding, device=self._data.device, dtype=torch.long)
-        if num_boxes is not None and self._data.shape[-3] == 1:
-            counts = counts * num_boxes
-        return counts
 
     @property
     def shape(self) -> tuple[int, ...] | Size:
@@ -492,15 +418,16 @@ class Boxes:
             data = torch.cat([self._data, boxes.data], dim=-3)
             valid = torch.cat([self._valid, boxes._valid], dim=-1)
 
-        # The right input's padding stays trailing. If it is empty or all padding, the left padding does too.
-        row_padding = boxes._row_padding
-        if boxes._row_padding == boxes.data.shape[-3]:
-            row_padding += self._row_padding
-        obj = self if inplace else self.clone()
+        if inplace:
+            self._data = data
+            self._N = padding
+            self._valid = valid
+            return self
+
+        obj = self.clone()
         obj._data = data
         obj._N = padding
         obj._valid = valid
-        obj._row_padding = row_padding
         return obj
 
     def index_put(
@@ -523,9 +450,7 @@ class Boxes:
                 shaped :math:`(B, N, 4, 2)` or :math:`(N, 4, 2)`.
             values: Replacement coordinates. If a :class:`Boxes` object is
                 passed, its coordinates and filtering validity are copied. Raw tensor writes
-                change coordinates and preserve the existing filtering validity. Raw writes into an integer-selected
-                row's padding make the affected boxes real when the row is assigned back to a batch; a Boxes source
-                retains its own trailing padding.
+                change only coordinates and preserve the existing filtering validity.
             inplace: If ``True``, update this object and return ``self``. If
                 ``False``, clone the current data first and return a new
                 :class:`Boxes` instance.
@@ -539,12 +464,6 @@ class Boxes:
             obj._valid.index_put_(indices, values._valid)
         else:
             obj._data.index_put_(indices, values)
-        if obj._data.ndim == 3 and (
-            obj._row_padding or (isinstance(values, Boxes) and (values._row_padding or values._N is not None))
-        ):
-            # Index the row numbers with the same coordinate indices, including boolean masks and negative indices.
-            rows = torch.arange(obj._data.shape[0], device=obj.device).view(-1, 1, 1).expand_as(obj._data)
-            obj._update_row_padding(rows[tuple(indices)], values if isinstance(values, Boxes) else None)
         return obj
 
     def _broadcast_over_vertices(self, values: torch.Tensor) -> torch.Tensor:
@@ -847,8 +766,7 @@ class Boxes:
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
                 Batch slicing, index tensors, and boolean masks preserve the list metadata. Selecting a single
-                batch element with an integer or scalar tensor returns an unbatched object without list metadata,
-                whose export treats every row as a box; assigning it back into a batch restores the row's padding.
+                batch element with an integer or scalar tensor returns an unbatched object without list metadata.
 
         Returns:
             Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
@@ -960,9 +878,7 @@ class Boxes:
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
         if self._N is not None:
-            # Padding is not a box, even when its coordinates have been changed by a transform. A video's
-            # (B, T, N, 4) export has one count per frame, so its frames are flattened first.
-            clipped_boxes_xyxy = clipped_boxes_xyxy.flatten(0, -3)
+            # Padding is not a box, even when its coordinates have been changed by a transform.
             for i, n in enumerate(self._N):
                 clipped_boxes_xyxy[i, clipped_boxes_xyxy.shape[1] - n :] = 0
 
@@ -1137,7 +1053,6 @@ class Boxes:
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
-        obj._row_padding = self._row_padding
         obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         return obj
@@ -1243,10 +1158,6 @@ class VideoBoxes(Boxes):
         out._mode = self._mode
         selected_valid = self._valid.view(batch_size, self.temporal_channel_size, self._valid.shape[-1])[key]
         out._valid = selected_valid.reshape(out._data.shape[:-2])
-        if self._N is not None:
-            # Per-frame padding left by a mix under a partial gate (#6173) follows its frames.
-            padding = torch.as_tensor(self._N, device=self._data.device).view(batch_size, self.temporal_channel_size)
-            out._N = padding[key].reshape(-1).tolist()
         out.temporal_channel_size = self.temporal_channel_size
         return out
 
@@ -1257,36 +1168,33 @@ class VideoBoxes(Boxes):
         n, m = self._data.shape[0] // size, value.data.shape[0] // size
         self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
         self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
-        if self._N is not None or value._N is not None:
-            # Per-frame padding (#6173) follows the written frames, as in Boxes.__setitem__.
-            padding = self._padding_counts()
-            padding.view(n, size)[key] = value._padding_counts(self._data.shape[-3]).view(m, size)
-            self._N = padding.tolist()
         return self
 
-    def to_tensor(self, mode: Optional[str] = None, as_padded_sequence: bool = False) -> torch.Tensor:
+    def to_tensor(
+        self, mode: Optional[str] = None, as_padded_sequence: bool = False
+    ) -> torch.Tensor | list[torch.Tensor]:
         r"""Cast :class:`VideoBoxes` to a tensor with the temporal axis restored.
 
         Args:
             mode: Output box format forwarded to :meth:`Boxes.to_tensor`. When
                 ``None``, uses the stored mode (``vertices_plus`` by default).
-            as_padded_sequence: Accepted because the inherited :meth:`get_boxes_shape`
-                and :meth:`to_mask` pass it; the result is one padded tensor either way.
-                A :class:`VideoBoxes` is built from a dense :math:`(B, T, N, 4, 2)` tensor,
-                so frames only hold different box counts after an augmentation pads them,
-                such as a mix under a partial gate. Per-frame trimmed tensors could not
-                carry the temporal axis, so the shorter frames come back padded, and their
-                padding rows are exactly zero in every ``mode``.
+            as_padded_sequence: Forwarded to :meth:`Boxes.to_tensor`. It only
+                changes the result of a list-backed container; a
+                :class:`VideoBoxes` built from a :math:`(B, T, N, 4, 2)` tensor
+                is not list-backed, so the value makes no difference there. The
+                keyword is accepted because the inherited :meth:`get_boxes_shape`
+                and :meth:`to_mask` pass it.
 
         Returns:
             Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
             :attr:`temporal_channel_size`.
         """
-        out = cast(torch.Tensor, super().to_tensor(mode, as_padded_sequence=True))
-        if self._N is not None:
-            out = _zero_trailing_padding(out, self._N)
+        out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
         batch_size = self._data.shape[0] // self.temporal_channel_size
-        return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
+        if isinstance(out, torch.Tensor):
+            return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
+        # If returns a list of boxes.
+        return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
 
     def clone(self) -> VideoBoxes:
         """Create an independent copy of the video box container.

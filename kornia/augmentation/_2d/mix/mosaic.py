@@ -190,10 +190,12 @@ class RandomMosaic(MixAugmentationBaseV2):
 
         if not bool(to_apply.all()):
             # An unselected sample keeps its own boxes unchanged, followed by padding up to the mosaic box count.
-            # The padding is recorded in ``_N`` and exported as all-zero (zero-area) rows.
+            # The padding is recorded in ``_N`` and marked invalid, so every export gives all-zero rows for it, also
+            # after a later geometric transform and in a container such as VideoBoxes that does not keep ``_N``.
             out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
             out_boxes._valid[~to_apply, :num_boxes] = input._valid[~to_apply]
             out_boxes._data[~to_apply, num_boxes:] = 0.0
+            out_boxes._valid[~to_apply, num_boxes:] = False
             padding = out_boxes._data.shape[1] - num_boxes
             merged_padding = out_boxes._N if out_boxes._N is not None else [0] * len(to_apply)
             input_padding = input._N if input._N is not None else [0] * len(to_apply)

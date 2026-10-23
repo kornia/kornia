@@ -25,7 +25,7 @@ from torch.distributions import Beta, Uniform
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes, VideoBoxes, _zero_trailing_padding
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -72,7 +72,11 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
         raise TypeError(f"Expected a padded tensor export. Got {type(out)}.")
     if boxes._N is None:
         return out
-    return _zero_trailing_padding(out, boxes._N)
+    num_boxes = out.shape[1]
+    real = torch.tensor([num_boxes - n for n in boxes._N], device=out.device)
+    valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
+    valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
+    return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
 
 
 def _frame_boxes(boxes: VideoBoxes) -> Boxes:
@@ -90,9 +94,13 @@ def _frame_boxes(boxes: VideoBoxes) -> Boxes:
 
 
 def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
-    """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames."""
+    """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
+
+    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
+    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
+    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    """
     boxes = VideoBoxes(frames._data, False, mode=frames._mode)
-    boxes._N = frames._N
     boxes._valid = frames._valid
     boxes._is_batched = frames._is_batched
     boxes.temporal_channel_size = temporal_channel_size
