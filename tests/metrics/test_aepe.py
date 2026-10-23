@@ -118,3 +118,28 @@ class TestConventionsAepe(BaseTester):
         # average_endpoint_error is aepe itself, and AEPE(reduction) calls it
         assert kornia.metrics.average_endpoint_error is kornia.metrics.aepe
         self.assert_close(kornia.metrics.AEPE("sum")(flow, target), torch.tensor(7.0, device=device, dtype=dtype))
+
+
+class TestAepeHalfPrecision(BaseTester):
+    @pytest.mark.parametrize("scale", [1e-4, 100.0])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_representable_distance_and_gradient(self, device, dtype, scale, reduction):
+        flow = torch.tensor([[3 * scale, 4 * scale], [0.0, 5 * scale]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.zeros_like(flow, requires_grad=True)
+        reference = flow.detach().cpu().double()
+        norm = torch.hypot(reference[:, 0], reference[:, 1])
+        expected = norm if reduction == "none" else norm.mean() if reduction == "mean" else norm.sum()
+        actual = kornia.metrics.aepe(flow, target, reduction=reduction)
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, expected.to(flow))
+        self.assert_close(kornia.metrics.AEPE(reduction)(flow, target), actual)
+        grad_flow, grad_target = torch.autograd.grad(actual.sum(), (flow, target))
+        expected_grad = reference / norm[:, None]
+        if reduction == "mean":
+            expected_grad = expected_grad / norm.numel()
+        expected_grad = expected_grad.to(flow)
+        assert torch.isfinite(grad_flow).all()
+        assert torch.isfinite(grad_target).all()
+        self.assert_close(grad_flow, expected_grad)
+        self.assert_close(grad_target, -expected_grad)
