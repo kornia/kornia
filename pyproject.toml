@@ -173,10 +173,11 @@ filterwarnings = [
 ]
 markers = [
   "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix",
+  "compile_conformance: torch.compile conformance of the promised operators (#5819); deselected unless --compile-conformance selects packages",
   "mps_process_abort: aborts the pytest process on MPS on virtualized Apple GPUs (#4204); skipped there unless --run-mps-process-abort",
   "onnx_conformance: ONNX conformance of the promised operators (#5819); deselected unless --onnx-conformance selects packages",
   "slow: mark test as slow to run",
-  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
+  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul and cuDNN precision; xfail by default, run with --tf32 to activate",
 ]
 testpaths = ["tests"]
 # Test configuration via environment variables:

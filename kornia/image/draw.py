@@ -294,6 +294,11 @@ def draw_rectangle(
         This operation modifies image inplace but also returns the drawn tensor for
         convenience, with the shape of the input :math:`(B, C, H, W)`.
 
+    Note:
+        The rectangle coordinates are read back to the host once, and ``torch.compile`` breaks the graph there: a
+        default ``torch.compile`` compiles the code on either side of that read and matches eager. It is outside the
+        :ref:`torch.compile promise <export-support-promise>`.
+
     Example:
         >>> img = torch.rand(2, 3, 10, 12)
         >>> rect = torch.tensor([[[0, 0, 4, 4]], [[4, 4, 11, 9]]])

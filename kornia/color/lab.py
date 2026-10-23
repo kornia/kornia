@@ -27,6 +27,8 @@ from typing import ClassVar
 import torch
 from torch import nn
 
+from kornia.core.utils import _autocast_disabled
+
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
 
@@ -40,6 +42,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     color is computed using the D65 illuminant and Observer 2.
 
     Convention:
+        Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
         Input is nonlinear sRGB in RGB channel order at axis -3; this function first converts
         it to linear RGB. Output channels are L*, a*, b* using D65 / 2° reference white.
 
@@ -61,6 +64,17 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
+    if image.dtype in (torch.float16, torch.bfloat16):
+        if torch.jit.is_scripting():
+            return _rgb_to_lab(image.float()).to(image.dtype)
+        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        with _autocast_disabled(image.device.type):
+            return _rgb_to_lab(image.float()).to(image.dtype)
+    return _rgb_to_lab(image)
+
+
+def _rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
+    """Compute the conversion in the working dtype."""
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
 
@@ -95,6 +109,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     a and b channels are in the range of :math:`[-128, 127]`.
 
     Convention:
+        Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
         Input channels are L*, a*, b* at axis -3 using D65 / 2° reference white. Set clip to
         false to skip the final [0, 1] clamp of the sRGB output.
 
@@ -116,6 +131,17 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
+    if image.dtype in (torch.float16, torch.bfloat16):
+        if torch.jit.is_scripting():
+            return _lab_to_rgb(image.float(), clip).to(image.dtype)
+        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        with _autocast_disabled(image.device.type):
+            return _lab_to_rgb(image.float(), clip).to(image.dtype)
+    return _lab_to_rgb(image, clip)
+
+
+def _lab_to_rgb(image: torch.Tensor, clip: bool) -> torch.Tensor:
+    """Compute the conversion in the working dtype."""
     L: torch.Tensor = image[..., 0, :, :]
     a: torch.Tensor = image[..., 1, :, :]
     _b: torch.Tensor = image[..., 2, :, :]

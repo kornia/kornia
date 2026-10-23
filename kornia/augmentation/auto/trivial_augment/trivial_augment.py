@@ -31,7 +31,8 @@ default_policy: List[SUBPOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("rotate", -30.0, 30.0)],
-    [("posterize", 0.0, 4)],
+    # Bits kept, as in RandAugment and AutoAugment.
+    [("posterize", 4.0, 8.0)],
     [("solarize", 0.0, 1.0)],
     # (Color, 0.1, 1.9),
     [("contrast", 0.1, 1.9)],
@@ -58,6 +59,8 @@ class TrivialAugment(PolicyAugmentBase):
         - the operation wrapper's magnitude mapping applies, as under
           :class:`~kornia.augmentation.auto.RandAugment`. A ``("rotate", -30, 30)`` candidate draws angles in
           ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``0.3 * 180`` degrees.
+        - the default ``posterize`` candidate keeps ``4`` to ``8`` bits, the range of the paper's RA
+          augmentation space (Table 8) and of :class:`~kornia.augmentation.auto.RandAugment`.
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.

@@ -34,7 +34,7 @@ from torch.distributions import Distribution
 import kornia
 from kornia.core.download import load_state_dict_from_url
 
-from testing import onnx_conformance
+from testing import conformance, conformance_promise
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
     FailureRecorder,
@@ -175,37 +175,9 @@ def torch_optimizer(optimizer_backend):
 
 @pytest.fixture
 def cudnn_tf32_follows_option(request):
-    """Compute convolutions in real float32 on CUDA, so a float32 tolerance means float32.
-
-    The root ``conftest.py``'s ``--tf32`` option drives only ``set_float32_matmul_precision``, which
-    does not reach cuDNN: ``torch.backends.cudnn.allow_tf32`` keeps PyTorch's ``True`` default in
-    every run. TF32 rounds a convolution's inputs to 10 mantissa bits, and eager and inductor do not
-    have to pick the same kernel, so on a deep conv stack the two disagree by ~2e-4 -- twenty times
-    ``assert_close``'s float32 ``atol`` -- while the same comparison agrees to 6e-7 once cuDNN is in
-    real float32. A compile-vs-eager test that does not take TF32 out of the picture is measuring the
-    backend rather than the graph.
-
-    The flag follows ``--tf32`` rather than being forced off, so a ``--tf32`` run still gets TF32 in
-    cuDNN as well as in matmul. The repo-wide fix is for ``pytest_sessionstart`` to set
-    ``cudnn.allow_tf32`` from the same option; ``tests/color/test_yuv.py`` carries the same local
-    workaround for the same reason.
-
-    The alternative -- keeping TF32 on and widening the CUDA float32 bound to ~1e-3, TF32's own
-    mantissa -- was tried and dropped: it leaves the assertion a hundred times looser than the signal
-    it exists to check, so a genuine compile-vs-eager divergence below 1e-3 would pass. The objection
-    to this route is that inductor's on-disk FX graph cache is not keyed on ``allow_tf32``, so a
-    context entered after a TF32-on compile in the same process can raise out of
-    ``assert_tensor_metadata``. That applies to ``torch.backends.cudnn.flags(...)``, which swaps
-    several flags at once; assigning the single attribute, as here and in ``test_yuv.py``, does not
-    reproduce it -- ``tests/feature -k "dynamo or compile"`` on CUDA float32 is green with this fixture
-    on both a cold and a warm inductor cache.
-    """
-    previous = torch.backends.cudnn.allow_tf32
-    torch.backends.cudnn.allow_tf32 = bool(request.config.getoption("--tf32"))
-    try:
-        yield
-    finally:
-        torch.backends.cudnn.allow_tf32 = previous
+    """Assert that cuDNN precision follows the session's opt-in TF32 setting."""
+    if torch.backends.cudnn.allow_tf32 != request.config.getoption("--tf32"):
+        pytest.fail("cuDNN TF32 setting does not match --tf32")
 
 
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
@@ -288,12 +260,15 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
 
 def pytest_configure(config) -> None:
     """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
-    try:
-        config._onnx_conformance = onnx_conformance.parse_selection(config.getoption(onnx_conformance.OPTION))
-    except ValueError as error:
-        raise pytest.UsageError(str(error)) from error
-    if config._onnx_conformance:
-        config.pluginmanager.register(onnx_conformance.KnownFailurePlugin(), "onnx-conformance-known-failures")
+    config._conformance = {}
+    for promise in conformance_promise.PROMISES:
+        try:
+            config._conformance[promise.marker] = conformance.selection(config, promise)
+        except ValueError as error:
+            raise pytest.UsageError(str(error)) from error
+        if config._conformance[promise.marker]:
+            plugin = conformance.KnownFailurePlugin(promise)
+            config.pluginmanager.register(plugin, f"{promise.field}-conformance-known-failures")
     profile = _configure_known_failure_profile(config)
     config._known_failure_profile = profile
     if profile is None:
@@ -432,10 +407,13 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
-    # The ONNX conformance test (#5819) is opt-in: --onnx-conformance names the packages whose promised operators it
-    # runs. When it is given, onnx_conformance.KnownFailurePlugin turns the known failures into strict xfails.
-    if not config._onnx_conformance:
-        conformance_items = [item for item in items if item.get_closest_marker(onnx_conformance.MARKER) is not None]
+    # The ONNX and torch.compile conformance tests (#5819) are opt-in: --onnx-conformance and --compile-conformance
+    # name the packages whose promised operators they run. When one is given, conformance.KnownFailurePlugin turns its
+    # known failures into strict xfails.
+    for promise in conformance_promise.PROMISES:
+        if config._conformance[promise.marker]:
+            continue
+        conformance_items = [item for item in items if item.get_closest_marker(promise.marker) is not None]
         if conformance_items:
             config.hook.pytest_deselected(items=conformance_items)
             conformance_ids = {id(item) for item in conformance_items}
@@ -541,8 +519,7 @@ def pytest_addoption(parser):
         action="store_true",
         default=os.environ.get("KORNIA_TEST_TF32", "false").lower() == "true",
         help=(
-            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications "
-            "(torch.set_float32_matmul_precision('high')). "
+            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications and cuDNN convolutions. "
             "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
             "(env: KORNIA_TEST_TF32)"
         ),
@@ -593,17 +570,18 @@ def pytest_addoption(parser):
             "(env: KORNIA_TEST_RUN_MPS_PROCESS_ABORT)"
         ),
     )
-    parser.addoption(
-        onnx_conformance.OPTION,
-        action="store",
-        default=os.environ.get(onnx_conformance.ENV_VAR, ""),
-        metavar="PACKAGES",
-        help=(
-            "Run the ONNX conformance test (tests/onnx/test_conformance.py, #5819) for these stable-core "
-            "packages, comma-separated (geometry,color,...), or 'all'; it is deselected without this option. "
-            f"(env: {onnx_conformance.ENV_VAR})"
-        ),
-    )
+    for promise in conformance_promise.PROMISES:
+        parser.addoption(
+            promise.option,
+            action="store",
+            default=os.environ.get(promise.env_var, ""),
+            metavar="PACKAGES",
+            help=(
+                f"Run the {promise.name} conformance test ({promise.test_file}, #5819) for these stable-core "
+                "packages, comma-separated (geometry,color,...), or 'all'; it is deselected without this option. "
+                f"(env: {promise.env_var})"
+            ),
+        )
     parser.addoption(
         "--xfail-known-failures",
         action="store_true",
@@ -642,6 +620,8 @@ def pytest_sessionstart(session):
     # and to run the @pytest.mark.tf32-marked tests.
     if session.config.getoption("--tf32"):
         torch.set_float32_matmul_precision("high")
+    # cuDNN allows TF32 by default independently of matmul precision; keep it opt-in too.
+    torch.backends.cudnn.allow_tf32 = session.config.getoption("--tf32")
 
     # Warm torch.compile only for explicit optimizer jobs. Ordinary jobs deselect compile tests,
     # while subprocess mode also avoids startup overhead and captured-output pollution.
