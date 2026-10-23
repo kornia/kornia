@@ -1889,6 +1889,19 @@ class TestClipUnitFreshBuffer(BaseTester):
         self.assert_close(out, fn(image, 0.2))
 
     @pytest.mark.parametrize("op", sorted(_REFERENCE))
+    def test_jit(self, device, dtype, op):
+        # TorchScript cannot compile the functorch query, so the scripted functions and modules skip the in-place clamp.
+        fn = getattr(enhance, op)
+        module = {"adjust_brightness": enhance.AdjustBrightness, "adjust_contrast": enhance.AdjustContrast}[op]
+        image = torch.linspace(-0.5, 1.5, 2 * 3 * 4 * 4, device=device, dtype=dtype).reshape(2, 3, 4, 4)
+        original = image.clone()
+        factor = torch.tensor([0.3, 1.4], device=device, dtype=dtype)
+        expected = self._REFERENCE[op](image, factor)
+        self.assert_close(torch.jit.script(fn)(image, factor), expected)
+        self.assert_close(torch.jit.script(module(factor))(image), expected)
+        assert torch.equal(image, original)
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
     def test_integer_image_with_checks_disabled_keeps_the_promoting_clamp(self, device, op):
         # With checks disabled an integer image reaches the clamp. Its float bounds promote the result to float32,
         # which an in-place clamp cannot do, so that image keeps the out-of-place clamp and its float32 output.
