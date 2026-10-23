@@ -25,7 +25,7 @@ from torch import nn
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor, _frame_boxes
+from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
 from kornia.core._compat import torch_version_lt
 from kornia.core.external import PILImage as Image
@@ -1147,12 +1147,6 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(in_arg, torch.Tensor) and not isinstance(out_arg, VideoBoxes):
             # A dense input stays dense; padding added by an augmentation (e.g. RandomMosaic) is exported as zeros.
             return _boxes_to_padded_tensor(out_arg, mode)
-        if isinstance(in_arg, torch.Tensor) and out_arg._N is not None:
-            # A dense video input stays dense too. A mix under a partial gate leaves frames with different box
-            # counts (#6173); their padding is exported as zeros, as for image boxes.
-            frames = _boxes_to_padded_tensor(_frame_boxes(out_arg), mode)
-            num_videos = frames.shape[0] // out_arg.temporal_channel_size
-            return frames.reshape(num_videos, out_arg.temporal_channel_size, *frames.shape[1:])
 
         return out_arg.to_tensor(mode=mode)
 

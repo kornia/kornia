@@ -48,6 +48,20 @@ def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[tor
     return output, stats
 
 
+def _zero_trailing_padding(boxes: torch.Tensor, padding: list[int]) -> torch.Tensor:
+    """Zero the last ``padding[i]`` rows of sample ``i`` in a ``(B, N, ...)`` box export.
+
+    Padding is stored as zero boxes, which are valid boxes: an exclusive ``'xyxy'``, ``'xywh'`` or ``'vertices'``
+    export turns one into ``[0, 0, 1, 1]``, and a geometric transform moves it, so a padded export would read as
+    real boxes. Zeroing after the export keeps the padding exactly zero in every mode.
+    """
+    num_boxes = boxes.shape[1]
+    real = torch.tensor([num_boxes - n for n in padding], device=boxes.device)
+    valid = torch.arange(num_boxes, device=boxes.device)[None] < real[:, None]
+    valid = valid.reshape(valid.shape + (1,) * (boxes.dim() - 2))
+    return torch.where(valid, boxes, torch.zeros((), device=boxes.device, dtype=boxes.dtype))
+
+
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
     """Transform 3D and 2D in kornia format by applying the transformation matrix M.
 
@@ -1158,6 +1172,10 @@ class VideoBoxes(Boxes):
         out._mode = self._mode
         selected_valid = self._valid.view(batch_size, self.temporal_channel_size, self._valid.shape[-1])[key]
         out._valid = selected_valid.reshape(out._data.shape[:-2])
+        if self._N is not None:
+            # Per-frame padding left by a mix under a partial gate (#6173) follows its frames.
+            padding = torch.as_tensor(self._N, device=self._data.device).view(batch_size, self.temporal_channel_size)
+            out._N = padding[key].reshape(-1).tolist()
         out.temporal_channel_size = self.temporal_channel_size
         return out
 
@@ -1181,14 +1199,16 @@ class VideoBoxes(Boxes):
                 A :class:`VideoBoxes` is built from a dense :math:`(B, T, N, 4, 2)` tensor,
                 so frames only hold different box counts after an augmentation pads them,
                 such as a mix under a partial gate. Per-frame trimmed tensors could not
-                carry the temporal axis, so the shorter frames come back padded, as
-                :meth:`Boxes.to_tensor` pads a list-backed container.
+                carry the temporal axis, so the shorter frames come back padded, and their
+                padding rows are exactly zero in every ``mode``.
 
         Returns:
             Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
             :attr:`temporal_channel_size`.
         """
         out = cast(torch.Tensor, super().to_tensor(mode, as_padded_sequence=True))
+        if self._N is not None:
+            out = _zero_trailing_padding(out, self._N)
         batch_size = self._data.shape[0] // self.temporal_channel_size
         return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
 

@@ -25,7 +25,7 @@ from torch.distributions import Beta, Uniform
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes, VideoBoxes
+from kornia.geometry.boxes import Boxes, VideoBoxes, _zero_trailing_padding
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -72,11 +72,7 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
         raise TypeError(f"Expected a padded tensor export. Got {type(out)}.")
     if boxes._N is None:
         return out
-    num_boxes = out.shape[1]
-    real = torch.tensor([num_boxes - n for n in boxes._N], device=out.device)
-    valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
-    valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
-    return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
+    return _zero_trailing_padding(out, boxes._N)
 
 
 def _frame_boxes(boxes: VideoBoxes) -> Boxes:
