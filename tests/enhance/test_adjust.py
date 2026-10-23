@@ -25,7 +25,7 @@ import kornia
 from kornia import enhance
 from kornia.constants import pi
 from kornia.core._compat import torch_version_ge
-from kornia.core.check import disable_checks, enable_checks
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -1880,11 +1880,13 @@ class TestClipUnitFreshBuffer(BaseTester):
         image = torch.randint(0, 256, (2, 3, 4, 4), device=device, dtype=torch.uint8)
         original = image.clone()
         factor = torch.tensor([0.3, 1.4], device=device)
+        was_enabled = are_checks_enabled()
         disable_checks()
         try:
             out = fn(image, factor)
         finally:
-            enable_checks()
+            if was_enabled:
+                enable_checks()
         assert torch.equal(image, original)
         assert out.dtype == torch.float32
         self.assert_close(out, self._REFERENCE[op](image, factor.to(torch.uint8)))
