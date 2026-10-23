@@ -100,7 +100,10 @@ class CutmixGenerator(RandomGeneratorBase):
                 f"cut, so lower the minimum. Got {self._cut_size.tolist()}."
             )
 
-        self.beta_sampler = Beta(self._beta, self._beta)
+        # torch draws Beta through Dirichlet, which has no CPU half-precision kernel: a generator moved to float16 by
+        # .to() raised on every draw. Draw in float32 for half precision, as the position samplers do (#4553).
+        beta_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.beta_sampler = Beta(self._beta.to(beta_dtype), self._beta.to(beta_dtype))
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
         self.rand_sampler = Uniform(
             torch.tensor(0.0, device=device, dtype=dtype),

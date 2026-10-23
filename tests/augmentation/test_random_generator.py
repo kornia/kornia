@@ -2023,8 +2023,6 @@ class TestHalfPrecisionPositionSamplers:
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_starts_stay_in_range(self, make_generator, batch_shape, device, half_dtype):
         generator = make_generator()
-        if isinstance(generator, PatchMixGenerator) and device.type == "cpu":
-            pytest.skip("The PatchMix Beta sampler is not implemented for CPU half precision.")
         generator.set_rng_device_and_dtype(device, half_dtype)
         torch.manual_seed(0)
         params = generator(batch_shape)
@@ -2092,6 +2090,37 @@ class TestIndexPermutationsInHalfPrecision:
         torch.manual_seed(0)
         orders = [generator(torch.Size([2, 3, 4, 4]))["order"].tolist() for _ in range(5)]
         assert orders == [[1, 0, 3, 2], [1, 3, 0, 2], [1, 0, 3, 2], [3, 2, 0, 1], [1, 2, 3, 0]]
+
+
+class TestBetaSamplersInHalfPrecision:
+    # torch draws Beta through Dirichlet, which has no CPU half-precision kernel, so a CutMix or PatchMix generator
+    # moved to float16 or bfloat16 -- set_rng_device_and_dtype, or .to() on the augmentation or on a module holding it
+    # -- raised "dirichlet not implemented for 'Half'" on every draw. The Beta sampler now draws in float32 for half
+    # precision, as the position samplers do (#4553).
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize(
+        "make_generator,batch_shape",
+        [
+            (lambda: CutmixGenerator(p=1.0), torch.Size([4, 3, 16, 16])),
+            (lambda: PatchMixGenerator(patch_size=4), torch.Size([4, 3, 16, 16])),
+        ],
+        ids=["CutmixGenerator", "PatchMixGenerator"],
+    )
+    def test_beta_draws_in_half_precision(self, device, half_dtype, make_generator, batch_shape):
+        generator = make_generator()
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        assert generator.beta_sampler.concentration1.dtype == torch.float32
+        torch.manual_seed(0)
+        params = generator(batch_shape)
+        for value in params.values():
+            if value.is_floating_point():
+                assert torch.isfinite(value).all()
+
+    @pytest.mark.parametrize("dtype_", [torch.float32, torch.float64])
+    def test_beta_sampler_follows_full_precision(self, dtype_):
+        generator = CutmixGenerator(p=1.0)
+        generator.set_rng_device_and_dtype(torch.device("cpu"), dtype_)
+        assert generator.beta_sampler.concentration1.dtype == dtype_
 
 
 class TestTruncateToStart:
