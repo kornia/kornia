@@ -25,6 +25,7 @@ import kornia
 from kornia import enhance
 from kornia.constants import pi
 from kornia.core._compat import torch_version_ge
+from kornia.core.check import disable_checks, enable_checks
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -1843,9 +1844,15 @@ class TestClipUnitFreshBuffer(BaseTester):
     # adjust_brightness and adjust_contrast clamp their own fresh result in place when no gradient is recorded, so a
     # batch-32 call allocates one image-sized temporary fewer. The caller's tensor is never modified, and the values
     # and gradients equal the out-of-place clamp.
-    @pytest.mark.parametrize("op", ["adjust_brightness", "adjust_contrast"])
+    _REFERENCE = {
+        "adjust_brightness": lambda image, factor: torch.clamp(image + factor.view(-1, 1, 1, 1), 0.0, 1.0),
+        "adjust_contrast": lambda image, factor: torch.clamp(image * factor.view(-1, 1, 1, 1), 0.0, 1.0),
+    }
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
     def test_input_unmodified_and_values_match_with_and_without_a_gradient(self, device, dtype, op):
         fn = getattr(enhance, op)
+        reference = self._REFERENCE[op]
         image = torch.linspace(-0.5, 1.5, 2 * 3 * 4 * 4, device=device, dtype=dtype).reshape(2, 3, 4, 4)
         original = image.clone()
         factor = torch.tensor([0.3, 1.4], device=device, dtype=dtype)
@@ -1857,5 +1864,27 @@ class TestClipUnitFreshBuffer(BaseTester):
         assert torch.equal(image, original)
         assert torch.equal(out_no_grad, out_plain)
         assert torch.equal(out_no_grad, out_grad.detach())
+        self.assert_close(out_no_grad, reference(image, factor))
+
+        ref_leaf = image.clone().requires_grad_()
+        reference(ref_leaf, factor).sum().backward()
         out_grad.sum().backward()
         assert leaf.grad is not None
+        self.assert_close(leaf.grad, ref_leaf.grad)
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
+    def test_integer_image_with_checks_disabled_keeps_the_promoting_clamp(self, device, op):
+        # With checks disabled an integer image reaches the clamp. Its float bounds promote the result to float32,
+        # which an in-place clamp cannot do, so that image keeps the out-of-place clamp and its float32 output.
+        fn = getattr(enhance, op)
+        image = torch.randint(0, 256, (2, 3, 4, 4), device=device, dtype=torch.uint8)
+        original = image.clone()
+        factor = torch.tensor([0.3, 1.4], device=device)
+        disable_checks()
+        try:
+            out = fn(image, factor)
+        finally:
+            enable_checks()
+        assert torch.equal(image, original)
+        assert out.dtype == torch.float32
+        self.assert_close(out, self._REFERENCE[op](image, factor.to(torch.uint8)))

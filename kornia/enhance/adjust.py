@@ -81,8 +81,11 @@ def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
     The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
     allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
     the heap on every call. Only call it on a tensor no caller can see.
+
+    An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
+    promote its result to the default float dtype, which an in-place clamp cannot do.
     """
-    if torch.is_grad_enabled() and image.requires_grad:
+    if not image.is_floating_point() or (torch.is_grad_enabled() and image.requires_grad):
         return image.clamp(min=0.0, max=1.0)
     return image.clamp_(min=0.0, max=1.0)
 
