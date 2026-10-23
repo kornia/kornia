@@ -718,7 +718,8 @@ float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and cla
 ``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
 uint8; a floating image keeps its dtype. :func:`~kornia.filters.guided_blur` returns the promoted dtype of its
 ``guidance`` and ``input``, an integer one counting as float32. The blur pools are network layers and expect a
-floating input; an integer image is outside their contract.
+floating input: they raise a :class:`~kornia.core.exceptions.TypeCheckError` (a ``TypeError``) for a non-floating
+input instead of promoting it.
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
@@ -1288,11 +1289,10 @@ Pretrained models
 - A model built with complete pretrained weights comes back in evaluation mode (``model.training`` is ``False``).
   A randomly initialised model stays in PyTorch's default training mode. So does a model whose weights are only partly
   pretrained, such as a pretrained backbone with a newly initialised classification head. Call ``.train()`` to
-  fine-tune a pretrained model, and ``.eval()`` before running inference on a random one. The ``kornia.feature``
-  pipelines are the exception: ``KeyNetDetector``, ``KeyNetHardNet``, ``KeyNetAffNetHardNet``, ``GFTTAffNetHardNet``,
-  ``LAFDescriptor`` and ``LightGlueMatcher`` put only their pretrained networks in evaluation mode and report
-  ``training`` as ``True`` themselves, so that an ``ori_module`` or ``aff_module`` you pass to ``KeyNetDetector`` keeps
-  its own mode (see :ref:`local-features-conventions`).
+  fine-tune a pretrained model, and ``.eval()`` before running inference on a random one. ``KeyNetDetector`` and
+  ``LAFDescriptor`` are the exceptions: they put only their default pretrained ``KeyNet`` and ``HardNet`` networks in
+  evaluation mode and report ``training`` as ``True`` themselves, so that an ``ori_module``, ``aff_module`` or
+  ``patch_descriptor_module`` you pass keeps its own mode (see :ref:`local-features-conventions`).
 - Constructors, ``from_config``, ``from_pretrained`` and the builders set the mode once, when they build the model.
   ``load_checkpoint`` and ``load_state_dict`` on an existing module leave its mode as it is: after loading your own
   weights, call ``.eval()``.

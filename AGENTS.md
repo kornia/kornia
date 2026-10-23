@@ -59,7 +59,7 @@ Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`
 
 Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset; the torch.compile conformance test has its own option (below). `pixi run doctest` skips docstring examples that would download an uncached model checkpoint, so it stays fast and works offline; use `pixi run doctest-weights` (or `KORNIA_DOCTEST_DOWNLOAD=1`) to run those examples for real, which costs ~838 MB on a cold cache. Pull-request CI relies on the restored weights cache and skips whatever it misses; the scheduled run on `main` (00:23 and 12:23 UTC) downloads, so the model examples are always exercised somewhere. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
 
-The stable-core operators the survey records as compiling without a graph break and matching eager are promised (#5819): `tests/test_inductor_conformance.py` compiles each with `torch.compile(..., fullgraph=True)` and the default inductor backend and compares the result with eager. It is opt-in, `pixi run test-module tests/test_inductor_conformance.py --compile-conformance=<package>|all`; run it for the packages a change touches and the packages that import them (`git diff --name-only origin/main... | python .github/scripts/conformance_packages.py compile` prints that selection), and see [TESTING.md](TESTING.md) for its known-failure manifests.
+The stable-core operators the survey records as compiling in one graph and matching eager, less the exclusions in `testing/conformance_promise.py`, are promised (#5819): `tests/test_inductor_conformance.py` compiles each with `torch.compile(..., fullgraph=True)` and the default inductor backend and compares the result with eager. It is opt-in, `pixi run test-module tests/test_inductor_conformance.py --compile-conformance=<package>|all`; run it for the packages a change touches and the packages that import them (`git diff --name-only origin/main... | python .github/scripts/conformance_packages.py compile` prints that selection), and see [TESTING.md](TESTING.md) for its known-failure manifests.
 
 ### Comparing a branch against another revision
 
@@ -128,6 +128,11 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - JIT-compatible modules have stricter typing constraints. Follow nearby annotations and use `torch.Tensor` directly where TorchScript expects it.
 - For non-JIT modules, use `from __future__ import annotations`.
 - Avoid new runtime dependencies. If a dependency is genuinely useful, explain why the existing stack is insufficient and consider its install, build, and platform cost.
+
+## Responding to review
+
+- Treat a fix that a reviewer suggests, whether a maintainer, a bot or another agent, as a hypothesis about the cause. Before applying it, check whether kornia already maintains the invariant it protects. For example, `Boxes._valid` marks rows that are not boxes: every indexed read and write carries it and every export zeroes those rows, so rows that must never export as boxes do not need a separate count that each write path would have to keep in sync.
+- If two review rounds in a row report a regression that the previous fix round introduced, stop patching individual cases. State the invariant, find the code responsible for keeping it, and redesign before pushing another fix, reverting earlier rounds when that is simpler.
 
 ## Documentation and generated examples
 
