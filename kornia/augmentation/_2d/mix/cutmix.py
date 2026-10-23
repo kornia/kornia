@@ -23,6 +23,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, DType
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
@@ -83,10 +84,9 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
           and every row and mix of a selected batch receives a cut, though self-pairing or a zero-sized cut can
           leave a row unchanged. With ``same_on_batch=False`` each row and mix draws its own cut size and placement;
-          ``same_on_batch=True`` shares one geometry, and with ``num_mix > 1`` one pairing too, so every mix
-          repeats the first cut while the labels credit the donor once per mix
-          (`#4805 <https://github.com/kornia/kornia/issues/4805>`_). At ``p=0`` the image is unchanged and each
-          class row contains the original label twice with lambda zero.
+          ``same_on_batch=True`` shares each mix's cut size and placement across rows; each mix still draws its own
+          pairing and geometry. At ``p=0`` the image is unchanged and each class row contains the original label twice
+          with lambda zero.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
@@ -143,7 +143,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         image_dtype = DType.to_torch(int(params["dtype"].item()))
         calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
-            labels_permute = input.index_select(dim=0, index=pair.to(input.device))
+            labels_permute = input.index_select(dim=0, index=_to_device_nonblocking(pair, input.device))
             w, h = infer_bbox_shape(crop)
 
             lam_val = w.to(calc_dtype) * h.to(calc_dtype) / (width * height)
@@ -154,7 +154,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
                     [
                         input.to(device=input.device, dtype=calc_dtype),
                         labels_permute.to(device=input.device, dtype=calc_dtype),
-                        lam.to(device=input.device, dtype=calc_dtype),
+                        _to_device_nonblocking(lam, input.device, calc_dtype),
                     ],
                     1,
                 )
@@ -190,7 +190,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
 
         out_inputs = input.clone()
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
-            input_permute = input.index_select(dim=0, index=pair.to(input.device))
+            input_permute = input.index_select(dim=0, index=_to_device_nonblocking(pair, input.device))
             # compute mask to match input shape
             mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
             out_inputs[mask] = input_permute[mask]

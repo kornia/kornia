@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import math
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -23,8 +22,10 @@ import torch
 import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
+# Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
+from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -58,16 +59,6 @@ def _pad_with_fill(
     return torch.where(inside.bool(), padded, values.view(1, channels, *([1] * (padded.ndim - 2))))
 
 
-def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int = 0) -> None:
-    if isinstance(data, (list, tuple)):
-        if depth == len(shape):
-            shape.append(len(data))
-        for value in data:
-            _flatten_constant(value, shape, leaves, depth + 1)
-    else:
-        leaves.append(data)
-
-
 def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
 
@@ -88,50 +79,32 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
 
 
-def _constant_tensor(
-    data: Union[float, List[Any], Tuple[Any, ...]],
-    *,
-    device: Union[str, torch.device, None] = None,
-    dtype: torch.dtype,
-) -> torch.Tensor:
-    """Construct small numeric constants inside the graph, without lifting tensor storage.
+def _frame_boxes(boxes: VideoBoxes) -> Boxes:
+    r"""View :class:`VideoBoxes` as the frame-level :class:`Boxes` of its :math:`(B \cdot T, N, 4, 2)` storage.
 
-    Inductor can reuse a lifted CPU tensor in a CUDA kernel without transferring it
-    (https://github.com/pytorch/pytorch/issues/196969). Scalar factories and stacks
-    avoid that path, including for constants returned alongside CUDA tensors. Indexed
-    scalar writes are unsafe too: tracing lifts their right-hand sides.
-
-    Eager execution, Dynamo and ``make_fx`` all run this same construction, which issues
-    no host-device copy. Each distinct Python scalar is filled once and a single stack
-    reuses it, so repeated coordinates such as box corners cost one kernel per value.
-
-    ``data`` contains Python scalars or rectangular nested lists/tuples, never tensors.
-    Other array-likes, such as NumPy arrays, keep ``torch.as_tensor`` semantics. Callers
-    choose dtype explicitly and perform coordinate arithmetic before calling this helper
-    when rounding before versus after casting matters.
+    The children of :class:`VideoSequential` run on the flattened frames, and their parameters (a mix's
+    ``permutation``, a gate) index frames. ``VideoBoxes`` indexes whole videos, so a child given one would select
+    videos with frame indices (#6173). The view shares the storage and the validity mask.
     """
-    if not isinstance(data, (list, tuple)):
-        if isinstance(data, (int, float, torch.SymInt, torch.SymFloat)):
-            return torch.full((), data, device=device, dtype=dtype)
-        return torch.as_tensor(data, device=device, dtype=dtype)
-    shape: List[int] = []
-    leaves: List[Any] = []
-    _flatten_constant(data, shape, leaves)
-    if not leaves:
-        return torch.empty(shape, device=device, dtype=dtype)
-    filled: Dict[Tuple[type, Any], torch.Tensor] = {}
-    values: List[torch.Tensor] = []
-    for leaf in leaves:
-        # Symbolic sizes stay unmerged because comparing them adds guards. The float key carries
-        # the sign because -0.0 == 0.0; NaN is filled per leaf because NaN != NaN.
-        if type(leaf) in (int, bool) or (type(leaf) is float and not math.isnan(leaf)):
-            key = (type(leaf), leaf, math.copysign(1.0, leaf))
-            if key not in filled:
-                filled[key] = torch.full((), leaf, device=device, dtype=dtype)
-            values.append(filled[key])
-        else:
-            values.append(torch.full((), leaf, device=device, dtype=dtype))
-    return torch.stack(values).view(shape)
+    frames = Boxes(boxes._data, False, mode=boxes._mode)
+    frames._N = boxes._N
+    frames._valid = boxes._valid
+    frames._is_batched = boxes._is_batched
+    return frames
+
+
+def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
+    """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
+
+    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
+    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
+    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    """
+    boxes = VideoBoxes(frames._data, False, mode=frames._mode)
+    boxes._valid = frames._valid
+    boxes._is_batched = frames._is_batched
+    boxes.temporal_channel_size = temporal_channel_size
+    return boxes
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:

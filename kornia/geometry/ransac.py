@@ -29,6 +29,7 @@ from torch import nn
 
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _autocast_disabled
 from kornia.geometry._degensac import (
     _h_degenerate_sample,
     _h_degenerate_samples,
@@ -63,6 +64,7 @@ from kornia.geometry.homography import (
     sample_is_valid_for_homography,
     sampson_homography_distance,
 )
+from kornia.geometry.solvers.affine import _find_affine_triplet, find_affine
 
 __all__ = ["RANSAC"]
 
@@ -78,6 +80,25 @@ _DEGENSAC_MODELS = ("fundamental", "fundamental_7pt")
 # At most this many residuals are materialized by one compiled CPU scoring batch.  Small/default inputs retain their
 # tuned batch sizes; large explicit batches are split without changing the minimal-sample budget.
 _COMPILED_CPU_SCORE_RESIDUALS = 1 << 22
+
+
+def _affine_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, models: torch.Tensor) -> torch.Tensor:
+    """Squared one-way transfer errors ``(B, N)`` of affine models ``(B, 3, 3)`` on one set of correspondences.
+
+    ``pts1`` and ``pts2`` are ``(1, N, 2)``, as RANSAC scores them. This is :func:`oneway_transfer_error` without its
+    projective division and ``w' = 0`` guard, which an affine model's ``[0, 0, 1]`` bottom row makes unnecessary; like
+    that function, it computes in at least float32.
+    """
+    # Scoring needs the same precision as fitting, including inside mixed-precision pipelines.
+    with _autocast_disabled(pts1.device.type):
+        num_points = pts1.shape[-2]
+        dtype = torch.promote_types(torch.promote_types(pts1.dtype, pts2.dtype), models.dtype)
+        work = torch.promote_types(dtype, torch.float32)
+        x1 = pts1.reshape(num_points, 2).to(work)
+        x2 = pts2.reshape(num_points, 2).to(work)
+        linear = models[:, :2, :2].to(work).reshape(-1, 2)
+        projected = (linear @ x1.T).view(-1, 2, num_points) + models[:, :2, 2:].to(work)
+        return ((projected[:, 0] - x2[:, 0]).square() + (projected[:, 1] - x2[:, 1]).square()).to(dtype)
 
 
 @lru_cache(maxsize=32)
@@ -163,14 +184,16 @@ class RANSAC(nn.Module):
         - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
           ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
           ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no candidate has more inliers than
-          its minimal sample (four correspondences for homographies, five for ``"essential"``, seven for
-          ``"fundamental"`` and ``"fundamental_7pt"``, eight for ``"fundamental_8pt"``).
+          its minimal sample (three correspondences for affine transforms, four for homographies,
+          five for ``"essential"``, seven for ``"fundamental"`` and ``"fundamental_7pt"``,
+          eight for ``"fundamental_8pt"``).
         - ``"fundamental"`` draws seven-point samples, like ``"fundamental_7pt"``; ``"fundamental_8pt"`` draws
           eight-point ones.
         - ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for ``"essential"``): a
-          correspondence is an inlier when its one-way transfer error for ``"homography"``, its Sampson distance
-          for the fundamental models and ``"essential"``, or the mean distance of its transferred endpoints from
-          the image-2 segment's line for ``"homography_from_linesegments"`` is at most ``inl_th``.
+          correspondence is an inlier when its one-way transfer error for ``"homography"`` or ``"affine"``,
+          its Sampson distance for the fundamental models and ``"essential"``, or the mean distance
+          of its transferred endpoints from the image-2 segment's line for ``"homography_from_linesegments"``
+          is at most ``inl_th``.
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
           squared errors ``e``; acceptance and early stopping count inliers for either score.
@@ -186,10 +209,12 @@ class RANSAC(nn.Module):
           fundamental matrices are estimated on Hartley-normalized correspondences; essential matrices in the
           caller's calibrated coordinates, which a normalization would take off the essential manifold, refined on
           that manifold and returned with unit Frobenius norm.
-        - ``local_optimization="dlt"``, the only choice for ``"homography_from_linesegments"``, refits each new best
+        - ``local_optimization="dlt"``, the only choice for ``"affine"`` and line segments, refits each new best
           model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
           32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
-          iteratively.
+          iteratively. Affine models use a linear least-squares refit with free translation and return
+          a homogeneous matrix with bottom row ``[0, 0, 1]``; their minimal samples need three
+          non-collinear source points.
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
@@ -216,9 +241,16 @@ class RANSAC(nn.Module):
           runs the same algorithm with its own random stream: a seeded call is reproducible and leaves every global
           generator unchanged, while an unseeded call consumes one global random seed. Its result is not the eager
           one. PROSAC sampling and DEGENSAC are not supported.
+        - Known defect: after compiled estimation on the CPU, a later CUDA process sharing the same inductor cache can
+          save a CPU program as its CUDA artifact, and every CUDA process that loads it then crashes with a
+          segmentation fault on its first call. Use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device, or set
+          ``KORNIA_RANSAC_AOT=0`` to skip the artifact. Deleting only ``<TORCHINDUCTOR_CACHE_DIR>/kornia_ransac/``
+          does not help: the next CUDA compile reads the same inductor cache and saves the CPU program again
+          (`#6278 <https://github.com/kornia/kornia/issues/6278>`_).
+        - A caller's autocast region does not change the estimate.
 
     Args:
-        model_type: "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
+        model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
             "homography_from_linesegments".
         inl_th: positive inlier threshold, in the units given above.
         batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batches per call from
@@ -243,7 +275,7 @@ class RANSAC(nn.Module):
         max_samples: optional budget of minimal samples that overrides the one implied by ``batch_size`` and
             ``max_iter``; the last batch is truncated to it.
         local_optimization: ``"lm"`` or ``"dlt"``, as described above; None picks ``"lm"`` for homographies,
-            fundamental and essential matrices and ``"dlt"`` for line segments.
+            fundamental and essential matrices and ``"dlt"`` for affine transforms and line segments.
         refine_iters: Levenberg-Marquardt iterations of the final refinement with ``local_optimization="lm"``;
             zero disables it.
         compile: run ``local_optimization="lm"`` as one compiled graph, as described above.
@@ -274,7 +306,7 @@ class RANSAC(nn.Module):
         """Initialize the RANSAC estimator.
 
         Args:
-            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+            model_type: type of model to estimate: "affine", "homography", "fundamental", "fundamental_7pt",
                 "fundamental_8pt", "essential", "homography_from_linesegments".
             inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
             batch_size: number of generated samples at once, or ``"auto"`` (see :meth:`resolve_batch_size`).
@@ -305,6 +337,7 @@ class RANSAC(nn.Module):
         """
         super().__init__()
         self.supported_models = [
+            "affine",
             "homography",
             "fundamental",
             "fundamental_7pt",
@@ -364,7 +397,20 @@ class RANSAC(nn.Module):
         self.minimal_solver: Callable[..., torch.Tensor]
         self.polisher_solver: Callable[..., torch.Tensor]
 
-        if model_type == "homography":
+        self._set_model(model_type, inl_th)
+        if lo_sample_size is not None and lo_sample_size < self.polisher_sample_size:
+            raise ValueError(f"lo_sample_size must be at least {self.polisher_sample_size}")
+
+    def _set_model(self, model_type: str, inl_th: float) -> None:
+        """Select the model's residual, fitting methods and sample cardinalities."""
+        if model_type == "affine":
+            self.error_fn = _affine_transfer_error
+            # Three correspondences determine an affine map: minimal samples are solved directly.
+            self.minimal_solver = _find_affine_triplet
+            self.polisher_solver = find_affine
+            self.minimal_sample_size = 3
+            self.polisher_sample_size = 3
+        elif model_type == "homography":
             self.error_fn = oneway_transfer_error
             self.minimal_solver = find_homography_dlt
             # The polisher's Gaussian re-weighting uses the inlier threshold as its standard deviation.
@@ -398,8 +444,6 @@ class RANSAC(nn.Module):
             self.polisher_sample_size = 8
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
-        if lo_sample_size is not None and lo_sample_size < self.polisher_sample_size:
-            raise ValueError(f"lo_sample_size must be at least {self.polisher_sample_size}")
 
     def sample(
         self,
@@ -494,15 +538,17 @@ class RANSAC(nn.Module):
     def resolve_batch_size(self, num_tc: int, device: torch.device) -> int:
         """Return the batch size of a ``local_optimization="dlt"`` call: the configured one, or the ``"auto"`` choice.
 
-        On CUDA and MPS a homography batch costs about the same from a few hundred up to 8192 hypotheses
-        (the four-point solve is launch-bound), so the whole :attr:`sample_budget` is drawn in batches of
-        up to 8192; the epipolar solvers are compute-bound past 2048 hypotheses, so their batches stop there
+        On CUDA and MPS a homography or affine batch costs about the same from a few hundred up to 8192 hypotheses
+        (the four- and three-point solves are launch-bound), so the whole :attr:`sample_budget` is drawn in batches
+        of up to 8192; the epipolar solvers are compute-bound past 2048 hypotheses, so their batches stop there
         and early stopping is checked in between. The verification holds a ``batch x N`` residual matrix and a
         few temporaries of that size, so past ``2**27`` entries (about 1 GiB at peak in float32) the batch
         shrinks with ``N``, down to the 2048 of the historical fixed batch. On CPU the cost is linear in
         ``batch * N`` residuals, and the eight-point solver is about ten times a DLT, so the batch aims at a
-        millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for the epipolar
-        models. Other devices retain the historical 2048-sample batch.
+        millisecond or so of work, 256 to 2048 hypotheses for homographies and 128 to 512 for affine and the
+        epipolar models: a three-point affine sample needs far fewer draws than a four-point one, and the smaller
+        batches let early stopping act sooner (1.1-4.3x faster at equal recall on 500-8000 synthetic matches with
+        10-50% inliers). Other devices retain the historical 2048-sample batch.
 
         With ``local_optimization="lm"`` an ``"auto"`` batch instead starts at 256 samples on CPU (512 for
         homographies) and doubles after every batch, up to 2048 (4096 for homographies), so that inputs with
@@ -524,7 +570,7 @@ class RANSAC(nn.Module):
         if device.type == "cpu":
             work, lower, upper = (1 << 19, 256, 2048) if planar else (1 << 17, 128, 512)
         elif device.type in ("cuda", "mps"):
-            work, lower, upper = 1 << 27, 2048, 8192 if planar else 2048
+            work, lower, upper = 1 << 27, 2048, 8192 if planar or self.model_type == "affine" else 2048
         else:
             return min(_DEFAULT_BATCH, self.sample_budget)
         batch = min(max(work // max(num_tc, 1), lower), upper)
@@ -906,12 +952,19 @@ class RANSAC(nn.Module):
 
         """
         self.validate_inputs(kp1, kp2, weights)
-        if self.local_optimization == "lm":
-            with torch.no_grad():
-                if self.compiled:
-                    with torch.inference_mode(False), torch.no_grad():
-                        return self._forward_compiled(kp1, kp2)
-                return self._forward_lm(kp1, kp2)
+        # Autocast would solve and score in half precision, which changes the estimate, and CUDA's eigh, which the
+        # fundamental refit calls, has no half-precision kernel.
+        with _autocast_disabled(kp1.device.type):
+            if self.local_optimization == "lm":
+                with torch.no_grad():
+                    if self.compiled:
+                        with torch.inference_mode(False), torch.no_grad():
+                            return self._forward_compiled(kp1, kp2)
+                    return self._forward_lm(kp1, kp2)
+            return self._forward_dlt(kp1, kp2)
+
+    def _forward_dlt(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """:meth:`forward` with ``local_optimization="dlt"``."""
         best_score_total = -float("inf")
         num_tc: int = len(kp1)
         budget = self.sample_budget

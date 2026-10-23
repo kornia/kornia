@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.augmentation import RandomCrop, RandomCrop3D
+from kornia.augmentation import AugmentationSequential, RandomCrop, RandomCrop3D
 
 from testing.base import BaseTester
 
@@ -266,10 +266,11 @@ class TestRandomCrop3D(BaseTester):
     def test_rejects_a_crop_one_voxel_larger_than_the_input(self, axis, device, dtype):
         # The size guard counted valid start offsets and rejected only a negative count, so a crop exactly
         # one voxel too large passed and the output gained an empty slab.
+        """Reject crops exceeding the input by even one voxel on any spatial axis."""
         volume = torch.ones(1, 1, 4, 5, 6, device=device, dtype=dtype)
         size = [4, 5, 6]
         size[axis] += 1
-        with pytest.raises(ValueError, match="cannot be smaller than crop size"):
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input"):
             RandomCrop3D(tuple(size), p=1.0)(volume)
         # The whole volume is still a valid crop.
         assert RandomCrop3D((4, 5, 6), p=1.0)(volume).shape == (1, 1, 4, 5, 6)
@@ -300,6 +301,47 @@ class TestRandomCrop3D(BaseTester):
             RandomCrop3D((4, 4, 4), padding=1, fill=(1.0, 0.0, 0.0), padding_mode="replicate", p=1.0).precrop_padding(
                 volume
             )
+
+
+class TestRandomCrop3DEmptyValidation(BaseTester):
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
+    @pytest.mark.parametrize("probability", [0.0, 1.0])
+    @pytest.mark.parametrize("in_sequence", [False, True])
+    def test_oversized_crop_raises_4429(self, batch_size, size, probability, in_sequence, device, dtype):
+        """Empty and skipped batches obey the same crop-size contract as applied batches."""
+        volume = torch.empty(batch_size, 1, 4, 5, 6, device=device, dtype=dtype)
+        crop = RandomCrop3D(size, p=probability)
+        augmentation = AugmentationSequential(crop) if in_sequence else crop
+
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input_size=\(4, 5, 6\)"):
+            augmentation(volume)
+
+    @pytest.mark.parametrize(
+        "size,padding,pad_if_needed",
+        [
+            ((3, 4, 5), None, False),
+            ((4, 5, 6), None, False),
+            ((5, 6, 7), 1, False),
+            ((5, 6, 7), None, True),
+        ],
+    )
+    @pytest.mark.parametrize("probability", [0.0, 1.0])
+    @pytest.mark.parametrize("in_sequence", [False, True])
+    def test_legal_empty_crop_keeps_shape_4429(
+        self, size, padding, pad_if_needed, probability, in_sequence, device, dtype
+    ):
+        """Empty crops validate against the padded canvas and take the crop size under any probability."""
+        volume = torch.empty(0, 1, 4, 5, 6, device=device, dtype=dtype)
+        crop = RandomCrop3D(size, padding=padding, pad_if_needed=pad_if_needed, p=probability)
+        augmentation = AugmentationSequential(crop) if in_sequence else crop
+
+        output = augmentation(volume)
+
+        # An empty batch has no sample for the gate to skip (#4429).
+        assert output.shape == (0, 1, *size)
+        assert output.device == volume.device
+        assert output.dtype == volume.dtype
 
 
 class TestRandomCrop3DPaddingMatrix(BaseTester):

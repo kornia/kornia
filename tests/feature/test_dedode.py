@@ -25,6 +25,7 @@ from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
 from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
+from kornia.feature.dedode.transformer.layers.patch_embed import PatchEmbed
 from kornia.feature.dedode.utils import dedode_denormalize_pixel_coordinates
 
 from testing.base import BaseTester
@@ -61,6 +62,17 @@ class TestMemEffAttention(BaseTester):
 
         with pytest.raises(NotImplementedError, match="attn_bias is not supported"):
             attention(x, attn_bias=torch.zeros(1, 2, 5, 5, device=device, dtype=dtype))
+
+
+class TestPatchEmbed(BaseTester):
+    def test_jit_script(self, device, dtype):
+        # TorchScript compiles the patch-size checks, whose messages format the input shape rather than a lambda
+        embed = PatchEmbed(img_size=32, patch_size=4, in_chans=3, embed_dim=8).to(device, dtype)
+        x = torch.rand(2, 3, 16, 20, device=device, dtype=dtype)
+        scripted = torch.jit.script(embed)
+        self.assert_close(scripted(x), embed(x))
+        with pytest.raises(Exception, match="height is not a multiple of patch height 4"):
+            scripted(torch.rand(2, 3, 18, 20, device=device, dtype=dtype))
 
 
 class TestNestedTensorBlock(BaseTester):
@@ -203,6 +215,113 @@ class TestDeDoDeHalfPrecision(BaseTester):
         assert torch.isfinite(scores).all()
 
 
+def _tiny_dinov2(monkeypatch):
+    """Replace the 24-block ViT-L/14 and its download by a one-block ViT with the same 1024-wide patch tokens."""
+    from functools import partial
+
+    import kornia.feature.dedode.encoder as encoder_module
+    import kornia.feature.dedode.transformer as transformer_module
+
+    def vit_large(patch_size=16, **kwargs):
+        return DinoVisionTransformer(
+            patch_size=patch_size,
+            embed_dim=1024,
+            depth=1,
+            num_heads=16,
+            mlp_ratio=4,
+            block_fn=partial(NestedTensorBlock, attn_class=MemEffAttention),
+            **kwargs,
+        )
+
+    torch.manual_seed(0)
+    state = vit_large(img_size=518, patch_size=14, init_values=1.0, ffn_layer="mlp", block_chunks=0).state_dict()
+    monkeypatch.setattr(transformer_module, "vit_large", vit_large)
+    monkeypatch.setattr(encoder_module, "load_state_dict_from_url", lambda *args, **kwargs: state)
+
+
+class TestDeDoDeDefaultAmpDtype5934(BaseTester):
+    """`amp_dtype` is CUDA mixed precision in every component, so the default argument runs off CUDA."""
+
+    @staticmethod
+    def _image(device):
+        return torch.rand(1, 3, 56, 84, generator=torch.Generator().manual_seed(7)).to(device)
+
+    @pytest.mark.parametrize("entry", ["detect", "describe", "forward"])
+    def test_default_runs_with_float32(self, device, monkeypatch, entry):
+        if device.type == "cuda":
+            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe().to(device).eval()
+        x = self._image(device)
+        if entry == "detect":
+            kpts, scores = model.detect(x, n=8)
+            outs = (kpts, scores)
+        elif entry == "describe":
+            outs = (model.describe(x),)
+            assert outs[0].shape == (1, 256, 56, 84)
+        else:
+            kpts, scores, descs = model(x, n=8)
+            assert descs.shape == (1, 8, 256)
+            outs = (kpts, scores, descs)
+        for out in outs:
+            assert out.dtype == torch.float32
+            assert torch.isfinite(out).all()
+
+    def test_forward_is_detect_then_describe(self, device, monkeypatch):
+        if device.type == "cuda":
+            pytest.skip("CUDA runs the float16 mixed-precision path, which this test does not cover")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe().to(device).eval()
+        x = self._image(device)
+        kpts, scores, descs = model(x, n=8)
+        kpts_d, scores_d = model.detect(x, n=8)
+        self.assert_close(kpts, dedode_denormalize_pixel_coordinates(kpts_d, 56, 84))
+        self.assert_close(scores, scores_d)
+        self.assert_close(descs, model.describe(x, kpts_d))
+
+    def test_dinov2_is_not_cast_off_cuda(self, device, monkeypatch):
+        if device.type == "cuda":
+            pytest.skip("CUDA casts the DINOv2 backbone to amp_dtype by design")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe().to(device).eval()
+        backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14
+        assert backbone[0].cls_token.dtype == torch.float32
+        model.describe(self._image(device))
+        assert backbone[0].cls_token.dtype == torch.float32
+        assert backbone[0].cls_token.device.type == device.type
+
+    @pytest.mark.parametrize("entry", ["describe", "forward"])
+    def test_descriptor_g_follows_the_model_dtype(self, device, dtype, monkeypatch, entry):
+        if device.type == "cuda":
+            pytest.skip("CUDA runs the mixed-precision path, see test_cuda_casts_the_backbone_to_amp_dtype")
+        _tiny_dinov2(monkeypatch)
+        model = DeDoDe(amp_dtype=dtype).to(device, dtype).eval()
+        x = self._image(device).to(dtype)
+        out = model.describe(x) if entry == "describe" else model(x, n=8)[2]
+        assert out.dtype == (dtype if entry == "describe" else torch.float32)
+        assert torch.isfinite(out).all()
+        backbone = model.descriptor.encoder.frozen_dinov2.dinov2_vitl14[0]
+        assert backbone.cls_token.dtype == dtype
+
+    def test_cuda_casts_the_backbone_to_amp_dtype(self, device, monkeypatch):
+        if device.type != "cuda":
+            pytest.skip("requires CUDA")
+        _tiny_dinov2(monkeypatch)
+        amp_dtype = torch.float16
+        model = DeDoDe(amp_dtype=amp_dtype).to(device).eval()
+        image = self._image(device)
+        keypoints = torch.zeros(1, 4, 2, device=device)
+        # The sparse path casts the map to float32 for `grid_sample`; the dense map comes out of the decoders'
+        # float16 autocast and nothing casts it back.
+        sparse = model.describe(image, keypoints)
+        assert sparse.dtype == torch.float32
+        assert torch.isfinite(sparse).all()
+        dense = model.describe(image)
+        assert dense.dtype == amp_dtype
+        assert torch.isfinite(dense).all()
+        assert model.descriptor.encoder.frozen_dinov2.dinov2_vitl14[0].cls_token.dtype == amp_dtype
+
+
 class TestDeDoDeNoGrad(BaseTester):
     @staticmethod
     def _model(device, dtype):
@@ -280,3 +399,90 @@ class TestDeDoDe:
         assert keypoints.shape == (shape[0], n, 2)
         assert scores.shape == (shape[0], n)
         assert descriptions.shape == (shape[0], n, 256)
+
+
+class _FixedMap(torch.nn.Module):
+    """A DeDoDe network stand-in that returns ``fn(images)`` and records its input."""
+
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+        self.seen = []
+
+    def forward(self, images):
+        self.seen.append(images)
+        return self.fn(images)
+
+
+class TestConventionsDeDoDe(BaseTester):
+    @staticmethod
+    def _model(monkeypatch, peaks):
+        # DeDoDe with its networks replaced (no VGG is built, nothing is downloaded): the detector returns logits -20
+        # with the given peaks (x, y, logit), the descriptor a two-channel map (column, row), so a description names
+        # the pixel it was read at.
+        def detector(images):
+            b, _, h, w = images.shape
+            logits = torch.full((b, 1, h, w), -20.0, device=images.device, dtype=images.dtype)
+            for x, y, logit in peaks:
+                if y < h and x < w:
+                    logits[:, 0, y, x] = logit
+            return logits
+
+        def descriptor(images):
+            b, _, h, w = images.shape
+            yy, xx = torch.meshgrid(
+                torch.arange(h, device=images.device), torch.arange(w, device=images.device), indexing="ij"
+            )
+            return torch.stack([xx, yy])[None].expand(b, 2, h, w).to(images.dtype)
+
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_detector", lambda *a, **k: _FixedMap(detector))
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_descriptor", lambda *a, **k: _FixedMap(descriptor))
+        return DeDoDe(detector_model="L", descriptor_model="B")
+
+    def test_convention_dedode_forward_returns_edge_aligned_pixels_and_detect_normalised_ones(
+        self, device, dtype, monkeypatch
+    ):
+        # Logit peaks at pixels (60, 40) and (21, 13) of a 56 x 84 image. forward returns pixel i as i + 0.5 (subtract
+        # 0.5 for kornia's frame), detect returns (2 i + 1) / (W, H) - 1 in [-1, 1], and the description is read at
+        # pixel i itself; keypoints and descriptions are float32 whatever the model dtype, keypoints come sorted by
+        # score, N = min(n, H W) with no threshold or padding. The grid and its pixel conversion are the formulas of
+        # Parskatt/DeDoDe 6d15618 (utils.get_grid, to_pixel_coords).
+        peaks = [(21, 13, 18.0), (60, 40, 20.0)]
+        pixels = torch.tensor([[[60.0, 40.0], [21.0, 13.0]]], device=device)
+        for h, w, peaks_i, image_pixels in (
+            (56, 84, peaks, pixels),
+            (84, 56, [(y, x, v) for x, y, v in peaks], pixels.flip(-1)),  # relabelling: transpose
+        ):
+            model = self._model(monkeypatch, peaks_i).to(device, dtype)
+            image = torch.rand(1, 3, h, w, device=device, dtype=dtype)
+            keypoints, scores, descriptions = model(image, n=2)
+            normalised, _ = model.detect(image, n=2)
+            assert keypoints.dtype == normalised.dtype == descriptions.dtype == torch.float32
+            self.assert_close(keypoints, image_pixels + 0.5)
+            size = torch.tensor([w, h], device=device)
+            self.assert_close(normalised, (2.0 * image_pixels + 1.0) / size - 1.0)
+            self.assert_close(descriptions, image_pixels)
+            assert scores[0, 0] > scores[0, 1]
+        keypoints, scores, descriptions = model(torch.rand(2, 3, 14, 28, device=device, dtype=dtype), n=1000)
+        assert keypoints.shape == (2, 392, 2)
+        assert scores.shape == (2, 392)
+        assert descriptions.shape == (2, 392, 2)
+
+    def test_convention_dedode_takes_rgb_in_the_unit_range_and_imagenet_normalises_it(self, device, dtype, monkeypatch):
+        # forward, detect and describe feed the networks (x - mean) / std with ImageNet's mean (0.485, 0.456, 0.406) and
+        # std (0.229, 0.224, 0.225), the normalisation the pretrained weights expect (Parskatt/DeDoDe's image loader);
+        # apply_imagenet_normalization=False feeds the input as given.
+        model = self._model(monkeypatch, [(21, 13, 18.0), (60, 40, 20.0)]).to(device, dtype)
+        image = torch.rand(1, 3, 56, 84, device=device, dtype=dtype)
+        mean = torch.tensor([0.485, 0.456, 0.406], device=device, dtype=dtype).view(1, 3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225], device=device, dtype=dtype).view(1, 3, 1, 1)
+        model(image, n=2)
+        model.detect(image, n=2)
+        model.describe(image)
+        model(image, n=2, apply_imagenet_normalization=False)
+        seen = model.detector.seen + model.descriptor.seen
+        assert len(seen) == 6
+        for net in (model.detector, model.descriptor):
+            for normalised in net.seen[:2]:
+                self.assert_close(normalised, (image - mean) / std)
+            self.assert_close(net.seen[2], image, rtol=0.0, atol=0.0)

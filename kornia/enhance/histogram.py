@@ -118,6 +118,8 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         histogram2d uses the same batch convention for a joint density. bandwidth must be
         finite and positive; the check runs on CPU and CUDA via ``torch._assert_async`` and
         raises ``RuntimeError``. kornia skips it on MPS by design, so invalid values do not raise there.
+        For float16 and bfloat16 samples and bins, the kernels are evaluated in float32 and the result
+        is cast back to that dtype.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -138,6 +140,13 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         torch.Size([1, 128])
 
     """
+    # In half precision the gradient reaches the samples through per-bin terms below the normal range: evaluate the
+    # kernels in float32. The 0-d bandwidth does not promote the kernels, so it does not pick the dtype either.
+    kernel_dtype = torch.promote_types(x.dtype, bins.dtype)
+    if kernel_dtype in (torch.float16, torch.bfloat16):
+        pdf, _ = marginal_pdf(x.float().unsqueeze(2), bins.float(), bandwidth.float(), epsilon)
+        return pdf.to(kernel_dtype)
+
     pdf, _ = marginal_pdf(x.unsqueeze(2), bins, bandwidth, epsilon)
 
     return pdf
@@ -151,6 +160,8 @@ def histogram2d(
     Convention:
         x1 and x2 supply one sample row per batch element and return
         (B, N_bins, N_bins), where the first bin axis belongs to x1.
+        When ``x1`` and ``bins`` promote to float16 or bfloat16, the kernels, joint counts and
+        normalization are evaluated in float32 and the result is cast back to that promoted dtype.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -173,10 +184,15 @@ def histogram2d(
         torch.Size([2, 128, 128])
 
     """
+    # In float16 the joint counts and their normalization overflow on ordinary images, and the gradient reaches the
+    # samples through per-bin terms below the float16 normal range: evaluate the kernels in float32 as well.
+    kernel_dtype = torch.promote_types(x1.dtype, bins.dtype)
+    if kernel_dtype in (torch.float16, torch.bfloat16):
+        x1, x2, bins, bandwidth = x1.float(), x2.float(), bins.float(), bandwidth.float()
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
-    return joint_pdf(kernel_values1, kernel_values2)
+    return joint_pdf(kernel_values1, kernel_values2).to(kernel_dtype)
 
 
 def _check_image_rank(image: torch.Tensor) -> None:
@@ -186,12 +202,12 @@ def _check_image_rank(image: torch.Tensor) -> None:
 
 
 def _restore_float_dtype(hist: torch.Tensor, image: torch.Tensor, auto_centers: bool) -> torch.Tensor:
-    """Hand back the image's own dtype after wider bin centers promoted the result.
+    """Hand back the image's dtype when it can represent the histogram counts.
 
     Only for auto-built centers on a floating-point image: an integer image or explicit ``centers`` keep the promoted
-    dtype they always had, and casting a KDE result into an integer dtype would truncate it (uint8 wraps modulo 256).
+    dtype (at least float32), and half-precision counts stay float32 because ordinary image counts exceed their range.
     """
-    if auto_centers and image.is_floating_point():
+    if auto_centers and image.is_floating_point() and image.dtype not in (torch.float16, torch.bfloat16):
         return hist.to(image.dtype)
     return hist
 
@@ -239,7 +255,9 @@ def image_histogram2d(
         Spatial axes are the final two axes; input (H, W), (C, H, W), and
         (B, C, H, W) return matching leading axes followed by bins; other ranks raise. Automatic
         centers lie at min + (i + 0.5) * bandwidth; values outside the supplied range contribute
-        according to the selected kernel rather than being clipped into an endpoint bin.
+        according to the selected kernel rather than being clipped into an endpoint bin. Float16 and
+        bfloat16 images are accumulated and returned in float32, or in the dtype of wider explicit
+        ``centers``: the bin counts of ordinary images exceed float16's range (65504) and bfloat16's precision.
 
     The calculation uses triangular kernel density estimation.
 
@@ -301,14 +319,14 @@ def image_histogram2d(
     auto_centers = centers is None
     bandwidth = _validate_histogram_bandwidth(min, max, n_bins, bandwidth, auto_centers)
 
+    # Preserve the supplied center precision while promoting half inputs enough to represent image-sized counts.
+    center_dtype = centers.dtype if centers is not None else torch.float32
+    compute_dtype = torch.promote_types(torch.float32, torch.promote_types(image.dtype, center_dtype))
     if centers is None:
-        # Build the bin-center grid at a dtype that represents the bin indices exactly: image.dtype alone collapses
-        # distinct centers for float16/bfloat16, and a fixed float32 would downgrade a float64 image.
-        compute_dtype = torch.promote_types(image.dtype, torch.float32)
         centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=compute_dtype) + 0.5)
-    centers = centers.reshape(-1, 1, 1, 1, 1)
+    centers = centers.to(compute_dtype).reshape(-1, 1, 1, 1, 1)
 
-    u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
+    u = torch.abs(image.to(compute_dtype).unsqueeze(0) - centers) / bandwidth
 
     if kernel == "gaussian":
         kernel_values = torch.exp(-0.5 * u**2)

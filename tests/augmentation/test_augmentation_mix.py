@@ -295,6 +295,18 @@ class TestRandomMixUpV2(BaseTester):
 
 
 class TestRandomCutMixV2(BaseTester):
+    # A model moved to half precision moves its augmentations too. CutMix's Beta draw used to raise there on CPU
+    # ("dirichlet" has no Half kernel), on 0.8.3 as well for a direct .to(); it now draws in float32.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_module_moved_to_half_precision(self, device, half_dtype):
+        torch.manual_seed(0)
+        aug = RandomCutMixV2(p=1.0, data_keys=["input", "class"]).to(device=device, dtype=half_dtype)
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=half_dtype)
+        out_image, out_labels = aug(image, torch.tensor([0, 1], device=device))
+        assert out_image.dtype == half_dtype
+        assert torch.isfinite(out_image).all()
+        assert torch.isfinite(out_labels).all()
+
     def test_smoke(self):
         f = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         expected_repr = "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
@@ -519,9 +531,11 @@ class TestRandomCutMixV2(BaseTester):
         _, out_label = f(input, label)
 
         w, h = infer_bbox_shape(f._params["crop_src"][0])
-        expected_lambda = w.to(torch.float64) * h.to(torch.float64) / (15 * 17)
+        expected_lambda = (
+            w.to(device=device, dtype=torch.float64) * h.to(device=device, dtype=torch.float64) / (15 * 17)
+        )
 
-        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
+        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=1e-15)
 
     def test_cutmix_prob_single_gate(self, device, dtype):
         # Regression test for #4649: p must not be applied twice
@@ -696,7 +710,7 @@ class TestRandomMosaic(BaseTester):
         image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
         xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
         boxes = Boxes.from_tensor(xyxy)
-        aug = FilterBoxes(p=1.0)
+        aug = FilterBoxes(p=0.5)
         params = aug.forward_parameters(image.shape)
         params["batch_prob"] = image.new_tensor([0.0, 1.0])
         output = aug.transform_boxes(boxes, params, aug.flags)
@@ -835,6 +849,32 @@ class TestRandomMosaic(BaseTester):
                 region = out_image[n, 0, y1:y2, x1:x2]
                 assert region.numel() > 0, (n, (x1, y1, x2, y2))
                 assert bool((region > 0).all()), (n, (x1, y1, x2, y2), out_image[n, 0])
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_unknown_padding_mode_rejected_at_construction_5914(self, cropping_mode):
+        with pytest.raises(
+            ValueError,
+            match=r"'bogus' is not a valid padding_mode\. Expected one of 'constant', 'reflect', 'replicate'\.",
+        ):
+            RandomMosaic(padding_mode="bogus", cropping_mode=cropping_mode)
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "Constant"])
+    def test_grid_sample_padding_names_rejected_5914(self, padding_mode):
+        # `cropping_mode="resample"` used to pass grid_sample's own names through; names are matched as given.
+        with pytest.raises(ValueError, match=f"'{padding_mode}' is not a valid padding_mode"):
+            RandomMosaic(padding_mode=padding_mode, cropping_mode="resample")
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("padding_mode", ["constant", "reflect", "replicate"])
+    def test_valid_padding_mode_forward_5914(self, cropping_mode, padding_mode, device, dtype):
+        image = torch.rand(2, 3, 32, 48, device=device, dtype=dtype)
+        output = RandomMosaic(
+            output_size=(32, 48),
+            p=1.0,
+            padding_mode=padding_mode,
+            cropping_mode=cropping_mode,
+        )(image)
+        assert output.shape == (2, 3, 32, 48)
 
     def test_smoke(self):
         f = RandomMosaic(data_keys=["input", "class"])

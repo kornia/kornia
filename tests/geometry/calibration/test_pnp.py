@@ -117,6 +117,23 @@ class TestSolvePnpDlt(BaseTester):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics))
 
+    def test_backward_storage_scales_with_points(self, device):
+        dtype = torch.float32 if device.type == "mps" else torch.float64
+        intrinsics, _, world_points, img_points = self._get_test_data(64, device, dtype)
+        world_points.requires_grad_()
+        saved_sizes = []
+
+        def pack(tensor):
+            saved_sizes.append(tensor.numel())
+            return tensor
+
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+            pose = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
+            pose.square().sum().backward()
+
+        assert torch.isfinite(world_points.grad).all()
+        assert max(saved_sizes) <= 16 * world_points.numel()
+
     @pytest.mark.parametrize("num_points", [8])
     def test_gradcheck_weights(self, num_points, device):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
@@ -398,3 +415,35 @@ class TestNormalization(BaseTester):
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=torch.float64)
 
         self.gradcheck(_mean_isotropic_scale_normalize, (points,))
+
+
+class TestSolvePnpDltAutocast(BaseTester):
+    """A caller's autocast region does not reach the PnP solve (#6168), as for the solvers of #6072."""
+
+    @staticmethod
+    def _scene(device):
+        generator = torch.Generator().manual_seed(6168)
+        K = torch.tensor([[[400.0, 0.0, 160.0], [0.0, 410.0, 120.0], [0.0, 0.0, 1.0]]])
+        R = kornia.geometry.conversions.axis_angle_to_rotation_matrix(torch.tensor([[0.1, -0.2, 0.05]]))
+        t = torch.tensor([[[0.2], [-0.1], [4.0]]])
+        world = torch.rand(1, 40, 3, generator=generator) * 2 - 1
+        img = kornia.geometry.conversions.convert_points_from_homogeneous((world @ R.mT + t.mT) @ K.mT)
+        weights = torch.rand(1, 40, generator=generator) + 0.5
+        return [v.to(device) for v in (world, img, K, torch.cat([R, t], -1), weights)]
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_autocast_does_not_change_the_result_6168(self, device, weighted):
+        # Under bfloat16 autocast the de-normalization products ran in bfloat16, and torch.det, which has no
+        # half-precision CPU kernel, raised NotImplementedError for float32 inputs.
+        if device.type == "cuda" and not torch.cuda.is_bf16_supported():
+            pytest.skip("this CUDA device does not support bfloat16")
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        world, img, K, expected_pose, weights = self._scene(device)
+        weights = weights if weighted else None
+        expected = kornia.geometry.calibration.solve_pnp_dlt(world, img, K, weights)
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            actual = kornia.geometry.calibration.solve_pnp_dlt(world, img, K, weights)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(actual, expected_pose, atol=1e-4, rtol=0)

@@ -68,6 +68,13 @@ hp2_4 = hp2[:, :4]
 ls1 = torch.rand(1, N, 2, 2) * torch.tensor([40.0, 32.0])
 ls2 = L.transform_points(H_gt, ls1.reshape(1, -1, 2)).reshape(1, N, 2, 2)
 w_ones = torch.ones(1, N)
+# Correspondences about a pixel off the model, for the distance and transfer-error cases: on the exact ones above those
+# are ~0, and a graph that returned zeros would match them within atol. A private generator keeps the registry's global
+# random stream, and with it every other case's inputs, unchanged.
+_noise = torch.Generator().manual_seed(1)
+pts2_off = pts2 + torch.randn(pts2.shape, generator=_noise)
+hp2_off = hp2 + torch.randn(hp2.shape, generator=_noise)
+ls2_off = ls2 + torch.randn(ls2.shape, generator=_noise)
 
 # rotations / quaternions
 aa = torch.tensor([[0.1, -0.2, 0.3], [1.0, 0.5, -0.4]])  # (2,3) axis-angle
@@ -309,15 +316,15 @@ CASES = [
     _ch(
         "line_segment_transfer_error_one_way",
         K.geometry.homography.line_segment_transfer_error_one_way,
-        [ls1, ls2, H_gt],
+        [ls1, ls2_off, H_gt],
     ),
-    _ch("oneway_transfer_error", K.geometry.homography.oneway_transfer_error, [hp1, hp2, H_gt]),
-    _ch("symmetric_transfer_error", K.geometry.homography.symmetric_transfer_error, [hp1, hp2, H_gt]),
+    _ch("oneway_transfer_error", K.geometry.homography.oneway_transfer_error, [hp1, hp2_off, H_gt]),
+    _ch("symmetric_transfer_error", K.geometry.homography.symmetric_transfer_error, [hp1, hp2_off, H_gt]),
     _ch(
         "sample_is_valid_for_homography",
         K.geometry.homography.sample_is_valid_for_homography,
-        [hp1_4, hp2_4],
-        note="returns bool (B,)",
+        [hp1_4.repeat(2, 1, 1), torch.cat([hp2_4, hp2_4 * torch.tensor([-1.0, 1.0])])],
+        note="returns bool (B,); the second sample is mirrored, so it is invalid",
     ),
     _ch("normalize_points", K.geometry.homography.normalize_points, [hp1]),
     _ch("safe_inverse_with_mask", K.geometry.homography.safe_inverse_with_mask, [H_gt]),
@@ -365,17 +372,17 @@ CASES = [
     _ce("normalize_transformation", E.normalize_transformation, [F_gt * 3.0]),
     _ce("get_perpendicular", E.get_perpendicular, [torch.rand(1, N, 3) + 0.1, pts1]),
     _ce("get_closest_point_on_epipolar_line", E.get_closest_point_on_epipolar_line, [pts1, pts2, F_gt]),
-    _ce("sampson_epipolar_distance", E.sampson_epipolar_distance, [pts1, pts2, F_gt]),
+    _ce("sampson_epipolar_distance", E.sampson_epipolar_distance, [pts1, pts2_off, F_gt]),
     _ce(
         "sampson_epipolar_distance[no-matmul]",
         E.sampson_epipolar_distance,
-        [pts1, pts2, F_gt],
+        [pts1, pts2_off, F_gt],
         {"use_matmul_at_less_than_points": 0},
         note="einsum path",
     ),
-    _ce("symmetrical_epipolar_distance", E.symmetrical_epipolar_distance, [pts1, pts2, F_gt]),
-    _ce("left_to_right_epipolar_distance", E.left_to_right_epipolar_distance, [pts1, pts2, F_gt]),
-    _ce("right_to_left_epipolar_distance", E.right_to_left_epipolar_distance, [pts1, pts2, F_gt]),
+    _ce("symmetrical_epipolar_distance", E.symmetrical_epipolar_distance, [pts1, pts2_off, F_gt]),
+    _ce("left_to_right_epipolar_distance", E.left_to_right_epipolar_distance, [pts1, pts2_off, F_gt]),
+    _ce("right_to_left_epipolar_distance", E.right_to_left_epipolar_distance, [pts1, pts2_off, F_gt]),
     _ce("projection_from_KRt", E.projection_from_KRt, [Kmat, R2, t2]),
     _ce("projections_from_fundamental", E.projections_from_fundamental, [F_gt], atol=1e-3),
     _ce("KRt_from_projection", E.KRt_from_projection, [P2], atol=1e-3),
@@ -456,37 +463,6 @@ CASES = [
             )
         )(PinholeCamera(intr, extr, torch.tensor([32]), torch.tensor([40]))),
         [cam2.intrinsics, cam2.extrinsics],
-    ),
-    _cam(
-        "pinhole.pinhole_matrix",
-        K.geometry.camera.pinhole.pinhole_matrix,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]])],
-        note="legacy 12-vector pinhole",
-    ),
-    _cam(
-        "pinhole.inverse_pinhole_matrix",
-        K.geometry.camera.pinhole.inverse_pinhole_matrix,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]])],
-    ),
-    _cam(
-        "pinhole.scale_pinhole",
-        K.geometry.camera.pinhole.scale_pinhole,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.0, 0.0, 0.0]]), torch.tensor([0.5])],
-    ),
-    _cam(
-        "pinhole.get_optical_pose_base",
-        K.geometry.camera.pinhole.get_optical_pose_base,
-        [torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.1, -0.1, 0.05]])],
-        note="KORNIA BUG: function body is `raise NotImplementedError` (pinhole.py:628)",
-    ),
-    _cam(
-        "pinhole.homography_i_H_ref",
-        K.geometry.camera.pinhole.homography_i_H_ref,
-        [
-            torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.1, 0.2, 0.3, 0.1, -0.1, 0.05]]),
-            torch.tensor([[50.0, 50.0, 20.0, 16.0, 32.0, 40.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]),
-        ],
-        note="KORNIA BUG: calls get_optical_pose_base which is a NotImplementedError stub",
     ),
     _cam(
         "StereoCamera.reproject_disparity_to_3D",

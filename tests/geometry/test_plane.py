@@ -119,6 +119,83 @@ class TestFitPlane(BaseTester):
         assert plane.normal.shape == (3,)
         assert torch.isfinite(plane.normal.unwrap()).all()
 
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("batched", [False, True])
+    @pytest.mark.parametrize("large", [False, True])
+    def test_fit_plane_preserves_plane_at_large_scale(self, device, dtype, wrapped, batched, large):
+        scale = 4e4 if large else 1.0
+        # The rectangle lies in z=1 at either scale. Its first singular value is twice its width scale, which
+        # overflowed float16 at 4e4 once cast back (#5821); the other dtypes are controls.
+        points = (
+            torch.tensor(
+                [[-1.0, -0.5, 0.0], [-1.0, 0.5, 0.0], [1.0, -0.5, 0.0], [1.0, 0.5, 0.0]], device=device, dtype=dtype
+            )
+            * scale
+        )
+        points[:, 2] = 1.0
+        expected = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        if batched:
+            points = torch.stack([points, points[:, [2, 0, 1]]])
+            expected = torch.stack([expected, expected[[2, 0, 1]]])
+        points.requires_grad_()
+        plane = fit_plane(Vector3(points) if wrapped else points)
+        assert plane.normal.data.dtype == dtype
+        assert plane.normal.data.device == device
+        assert plane.offset.data.dtype == dtype
+        assert plane.offset.data.device == device
+        self.assert_close(plane.normal.data.abs(), expected)
+        self.assert_close(plane.offset.data.abs(), torch.ones(points.shape[:-2], device=device, dtype=dtype))
+        (plane.normal.data.sum() + plane.offset.data.sum()).backward()
+        assert points.grad is not None
+        assert torch.isfinite(points.grad).all()
+
+    def test_fit_plane_rank_tolerance_uses_input_dtype(self, device, dtype):
+        height = 4 * torch.finfo(dtype).eps
+        points = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, height, 0.0]], device=device, dtype=dtype)
+        with pytest.raises(ValueCheckError, match="not collinear"):
+            fit_plane(points)
+
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_fit_plane_oblique_offset(self, device, dtype, wrapped, batched):
+        # The corners satisfy x + y - z = 32 exactly in every dtype. Half-precision products of the offset
+        # cancel: float16 returned -18.5 and bfloat16 -18.0 instead of -32 / sqrt(3) = -18.475.
+        points = torch.tensor(
+            [[256.0, 256.0, 480.0], [256.0, 512.0, 736.0], [512.0, 256.0, 736.0], [512.0, 512.0, 992.0]],
+            device=device,
+            dtype=dtype,
+        )
+        expected_normal = points.new_tensor([1.0, 1.0, -1.0]) / 3**0.5
+        expected_offset = points.new_tensor(-32.0 / 3**0.5)
+        if batched:
+            points = torch.stack([points, points[:, [2, 0, 1]]])
+            expected_normal = torch.stack([expected_normal, expected_normal[[2, 0, 1]]])
+            expected_offset = expected_offset.expand(2)
+        points.requires_grad_()
+        plane = fit_plane(Vector3(points) if wrapped else points)
+        sign = (plane.normal.data * expected_normal).sum(-1).sign()
+        self.assert_close(plane.normal.data * sign[..., None], expected_normal)
+        self.assert_close(plane.offset.data * sign, expected_offset)
+        plane.offset.data.sum().backward()
+        assert points.grad is not None
+        assert torch.isfinite(points.grad).all()
+
+    def test_dynamo_large_scale(self, device, dtype, torch_optimizer):
+        scale = 4e4
+        points = torch.tensor(
+            [[-1.0, -0.5, 1.0], [-1.0, 0.5, 1.0], [1.0, -0.5, 1.0], [1.0, 0.5, 1.0]], device=device, dtype=dtype
+        )
+        points[:, :2] *= scale
+
+        def op(x):
+            plane = fit_plane(x)
+            return plane.normal.data, plane.offset.data
+
+        actual = torch_optimizer(op)(points)
+        expected = op(points)
+        self.assert_close(actual[0].abs(), expected[0].abs())
+        self.assert_close(actual[1].abs(), expected[1].abs())
+
 
 # TODO: implement the rest of methods
 class TestHyperplane(BaseTester):
@@ -408,6 +485,40 @@ class TestHyperplane(BaseTester):
         assert projected_distance.shape == (shape or ())
         self.assert_close(projected_distance, torch.zeros_like(projected_distance), low_tolerance=half)
         self.assert_close(pl1.abs_distance(p1 + pl1.normal * s1[..., None]), s1, low_tolerance=half)
+
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("shape", [(), (2,), (2, 1)])
+    @pytest.mark.parametrize(
+        "method, point_z, expected_value, expected_gradient",
+        [
+            ("signed_distance", 5.0, 3.0, [0.0, 0.0, 1.0]),
+            ("abs_distance", -1.0, 3.0, [0.0, 0.0, -1.0]),
+            ("projection", 5.0, [1.0, 2.0, 2.0], [1.0, 1.0, 0.0]),
+        ],
+    )
+    def test_point_gradients(self, device, dtype, wrapped, shape, method, point_z, expected_value, expected_gradient):
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        plane = Hyperplane(Vector3(normal), Scalar(normal.new_tensor(-2.0)))
+        point = normal.new_tensor([1.0, 2.0, point_z]).expand(*shape, 3).clone().requires_grad_()
+
+        result = getattr(plane, method)(Vector3(point) if wrapped else point).data
+        self.assert_close(result, result.new_tensor(expected_value).expand_as(result))
+        result.sum().backward()
+
+        assert point.grad is not None
+        self.assert_close(point.grad, point.new_tensor(expected_gradient).expand_as(point))
+
+    @pytest.mark.parametrize("wrapped", [False, True])
+    @pytest.mark.parametrize("method", ["signed_distance", "abs_distance", "projection"])
+    def test_point_gradcheck(self, device, wrapped, method):
+        normal = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=torch.float64)
+        plane = Hyperplane(Vector3(normal), Scalar(normal.new_tensor(-2.0)))
+        point = normal.new_tensor([[1.0, 2.0, 5.0], [4.0, 3.0, -1.0]])
+
+        def evaluate(p):
+            return getattr(plane, method)(Vector3(p) if wrapped else p).data
+
+        self.gradcheck(evaluate, (point,))
 
     def test_projection(self, device, dtype):
         v0 = Vector3.from_coords(0.0, 0.0, 0.0, device=device, dtype=dtype)

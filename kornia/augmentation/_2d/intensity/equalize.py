@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import equalize
 
 
@@ -41,10 +41,10 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - an input outside ``[0, 1]`` raises a ``RuntimeError`` naming :func:`kornia.enhance.equalize` and that
-          range, instead of being transformed. The check guards a 256-entry lookup indexed with
-          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]`` is still admitted, up
-          to the rounding of ``input * 255`` in the input's dtype.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the wrapper clamps before calling :func:`kornia.enhance.equalize`; the functional API
+          retains its strict range check.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`.
@@ -68,10 +68,13 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     """
 
+    SUBSTITUTE_SKIPPED_SAMPLES = True
+
     def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        input = _clamp_unit_range(input)
         return equalize(input)

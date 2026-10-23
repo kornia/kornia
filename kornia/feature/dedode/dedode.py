@@ -81,14 +81,29 @@ class DeDoDe(nn.Module):
 
     See :cite:`edstedt2024dedode` for details.
 
-    .. note:: :meth:`forward`, :meth:`detect` and :meth:`describe` take RGB images in the range :math:`[0, 1]` and
-        apply the ImageNet normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are
-        already normalized.
+    Convention:
+        - :meth:`forward`, :meth:`detect` and :meth:`describe` take RGB images in the range :math:`[0, 1]` and apply
+          the ImageNet normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are
+          already normalized. ``pad_if_not_divisible`` zero-pads the normalized image at the bottom and right to
+          multiples of 14, so the padding is the ImageNet mean colour, and removes it from the maps again.
+        - :meth:`forward` returns pixel ``i`` as ``i + 0.5``: subtract 0.5 for the pixel frame of
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          :meth:`detect` returns it normalized, as ``(2 i + 1) / (W, H) - 1`` in :math:`[-1, 1]`
+          (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a
+          ``k`` to kornia's frame. A description is read at the centre of pixel ``i``.
+        - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
+          threshold and no padding. Keypoints, and the descriptions of
+          :meth:`forward` and of ``describe(images, keypoints)``, are float32; descriptions are not normalized. The
+          dense map of ``describe(images)`` follows the network dtype: ``amp_dtype`` on CUDA, the dtype of the model
+          on CPU and MPS.
+        - ``amp_dtype`` is CUDA mixed precision in every component: on CUDA tensors the networks run under
+          ``torch.autocast`` in ``amp_dtype`` (and the DINOv2 backbone of the ``G`` descriptor is cast to it). On CPU
+          and MPS it has no effect, so the default argument runs there with float32 weights and images.
 
     Args:
         detector_model: The detector model kind. Available options are: `L`.
         descriptor_model: The descriptor model kind. Available options are: `G` or `B`
-        amp_dtype: The automatic mixed precision desired.
+        amp_dtype: The dtype of the automatic mixed precision used on CUDA; it has no effect on other devices.
 
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
@@ -154,7 +169,7 @@ class DeDoDe(nn.Module):
             scores: A torch.Tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
 
             descriptions: A torch.Tensor of shape :math:`(B, N, DIM)` containing the descriptions
-                of the detected keypoints. DIM is 256 for B and 512 for G.
+                of the detected keypoints. DIM is 256 for both B and G.
 
         """
         _B, _C, H, W = images.shape
@@ -290,8 +305,10 @@ class DeDoDe(nn.Module):
                 One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'B-C4', 'B-SO2', 'G-C4', 'G-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
                 Default is 'G-upright'.
-            amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
-            Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
+            amp_dtype: the dtype of the automatic mixed precision used on CUDA, one of torch.float16 or
+                torch.float32. It has no effect on CPU or MPS, where every component runs in the dtype of the
+                input and the model.
+                Default is torch.float16.
 
         Returns:
             The pretrained model.
@@ -301,8 +318,8 @@ class DeDoDe(nn.Module):
         # e.g. "L-C4-v2" -> "L", "G-upright" -> "G". All current checkpoints follow this
         # convention intentionally so that new variants only need a new URL entry.
         model: DeDoDe = cls(
-            detector_model=detector_weights[0],  # type: ignore[arg-type]
-            descriptor_model=descriptor_weights[0],  # type: ignore[arg-type]
+            detector_model=detector_weights[0],
+            descriptor_model=descriptor_weights[0],
             amp_dtype=amp_dtype,
         )
         model.detector.load_state_dict(

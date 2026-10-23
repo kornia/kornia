@@ -134,12 +134,16 @@ class TestHausdorffLoss(BaseTester):
     @pytest.mark.parametrize(
         "hd,shape", [(kornia.losses.HausdorffERLoss, (8, 8)), (kornia.losses.HausdorffERLoss3D, (6, 6, 6))]
     )
-    def test_gradient_at_the_threshold_tie(self, hd, shape, device, dtype):
+    def test_gradient_at_the_threshold_tie(self, hd, shape, device, dtype, monkeypatch):
         # Quantized predictions land the dilation exactly on the 0.5 threshold, where the derivative of
         # the soft threshold is version-dependent for clamp (#4229). Pin it against the reference: zero
         # the negatives through a boolean index, whose gradient at the tie is 1.
         if dtype != torch.float32:
-            pytest.skip("the 0.2 cross kernel sums to exactly 0.5 in float32 only, so no other dtype reaches the tie")
+            pytest.skip("the 0.2 and 1/7 kernels sum to exactly 0.5 in float32 only, so no other dtype reaches the tie")
+        # The tie needs real float32 convolutions. With cuDNN's TF32 default, CUDA's conv3d rounds the 1/7 weight to
+        # 0.142822265625, so every sum that is exactly 0.5 in float32 lands on 0.4998779296875 and nothing reaches the
+        # tie. TF32 is switched off rather than following --tf32, since a TF32 run would have no tie to check.
+        monkeypatch.setattr(torch.backends.cudnn, "allow_tf32", False)
         generator = torch.Generator().manual_seed(0)
         pred = (torch.randint(0, 3, (1, 2, *shape), generator=generator) * 0.5).to(device, dtype)
         target = torch.randint(0, 2, (1, 1, *shape), generator=generator).to(device)

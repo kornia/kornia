@@ -53,6 +53,12 @@ class SIFTDescriptorFromPyramid(nn.Module):
     sharing one pyramid between orientation assignment and description. The
     pyramid belongs to this descriptor; it is not reused from the detector.
 
+    The performance and accuracy acceptance criteria of its automatic
+    orientation are tracked in
+    `#5748 <https://github.com/kornia/kornia/issues/5748>`_. See
+    :ref:`sift-descriptor-interfaces` for the distinct patch, dense-map and
+    supplied-frame descriptor contracts.
+
     The module combines the shared histogram maps of `VLFeat DSIFT
     <https://www.vlfeat.org/api/dsift.html>`_ with orientation-relative spatial and
     angular binning as in OpenCV's `SIFT implementation
@@ -71,6 +77,25 @@ class SIFTDescriptorFromPyramid(nn.Module):
     interval by its centre direction, and spatial pooling is performed in the
     image pyramid before the affine footprint is sampled.
 
+    Convention:
+        - ``lafs`` are in the pixel frame of ``image``, with the layout of
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          Cell ``(i, j)`` of the ``num_spatial_bins`` x ``num_spatial_bins`` grid is centred at ``c + A (u_j, u_i)``
+          with ``u_k = (2 k + 1) / num_spatial_bins - 1``, at whichever octave the LAF selects: the cell centres of a
+          ``num_spatial_bins``-pixel patch from :func:`~kornia.feature.extract_patches_from_pyramid`, row 0 on the
+          frame's :math:`-y` side.
+        - :meth:`orient_and_describe`, unless ``upright=True``, rotates each valid frame so that its dominant
+          gradient, measured in the frame's own coordinates, points along the frame's :math:`+x` axis, whatever
+          orientation the frame had. This is the orientation convention of :class:`~kornia.feature.LAFOrienter`, and it
+          puts that gradient direction in the descriptor's angle bin 0.
+        - A frame that :func:`~kornia.feature.laf_is_valid` rejects, such as the all-zero padding LAF, gets an all-zero
+          descriptor, with or without RootSIFT, and :meth:`orient_and_describe` returns the frame unchanged.
+          :class:`~kornia.feature.SIFTDescriptor` instead describes the flat patch that a zero LAF extracts by ``1e-5``
+          in every entry with RootSIFT.
+        - Clipping, RootSIFT (the default) and kornia's angle-major layout are those of
+          :class:`~kornia.feature.SIFTDescriptor`, whose Convention block gives them;
+          :func:`~kornia.feature.convert_sift_descriptor_layout` reorders the descriptors to OpenCV's.
+
     Args:
         num_ang_bins: Number of descriptor angular bins.
         num_spatial_bins: Number of descriptor spatial bins per axis.
@@ -87,9 +112,6 @@ class SIFTDescriptorFromPyramid(nn.Module):
         - image: :math:`(B, 1, H, W)`
         - lafs: :math:`(B, N, 2, 3)` in image pixel coordinates
         - descriptors: :math:`(B, N, num_ang_bins * num_spatial_bins^2)`
-
-    The descriptors are in kornia's angle-major SIFT layout, as :class:`~kornia.feature.SIFTDescriptor`'s are;
-    :func:`~kornia.feature.convert_sift_descriptor_layout` reorders them to OpenCV's.
     """
 
     def __init__(

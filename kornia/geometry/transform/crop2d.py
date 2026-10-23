@@ -417,6 +417,34 @@ def crop_by_transform_mat(
     return patches
 
 
+def _crop_inverse_by_transform_mat(
+    input_tensor: torch.Tensor,
+    transform: torch.Tensor,
+    out_size: Tuple[int, int],
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
+    align_corners: bool = True,
+) -> torch.Tensor:
+    """:func:`crop_by_transform_mat` for warping a crop back onto its canvas, also from a one-pixel axis.
+
+    ``grid_sample`` cannot place a source axis of length 1: with ``align_corners=True`` every sample lands on its
+    only pixel, so the whole canvas axis gets its value, and with ``False`` it blends it into the next pixel. One
+    pixel of padding on each side of such an axis, in the warp's own padding (a reflected one-pixel axis repeats
+    its pixel), gives the sampler a neighbour to interpolate towards, and ``transform`` is shifted to match.
+    ``transform`` is the :math:`(B, 3, 3)` crop-to-canvas pixel matrix.
+    """
+    pad_h = int(input_tensor.shape[-2] == 1)
+    pad_w = int(input_tensor.shape[-1] == 1)
+    if pad_h or pad_w:
+        pad_mode = "constant" if padding_mode == "zeros" else "replicate"
+        input_tensor = F.pad(input_tensor, (pad_w, pad_w, pad_h, pad_h), mode=pad_mode)
+        shift = torch.eye(3, device=transform.device, dtype=transform.dtype)
+        shift[0, 2] = -pad_w
+        shift[1, 2] = -pad_h
+        transform = transform @ shift
+    return crop_by_transform_mat(input_tensor, transform[:, :2, :], out_size, mode, padding_mode, align_corners)
+
+
 def crop_by_indices(
     input_tensor: torch.Tensor,
     src_box: torch.Tensor,
@@ -457,8 +485,8 @@ def crop_by_indices(
         size: output size. An auto resize or F.pad will be performed according to ``shape_compensation``
             if the cropped slice sizes are not exactly align `size`.
             If None, will auto-infer from src_box.
-        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
-            'bicubic' | 'trilinear' | 'area'.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
@@ -486,7 +514,10 @@ def crop_by_indices(
     KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
 
     B, C, _, _ = input_tensor.shape
-    src = torch.as_tensor(src_box, device=input_tensor.device, dtype=torch.long)
+    # Kept on the device ``src_box`` lives on: the coordinates are read back to Python below, which costs no device
+    # synchronization for the CPU boxes the augmentations pass. A float box truncates to the same integers either way:
+    # the former copy to a CUDA input's device also cast on the host.
+    src = torch.as_tensor(src_box, dtype=torch.long)
     x1 = src[:, 0, 0]
     x2 = src[:, 1, 0] + 1
     y1 = src[:, 0, 1]
@@ -708,12 +739,12 @@ class CenterCrop2D(nn.Module):
                 input,
                 transform[:, :2, :],
                 self.size,
-                self.flags["resample"].name.lower(),  # type:ignore
+                self.flags["resample"].name.lower(),
                 "zeros",
-                self.flags["align_corners"],  # type:ignore
+                self.flags["align_corners"],
             )
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])  # type:ignore
+            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")

@@ -98,6 +98,9 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
     rectangle[..., 2] = bboxes[..., 0] + bboxes[..., -2]  # x2
     rectangle[..., 3] = bboxes[..., 1] + bboxes[..., -1]  # y2
     color = torch.tensor([1, 0, 0]).repeat(imgs.shape[0], imgs.shape[1], 1)
+    # keep every box four-sided: a side outside the image is not drawn by draw_rectangle
+    rectangle[..., 0::2] = rectangle[..., 0::2].clamp(0, imgs.shape[-1] - 1)
+    rectangle[..., 1::2] = rectangle[..., 1::2].clamp(0, imgs.shape[-2] - 1)
     imgs_draw = K.image.draw_rectangle(imgs, rectangle, color=color)
 
     rectangle2 = torch.zeros(imgs.shape[0], imgs.shape[1], 4)
@@ -107,6 +110,8 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
         rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
         rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
+    rectangle2[..., 0::2] = rectangle2[..., 0::2].clamp(0, imgs.shape[-1] - 1)
+    rectangle2[..., 1::2] = rectangle2[..., 1::2].clamp(0, imgs.shape[-2] - 1)
     return K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
 
@@ -806,9 +811,11 @@ def main():
     if confident:
         boxes = torch.stack(confident)[None]
         for pad in (0, 1, 2):  # three passes give a 3 px outline
-            out = K.image.draw_rectangle(
-                out, boxes + torch.tensor([-pad, -pad, pad, pad]), color=torch.tensor([0.4, 1.0, 0.2])
-            )
+            padded = boxes + torch.tensor([-pad, -pad, pad, pad])
+            # keep the outline four-sided for a face at the border
+            padded[..., 0::2] = padded[..., 0::2].clamp(0, out.shape[-1] - 1)
+            padded[..., 1::2] = padded[..., 1::2].clamp(0, out.shape[-2] - 1)
+            out = K.image.draw_rectangle(out, padded, color=torch.tensor([0.4, 1.0, 0.2]))
     write_png(OUTPUT_PATH / "face_detection.png", K.image.tensor_to_image((out[0] * 255.0).byte()))
     print(f"Generated image example for FaceDetector. {len(confident)} faces")
 

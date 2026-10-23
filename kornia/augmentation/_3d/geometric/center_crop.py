@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation._3d.geometric.crop import _crop_translation3d
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import crop_by_transform_mat3d
 
 
@@ -51,8 +52,11 @@ class CenterCrop3D(GeometricAugmentationBase3D):
 
         - ``size`` is ``(D, H, W)``. The crop is shared across the batch; its ``p`` is the call-wide gate, so a
           valid ``p=0`` request returns the un-cropped input and ``p=1`` returns the requested crop. Size validation
-          still runs when the call is skipped, so an oversized crop raises even at ``p=0``. The exception types
-          differ from :class:`RandomCrop3D`'s, and a two-element ``size`` fails with ``IndexError``
+          still runs when the call is skipped, so an oversized crop raises ``ValueError`` even at ``p=0``,
+          naming ``size`` and the input spatial size. A tuple with other than three elements, or with a Python or
+          NumPy float element, raises ``TypeError`` naming the supplied value; NumPy integers and 0-d integer
+          tensors are accepted.
+          An integer ``size`` is supported here but not by :class:`RandomCrop3D`
           (`#4417 <https://github.com/kornia/kornia/issues/4417>`_).
         - defaults are bilinear resampling and ``align_corners=True``.
 
@@ -96,14 +100,18 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
+        """Initialize the crop and validate its three integer dimensions."""
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
+            # As in RandomCrop3D: NumPy integers and 0-d integer tensors pass, a Python or NumPy float does not.
+            if len(size) != 3 or not all(hasattr(v, "__index__") for v in size):
+                raise TypeError(f"`size` must be an int or a three-element (D, H, W) tuple of integers. Got {size!r}.")
             self.size = (size[0], size[1], size[2])
         elif isinstance(size, int):
             self.size = (size, size, size)
         else:
-            raise TypeError(f"Invalid size type. Expected int or tuple[int, int, int]. Got: {type(size)}.")
-        self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
+            raise TypeError(f"Invalid `size` type. Expected int or tuple[int, int, int] (D, H, W). Got {size!r}.")
+        self.flags = {"size": self.size, "align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator3d(
@@ -113,7 +121,9 @@ class CenterCrop3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        transform = _crop_translation3d(params["src"].to(input), params["dst"].to(input))
+        src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+        dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+        transform = _crop_translation3d(src, dst)
         return transform.expand(input.shape[0], -1, -1)
 
     def apply_transform(

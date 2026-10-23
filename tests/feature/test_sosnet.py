@@ -31,16 +31,25 @@ class TestSOSNet(BaseTester):
         out = sosnet(inp)
         assert out.shape == (1, 128)
 
+    def test_empty_batch(self, device, dtype):
+        # A batch of zero patches returns an empty descriptor batch, in the dtype a non-empty call returns.
+        model = SOSNet(pretrained=False).to(device, dtype).eval()
+        one = model(torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        out = model(torch.zeros(0, 1, 32, 32, device=device, dtype=dtype))
+        assert out.shape == (0, one.shape[1])
+        assert out.dtype == one.dtype
+        assert out.device == one.device
+
     def test_shape_batch(self, device):
         inp = torch.ones(16, 1, 32, 32, device=device)
-        sosnet = SOSNet(pretrained=False).to(device)
+        sosnet = SOSNet(pretrained=False).to(device).eval()
         out = sosnet(inp)
         assert out.shape == (16, 128)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
-        sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype)
+        sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype).eval()
         self.gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("patch_value", [0.0, 0.5])
@@ -53,7 +62,7 @@ class TestSOSNet(BaseTester):
         # that failure, but on CPU both half dtypes used to raise out of `avg_pool3d` before reaching
         # the division at all, so both are pinned here.
         patches = torch.full((2, 1, 32, 32), patch_value, device=device, dtype=dtype)
-        sosnet = SOSNet().to(device, dtype).eval()
+        sosnet = SOSNet(pretrained=False).to(device, dtype).eval()
         descriptors = sosnet(patches)
         assert torch.isfinite(descriptors).all(), (
             f"{int((~torch.isfinite(descriptors)).sum())} non-finite descriptor entries"
@@ -66,7 +75,7 @@ class TestSOSNet(BaseTester):
         # NaN if the branch is dropped. `cudnn_tf32_follows_option` is what makes the float32 leg
         # meaningful on CUDA; see its docstring.
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
-        model = SOSNet().to(device, dtype).eval()
+        model = SOSNet(pretrained=False).to(device, dtype).eval()
         op = torch_optimizer(model)
         self.assert_close(op(patches), model(patches))
 
@@ -75,7 +84,7 @@ class TestSOSNet(BaseTester):
         # `export-support.rst` publishes SOSNet as capturable with zero graph breaks. The dtype branch
         # reads static metadata and must not become the thing that breaks the graph.
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
-        model = SOSNet().to(device, dtype).eval()
+        model = SOSNet(pretrained=False).to(device, dtype).eval()
         expected = model(patches)
         torch._dynamo.reset()
         compiled = torch.compile(model, fullgraph=True)
@@ -89,6 +98,6 @@ class TestSOSNet(BaseTester):
         # network's output non-degenerate; scripting the same instance is what makes the two sides
         # comparable at all. See TestHyNet::test_jit for the pattern.
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = SOSNet().to(patches.device, patches.dtype).eval()
+        model = SOSNet(pretrained=False).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(patches), model_jit(patches))

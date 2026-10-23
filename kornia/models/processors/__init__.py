@@ -68,12 +68,22 @@ class ResizePreProcessor(nn.Module):
         Returns:
             Tuple containing:
                 - resized_imgs: Resized images as a tensor of shape :math:`(B, C, H_{\text{new}}, W_{\text{new}})`.
-                - original_sizes: Original image sizes of shape :math:`(B, 2)` containing (height, width).
+                - original_sizes: Original image sizes of shape :math:`(B, 2)` containing (height, width), as
+                  ``int64`` on the images' device.
         """
-        resized_imgs: List[Tensor] = []
+        # int64: a half-precision image dtype cannot hold every size (bfloat16 rounds 667 to 668). Filled in rather
+        # than built with ``torch.tensor``, which the TorchScript ONNX exporter bakes in as constants.
+        if isinstance(imgs, Tensor):
+            # One resize for the whole batch, whose images share a size: a loop over the batch would unroll at the
+            # traced batch size in an ONNX export and fix the exported model to that batch.
+            original_sizes = imgs.new_zeros((imgs.shape[0], 2), dtype=torch.long)
+            original_sizes[:, 0] = imgs.shape[-2]  # Height
+            original_sizes[:, 1] = imgs.shape[-1]  # Width
+            return resize(imgs, size=self.size, interpolation=self.interpolation_mode), original_sizes
 
-        iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
-        original_sizes = imgs[0].new_zeros((iters, 2))
+        resized_imgs: List[Tensor] = []
+        iters = len(imgs)
+        original_sizes = imgs[0].new_zeros((iters, 2), dtype=torch.long)
 
         for i in range(iters):
             img = imgs[i]
@@ -115,8 +125,8 @@ class ResizePostProcessor(nn.Module):
                 (height, width) pairs.
 
         Returns:
-            Resized images in a batch with original dimensions. If ONNX export is active,
-            returns inputs unchanged with a warning.
+            A list of :math:`(1, C, H, W)` tensors, one per image, each resized to its original size. If ONNX export
+            is active, returns inputs unchanged with a warning.
 
         Warning:
             ResizePostProcessor is not fully supported in ONNX export mode.

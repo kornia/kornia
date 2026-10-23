@@ -23,7 +23,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
-from kornia.core.utils import _torch_svd_cast
+from kornia.core.utils import _autocast_disabled, _torch_svd_cast
 from kornia.geometry.solvers.homogeneous import _null_space_householder
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2
 
@@ -195,10 +195,12 @@ class _NullSpaceBasis(torch.autograd.Function):
     the subspace :math:`S`, by
     :math:`dv_i = \sum_{j \notin S} v_j \, v_j^\top d(X^\top X) \, v_i / (\lambda_i - \lambda_j)`.
     That needs a gap between the fourth and fifth smallest singular values. Without one the subspace
-    itself is not unique, and a nonzero incoming gradient gives a gradient that is not finite, as for
-    ``torch.linalg.svd``; a zero incoming gradient, as from a sample whose candidates were discarded,
-    gives zero. The forward pass is the same ``_torch_svd_cast`` call as before, so its result is
-    unchanged.
+    itself is not unique, and a nonzero incoming gradient gives no usable gradient, as for
+    ``torch.linalg.svd``: one that is not finite where the SVD returns the missing gap as exactly zero,
+    as LAPACK does, and a finite one many orders of magnitude past ``1 / eps`` where it leaves the gap at
+    rounding level, as cuSOLVER's Jacobi SVD, torch's default on CUDA, does. A zero incoming gradient, as
+    from a sample whose candidates were discarded, gives zero. The forward pass is the same
+    ``_torch_svd_cast`` call as before, so its result is unchanged.
     """
 
     # forward and setup_context are separate, so torch.func transforms (grad, vjp, jacrev) accept it
@@ -241,7 +243,8 @@ def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
     if design.shape[-2] < 9:
         return _NullSpaceBasis.apply(design)[0]
     # every right singular vector has a gradient in torch.linalg.svd itself
-    _, _, V = _torch_svd_cast(design)
+    # N >= 9 here, so reduced SVD still returns all 9 right singular vectors. The full U is unused.
+    _, _, V = _torch_svd_cast(design, full_matrices=False)
     return V[:, :, -4:]
 
 
@@ -491,6 +494,7 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - The result is not normalised to unit Frobenius norm, unlike the candidates of :func:`find_essential`.
+        - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
         E_mat: The matrices to project with shape :math:`(*, 3, 3)`.
@@ -501,6 +505,15 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    # A caller's autocast region would run the products below in half precision and return a half-precision matrix.
+    # TorchScript has no context managers; a scripted call keeps the products in the caller's precision.
+    if torch.jit.is_scripting():
+        return _project_to_essential(E_mat)
+    with _autocast_disabled(E_mat.device.type):
+        return _project_to_essential(E_mat)
+
+
+def _project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
     U, S, V = _torch_svd_cast(E_mat)
     S_new = torch.zeros_like(S)
     mean_sv = 0.5 * (S[..., 0] + S[..., 1])
@@ -522,6 +535,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
           pose is not fixed: it can change when ``E_mat`` is negated or rescaled. Select by cheirality with
           :func:`motion_from_essential_choose_solution`; :ref:`two-view geometry <two-view-conventions>`
           compares OpenCV's labels.
+        - A caller's autocast region does not change the result, outside TorchScript: a float32 ``E_mat`` gives
+          float32 rotations.
 
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -532,7 +547,15 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    # A caller's autocast region would run the products below in half precision: half-precision rotations, no longer
+    # orthogonal, next to a translation in the input dtype. TorchScript has no context managers.
+    if torch.jit.is_scripting():
+        return _decompose_essential_matrix(E_mat)
+    with _autocast_disabled(E_mat.device.type):
+        return _decompose_essential_matrix(E_mat)
 
+
+def _decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # decompose matrix by its singular values
     U, _, V = _torch_svd_cast(E_mat)
     Vt = V.transpose(-2, -1)
@@ -569,6 +592,7 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     Convention:
         - Same candidate set as :func:`decompose_essential_matrix`, with ``t`` of unit norm.
+        - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -579,6 +603,14 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    # A caller's autocast region would run the products below in half precision. TorchScript has no context managers.
+    if torch.jit.is_scripting():
+        return _decompose_essential_matrix_no_svd(E_mat)
+    with _autocast_disabled(E_mat.device.type):
+        return _decompose_essential_matrix_no_svd(E_mat)
+
+
+def _decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if len(E_mat.shape) != 3:
         E_mat = E_mat.view(-1, 3, 3)
 
@@ -602,14 +634,13 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
     # B, to select which b1
     largest = torch.argmax(norms, dim=-2)
 
-    # B, 3, 3
-    e_cross_products = scale_factor[:, None, None] * cross_products / norms
-
     # broadcast the index
-    index_expanded = largest.unsqueeze(-1).expand(-1, -1, e_cross_products.size(-1))
+    index_expanded = largest.unsqueeze(-1).expand(-1, -1, cross_products.size(-1))
 
-    # slice at dim=1, select for each batch one b (e1*e2 or e2*e3 or e3*e1), B, 1, 3
-    b1 = torch.gather(e_cross_products, dim=1, index=index_expanded).squeeze(1)
+    # Select before dividing: unused zero cross products would give 0/0 and NaN gradients.
+    b1 = torch.gather(cross_products, dim=1, index=index_expanded).squeeze(1)
+    selected_norm = torch.gather(norms, dim=1, index=largest.unsqueeze(-1)).squeeze(1)
+    b1 = scale_factor[:, None] * b1 / selected_norm
     # normalization
     b1_ = b1 / torch.norm(b1, dim=-1, keepdim=True)
 
@@ -675,6 +706,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     Convention:
         - The candidates of :func:`decompose_essential_matrix` are stacked on dim ``-3`` in that order; which
           index is the true pose is not fixed.
+        - A caller's autocast region does not change the result, as for :func:`decompose_essential_matrix`.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -718,6 +750,8 @@ def motion_from_essential_choose_solution(
           candidate, as ``cv2.recoverPose`` returns. A count of ``0`` means no point passed, and the returned
           pose is then candidate 0 of
           :py:meth:`~kornia.geometry.epipolar.motion_from_essential`, not a recovered motion.
+        - A caller's autocast region does not change the result. ``K1`` and ``K2`` are cast to the dtype of
+          ``E_mat``.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
@@ -762,46 +796,53 @@ def motion_from_essential_choose_solution(
         if mask is not None:
             mask = mask[None]
 
-    # compute four possible pose solutions
-    Rs, ts = motion_from_essential(E_mat)
+    # Autocast is off below, so the intrinsics are cast to the dtype of ``E_mat`` here, as autocast casts
+    # half-precision intrinsics and a float32 ``E_mat`` to one dtype.
+    K1, K2 = K1.to(E_mat.dtype), K2.to(E_mat.dtype)
 
-    # set reference view pose and compute projection matrix
-    R1 = eye_like(3, E_mat)  # Bx3x3
-    t1 = vec_like(3, E_mat)  # Bx3x1
+    # A caller's autocast region would build the projection matrices and the depths in half precision, which moves
+    # the triangulated points and can change the chosen candidate, and would return a half-precision rotation.
+    with _autocast_disabled(E_mat.device.type):
+        # compute four possible pose solutions
+        Rs, ts = motion_from_essential(E_mat)
 
-    # compute the projection matrices for first camera
-    R1 = R1[:, None].expand(-1, 4, -1, -1)
-    t1 = t1[:, None].expand(-1, 4, -1, -1)
-    K1 = K1[:, None].expand(-1, 4, -1, -1)
-    P1 = projection_from_KRt(K1, R1, t1)  # 1x4x4x4
+        # set reference view pose and compute projection matrix
+        R1 = eye_like(3, E_mat)  # Bx3x3
+        t1 = vec_like(3, E_mat)  # Bx3x1
 
-    # compute the projection matrices for second camera
-    R2 = Rs
-    t2 = ts
-    K2 = K2[:, None].expand(-1, 4, -1, -1)
-    P2 = projection_from_KRt(K2, R2, t2)  # Bx4x4x4
+        # compute the projection matrices for first camera
+        R1 = R1[:, None].expand(-1, 4, -1, -1)
+        t1 = t1[:, None].expand(-1, 4, -1, -1)
+        K1 = K1[:, None].expand(-1, 4, -1, -1)
+        P1 = projection_from_KRt(K1, R1, t1)  # 1x4x4x4
 
-    # triangulate the points
-    x1 = x1[:, None].expand(-1, 4, -1, -1)
-    x2 = x2[:, None].expand(-1, 4, -1, -1)
-    X = triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
+        # compute the projection matrices for second camera
+        R2 = Rs
+        t2 = ts
+        K2 = K2[:, None].expand(-1, 4, -1, -1)
+        P2 = projection_from_KRt(K2, R2, t2)  # Bx4x4x4
 
-    # project points and compute their depth values
-    d1 = depth_from_point(R1, t1, X)
-    d2 = depth_from_point(R2, t2, X)
+        # triangulate the points
+        x1 = x1[:, None].expand(-1, 4, -1, -1)
+        x2 = x2[:, None].expand(-1, 4, -1, -1)
+        X = triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
 
-    # verify the point values that have a positive depth value
-    depth_mask = (d1 > 0.0) & (d2 > 0.0)
-    if mask is not None:
-        depth_mask &= mask.unsqueeze(1)
+        # project points and compute their depth values
+        d1 = depth_from_point(R1, t1, X)
+        d2 = depth_from_point(R2, t2, X)
 
-    valid_count, mask_indices = torch.max(depth_mask.sum(-1), dim=-1)
+        # verify the point values that have a positive depth value
+        depth_mask = (d1 > 0.0) & (d2 > 0.0)
+        if mask is not None:
+            depth_mask &= mask.unsqueeze(1)
 
-    # get pose and points 3d and return
-    batch_idx = torch.arange(mask_indices.shape[0], device=mask_indices.device)
-    R_out = Rs[batch_idx, mask_indices]
-    t_out = ts[batch_idx, mask_indices]
-    points3d_out = X[batch_idx, mask_indices]
+        valid_count, mask_indices = torch.max(depth_mask.sum(-1), dim=-1)
+
+        # get pose and points 3d and return
+        batch_idx = torch.arange(mask_indices.shape[0], device=mask_indices.device)
+        R_out = Rs[batch_idx, mask_indices]
+        t_out = ts[batch_idx, mask_indices]
+        points3d_out = X[batch_idx, mask_indices]
 
     if unbatched:
         R_out = R_out[0]

@@ -28,8 +28,7 @@ from torch import nn
 
 from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
-from kornia.core.mixin.image_module import _to_uint8_image
-from kornia.image.utils import tensor_to_image
+from kornia.core.mixin.image_module import ImageModuleMixIn, _to_uint8_image
 from kornia.io import write_image
 
 logger = logging.getLogger(__name__)
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 ModelConfig = TypeVar("ModelConfig")
 
 
-def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
+def _write_png_batch(path_stem: str, image: Union[torch.Tensor, Image.Image]) -> None:
     """Write one image, or one file per item of a batch.
 
     ``visualize`` returns float images in ``[0, 1]``, but ``write_image`` writes
@@ -47,15 +46,20 @@ def _write_png_batch(path_stem: str, image: torch.Tensor) -> None:
     ``ImageModule`` hands a tensor to PIL: clamped, scaled and rounded. A
     ``uint8`` or ``uint16`` visualization is written as-is.
 
-    ``write_image`` takes ``(3, H, W)``, ``(1, H, W)`` or ``(H, W)``, but the
-    containers document their inputs as ``(B, 3, H, W)`` and passed the batch
-    straight through. The backend then rejects the rank with an error that
-    names neither -- ``TypeError: argument 'image': 'ndarray' object is not an
-    instance of 'ndarray'`` -- so a batch has to be split here.
+    ``write_image`` takes one image, ``(3, H, W)``, ``(1, H, W)``, ``(H, W)`` or,
+    for PNG only, ``(4, H, W)``, and rejects a batched tensor; the containers
+    document their inputs as ``(B, 3, H, W)``, so a batch is written as one file
+    per item.
 
     A batch of one still gets an index suffix, so a caller does not have to
     guess whether a file will be ``name.png`` or ``name_0.png``.
+
+    A PIL image, what ``visualize(output_type="pil")`` returns, was made 8-bit by
+    the same conversion and is written as it is, to ``name.png``.
     """
+    if not isinstance(image, torch.Tensor):
+        image.save(f"{path_stem}.png")
+        return
     image = _to_uint8_image(image)
     if image.dim() == 4:
         for i, item in enumerate(image):
@@ -71,7 +75,7 @@ class ModelBaseMixin:
 
     def _tensor_to_type(
         self, output: Union[torch.Tensor, List[torch.Tensor]], output_type: str, is_batch: bool = False
-    ) -> Union[torch.Tensor, List[torch.Tensor], List[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, List[torch.Tensor], List[Image.Image]]:
         """Convert the output tensor to the desired type.
 
         Args:
@@ -80,25 +84,39 @@ class ModelBaseMixin:
             is_batch: If True, the output is expected to be a batch of tensors.
 
         Returns:
-            The converted output tensor or list of tensors.
+            The output unchanged for "torch". For "pil", a list of PIL images, one per :math:`(C, H, W)` or
+            :math:`(H, W)` image: a :math:`(B, C, H, W)` tensor gives B images, and a list gives the images of each
+            element in turn. They are converted as :meth:`~kornia.core.mixin.image_module.ImageModuleMixIn.to_pil`
+            does: a floating image is clamped to ``[0, 1]`` and rounded to 8 bits, and a one-channel or
+            :math:`(H, W)` image becomes a mode ``"L"`` image.
 
         Raises:
             RuntimeError: If the output type is not supported.
 
         """
-        if output_type == "torch":
-            return output
+        self._check_output_type(output_type)
         if output_type == "pil":
-            if isinstance(output, list):
-                return [tensor_to_image(t) for t in output]
-            return tensor_to_image(output)
-        raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
+            images = []
+            for t in output if isinstance(output, list) else [output]:
+                # an (H, W) item is one single-channel image; larger items are split into (C, H, W) slices
+                t = t[None] if t.dim() == 2 else t
+                images.extend(ImageModuleMixIn._chw_to_pil(chw) for chw in t.reshape(-1, *t.shape[-3:]))
+            return images
+        return output
 
-    def save(self, output: Union[torch.Tensor, List[torch.Tensor]], directory: str, is_batch: bool = False) -> None:
+    @staticmethod
+    def _check_output_type(output_type: str) -> None:
+        """Raise ``RuntimeError`` unless ``output_type`` is "torch" or "pil"."""
+        if output_type not in ("torch", "pil"):
+            raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
+
+    def save(
+        self, output: Union[torch.Tensor, List[torch.Tensor], List[Image.Image]], directory: str, is_batch: bool = False
+    ) -> None:
         """Save the output tensor to a directory.
 
         Args:
-            output: The output tensor or list of tensors.
+            output: The output tensor, or a list of tensors or PIL images.
             directory: The directory to save the output.
             is_batch: If True, the output is expected to be a batch of tensors.
 
@@ -113,12 +131,15 @@ class ModelBaseMixin:
         logger.info(f"Outputs are saved in {directory}")
 
     def _save_outputs(
-        self, output: Union[torch.Tensor, List[torch.Tensor]], directory: Optional[str] = None, suffix: str = ""
+        self,
+        output: Union[torch.Tensor, List[torch.Tensor], List[Image.Image]],
+        directory: Optional[str] = None,
+        suffix: str = "",
     ) -> None:
         """Save the output tensor to a directory with an optional suffix.
 
         Args:
-            output: The output tensor or list of tensors.
+            output: The output tensor, or a list of tensors or PIL images.
             directory: The directory to save the output. If None, a default directory is used.
             suffix: Optional suffix to add to the filename.
 
@@ -160,6 +181,8 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
             state_dict = load_state_dict_from_url(checkpoint, map_location=device)
 
         self.load_state_dict(state_dict)
+        if device is not None:
+            self.to(device)
 
     @staticmethod
     @abstractmethod

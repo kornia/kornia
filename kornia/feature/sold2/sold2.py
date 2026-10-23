@@ -43,6 +43,18 @@ class SOLD2(nn.Module):
     This is based on the original code from the paper "SOLD²: Self-supervised
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
+    Convention:
+        - :meth:`forward` takes the input and returns the heatmaps and the ``(row, col)`` line segments of
+          :class:`~kornia.feature.SOLD2_detector`, whose Convention block gives their frame and order, and also
+          ``dense_desc``, :math:`(B, 128, H / 4, W / 4)`, which is not normalized.
+        - ``match`` takes segments as :meth:`forward` returns them and the descriptor map of one image each. It
+          returns an int64 tensor :math:`(N_1,)`: for each segment of ``line_seg1``, the index of its match in
+          ``line_seg2``, or ``-1``. It is int64 also when either set of segments is empty: an empty tensor when
+          ``line_seg1`` is, ``-1`` for every segment of ``line_seg1`` when ``line_seg2`` is.
+        - Known defects: on CPU, ``match`` passes float16 and bfloat16 descriptor maps to torch's ``grid_sample``
+          without an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has
+          none the call raises (`#5810 <https://github.com/kornia/kornia/issues/5810>`_).
+
     Args:
         config: :class:`~kornia.feature.sold2.structures.DetectorCfg`, or a dict of its fields, specifying
             parameters. None will load the default parameters, which are tuned for images in the range 400~800 px.
@@ -83,13 +95,14 @@ class SOLD2(nn.Module):
             pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
-        self.eval()
 
         # Initialize the line detector
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(self.config.line_matcher_cfg)
+        if pretrained:
+            self.eval()
 
     def forward(self, img: torch.Tensor) -> Dict[str, Any]:
         """Run forward.
@@ -198,9 +211,9 @@ class WunschLineMatcher(nn.Module):
 
         # Default case when an image has no lines
         if len(line_seg1) == 0:
-            return torch.empty(0, dtype=torch.int, device=device)
+            return torch.empty(0, dtype=torch.long, device=device)
         if len(line_seg2) == 0:
-            return -torch.ones(len(line_seg1), dtype=torch.int, device=device)
+            return -torch.ones(len(line_seg1), dtype=torch.long, device=device)
 
         # Sample points regularly along each line
         line_points1, valid_points1 = self.sample_line_points(line_seg1)
@@ -355,9 +368,7 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> tor
     """
     KORNIA_CHECK_SHAPE(keypoints, ["N", "2"])
     n_points = len(keypoints)
-    xy = keypoints[:, [1, 0]]
-    grid_points = torch.stack((xy[:, 0] * 2.0 / img_size[1] - 1.0, xy[:, 1] * 2.0 / img_size[0] - 1.0), dim=-1)
-    return grid_points.view(-1, n_points, 1, 2)
+    return (keypoints * 2.0 / torch.tensor(img_size, device=keypoints.device) - 1.0)[:, [1, 0]].view(-1, n_points, 1, 2)
 
 
 def batched_linspace(start: torch.Tensor, end: torch.Tensor, step: int, dim: int) -> torch.Tensor:

@@ -52,13 +52,13 @@ class TestQuaternion(BaseTester):
         self.assert_close(q1, q2)
 
     def test_init_fail(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             _ = Quaternion("q")
 
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             _ = Quaternion([1, 0, 0, 0])
 
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError):
             _ = Quaternion(1, [0, 0, 0])
 
     def test_constructor_scalar_tensre(self, device, dtype):
@@ -655,6 +655,16 @@ class TestQuaternionState(BaseTester):
 
 
 class TestQuaternionAverage(BaseTester):
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_fullgraph(self, device, dtype, torch_optimizer):
+        def average(data):
+            return average_quaternions(Quaternion(data)).data
+
+        data = Quaternion.random(5, device=device, dtype=dtype).data
+        actual = torch_optimizer(average, fullgraph=True)(data)
+        expected = average(data)
+        self.assert_close(actual, expected, rtol=1e-5, atol=1e-5)
+
     @pytest.mark.parametrize("M", [1, 2, 5, 10])
     def test_average_identity(self, device, dtype, M):
         """All identity quaternions → should return identity"""

@@ -172,7 +172,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
                     (f"tests/core/test_check.py::TestCheckShape::{test_name}",),
                     "value-independent",
                 )
-                for test_name, lines in (("test_valid", range(73, 77)), ("test_invalid", range(85, 89)))
+                for test_name, lines in (("test_valid", range(78, 82)), ("test_invalid", range(90, 94)))
                 for line in lines
             ),
             *(
@@ -188,7 +188,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/geometry/subpix/test_dsnt.py",
-                151,
+                179,
                 "torch.randn",
                 1,
                 (
@@ -199,7 +199,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/image/test_draw.py",
-                366,
+                432,
                 "torch.rand",
                 4,
                 ("tests/image/test_draw.py::TestDrawLine::test_point_size",),
@@ -207,7 +207,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
             ),
             *_audited(
                 "tests/losses/test_total_variation.py",
-                149,
+                190,
                 "torch.rand",
                 3,
                 ("tests/losses/test_total_variation.py::TestTotalVariation::test_tv_shapes",),

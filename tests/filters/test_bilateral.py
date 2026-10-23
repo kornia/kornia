@@ -28,6 +28,7 @@ from kornia.filters import (
     gaussian_blur2d,
     joint_bilateral_blur,
 )
+from kornia.filters.kernels import get_gaussian_kernel2d
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
@@ -141,7 +142,9 @@ class TestBilateralBlur(BaseTester):
             lambda: JointBilateralBlur(3, sigma_color, sigma_space)(image, image),
         )
         for call in calls:
-            with pytest.raises(BaseError, match=f"{name} batch of {rows} for an input batch of {batch}"):
+            with pytest.raises(
+                BaseError, match=rf"(?s)expected {batch}(?: or 1)?, got {rows}\..*{name} must have a batch of 1 or the"
+            ):
                 call()
 
     @pytest.mark.parametrize("name", ["sigma_color", "sigma_space"])
@@ -218,6 +221,86 @@ class TestBilateralBlur(BaseTester):
         self.gradcheck(bilateral_blur, (img, 3, sigma_color, (1, 1)), nondet_tol=1e-4)
         self.gradcheck(bilateral_blur, (img, 3, 1, sigma_space), nondet_tol=1e-4)
         self.gradcheck(bilateral_blur, (img, 3, sigma_color, sigma_space), nondet_tol=1e-4)
+
+    @pytest.mark.parametrize("kernel_size", [(3, 5), (5, 3)])
+    @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
+    @pytest.mark.parametrize(("channels", "guidance_channels"), [(1, None), (3, None), (3, 1), (1, 3)])
+    def test_matches_a_tap_sum(self, kernel_size, color_distance_type, channels, guidance_channels, device, dtype):
+        # The windows are viewed as (B, C, H, Ky, W, Kx); a rectangular kernel with an anisotropic, per-sample spatial
+        # sigma would expose a swapped window axis, in the values or in the gradients, on any device.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection padding is unsupported for this device/dtype")
+        torch.manual_seed(0)
+        image = torch.rand(2, channels, 7, 9, device=device, dtype=dtype)
+        guidance = (
+            None if guidance_channels is None else torch.rand(2, guidance_channels, 7, 9, device=device, dtype=dtype)
+        )
+        sigma_color = torch.tensor([0.1, 0.4], device=device, dtype=dtype)
+        sigma_space = torch.tensor([[1.0, 2.0], [2.5, 0.7]], device=device, dtype=dtype)
+        weight = torch.rand(2, channels, 7, 9, device=device, dtype=dtype)
+        sigma_color_ref = sigma_color.cpu().double().view(-1, 1, 1, 1)
+
+        def tap_sum(image, guidance):
+            # Float64 on the CPU, one shifted slice per tap, without any window view.
+            ky, kx = kernel_size
+            height, width = image.shape[-2:]
+            guide = image if guidance is None else guidance
+            padded_image = torch.nn.functional.pad(image, (kx // 2, kx // 2, ky // 2, ky // 2), mode="reflect")
+            padded_guide = torch.nn.functional.pad(guide, (kx // 2, kx // 2, ky // 2, ky // 2), mode="reflect")
+            space = get_gaussian_kernel2d(kernel_size, sigma_space.cpu().double())
+            numerator, denominator = 0.0, 0.0
+            for dy in range(ky):
+                for dx in range(kx):
+                    diff = padded_guide[..., dy : dy + height, dx : dx + width] - guide
+                    if color_distance_type == "l1":
+                        distance_sq = diff.abs().sum(1, keepdim=True).square()
+                    else:
+                        distance_sq = diff.square().sum(1, keepdim=True)
+                    tap = space[:, dy, dx].view(-1, 1, 1, 1) * (-0.5 * distance_sq / sigma_color_ref**2).exp()
+                    numerator = numerator + tap * padded_image[..., dy : dy + height, dx : dx + width]
+                    denominator = denominator + tap
+            return numerator / denominator
+
+        image_ref = image.cpu().double().clone().requires_grad_()
+        guidance_ref = None if guidance is None else guidance.cpu().double().clone().requires_grad_()
+        expected = tap_sum(image_ref, guidance_ref)
+        (expected * weight.cpu().double()).sum().backward()
+
+        image = image.clone().requires_grad_()
+        if guidance is None:
+            actual = bilateral_blur(
+                image, kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type
+            )
+        else:
+            guidance = guidance.clone().requires_grad_()
+            actual = joint_bilateral_blur(
+                image, guidance, kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type
+            )
+        self.assert_close(actual, expected.to(device, dtype))
+        if dtype in (torch.float16, torch.bfloat16):
+            return
+        (actual * weight).sum().backward()
+        self.assert_close(image.grad, image_ref.grad.to(device, dtype), rtol=1e-4, atol=1e-4)
+        if guidance is not None:
+            self.assert_close(guidance.grad, guidance_ref.grad.to(device, dtype), rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("joint", [False, True])
+    def test_complex_single_channel_l1_weighs_the_squared_magnitude(self, joint):
+        # l1 weighs a difference d by |d|^2, which for a complex d is not d^2, also where one channel skips the sum.
+        image = torch.tensor([[[[0j, 1j, 0j]]]], dtype=torch.complex64)
+        sigma_space = torch.tensor([[1.0, 1.0]])
+        args = ((1, 3), 1.0, sigma_space)
+        kwargs = {"border_type": "constant", "color_distance_type": "l1"}
+        if joint:
+            actual = joint_bilateral_blur(image, image.clone(), *args, **kwargs)
+        else:
+            actual = bilateral_blur(image, *args, **kwargs)
+        # Space weights exp(-1/2) beside the centre, colour weights exp(-|d|^2 / 2) with |d|^2 = 1 next to 1j.
+        e = math.exp(-0.5)
+        edge = e**2 / (1 + e + e**2)
+        expected = torch.tensor([[[[edge * 1j, 1j / (1 + 2 * e**2), edge * 1j]]]], dtype=torch.complex64)
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])

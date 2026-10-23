@@ -25,7 +25,7 @@ from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -59,7 +59,8 @@ class RandomMosaic(MixAugmentationBaseV2):
         p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
-        padding_mode: Type of padding. Should be: constant, reflect, replicate.
+        padding_mode: Type of padding, used only with ``cropping_mode="resample"``.
+            Should be: constant, reflect, replicate.
         resample: the interpolation mode.
         align_corners: interpolation flag.
         cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
@@ -127,6 +128,10 @@ class RandomMosaic(MixAugmentationBaseV2):
         align_corners: bool = True,
         cropping_mode: str = "slice",
     ) -> None:
+        if padding_mode not in ("constant", "reflect", "replicate"):
+            raise ValueError(
+                f"{padding_mode!r} is not a valid padding_mode. Expected one of 'constant', 'reflect', 'replicate'."
+            )
         super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
         self.start_ratio_range = start_ratio_range
         self._param_generator = rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
@@ -185,10 +190,12 @@ class RandomMosaic(MixAugmentationBaseV2):
 
         if not bool(to_apply.all()):
             # An unselected sample keeps its own boxes unchanged, followed by padding up to the mosaic box count.
-            # The padding is recorded in ``_N`` and exported as all-zero (zero-area) rows.
+            # The padding is recorded in ``_N`` and marked invalid, so every export gives all-zero rows for it, also
+            # after a later geometric transform and in a container such as VideoBoxes that does not keep ``_N``.
             out_boxes._data[~to_apply, :num_boxes] = input._data[~to_apply]
             out_boxes._valid[~to_apply, :num_boxes] = input._valid[~to_apply]
             out_boxes._data[~to_apply, num_boxes:] = 0.0
+            out_boxes._valid[~to_apply, num_boxes:] = False
             padding = out_boxes._data.shape[1] - num_boxes
             merged_padding = out_boxes._N if out_boxes._N is not None else [0] * len(to_apply)
             input_padding = input._N if input._N is not None else [0] * len(to_apply)
@@ -213,7 +220,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             out_row = []
             for j in range(flags["mosaic_grid"][1]):
                 img_idx = flags["mosaic_grid"][1] * i + j
-                image = input[params["permutation"][:, img_idx]]
+                image = input[_to_device_nonblocking(params["permutation"][:, img_idx], input.device)]
                 out_row.append(image)
             out.append(torch.cat(out_row, -2))
         return torch.cat(out, -1)
@@ -222,7 +229,9 @@ class RandomMosaic(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         if flags["cropping_mode"] == "resample":
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            transform: torch.Tensor = get_perspective_transform(src, dst)
             return transform
         if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
             return eye_like(3, input)

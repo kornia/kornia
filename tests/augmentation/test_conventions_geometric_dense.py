@@ -44,15 +44,20 @@ class TestDenseGeometricConventions(BaseTester):
         assert K.RandomElasticTransform().flags["align_corners"] is False
 
     @pytest.mark.parametrize("axis", [0, 1])
-    def test_convention_elastic_normalized_xy_displacement_and_clamp(self, device, dtype, axis):
-        image = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7)
+    def test_convention_elastic_normalized_xy_displacement_and_zero_padding(self, device, dtype, axis):
+        image = torch.arange(45, device=device, dtype=dtype).reshape(1, 1, 5, 9)
         # With corner alignment, one input pixel is 2/(size - 1) normalized units.
-        alpha = (2 / 6, 0.0) if axis == 0 else (0.0, 2 / 4)
+        # These dimensions keep both the identity grid and displacement exact in half precision.
+        alpha = (2 / 8, 0.0) if axis == 0 else (0.0, 2 / 4)
         aug = K.RandomElasticTransform(kernel_size=(1, 1), alpha=alpha, align_corners=True, p=1)
         params = aug.forward_parameters(image.shape)
-        assert params["noise"].shape == (1, 2, 5, 7)
-        params["noise"] = torch.ones(1, 2, 5, 7, device=device, dtype=dtype)
-        expected = image[..., [1, 2, 3, 4, 5, 6, 6]] if axis == 0 else image[..., [1, 2, 3, 4, 4], :]
+        assert params["noise"].shape == (1, 2, 5, 9)
+        params["noise"] = torch.ones(1, 2, 5, 9, device=device, dtype=dtype)
+        expected = torch.zeros_like(image)
+        if axis == 0:
+            expected[..., :-1] = image[..., 1:]
+        else:
+            expected[..., :-1, :] = image[..., 1:, :]
         self.assert_close(aug(image, params=params), expected)
 
     @pytest.mark.parametrize("kernel_size", [(3, 1), (1, 3)])

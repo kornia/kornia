@@ -19,12 +19,16 @@ from __future__ import annotations
 
 import os
 import pickle
+import re
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 import torch
 from torch import nn
 
+from kornia.contrib.edge_detection import EdgeDetectorBuilder
+from kornia.io import ImageLoadType, load_image
 from kornia.models.base import ModelBase, ModelBaseMixin
 
 from testing.base import BaseTester
@@ -48,26 +52,115 @@ class TestModelBaseMixinTensorToType:
         out = mixin._tensor_to_type(tensors, "torch")
         assert out is tensors
 
-    def test_pil_output_single_tensor(self):
+    @staticmethod
+    def _assert_pil_images(images, tensors, modes):
+        """Each image is one (C, H, W) slice, converted as ``ImageModuleMixIn.to_pil`` does."""
+        Image = pytest.importorskip("PIL.Image")
+        slices = [chw for t in tensors for chw in t.reshape(-1, *t.shape[-3:])]
+        assert isinstance(images, list)
+        assert len(images) == len(slices) == len(modes)
+        for image, chw, mode in zip(images, slices, modes):
+            assert isinstance(image, Image.Image)
+            assert image.mode == mode
+            # PIL sizes are (W, H)
+            assert image.size == (chw.shape[-1], chw.shape[-2])
+            # clamped to [0, 1], scaled to 0..255 and rounded; (H, W, 3) for "RGB", (H, W) for "L"
+            expected = (chw.clamp(0, 1) * 255).round().byte().permute(1, 2, 0)
+            if mode == "L":
+                expected = expected[..., 0]
+            assert np.array_equal(np.asarray(image), expected.numpy())
+
+    @pytest.mark.parametrize(
+        ("shape", "modes"), [((3, 4, 5), ["RGB"]), ((1, 4, 5), ["L"]), ((2, 3, 4, 5), ["RGB", "RGB"])]
+    )
+    def test_pil_output_single_tensor(self, shape, modes):
         mixin = DummyMixin()
-        # (C, H, W) tensor in [0, 1]
-        t = torch.rand(3, 16, 16)
+        # values beyond [0, 1] check the clamp
+        t = torch.rand(*shape) * 1.2 - 0.1
         out = mixin._tensor_to_type(t, "pil")
-        # tensor_to_image returns a PIL Image or ndarray depending on implementation
-        assert out is not None
+        self._assert_pil_images(out, [t], modes)
 
     def test_pil_output_list_of_tensors(self):
         mixin = DummyMixin()
-        tensors = [torch.rand(3, 16, 16), torch.rand(3, 16, 16)]
+        tensors = [torch.rand(3, 4, 5), torch.rand(1, 4, 5), torch.rand(2, 3, 4, 5)]
         out = mixin._tensor_to_type(tensors, "pil")
-        assert isinstance(out, list)
-        assert len(out) == 2
+        self._assert_pil_images(out, tensors, ["RGB", "L", "RGB", "RGB"])
+
+    def test_pil_output_2d_items(self):
+        mixin = DummyMixin()
+        # values beyond [0, 1] check the clamp
+        t = torch.rand(4, 5) * 1.2 - 0.1
+        # an (H, W) map converts as the same map with one channel, (1, H, W): one mode "L" image
+        self._assert_pil_images(mixin._tensor_to_type(t, "pil"), [t[None]], ["L"])
+        self._assert_pil_images(mixin._tensor_to_type([t, t[None]], "pil"), [t[None], t[None]], ["L", "L"])
 
     def test_unsupported_output_type_raises(self):
         mixin = DummyMixin()
         t = torch.rand(1, 3, 8, 8)
         with pytest.raises(RuntimeError, match=r"Output type.*is not supported"):
             mixin._tensor_to_type(t, "numpy")
+
+
+def _decoded_files(directory):
+    """The decoded images of a directory, keyed by file name without its ``_YYYYmmdd_HHMMSS`` timestamp."""
+    return {
+        re.sub(r"_\d{8}_\d{6}", "", p.name): load_image(str(p), ImageLoadType.UNCHANGED)
+        for p in sorted(directory.iterdir())
+    }
+
+
+class TestModelBaseWrappersPilOutput:
+    """``output_type="pil"`` in a wrapper's ``visualize`` and ``save``, on a random-init ``EdgeDetector``."""
+
+    # edge maps in the forms EdgeDetector.visualize accepts: the (B, 1, H, W) tensor and a list of (1, H, W) maps,
+    # whose items it reduces to (H, W), and a list of (1, 1, H, W) maps as its forward returns, reduced to (3, H, W)
+    _FORMS = ("tensor (B, 1, H, W)", "list of (1, H, W)", "list of (1, 1, H, W)")
+
+    @staticmethod
+    def _edge_maps(form):
+        maps = torch.rand(2, 1, 8, 10)
+        if form == "list of (1, H, W)":
+            return list(maps)
+        if form == "list of (1, 1, H, W)":
+            return [m[None] for m in maps]
+        return maps
+
+    @pytest.mark.parametrize("form", _FORMS)
+    def test_edge_detector_visualize_pil(self, form):
+        Image = pytest.importorskip("PIL.Image")
+        detector = EdgeDetectorBuilder.build(pretrained=False)
+        images = torch.rand(2, 3, 8, 10)
+        edge_maps = self._edge_maps(form)
+
+        out = detector.visualize(images, edge_maps, output_type="pil")
+
+        drawn = detector.visualize(images, edge_maps)
+        assert isinstance(out, list)
+        assert len(out) == len(drawn) == 2
+        for image, tensor in zip(out, drawn):
+            assert isinstance(image, Image.Image)
+            # (H, W) items become mode "L", (3, H, W) items "RGB", each clamped, scaled to 0..255 and rounded
+            expected = (tensor.clamp(0, 1) * 255).round().byte()
+            expected = expected.permute(1, 2, 0) if expected.dim() == 3 else expected
+            assert image.mode == ("RGB" if tensor.dim() == 3 else "L")
+            assert np.array_equal(np.asarray(image), expected.numpy())
+
+    @pytest.mark.parametrize("form", _FORMS)
+    def test_edge_detector_save_pil_writes_the_torch_pixels(self, form, tmp_path):
+        pytest.importorskip("PIL.Image")
+        detector = EdgeDetectorBuilder.build(pretrained=False)
+        images = torch.rand(2, 3, 8, 10)
+        edge_maps = self._edge_maps(form)
+
+        for output_type in ("torch", "pil"):
+            detector.save(images, edge_maps, directory=str(tmp_path / output_type), output_type=output_type)
+        written = {output_type: _decoded_files(tmp_path / output_type) for output_type in ("torch", "pil")}
+
+        # source and edge map of each of the two images, under the same names and with the same pixels
+        assert len(written["torch"]) == 4
+        assert written["pil"].keys() == written["torch"].keys()
+        for name, decoded in written["torch"].items():
+            assert torch.equal(written["pil"][name], decoded), name
 
 
 class TestModelBaseMixinSave:
@@ -137,8 +230,8 @@ class TestModelBaseMixinSaveWritesRealFiles:
     shipped: the mock accepts any dtype and any rank, so nothing checked that
     what the containers hand it is something it can actually write. `visualize`
     returns float images and the containers document batched input, and
-    `write_image` accepts neither -- PNG is uint8/uint16 only, and the rank has
-    to be (3, H, W), (1, H, W) or (H, W).
+    `write_image` accepts neither -- PNG is uint8/uint16 only, and it takes one
+    image: (3, H, W), (1, H, W), (H, W) or, for PNG, (4, H, W).
     """
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.float16])
@@ -258,3 +351,39 @@ class TestModelBaseLoadCheckpoint(BaseTester):
 
         self.assert_close(model.linear.weight, source.linear.weight)
         self.assert_close(model.linear.bias, source.linear.bias)
+
+    def test_load_checkpoint_moves_the_model(self, tmp_path, device) -> None:
+        path = tmp_path / "model.pth"
+        torch.save(_TinyModel().state_dict(), path)
+
+        model = _TinyModel()
+        model.load_checkpoint(str(path), device=device)
+
+        assert {p.device for p in model.parameters()} == {device}
+
+    @pytest.mark.device_agnostic
+    def test_load_checkpoint_calls_to_with_the_device(self, tmp_path) -> None:
+        path = tmp_path / "model.pth"
+        torch.save(_TinyModel().state_dict(), path)
+        model = _TinyModel()
+
+        with patch.object(_TinyModel, "to", autospec=True, side_effect=nn.Module.to) as to:
+            model.load_checkpoint(str(path))
+            to.assert_not_called()
+
+            model.load_checkpoint(str(path), device=torch.device("cpu"))
+            assert to.call_count == 1
+            assert torch.device("cpu") in (*to.call_args.args[1:], *to.call_args.kwargs.values())
+
+    def test_load_checkpoint_keeps_the_mode(self, tmp_path) -> None:
+        path = tmp_path / "model.pth"
+        torch.save(_TinyModel().state_dict(), path)
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        model = _TinyModel()
+        model.load_checkpoint(str(path))
+        assert {m.training for m in model.modules()} == {True}
+
+        model.eval()
+        model.load_checkpoint(str(path))
+        assert {m.training for m in model.modules()} == {False}

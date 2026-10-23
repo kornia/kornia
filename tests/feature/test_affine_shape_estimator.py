@@ -87,6 +87,12 @@ _SKEWED_SHAPE = [[14.0, 6.0], [-3.0, 17.0]]
 # Entry tolerances of a unit-determinant ellipse matrix computed from a LAF of each dtype.
 _ELLIPSE_ATOL = {torch.float64: 1e-6, torch.float32: 1e-5, torch.float16: 1e-2, torch.bfloat16: 5e-2}
 
+# A LAF of scale ~292 px: products of two of its entries (det 300 * 280 + 40 * 25 = 85000) exceed float16's 65504.
+_LARGE_SHAPE = [[300.0, 40.0], [-25.0, 280.0]]
+
+# Relative tolerances of the scale of an output LAF whose entries are rounded to each dtype.
+_SCALE_RTOL = {torch.float64: 1e-6, torch.float32: 1e-5, torch.float16: 4e-3, torch.bfloat16: 3e-2}
+
 
 def _gaussian_blob(
     h: int, w: int, center: tuple[float, float], axes: tuple[float, float], angle_deg: float, device, dtype
@@ -452,12 +458,30 @@ class TestLAFAffineShapeEstimator(BaseTester):
             nondet_tol=1e-4,
         )
 
+    @pytest.mark.parametrize("preserve_orientation", [False, True])
+    def test_large_half_precision_laf_is_estimated(self, device, dtype, preserve_orientation):
+        # Products of two entries of this LAF overflow float16 (det 85000 > 65504). It used to be judged invalid in
+        # float16, and the estimate was dropped: a zero-shape frame without preserve_orientation, the input with it.
+        abc = (1.0, 0.3, 0.5)
+        img = torch.rand(1, 1, 96, 128, device=device, dtype=dtype)
+        laf = _laf_with_shape(_LARGE_SHAPE, (70.0, 41.0), device, dtype)
+        aff = LAFAffineShapeEstimator(32, ConstantShape(abc), preserve_orientation=preserve_orientation)
+        out = aff.to(device, dtype)(laf, img)
+        assert out.dtype == dtype
+        frame = make_upright(laf.cpu().double())[0, 0, :, :2]
+        patch_ellipse = torch.tensor([[abc[0], abc[1]], [abc[1], abc[2]]], dtype=torch.float64)
+        expected = frame @ torch.linalg.inv(patch_ellipse) @ frame.T
+        self.assert_close(_unit_ellipse(out), expected / expected.det().sqrt(), rtol=0.0, atol=_ELLIPSE_ATOL[dtype])
+        self.assert_close(out[..., 2], laf[..., 2])
+        actual_scale, expected_scale = get_laf_scale(out.cpu().double()), get_laf_scale(laf.cpu().double())
+        self.assert_close(actual_scale, expected_scale, rtol=_SCALE_RTOL[dtype], atol=0.0)
+
 
 class TestLAFAffNetShapeEstimator(BaseTester):
     def test_singular_prediction_falls_back_upright(self, device, dtype):
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         laf = torch.tensor([[[[0.0, 8.0, 16.0], [-8.0, 0.0, 16.0]]]], device=device, dtype=dtype)
-        aff = LAFAffNetShapeEstimator(preserve_orientation=False).to(device, dtype)
+        aff = LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=False).to(device, dtype).eval()
         aff.features = SingularAffNetOutput()
         out = aff(laf, img)
         self.assert_close(out, make_upright(laf))
@@ -469,7 +493,11 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         # make_upright(laf), so the image region is frame @ P: an identity prediction keeps the input shape.
         img = torch.rand(1, 1, 48, 64, device=device, dtype=dtype)
         laf = _laf_with_shape(_SKEWED_SHAPE, (30.0, 22.0), device, dtype)
-        aff = LAFAffNetShapeEstimator(preserve_orientation=preserve_orientation).to(device, dtype)
+        aff = (
+            LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation)
+            .to(device, dtype)
+            .eval()
+        )
         aff.features = ConstantAffNetOutput(xy)
         out = aff(laf, img)
         frame = make_upright(laf)[0, 0, :, :2].cpu().double()
@@ -505,7 +533,11 @@ class TestLAFAffNetShapeEstimator(BaseTester):
             pytest.skip("MPS autocast changes the effective dtype")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
-        aff = LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation).to(device, dtype)
+        aff = (
+            LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation)
+            .to(device, dtype)
+            .eval()
+        )
         aff.features = SingularAffNetOutput()
 
         out = aff(laf, img)
@@ -536,12 +568,12 @@ class TestLAFAffNetShapeEstimator(BaseTester):
     def test_shape_batch(self, device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 5, 2, 3, device=device)
-        ori = LAFAffNetShapeEstimator().to(device).eval()
+        ori = LAFAffNetShapeEstimator(pretrained=False).to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
     def test_print(self, device):
-        sift = LAFAffNetShapeEstimator()
+        sift = LAFAffNetShapeEstimator(pretrained=False)
         sift.__repr__()
 
     def test_toy(self, device, dtype):
@@ -579,3 +611,57 @@ class TestLAFAffNetShapeEstimator(BaseTester):
             atol=1e-3,
             nondet_tol=1e-3,
         )
+
+    @pytest.mark.parametrize("preserve_orientation", [False, True])
+    def test_large_half_precision_laf_is_estimated(self, device, dtype, preserve_orientation):
+        # Products of two entries of this LAF overflow float16 (det 85000 > 65504). It used to be judged invalid in
+        # float16, and the prediction was dropped: a zero-shape frame without preserve_orientation, the input with it.
+        xy = (0.2, -0.3, -0.4)
+        img = torch.rand(1, 1, 96, 128, device=device, dtype=dtype)
+        laf = _laf_with_shape(_LARGE_SHAPE, (70.0, 41.0), device, dtype)
+        aff = (
+            LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation)
+            .to(device, dtype)
+            .eval()
+        )
+        aff.features = ConstantAffNetOutput(xy)
+        out = aff(laf, img)
+        assert out.dtype == dtype
+        frame = make_upright(laf.cpu().double())[0, 0, :, :2]
+        prediction = torch.tensor([[1.0 + xy[0], 0.0], [xy[1], 1.0 + xy[2]]], dtype=torch.float64)
+        expected = frame @ prediction @ prediction.T @ frame.T
+        self.assert_close(_unit_ellipse(out), expected / expected.det().sqrt(), rtol=0.0, atol=_ELLIPSE_ATOL[dtype])
+        self.assert_close(out[..., 2], laf[..., 2])
+        actual_scale, expected_scale = get_laf_scale(out.cpu().double()), get_laf_scale(laf.cpu().double())
+        self.assert_close(actual_scale, expected_scale, rtol=_SCALE_RTOL[dtype], atol=0.0)
+
+
+class TestConventionsAffineShape(BaseTester):
+    def test_convention_patch_affine_shape_is_the_normalised_gradient_second_moment(self, device, dtype):
+        # The output (a, b, c) is (<gx^2>, <gx gy>, <gy^2>) of the Gaussian-weighted patch gradients (x right, y down),
+        # divided by its largest entry. On the ramp I = x / 4 - y / 8 the gradient is (1/4, -1/8), so (a, b, c) is
+        # (1, -1/2, 1/4) up to the replicate-padded border rows and columns: (1.0, -0.4903902, 0.25), CPU float64.
+        # The ramp is exact in every dtype.
+        yy, xx = torch.meshgrid(
+            torch.arange(19, dtype=torch.float64), torch.arange(19, dtype=torch.float64), indexing="ij"
+        )
+        patch = (0.25 * xx - 0.125 * yy).view(1, 1, 19, 19).to(device, dtype)
+        estimator = PatchAffineShapeEstimator(19).to(device, dtype)
+        expected = torch.tensor([[[1.0, -0.4903902, 0.25]]], device=device, dtype=dtype)
+        self.assert_close(estimator(patch), expected)
+        # relabelling: the transposed patch swaps a and c and keeps b
+        self.assert_close(estimator(patch.transpose(-1, -2)), expected.flip(-1))
+
+    def test_wart_patch_affine_shape_counts_a_negative_b_as_below_eps_5824(self, device, dtype):
+        # The degeneracy test counts the entries below eps with their sign, so a negative b always counts (#5824). The
+        # ramp 0.25 x + 1e-3 y gives the thin ellipse (1, +0.0039, 1.6e-5) (CPU float64), while its vertical mirror
+        # 0.25 x - 1e-3 y, whose b is negative, gives the circle (1, 0, 1) instead of (1, -0.0039, 1.6e-5).
+        yy, xx = torch.meshgrid(
+            torch.arange(19, dtype=torch.float64), torch.arange(19, dtype=torch.float64), indexing="ij"
+        )
+        estimator = PatchAffineShapeEstimator(19).to(device, dtype)
+        shape = estimator((0.25 * xx + 1e-3 * yy).view(1, 1, 19, 19).to(device, dtype))[0, 0]
+        mirror = estimator((0.25 * xx - 1e-3 * yy).view(1, 1, 19, 19).to(device, dtype))[0, 0]
+        assert shape[1] > 0
+        assert shape[2] < 1e-3
+        self.assert_close(mirror, torch.tensor([1.0, 0.0, 1.0], device=device, dtype=dtype), rtol=0.0, atol=0.0)
