@@ -290,6 +290,10 @@ class Boxes:
         mode: str = "vertices_plus",
     ) -> None:
         self._N: Optional[list[int]] = None
+        # An integer index selects one row of a list-built batch as an unbatched object without ``_N``, whose exports
+        # treat every row as a box. It keeps the row's trailing padding count here only so that assigning it back into
+        # a batch restores that padding (#6173).
+        self._row_padding = 0
 
         if isinstance(boxes, list):
             boxes, self._N = _merge_box_list(boxes)
@@ -320,6 +324,7 @@ class Boxes:
         self.__dict__.update(state)
         if "_valid" not in state:  # pickled before filtering kept validity: every box is valid
             self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
+        self.__dict__.setdefault("_row_padding", 0)
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
@@ -328,25 +333,36 @@ class Boxes:
         # Select padding metadata with the same key as the box batch, including boolean masks.
         if self._N is not None:
             selected = torch.as_tensor(self._N, device=self._data.device)[key]
-            new_box._N = None if selected.ndim == 0 else [int(n) for n in selected]
+            if selected.ndim == 0:
+                new_box._row_padding = int(selected)
+            else:
+                new_box._N = [int(n) for n in selected]
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
         self._data[key] = value._data
         self._valid[key] = value._valid
-        if self._data.ndim == 4 and (self._N is not None or value._N is not None):
+        if self._data.ndim == 4 and (self._N is not None or value._N is not None or value._row_padding):
             # Padding counts follow the rows they describe, so the export trims or zeroes the new rows' padding
             # and keeps real boxes written over old padding.
             padding = self._padding_counts()
             padding[key] = value._padding_counts()
             self._N = padding.tolist()
+        elif self._data.ndim == 3 and self._row_padding:
+            # Rows written over the selected row's padding are boxes; only the padding after the last of them remains.
+            written = torch.arange(self._data.shape[0], device=self._data.device)[key].reshape(-1)
+            if written.numel() > 0:
+                self._row_padding = min(self._row_padding, self._data.shape[0] - 1 - int(written.max()))
         return self
 
     def _padding_counts(self) -> torch.Tensor:
-        """Return the trailing padding count of each batch row as a tensor, zero for rows without padding."""
+        """Return the trailing padding count of each batch row as a tensor, zero for rows without padding.
+
+        An unbatched object returns its own row's count as a scalar tensor.
+        """
         if self._N is not None:
             return torch.as_tensor(self._N, device=self._data.device)
-        return torch.zeros(self._data.shape[:-3], device=self._data.device, dtype=torch.long)
+        return torch.full(self._data.shape[:-3], self._row_padding, device=self._data.device, dtype=torch.long)
 
     @property
     def shape(self) -> tuple[int, ...] | Size:
@@ -444,16 +460,12 @@ class Boxes:
             data = torch.cat([self._data, boxes.data], dim=-3)
             valid = torch.cat([self._valid, boxes._valid], dim=-1)
 
-        if inplace:
-            self._data = data
-            self._N = padding
-            self._valid = valid
-            return self
-
-        obj = self.clone()
+        # Merged boxes follow an integer selection's padding, so it is no longer trailing.
+        obj = self if inplace else self.clone()
         obj._data = data
         obj._N = padding
         obj._valid = valid
+        obj._row_padding = 0
         return obj
 
     def index_put(
@@ -792,7 +804,8 @@ class Boxes:
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
                 Batch slicing, index tensors, and boolean masks preserve the list metadata. Selecting a single
-                batch element with an integer or scalar tensor returns an unbatched object without list metadata.
+                batch element with an integer or scalar tensor returns an unbatched object without list metadata,
+                whose export treats every row as a box; assigning it back into a batch restores the row's padding.
 
         Returns:
             Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
@@ -904,7 +917,9 @@ class Boxes:
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
         if self._N is not None:
-            # Padding is not a box, even when its coordinates have been changed by a transform.
+            # Padding is not a box, even when its coordinates have been changed by a transform. A video's
+            # (B, T, N, 4) export has one count per frame, so its frames are flattened first.
+            clipped_boxes_xyxy = clipped_boxes_xyxy.flatten(0, -3)
             for i, n in enumerate(self._N):
                 clipped_boxes_xyxy[i, clipped_boxes_xyxy.shape[1] - n :] = 0
 
@@ -1079,6 +1094,7 @@ class Boxes:
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
+        obj._row_padding = self._row_padding
         obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         return obj
