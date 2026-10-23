@@ -1873,6 +1873,22 @@ class TestClipUnitFreshBuffer(BaseTester):
         self.assert_close(leaf.grad, ref_leaf.grad)
 
     @pytest.mark.parametrize("op", sorted(_REFERENCE))
+    @pytest.mark.parametrize("batch", [0, 3])
+    def test_vmap_keeps_the_batching_rule(self, device, dtype, op, batch):
+        # vmap has a batching rule for clamp but not for clamp_, whose fallback loops over the batch and rejects an
+        # empty one, so a transformed call keeps the out-of-place clamp. With the fallback disabled, reaching it raises.
+        fn = getattr(enhance, op)
+        image = torch.rand(batch, 3, 4, 4, device=device, dtype=dtype)
+        functorch = torch._C._functorch
+        fallback_enabled = functorch._is_vmap_fallback_enabled()
+        functorch._set_vmap_fallback_enabled(False)
+        try:
+            out = torch.vmap(lambda frame: fn(frame, 0.2))(image)
+        finally:
+            functorch._set_vmap_fallback_enabled(fallback_enabled)
+        self.assert_close(out, fn(image, 0.2))
+
+    @pytest.mark.parametrize("op", sorted(_REFERENCE))
     def test_integer_image_with_checks_disabled_keeps_the_promoting_clamp(self, device, op):
         # With checks disabled an integer image reaches the clamp. Its float bounds promote the result to float32,
         # which an in-place clamp cannot do, so that image keeps the out-of-place clamp and its float32 output.

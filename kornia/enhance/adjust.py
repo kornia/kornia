@@ -83,9 +83,15 @@ def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
     the heap on every call. Only call it on a tensor no caller can see.
 
     An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
-    promote its result to the default float dtype, which an in-place clamp cannot do.
+    promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
+    transform: vmap has a batching rule for ``clamp`` but not for ``clamp_``, whose fallback loops over the batch and
+    rejects an empty one.
     """
-    if not image.is_floating_point() or (torch.is_grad_enabled() and image.requires_grad):
+    if (
+        not image.is_floating_point()
+        or (torch.is_grad_enabled() and image.requires_grad)
+        or torch._C._are_functorch_transforms_active()
+    ):
         return image.clamp(min=0.0, max=1.0)
     return image.clamp_(min=0.0, max=1.0)
 
