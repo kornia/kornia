@@ -211,6 +211,7 @@ class EntropyBasedLossBase(torch.nn.Module):
             "num_bins must be an integer >= 2.",
         )
         KORNIA_CHECK(window_radius > 0, "window_radius must be > 0.")
+        KORNIA_CHECK(reference_signal.shape[-1] > 0, "signals must have at least one sample.")
         if not isinstance(kernel_function, MIKernel):
             raise ValueError(f"kernel_function must be a MIKernel member, the available options are {list(MIKernel)}.")
         _validate_mask(mask, reference_signal.shape[-1:])
@@ -510,7 +511,7 @@ class MILossFromRef2D(MILossFromRef):
             Tensor with shape :math:`(*, H * W)` suitable for histogram-based
             mutual-information computation.
         """
-        return tensor.reshape(tensor.shape[:-2] + (-1,))
+        return tensor.flatten(-2)
 
     def forward(
         self,
@@ -598,7 +599,7 @@ class MILossFromRef3D(MILossFromRef):
         Returns:
             Tensor with shape :math:`(*, D * H * W)` for entropy estimation.
         """
-        return tensor.reshape(tensor.shape[:-3] + (-1,))
+        return tensor.flatten(-3)
 
     def forward(
         self,
@@ -685,7 +686,7 @@ class NMILossFromRef2D(NMILossFromRef):
             Tensor with shape :math:`(*, H * W)` used by the normalized
             mutual-information base implementation.
         """
-        return tensor.reshape(tensor.shape[:-2] + (-1,))
+        return tensor.flatten(-2)
 
     def forward(
         self,
@@ -772,7 +773,7 @@ class NMILossFromRef3D(NMILossFromRef):
             Tensor with shape :math:`(*, D * H * W)` used by the normalized
             mutual-information base implementation.
         """
-        return tensor.reshape(tensor.shape[:-3] + (-1,))
+        return tensor.flatten(-3)
 
     def forward(
         self,
