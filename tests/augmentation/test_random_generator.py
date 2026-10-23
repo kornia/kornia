@@ -2116,6 +2116,21 @@ class TestBetaSamplersInHalfPrecision:
             if value.is_floating_point():
                 assert torch.isfinite(value).all()
 
+    # 1e5 overflows float16 and 1e-8 underflows it. A float16 round trip turned the first into an inf concentration,
+    # whose draws are all ~0 (a full-image cut instead of a lambda near 0.5), and the second into 0, which Beta rejects.
+    @pytest.mark.parametrize("beta", [1e5, 1e-8])
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_cutmix_beta_outside_half_range_keeps_its_value(self, device, half_dtype, beta):
+        generator = CutmixGenerator(beta=beta, p=1.0)
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        expected = torch.tensor(beta, device=device, dtype=torch.float32)
+        assert torch.equal(generator.beta_sampler.concentration1, expected)
+        assert torch.equal(generator.beta_sampler.concentration0, expected)
+        if beta > 1:
+            torch.manual_seed(0)
+            draws = generator.beta_sampler.sample((64,))
+            assert ((draws - 0.5).abs() < 0.02).all()
+
     @pytest.mark.parametrize("dtype_", [torch.float32, torch.float64])
     def test_beta_sampler_follows_full_precision(self, dtype_):
         generator = CutmixGenerator(p=1.0)
