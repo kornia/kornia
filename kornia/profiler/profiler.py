@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import logging
 import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Callable, DefaultDict, Dict, List, Optional, Union
@@ -23,7 +22,6 @@ from typing import TYPE_CHECKING, Any, Callable, DefaultDict, Dict, List, Option
 import torch
 from torch import Tensor, nn
 
-from kornia.core.external import LazyLoader
 from kornia.profiler.collectors.base import Collector
 from kornia.profiler.metrics import (
     CosineSimilarity,
@@ -34,12 +32,13 @@ from kornia.profiler.metrics import (
 )
 from kornia.profiler.transforms import Transform
 
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     import pandas as pd
-
-pandas = LazyLoader("pandas")
+else:
+    try:
+        import pandas as pd
+    except ImportError:
+        pd = None
 
 MetricType = Union[Metric, str]
 TransformType = Union[nn.Module, Callable[[Tensor], Tensor], Transform, str, None]
@@ -198,10 +197,11 @@ class Profiler:
         the smaller group. Each configured metric is evaluated for every
         matching representation key.
 
-        The results are stored in ``results`` and converted to a pandas
-        DataFrame when computation completes. If a ``GramSimilarity``
-        evaluation raises ``ValueError``, that metric result is skipped for
-        the affected representation.
+        The raw results are stored in ``results``. When pandas is installed,
+        they are also converted to a DataFrame. If pandas is unavailable,
+        DataFrame creation is skipped. If a ``GramSimilarity`` evaluation
+        raises ``ValueError``, that metric result is skipped for the affected
+        representation.
 
         Args:
             groups: Exactly two group names identifying the representations
@@ -263,14 +263,16 @@ class Profiler:
             results.append(row)
 
         self.results = results
-        self._df = pandas.DataFrame(results)
+        self._df = pd.DataFrame(results) if pd is not None else None
 
     def print(self) -> None:
         """Print the computed results, or indicate that none are available."""
-        if self._df is not None:
+        if self.results is None:
+            print("No results computed yet.")
+        elif self._df is not None:
             print(self._df)
         else:
-            print("No results computed yet.")
+            print(self.results)
 
     def save_as_report(self, path: str) -> None:
         """Save computed results as a CSV or JSON report.
@@ -283,20 +285,37 @@ class Profiler:
             path: Destination file path ending in ``.csv`` or ``.json``.
 
         Raises:
-            RuntimeError: If ``compute`` has not produced a DataFrame.
+            RuntimeError: If ``compute`` has not been run.
+            ImportError: If pandas is unavailable.
             ValueError: If the file extension is unsupported.
         """
-        if self._df is None:
+        if self.results is None:
             raise RuntimeError("Run compute() before saving report.")
+
+        if not (path.endswith(".csv") or path.endswith(".json")):
+            raise ValueError("Unsupported format. Use .csv or .json")
+
+        if pd is None:
+            raise ImportError("pandas is required to save profiler reports. Install pandas to use this functionality.")
+
+        if self._df is None:
+            self._df = pd.DataFrame(self.results)
 
         if path.endswith(".csv"):
             self._df.to_csv(path, index=False)
-        elif path.endswith(".json"):
-            self._df.to_json(path, orient="records", indent=2)
         else:
-            raise ValueError("Unsupported format. Use .csv or .json")
+            self._df.to_json(path, orient="records", indent=2)
 
     @property
     def df(self) -> Optional["pd.DataFrame"]:
-        """Return the computed results DataFrame, or ``None`` if not computed."""
+        """Return the computed results DataFrame, or ``None`` if not computed.
+
+        Raises:
+            ImportError: If results have been computed but pandas is unavailable.
+        """
+        if self.results is not None and pd is None:
+            raise ImportError(
+                "pandas is required to access profiler results as a DataFrame. "
+                "Install pandas to use this functionality."
+            )
         return self._df
