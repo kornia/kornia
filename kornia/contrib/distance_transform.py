@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Collection
 
 import torch
 from torch import nn
@@ -116,11 +117,12 @@ def _can_stop_cascade(image: torch.Tensor) -> bool:
     return torch.autograd.forward_ad.unpack_dual(image).tangent is None
 
 
-def _stop_check_rounds(n_iters: int, device_type: str) -> frozenset[int]:
+def _stop_check_rounds(n_iters: int, device_type: str) -> Collection[int]:
     """Rounds after which an eager cascade on ``device_type`` reads whether it has settled."""
     if device_type != "mps":
-        # Every eighth round amortizes the read, which synchronizes CUDA.
-        return frozenset(range(8, n_iters + 1, 8))
+        # Every eighth round amortizes the read, which synchronizes CUDA. A range, so that membership costs constant
+        # memory however long the image is.
+        return range(8, n_iters + 1, 8)
     # On MPS a read drains the command queue, which cost an M1 0.6 to 0.8 ms, the work of two or three rounds. Read
     # every eighth round, a cascade that cannot stop early took 23 % longer than with no reads at 8 x 1 x 256 x 256 and
     # 30 % at 1 x 1 x 512 x 512. There the gap between reads is the larger of eight rounds and a quarter of the rounds
@@ -156,7 +158,7 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
         image > 1, torch.ones_like(image), torch.where(image < 0, torch.zeros_like(image), image)
     ).to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
-    stop_checks = _stop_check_rounds(n_iters, image.device.type) if _can_stop_cascade(image) else frozenset()
+    stop_checks = _stop_check_rounds(n_iters, image.device.type) if _can_stop_cascade(image) else ()
 
     for i in range(n_iters):
         cdt = filter2d(boundary, kernel, border_type="replicate")
@@ -195,7 +197,7 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
         image > 1, torch.ones_like(image), torch.where(image < 0, torch.zeros_like(image), image)
     ).to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
-    stop_checks = _stop_check_rounds(n_iters, image.device.type) if _can_stop_cascade(image) else frozenset()
+    stop_checks = _stop_check_rounds(n_iters, image.device.type) if _can_stop_cascade(image) else ()
 
     for i in range(n_iters):
         cdt = filter3d(boundary, kernel, border_type="replicate")

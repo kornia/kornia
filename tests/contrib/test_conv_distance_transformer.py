@@ -17,6 +17,7 @@
 
 import importlib
 import math
+import sys
 
 import pytest
 import torch
@@ -123,6 +124,10 @@ class TestConvDistanceTransform(BaseTester):
         assert sorted(module._stop_check_rounds(17, "mps")) == [8]
         assert sorted(module._stop_check_rounds(32, "mps")) == [8, 16, 24]
         assert sorted(module._stop_check_rounds(256, "mps")) == [8, 16, 24, 32, 40, 50, 62, 77, 96, 120, 150, 187, 233]
+        # The schedule takes memory for the rounds it reads, not for every possible one: a set of all 131,072 reads of a
+        # 1 x 1 x 1 x 1,048,576 image took 7.9 MB.
+        assert sys.getsizeof(module._stop_check_rounds(2**20, "cpu")) < 1024
+        assert len(module._stop_check_rounds(2**20, "mps")) < 100
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("ndim", [2, 3])
