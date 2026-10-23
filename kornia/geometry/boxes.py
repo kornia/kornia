@@ -334,7 +334,19 @@ class Boxes:
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
         self._data[key] = value._data
         self._valid[key] = value._valid
+        if self._data.ndim == 4 and (self._N is not None or value._N is not None):
+            # Padding counts follow the rows they describe, so the export trims or zeroes the new rows' padding
+            # and keeps real boxes written over old padding.
+            padding = self._padding_counts()
+            padding[key] = value._padding_counts()
+            self._N = padding.tolist()
         return self
+
+    def _padding_counts(self) -> torch.Tensor:
+        """Return the trailing padding count of each batch row as a tensor, zero for rows without padding."""
+        if self._N is not None:
+            return torch.as_tensor(self._N, device=self._data.device)
+        return torch.zeros(self._data.shape[:-3], device=self._data.device, dtype=torch.long)
 
     @property
     def shape(self) -> tuple[int, ...] | Size:
@@ -1186,6 +1198,11 @@ class VideoBoxes(Boxes):
         n, m = self._data.shape[0] // size, value.data.shape[0] // size
         self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
         self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
+        if self._N is not None or value._N is not None:
+            # Per-frame padding (#6173) follows the written frames, as in Boxes.__setitem__.
+            padding = self._padding_counts()
+            padding.view(n, size)[key] = value._padding_counts().view(m, size)
+            self._N = padding.tolist()
         return self
 
     def to_tensor(self, mode: Optional[str] = None, as_padded_sequence: bool = False) -> torch.Tensor:

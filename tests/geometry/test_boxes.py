@@ -385,6 +385,27 @@ class TestBoxes2D(BaseTester):
         assert scalar._N is None
         assert isinstance(scalar.to_tensor("xyxy"), torch.Tensor)
 
+    def test_setitem_carries_list_padding_metadata_6173(self, device, dtype):
+        # Assignment moves _N with the rows, so the trimmed export keeps the real boxes written over old padding
+        # and trims the padding that an assigned row brings along.
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        rows = [first, torch.cat([first, first + 1]), torch.cat([first, first + 1, first + 2])]
+        lb = Boxes(rows)
+        lb[0] = lb[2]
+        assert lb._N == [0, 1, 0]
+        exported = lb.to_tensor("xyxy")
+        assert [boxes.shape[0] for boxes in exported] == [3, 2, 3]
+        self.assert_close(exported[0], exported[2], atol=0.0, rtol=0.0)
+
+        dense = Boxes(torch.stack([rows[2]] * 3) + 5.0)
+        dense_before = dense.to_tensor("xyxy")
+        dense[torch.tensor([False, True, False], device=device)] = Boxes(rows)[1:2]
+        assert dense._N == [0, 1, 0]
+        exported = dense.to_tensor("xyxy")
+        assert [boxes.shape[0] for boxes in exported] == [3, 2, 3]
+        self.assert_close(exported[1], Boxes(rows)[1:2].to_tensor("xyxy")[0], atol=0.0, rtol=0.0)
+        self.assert_close(exported[2], dense_before[2], atol=0.0, rtol=0.0)
+
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
             # Sample two points of the rectangle
@@ -2498,6 +2519,31 @@ class TestVideoBoxes(BaseTester):
         expected = torch.zeros_like(boxes)
         expected[videos] = boxes[videos]
         self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
+
+    def test_index_assignment_carries_frame_padding_6173(self, device, dtype):
+        # Each frame's padding count follows the frames written, so the export zeroes the padding an assigned video
+        # brings along and keeps the real boxes written over old padding.
+        box = torch.tensor([[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]], device=device, dtype=dtype)
+        b, c = box + 4, box + 8
+        padded = VideoBoxes.from_tensor(box.reshape(1, 1, 1, 4, 2).repeat(2, 2, 1, 1, 1))
+        padded = padded.merge(Boxes([b[None], torch.stack([b, c]), torch.stack([b, c]), b[None]]))
+        assert padded._N == [1, 0, 0, 1]
+        expected = padded.to_tensor("xyxy")
+        assert expected[0, 0, 2].count_nonzero() == expected[1, 1, 2].count_nonzero() == 0
+
+        target = padded.clone()
+        target[0] = padded[1]
+        assert target._N == [0, 1, 0, 1]
+        self.assert_close(target.to_tensor("xyxy"), expected[[1, 1]], atol=0.0, rtol=0.0)
+
+        dense = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=2, n_boxes=3) + 20.0)
+        dense_before = dense.to_tensor("xyxy")
+        dense[1] = padded[0]
+        assert dense._N == [0, 0, 1, 0]
+        self.assert_close(dense.to_tensor("xyxy"), torch.stack([dense_before[0], expected[0]]), atol=0.0, rtol=0.0)
+        padded[1] = dense[0]
+        assert padded._N == [1, 0, 0, 0]
+        self.assert_close(padded.to_tensor("xyxy"), torch.stack([expected[0], dense_before[0]]), atol=0.0, rtol=0.0)
 
     def test_index_assignment_without_boxes_5871(self, device, dtype):
         # A clip with no boxes stores (B * T, 0, 4, 2): the write still lands in place.
