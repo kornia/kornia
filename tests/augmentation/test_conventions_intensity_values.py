@@ -24,6 +24,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation._2d.intensity.base import _clamp_unit_range
 from kornia.augmentation.random_generator import RectangleEraseGenerator
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.enhance import (
@@ -1459,6 +1460,37 @@ class TestIntensityColourConventions(BaseTester):
 
 
 class TestIntensityInputClamping(BaseTester):
+    @pytest.mark.parametrize("forward_mode", ["jvp", "dual"])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_input_clamp_preserves_forward_tangents(self, device, dtype, forward_mode, grad_enabled, requires_grad):
+        image = torch.tensor([-0.5, -0.0, 0.0, 0.25, 1.0, 1.5], device=device, dtype=dtype)
+        image.requires_grad_(requires_grad)
+        tangent = torch.tensor([2.0, 3.0, 4.0, 5.0, 6.0, 7.0], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 3.0, 4.0, 5.0, 6.0, 0.0], device=device, dtype=dtype)
+        # no_grad disables reverse-mode recording, but forward AD must still pass the tangent at both bounds.
+        with torch.set_grad_enabled(grad_enabled):
+            if forward_mode == "jvp":
+                values, actual = torch.func.jvp(_clamp_unit_range, (image,), (tangent,))
+            else:
+                with torch.autograd.forward_ad.dual_level():
+                    dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                    values, actual = torch.autograd.forward_ad.unpack_dual(_clamp_unit_range(dual))
+        self.assert_close(values, image.clamp(0.0, 1.0))
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_input_clamp_matches_clamp_on_zeros_nan_and_inf(self, device, dtype, grad_enabled, requires_grad):
+        image = torch.tensor([-0.0, 0.0, float("nan"), -float("inf"), float("inf")], device=device, dtype=dtype)
+        image.requires_grad_(requires_grad)
+        with torch.set_grad_enabled(grad_enabled):
+            actual = _clamp_unit_range(image)
+        assert torch.equal(torch.isnan(actual), torch.isnan(image))
+        finite = ~torch.isnan(image)
+        # The sign of a zero is not pinned: clamp gives +0.0 for -0.0 on MPS and under Inductor, -0.0 in eager CPU/CUDA.
+        self.assert_close(actual[finite], image.clamp(0.0, 1.0)[finite])
+
     @pytest.mark.parametrize("name", ["ColorJiggle", "RandomGamma", "RandomPosterize"])
     def test_bicubic_overshoot_is_clamped_before_intensity(self, device, dtype, name):
         torch.manual_seed(0)
@@ -1507,6 +1539,30 @@ class TestIntensityInputClamping(BaseTester):
         self.assert_close(out, image.detach())
         out.sum().backward()
         self.assert_close(image.grad, torch.ones_like(image))
+
+    # Without a recorded gradient the input clamp is a single torch.clamp; with one it selects the input where the
+    # clamp left it unchanged. Both must return the same values, and the recorded gradient is 1 inside [0, 1]
+    # and 0 outside.
+    @pytest.mark.parametrize(
+        "factory",
+        [lambda: K.RandomBrightness(brightness=(1.0, 1.0), p=1.0), lambda: K.ColorJiggle(0.0, 0.0, 0.0, 0.0, p=1.0)],
+        ids=["RandomBrightness", "ColorJiggle"],
+    )
+    def test_unit_range_input_clamp_matches_with_and_without_a_gradient(self, device, dtype, factory):
+        values = torch.tensor([-0.5, -0.0, 0.0, 0.25, 0.75, 1.0, 1.5, 2.0], device=device, dtype=dtype)
+        image = values.reshape(1, 1, 2, 4).expand(1, 3, 2, 4).contiguous()
+        expected = image.clamp(0.0, 1.0)
+        with torch.no_grad():
+            assert torch.equal(factory()(image), expected)
+        assert torch.equal(factory()(image), expected)
+        leaf = image.clone().requires_grad_()
+        out = factory()(leaf)
+        assert torch.equal(out.detach(), expected)
+        out.sum().backward()
+        interior = (image > 0.0) & (image < 1.0)
+        outside = (image < 0.0) | (image > 1.0)
+        assert torch.equal(leaf.grad[interior], torch.ones_like(leaf.grad[interior]))
+        assert torch.equal(leaf.grad[outside], torch.zeros_like(leaf.grad[outside]))
 
     @pytest.mark.parametrize("gamma", [0.5, 1.5])
     def test_gamma_gradient_outside_range_is_zero(self, device, dtype, gamma):

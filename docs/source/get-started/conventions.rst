@@ -718,7 +718,8 @@ float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and cla
 ``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
 uint8; a floating image keeps its dtype. :func:`~kornia.filters.guided_blur` returns the promoted dtype of its
 ``guidance`` and ``input``, an integer one counting as float32. The blur pools are network layers and expect a
-floating input; an integer image is outside their contract.
+floating input: they raise a :class:`~kornia.core.exceptions.TypeCheckError` (a ``TypeError``) for a non-floating
+input instead of promoting it.
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the

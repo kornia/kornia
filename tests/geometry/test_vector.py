@@ -417,10 +417,10 @@ class TestConventionsVector(BaseTester):
         # A result that does not hold vectors falls back to the Scalar.
         assert type(torch.cat([v, s], -1)) is Scalar
 
-    def test_wart_vector3_normalized_scales_below_eps_3952(self, device, dtype):
-        # Wart pin (#3952): normalized() divides by max(norm, 1e-12), so a vector shorter than 1e-12 is scaled by 1e12
-        # instead of normalized: (1e-13, 0, 0) comes back with length 0.1. A fix that raises or returns a unit
-        # vector flips it. float16 cannot hold 1e-13 (it underflows to the zero vector).
+    def test_convention_vector3_normalized_scales_below_eps_3952(self, device, dtype):
+        # Convention (#3952, kept by maintainer decision): normalized() divides by max(norm, 1e-12), so a vector
+        # shorter than 1e-12 is scaled by 1e12 instead of normalized: (1e-13, 0, 0) comes back with length 0.1.
+        # float16 cannot hold 1e-13 (it underflows to the zero vector).
         if dtype == torch.float16:
             pytest.skip("1e-13 underflows to 0 in float16")
         short = Vector3(torch.tensor([1e-13, 0.0, 0.0], device=device, dtype=dtype))

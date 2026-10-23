@@ -2551,13 +2551,14 @@ class TestConventionAugmentationSequential(BaseTester):
     )
     @pytest.mark.parametrize("p", [0.5, 1.0])
     def test_empty_batch_mask_round_trip_follows_image_4429(self, make_op, p, device, dtype):
-        # The mask takes the image's canvas under every gate, and the inverse restores both. With p < 1 the empty
-        # image keeps its input size (the blend fallback tracked in #4429), so only the parity is pinned here.
+        # An empty batch takes the configured size under every gate (#4429): the mask follows the image onto that
+        # canvas, and the inverse restores both.
         image = torch.empty(0, 3, 8, 10, device=device, dtype=dtype)
         mask = torch.empty(0, 1, 8, 10, device=device, dtype=torch.int64)
         seq = K.AugmentationSequential(make_op(p), data_keys=["input", "mask"])
         out_image, out_mask = seq(image, mask)
-        assert out_mask.shape == (0, 1, *out_image.shape[-2:])
+        assert out_image.shape == (0, 3, 4, 5)
+        assert out_mask.shape == (0, 1, 4, 5)
         restored_image, restored_mask = seq.inverse(out_image, out_mask)
         assert restored_image.shape == image.shape
         assert restored_mask.shape == mask.shape
@@ -3091,7 +3092,8 @@ class TestCrop3DShapePropagation(BaseTester):
         handle.remove()
         self.assert_close(actual, expected)
         saved = deepcopy(seq._params)
-        canvas = (4, 5, 6) if p == 1.0 else (8, 10, 12)
+        # A skipped crop keeps its input canvas; an empty batch has no sample to skip (#4429).
+        canvas = (4, 5, 6) if p == 1.0 or batch == 0 else (8, 10, 12)
         assert seen == [torch.Size((batch, 1, *canvas))]
         assert tuple(saved[1].data["forward_input_shape"]) == seen[0]
         assert saved[1].data["output_size"].shape == (batch, 3)
