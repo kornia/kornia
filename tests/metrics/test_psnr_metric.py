@@ -180,8 +180,31 @@ class TestConventionsPsnr(BaseTester):
 
 
 class TestPSNRHalfPrecision(BaseTester):
+    @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("range_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    def test_tensor_range_value_dtype_and_gradients(self, device, image_dtype, range_dtype, scalar_range):
+        """Square tensor data ranges in the compute dtype without losing their output dtype or gradients."""
+        if device.type == "mps" and range_dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        image = torch.tensor([32.0], device=device, dtype=image_dtype, requires_grad=True)
+        values = 512.0 if scalar_range else [512.0, 1024.0]
+        max_val = torch.tensor(values, device=device, dtype=range_dtype, requires_grad=True)
+        expected_dtype = torch.promote_types(image_dtype, range_dtype)
+        reference = (20 * torch.log10(max_val.detach().double() / 32)).to(expected_dtype)
+
+        actual = kornia.metrics.psnr(image, torch.zeros_like(image), max_val)
+        assert actual.shape == max_val.shape
+        assert actual.dtype == expected_dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, reference)
+        actual.sum().backward()
+        self.assert_close(max_val.grad, (20 / (math.log(10) * max_val.detach().double())).to(range_dtype))
+        self.assert_close(image.grad, image.new_tensor([-20 * max_val.numel() / (math.log(10) * 32)]))
+
     @pytest.mark.parametrize("residual,max_val", [(1e-4, 1.0), (1.0 / 512, 1.0), (300.0, 512.0)])
     def test_representable_psnr(self, device, dtype, residual, max_val):
+        """Finite half-precision PSNR and its loss wrappers match the scalar reference."""
         image = torch.tensor([residual], device=device, dtype=dtype)
         target = torch.zeros_like(image)
         delta = image.detach().cpu().double().item()
@@ -195,6 +218,7 @@ class TestPSNRHalfPrecision(BaseTester):
 
     @pytest.mark.parametrize("residual,max_val", [(1.0 / 512, 1.0), (300.0, 512.0)])
     def test_representable_gradient(self, device, dtype, residual, max_val):
+        """Image and target gradients match the analytic derivative for represented residuals."""
         image = torch.tensor([residual], device=device, dtype=dtype, requires_grad=True)
         target = torch.zeros_like(image, requires_grad=True)
         result = kornia.metrics.psnr(image, target, max_val)
@@ -206,6 +230,7 @@ class TestPSNRHalfPrecision(BaseTester):
         self.assert_close(grad_target, -expected)
 
     def test_tensor_max_val_keeps_its_result_dtype(self, device, dtype):
+        """A float32 tensor range retains its contribution to the result dtype."""
         # A float32 tensor max_val gave a float32 PSNR for every image dtype before half precision moved to float32.
         image = torch.tensor([1.0 / 512], device=device, dtype=dtype)
         max_val = torch.tensor([1.0, 255.0], device=device)

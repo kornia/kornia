@@ -47,7 +47,9 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
         - ``image`` and ``target`` must have the same shape, without broadcasting; the value is symmetric in them.
           Identical inputs give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
         - Integer and bool images are converted to float32 before computing the MSE; pixel values are not rescaled.
-        - Float16 and bfloat16 inputs are evaluated in float32; the result retains their promoted input dtype.
+        - Float16 and bfloat16 inputs are evaluated in float32; the result retains their promoted input dtype,
+          also promoted with ``max_val.dtype`` when the data range is a tensor. A float32 tensor data range therefore
+          gives a float32 result for half-precision images.
 
     Args:
         image: the input image with arbitrary shape :math:`(*)`.
@@ -89,6 +91,11 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     dtype = torch.promote_types(image.dtype, target.dtype)
     compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     image, target = image.to(compute_dtype), target.to(compute_dtype)
+    result_dtype = dtype
+    if dtype in (torch.float16, torch.bfloat16) and isinstance(max_val, torch.Tensor):
+        result_dtype = torch.promote_types(dtype, max_val.dtype)
+        # Keep the tensor data range's square and division out of half precision too, without narrowing float64.
+        max_val = max_val.to(torch.promote_types(compute_dtype, max_val.dtype))
 
     # The legacy (TorchScript) ONNX exporter writes ``log10`` as a division by a ``(1,)`` constant, which turns a 0-d
     # result into a one-element vector. Reshaping to the shape of the ratio keeps the eager shape there (``()`` for a
@@ -96,6 +103,5 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     ratio = max_val**2 / mse(image, target, reduction="mean")
     result = 10.0 * torch.log10(ratio)
     if dtype in (torch.float16, torch.bfloat16):
-        # A tensor max_val takes part in the result dtype, as it did when the images were computed in their own dtype.
-        result = result.to(torch.promote_types(dtype, max_val.dtype) if isinstance(max_val, torch.Tensor) else dtype)
+        result = result.to(result_dtype)
     return result.reshape(ratio.shape)
