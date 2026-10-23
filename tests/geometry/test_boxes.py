@@ -435,6 +435,94 @@ class TestBoxes2D(BaseTester):
         assert dense._N is None
         self.assert_close(dense.to_tensor("xyxy")[0], merged.to_tensor("xyxy"), atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(
+        "selection,padding",
+        [
+            (slice(None), 2),
+            (slice(None, -1), 1),
+            (slice(1, None), 2),
+            (slice(0, 0), 0),
+            ([2, 0, 1], 1),
+            ([1, 2, 0], 0),
+            ([True, False, True], 1),
+        ],
+    )
+    def test_reindex_selected_row_preserves_trailing_padding_6173(self, selection, padding, device, dtype):
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        row = Boxes([first, first.repeat(3, 1, 1)])[0]
+        key = torch.tensor(selection, device=device) if isinstance(selection, list) else selection
+        selected = row[key]
+        target = Boxes(torch.zeros_like(selected.data).unsqueeze(0))
+        target[0] = selected
+        expected = selected.to_tensor("xyxy")[: selected.data.shape[0] - padding]
+        self.assert_close(target.to_tensor("xyxy")[0], expected, atol=0.0, rtol=0.0)
+        assert row._row_padding == 2
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    @pytest.mark.parametrize("raw", [False, True])
+    @pytest.mark.parametrize("selection,padding", [([1, 2], 0), ([-2], 1), ([True, False, True], 0), ([], 2)])
+    def test_index_put_selected_row_updates_padding_6173(self, selection, padding, raw, inplace, device, dtype):
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        row = Boxes([first, first.repeat(3, 1, 1)])[0]
+        key = torch.tensor(
+            selection, device=device, dtype=torch.bool if selection and isinstance(selection[0], bool) else torch.long
+        )
+        replacements = torch.ones_like(row.data[key]) * 5
+        edited = row.index_put((key,), replacements if raw else Boxes(replacements), inplace=inplace)
+        target = Boxes(torch.zeros_like(edited.data).unsqueeze(0))
+        target[0] = edited
+        self.assert_close(target.to_tensor("xyxy")[0], edited.to_tensor("xyxy")[: 3 - padding])
+        self.assert_close(edited.data[key], replacements)
+        assert row._row_padding == (padding if inplace else 2)
+
+    @pytest.mark.parametrize("method", ["setitem", "index_put", "index_put_inplace"])
+    @pytest.mark.parametrize("padded_target", [False, True])
+    @pytest.mark.parametrize("batched_index", [False, True])
+    def test_selected_row_writes_preserve_source_padding_6173(
+        self, method, padded_target, batched_index, device, dtype
+    ):
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        source = Boxes([first, first.repeat(3, 1, 1)])[0]
+        row = source.clone() if padded_target else Boxes(first.repeat(3, 1, 1))
+        key = torch.tensor([[1, 2]] if batched_index else [1, 2], device=device)
+        padding = source[key]
+        if method == "setitem":
+            row[key] = padding
+        else:
+            row = row.index_put((key,), padding, inplace=method == "index_put_inplace")
+        target = Boxes(torch.zeros_like(row.data).unsqueeze(0))
+        target[0] = row
+        self.assert_close(target.to_tensor("xyxy")[0], Boxes(first).to_tensor("xyxy"), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_index_put_coordinates_updates_selected_row_padding_6173(self, inplace, device, dtype):
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        row = Boxes([first, first.repeat(3, 1, 1)])[0]
+        indices = tuple(torch.tensor([i], device=device) for i in (-1, 2, 1))
+        edited = row.index_put(indices, torch.tensor([5.0], device=device, dtype=dtype), inplace=inplace)
+        target = Boxes(torch.zeros_like(edited.data).unsqueeze(0))
+        target[0] = edited
+        self.assert_close(target.to_tensor("xyxy")[0], edited.to_tensor("xyxy"))
+        assert row._row_padding == (0 if inplace else 2)
+
+    @pytest.mark.parametrize("inplace", [False, True])
+    @pytest.mark.parametrize("other_kind,padding", [("empty", 2), ("padded", 2), ("all_padding", 4)])
+    def test_merge_selected_row_retains_trailing_padding_6173(self, other_kind, padding, inplace, device, dtype):
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        row = Boxes([first, first.repeat(3, 1, 1)])[0]
+        empty = first[:0]
+        other = {
+            "empty": Boxes(empty),
+            "padded": Boxes([first, first.repeat(3, 1, 1)])[0],
+            "all_padding": Boxes([empty, first.repeat(2, 1, 1)])[0],
+        }[other_kind]
+        merged = row.merge(other, inplace=inplace)
+        target = Boxes(torch.zeros_like(merged.data).unsqueeze(0))
+        target[0] = merged
+        expected = merged.to_tensor("xyxy")[: merged.data.shape[0] - padding]
+        self.assert_close(target.to_tensor("xyxy")[0], expected, atol=0.0, rtol=0.0)
+        assert row._row_padding == (padding if inplace else 2)
+
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
             # Sample two points of the rectangle

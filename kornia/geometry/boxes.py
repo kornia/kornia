@@ -337,6 +337,15 @@ class Boxes:
                 new_box._row_padding = int(selected)
             else:
                 new_box._N = [int(n) for n in selected]
+        elif self._row_padding and new_box._data.shape[-3]:
+            # An unbatched selection can reorder boxes: only padding after the last selected real box is trailing.
+            real = torch.arange(self._data.shape[0], device=self.device)[key] < self._data.shape[0] - self._row_padding
+            positions = torch.arange(new_box._data.shape[-3], device=self.device)
+            padding = new_box._data.shape[-3] - 1 - torch.where(real, positions, -1).amax(dim=-1)
+            if new_box._is_batched:
+                new_box._N = padding.tolist()
+            else:
+                new_box._row_padding = int(padding)
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
@@ -348,12 +357,29 @@ class Boxes:
             padding = self._padding_counts()
             padding[key] = value._padding_counts()
             self._N = padding.tolist()
-        elif self._data.ndim == 3 and self._row_padding:
-            # Rows written over the selected row's padding are boxes; only the padding after the last of them remains.
-            written = torch.arange(self._data.shape[0], device=self._data.device)[key].reshape(-1)
-            if written.numel() > 0:
-                self._row_padding = min(self._row_padding, self._data.shape[0] - 1 - int(written.max()))
+        elif self._data.ndim == 3 and (self._row_padding or value._row_padding or value._N is not None):
+            rows = torch.arange(self._data.shape[0], device=self.device).view(-1, 1, 1).expand_as(self._data)
+            self._update_row_padding(rows[key], value)
         return self
+
+    def _update_row_padding(self, written: torch.Tensor, values: Optional[Boxes] = None) -> None:
+        """Update an unbatched row's trailing padding after a write, preserving a Boxes source's padding."""
+        if written.numel() == 0:
+            return
+        positions = torch.arange(self._data.shape[0], device=self.device)
+        real = positions < self._data.shape[0] - self._row_padding
+        if values is not None and (values._row_padding or values._N is not None):
+            source_real = torch.arange(values.data.shape[-3], device=self.device) < (
+                values.data.shape[-3] - values._padding_counts()[..., None]
+            )
+            source_real = source_real[..., None, None]
+            # Tensor assignment permits redundant leading singleton dimensions on its source.
+            while source_real.ndim > written.ndim:
+                source_real = source_real.squeeze(0)
+            real[written.reshape(-1)] = source_real.expand_as(written).reshape(-1)
+        else:
+            real[written.reshape(-1)] = True
+        self._row_padding = self._data.shape[0] - 1 - int(torch.where(real, positions, -1).amax())
 
     def _padding_counts(self) -> torch.Tensor:
         """Return the trailing padding count of each batch row as a tensor, zero for rows without padding.
@@ -460,12 +486,15 @@ class Boxes:
             data = torch.cat([self._data, boxes.data], dim=-3)
             valid = torch.cat([self._valid, boxes._valid], dim=-1)
 
-        # Merged boxes follow an integer selection's padding, so it is no longer trailing.
+        # The right input's padding stays trailing. If it is empty or all padding, the left padding does too.
+        row_padding = boxes._row_padding
+        if boxes._row_padding == boxes.data.shape[-3]:
+            row_padding += self._row_padding
         obj = self if inplace else self.clone()
         obj._data = data
         obj._N = padding
         obj._valid = valid
-        obj._row_padding = 0
+        obj._row_padding = row_padding
         return obj
 
     def index_put(
@@ -488,7 +517,9 @@ class Boxes:
                 shaped :math:`(B, N, 4, 2)` or :math:`(N, 4, 2)`.
             values: Replacement coordinates. If a :class:`Boxes` object is
                 passed, its coordinates and filtering validity are copied. Raw tensor writes
-                change only coordinates and preserve the existing filtering validity.
+                change coordinates and preserve the existing filtering validity. Raw writes into an integer-selected
+                row's padding make the affected boxes real when the row is assigned back to a batch; a Boxes source
+                retains its own trailing padding.
             inplace: If ``True``, update this object and return ``self``. If
                 ``False``, clone the current data first and return a new
                 :class:`Boxes` instance.
@@ -502,6 +533,12 @@ class Boxes:
             obj._valid.index_put_(indices, values._valid)
         else:
             obj._data.index_put_(indices, values)
+        if obj._data.ndim == 3 and (
+            obj._row_padding or (isinstance(values, Boxes) and (values._row_padding or values._N is not None))
+        ):
+            # Index the row numbers with the same coordinate indices, including boolean masks and negative indices.
+            rows = torch.arange(obj._data.shape[0], device=obj.device).view(-1, 1, 1).expand_as(obj._data)
+            obj._update_row_padding(rows[tuple(indices)], values if isinstance(values, Boxes) else None)
         return obj
 
     def _broadcast_over_vertices(self, values: torch.Tensor) -> torch.Tensor:
