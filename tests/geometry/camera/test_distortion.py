@@ -422,9 +422,10 @@ class TestDistortionKannalaBrandt(BaseTester):
         points = torch.tensor([919.5000, 1439.5000], device=device, dtype=dtype)
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         op_script = torch.jit.script(undistort_points_kannala_brandt)
-        actual = op_script(points, params)
         expected = undistort_points_kannala_brandt(points, params)
-        self.assert_close(actual, expected)
+        # Twice: TorchScript optimizes the graph on the second call, where an unrolled loop hung on CUDA (#6257).
+        for _ in range(2):
+            self.assert_close(op_script(points, params), expected)
 
     def test_jit(self, device, dtype) -> None:
         self._test_jit_distort(device, dtype)
