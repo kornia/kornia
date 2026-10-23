@@ -24,7 +24,8 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
-from kornia.geometry.boxes import Boxes
+from kornia.augmentation.utils.helpers import _frame_boxes, _video_boxes
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
 
 from .params import ParamItem
@@ -465,6 +466,9 @@ class VideoSequential(ImageSequential):
             )
             input = super().transform_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
+        elif isinstance(input, VideoBoxes):
+            frames = super().transform_boxes(_frame_boxes(input), params, extra_args=extra_args)
+            input = _video_boxes(frames, input.temporal_channel_size)
         else:
             input = super().transform_boxes(input, params, extra_args=extra_args)
         return input
@@ -487,6 +491,9 @@ class VideoSequential(ImageSequential):
             )
             input = super().inverse_boxes(input, params, extra_args=extra_args)
             input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
+        elif isinstance(input, VideoBoxes):
+            frames = super().inverse_boxes(_frame_boxes(input), params, extra_args=extra_args)
+            input = _video_boxes(frames, input.temporal_channel_size)
         else:
             input = super().inverse_boxes(input, params, extra_args=extra_args)
         return input
