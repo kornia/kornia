@@ -202,6 +202,13 @@ class TestSpatialSoftmax2d(BaseTester):
         assert actual.shape == shape
         assert actual.dtype == dtype
 
+    @pytest.mark.parametrize("shape", [(2, 3, 0, 5), (2, 3, 4, 0)])
+    def test_empty_spatial_dimension(self, device, dtype, shape):
+        input = torch.rand(shape, device=device, dtype=dtype)
+        actual = kornia.geometry.subpix.spatial_softmax2d(input)
+        assert actual.shape == shape
+        assert actual.dtype == dtype
+
     def test_dynamo(self, input, torch_optimizer):
         op = kornia.geometry.subpix.spatial_softmax2d
         op_optimized = torch_optimizer(op)
@@ -223,6 +230,30 @@ class TestSpatialSoftmax2d(BaseTester):
         self.assert_close(actual, expected.to(device=device, dtype=dtype))
         wrong = torch.softmax(reference * temperature, dim=-1).view(1, 1, 2, 3)
         assert not torch.allclose(actual.cpu().double(), wrong, atol=1e-2)
+
+    @pytest.mark.parametrize("as_tensor", [False, True])
+    def test_float16_small_temperature_stays_finite(self, device, as_tensor):
+        input = torch.tensor([[[[10.0, 11.0]]]], device=device, dtype=torch.float16)
+        temperature = torch.tensor(1e-4, device=device, dtype=input.dtype) if as_tensor else 1e-4
+
+        actual = kornia.geometry.subpix.spatial_softmax2d(input, temperature)
+        reference = torch.softmax(input.float().reshape(1, 1, -1) / 1e-4, dim=-1).view_as(input).to(input.dtype)
+
+        assert actual.dtype == input.dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, reference)
+
+    @pytest.mark.parametrize("as_tensor", [False, True])
+    def test_float16_extreme_mixed_sign_logits(self, device, as_tensor):
+        input = torch.tensor([[[[-65504.0, 65504.0]]]], device=device, dtype=torch.float16)
+        temperature = torch.tensor(65504.0, device=device, dtype=input.dtype) if as_tensor else 65504.0
+
+        actual = kornia.geometry.subpix.spatial_softmax2d(input, temperature)
+        reference = torch.softmax(input.float().reshape(1, 1, -1) / 65504.0, dim=-1).view_as(input).to(input.dtype)
+
+        assert actual.dtype == input.dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, reference)
 
     @pytest.mark.parametrize("temperature", [0.0, -1.0, float("nan"), "tensor", "nan_tensor"])
     def test_nonpositive_temperature_raises(self, device, dtype, temperature):
