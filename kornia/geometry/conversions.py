@@ -714,20 +714,19 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
         - the sign is preserved — ``normalize_quaternion(-q)`` is exactly
           ``-normalize_quaternion(q)``, there is no ``w >= 0``
           canonicalisation
-
-    .. warning::
-        When ``||q|| < eps`` the output is **not** a unit quaternion and no
-        error is raised: with the default ``eps = 1e-12``,
-        ``[1e-13, 0., 0., 0.]`` returns ``[0.1, 0., 0., 0.]`` and ``zeros(4)``
-        returns ``zeros(4)``. Tracked in
-        `#3952 <https://github.com/kornia/kornia/issues/3952>`_. With
-        ``eps=0.0`` the zero quaternion returns ``nan``. In ``float16`` a
-        positive ``eps`` is floored at the smallest subnormal.
+        - the divisor is the norm floored at ``eps``, so a quaternion with
+          ``0 < ||q|| < eps`` returns ``q / eps``, which is **not** a unit
+          quaternion, and no error is raised: with the default ``eps = 1e-12``,
+          ``[1e-13, 0., 0., 0.]`` returns ``[0.1, 0., 0., 0.]``. No realistic
+          rotation has such a norm; the case that occurs in practice, the zero
+          quaternion, returns ``zeros(4)``. With ``eps=0.0`` the zero quaternion
+          returns ``nan``. In ``float16`` a positive ``eps`` is floored at the
+          smallest subnormal.
 
     Args:
         quaternion: a tensor containing a quaternion to be normalized.
           The tensor can be of shape :math:`(*, 4)`.
-        eps: floor on the norm used as the divisor; see the warning above.
+        eps: floor on the norm used as the divisor; see the Convention above.
 
     Return:
         the normalized quaternion of shape :math:`(*, 4)`.
@@ -800,7 +799,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           ``quaternion_to_rotation_matrix(q)``; other rescalings move the
           matrix by the working dtype's rounding, as long as the norm of the
           rescaled quaternion neither overflows nor falls below the
-          normalisation floor ``eps = 1e-12`` (see that function's warning)
+          normalisation floor ``eps = 1e-12`` (see that function's Convention)
         - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`,
           :func:`~kornia.geometry.conversions.quaternion_exp_to_log`, and
           :func:`~kornia.geometry.conversions.euler_from_quaternion` are
@@ -808,11 +807,9 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
         - applied on the left to a column vector, ``+theta`` about ``+z`` maps
           ``x_hat`` to ``y_hat`` (right-hand rule)
         - the output dtype follows the input at every shape
-
-    .. warning::
-        The zero quaternion, which is not a rotation, returns the identity
-        matrix rather than raising. Tracked in
-        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
+        - the zero quaternion, which is not a rotation, returns the identity
+          matrix rather than raising: it stays zero through the normalisation,
+          and the matrix formula gives the identity for it
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -3115,7 +3112,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           same output, as long as ``||q||`` stays above the ``eps = 1e-12``
           normalisation floor and its squared norm does not overflow (about
           ``1.8e19`` in ``float32``); outside that range the result is the
-          zero-quaternion answer of the warning below or a wrong pose
+          zero-quaternion answer below or a wrong pose
         - the **sign of the output quaternion is not canonical**: it is the
           representative
           :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`'s
@@ -3127,12 +3124,10 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           below
         - :func:`~kornia.geometry.conversions.ColmapQTVecs_to_ARKitQTVecs`
           computes the reverse conversion
-
-    .. warning::
-        The zero quaternion is not rejected: ``torch.zeros(1, 4)`` with
-        ``t = (1, 1, 1)`` returns ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)``,
-        the same answer as the identity input. Tracked in
-        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
+        - the zero quaternion is not rejected: it rotates as the identity, so
+          ``torch.zeros(1, 4)`` with ``t = (1, 1, 1)`` returns
+          ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)``, the same answer as the
+          identity input
 
     Args:
         qvec: ARKit rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
@@ -3202,12 +3197,10 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           example, ``q = [0.7071, 0., 0.7071, 0.]``, ``t = (-1, -1, 1)``, gives
           ``q = [0., 0.7071, 0., 0.7071]`` and ``t = (1, 1, 1)``, the unit form
           of that example's input; see the example below
-
-    .. warning::
-        The zero quaternion is not rejected: ``torch.zeros(1, 4)`` with
-        ``t = (1, 1, 1)`` returns ``q = [0., 1., 0., 0.]``, ``t = (-1, -1, -1)``,
-        the same answer as the identity input. Tracked in
-        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
+        - the zero quaternion is not rejected: it rotates as the identity, so
+          ``torch.zeros(1, 4)`` with ``t = (1, 1, 1)`` returns
+          ``q = [0., 1., 0., 0.]``, ``t = (-1, -1, -1)``, the same answer as the
+          identity input
 
     Args:
         qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.

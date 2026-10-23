@@ -27,6 +27,7 @@ from kornia.augmentation.auto.operations import OperationBase, ops
 from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment
 from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as randaug_config
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
+from kornia.augmentation.auto.trivial_augment.trivial_augment import default_policy as trivial_config
 from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
 
@@ -263,6 +264,29 @@ class TestTrivialAugment(BaseTester):
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(TrivialAugment(), device=device, dtype=dtype)
+
+    @pytest.mark.device_agnostic
+    def test_default_posterize_keeps_four_to_eight_bits_6246(self):
+        # #6246: the default candidate was (0, 4), so one posterize draw in 8 kept 0 bits, a black image, and one
+        # in 4 kept 1 bit. It now keeps 4 to 8 bits, as RandAugment and AutoAugment do.
+        candidate = next(policy for policy in trivial_config if policy[0][0] == "posterize")
+        aug = TrivialAugment(policy=[candidate])
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            bits = torch.cat(
+                [aug.forward_parameters(torch.Size([64, 3, 4, 4]))[0].data[0].data["bits_factor"] for _ in range(8)]
+            )
+        assert bits.min() == 4
+        assert bits.max() == 8
+
+    def test_default_posterize_never_blacks_out_an_image_6246(self, device, dtype):
+        candidate = next(policy for policy in trivial_config if policy[0][0] == "posterize")
+        aug = TrivialAugment(policy=[candidate])
+        image = torch.linspace(0.05, 0.95, 64 * 3 * 4 * 4, device=device, dtype=dtype).view(64, 3, 4, 4)
+        with torch.random.fork_rng(devices=[device] if device.type == "cuda" else []):
+            torch.manual_seed(0)
+            for _ in range(8):
+                assert (aug(image).flatten(1).amax(1) > 0).all()
 
 
 @pytest.mark.parametrize("low_dtype", [torch.float16, torch.bfloat16])
