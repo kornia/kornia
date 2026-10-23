@@ -41,6 +41,18 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         If this is not the case, the points will be projected to the canonical plane, but the resulting
         points will be behind the camera and causing numerical issues for z == 0.
 
+    Convention:
+        - the input is a **camera-frame** point and the output its position on the canonical ``z = 1`` plane,
+          a normalized coordinate rather than a pixel; applying ``K`` with
+          :func:`~kornia.geometry.conversions.denormalize_points_with_intrinsics` gives the pixel.
+        - the ``z > 0`` precondition above is not validated.
+
+    .. warning::
+        The divide is plain at every ``z``: at ``z = 0`` a component is infinite, or ``nan`` for a zero
+        numerator. :func:`~kornia.geometry.camera.perspective.project_points` instead skips its divide at
+        ``abs(z) <= 1e-8`` and returns finite pixels there, so the two disagree below that threshold:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+
     Args:
         points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
 
@@ -66,9 +78,18 @@ def unproject_points_z1(
         \begin{bmatrix} x \\ y \\ z \end{bmatrix} =
         \begin{bmatrix} u \\ v \end{bmatrix} \cdot w
 
+    Convention:
+        - ``extension`` is the camera-frame ``z`` of the unprojected point: the canonical point is multiplied
+          by it and it becomes the third component.
+          :meth:`~kornia.sensors.camera.projection_model.Z1Projection.unproject` names the same argument
+          ``depth``. Both ``(...,)`` and ``(..., 1)`` extensions are accepted, and their leading dimensions
+          broadcast against the points'. One depth scales both coordinates: any other trailing size raises
+          ``ShapeError``.
+
     Args:
         points_in_cam_canonical: torch.Tensor representing the points to unproject with shape (..., 2).
-        extension: torch.Tensor representing the extension (depth) of the points to unproject with shape (..., 1).
+        extension: torch.Tensor representing the extension (depth) of the points to unproject with shape
+            (..., 1) or (...), broadcastable against the points' leading dimensions. Defaults to unit depth.
 
     Returns:
         torch.Tensor representing the unprojected points with shape (..., 3).
@@ -83,15 +104,16 @@ def unproject_points_z1(
     KORNIA_CHECK_SHAPE(points_in_cam_canonical, ["*", "2"])
 
     if extension is None:
-        extension = torch.ones(
-            points_in_cam_canonical.shape[:-1] + (1,),
-            device=points_in_cam_canonical.device,
-            dtype=points_in_cam_canonical.dtype,
-        )  # (..., 1)
-    elif extension.shape[0] > 1:
+        # a ones column, not ``F.pad(..., value=1.0)``: see ``convert_points_to_homogeneous`` for MPS
+        return torch.cat([points_in_cam_canonical, torch.ones_like(points_in_cam_canonical[..., :1])], dim=-1)
+    if extension.ndim == points_in_cam_canonical.ndim - 1:
         extension = extension[..., None]  # (..., 1)
-
-    return torch.cat([points_in_cam_canonical * extension, extension], dim=-1)
+    KORNIA_CHECK_SHAPE(extension, ["*", "1"])
+    xy = points_in_cam_canonical * extension
+    # The depth is expanded to the product's leading shape, so a broadcast depth concatenates. That also keeps
+    # TorchScript's CUDA fuser from compiling ``cat([points * w, w])`` into a group that returns an int32 tensor for
+    # an empty batch once it has specialized on non-empty calls.
+    return torch.cat([xy, extension.expand(xy[..., :1].shape)], dim=-1)
 
 
 def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
@@ -110,6 +132,12 @@ def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         This function has a precondition that the points are in front of the camera, i.e. z > 0.
         If this is not the case, the points will be projected to the canonical plane, but the resulting
         points will be behind the camera and causing numerical issues for z == 0.
+
+    Convention:
+        - the result is the full Jacobian of :func:`~kornia.geometry.camera.project_points_z1` with shape
+          ``(..., 2, 3)``, laid out row-major in the output index: the ``u`` row then the ``v`` row, each
+          holding the derivatives with respect to ``x``, ``y`` and ``z``.
+        - the same ``z > 0`` precondition applies, and it is not validated either.
 
     Args:
         points_in_camera: torch.Tensor representing the points to project with shape (..., 3).

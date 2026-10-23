@@ -33,7 +33,10 @@ from typing import Any, Optional
 
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url
+from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.sam.architecture.common import LayerNorm
 from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
@@ -53,6 +56,19 @@ class SamModelType(Enum):
     mobile_sam = 3
 
 
+# Module level, like every other weight registry in kornia, so the CI weights
+# cache can enumerate it -- see tests/core/test_weights_prefetch.py.
+urls: dict[SamModelType, str | list[str]] = {
+    SamModelType.vit_b: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
+    SamModelType.vit_l: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
+    SamModelType.vit_h: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
+    SamModelType.mobile_sam: [
+        hf_url("mobile_sam", "mobile_sam.pt"),
+        "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
+    ],
+}
+
+
 @dataclass
 class SamConfig:
     """Encapsulate the Config to build a SAM model.
@@ -60,16 +76,22 @@ class SamConfig:
     Args:
         model_type: the available models are:
 
-            - 0, 'vit_h' or :func:`kornia.contrib.sam.SamModelType.vit_h`
-            - 1, 'vit_l' or :func:`kornia.contrib.sam.SamModelType.vit_l`
-            - 2, 'vit_b' or :func:`kornia.contrib.sam.SamModelType.vit_b`
-            - 3, 'mobile_sam', or :func:`kornia.contrib.sam.SamModelType.mobile_sam`
+            - 0, 'vit_h' or :attr:`kornia.models.sam.SamModelType.vit_h`
+            - 1, 'vit_l' or :attr:`kornia.models.sam.SamModelType.vit_l`
+            - 2, 'vit_b' or :attr:`kornia.models.sam.SamModelType.vit_b`
+            - 3, 'mobile_sam', or :attr:`kornia.models.sam.SamModelType.mobile_sam`
 
+            With ``None``, the image encoder is a ViT built from the four ``encoder_*`` fields below, which are
+            ignored when ``model_type`` is set.
         checkpoint: URL or a path for a file with the weights of the model
+        pretrained: load the released weights of ``model_type``, which must then be set. A ``checkpoint`` takes
+            precedence, with a warning. With ``False`` (the default) and no ``checkpoint``, the weights are randomly
+            initialised.
         encoder_embed_dim: Patch embedding dimension.
         encoder_depth: Depth of ViT.
         encoder_num_heads: Number of attention heads in each ViT block.
-        encoder_global_attn_indexes: Encoder indexes for blocks using global attention.
+        encoder_global_attn_indexes: Encoder indexes for blocks using global attention: a tuple or a list of
+            indexes, or one index as an ``int``.
 
     """
 
@@ -80,10 +102,10 @@ class SamConfig:
     encoder_embed_dim: Optional[int] = None
     encoder_depth: Optional[int] = None
     encoder_num_heads: Optional[int] = None
-    encoder_global_attn_indexes: Optional[tuple[int, ...]] = None
+    encoder_global_attn_indexes: Optional[int | tuple[int, ...] | list[int]] = None
 
 
-class Sam(ModelBase[SamConfig]):
+class Sam(ONNXExportMixin, ModelBase[SamConfig]):
     """Implement the Segment Anything Model (SAM) wrapper.
 
     This class coordinates the image encoder, prompt encoder, and mask decoder.
@@ -110,7 +132,9 @@ class Sam(ModelBase[SamConfig]):
 
     @staticmethod
     def from_name(name: str) -> Sam:
-        """Build/load the SAM model based on it's name.
+        """Build a randomly initialised SAM of the given type.
+
+        Use ``Sam.from_config(SamConfig(name, pretrained=True))`` for the released weights.
 
         Args:
             name: The name of the SAM model. Valid names are:
@@ -125,8 +149,7 @@ class Sam(ModelBase[SamConfig]):
         """
         if name in ["vit_b", "vit_l", "vit_h", "mobile_sam"]:
             return Sam.from_config(SamConfig(name))
-        else:
-            raise ValueError(f"Invalid SAM model name: {name}")
+        raise ValueError(f"Invalid SAM model name: {name}")
 
     @staticmethod
     def from_config(config: SamConfig) -> Sam:
@@ -137,7 +160,8 @@ class Sam(ModelBase[SamConfig]):
                     the parameters set.
 
         Returns:
-            The respective SAM model
+            The respective SAM model, in evaluation mode when it loads weights (``config.pretrained`` or
+            ``config.checkpoint``) and in training mode otherwise (see :ref:`pretrained-models-conventions`).
 
         Example:
             >>> from kornia.models.sam import SamConfig
@@ -208,13 +232,16 @@ class Sam(ModelBase[SamConfig]):
             isinstance(config.encoder_embed_dim, int)
             and isinstance(config.encoder_depth, int)
             and isinstance(config.encoder_num_heads, int)
-            and isinstance(config.encoder_global_attn_indexes, int)
+            and isinstance(config.encoder_global_attn_indexes, (int, tuple, list))
         ):
+            global_attn_indexes = config.encoder_global_attn_indexes
             model = _build_sam(
                 encoder_embed_dim=config.encoder_embed_dim,
                 encoder_depth=config.encoder_depth,
                 encoder_num_heads=config.encoder_num_heads,
-                encoder_global_attn_indexes=config.encoder_global_attn_indexes,
+                encoder_global_attn_indexes=(
+                    (global_attn_indexes,) if isinstance(global_attn_indexes, int) else tuple(global_attn_indexes)
+                ),
             )
 
         else:
@@ -223,19 +250,84 @@ class Sam(ModelBase[SamConfig]):
         checkpoint = config.checkpoint
         if config.pretrained:
             if checkpoint is None:
-                checkpoint = {
-                    SamModelType.vit_b: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
-                    SamModelType.vit_l: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
-                    SamModelType.vit_h: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
-                    SamModelType.mobile_sam: "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
-                }[model_type]
+                KORNIA_CHECK(
+                    isinstance(model_type, SamModelType),
+                    "SamConfig(pretrained=True) needs a model_type: the released weights exist only for 'vit_h', "
+                    "'vit_l', 'vit_b' and 'mobile_sam'. Give a checkpoint to load weights into a custom encoder.",
+                )
+                checkpoint = urls[model_type]
             else:
                 warnings.warn("checkpoint is not None. pretrained=True is ignored", stacklevel=1)
 
         if checkpoint:
             model.load_checkpoint(checkpoint)
+            model.eval()
 
         return model
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        pseudo_shape: Optional[list[int]] = None,
+        save: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Export SAM's image encoder to ONNX.
+
+        SAM's full :meth:`forward` signature accepts non-tensor inputs
+        (``batched_prompts: list[dict]``, ``multimask_output: bool``) and returns
+        a Python list of :class:`~kornia.models.structures.SegmentationResults`,
+        which cannot be directly exported via :func:`torch.onnx.export`.
+
+        This override exports only the **image encoder** subgraph
+        (``self.image_encoder``), a ``(B, 3, H, W) -> (B, C, H', W')`` tensor-to-tensor
+        module whose graph input is named ``input`` and output ``image_embeddings``. The prompt
+        encoder and the mask decoder are not exported. The encoder embeddings
+        can be fed into a separate prompt-encoder / mask-decoder pipeline.
+
+        On torch 2.14, whose default exporter is the dynamo exporter, a ViT image encoder (SAM ViT-B, ViT-L, ViT-H)
+        needs ``onnxscript`` 0.7.2 or later: with 0.7.1 the export raises :class:`torch.onnx.OnnxExporterError`
+        (https://github.com/kornia/kornia/issues/5947). A TinyViT encoder (MobileSAM) exports with 0.7.1.
+
+        Args:
+            onnx_name: Path for the saved ``.onnx`` file.  Defaults to
+                ``"Kornia-Sam-ImageEncoder.onnx"``.
+            pseudo_shape: Concrete input shape used to trace the encoder, e.g.
+                ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``. The batch is
+                exported as dynamic, so a batch below 2 is traced at 2. A TinyViT image encoder
+                (MobileSAM) on the legacy TorchScript exporter (the default before torch 2.9, or
+                ``dynamo=False``) is the exception: that graph runs at the traced batch only, so it is
+                traced at this shape's batch and declares it static. With a caller's ``dynamic_axes``, such an
+                encoder is still traced at this shape's batch and runs at that batch only.
+            save: Whether to write the model to disk.  Default ``True``.
+            **kwargs: Additional keyword arguments forwarded to
+                :func:`torch.onnx.export`.
+
+        Returns:
+            ``onnx.ModelProto`` of the exported image encoder.
+
+        """
+        if onnx_name is None:
+            onnx_name = "Kornia-Sam-ImageEncoder.onnx"
+        if pseudo_shape is None:
+            pseudo_shape = [1, 3, 1024, 1024]
+        kwargs.setdefault("output_names", ["image_embeddings"])
+        input_shape = [-1, 3, -1, -1]
+        dynamic_axes: dict[str, dict[int, str]] = {"input": {0: "batch"}, "image_embeddings": {0: "batch"}}
+        if isinstance(self.image_encoder, TinyViT) and not kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            # The TorchScript exporter keeps the traced batch in TinyViT's attention reshapes, so the graph runs at
+            # that batch only: a fixed batch is traced at the pseudo shape's size rather than at 2, and declared.
+            input_shape = [pseudo_shape[0], 3, -1, -1]
+            dynamic_axes = {}
+        kwargs.setdefault("dynamic_axes", dynamic_axes)
+        return super().to_onnx(
+            onnx_name=onnx_name,
+            input_shape=input_shape,
+            pseudo_shape=pseudo_shape,
+            model=self.image_encoder,
+            save=save,
+            **kwargs,
+        )
 
     @torch.no_grad()
     def forward(
@@ -279,7 +371,7 @@ class Sam(ModelBase[SamConfig]):
                 - logits: Low resolution logits with shape :math:`(K, C, H, W)`. Can be passed as mask input to
                   subsequent iterations of prediction. Where :math:`K` is the number of input prompts,
                   :math:`C` is determined by multimask_output, and :math:`H=W=256` are the model output size.
-                - scores: The model's predictions of mask quality (iou prediction), in shape BxC.
+                - scores: The predicted IoU of each mask, :math:`(K, C)`.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])

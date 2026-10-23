@@ -19,6 +19,10 @@ from __future__ import annotations
 
 import torch
 
+from kornia.geometry.camera.projection_orthographic import (
+    project_points_orthographic,
+    unproject_points_orthographic,
+)
 from kornia.geometry.vector import Vector2, Vector3
 
 
@@ -31,6 +35,15 @@ class Z1Projection:
 
     def project(self, points: Vector3) -> Vector2:
         """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective division.
+
+        Convention:
+            - ``points`` is in the **camera frame** and the result is on the normalized :math:`z = 1` plane,
+              not in pixels: the map is ``xy / z``, with no epsilon and no validation.
+
+        .. warning::
+            A point with :math:`z = 0` projects to an infinity (``nan`` for a zero numerator) instead of raising:
+            `#4267 <https://github.com/kornia/kornia/issues/4267>`_. A point behind the camera projects to a
+            finite coordinate and is not flagged: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
         Args:
             points: Vector3 representing the points to project.
@@ -47,19 +60,21 @@ class Z1Projection:
         """
         xy = points.data[..., :2]
         z = points.z
-        if len(z.shape):
-            uv = (xy.mT @ torch.diag(z).inverse()).mT
-        else:
-            # For scalar z, xy is 1-D, so no transpose needed
-            uv = xy * 1 / z
+        # For scalar z, xy is 1-D, so no unsqueeze is needed
+        uv = xy / z.unsqueeze(-1) if len(z.shape) else xy * 1 / z
         return Vector2(uv)
 
     def unproject(self, points: Vector2, depth: torch.Tensor | float) -> Vector3:
         """Unproject one or more Vector2 from the canonical z=1 plane into the camera frame.
 
+        Convention:
+            - ``depth`` is the camera-frame ``z``: the :math:`z = 1` point is multiplied by it, so the third
+              coordinate of the result is the ``depth`` that was passed in, and not a Euclidean ray length.
+            - a python ``float`` or ``int`` ``depth`` is converted to the device and dtype of ``points``.
+
         Args:
             points: Vector2 representing the points to unproject.
-            depth: torch.Tensor representing the depth of the points to unproject.
+            depth: a :class:`torch.Tensor` of shape ``(B,)``, or a python scalar for a single point.
 
         Returns:
             Vector3 representing the unprojected points.
@@ -73,7 +88,7 @@ class Z1Projection:
 
         """
         if isinstance(depth, (float, int)):
-            depth = torch.Tensor([depth])
+            depth = torch.as_tensor([depth], device=points.data.device, dtype=points.data.dtype)
         return Vector3.from_coords(points.x * depth, points.y * depth, depth)
 
 
@@ -82,10 +97,40 @@ class OrthographicProjection:
 
     This model assumes parallel projection where the $z$ coordinate is
     discarded and no perspective scaling is applied.
+
     """
 
     def project(self, points: Vector3) -> Vector2:
-        raise NotImplementedError
+        """Project 3D camera-frame points with an orthographic camera model.
+
+        Orthographic projection keeps the horizontal and vertical coordinates
+        unchanged and discards depth. Unlike perspective projection, objects do
+        not shrink as their ``z`` value increases.
+
+        Args:
+            points: Three-dimensional point container with coordinates
+                ``x``, ``y``, and ``z``. Leading dimensions may represent a
+                batch of points.
+
+        Returns:
+            Two-dimensional point container containing the projected ``x`` and
+            ``y`` coordinates.
+
+        """
+        return Vector2(project_points_orthographic(points.data))
 
     def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
-        raise NotImplementedError
+        """Lift orthographic image-plane points back into 3D using depth.
+
+        Args:
+            points: Two-dimensional point container with image-plane
+                coordinates ``x`` and ``y``.
+            depth: Tensor containing the target ``z`` coordinate for each
+                unprojected point.
+
+        Returns:
+            Three-dimensional point container with ``x`` and ``y`` copied from
+            ``points`` and ``z`` supplied by ``depth``.
+
+        """
+        return Vector3(unproject_points_orthographic(points.data, depth))

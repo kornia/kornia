@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.ops import eye_like
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import affine
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
@@ -45,6 +46,12 @@ class RandomRotation(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - a positive sampled angle rotates the displayed image counter-clockwise, as
+          :func:`~kornia.geometry.transform.rotate` does and unlike :class:`RandomAffine`
+          (:doc:`/get-started/conventions`, `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`.
@@ -96,7 +103,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: torch.Tensor = params["degrees"].to(input)
+        angles: torch.Tensor = _to_device_nonblocking(params["degrees"], input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
@@ -141,7 +148,8 @@ class RandomRotation90(GeometricAugmentationBase2D):
     r"""Apply a random 90 * n degree rotation to a torch.Tensor image or a batch of torch.Tensor images.
 
     Args:
-        times: the range of n times 90 degree rotation needs to be applied.
+        times: the range of n times 90 degree rotation needs to be applied. A range of whole numbers is closed:
+          every whole number from the lower to the upper bound is drawn with the same probability.
         resample: Default: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
@@ -152,6 +160,14 @@ class RandomRotation90(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - a positive rounded ``times`` rotates the displayed image counter-clockwise by ``times * 90`` degrees.
+        - a range of whole numbers for ``times`` is closed and uniform: ``times=(-1, 1)`` gives a clockwise quarter
+          turn, no turn and a counter-clockwise quarter turn with the same probability. A range with a fractional
+          bound is still drawn continuously and rounded.
+        - a non-square image keeps its ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively
@@ -165,15 +181,15 @@ class RandomRotation90(GeometricAugmentationBase2D):
         ...                       [0., 0., 1., 2.]])
         >>> aug = RandomRotation90(times=(1, 1), p=1.)
         >>> out = aug(input)
-        >>> out
-        tensor([[[[2.0000e+00, 0.0000e+00, 0.0000e+00, 2.0000e+00],
-                  [0.0000e+00, 0.0000e+00, 2.0000e+00, 1.0000e+00],
-                  [5.9605e-08, 0.0000e+00, 1.0000e+00, 0.0000e+00],
-                  [1.0000e+00, 5.9605e-08, 0.0000e+00, 0.0000e+00]]]])
-        >>> aug.transform_matrix
-        tensor([[[-4.3711e-08,  1.0000e+00,  1.1921e-07],
-                 [-1.0000e+00, -4.3711e-08,  3.0000e+00],
-                 [ 0.0000e+00,  0.0000e+00,  1.0000e+00]]])
+        >>> out.round()  # rounded: the warp leaves float32 noise around 1e-7
+        tensor([[[[2., 0., 0., 2.],
+                  [0., 0., 2., 1.],
+                  [0., 0., 1., 0.],
+                  [1., 0., 0., 0.]]]])
+        >>> aug.transform_matrix.round(decimals=4) + 0.  # + 0. turns -0. into 0.
+        tensor([[[ 0.,  1.,  0.],
+                 [-1.,  0.,  3.],
+                 [ 0.,  0.,  1.]]])
         >>> inv = aug.inverse(out)
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
@@ -194,7 +210,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator((times, "times", 0.0, (-3, 3)))
+        self._param_generator = rg.Rotation90Generator(times)
 
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
 
@@ -202,7 +218,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: dict[str, torch.Tensor], flags: dict[str, Any]
     ) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: torch.Tensor = 90.0 * params["times"].round().to(input)
+        angles: torch.Tensor = 90.0 * _to_device_nonblocking(params["times"].round(), input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))

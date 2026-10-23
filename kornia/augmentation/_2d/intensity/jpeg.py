@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import jpeg_codec_differentiable
 
 
@@ -28,6 +28,15 @@ class RandomJPEG(IntensityAugmentationBase2D):
     r"""Applies random (differentiable) JPEG coding to a torch.Tensor image.
 
     .. image:: _static/img/RandomJPEG.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+    :func:`kornia.color.ycbcr_to_rgb` hard-clamps the decoded RGB values to ``[0, 1]``. The codec's final
+    soft-clipping call uses bounds ``[0, 255]`` and leaves those RGB values unchanged. The input must have
+    three channels: the codec works in YCbCr, and any other channel count raises a ``ShapeError``.
+
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
 
     Args:
         jpeg_quality: The range of compression rates to be applied.
@@ -76,5 +85,15 @@ class RandomJPEG(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if (
+            params["jpeg_quality"].numel() == 0
+            and input.shape[0] == 0
+            and input.shape[1] == 3
+            and input.shape[-2] > 0
+            and input.shape[-1] > 0
+        ):
+            # An empty batch draws no quality and has no pixels to code; JPEG coding keeps the shape (#4429).
+            return input.clone()
+        input = _clamp_unit_range(input)
         jpeg_output: torch.Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output

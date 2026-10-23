@@ -21,6 +21,8 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance import invert
 
 
@@ -29,6 +31,8 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomInvert.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         max_val: The expected maximum value in the input tensor. The shape has to
           according to the input tensor shape, or at least has to work with broadcasting.
@@ -36,6 +40,13 @@ class RandomInvert(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
+        - the output is ``max_val - input``, with no clamp, so an input outside ``[0, max_val]`` comes
+          back outside it rather than clipped. ``max_val`` describes the input's maximum, so it has to be
+          set to match an input that is not in ``[0, 1]``.
+
     .. note::
         This function internally uses :func:`kornia.enhance.invert`.
 
@@ -71,4 +82,10 @@ class RandomInvert(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return invert(input, torch.as_tensor(flags["max_val"], device=input.device, dtype=input.dtype))
+        max_val = flags["max_val"]
+        if isinstance(max_val, Tensor):
+            return invert(input, _to_device_nonblocking(max_val, input.device, input.dtype))
+        if isinstance(max_val, (int, float)):
+            # Filled on the device: ``torch.as_tensor(..., device=cuda)`` copies from the host and waits.
+            return invert(input, _device_literal(max_val, device=input.device, dtype=input.dtype))
+        return invert(input, torch.as_tensor(max_val, device=input.device, dtype=input.dtype))

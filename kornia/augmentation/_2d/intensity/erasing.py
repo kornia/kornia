@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
@@ -29,12 +30,13 @@ class RandomErasing(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomErasing.png
 
-    The operator removes image parts and fills them with zero values at a selected rectangle
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
+    The operator removes image parts and fills them with ``value`` at a selected rectangle
     for each of the images in the batch.
 
-    The rectangle will have an area equal to the original image area multiplied by a value uniformly
-    sampled between the range [scale[0], scale[1]) and an aspect ratio sampled
-    between [ratio[0], ratio[1])
+    The rectangle *targets* an area equal to the original image area multiplied by a value sampled from
+    ``scale``, with an aspect ratio sampled from ``ratio``.
 
     Args:
         scale: range of proportion of erased area against input image.
@@ -49,9 +51,27 @@ class RandomErasing(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
+        - ``scale`` is the fraction of the image *area* the rectangle targets and ``ratio`` is its height over
+          its width, so a ratio above ``1`` targets a tall box and below ``1`` a wide one. The box is rounded
+          to whole pixels and then clamped to ``[1, H] x [1, W]``, so it is never empty and never larger than the
+          image, and the erased area can miss the target in either direction: ``scale=(0.25, 0.25)`` with
+          ``ratio=(3.0, 3.0)`` on a ``10 x 20`` image erases ``10 x 4 = 40`` pixels of the 50 asked for, while
+          ``scale=(0.0, 0.0)`` still erases one pixel.
+        - when ``ratio`` straddles ``1`` the draw is not uniform over the interval: a fair coin picks between
+          ``[ratio[0], 1]`` and ``[1, ratio[1]]``, so at the default ``ratio=(0.3, 3.3)`` half the draws are above
+          ``1``.
+        - the erased region is the half-open rectangle ``[ys, ys + h) x [xs, xs + w)`` in pixels, recorded as
+          ``_params["ys"]``, ``["xs"]``, ``["heights"]`` and ``["widths"]``.
+        - the erased pixels carry the literal ``value``, which has to lie in ``[0, 1]`` -- the parameter
+          generator rejects anything else at construction. Every other pixel is carried through unclamped, so
+          every pixel outside the box keeps the input's range.
+        - inside :class:`~kornia.augmentation.container.AugmentationSequential` a ``mask`` data key is erased
+          in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
+
     Note:
-        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
@@ -93,14 +113,35 @@ class RandomErasing(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        _, c, h, w = input.size()
-        values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
+        _, _, h, w = input.size()
+        values = _to_device_nonblocking(params["values"].view(-1, 1, 1, 1), input.device, input.dtype)
 
+        if self.same_on_batch:
+            # Every sample shares one rectangle, so write that single region directly instead of
+            # building a full-image mask and `where`-blending the whole tensor. Equivalent to the
+            # masked path (the mask covers [x, x+width) x [y, y+height), clipped to the image), but
+            # touches only the erased box — much cheaper for a batch (matches torchvision's slice).
+            # Read the four shared box coords in a single device sync (one ``tolist``) rather than
+            # four separate ``int(...)`` calls.
+            xs, ys, box_w, box_h = (
+                torch.stack([params["xs"][0], params["ys"][0], params["widths"][0], params["heights"][0]])
+                .long()
+                .tolist()
+            )
+            transformed = input.clone()
+            transformed[:, :, ys : ys + box_h, xs : xs + box_w] = values
+            return transformed
+
+        # Broadcast the per-sample fill value (B, 1, 1, 1) and the single-channel mask (B, 1, H, W)
+        # directly in `torch.where` instead of `repeat`-materializing both to full (B, C, H, W).
+        # `where` broadcasts to the input shape, so the result is identical while allocating two
+        # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
-        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-        transformed = torch.where(mask == 1.0, values, input)
-        return transformed
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
+        return torch.where(mask == 1.0, values, input)
 
     def apply_transform_mask(
         self,
@@ -109,14 +150,16 @@ class RandomErasing(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        _, c, h, w = input.size()
+        _, _, h, w = input.size()
 
-        values = params["values"][..., None, None, None].repeat(1, *input.shape[1:]).to(input)
-        # Erase the corresponding areas on masks.
-        values = values.zero_()
+        # Erase the corresponding areas on masks (fill with zeros). Broadcast a scalar zero and the
+        # single-channel mask (B, 1, H, W) in `torch.where` rather than `repeat`-materializing full
+        # (B, C, H, W) tensors — same result, two small allocations instead of two image-sized ones.
+        values = torch.zeros((), dtype=input.dtype, device=input.device)
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
-        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-        transformed = torch.where(mask == 1.0, values, input)
-        return transformed
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
+        return torch.where(mask == 1.0, values, input)

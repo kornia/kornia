@@ -30,14 +30,16 @@ __all__ = ["MixupGenerator"]
 class MixupGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomMixUpV2`.
+
     Args:
         lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
             If None, it will be set to tensor([0., 1.]), which means no restrictions.
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).
-            - mixup_lambdas (torch.Tensor): element-wise probabilities with a shape of (B,).
+            - mixup_pairs (torch.Tensor): pairing indices with a shape of (B,).
+            - mixup_lambdas (torch.Tensor): the sampled mixing coefficients with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -52,8 +54,7 @@ class MixupGenerator(RandomGeneratorBase):
         self.p = p
 
     def __repr__(self) -> str:
-        repr = f"lambda_val={self.lambda_val}"
-        return repr
+        return f"lambda_val={self.lambda_val}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.lambda_val is None:
@@ -73,7 +74,9 @@ class MixupGenerator(RandomGeneratorBase):
 
         with torch.no_grad():
             batch_probs: torch.Tensor = _adapted_sampling((batch_size,), self.prob_sampler, same_on_batch)
-        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=_dtype).long()
+        # An index permutation: int64 whatever the sampling dtype (CUDA has no bfloat16 randperm, and float16 holds
+        # integers exactly only up to 2048). torch draws the same permutation for every dtype.
+        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=torch.long)
         mixup_lambdas: torch.Tensor = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
         mixup_lambdas = mixup_lambdas * batch_probs
 

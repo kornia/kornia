@@ -15,26 +15,21 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-
-
-def _randn_like(input: torch.Tensor, mean: float, std: float) -> torch.Tensor:
-    x = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
-    if std != 1.0:  # `if` is cheaper than multiplication
-        x *= std
-    if mean != 0.0:  # `if` is cheaper than addition
-        x += mean
-    return x
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomGaussianNoise(IntensityAugmentationBase2D):
     r"""Add gaussian noise to a batch of multi-dimensional images.
 
     .. image:: _static/img/RandomGaussianNoise.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         mean: The mean of the gaussian distribution.
@@ -43,6 +38,12 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
+        - the noise is additive and recorded in full: the output is the input plus ``_params["gaussian_noise"]``,
+          so ``mean`` offsets the image rather than naming the mean the output should have.
+        - nothing is clamped, so an input already inside ``[0, 1]`` can leave it in either direction.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -63,10 +64,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         self, mean: float = 0.0, std: float = 1.0, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.flags = {"mean": mean, "std": std}
-
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
-        return {}
+        self._param_generator = rg.GaussianNoiseGenerator(mean, std)
 
     def apply_transform(
         self,
@@ -75,9 +73,8 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if "gaussian_noise" in params:
-            gaussian_noise = params["gaussian_noise"]
-        else:
-            gaussian_noise = _randn_like(input, mean=flags["mean"], std=flags["std"])
-            self._params["gaussian_noise"] = gaussian_noise
+        gaussian_noise = _to_device_nonblocking(params["gaussian_noise"], input.device, input.dtype)
+        # When same_on_batch=True the generator produces shape (1, C, H, W); expand to full batch.
+        if gaussian_noise.shape[0] != input.shape[0]:
+            gaussian_noise = gaussian_noise.expand_as(input)
         return input + gaussian_noise

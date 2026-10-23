@@ -31,7 +31,8 @@ default_policy: List[SUBPOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("rotate", -30.0, 30.0)],
-    [("posterize", 0.0, 4)],
+    # Bits kept, as in RandAugment and AutoAugment.
+    [("posterize", 4.0, 8.0)],
     [("solarize", 0.0, 1.0)],
     # (Color, 0.1, 1.9),
     [("contrast", 0.1, 1.9)],
@@ -47,18 +48,35 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class TrivialAugment(PolicyAugmentBase):
     """Apply TrivialAugment :cite:`muller2021trivialaugment` augmentation strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects one candidate sub-policy uniformly for each forward call. Each candidate holds one operation
+          whose probability is fixed at ``1``, so the selected operation is applied to every row and no
+          probability is sampled; a candidate's second and third entries are its magnitude range, not a
+          probability, unlike :class:`~kornia.augmentation.auto.AutoAugment`. Only the magnitude is drawn
+          independently for every batch row.
+        - the operation wrapper's magnitude mapping applies, as under
+          :class:`~kornia.augmentation.auto.RandAugment`. A ``("rotate", -30, 30)`` candidate draws angles in
+          ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``rad2deg(atan(0.3))``,
+          about ``16.7`` degrees.
+        - the default ``posterize`` candidate keeps ``4`` to ``8`` bits, the range of the paper's RA
+          augmentation space (Table 8) and of :class:`~kornia.augmentation.auto.RandAugment`.
+
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:
+        >>> import torch
         >>> import kornia.augmentation as K
+        >>> from kornia.augmentation.auto import TrivialAugment
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(TrivialAugment())
         >>> aug(in_tensor).shape
@@ -69,22 +87,39 @@ class TrivialAugment(PolicyAugmentBase):
     def __init__(
         self, policy: Optional[List[SUBPOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
     ) -> None:
-        if policy is None:
-            _policy = default_policy
-        else:
-            _policy = policy
+        _policy = default_policy if policy is None else policy
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
+        """Build a :class:`PolicySequential` from one TrivialAugment candidate.
+
+        Args:
+            subpolicy: Single-entry policy as ``[(name, low, high)]``.
+
+        Returns:
+            Sequential wrapper around the selected operation.
+
+        Raises:
+            RuntimeError: ``subpolicy`` contains more than one operation.
+        """
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Return the operation sequence to execute.
+
+        Args:
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
+
+        Returns:
+            Iterator of ``(name, module)`` pairs.
+        """
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)

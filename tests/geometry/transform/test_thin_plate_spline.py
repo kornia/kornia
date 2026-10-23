@@ -15,12 +15,15 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 import kornia
+from kornia.geometry.transform.thin_plate_spline import _kernel_distance
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_2d_border_padding
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):
@@ -58,15 +61,27 @@ class TestTransformParameters(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_exception(self, batch_size, device, dtype):
+        src = torch.rand(batch_size, 5, 2).numpy()
         with pytest.raises(TypeError):
-            src = torch.rand(batch_size, 5, 2).numpy()
             assert kornia.geometry.transform.get_tps_transform(src, src)
 
+        src = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            src = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.get_tps_transform(src, src)
 
-    @pytest.mark.grad()
+    def test_kernel_distance_values(self, device, dtype):
+        d2 = torch.tensor([0.0, 1.0, math.e**2], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 0.0, math.e**2], device=device, dtype=dtype)
+        self.assert_close(_kernel_distance(d2), expected)
+
+    @pytest.mark.parametrize("grad_dtype", [torch.float32, torch.float64])
+    def test_kernel_distance_zero_gradient(self, device, grad_dtype):
+        if device.type == "mps" and grad_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        squared_distances = torch.tensor([0.0, 1.0], device=device, dtype=grad_dtype, requires_grad=True)
+        grad = torch.autograd.grad(_kernel_distance(squared_distances).sum(), squared_distances)[0]
+        assert torch.isfinite(grad).all()
+
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("requires_grad", [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
@@ -78,7 +93,6 @@ class TestTransformParameters(BaseTester):
             kornia.geometry.transform.get_tps_transform, (src, dst), raise_exception=True, fast_mode=True
         )
 
-    @pytest.mark.jit()
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_jit(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -123,23 +137,22 @@ class TestWarpPoints(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel, affine.numpy())
 
+        src_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            src_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_points_tps(src_bad, src, kernel, affine)
 
+        src_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            src_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_points_tps(src, src_bad, kernel, affine)
 
+        kernel_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            kernel_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel_bad, affine)
 
+        affine_bad = torch.rand(batch_size, 3)
         with pytest.raises(ValueError):
-            affine_bad = torch.rand(batch_size, 3)
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel, affine_bad)
 
-    @pytest.mark.grad()
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("requires_grad", [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
@@ -152,7 +165,6 @@ class TestWarpPoints(BaseTester):
             kornia.geometry.transform.warp_points_tps, (src, dst, kernel, affine), raise_exception=True, fast_mode=True
         )
 
-    @pytest.mark.jit()
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_jit(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -182,9 +194,13 @@ class TestWarpImage(BaseTester):
         tensor[:, :, 2:6, 2:6] = 1.0
 
         expected = torch.ones_like(tensor)
-        # nn.grid_sample interpolates the at the edges it seems, so the boundaries have values < 1
-        expected[:, :, [0, -1], :] *= 0.5
-        expected[:, :, :, [0, -1]] *= 0.5
+        # nn.grid_sample interpolates the at the edges it seems, so the boundaries have values < 1.
+        # Under the default align_corners=False, the outermost output pixel maps back to input
+        # pixel 1.75 -- three quarters of the way from the zero at pixel 1 to the one at pixel 2.
+        # Pre-#3945 the same warp gave a border factor of 0.5 (input pixel 1.5): the corner-aligned
+        # grid sampled under grid_sample's half-pixel convention shifted the zoom by a quarter pixel.
+        expected[:, :, [0, -1], :] *= 0.75
+        expected[:, :, :, [0, -1]] *= 0.75
 
         kernel, affine = kornia.geometry.transform.get_tps_transform(dst, src)
         warp = kornia.geometry.transform.warp_image_tps(tensor, src, kernel, affine)
@@ -209,23 +225,22 @@ class TestWarpImage(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine.numpy())
 
+        image_bad = torch.rand(batch_size, 32, 32)
         with pytest.raises(ValueError):
-            image_bad = torch.rand(batch_size, 32, 32)
             assert kornia.geometry.transform.warp_image_tps(image_bad, dst, kernel, affine)
 
+        dst_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            dst_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_image_tps(image, dst_bad, kernel, affine)
 
+        kernel_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            kernel_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel_bad, affine)
 
+        affine_bad = torch.rand(batch_size, 3)
         with pytest.raises(ValueError):
-            affine_bad = torch.rand(batch_size, 3)
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine_bad)
 
-    @pytest.mark.grad()
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_gradcheck(self, batch_size, device, dtype):
         if device.type != "cpu":
@@ -253,7 +268,6 @@ class TestWarpImage(BaseTester):
             fast_mode=True,
         )
 
-    @pytest.mark.jit()
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_jit(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -274,3 +288,63 @@ class TestWarpImage(BaseTester):
         kernel, affine = kornia.geometry.transform.get_tps_transform(dst, dst)
         warped = kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine, align_corners=True)
         self.assert_close(warped, image, atol=1e-4, rtol=1e-4)
+
+    def test_convention_padding_mode_border_differs_from_zeros(self, device, dtype):
+        # padding_mode is forwarded: 'border' differs from the 'zeros' default once the warp samples
+        # out of bounds.
+        if not supports_2d_border_padding(device):
+            pytest.skip("MPS 2D grid_sample lacks 'border' padding")
+
+        src = torch.tensor(
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
+        )
+        # zoom out, so the warp samples beyond the input extent and padding_mode is observable --
+        # an identity warp now stays strictly in bounds and the two modes would agree
+        kernel, affine = kornia.geometry.transform.get_tps_transform(src * 0.5, src)
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
+        out_border = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="border")
+        assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
+
+    def test_convention_control_points_normalized_coords(self, device, dtype):
+        # Control points live in the normalized frame selected by align_corners: at True, a
+        # one-pixel shift of a W=4 image is 2 / (4 - 1) in corner-aligned coordinates.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision rounding of near-zero boundary values exceeds this test's atol")
+
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        # 4 corners + center, normalized [-1, 1] coordinates (align_corners=True mapping).
+        src = torch.tensor(
+            [[[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
+        )
+        dst = src.clone()
+        dst[..., 0] += 2.0 / 3.0  # one-pixel shift in normalized coords for W=4 (2 / (4 - 1))
+
+        kernel, affine = kornia.geometry.transform.get_tps_transform(dst, src)
+        warped = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, align_corners=True)
+
+        # Snippet used to generate expected (requires only this module):
+        # img = torch.arange(16.0).view(1, 1, 4, 4)
+        # src = torch.tensor([[[-1.,-1.],[1.,-1.],[1.,1.],[-1.,1.],[0.,0.]]])
+        # dst = src.clone(); dst[..., 0] += 2.0 / 3.0
+        # kernel, affine = get_tps_transform(dst, src)
+        # warp_image_tps(img, src, kernel, affine, align_corners=True)
+        expected = torch.tensor(
+            [[[[0.0, 0.0, 1.0, 2.0], [0.0, 4.0, 5.0, 6.0], [0.0, 8.0, 9.0, 10.0], [0.0, 12.0, 13.0, 14.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(warped, expected, atol=1e-4, rtol=1e-4)
+
+    def test_convention_default_align_corners_reproduces_identity(self, device, dtype):
+        # An identity TPS transform reproduces the input at the default align_corners too, as
+        # test_identity_warp_align_corners does at True (#3928).
+        src = torch.tensor(
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
+        )
+        kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
+        self.assert_close(out_default, img, atol=1e-2, rtol=1e-2)

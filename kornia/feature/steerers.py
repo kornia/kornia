@@ -18,8 +18,9 @@
 import math
 
 import torch
-import torch.nn.functional as F
 from torch import nn
+
+from kornia.core.utils import _l2_normalize
 
 
 class DiscreteSteerer(nn.Module):
@@ -44,6 +45,15 @@ class DiscreteSteerer(nn.Module):
         self.generator = torch.nn.Parameter(generator)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply one steering step in descriptor space.
+
+        Args:
+            x: Input descriptor tensor whose last dimension matches the
+                steerer generator size.
+
+        Returns:
+            Steered descriptors after one linear transformation.
+        """
         return torch.nn.functional.linear(x, self.generator)
 
     def steer_descriptions(
@@ -52,10 +62,20 @@ class DiscreteSteerer(nn.Module):
         steerer_power: int = 1,
         normalize: bool = False,
     ) -> torch.Tensor:
+        """Apply the steerer repeatedly to descriptor vectors.
+
+        Args:
+            descriptions: Descriptor tensor to steer.
+            steerer_power: Number of repeated steering applications.
+            normalize: If ``True``, L2-normalize descriptors after steering.
+
+        Returns:
+            Steered descriptors with optional normalization.
+        """
         for _ in range(steerer_power):
             descriptions = self.forward(descriptions)
         if normalize:
-            descriptions = F.normalize(descriptions, dim=-1)
+            descriptions = _l2_normalize(descriptions, dim=-1)
         return descriptions
 
     @classmethod
@@ -85,7 +105,7 @@ class DiscreteSteerer(nn.Module):
             generator = torch.block_diag(*([c4_block] * (descriptor_dim // 4)))
             return cls(generator).eval()
 
-        elif generator_type == "SO2":
+        if generator_type == "SO2":
             num_rot_blocks_per_freq = descriptor_dim // 14
             dim_rot = 12 * num_rot_blocks_per_freq
             dim_trivial = descriptor_dim - dim_rot
@@ -109,5 +129,4 @@ class DiscreteSteerer(nn.Module):
 
             generator = torch.block_diag(*blocks)
             return cls(generator).eval()
-        else:
-            raise ValueError(f"Unknown generator_type: {generator_type}")
+        raise ValueError(f"Unknown generator_type: {generator_type}")

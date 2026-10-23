@@ -16,10 +16,9 @@
 #
 
 import math
-from typing import Optional, Tuple, Union
+from typing import NotRequired, Optional, Sequence, Tuple, TypedDict, Union
 
 import torch
-from typing_extensions import NotRequired, TypedDict
 
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
@@ -47,7 +46,8 @@ class AdalamConfig(TypedDict):
     force_seed_mnn: Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy
         at the cost of runtime
     device: Union[str, torch.device, None] to be used for running AdaLAM. Use GPU if available.
-    mnn: Default None. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
+    mnn: not read from the configuration: :func:`~kornia.feature.match_adalam` warns about this key and ignores it.
+        A mutual-nearest-neighbour mask goes to ``AdalamFilter.filter_matches`` as its ``mnn`` argument.
 
     """
 
@@ -92,7 +92,8 @@ def select_seeds(
     scores1: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
     fnn12: Matches between keypoints of I_1 and I_2.
            The i-th entry of fnn12 is j if and only if keypoint k_i in image I_1 is matched to keypoint k_j in image I_2
-    mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on 'force_seed_mnn' in the DEFAULT_CONFIG.
+    mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on
+    'force_seed_mnn' in the DEFAULT_CONFIG.
          If None, it disables the mutual nearest neighbor filtering on seed point selection.
          Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
 
@@ -102,7 +103,7 @@ def select_seeds(
         im1seeds: Keypoint index of chosen seeds in image I_1
         im2seeds: Keypoint index of chosen seeds in image I_2
 
-    """  # noqa: E501
+    """
     im1neighmap = dist1 < R1**2  # (n1, n1)
     # find out who scores higher than whom
     im1scorescomp = scores1.unsqueeze(1) > scores1.unsqueeze(0)  # (n1, n1)
@@ -273,8 +274,8 @@ def adalam_core(
     scores1: torch.Tensor,
     config: AdalamConfig,
     mnn: Optional[torch.Tensor] = None,
-    im1shape: Optional[Tuple[int, int]] = None,
-    im2shape: Optional[Tuple[int, int]] = None,
+    im1shape: Optional[Sequence[int]] = None,
+    im2shape: Optional[Sequence[int]] = None,
     o1: Optional[torch.Tensor] = None,
     o2: Optional[torch.Tensor] = None,
     s1: Optional[torch.Tensor] = None,
@@ -301,11 +302,11 @@ def adalam_core(
              'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on seed
              point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
         im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of wasted
-                  runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of source
-                  image
+                  runtime. So please provide it. Expected a tuple or list with (width, height) or (height, width)
+                  of source image
         im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost of
-                  wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of
-                  destination image
+                  wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                  (height, width) of destination image
         o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is
                set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
@@ -331,14 +332,14 @@ def adalam_core(
     SCALE_RATE_THR = config["scale_rate_threshold"]
     REFIT = config["refit"]
 
-    if isinstance(im1shape, tuple):
+    if im1shape is not None:
         _im1shape = torch.tensor(im1shape, device=k1.device, dtype=k1.dtype)
     else:
         k1mins = k1.min(dim=0).values
         k1maxs = k1.max(dim=0).values
         _im1shape = k1maxs - k1mins
 
-    if isinstance(im2shape, tuple):
+    if im2shape is not None:
         _im2shape = torch.tensor(im2shape, device=k2.device, dtype=k2.dtype)
     else:
         k2mins = k2.min(dim=0).values
@@ -384,11 +385,10 @@ def adalam_core(
             out_scores = scores1[score_mask].reshape(-1, 1)
             idxs = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
         else:
-            idxs, out_scores = _no_match(scores1)
+            out_scores, idxs = _no_match(scores1)
         if return_dist:
             return idxs, out_scores
-        else:
-            return idxs
+        return idxs
 
     # Format neighborhoods for parallel RANSACs
     im1loc, im2loc, ransidx, tokp1, tokp2 = extract_local_patterns(
@@ -414,8 +414,13 @@ def adalam_core(
 
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
+        # Unique rows, sorted lexicographically, through a 1-D key: torch.unique(dim=0) has no MPS kernel on torch 2.5.
         # https://stackoverflow.com/a/72005790
-        final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
+        n2 = k2.shape[0]
+        keys, idxs, counts = torch.unique(
+            final_matches[:, 0] * n2 + final_matches[:, 1], return_inverse=True, return_counts=True
+        )
+        final_matches = torch.stack([torch.div(keys, n2, rounding_mode="floor"), keys % n2], dim=1)
         _, ind_sorted = torch.sort(idxs)
         cum_sum = counts.cumsum(0)
         cum_sum = torch.cat((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))

@@ -20,7 +20,10 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 # from torch import Tensor (use torch.Tensor instead)
+from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import hflip
 
 
@@ -46,6 +49,11 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        A selected flip maps ``(x, y)`` to ``(W - 1 - x, y)`` with the exact discrete
+        :func:`~kornia.geometry.transform.hflip`, without resampling; see
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for the shared contract.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.hflip`.
@@ -73,13 +81,23 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 
     """
 
+    # apply_transform is a pure flip that ignores the transform matrix, so defer building
+    # it until `.transform_matrix` is read (see RigidAffineAugmentationBase2D).
+    _compute_matrix_lazily = True
+
+    @_input_metadata_only
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        w: int = int(params["forward_input_shape"][-1])
-        flip_mat: torch.Tensor = torch.tensor(
-            [[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]], device=input.device, dtype=input.dtype
+        # Build the 3x3 flip matrix as a literal filled on the device plus the (tensor) width, rather than
+        # `int(w)`, which lowers to `.item()` and breaks torch.compile fullgraph, or a `torch.tensor` literal,
+        # which copies from the host and waits for the queued kernels. Entry [0, 2] becomes `-1 + w` in the input
+        # dtype, as before.
+        w = _to_device_nonblocking(params["forward_input_shape"][-1], input.device, input.dtype)
+        flip_mat: torch.Tensor = _device_literal(
+            [[-1.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=input.device, dtype=input.dtype
         )
+        flip_mat[0, 2] = flip_mat[0, 2] + w
 
         return flip_mat.expand(input.shape[0], 3, 3)
 

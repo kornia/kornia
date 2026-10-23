@@ -39,18 +39,15 @@ class TestRgbToLab(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.rgb_to_lab([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_lab(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_lab(img)
 
     def test_unit(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         data = torch.tensor(
             [
                 [
@@ -102,26 +99,32 @@ class TestRgbToLab(BaseTester):
             dtype=dtype,
         )
 
+        if dtype in (torch.float16, torch.bfloat16):
+            # The literal reference above predates input quantization; isolate arithmetic error on half inputs.
+            expected = kornia.color.rgb_to_lab(data.to(device="cpu", dtype=torch.float64)).to(
+                device=device, dtype=dtype
+            )
         self.assert_close(kornia.color.rgb_to_lab(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         lab = kornia.color.rgb_to_lab
         rgb = kornia.color.lab_to_rgb
 
         data_out = lab(rgb(data, clip=False))
-        self.assert_close(data_out, data)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
+            wide = data.to(device="cpu", dtype=torch.float64)
+            reference = lab(rgb(wide, clip=False).to(dtype).double()).to(device=device, dtype=dtype)
+            self.assert_close(data_out, reference)
+        else:
+            self.assert_close(data_out, data)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_lab, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -152,18 +155,15 @@ class TestLabToRgb(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.color.lab_to_rgb([0.0])
 
+        img = torch.ones(1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.lab_to_rgb(img)
 
+        img = torch.ones(2, 1, 1, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.lab_to_rgb(img)
 
     def test_unit(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         data = torch.tensor(
             [
                 [
@@ -246,28 +246,37 @@ class TestLabToRgb(BaseTester):
             dtype=dtype,
         )
 
+        if dtype in (torch.float16, torch.bfloat16):
+            expected = kornia.color.lab_to_rgb(data.to(device="cpu", dtype=torch.float64)).to(
+                device=device, dtype=dtype
+            )
         self.assert_close(kornia.color.lab_to_rgb(data), expected)
+        if dtype in (torch.float16, torch.bfloat16):
+            expected_unclipped = kornia.color.lab_to_rgb(data.to(device="cpu", dtype=torch.float64), clip=False).to(
+                device=device, dtype=dtype
+            )
         self.assert_close(kornia.color.lab_to_rgb(data, clip=False), expected_unclipped)
 
     def test_forth_and_back(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
-
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         lab = kornia.color.rgb_to_lab
         rgb = kornia.color.lab_to_rgb
 
         unclipped_data_out = rgb(lab(data), clip=False)
-        self.assert_close(unclipped_data_out, data)
+        if dtype in (torch.float16, torch.bfloat16):
+            # Quantize the intermediate representation too: its loss cannot be undone by the inverse.
+            wide = data.to(device="cpu", dtype=torch.float64)
+            reference = rgb(lab(wide).to(dtype).double(), clip=False).to(device=device, dtype=dtype)
+            self.assert_close(unclipped_data_out, reference)
+        else:
+            self.assert_close(unclipped_data_out, data)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         img = kornia.color.rgb_to_lab(img)
         assert gradcheck(kornia.color.lab_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

@@ -114,8 +114,8 @@ class LocalFeatureTransformer(nn.Module):
         self,
         feat0: torch.Tensor,
         feat1: torch.Tensor,
-        mask0: None | torch.Tensor = None,
-        mask1: None | torch.Tensor = None,
+        mask0: torch.Tensor | None = None,
+        mask1: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run forward.
 

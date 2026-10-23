@@ -56,6 +56,14 @@ class BlockChunk(nn.ModuleList):
     """Implement a container for sequential execution of transformer block chunks."""
 
     def forward(self, x):
+        """Run this DeDoDe module forward.
+
+        Args:
+            x: Token sequence or tensor passed through each transformer block in sequence.
+
+        Returns:
+            Token sequence with the same shape as input after processing through all blocks.
+        """
         for b in self:
             x = b(x)
         return x
@@ -180,14 +188,34 @@ class DinoVisionTransformer(nn.Module):
 
     @property
     def device(self):
+        """Return the device of the stored tensors or module parameters.
+
+        Returns:
+            Device used by the model parameters.
+        """
         return self.cls_token.device
 
     def init_weights(self):
+        """Initialize transformer weights.
+
+        Returns:
+            None. Model weights are initialized in place.
+        """
         trunc_normal_(self.pos_embed, std=0.02)
         nn.init.normal_(self.cls_token, std=1e-6)
         named_apply(init_weights_vit_timm, self)
 
     def interpolate_pos_encoding(self, x, w, h):
+        """Interpolate positional encodings to the current patch grid.
+
+        Args:
+            x: Token sequence with class token prepended, shape :math:`(B, N+1, D)`.
+            w: Image width in pixels.
+            h: Image height in pixels.
+
+        Returns:
+            Positional embedding tensor resized to match the current patch grid, shape :math:`(1, N'+1, D)`.
+        """
         previous_dtype = x.dtype
         npatch = x.shape[1] - 1
         N = self.pos_embed.shape[1] - 1
@@ -214,39 +242,33 @@ class DinoVisionTransformer(nn.Module):
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1).to(previous_dtype)
 
     def prepare_tokens_with_masks(self, x, masks=None):
+        """Prepare image patch tokens before transformer encoding.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            masks: Optional boolean mask tensor with shape :math:`(B, N)` for masked patch tokens.
+
+        Returns:
+            Token sequence with class token, positional embeddings, and optional masks, shape :math:`(B, N+1, D)`.
+        """
         _B, _nc, w, h = x.shape
         x = self.patch_embed(x)
         if masks is not None:
             x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype).unsqueeze(0), x)
 
         x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
-        x = x + self.interpolate_pos_encoding(x, w, h)
-
-        return x
-
-    def forward_features_list(self, x_list, masks_list):
-        x = [self.prepare_tokens_with_masks(x, masks) for x, masks in zip(x_list, masks_list)]
-        for blk in self.blocks:
-            x = blk(x)
-
-        all_x = x
-        output = []
-        for x, masks in zip(all_x, masks_list):
-            x_norm = self.norm(x)
-            output.append(
-                {
-                    "x_norm_clstoken": x_norm[:, 0],
-                    "x_norm_patchtokens": x_norm[:, 1:],
-                    "x_prenorm": x,
-                    "masks": masks,
-                }
-            )
-        return output
+        return x + self.interpolate_pos_encoding(x, w, h)
 
     def forward_features(self, x, masks=None):
-        if isinstance(x, list):
-            return self.forward_features_list(x, masks)
+        """Compute transformer features for one image tensor.
 
+        Args:
+            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            masks: Optional boolean mask tensor with shape :math:`(B, N)` or ``None``.
+
+        Returns:
+            Feature dictionary with keys ``x_norm_clstoken``, ``x_norm_patchtokens``, ``x_prenorm``, and ``masks``.
+        """
         x = self.prepare_tokens_with_masks(x, masks)
 
         for blk in self.blocks:
@@ -294,6 +316,18 @@ class DinoVisionTransformer(nn.Module):
         return_class_token: bool = False,
         norm=True,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]]]:
+        """Return selected intermediate transformer layer outputs.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            n: Number of last transformer blocks to return, or explicit list of block indices.
+            reshape: If ``True``, reshape patch tokens from :math:`(B, N, D)` to :math:`(B, D, H_p, W_p)`.
+            return_class_token: If ``True``, return ``(patch_tokens, class_token)`` tuples.
+            norm: If ``True``, apply layer normalization to each output.
+
+        Returns:
+            Tuple of intermediate transformer layer outputs, optionally reshaped and with class tokens.
+        """
         if self.chunked_blocks:
             outputs = self._get_intermediate_layers_chunked(x, n)
         else:
@@ -313,11 +347,16 @@ class DinoVisionTransformer(nn.Module):
         return tuple(outputs)
 
     def forward(self, *args, is_training=False, **kwargs):
+        r"""Run this DeDoDe module forward.
+
+        Returns:
+            During training: full feature dictionary from ``forward_features``.
+            During inference: class token projection with shape :math:`(B, \text{out\_dim})`.
+        """
         ret = self.forward_features(*args, **kwargs)
         if is_training:
             return ret
-        else:
-            return self.head(ret["x_norm_clstoken"])
+        return self.head(ret["x_norm_clstoken"])
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ""):
@@ -330,7 +369,7 @@ def init_weights_vit_timm(module: nn.Module, name: str = ""):
 
 def vit_small(patch_size=16, **kwargs) -> DinoVisionTransformer:
     """Return ViT Small."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=384,
         depth=12,
@@ -339,12 +378,11 @@ def vit_small(patch_size=16, **kwargs) -> DinoVisionTransformer:
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model
 
 
 def vit_base(patch_size=16, **kwargs) -> DinoVisionTransformer:
     """Return ViT Base."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
         depth=12,
@@ -353,12 +391,11 @@ def vit_base(patch_size=16, **kwargs) -> DinoVisionTransformer:
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model
 
 
 def vit_large(patch_size=16, **kwargs) -> DinoVisionTransformer:
     """Return ViT Large."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1024,
         depth=24,
@@ -367,12 +404,11 @@ def vit_large(patch_size=16, **kwargs) -> DinoVisionTransformer:
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model
 
 
 def vit_giant2(patch_size=16, **kwargs):
     """Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64."""
-    model = DinoVisionTransformer(
+    return DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1536,
         depth=40,
@@ -381,4 +417,3 @@ def vit_giant2(patch_size=16, **kwargs):
         block_fn=partial(Block, attn_class=MemEffAttention),
         **kwargs,
     )
-    return model

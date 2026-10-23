@@ -2,46 +2,69 @@ Base Classes
 ============
 
 .. meta::
-   :name: description
-   :content: "The Base Classes module in Kornia provides foundational classes for creating new image transformations. It supports rigid (e.g., affine) and non-rigid (e.g., cut-out) augmentations, with predefined routines for sampling, applying, and reversing transformations."
+   :description: The Base Classes module in Kornia provides foundational classes for creating new image transformations. It supports rigid (e.g., affine) and non-rigid (e.g., cut-out) augmentations, with predefined routines for sampling, applying, and reversing transformations.
 
 .. currentmodule:: kornia.augmentation
 
-This is the base class for creating a new transform on top the predefined routine of `kornia.augmentation`.
-Specifically, an any given augmentation can be recognized as either rigid (e.g. affine transformations that
-manipulate images with standard transformation matrice), or non-rigid (e.g. cut out a random area). At
-image-level, Kornia supports rigid transformation like `GeometricAugmentationBase2D` that modifies the geometric
-location of image pixels and `IntensityAugmentationBase2D` that preserves the pixel locations, as well as
-generic `AugmentationBase2D` that allows higher freedom for customized augmentation design.
+These are the base classes for creating a new transform on top of the predefined routine of `kornia.augmentation`.
+Any given augmentation can be classified as either rigid (e.g. affine transformations that
+manipulate images with a standard transformation matrix) or non-rigid (e.g. cutting out a random area). At the
+image level, Kornia provides `GeometricAugmentationBase2D` for rigid transformations that modify the geometric
+location of image pixels, `IntensityAugmentationBase2D` for transformations that preserve pixel locations, and the
+generic `AugmentationBase2D`, which allows more freedom for customized augmentation design.
 
+The Base-Class Hierarchy
+------------------------
+
+The bases form a chain, each layer adding one concern and shared by several subclasses — so pick the
+*shallowest* base that already does what you need:
+
+.. code-block:: text
+
+   nn.Module
+   └─ _BasicAugmentationBase          parameter sampling + the forward skeleton
+      ├─ _AugmentationBase            dispatch to image / mask / box / keypoint / class data keys
+      │  ├─ AugmentationBase2D        2D tensor validation  (subclass for a fully custom 2D op)
+      │  │  └─ RigidAffineAugmentationBase2D     transform-matrix machinery
+      │  │     ├─ IntensityAugmentationBase2D    intensity ops — override apply_transform
+      │  │     └─ GeometricAugmentationBase2D    warp ops — also override compute_transformation
+      │  └─ AugmentationBase3D … (the 3D mirror of the 2D chain)
+      └─ MixAugmentationBaseV2        mix ops (MixUp / CutMix) — bypass the per-key dispatch
+
+Each level is a distinct, reused axis (sampling, data-key dispatch, 2D vs 3D, rigid-matrix vs free-form,
+intensity vs geometric); the four ``*Base2D`` classes are public API that external code subclasses.
+For a custom augmentation, subclass ``IntensityAugmentationBase2D`` or ``GeometricAugmentationBase2D``.
 
 The Predefined Augmentation Routine
 -----------------------------------
 
-Kornia augmentation follows the simplest `sample-apply` routine for all the augmentations.
+Kornia augmentations generally follow a `sample-apply` routine.
 
-- `sample`: Kornia aims at flexible tensor-level augmentations that augment all images in a tensor with
-   different augmentations and probabilities. The sampling operation firstly samples a suite of random
-   parameters. Then all the sampled augmentation state (parameters) is stored
-   inside `_param` of the augmentation, the users can hereby reproduce the same augmentation results.
-- `apply`: With generated or passed parameters, the augmentation will be performed accordingly.
-   Apart from performing image tensor operations, Kornia also supports inverse operations that
-   to revert the transform operations. Meanwhile, other data modalities (`datakeys` in Kornia) like
-   masks, keypoints, and bounding boxes. Such features are better supported with `AugmentationSequential`.
-   Notably, the augmentation pipeline for rigid operations are implemented already without further efforts.
-   For non-rigid operations, the user may implement customized inverse and data modality operations, e.g.
-   `apply_mask_transform` for applying transformations on mask tensors.
-
+- `sample`: Kornia aims at flexible tensor-level augmentations that augment every image in a batch with
+  different parameters and probabilities. The sampling step first draws a set of random
+  parameters. The sampled augmentation state is then stored in the ``_params`` attribute of the augmentation,
+  for replay. Application-time draws can require additional RNG control; see the reproducibility notes below.
+- `apply`: with the generated (or user-provided) parameters, the augmentation is performed accordingly.
+  Apart from transforming image tensors, Kornia also supports inverse operations that revert the transform,
+  and transforms of other data modalities (`data keys` in Kornia) such as masks, keypoints, and bounding boxes.
+  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` passes the
+  matrix of the call's parameters to the mask, box and keypoint handlers of geometric children and of custom
+  `RigidAffineAugmentationBase2D` subclasses, recomputing it from replayed ``params`` that the child did not last
+  apply to an image or that were edited since. An in-place edit made inside ``torch.inference_mode`` is not seen,
+  because inference tensors have no version counter; replace the value instead. Non-rigid coordinate transforms
+  are not supplied automatically (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes
 ---------------------------
 
-For rigid transformations, `IntensityAugmentationBase2D` and `GeometricAugmentationBase2D` are sharing the exact same logic
-apart from the transformation matrix computations. Namely, the intensity augmentation always results in
-identity transformation matrices, without changing the geometric location for each pixel.
+`IntensityAugmentationBase2D` supplies an identity matrix and default passthrough handlers for most annotations.
+Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct and container
+calls pass masks, boxes, and keypoints through unchanged unless a subclass overrides
+`apply_transform_mask`, `apply_transform_box`, or `apply_transform_keypoint`.
+`GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
-If it is a rigid geometric operation, `compute_transformation` and `apply_transform` need to be implemented, as well as
-`compute_inverse_transformation` and `inverse_transform` to compute its inverse.
+For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion
+also requires `inverse_transform`; the base provides matrix inversion.
 
 .. autoclass:: GeometricAugmentationBase2D
 
@@ -50,24 +73,67 @@ If it is a rigid geometric operation, `compute_transformation` and `apply_transf
    .. automethod:: compute_inverse_transformation
    .. automethod:: inverse_transform
 
-
 For `IntensityAugmentationBase2D`, the user only needs to override `apply_transform`.
 
 .. autoclass:: IntensityAugmentationBase2D
 
    .. automethod:: apply_transform
 
-A minimal example to create your own rigid geometric augmentations with the following snippet:
-
+The most common case is a pixel-wise augmentation with a random per-sample parameter. Subclass
+`IntensityAugmentationBase2D`, declare a parameter generator in ``__init__``, and read the sampled
+value in `apply_transform`:
 
 .. code-block:: python
 
+   from typing import Any, Dict, Optional
+
    import torch
-   import kornia as K
+   from torch import Tensor
+
+   from kornia.augmentation import IntensityAugmentationBase2D
+   from kornia.augmentation import random_generator as rg
+
+   class RandomAddValue(IntensityAugmentationBase2D):
+       """Add a per-sample value drawn uniformly from ``add_range``."""
+
+       def __init__(self, add_range=(0.0, 0.2), same_on_batch=False, p=1.0, keepdim=False):
+           super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+           # A PlainUniformGenerator sampler is a 4-tuple ``(range, name, center, bound)``:
+           # sample a value inside ``range`` and expose it as ``params[name]``. ``center`` and
+           # ``bound`` (``None`` here) are optional constraints for centred/bounded ranges.
+           self._param_generator = rg.PlainUniformGenerator((add_range, "add", None, None))
+
+       def apply_transform(
+           self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any],
+           transform: Optional[Tensor] = None,
+       ) -> Tensor:
+           # ``params["add"]`` has shape ``(B,)`` — reshape to broadcast over C, H, W.
+           add = params["add"].to(input).view(-1, 1, 1, 1)
+           return input + add
+
+   aug = RandomAddValue((0.0, 0.2), p=1.0)
+   out = aug(torch.rand(4, 3, 32, 32))                       # a different value per sample
+   again = aug(torch.rand(4, 3, 32, 32), params=aug._params)  # reuse the recorded draw
+
+Static (non-random) configuration goes in ``self.flags`` (a plain dict), read from the ``flags``
+argument of `apply_transform`. A custom augmentation works standalone and inside
+`AugmentationSequential` with no extra wiring.
+
+For a rigid **geometric** augmentation, implement `compute_transformation` to return the
+``(B, 3, 3)`` matrix and `apply_transform` to implement the corresponding image operation.
+The geometric base propagates the matrix to boxes and keypoints; mask processing uses its mask handler.
+The following example only illustrates the method signatures, not an invertible geometric warp:
+
+.. code-block:: python
+
+   from typing import Any, Dict, Optional
+
+   import torch
+   from torch import Tensor
 
    from kornia.augmentation import GeometricAugmentationBase2D
    from kornia.augmentation import random_generator as rg
-
+   from kornia.core.ops import eye_like
 
    class MyRandomTransform(GeometricAugmentationBase2D):
 
@@ -81,24 +147,21 @@ A minimal example to create your own rigid geometric augmentations with the foll
          super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
          self._param_generator = rg.PlainUniformGenerator((factor, "factor", None, None))
 
-      def compute_transformation(self, input, params):
-         # a simple identity transformation example
-         factor = params["factor"].to(input) * 0. + 1
-         return K.eyelike(input, 3) * factor
+      def compute_transformation(self, input, params, flags):
+         # return the (B, 3, 3) transform matrix for this augmentation
+         # identity shown only to illustrate the required matrix shape
+         return eye_like(3, input)
 
       def apply_transform(
          self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
       ) -> Tensor:
-         factor = params["factor"].to(input)
+         factor = params["factor"].to(input).view(-1, 1, 1, 1)
          return input * factor
 
-
 For non-rigid augmentations, the user may implement the `apply_transform*` and `apply_non_transform*` APIs
-to meet the needs. Specifically, `apply_transform*` applies to the elements of a tensor that need to be transformed,
-while `apply_non_transform*` applies to the elements of a tensor that are skipped from augmentation. For example,
-a crop operation may change the tensor size partially, while we need to resize the rest to maintain the whole tensor
-as an integrated one with the same size.
-
+as needed. Specifically, `apply_transform*` applies to the elements of a batch that are selected for augmentation,
+while `apply_non_transform*` applies to the elements that are skipped. For example, a crop operation changes the size
+of the selected elements, so the skipped elements must be resized as well to keep the whole batch tensor at one size.
 
 .. autoclass:: AugmentationBase2D
 
@@ -113,30 +176,63 @@ as an integrated one with the same size.
    .. automethod:: apply_transform_class
    .. automethod:: apply_non_transform_class
 
+`RigidAffineAugmentationBase2D` sits between `AugmentationBase2D` and the two rigid bases. It adds the
+transform-matrix machinery — `compute_transformation` and the `transform_matrix` attribute — but no `inverse`.
 
-The similar logic applies to 3D augmentations as well.
+.. autoclass:: RigidAffineAugmentationBase2D
 
+   .. automethod:: compute_transformation
+
+The 3D bases provide analogous shape, matrix and data-key machinery; see :class:`AugmentationBase3D` for their
+contract, including the missing inverse.
+
+.. autoclass:: AugmentationBase3D
+
+.. autoclass:: RigidAffineAugmentationBase3D
+
+.. autoclass:: GeometricAugmentationBase3D
+
+.. autoclass:: IntensityAugmentationBase3D
+
+Mix augmentations derive from `MixAugmentationBaseV2` and have their own forward and data-key contracts.
+Some combine different samples; `RandomJigsaw` rearranges patches within each image. Label and box handling
+are class-specific: `RandomMixUpV2` accepts class labels, while `RandomMosaic` accepts boxes but does not
+implement class-label transforms. `RandomTransplantation` and `RandomTransplantation3D` require a segmentation
+mask; a mask-only call needs ``data_keys=["mask"]``. The 3D transplantation class also inherits
+`AugmentationBase3D`.
+
+.. autoclass:: MixAugmentationBaseV2
 
 Some Further Notes
 ------------------
 
 Probabilities
 ^^^^^^^^^^^^^
-Kornia supports two types of randomness for element-level randomness `p` and batch-level randomness `p_batch`,
-as in `_BasicAugmentationBase`. Under the hood, operations like `crop`, `resize` are implemented with a fixed
-element-level randomness of `p=1` that only maintains batch-level randomness.
+:class:`AugmentationBase2D` states the ``p`` / ``p_batch`` model. A concrete constructor can map its public ``p``
+to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual samples
+(`#4425 <https://github.com/kornia/kornia/issues/4425>`_). When ``0 < p_batch < 1``, the base draws the batch
+Bernoulli before the per-sample gate; endpoints skip that draw, and ``p=1.0, p_batch=0.0`` selects no sample.
 
+With static ``p=1.0, p_batch=1.0`` every sample is transformed: a ``batch_prob`` put into ``params`` is not consulted
+by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs alike
+(`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Pass ``p < 1`` to skip samples by hand.
 
 Random Generators
 ^^^^^^^^^^^^^^^^^
-For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
-implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
-put all static parameters inside ``self.flags``. You may take the advantage of ``PlainUniformGenerator`` to
+To get an automatically generated ``__repr__`` that lists all custom parameters, implement
+``_param_generator`` by inheriting from ``RandomGeneratorBase`` to generate the random parameters, and
+put all static parameters inside ``self.flags``. You can take advantage of ``PlainUniformGenerator`` to
 generate simple uniform parameters with less boilerplate code.
-
 
 Random Reproducibility
 ^^^^^^^^^^^^^^^^^^^^^^
-Plain augmentation base class without the functionality of transformation matrix calculations.
-By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
-To change this behaviour, please use ``set_rng_device_and_dtype``.
+See :class:`AugmentationBase2D` for where parameters are sampled and what ``params=`` replays, and
+:doc:`/get-started/conventions` for seeding, worker seeds and consumption order.
+
+Serialization
+^^^^^^^^^^^^^
+- Several constructors that accept ``nn.Parameter`` ranges propagate gradients to them.
+- A ``kornia.augmentation.auto`` policy pickles when every operation wrapper in it does, and a wrapper does when
+  its magnitude mapping is picklable; the built-in mappings are.
+- :class:`AugmentationBase2D` covers the range buffers in ``state_dict()``, and
+  :class:`RigidAffineAugmentationBase2D` what a lazily built matrix keeps.

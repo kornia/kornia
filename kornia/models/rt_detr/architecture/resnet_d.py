@@ -35,7 +35,16 @@ from kornia.models.common import ConvNormAct
 def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> nn.Module:
     return (
         nn.Sequential(
-            OrderedDict([("pool", nn.AvgPool2d(2, 2)), ("conv", ConvNormAct(in_channels, out_channels, 1, act="none"))])
+            OrderedDict(
+                [
+                    # ``ceil_mode`` as in the reference ``presnet.py``: an odd input keeps the size of the strided
+                    # conv branch, ceil(H / 2). ``count_include_pad=False`` is the same in eager, with no padding;
+                    # in ONNX it makes onnxruntime <= 1.28 average a partial window over the pixels inside it, as
+                    # eager and Paddle's ``exclusive=True`` do, instead of dividing it by 4
+                    ("pool", nn.AvgPool2d(2, 2, 0, ceil_mode=True, count_include_pad=False)),
+                    ("conv", ConvNormAct(in_channels, out_channels, 1, act="none")),
+                ]
+            )
         )
         if stride == 2
         else ConvNormAct(in_channels, out_channels, 1, act="none")
@@ -62,6 +71,15 @@ class BasicBlockD(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply a basic ResNet-D residual block.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Tensor after two convolutions, shortcut projection if needed, and
+            ReLU activation.
+        """
         return self.relu(self.convs(x) + self.short(x))
 
 
@@ -87,6 +105,15 @@ class BottleneckD(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply a bottleneck ResNet-D residual block.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Tensor after ``1x1``, ``3x3``, and ``1x1`` convolutions, shortcut
+            addition, and ReLU activation.
+        """
         return self.relu(self.convs(x) + self.short(x))
 
 
@@ -138,6 +165,19 @@ class ResNetD(nn.Module):
     def make_stage(
         in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BasicBlockD | BottleneckD]
     ) -> tuple[nn.Module, int]:
+        """Build one ResNet-D stage.
+
+        Args:
+            in_channels: Number of input channels for the first block.
+            out_channels: Base output channels for the stage before expansion.
+            stride: Stride used by the first block.
+            n_blocks: Number of residual blocks in the stage.
+            block: Residual block class to instantiate.
+
+        Returns:
+            Tuple ``(stage, channels)`` containing the stage module and its
+            expanded output channel count.
+        """
         stage = Block(
             nn.Sequential(
                 block(in_channels, out_channels, stride, False),
@@ -147,6 +187,15 @@ class ResNetD(nn.Module):
         return stage, out_channels * block.expansion
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Run the ResNet-D backbone and return detector feature maps.
+
+        Args:
+            x: Image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            List ``[res3, res4, res5]`` containing the final three feature
+            stages used by RT-DETR.
+        """
         x = self.conv1(x)
         res2 = self.res_layers[0](x)
         res3 = self.res_layers[1](res2)
@@ -156,16 +205,23 @@ class ResNetD(nn.Module):
 
     @staticmethod
     def from_config(variant: str | int) -> ResNetD:
+        """Create a ResNet-D backbone from a depth variant.
+
+        Args:
+            variant: ResNet depth, such as ``18``, ``34``, ``50``, or ``101``.
+
+        Returns:
+            Configured :class:`ResNetD` instance.
+        """
         variant = str(variant)
         if variant == "18":
             return ResNetD([2, 2, 2, 2], BasicBlockD)
-        elif variant == "34":
+        if variant == "34":
             return ResNetD([3, 4, 6, 3], BasicBlockD)
-        elif variant == "50":
+        if variant == "50":
             return ResNetD([3, 4, 6, 3], BottleneckD)
-        elif variant == "101":
+        if variant == "101":
             return ResNetD([3, 4, 23, 3], BottleneckD)
-        elif variant == "152":
+        if variant == "152":
             return ResNetD([3, 8, 36, 3], BottleneckD)
-        else:
-            raise ValueError("Only variant 18, 34, 50, 101, and 152 are supported")
+        raise ValueError("Only variant 18, 34, 50, 101, and 152 are supported")

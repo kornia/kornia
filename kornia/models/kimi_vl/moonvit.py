@@ -23,6 +23,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SIZES
+
 from .config import MoonViTConfig
 
 
@@ -30,21 +32,18 @@ def apply_rotary_pos_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) 
     """Apply rotary positional embeddings.
 
     Args:
-        x: Input tensor of shape (batch, seq_len, head_dim).
-        cos: Cosine component of shape (seq_len, head_dim).
-        sin: Sine component of shape (seq_len, head_dim).
+        x: Query or key tensor with shape :math:`(B, H, N, d)`.
+        cos: Cosine component with shape :math:`(1, 1, N, d / 2)`.
+        sin: Sine component with shape :math:`(1, 1, N, d / 2)`.
 
     Returns:
-        Tensor with rotary embeddings applied.
+        Tensor with rotary embeddings applied and the same shape as ``x``.
     """
-    # x: (batch, seq_len, head_dim)
-    # cos, sin: (seq_len, head_dim) or (1, seq_len, head_dim)
-
-    # rotate_half
-    x1, x2 = x.chunk(2, dim=-1)
-    x_rotated = torch.cat((-x2, x1), dim=-1)
-
-    return (x * cos) + (x_rotated * sin)
+    # Complex ops require at least float32; preserve float64 inputs for numerical accuracy.
+    compute_dtype = torch.float64 if x.dtype == torch.float64 else torch.float32
+    x_complex = torch.view_as_complex(x.to(compute_dtype).reshape(*x.shape[:-1], -1, 2))
+    freqs_cis = torch.complex(cos.to(compute_dtype), sin.to(compute_dtype))
+    return torch.view_as_real(x_complex * freqs_cis).flatten(-2).to(x.dtype)
 
 
 class MoonViTRotaryEmbedding(nn.Module):
@@ -52,43 +51,98 @@ class MoonViTRotaryEmbedding(nn.Module):
 
     def __init__(self, dim: int, theta: float = 10000.0) -> None:
         super().__init__()
+        if dim % 4 != 0:
+            raise ValueError(f"Rotary embedding dimension must be divisible by 4. Got {dim}.")
         self.dim = dim
         self.theta = theta
 
     def forward(self, h: int, w: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
-        # dim must be divisible by 2 for 2D RoPE (half for H, half for W)
-        # And each half must be divisible by 2 for complex rotation
-        dim_h = self.dim // 2
-        dim_w = self.dim // 2
+        """Build cosine and sine tables for two-dimensional rotary position embeddings.
 
-        # Generate frequencies
-        inv_freq_h = 1.0 / (self.theta ** (torch.arange(0, dim_h, 2, device=device).float() / dim_h))
-        inv_freq_w = 1.0 / (self.theta ** (torch.arange(0, dim_w, 2, device=device).float() / dim_w))
+        The MoonViT encoder works on a flattened patch grid. This method receives the
+        grid height ``h`` and width ``w`` after patch embedding, creates one frequency
+        bank for the vertical axis and one for the horizontal axis, and then expands
+        them so each flattened patch token has a matching rotary embedding. The
+        returned tensors are later applied to the query and key vectors in attention.
 
-        # Generate positions
-        seq_h = torch.arange(h, device=device, dtype=inv_freq_h.dtype)
-        seq_w = torch.arange(w, device=device, dtype=inv_freq_w.dtype)
+        Args:
+            h: Number of patch rows in the image grid.
+            w: Number of patch columns in the image grid.
+            device: Device on which the cosine and sine tensors should be allocated.
 
-        # Outer product to get (h, dim_h/2) and (w, dim_w/2)
-        freqs_h = torch.outer(seq_h, inv_freq_h)  # (h, dim_h/2)
-        freqs_w = torch.outer(seq_w, inv_freq_w)  # (w, dim_w/2)
+        Returns:
+            A tuple containing the cosine and sine lookup tables, each with shape
+            :math:`(h * w, D / 2)`, where ``D`` is the per-head rotary embedding dimension.
+        """
+        flat_pos = torch.arange(h * w, device=device, dtype=torch.float32)
+        x_pos = flat_pos % w
+        y_pos = flat_pos // w
+        dim_range = torch.arange(0, self.dim, 4, device=device, dtype=torch.float32)[: self.dim // 4]
+        frequencies = 1.0 / (self.theta ** (dim_range / self.dim))
+        x_freqs = torch.outer(x_pos, frequencies)
+        y_freqs = torch.outer(y_pos, frequencies)
+        angles = torch.stack((x_freqs, y_freqs), dim=-1).reshape(h * w, self.dim // 2)
+        freqs_cis = torch.polar(torch.ones_like(angles), angles)
+        return freqs_cis.real, freqs_cis.imag
 
-        # Repeat h frequencies for each w
-        freqs_h = freqs_h.repeat_interleave(w, dim=0)  # (h*w, dim_h/2)
 
-        # Repeat w frequencies for each h
-        freqs_w = freqs_w.repeat(h, 1)  # (h*w, dim_w/2)
+def _sdpa_attention_mask(attention_mask: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
+    """Return an attention mask of :class:`MoonViTAttention` in the 4-D layout of scaled dot-product attention.
 
-        # Concatenate to get full embeddings
-        emb_h = torch.cat((freqs_h, freqs_h), dim=-1)  # (seq_len, dim_h)
-        emb_w = torch.cat((freqs_w, freqs_w), dim=-1)  # (seq_len, dim_w)
-
-        emb = torch.cat((emb_h, emb_w), dim=-1)  # (seq_len, dim)
-
-        return emb.cos(), emb.sin()
+    A non-float mask becomes boolean. A 2-D or 3-D mask holds one mask per sample, broadcast over the heads:
+    ``(B, N) -> (B, 1, 1, N)`` masks keys and ``(B, N, N) -> (B, 1, N, N)`` query-key pairs. A 4-D mask is returned as
+    is, so a mask this function returned passes through it again unchanged and uncopied. Every form has the ``N`` keys
+    as its last dimension, and a 3-D or 4-D mask ``N`` queries or 1 before it.
+    """
+    if not attention_mask.is_floating_point():
+        attention_mask = attention_mask.bool()
+    if attention_mask.dim() >= 2:
+        # A key dimension of 1 would broadcast one value over every patch: the same as no mask on the CPU, and SDPA's
+        # unrelated "last dimension must be contiguous" error in CUDA float32 and half.
+        sizes: list[Optional[int]] = [None] * attention_mask.dim()
+        sizes[-1] = seq_len
+        if attention_mask.dim() > 2:
+            sizes[-2] = 1 if attention_mask.shape[-2] == 1 else seq_len
+        KORNIA_CHECK_SIZES(
+            attention_mask,
+            sizes,
+            lambda: (
+                f"MoonViTAttention reads an attention mask over the {seq_len} patches: the keys are its last "
+                f"dimension, and in a 3-D or 4-D mask the queries, {seq_len} or 1, the one before it."
+            ),
+        )
+    if attention_mask.dim() in (2, 3):
+        # Passed as is, SDPA would line a 3-D mask's leading dimension up with the heads and read a 2-D one as an
+        # N x N query x key mask, so an (H, N, N) or (N, N) mask would mean something else whenever B happened to equal
+        # H or N: such masks raise and go in as 4-D. The message is a function, formatted only on failure: an f-string
+        # evaluated on every call makes Dynamo specialize the batch size and the patch count, so a dynamic-shape
+        # torch.compile would recompile for each new input shape.
+        KORNIA_CHECK(
+            attention_mask.shape[0] in (1, batch_size),
+            lambda: (
+                f"MoonViTAttention reads a {attention_mask.dim()}-D attention mask per sample, as (B, N) padding or "
+                f"(B, N, N), but the leading dimension of the {tuple(attention_mask.shape)} mask is neither the batch "
+                f"size {batch_size} nor 1. For a per-head or a shared query x key mask, pass it as 4-D: (1, H, N, N) "
+                "or (1, 1, N, N)."
+            ),
+        )
+        attention_mask = attention_mask[:, None, None] if attention_mask.dim() == 2 else attention_mask[:, None]
+    return attention_mask
 
 
 class MoonViTAttention(nn.Module):
+    """Multi-head self-attention layer used by the MoonViT vision encoder.
+
+    The layer projects input tokens into query, key, and value tensors, splits the
+    hidden dimension across attention heads, applies two-dimensional rotary positional
+    embeddings (RoPE) to the query and key tensors, and finally computes scaled
+    dot-product attention. The output is projected back to the model hidden size.
+
+    Args:
+        config: MoonViT configuration containing the hidden size, number of attention
+            heads, and attention dropout probability.
+    """
+
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.num_heads = config.num_attention_heads
@@ -109,6 +163,31 @@ class MoonViTAttention(nn.Module):
         sin: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Apply rotary self-attention to a sequence of visual patch tokens.
+
+        Args:
+            hidden_states: Input token tensor with shape :math:`(B, N, D)`, where
+                ``B`` is the batch size, ``N`` is the number of flattened image
+                patches, and ``D`` is the hidden size.
+            cos: Cosine component of the rotary positional embedding with shape
+                :math:`(N, d / 2)`, where ``d = D / H`` is the per-head dimension.
+            sin: Sine component of the rotary positional embedding with shape
+                :math:`(N, d / 2)`.
+            attention_mask: Optional boolean mask, ``True`` where a query may attend to a key. A 2-D or 3-D mask
+                holds one mask per sample, shared by the heads, as
+                :class:`~kornia.models.siglip2.attention.SigLip2Attention` reads it: :math:`(B, N)` masks keys
+                (padding) and :math:`(B, N, N)` query-key pairs; a leading dimension of 1 shares the mask across the
+                batch, and any other raises. A 4-D mask, such as :math:`(B, 1, N, N)` or a per-head
+                :math:`(1, H, N, N)`, is passed as is and broadcasts against the :math:`(B, H, N, N)` attention scores
+                of :func:`~torch.nn.functional.scaled_dot_product_attention`. The last dimension of every form is the
+                :math:`N` keys, and in a 3-D or 4-D mask the one before it is the :math:`N` queries or 1, which
+                shares the key mask across the queries; other sizes raise. An integer mask is read as boolean; a
+                float mask is added to the scores.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` containing the attended visual token
+            features after the output projection.
+        """
         batch_size, seq_len, _ = hidden_states.shape
 
         query = self.q_proj(hidden_states)
@@ -121,12 +200,14 @@ class MoonViTAttention(nn.Module):
         value = value.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
 
         # Apply RoPE
-        # cos, sin are (seq_len, head_dim) -> reshape to (1, 1, seq_len, head_dim)
-        cos = cos.view(1, 1, seq_len, self.head_dim)
-        sin = sin.view(1, 1, seq_len, self.head_dim)
+        # cos, sin are (seq_len, head_dim / 2) -> reshape for complex-pair rotation
+        cos = cos.view(1, 1, seq_len, self.head_dim // 2)
+        sin = sin.view(1, 1, seq_len, self.head_dim // 2)
 
         query = apply_rotary_pos_emb(query, cos, sin)
         key = apply_rotary_pos_emb(key, cos, sin)
+        if attention_mask is not None:
+            attention_mask = _sdpa_attention_mask(attention_mask, batch_size, seq_len)
         attn_output = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=self.dropout.p if self.training else 0.0
         )
@@ -149,16 +230,31 @@ class MoonViTMLP(nn.Module):
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.act = nn.GELU()
+        if config.hidden_act == "gelu":
+            self.act = nn.GELU()
+        elif config.hidden_act == "gelu_tanh":
+            self.act = nn.GELU(approximate="tanh")
+        else:
+            raise ValueError(f"Unsupported activation: {config.hidden_act}.")
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout_p)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Project token features through the MoonViT feed-forward network.
+
+        Args:
+            x: Input token features with shape :math:`(B, N, D)`, where ``B`` is the
+                batch size, ``N`` is the number of patch tokens, and ``D`` is the model
+                hidden size.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after expansion to the intermediate
+            hidden size, GELU activation, projection back to ``D``, and dropout.
+        """
         x = self.fc1(x)
         x = self.act(x)
         x = self.fc2(x)
-        x = self.dropout(x)
-        return x
+        return self.dropout(x)
 
 
 class MoonViTLayer(nn.Module):
@@ -184,9 +280,28 @@ class MoonViTLayer(nn.Module):
     def forward(
         self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Run one pre-normalized MoonViT transformer block.
+
+        The block first normalizes the input tokens before self-attention, adds the
+        attention result back through a residual connection, then repeats the same
+        pre-normalization and residual pattern for the MLP sub-block.
+
+        Args:
+            x: Token tensor with shape :math:`(B, N, D)`, where ``B`` is the batch
+                size, ``N`` is the number of flattened image patches, and ``D`` is the
+                hidden size.
+            cos: Cosine rotary embedding table with shape :math:`(N, d / 2)`, where ``d``
+                is the per-head attention dimension.
+            sin: Sine rotary embedding table with shape :math:`(N, d / 2)`.
+            attention_mask: Optional attention mask forwarded to the self-attention
+                layer.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after attention, MLP processing, and
+            residual updates.
+        """
         x = x + self.attn(self.norm1(x), cos, sin, attention_mask)
-        x = x + self.mlp(self.norm2(x))
-        return x
+        return x + self.mlp(self.norm2(x))
 
 
 class MoonViTEncoder(nn.Module):
@@ -205,6 +320,22 @@ class MoonViTEncoder(nn.Module):
     def forward(
         self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Encode visual patch tokens through the full MoonViT transformer stack.
+
+        Args:
+            x: Input token tensor with shape :math:`(B, N, D)`, where ``B`` is batch
+                size, ``N`` is the flattened patch count, and ``D`` is hidden size.
+            cos: Cosine rotary embedding table shared by all encoder layers.
+            sin: Sine rotary embedding table shared by all encoder layers.
+            attention_mask: Optional attention mask in any form :class:`MoonViTAttention` reads, brought into the 4-D
+                layout once and shared by every transformer layer.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` containing the encoded patch sequence
+            after all MoonViT layers have been applied.
+        """
+        if attention_mask is not None:
+            attention_mask = _sdpa_attention_mask(attention_mask, x.shape[0], x.shape[1])
         for layer in self.layers:
             x = layer(x, cos, sin, attention_mask)
         return x
@@ -221,8 +352,7 @@ class MoonViT(nn.Module):
             config.num_channels, config.hidden_size, kernel_size=config.patch_size, stride=config.patch_size
         )
 
-        # Initialized for the default image size
-        num_patches = (config.image_size // config.patch_size) ** 2
+        num_patches = config.init_pos_emb_height * config.init_pos_emb_width
         self.pos_embed = nn.Parameter(torch.randn(1, num_patches, config.hidden_size))
 
         self.rope = MoonViTRotaryEmbedding(config.hidden_size // config.num_attention_heads, theta=config.rope_theta)
@@ -234,8 +364,15 @@ class MoonViT(nn.Module):
         """Forward pass.
 
         Args:
-            pixel_values: (B, C, H, W)
-            attention_mask: (B, 1, N, N) or (B, N, N) optional mask.
+            pixel_values: (B, C, H, W) image normalized with mean = std = 0.5 per channel, i.e. ``2 * x - 1`` for an
+                image ``x`` in ``[0, 1]``, as the Kimi-VL checkpoint's ``preprocessor_config.json`` specifies. H and W
+                should be multiples of ``2 * patch_size`` (28 for the released checkpoint), which
+                :class:`~kornia.models.kimi_vl.KimiVLModel` needs to merge the patches 2 x 2: the patch embedding crops
+                a size that is not a multiple of ``patch_size`` silently.
+            attention_mask: (B, N), (B, N, N) or (B, 1, N, N) optional boolean mask over the N patches, ``True`` where
+                a patch may attend to another. A (B, N) mask marks the patches every patch may attend to (padding is
+                ``False``), and a (B, N, N) mask holds one mask per sample; both are shared by the heads. See
+                :class:`MoonViTAttention` for the other forms.
 
         Returns:
             (B, seq_len, hidden_size)
@@ -249,13 +386,11 @@ class MoonViT(nn.Module):
 
         # Add Absolute Positional Embedding (with interpolation)
         pos_embed = self.pos_embed
-        if x.shape[1] != pos_embed.shape[1]:
+        h_ref = self.config.init_pos_emb_height
+        w_ref = self.config.init_pos_emb_width
+        if (h_patches, w_patches) != (h_ref, w_ref):
             # Interpolate pos_embed to match current resolution
             # pos_embed is (1, N_ref, D) -> (1, D, H_ref, W_ref)
-            h_ref = int(pos_embed.shape[1] ** 0.5)
-            if h_ref * h_ref != pos_embed.shape[1]:
-                raise ValueError("pos_embed shape is not a perfect square, cannot reshape to 2D grid.")
-            w_ref = h_ref
             pos_embed = pos_embed.permute(0, 2, 1).view(1, -1, h_ref, w_ref)
 
             pos_embed = F.interpolate(pos_embed, size=(h_patches, w_patches), mode="bicubic", align_corners=False)
@@ -266,8 +401,6 @@ class MoonViT(nn.Module):
         x = x + pos_embed
 
         # Generate RoPE
-        cos, sin = self.rope(h_patches, w_patches, x.device)  # (N, head_dim)
+        cos, sin = self.rope(h_patches, w_patches, x.device)  # (N, head_dim / 2)
         x = self.encoder(x, cos, sin, attention_mask=attention_mask)
-        x = self.norm(x)
-
-        return x
+        return self.norm(x)

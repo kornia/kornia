@@ -31,16 +31,20 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        Channels are H, S, V at axis -3. Hue is in radians in [0, 2π) and grayscale
+        pixels have hue zero. eps biases the saturation denominator.
+
     Args:
         image: RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
         eps: scalar to enforce numarical stability.
 
     Returns:
         HSV version of the image with shape of :math:`(*, 3, H, W)`.
-        The H channel values are in the range 0..2pi. S and V are in the range 0..1.
+        The H channel values are in the range [0, 2pi). S and V are in the range 0..1.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/color_conversions.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -53,12 +57,14 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    max_rgb, argmax_rgb = image.max(-3)
-    min_rgb, _argmin_rgb = image.min(-3)
+    max_rgb = image.amax(-3)
+    min_rgb = image.amin(-3)
     deltac = max_rgb - min_rgb
 
     v = max_rgb
-    s = deltac / (max_rgb + eps)
+    # Guard black pixels before division: eps can underflow in float16, including in backward.
+    s_divisor = torch.where(max_rgb == 0, torch.ones_like(max_rgb), max_rgb + eps)
+    s = deltac / s_divisor
 
     deltac = torch.where(deltac == 0, torch.ones_like(deltac), deltac)
     rc, gc, bc = torch.unbind((max_rgb.unsqueeze(-3) - image), dim=-3)
@@ -67,10 +73,17 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h2 = (rc - bc) + 2.0 * deltac
     h3 = (gc - rc) + 4.0 * deltac
 
-    h = torch.stack((h1, h2, h3), dim=-3) / deltac.unsqueeze(-3)
-    h = torch.gather(h, dim=-3, index=argmax_rgb.unsqueeze(-3)).squeeze(-3)
+    # select the sextant of the first maximal channel, matching torch.max(dim) tie-breaking;
+    # branchless selection avoids max/argmax-with-indices and gather, which are ~100x slower
+    # than amax/pointwise ops on MPS and block fusion under torch.compile
+    r, g, b = torch.unbind(image, dim=-3)
+    h = torch.where((r >= g) & (r >= b), h1, torch.where(g >= b, h2, h3))
+    h = h / deltac
     h = (h / 6.0) % 1.0
     h = 2.0 * math.pi * h  # we return 0/2pi output
+    # A tiny negative hue rounds up to the period itself, in the modulo (float32) or only in the scaling
+    # (float16: 2π * (1 - 2**-11) rounds to 6.28125); fold it to 0, as adjust_hue_raw does.
+    h = h.masked_fill(h >= 2.0 * math.pi, 0.0)
 
     return torch.stack((h, s, v), dim=-3)
 
@@ -79,6 +92,9 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from HSV to RGB.
 
     The H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
+
+    Convention:
+        Expects H, S, V channels at axis -3 with hue in radians.
 
     Args:
         image: HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
@@ -107,16 +123,31 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     q: torch.Tensor = v * (1.0 - f * s)
     t: torch.Tensor = v * (1.0 - (1.0 - f) * s)
 
-    hi = hi.long()
-    indices: torch.Tensor = torch.stack([hi, hi + 6, hi + 12], dim=-3)
-    out = torch.stack((v, q, p, p, t, v, t, v, v, q, p, p, p, p, t, v, v, q), dim=-3)
-    out = torch.gather(out, -3, indices)
+    hi = hi.long().clamp_(0, 5)
 
-    return out
+    # branchless per-channel sextant selection, replacing an 18-plane stack + gather: gather blocks
+    # pointwise fusion under torch.compile (the stack+gather graph fails to compile on the MPS
+    # inductor backend) and materializing an 18-plane buffer costs extra memory traffic in eager.
+    # Each where-chain reproduces one row of the original [v,q,p,p,t,v / t,v,v,q,p,p / p,p,t,v,v,q]
+    # table indexed by hi, selecting (not recomputing) the same p/q/t/v tensors; the sextant masks
+    # are computed once and reused across R/G/B instead of being recomputed per channel.
+    m0 = hi == 0
+    m1 = hi == 1
+    m2 = hi == 2
+    m3 = hi == 3
+    m4 = hi == 4
+
+    r = torch.where(m0, v, torch.where(m1, q, torch.where(m2, p, torch.where(m3, p, torch.where(m4, t, v)))))
+    g = torch.where(m0, t, torch.where(m1, v, torch.where(m2, v, torch.where(m3, q, torch.where(m4, p, p)))))
+    b = torch.where(m0, p, torch.where(m1, p, torch.where(m2, t, torch.where(m3, v, torch.where(m4, v, q)))))
+
+    return torch.stack((r, g, b), dim=-3)
 
 
 class RgbToHsv(nn.Module):
     r"""Convert an image from RGB to HSV.
+
+    See the Convention block on :func:`rgb_to_hsv`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -140,16 +171,28 @@ class RgbToHsv(nn.Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def __init__(self, eps: float = 1e-6) -> None:
+    def __init__(self, eps: float = 1e-8) -> None:
         super().__init__()
         self.eps = eps
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB tensor to HSV.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` is the channel dimension, and ``H``/``W`` are height and width.
+
+        Returns:
+            HSV tensor with shape :math:`(*, 3, H, W)`.
+        """
         return rgb_to_hsv(image, self.eps)
 
 
 class HsvToRgb(nn.Module):
     r"""Convert an image from HSV to RGB.
+
+    See the Convention block on :func:`hsv_to_rgb`.
 
     H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
 
@@ -171,4 +214,14 @@ class HsvToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an HSV tensor to RGB.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` is the channel dimension, and ``H``/``W`` are height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return hsv_to_rgb(image)

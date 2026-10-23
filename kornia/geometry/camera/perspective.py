@@ -29,6 +29,19 @@ from kornia.geometry.conversions import (
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     r"""Project a 3d point onto the 2d camera plane.
 
+    See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+    Convention:
+        - ``point_3d`` is a **camera-frame** point and ``camera_matrix`` the :math:`(*, 3, 3)` ``K``; the
+          function takes no extrinsics, so it does not move between frames.
+        - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`.
+
+    .. warning::
+        At ``abs(z) <= 1e-8`` the divide is skipped and ``K`` is applied to the undivided point, giving the
+        finite placeholder ``fx x + cx``; the other projection entry points do not follow this rule yet:
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_. Neither that placeholder nor a point behind the
+        camera is flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
+
     Args:
         point_3d: tensor containing the 3d points to be projected
             to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
@@ -61,9 +74,18 @@ def unproject_points(
 
     Transform coordinates in the pixel frame to the camera frame.
 
+    See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+
+    Convention:
+        - ``point_2d`` is a pixel coordinate and the result is in the **camera** frame: the function takes no
+          extrinsics, so it cannot return world coordinates.
+          :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` is the world-frame counterpart.
+        - ``depth`` is the camera-frame ``z`` of the result. With ``normalize=True`` it is read as the
+          Euclidean ray length instead, so the result has that norm and a smaller ``z``.
+
     Args:
-        point_2d: tensor containing the 2d to be projected to
-            world coordinates. The shape of the tensor can be :math:`(*, 2)`.
+        point_2d: tensor containing the 2d points to be projected to
+            the camera frame. The shape of the tensor can be :math:`(*, 2)`.
         depth: tensor containing the depth value of each 2d
             points. The tensor shape must be equal to point2d :math:`(*, 1)`.
         camera_matrix: tensor containing the intrinsics camera
@@ -73,7 +95,7 @@ def unproject_points(
             ray length from the camera position.
 
     Returns:
-        tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
+        tensor of (x, y, z) camera coordinates with shape :math:`(*, 3)`.
 
     Example:
         >>> _ = torch.manual_seed(0)

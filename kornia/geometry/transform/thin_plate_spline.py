@@ -18,9 +18,8 @@
 from __future__ import annotations
 
 import torch
-from torch import nn
 
-from kornia.core.utils import _torch_solve_cast
+from kornia.core.utils import _torch_grid_sample, _torch_solve_cast
 from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
@@ -38,19 +37,22 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
     t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
     square_dist: torch.Tensor = -2 * t1_t2 + t1_sq + t2_sq
-    square_dist = square_dist.clamp(min=0)  # handle possible numerical errors
-    return square_dist
+    return square_dist.clamp(min=0)  # handle possible numerical errors
 
 
-def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def _kernel_distance(squared_distances: torch.Tensor) -> torch.Tensor:
     r"""Compute the TPS kernel distance function: :math:`r^2 log(r)`, where `r` is the euclidean distance.
 
     Since
     :math: `\log(r) = 1/2 \log(r^2)`, this function takes the squared distance matrix and calculates
     :math: `0.5 r^2 log(r^2)`.
     """
-    # r^2 * log(r) = 1/2 * r^2 * log(r^2)
-    return 0.5 * squared_distances * squared_distances.add(eps).log()
+    safe = torch.where(squared_distances > 0, squared_distances, torch.ones_like(squared_distances))
+    return torch.where(
+        squared_distances > 0,
+        0.5 * squared_distances * safe.log(),
+        torch.zeros_like(squared_distances),
+    )
 
 
 def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -58,6 +60,21 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
 
     The input to this function is a torch.Tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
     torch.Tensor of target :math:`(x, y)` points :math:`(B, N, 2)`.
+
+    Convention:
+        - ``points_src``/``points_dst``: :math:`(B, N, 2)` in ``(x, y)`` order, in whatever
+          coordinate frame the caller supplies; no normalization is applied
+        - returns kernel weights :math:`(B, N, 2)` and affine weights :math:`(B, 3, 2)`; the
+          identity mapping gives zero kernel weights and an identity affine up to solver round-off
+        - the tensor passed as the **second** argument is the ``kernel_centers`` that the warp
+          function must receive with these weights. :func:`warp_points_tps` is composed in the
+          natural ``(points_src, points_dst)`` order; :func:`warp_image_tps` samples from output
+          space back into input space, so it is composed **reversed**, with both point sets in the
+          normalized frame given in its Convention block::
+
+              kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
+              warped = warp_image_tps(image, kernel_centers=points_src,
+                                      kernel_weights=kernel_weights, affine_weights=affine_weights)
 
     Args:
         points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
@@ -124,10 +141,16 @@ def warp_points_tps(
     torch.Tensor[..., 0] contains the weights for the x-transform and torch.Tensor[..., 1] the weights
     for the y-transform.
 
+    Convention:
+        - points: :math:`(B, N, 2)` (or :math:`(B, K, 2)` for kernel centers) in ``(x, y)``
+          order; no normalization is applied, and the output is in the same frame, not clamped
+        - ``kernel_centers`` must be the second argument passed to :func:`get_tps_transform`
+          (see its Convention block)
+
     Args:
         points_src: torch.Tensor of source points :math:`(B, N, 2)`.
         kernel_centers: torch.Tensor of kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.Tensor of kernl weights :math:`(B, K, 2)`.
+        kernel_weights: torch.Tensor of kernel weights :math:`(B, K, 2)`.
         affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
 
     Returns:
@@ -200,10 +223,21 @@ def warp_image_tps(
     The input `image` is a :math:`(B, C, H, W)` torch.Tensor. The kernel centers, kernel weight and affine weights
     are the same as in `warp_points_tps`.
 
+    Convention:
+        - image: :math:`(B, C, H, W)`; the weights come from :func:`get_tps_transform` called
+          **reversed**, ``get_tps_transform(points_dst, points_src)``, and ``kernel_centers`` is
+          ``points_src`` (see its Convention block)
+        - all control points live in the normalized ``grid_sample`` frame selected by
+          ``align_corners``: the half-pixel :math:`x_{norm} = (2x+1)/W - 1` at the default
+          ``False``, the corner-aligned :math:`x_{norm} = 2x/(W-1) - 1` at ``True``; values outside
+          :math:`[-1, 1]` sample the padding. Pixel-space control points silently give a wrong
+          warp of the right shape
+        - align_corners: ``False`` by default (the matrix warps default to ``True``)
+
     Args:
         image: input image torch.Tensor :math:`(B, C, H, W)`.
         kernel_centers: kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.Tensor of kernl weights :math:`(B, K, 2)`.
+        kernel_weights: torch.Tensor of kernel weights :math:`(B, K, 2)`.
         affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
         align_corners: interpolation flag used by `grid_sample`.
         padding_mode: padding flag used by `grid_sample`.
@@ -248,11 +282,13 @@ def warp_image_tps(
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
     batch_size, _, h, w = image.shape
-    coords: torch.Tensor = create_meshgrid(h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True)
+    coords: torch.Tensor = create_meshgrid(
+        h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True, align_corners=align_corners
+    )
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
-    warped_image: torch.Tensor = nn.functional.grid_sample(
+    warped_image: torch.Tensor = _torch_grid_sample(
         image, warped, padding_mode=padding_mode, align_corners=align_corners
     )
 

@@ -25,15 +25,20 @@ from torch import nn
 class ConvNormAct(nn.Sequential):
     """Apply a sequence of Convolution, Normalization, and Activation layers.
 
+    The convolution has no bias and is followed by :class:`nn.BatchNorm2d`. Its padding follows from ``kernel_size``:
+    ``(kernel_size - 1) // 2`` on each side for an odd kernel, and for an even kernel a zero padding with one more
+    pixel at the bottom and right, as in PaddlePaddle.
+
     Args:
         in_channels: Number of input channels.
         out_channels: Number of output channels.
         kernel_size: Size of the convolution kernel.
         stride: Stride of the convolution. Default: 1.
-        padding: Zero-padding added to both sides of the input. Default: 0.
+        act: Activation, ``"relu"``, ``"silu"`` or ``"none"`` (identity). Default: ``"relu"``.
         groups: Number of blocked connections from input to output. Default: 1.
-        norm: Normalization layer type. Default: :class:`nn.BatchNorm2d`.
-        act: Activation layer type. Default: :class:`nn.ReLU`.
+        conv_naming: Attribute name of the convolution, which sets its parameter names. Default: ``"conv"``.
+        norm_naming: Attribute name of the normalization layer. Default: ``"norm"``.
+        act_naming: Attribute name of the activation. Default: ``"act"``.
     """
 
     def __init__(
@@ -92,6 +97,16 @@ class MLP(nn.Module):
         self.sigmoid_output = sigmoid_output
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the configured MLP to the last tensor dimension.
+
+        Args:
+            x: Input tensor whose last dimension equals ``input_dim``.
+
+        Returns:
+            Tensor with the same leading dimensions as ``x`` and final
+            dimension ``output_dim``. If ``sigmoid_output`` is enabled, the
+            final values are passed through a sigmoid.
+        """
         for i, layer in enumerate(self.layers):
             x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         if self.sigmoid_output:
@@ -110,6 +125,17 @@ class DropPath(nn.Module):
         self.scale_by_keep = scale_by_keep
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply stochastic depth to a residual branch.
+
+        Args:
+            x: Residual-branch tensor with arbitrary shape. The first dimension
+                is treated as the batch dimension.
+
+        Returns:
+            Tensor with the same shape as ``x``. During training, complete
+            samples may be dropped and optionally scaled by the keep
+            probability; during evaluation the input is returned unchanged.
+        """
         if self.drop_prob == 0.0 or not self.training:
             return x
         keep_prob = 1 - self.drop_prob
@@ -121,9 +147,15 @@ class DropPath(nn.Module):
 
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
-# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
+# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119
 class LayerNorm2d(nn.Module):
-    """Apply Layer Normalization over a 4D input tensor (NCHW)."""
+    """Apply Layer Normalization over a 4D input tensor (NCHW).
+
+    A float16 or bfloat16 input is normalised in float32, and the result is cast to the promoted dtype of the input and
+    the weight (a float16 input with float32 weights gives float32). In float16, the squared deviations overflow once a
+    value is more than 255.9 from its channel mean, and the variance becomes ``inf``, which leaves only the bias.
+    MobileSAM's neck reaches about 560, and a float16 variance there gives empty masks.
+    """
 
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
         super().__init__()
@@ -132,11 +164,27 @@ class LayerNorm2d(nn.Module):
         self.eps = eps
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply channel-wise layer normalization to an NCHW tensor.
+
+        Args:
+            x: Tensor with shape :math:`(B, C, H, W)`, where :math:`B` is batch
+                size, :math:`C` is channel count, :math:`H` is height, and
+                :math:`W` is width.
+
+        Returns:
+            Tensor with the same shape as ``x`` after normalizing across the
+            channel dimension and applying learned affine parameters.
+        """
+        if x.dtype in (torch.float16, torch.bfloat16):
+            out_dtype = torch.promote_types(x.dtype, self.weight.dtype)
+            return self._normalize(x.float(), self.weight.float(), self.bias.float()).to(out_dtype)
+        return self._normalize(x, self.weight, self.bias)
+
+    def _normalize(self, x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
         u = x.mean(1, keepdim=True)
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / (s + self.eps).sqrt()
-        x = self.weight[:, None, None] * x + self.bias[:, None, None]
-        return x
+        return weight[:, None, None] * x + bias[:, None, None]
 
 
 def window_partition(x: torch.Tensor, window_size: int) -> tuple[torch.Tensor, tuple[int, int]]:

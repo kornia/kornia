@@ -16,14 +16,95 @@
 #
 
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
+# Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
+from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
+
+
+def _pad_with_fill(
+    input: torch.Tensor, padding: List[int], fill: Union[float, Sequence[float]], mode: str
+) -> torch.Tensor:
+    """Pad ``input`` with a scalar or with one constant per channel.
+
+    ``torch.nn.functional.pad`` only accepts a scalar ``value``, so a sequence ``fill`` is applied by padding
+    with zeros and writing the per-channel constants into the region the padding added. A sequence is only
+    meaningful for ``mode="constant"``.
+    """
+    if isinstance(fill, (int, float)):
+        return F.pad(input, padding, value=float(fill), mode=mode)
+
+    if mode != "constant":
+        raise ValueError(f"A sequence `fill` needs `padding_mode='constant'`, got '{mode}'.")
+
+    channels = input.shape[1]
+    # Built in-graph rather than lifted from a host list, so a compiled CUDA call issues no host-device copy.
+    if isinstance(fill, (list, tuple)):
+        values = _constant_tensor(fill, device=input.device, dtype=input.dtype).flatten()
+    else:
+        values = torch.as_tensor(fill, device=input.device, dtype=input.dtype).flatten()
+    if values.numel() != channels:
+        raise ValueError(f"`fill` must hold one value per channel: got {values.numel()} for {channels} channels.")
+
+    padded = F.pad(input, padding, value=0.0, mode=mode)
+    # 1 where a voxel came from the input, 0 where the padding added one. Negative padding crops both alike.
+    inside = F.pad(torch.ones_like(input[:, :1]), padding, value=0.0, mode=mode)
+    return torch.where(inside.bool(), padded, values.view(1, channels, *([1] * (padded.ndim - 2))))
+
+
+def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
+    """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
+
+    :class:`~kornia.geometry.boxes.Boxes` records per-sample trailing padding in ``_N`` and its default export
+    returns a ragged list for such an object. The padding rows are zeroed after the export rather than stored as
+    zeros, because a zero stored box exports as ``[0, 0, 1, 1]`` in the exclusive ``'xyxy'``, ``'xywh'`` and
+    ``'vertices'`` modes, which reads as a real one-pixel box.
+    """
+    out = boxes.to_tensor(mode, as_padded_sequence=True)
+    if not isinstance(out, torch.Tensor):
+        raise TypeError(f"Expected a padded tensor export. Got {type(out)}.")
+    if boxes._N is None:
+        return out
+    num_boxes = out.shape[1]
+    real = torch.tensor([num_boxes - n for n in boxes._N], device=out.device)
+    valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
+    valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
+    return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
+
+
+def _frame_boxes(boxes: VideoBoxes) -> Boxes:
+    r"""View :class:`VideoBoxes` as the frame-level :class:`Boxes` of its :math:`(B \cdot T, N, 4, 2)` storage.
+
+    The children of :class:`VideoSequential` run on the flattened frames, and their parameters (a mix's
+    ``permutation``, a gate) index frames. ``VideoBoxes`` indexes whole videos, so a child given one would select
+    videos with frame indices (#6173). The view shares the storage and the validity mask.
+    """
+    frames = Boxes(boxes._data, False, mode=boxes._mode)
+    frames._N = boxes._N
+    frames._valid = boxes._valid
+    frames._is_batched = boxes._is_batched
+    return frames
+
+
+def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
+    """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
+
+    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
+    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
+    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    """
+    boxes = VideoBoxes(frames._data, False, mode=frames._mode)
+    boxes._valid = frames._valid
+    boxes._is_batched = frames._is_batched
+    boxes.temporal_channel_size = temporal_channel_size
+    return boxes
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
@@ -43,7 +124,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
         _validate_shape(input.shape, required_shapes=("BCHW",))
-        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
 
@@ -69,7 +150,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
         input_shape = len(input.shape)
         if input_shape != 5:
             raise AssertionError(f"Expect input of 5 dimensions, got {input_shape} instead")
-        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
 
@@ -81,10 +162,7 @@ def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tens
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
-    if isinstance(input, tuple):
-        tensor_var = _transform_input(input[0])
-    else:
-        tensor_var = _transform_input(input)
+    tensor_var = _transform_input(input[0]) if isinstance(input, tuple) else _transform_input(input)
     return tensor_var.shape
 
 
@@ -93,10 +171,7 @@ def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Te
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
-    if isinstance(input, tuple):
-        tensor_var = _transform_input3d(input[0])
-    else:
-        tensor_var = _transform_input3d(input)
+    tensor_var = _transform_input3d(input[0]) if isinstance(input, tuple) else _transform_input3d(input)
     return tensor_var.shape
 
 
@@ -306,6 +381,17 @@ def _adapted_rsampling(
     return dist.rsample(shape)
 
 
+def _truncate_to_start(draw: torch.Tensor, extent: torch.Tensor) -> torch.Tensor:
+    r"""Turn a ``[0, 1)`` draw into an integer start in ``[0, extent)`` for a crop or patch.
+
+    The product and the floor are taken in the wider of the two dtypes and the result is cast to the dtype of
+    ``extent``. Casting the draw to a narrower ``extent`` dtype first rounds a draw close to 1 up to 1.0, which
+    puts the start one past the last valid position (#5052).
+    """
+    dtype = torch.promote_types(draw.dtype, extent.dtype)
+    return (draw.to(device=extent.device, dtype=dtype) * extent.to(dtype)).floor().to(extent.dtype)
+
+
 def _adapted_sampling(
     shape: Union[Tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
@@ -408,7 +494,11 @@ def override_parameters(
         in_place: if to override in-place or not.
 
     """
-    if params_override is None:
+    # Nothing to override (None or an empty kwargs dict — the common forward path): return the
+    # params untouched. This skips a per-call `deepcopy_dict` (a full tensor clone of every
+    # param) that only existed to decouple the copy from the override — with no override there
+    # is nothing to decouple. Matches the pre-existing `None` fast path.
+    if not params_override:
         return params
     out = params if in_place else deepcopy_dict(params)
     for k, v in params_override.items():
@@ -421,50 +511,6 @@ def override_parameters(
         else:
             raise ValueError(f"`{if_none_exist}` is not a valid option.")
     return out
-
-
-def preprocess_boxes(input: Union[torch.Tensor, Boxes], mode: str = "vertices_plus") -> Boxes:
-    r"""Preprocess input boxes.
-
-    Args:
-        input: 2D boxes, shape of :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)` or a list of :math:`(N, 4, 2)`.
-            See below for more details.
-        mode: The format in which the boxes are provided.
-
-            * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where
-              ``width = xmax - xmin``
-                and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xyxy_plus': similar to 'xyxy' mode but where box width and length are defined as
-                ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
-                With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
-                ``width = xmax - xmin`` and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
-                *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
-                box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-            * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
-                ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
-                With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-
-    Note:
-        **2D boxes format** is defined as a floating data type torch.Tensor of shape ``Nx4x2`` or ``BxNx4x2``
-        where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by
-        it's 4 vertices
-        coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
-        ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
-        `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
-
-    """
-    # TODO: We may allow list here.
-    # input is BxNx4x2 or Boxes.
-    if isinstance(input, torch.Tensor):
-        if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
-            raise RuntimeError(f"Only BxNx4x2 torch.Tensor is supported. Got {input.shape}.")
-        input = Boxes.from_tensor(input, mode=mode)
-    if not isinstance(input, Boxes):
-        raise RuntimeError(f"Expect `Boxes` type. Got {type(input)}.")
-    return input
 
 
 def preprocess_keypoints(input: Union[torch.Tensor, Keypoints]) -> Keypoints:
@@ -493,3 +539,49 @@ class MultiprocessWrapper:
         kwargs = {key: val.clone() if isinstance(val, torch.Tensor) else val for key, val in kwargs.items()}
 
         super().__init__(*args, **kwargs)
+
+
+#: How small an image each padding mode can filter, given the kernel extent ``k`` along that axis.
+#: ``filter2d`` and ``filter3d`` pad an even kernel asymmetrically -- ``(k - 1) // 2`` in front and
+#: ``k // 2`` behind -- so the constraint is against the wider of the two, ``k // 2``, not against the
+#: radius. ``reflect`` cannot mirror a pad as wide as the axis and ``circular`` cannot wrap one wider
+#: than it; ``"valid"`` is the no-padding case, where the kernel itself must fit. ``constant`` and
+#: ``replicate`` invent their padding and run on a 1-pixel axis.
+_MIN_FILTERED_SIZE: Dict[str, Callable[[int], int]] = {
+    "reflect": lambda extent: extent // 2 + 1,
+    "circular": lambda extent: extent // 2,
+    "valid": lambda extent: extent,
+}
+
+#: Names of the trailing spatial axes, read from the right: a 2D filter uses the last two.
+_SPATIAL_AXIS_NAMES = ("depth", "height", "width")
+
+
+def _check_filter_min_size(
+    name: str,
+    input: torch.Tensor,
+    kernel_size: Union[int, Tuple[int, ...], List[int]],
+    border_type: str = "reflect",
+    spatial_dims: int = 2,
+) -> None:
+    """Refuse an image the filter's padding cannot handle, naming the class and the shape.
+
+    torch raises about "padding size" or "calculated padded input size" from two layers below,
+    which names neither the augmentation nor the image the caller passed. ``spatial_dims`` is the
+    number of trailing axes the kernel spans: 2 for an image, 3 for a volume.
+    """
+    size = (kernel_size,) * spatial_dims if isinstance(kernel_size, int) else tuple(kernel_size)
+    smallest = _MIN_FILTERED_SIZE.get(str(border_type).lower())
+    if smallest is None:
+        return
+    subject, unit = ("an image", "pixel") if spatial_dims == 2 else ("a volume", "voxel")
+    axes = _SPATIAL_AXIS_NAMES[-spatial_dims:]
+    for axis, extent, side in zip(axes, size, input.shape[-spatial_dims:]):
+        minimum = smallest(int(extent))
+        if side < minimum:
+            raise ValueError(
+                f"{name} cannot filter {subject} this small: kernel_size="
+                f"{tuple(int(s) for s in size)} with border_type={border_type!r} needs at least "
+                f"{minimum} {unit}(s) along {axis}, but the input is "
+                f"{tuple(int(s) for s in input.shape)}."
+            )

@@ -60,9 +60,16 @@ class Mlp(nn.Module):
         self.drop = nn.Dropout(drop)
 
     def forward(self, x: Tensor) -> Tensor:
+        r"""Run this DeDoDe module forward.
+
+        Args:
+            x: Input token tensor with shape :math:`(B, N, C_{\text{in}})`.
+
+        Returns:
+            Output tensor with shape :math:`(B, N, C_{\text{out}})` after applying the two-layer MLP.
+        """
         x = self.fc1(x)
         x = self.act(x)
         x = self.drop(x)
         x = self.fc2(x)
-        x = self.drop(x)
-        return x
+        return self.drop(x)

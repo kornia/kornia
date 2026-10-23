@@ -45,6 +45,15 @@ class PreNorm(nn.Module):
         self.fn = fn
 
     def forward(self, x: torch.Tensor, **kwargs: Dict[str, Any]) -> torch.Tensor:
+        """Normalize token features before applying the wrapped block.
+
+        Args:
+            x: Token tensor whose last dimension is ``dim``.
+            **kwargs: Extra keyword arguments forwarded to the wrapped module.
+
+        Returns:
+            Output tensor returned by ``self.fn`` after layer normalization.
+        """
         return self.fn(self.norm(x), **kwargs)
 
 
@@ -64,6 +73,15 @@ class FeedForward(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the feed-forward projection to token features.
+
+        Args:
+            x: Token tensor with last dimension equal to ``dim``.
+
+        Returns:
+            Tensor with the same shape as ``x`` after two linear projections,
+            activation, and dropout.
+        """
         return self.net(x)
 
 
@@ -91,6 +109,18 @@ class Attention(nn.Module):
         self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout)) if project_out else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply multi-head self-attention to MobileViT tokens.
+
+        Args:
+            x: Token tensor with shape :math:`(B, P, N, D)`, where
+                :math:`B` is batch size, :math:`P` is patch area,
+                :math:`N` is number of patches, and :math:`D` is embedding
+                dimension.
+
+        Returns:
+            Tensor with the same shape as ``x`` after attention and output
+            projection.
+        """
         qkv = self.to_qkv(x).chunk(3, dim=-1)
 
         b, p, n, hd = qkv[0].shape
@@ -133,6 +163,14 @@ class Transformer(nn.Module):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run stacked attention and feed-forward residual layers.
+
+        Args:
+            x: Token tensor with shape :math:`(B, P, N, D)`.
+
+        Returns:
+            Tensor with the same shape as ``x`` after all transformer layers.
+        """
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
@@ -186,10 +224,18 @@ class MV2Block(nn.Module):
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply an inverted residual MobileNetV2 block.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C_{in}, H, W)`.
+
+        Returns:
+            Feature map tensor with output channels ``oup``. When stride is one
+            and input/output channels match, the block adds the residual input.
+        """
         if self.use_res_connect:
             return x + self.conv(x)
-        else:
-            return self.conv(x)
+        return self.conv(x)
 
 
 class MobileViTBlock(nn.Module):
@@ -228,6 +274,16 @@ class MobileViTBlock(nn.Module):
         self.conv4 = conv_nxn_bn(2 * channel, channel, kernel_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Fuse local convolutions with global transformer context.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map tensor with the same spatial size as ``x``. Local
+            convolutional features are unfolded into patches, processed by a
+            transformer, folded back, and fused with the residual feature map.
+        """
         y = x.clone()
 
         # Local representations
@@ -253,8 +309,7 @@ class MobileViTBlock(nn.Module):
         # Fusion
         x = self.conv3(x)
         x = torch.cat((x, y), 1)
-        x = self.conv4(x)
-        return x
+        return self.conv4(x)
 
 
 class MobileViT(nn.Module):
@@ -266,8 +321,14 @@ class MobileViT(nn.Module):
     Args:
         mode: 'xxs', 'xs' or 's', defaults to 'xxs'.
         in_channels: the number of channels for the input image.
-        patch_size: image_size must be divisible by patch_size.
+        patch_size: the patch size :math:`(p_h, p_w)` the MobileViT blocks unfold their feature maps into, at strides
+            8, 16 and 32 of the input. Each of those maps must split into whole patches, which an input height and
+            width that are multiples of :math:`32 p_h` and :math:`32 p_w` guarantee: with the default ``(2, 2)``,
+            192, 256 and 320 px run, and 224 and 288 px raise.
         dropout: dropout ratio in Transformer.
+
+    Raises:
+        ValueError: if ``mode`` is not ``'xxs'``, ``'xs'`` or ``'s'``.
 
     Example:
         >>> img = torch.rand(1, 3, 256, 256)
@@ -293,6 +354,8 @@ class MobileViT(nn.Module):
             expansion = 4
             dims = [144, 192, 240]
             channels = [16, 32, 64, 64, 96, 96, 128, 128, 160, 160, 640]
+        else:
+            raise ValueError(f"mode must be 'xxs', 'xs' or 's'. Got: {mode!r}")
 
         kernel_size = 3
         depth = [2, 4, 3]
@@ -322,6 +385,17 @@ class MobileViT(nn.Module):
         self.conv2 = conv_1x1_bn(channels[-2], channels[-1])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""Run the MobileViT backbone and return final feature maps.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`C`
+                matches the configured input channel count.
+
+        Returns:
+            Feature tensor from the final MobileViT stage. For the default
+            configuration, a :math:`256 \times 256` input produces
+            :math:`(B, 320, 8, 8)`.
+        """
         x = self.conv1(x)
         x = self.mv2[0](x)
 
@@ -337,5 +411,4 @@ class MobileViT(nn.Module):
 
         x = self.mv2[6](x)
         x = self.mvit[2](x)
-        x = self.conv2(x)
-        return x
+        return self.conv2(x)

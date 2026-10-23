@@ -23,19 +23,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
+from kornia.filters.gaussian import _gaussian_blur2d_cpu, _gaussian_blur2d_cpu_eligible
 
-__all__ = [
-    "PyrDown",
-    "PyrUp",
-    "ScalePyramid",
-    "build_laplacian_pyramid",
-    "build_pyramid",
-    "pyrdown",
-    "pyrup",
-    "upscale_double",
-]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "build_laplacian_pyramid", "build_pyramid", "pyrdown", "pyrup"]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -58,6 +50,9 @@ def _get_pyramid_gaussian_kernel() -> torch.Tensor:
 
 class PyrDown(nn.Module):
     r"""Blur a torch.Tensor and downsamples it.
+
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.transform.pyrdown`.
 
     Args:
         border_type: the padding mode to be applied before convolving.
@@ -86,14 +81,33 @@ class PyrDown(nn.Module):
         self.factor: float = factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Build the next lower-resolution Gaussian pyramid level.
+
+        The input is smoothed before resizing so high-frequency content is not
+        directly subsampled. This is the standard pyramid-down step used by
+        many multi-scale image algorithms.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Downsampled tensor from :func:`pyrdown`. The channel and batch
+            dimensions are preserved, while spatial dimensions are reduced
+            according to ``self.factor``.
+        """
         return pyrdown(input, self.border_type, self.align_corners, self.factor)
 
 
 class PyrUp(nn.Module):
     r"""Upsample a torch.Tensor and then blurs it.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.transform.pyrup`.
+
     Args:
-        borde_type: the padding mode to be applied before convolving.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
@@ -117,6 +131,21 @@ class PyrUp(nn.Module):
         self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Build the next higher-resolution Gaussian pyramid level.
+
+        The operation upsamples the image and applies pyramid smoothing so the
+        enlarged result is spatially consistent with Gaussian pyramid
+        reconstruction.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Upsampled tensor from :func:`pyrup`, typically with doubled height
+            and width, preserving batch and channel dimensions.
+        """
         return pyrup(input, self.border_type, self.align_corners)
 
 
@@ -124,6 +153,20 @@ class ScalePyramid(nn.Module):
     r"""Create an scale pyramid of image, usually used for local feature detection.
 
     Images are consequently smoothed with Gaussian blur and downscaled.
+
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - ``forward`` returns ``(pyr, sigmas, pixel_dists)``, one entry per octave: ``pyr[o]`` is
+          :math:`(B, C, L, H_o, W_o)` with ``L = n_levels + extra_levels``, and ``sigmas[o]`` and
+          ``pixel_dists[o]`` are :math:`(B, L)` nominal values (the targeted blur, not a measurement)
+        - ``sigmas`` is octave-relative: the blur in input pixels is ``sigmas[o] * pixel_dists[o]``
+        - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
+          ``double_image=True``) leaves the first level at that blur, and the octave is built and
+          labelled from it, as if ``init_sigma`` were the assumed input blur
+        - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter. They keep the
+          first and last pixel centres, so pixel :math:`(u, v)` of octave ``o`` is input pixel
+          :math:`(u (W - 1) / (W_o - 1), v (H - 1) / (H_o - 1))`; ``pixel_dists`` is the nominal spacing
+          :math:`2^o` (:math:`2^{o - 1}` with ``double_image=True``), not this map
 
     Args:
         n_levels: number of the levels in octave.
@@ -134,7 +177,7 @@ class ScalePyramid(nn.Module):
     Returns:
         1st output: images
         2nd output: sigmas (coefficients for scale conversion)
-        3rd output: pixelDists (coefficients for coordinate conversion)
+        3rd output: pixelDists (nominal pixel spacing of each level relative to the input)
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -149,17 +192,26 @@ class ScalePyramid(nn.Module):
     """
 
     def __init__(
-        self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False
+        self,
+        n_levels: int = 3,
+        init_sigma: float = 1.6,
+        min_size: int = 15,
+        double_image: bool = False,
+        extra_levels: int = 3,
     ) -> None:
         super().__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
-        self.extra_levels: int = 3
+        self.extra_levels = extra_levels
         self.init_sigma = init_sigma
         self.min_size = min_size
         self.border = min_size // 2 - 1
         self.sigma_step = 2 ** (1.0 / float(self.n_levels))
         self.double_image = double_image
+        # Blur of the first level of every octave: an init_sigma below the assumed input blur
+        # leaves the first level at the input blur.
+        self._base_sigma = max(init_sigma, 1.0 if double_image else 0.5)
+        self._precompute_gauss_kernels(n_levels, extra_levels, init_sigma, double_image)
 
     def __repr__(self) -> str:
         return (
@@ -173,7 +225,61 @@ class ScalePyramid(nn.Module):
             f"double_image={self.double_image})"
         )
 
+    @staticmethod
+    def _make_gaussian_kernel1d(sigma: float, ksize: int) -> torch.Tensor:
+        """Normalized 1D Gaussian kernel as a float32 tensor."""
+        # MPS has no float64: compute on CPU, then move the rounded kernel to the default device.
+        x = torch.arange(ksize, device="cpu", dtype=torch.float64) - ksize // 2
+        kernel = torch.exp(-0.5 * x**2 / sigma**2)
+        return (kernel / kernel.sum()).float().to(torch.empty(0, dtype=torch.float32).device)
+
+    def _precompute_gauss_kernels(
+        self, n_levels: int, extra_levels: int, init_sigma: float, double_image: bool
+    ) -> None:
+        """Register precomputed 1D Gaussian kernels as buffers so they move with .to()."""
+        # Initial blur: from camera sigma (0.5 / 1.0) up to init_sigma
+        cur_sigma_init = 1.0 if double_image else 0.5
+        if init_sigma > cur_sigma_init:
+            sigma = max(math.sqrt(init_sigma**2 - cur_sigma_init**2), 0.01)
+            ksize = self.get_kernel_size(sigma)
+            self.register_buffer("_gk_init", self._make_gaussian_kernel1d(sigma, ksize))
+        else:
+            self.register_buffer("_gk_init", None)
+
+        # Level-to-level kernels inside an octave.
+        # cur_sigma_oct resets to the first level's blur at the start of every octave, so
+        # these delta_sigma values are the SAME for every octave — precompute once.
+        cur_s = self._base_sigma
+        for lvl in range(n_levels + extra_levels - 1):
+            delta = cur_s * math.sqrt(self.sigma_step**2 - 1.0)
+            ksize = self.get_kernel_size(delta)
+            self.register_buffer(f"_gk_{lvl}", self._make_gaussian_kernel1d(delta, ksize))
+            cur_s *= self.sigma_step
+
+    def _blur_fast(self, x: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+        """Separable Gaussian blur with a precomputed 1D kernel — no validation overhead."""
+        ksize = kernel.shape[0]
+        pad = ksize // 2
+        _B, C, _H, _W = x.shape
+        k = kernel.to(device=x.device, dtype=x.dtype)
+        if _gaussian_blur2d_cpu_eligible(x) and not (torch.is_grad_enabled() and k.requires_grad):
+            return _gaussian_blur2d_cpu(x, k.view(1, -1), k.view(1, -1), "reflect")
+        # Depthwise separable: same kernel applied independently to every channel.
+        k_h = k.view(1, 1, 1, ksize).expand(C, 1, 1, ksize).contiguous()
+        tmp = F.conv2d(F.pad(x, (pad, pad, 0, 0), mode="reflect"), k_h, groups=C)
+        k_v = k.view(1, 1, ksize, 1).expand(C, 1, ksize, 1).contiguous()
+        return F.conv2d(F.pad(tmp, (0, 0, pad, pad), mode="reflect"), k_v, groups=C)
+
     def get_kernel_size(self, sigma: float) -> int:
+        """Choose an odd Gaussian kernel size for a given blur sigma.
+
+        Args:
+            sigma: Gaussian standard deviation measured in pixels.
+
+        Returns:
+            Odd integer kernel size large enough to cover the effective support
+            used by this scale-pyramid implementation.
+        """
         ksize = int(2.0 * 4.0 * sigma + 1.0)
 
         #  matches OpenCV, but may cause padding problem for small images
@@ -185,11 +291,27 @@ class ScalePyramid(nn.Module):
         return ksize
 
     def get_first_level(self, input: torch.Tensor) -> tuple[torch.Tensor, float, float]:
+        """Create the first image level and its scale metadata.
+
+        The method optionally doubles image resolution, then applies initial
+        Gaussian blur so the first level reaches ``self.init_sigma``. An
+        ``init_sigma`` below the assumed input blur leaves the level unblurred.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Tuple ``(cur_level, cur_sigma, pixel_distance)``. ``cur_level`` is
+            the first image level, ``cur_sigma`` is its effective blur sigma,
+            and ``pixel_distance`` is the level's nominal pixel spacing in input
+            pixels (``0.5`` when doubled). It is not the coordinate map: see the
+            class Convention for where a level pixel lies in the input.
+        """
         pixel_distance = 1.0
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
         if self.double_image:
-            x = upscale_double(input)
+            x = F.interpolate(input, scale_factor=2.0, mode="bilinear", align_corners=True)
             pixel_distance = 0.5
             cur_sigma *= 2.0
         else:
@@ -198,52 +320,85 @@ class ScalePyramid(nn.Module):
         if self.init_sigma > cur_sigma:
             sigma = max(math.sqrt(self.init_sigma**2 - cur_sigma**2), 0.01)
             ksize = self.get_kernel_size(sigma)
-            cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
+            min_dim = min(x.size(2), x.size(3))
+            if self._gk_init is not None and ksize <= min_dim:
+                cur_level = self._blur_fast(x, self._gk_init)
+            else:
+                ksize = min(ksize, min_dim if min_dim % 2 == 1 else min_dim - 1)
+                cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
             cur_sigma = self.init_sigma
         else:
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
     def forward(self, x: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+        """Construct a Gaussian scale pyramid over several octaves.
+
+        Each octave stores multiple progressively blurred versions of the same
+        image resolution. The next octave starts from a downsampled image, so
+        feature detectors can search both spatial location and scale.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Three lists with one entry per octave. ``pyr`` contains stacked
+            image levels, ``sigmas`` contains the octave-relative nominal blur
+            sigma for each level (multiply by the matching ``pixel_dists``
+            entry for the nominal absolute blur in original-image pixels), and
+            ``pixel_dists`` contains the nominal pixel spacing of each level
+            relative to the original image. It is not the coordinate map: see
+            the class Convention for where an octave pixel lies in the input.
+        """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
-        sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
-        pixel_dists = [pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
+        sigmas = [torch.full((bs, self.n_levels + self.extra_levels), cur_sigma, device=x.device, dtype=x.dtype)]
+        pixel_dists = [
+            torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)
+        ]
         pyr = [[cur_level]]
-        oct_idx = 0
+
         while True:
-            cur_level = pyr[-1][0]
+            # Build octave levels incrementally: each level is a Gaussian blur of
+            # the previous one.  This matches VLFeat's level-to-level construction
+            # and avoids discrete truncation artefacts in DoG differences.
+            cur_sigma_oct = self._base_sigma  # sigma of pyr[-1][0] in current octave pixels
             for level_idx in range(1, self.n_levels + self.extra_levels):
-                sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
-                ksize = self.get_kernel_size(sigma)
-
-                # Hack, because PyTorch does not allow to F.pad more than original size.
-                # But for the huge sigmas, one needs huge kernel and padding...
-
-                ksize = min(ksize, cur_level.size(2), cur_level.size(3))
-                if ksize % 2 == 0:
-                    ksize += 1
-
-                cur_level = gaussian_blur2d(cur_level, (ksize, ksize), (sigma, sigma))
-                cur_sigma *= self.sigma_step
-                pyr[-1].append(cur_level)
-                sigmas[-1][:, level_idx] = cur_sigma
+                kernel = getattr(self, f"_gk_{level_idx - 1}")
+                min_dim = min(pyr[-1][-1].size(2), pyr[-1][-1].size(3))
+                if kernel.shape[0] <= min_dim:
+                    new_level = self._blur_fast(pyr[-1][-1], kernel)
+                else:
+                    # Tiny image: clamp kernel size and fall back to the validated path.
+                    delta_sigma = cur_sigma_oct * math.sqrt(self.sigma_step**2 - 1.0)
+                    ksize = min_dim if min_dim % 2 == 1 else min_dim - 1
+                    new_level = gaussian_blur2d(pyr[-1][-1], (ksize, ksize), (delta_sigma, delta_sigma))
+                cur_sigma_oct *= self.sigma_step
+                pyr[-1].append(new_level)
+                sigmas[-1][:, level_idx] = cur_sigma_oct
                 pixel_dists[-1][:, level_idx] = pixel_distance
-            _pyr = pyr[-1][-self.extra_levels]
-            nextOctaveFirstLevel = _pyr[:, :, ::2, ::2]
 
-            pixel_distance *= 2.0
-            cur_sigma = self.init_sigma
-            if min(nextOctaveFirstLevel.size(2), nextOctaveFirstLevel.size(3)) <= self.min_size:
+            # Seed next octave: bilinear 2x downscale of the (-extra_levels) level.
+            # Bilinear resampling is more accurate than integer-stride decimation.
+            _pyr = pyr[-1][-self.extra_levels]
+            H, W = _pyr.shape[2], _pyr.shape[3]
+            if min(H // 2, W // 2) <= self.min_size:
                 break
+            H_new, W_new = H // 2, W // 2
+            nextOctaveFirstLevel = F.interpolate(_pyr, size=(H_new, W_new), mode="bilinear", align_corners=True)
+            pixel_distance *= 2.0
             pyr.append([nextOctaveFirstLevel])
-            sigmas.append(cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
-            pixel_dists.append(pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
-            oct_idx += 1
+            sigmas.append(
+                torch.full((bs, self.n_levels + self.extra_levels), self._base_sigma, device=x.device, dtype=x.dtype)
+            )
+            pixel_dists.append(
+                torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)
+            )
 
         output_pyr = [torch.stack(i, 2) for i in pyr]
-
         return output_pyr, sigmas, pixel_dists
 
 
@@ -253,6 +408,16 @@ def pyrdown(
     r"""Blur a torch.Tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
+
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - output spatial size is ``floor(side / factor)`` per dimension
+          (:math:`5 \times 5 \to 2 \times 2` at the default ``factor=2.0`` —
+          note OpenCV's ``pyrDown`` rounds up instead)
+        - Dynamo ONNX uses float32 reciprocal-scale arithmetic for dynamic sides, which can differ from eager by one
+          pixel for some fractional factors (for example, side 33 and factor 1.1)
+        - border_type: ``'reflect'`` by default (blur before downsample)
+        - align_corners: ``False`` by default
 
     Args:
         input: the torch.Tensor to be downsampled.
@@ -275,18 +440,23 @@ def pyrdown(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
-    _, _, height, width = input.shape
     # blur image
     x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
-    # TODO: use kornia.geometry.resize/rescale
-    # downsample.
-    out: torch.Tensor = F.interpolate(
-        x_blur,
-        size=(int(float(height) / factor), int(float(width) // factor)),
-        mode="bilinear",
-        align_corners=align_corners,
-    )
+    # Keep the output size dynamic in ONNX while preserving eager's floor rule.
+    _, _, height, width = input.shape
+    if isinstance(height, torch.Tensor):
+        # The TorchScript tracer represents sizes as tensors; float64 avoids
+        # rounding a fractional quotient before truncating it.
+        divisor = torch.tensor([factor], dtype=torch.float64)
+        size = [torch.floor(side.reshape(1).double() / divisor).long()[0] for side in (height, width)]
+    elif isinstance(height, torch.SymInt) and torch.onnx.is_in_onnx_export():
+        # Dynamo ONNX lowering supports dynamic SymInt sizes through reciprocal
+        # scale. Its float32 arithmetic may differ from eager for some factors.
+        size = [torch.sym_int(side * (1.0 / factor)) for side in (height, width)]
+    else:
+        size = [int(float(height) / factor), int(float(width) / factor)]
+    out: torch.Tensor = F.interpolate(x_blur, size=size, mode="bilinear", align_corners=align_corners)
     return out
 
 
@@ -295,14 +465,21 @@ def pyrup(input: torch.Tensor, border_type: str = "reflect", align_corners: bool
 
     .. image:: _static/img/pyrup.png
 
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - output spatial size is exactly doubled per dimension (no ``factor``
+          parameter, unlike :func:`pyrdown`; :math:`3 \times 3 \to 6 \times 6`)
+        - border_type: ``'reflect'`` by default (blur after upsample)
+        - align_corners: ``False`` by default
+
     Args:
-        input: the torch.Tensor to be downsampled.
+        input: the torch.Tensor to be upsampled.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
     Return:
-        the downsampled torch.Tensor.
+        the upsampled torch.Tensor.
 
     Examples:
         >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
@@ -338,10 +515,17 @@ def build_pyramid(
     The function constructs a vector of images and builds the Gaussian pyramid
     by recursively applying pyrDown to the previously built pyramid layers.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - ``max_level`` is the total number of levels returned (including the
+          unchanged original as level 0), not a 0-based index of the last level
+        - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
+          per dimension)
+
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
-        max_level: 0-based index of the last (the smallest) pyramid layer.
-          It must be non-negative.
+        max_level: a positive integer giving the number of pyramid levels to return, including the
+          unchanged original image as level 0.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
@@ -354,8 +538,8 @@ def build_pyramid(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) or max_level < 0,
-        f"Invalid max_level, it must be a positive integer. Got: {max_level}",
+        isinstance(max_level, int) and not isinstance(max_level, bool) and max_level > 0,
+        lambda: f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
     # create empty list and append the original image
@@ -391,28 +575,53 @@ def build_laplacian_pyramid(
 
     See :cite:`burt1987laplacian` for more details.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - ``max_level`` is the total number of levels returned, not a 0-based
+          index of the last level
+        - levels ``0`` through ``max_level - 2`` are band-pass residuals: level
+          ``i`` = :func:`build_pyramid` Gaussian level ``i`` minus a
+          :func:`pyrup`-expanded Gaussian level ``i + 1``; only the last
+          element (index ``max_level - 1``) is the unsubtracted final Gaussian
+          level — level 0 is **not** the unchanged original image whenever
+          ``max_level > 1``
+        - the input is reflect-padded up to the next power of two (per dimension)
+          when neither side is already a power of two, or when ``max_level > 1``
+          and a side is not divisible by ``2 ** (max_level - 1)``. When
+          padding is applied, every returned level — including level 0 — is
+          shaped from the padded size
+        - border_type: ``'reflect'`` by default
+        - align_corners: ``False`` by default
+
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
-        max_level: 0-based index of the last (the smallest) pyramid layer.
-          It must be non-negative.
+        max_level: a positive integer giving the number of pyramid levels to return (see Convention
+          above for what each level contains).
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
     Return:
-        Output: :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
+        Output: :math:`[(B, C, H', W'), (B, C, H'/2, W'/2), ...]`, where
+        :math:`(H', W')` equals the input :math:`(H, W)` unless padding was
+        applied (see Convention above), in which case it is the padded size.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
-        isinstance(max_level, int) or max_level < 0,
-        f"Invalid max_level, it must be a positive integer. Got: {max_level}",
+        isinstance(max_level, int) and not isinstance(max_level, bool) and max_level > 0,
+        lambda: f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
 
     h = input.size()[2]
     w = input.size()[3]
     require_padding = not (is_powerof_two(w) or is_powerof_two(h))
+    if max_level > 1:
+        # pyrdown halves each side with floor division, while pyrup doubles it.
+        # Every side subtracted from an upsampled level must therefore be even.
+        stride = 1 << (max_level - 1)
+        require_padding = require_padding or h % stride != 0 or w % stride != 0
 
     if require_padding:
         # in case of arbitrary shape torch.Tensor image need to be padded.
@@ -432,28 +641,3 @@ def build_laplacian_pyramid(
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
     return laplacian_pyramid
-
-
-def upscale_double(x: torch.Tensor) -> torch.Tensor:
-    r"""Upscale image by the factor of 2, even indices maps to original indices.
-
-    Odd indices are linearly interpolated from the even torch.ones.
-
-    Args:
-        x: input image.
-
-    Shape:
-        - Input: :math:`(*, H, W)`
-        - Output :math:`(*, H, W)`
-
-    """
-    KORNIA_CHECK_IS_TENSOR(x)
-    KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
-    double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
-    upscaled = torch.zeros(double_shape, device=x.device, dtype=x.dtype)
-    upscaled[..., ::2, ::2] = x
-    upscaled[..., ::2, 1::2][..., :-1] = (upscaled[..., ::2, ::2][..., :-1] + upscaled[..., ::2, 2::2]) / 2
-    upscaled[..., ::2, -1] = upscaled[..., ::2, -2]
-    upscaled[..., 1::2, :][..., :-1, :] = (upscaled[..., ::2, :][..., :-1, :] + upscaled[..., 2::2, :]) / 2
-    upscaled[..., -1, :] = upscaled[..., -2, :]
-    return upscaled

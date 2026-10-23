@@ -117,19 +117,33 @@ svhn_policy: List[SUBPOLICY_CONFIG] = [
 class AutoAugment(PolicyAugmentBase):
     """Apply AutoAugment :cite:`cubuk2018autoaugment` searched strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects one sub-policy uniformly for each forward call. A sub-policy is an ordered sequence of
+          ``(name, probability, magnitude_bin)`` entries, so every listed operation is considered in order.
+        - a magnitude bin selects the adjacent interval of that operation's eleven-point scale. Bins ``0``
+          through ``9`` are valid for operations with a magnitude; operations that ignore magnitude accept any
+          value. The wrapped operation samples a value inside its selected interval for every batch row;
+          ``posterize`` then rounds to the nearest integer number of bits (so bin ``1``, spanning ``4.4`` to
+          ``4.8``, produces ``4`` or ``5``), ``translate_x`` / ``translate_y`` multiply it by the image size in
+          pixels, and ``shear_x`` / ``shear_y``, whose scale is a shear factor from ``-0.3`` to ``0.3``, map
+          it to degrees with ``rad2deg(atan(x))``, as torchvision does.
+
     Args:
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:
         >>> import torch
         >>> import kornia.augmentation as K
+        >>> from kornia.augmentation.auto import AutoAugment
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(AutoAugment())
         >>> aug(in_tensor).shape
@@ -156,9 +170,26 @@ class AutoAugment(PolicyAugmentBase):
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
+        """Build a :class:`PolicySequential` from one AutoAugment sub-policy.
+
+        Args:
+            subpolicy: Sequence of ``(name, probability, magnitude)`` operation tuples.
+
+        Returns:
+            A sequential container that applies the configured operations in order.
+        """
         return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Return the operations to run for the current forward call.
+
+        Args:
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
+
+        Returns:
+            Iterator of ``(name, module)`` pairs.
+        """
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)

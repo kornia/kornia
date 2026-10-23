@@ -28,6 +28,18 @@ class SmolVLM2(nn.Module):
         self.text_proj = nn.Linear(text_dim, text_dim)
 
     def forward(self, image_features: torch.Tensor, text_features: torch.Tensor) -> torch.Tensor:
+        """Combine projected image and text feature tensors.
+
+        Args:
+            image_features: Visual feature tensor with last dimension matching
+                the configured vision dimension.
+            text_features: Text feature tensor with the same broadcastable
+                leading shape and last dimension matching the configured text
+                dimension.
+
+        Returns:
+            Tensor containing the sum of projected image and text features.
+        """
         v = self.vision_proj(image_features)
         t = self.text_proj(text_features)
         return v + t

@@ -21,9 +21,10 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.filters import filter2d
-from kornia.filters.kernels import get_gaussian_kernel2d
-from kornia.geometry.grid import create_meshgrid
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _torch_grid_sample
+from kornia.filters import filter2d_separable
+from kornia.filters.kernels import get_gaussian_kernel1d
 
 __all__ = ["elastic_transform2d"]
 
@@ -42,19 +43,30 @@ def elastic_transform2d(
 
     .. image:: _static/img/elastic_transform2d.png
 
+    Convention:
+        - image: :math:`(B, C, H, W)`; ``noise``: :math:`(B, 2, H, W)` with
+          channel 0 the x- and channel 1 the y-displacement of the sampling
+          grid (positive x-noise shifts image content left)
+        - displacements are smoothed with a Gaussian (``kernel_size``,
+          ``sigma``) and scaled by ``alpha``
+        - align_corners: ``False`` by default (the matrix warps default to ``True``); zero
+          ``noise`` is an identity under either setting
+        - coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``:
+          zeros, the edge value, or the reflected image
+
     Args:
         image: Input image to be transformed with shape :math:`(B, C, H, W)`.
         noise: Noise image used to spatially transform the input image. Same
           resolution as the input image with shape :math:`(B, 2, H, W)`. The coordinates order
           it is expected to be in x-y.
-        kernel_size: the size of the Gaussian kernel.
+        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
         sigma: The standard deviation of the Gaussian in the y and x directions,
           respectively. Larger sigma results in smaller pixel displacements.
         alpha : The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively.
-        align_corners: Interpolation flag used by ```grid_sample```.
-        mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
-        padding_mode: The padding used by ```grid_sample```. Either ``'torch.zeros'``, ``'border'`` or ``'refection'``.
+          in the x and y directions, respectively.
+        align_corners: Interpolation flag used by ``grid_sample``.
+        mode: Interpolation mode used by ``grid_sample``. Either ``'bilinear'`` or ``'nearest'``.
+        padding_mode: The padding used by ``grid_sample``. Either ``'zeros'``, ``'border'`` or ``'reflection'``.
 
     Returns:
         the elastically transformed input image with shape :math:`(B,C,H,W)`.
@@ -84,38 +96,53 @@ def elastic_transform2d(
     KORNIA_CHECK_SHAPE(noise, ["B", "C", "H", "W"])
 
     device, dtype = image.device, image.dtype
-    # if isinstance(sigma, tuple):
-    #    sigma_t = torch.tensor(sigma, device=device, dtype=dtype)
+
+    # Normalise sigma to a (B, 2) = (sigma_y, sigma_x) tensor, matching get_gaussian_kernel2d.
+    # Python numbers are filled on the device: ``torch.tensor(..., device=cuda)`` copies from the host and waits for
+    # every queued kernel. The values round from the same numbers either way.
     if isinstance(sigma, torch.Tensor):
         sigma = sigma.expand(2)[None, ...]
-    #        sigma = sigma.to(device=device, dtype=dtype)
+    elif all(isinstance(s, (int, float)) for s in sigma):
+        sigma = _device_literal([sigma], device=device, dtype=dtype)
+    else:
+        sigma = torch.tensor([sigma], device=device, dtype=dtype)
+    ksize_y, ksize_x = kernel_size
+    sigma_y, sigma_x = sigma[:, 0, None], sigma[:, 1, None]
 
-    # Get Gaussian kernel for 'y' and 'x' displacement
-    kernel_x = get_gaussian_kernel2d(kernel_size, sigma)  # _t[0].expand(2).unsqueeze(0))
-    kernel_y = get_gaussian_kernel2d(kernel_size, sigma)  # _t[1].expand(2).unsqueeze(0))
+    # The Gaussian used to smooth the displacement field is separable, so filter with two 1-D
+    # passes rather than a full (ksize_y x ksize_x) 2-D convolution: numerically identical up to
+    # float-accumulation order (~1e-7) and ~30-60x cheaper for the default (63, 63) kernel.
+    kernel_1d_x = get_gaussian_kernel1d(ksize_x, sigma_x, device=device, dtype=dtype)
+    kernel_1d_y = get_gaussian_kernel1d(ksize_y, sigma_y, device=device, dtype=dtype)
 
     if isinstance(alpha, torch.Tensor):
         alpha_x = alpha[0]
         alpha_y = alpha[1]
+    elif all(isinstance(a, (int, float)) for a in alpha):
+        alpha_x = _device_literal(alpha[0], device=device, dtype=dtype)
+        alpha_y = _device_literal(alpha[1], device=device, dtype=dtype)
     else:
         alpha_x = torch.tensor(alpha[0], device=device, dtype=dtype)
         alpha_y = torch.tensor(alpha[1], device=device, dtype=dtype)
 
-    # Convolve over a random displacement matrix and scale them with 'alpha'
-    disp_x = noise[:, :1]
-    disp_y = noise[:, 1:]
-
-    disp_x = filter2d(disp_x, kernel=kernel_y, border_type="constant") * alpha_x
-    disp_y = filter2d(disp_y, kernel=kernel_x, border_type="constant") * alpha_y
+    # Convolve over the random displacement matrix and scale by 'alpha'.
+    disp_x = filter2d_separable(noise[:, :1], kernel_1d_x, kernel_1d_y, border_type="constant") * alpha_x
+    disp_y = filter2d_separable(noise[:, 1:], kernel_1d_x, kernel_1d_y, border_type="constant") * alpha_y
 
     # torch.stack and F.normalize displacement
     disp = torch.cat([disp_x, disp_y], 1).permute(0, 2, 3, 1)
 
-    # Warp image based on displacement matrix
+    # Warp image based on displacement matrix. ``create_meshgrid`` uses the
+    # corner-aligned coordinate convention, while ``grid_sample`` interprets
+    # normalized coordinates according to ``align_corners``. Build the identity
+    # grid with the same convention as the sampler so that zero displacement is
+    # an identity transform for both values of ``align_corners``.
     _, _, h, w = image.shape
-    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(
-        image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
-    )
-
-    return warped
+    # CPU does not implement ``affine_grid`` for half or bfloat16 tensors. Generate those
+    # coordinate grids in float32 and narrow once; the grid must still match the image dtype
+    # before it is passed to ``grid_sample``.
+    grid_dtype = torch.float32 if image.dtype in (torch.float16, torch.bfloat16) else image.dtype
+    identity = torch.eye(2, 3, device=image.device, dtype=grid_dtype).unsqueeze(0)
+    grid = F.affine_grid(identity, [1, 1, h, w], align_corners=align_corners)
+    grid = grid.to(image.dtype)
+    return _torch_grid_sample(image, grid + disp, align_corners=align_corners, mode=mode, padding_mode=padding_mode)

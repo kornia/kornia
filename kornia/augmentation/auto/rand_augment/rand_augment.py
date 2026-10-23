@@ -32,7 +32,7 @@ default_policy: List[SUBPOLICY_CONFIG] = [
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
     [("rotate", -30.0, 30.0)],
-    [("posterize", 0.0, 4)],
+    [("posterize", 4.0, 8.0)],
     [("solarize", 0.0, 1.0)],
     [("solarize_add", 0.0, 0.43)],
     [("color", 0.1, 1.9)],
@@ -50,20 +50,39 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class RandAugment(PolicyAugmentBase):
     """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects ``n`` distinct one-operation candidate sub-policies uniformly without replacement, then
+          applies them in the order drawn. ``n`` must be in ``[1, len(policy)]``.
+        - ``m`` must be strictly between ``0`` and ``30`` and sets the magnitude of every selected operation that
+          has one to ``low + (high - low) * m / 30`` over its magnitude range. A symmetric operation's range is
+          ``(0, max)`` with a random sign per row: ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. A
+          ``translate_x`` / ``translate_y`` value is a fraction of the image width / height, applied in pixels.
+          The operation's magnitude mapping is the identity for every default entry except ``shear_x`` /
+          ``shear_y``, which map the shear factor to degrees with ``rad2deg(atan(x))`` (about ``8.5`` degrees at
+          ``m=15`` for the default range), and ``posterize``, which truncates to integer bits. ``posterize`` also
+          runs its range backwards, ``high - (high - low) * m / 30``, so a larger ``m`` keeps fewer bits (``7``,
+          ``6`` and ``4`` at ``m=7``, ``15`` and ``29``).
+
     Args:
-        n: the number of augmentations to apply sequentially.
-        m: magnitude for all the augmentations, ranged from [0, 30].
+        n: the number of augmentations to apply sequentially. Must be at least ``1`` and at
+            most the number of sub-policies in ``policy``, since they are sampled without
+            replacement.
+        m: magnitude for all the augmentations, ranged from (0, 30) exclusive.
         policy: candidate transformations. If None, a default candidate list will be used.
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
                                     If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
-                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
-                                    modules will trigger errors.
+                                    If `rigid`, the result is the same for a policy: every operation wrapper
+                                    contributes a matrix (an intensity operation the identity), so none is rejected.
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:
+        >>> import torch
         >>> import kornia.augmentation as K
+        >>> from kornia.augmentation.auto import RandAugment
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(RandAugment(n=2, m=10))
         >>> aug(in_tensor).shape
@@ -79,38 +98,74 @@ class RandAugment(PolicyAugmentBase):
         transformation_matrix_mode: str = "silent",
     ) -> None:
         if m <= 0 or m >= 30:
-            raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")
+            raise ValueError(f"Expect `m` in (0, 30). Got {m}.")
 
-        if policy is None:
-            _policy = default_policy
-        else:
-            _policy = policy
+        _policy = default_policy if policy is None else policy
+
+        # `rand_selector` samples without replacement, so more operations than there are
+        # sub-policies cannot be honoured, and `n <= 0` silently applies nothing at all.
+        if not 1 <= n <= len(_policy):
+            raise ValueError(f"Expect `n` in [1, {len(_policy)}], the number of sub-policies. Got {n}.")
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         self.n = n
         self.m = m
 
     def rand_selector(self, n: int) -> torch.Tensor:
+        """Randomly choose ``n`` policy indices without replacement.
+
+        Args:
+            n: Number of candidate policies to sample.
+
+        Returns:
+            Tensor of indices into this module's children.
+        """
         perm = torch.randperm(len(self._modules))
-        idx = perm[:n]
-        return idx
+        return perm[:n]
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
+        """Build a :class:`PolicySequential` for one RandAugment candidate op.
+
+        Args:
+            subpolicy: Single-entry policy as ``[(name, low, high)]``.
+
+        Returns:
+            Sequential wrapper around that operation.
+
+        Raises:
+            RuntimeError: ``subpolicy`` contains more than one operation.
+        """
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for RandAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Return the policy modules to execute for this forward call.
+
+        Args:
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
+
+        Returns:
+            Iterator of ``(name, module)`` pairs.
+        """
         if params is None:
-            idx = self.rand_selector(
-                self.n,
-            )
+            idx = self.rand_selector(self.n)
             return self.get_children_by_indices(idx)
 
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        """Sample parameters for the selected RandAugment operations.
+
+        Args:
+            batch_shape: Input shape used for parameter sampling.
+
+        Returns:
+            Parameters for the sampled operations, including magnitude scaled from
+            the global ``m`` value.
+        """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
@@ -123,7 +178,11 @@ class RandAugment(PolicyAugmentBase):
             mag = None
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range
-                mag = m * float(maxval - minval) + minval
+                if op._factor_name == "bits_factor":
+                    mag = (1 - m) * float(maxval - minval) + minval
+                else:
+                    mag = m * float(maxval - minval) + minval
+
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it
             param = ParamItem(name, [ParamItem(next(iter(module.named_children()))[0], mod_param)])

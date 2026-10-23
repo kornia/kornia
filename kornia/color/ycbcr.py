@@ -33,6 +33,10 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_ycbcr.png
 
+    Convention:
+        Channels are Y, Cb, Cr at axis -3. RGB inputs and all output channels use unit-range
+        full-range values.
+
     Args:
         image: RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
 
@@ -64,6 +68,10 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
 def rgb_to_y(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to Y.
 
+    Convention:
+        Returns the Y channel from the unit-range full-range YCbCr convention used by
+        rgb_to_ycbcr.
+
     Args:
         image: RGB Image to be converted to Y with shape :math:`(*, 3, H, W)`.
 
@@ -94,6 +102,10 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    Convention:
+        Expects unit-range, full-range Y, Cb, Cr channels at axis -3 as produced by
+        rgb_to_ycbcr. The final RGB result is clamped to [0, 1].
+
     Args:
         image: YCbCr Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
@@ -119,14 +131,20 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     cb_shifted: torch.Tensor = cb - delta
     cr_shifted: torch.Tensor = cr - delta
 
-    r: torch.Tensor = y + 1.403 * cr_shifted
-    g: torch.Tensor = y - 0.714 * cr_shifted - 0.344 * cb_shifted
-    b: torch.Tensor = y + 1.773 * cb_shifted
+    # Exact inverse of the forward coefficients (0.564, 0.713) above: 1/0.713,
+    # 1/0.564, and the derived green terms. The previously rounded values
+    # (1.403, 0.714, 0.344, 1.773) were not a true inverse, so a
+    # rgb->ycbcr->rgb round-trip drifted by ~2.7e-4 instead of being lossless.
+    r: torch.Tensor = y + 1.4025245442 * cr_shifted
+    g: torch.Tensor = y - 0.7144034731 * cr_shifted - 0.3443401356 * cb_shifted
+    b: torch.Tensor = y + 1.7730496454 * cb_shifted
     return torch.stack([r, g, b], -3).clamp(0, 1)
 
 
 class RgbToYcbcr(nn.Module):
     r"""Convert an image from RGB to YCbCr.
+
+    See the Convention block on :func:`rgb_to_ycbcr`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -148,11 +166,23 @@ class RgbToYcbcr(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB tensor to YCbCr.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            YCbCr tensor with shape :math:`(*, 3, H, W)`.
+        """
         return rgb_to_ycbcr(image)
 
 
 class YcbcrToRgb(nn.Module):
     r"""Convert an image from YCbCr to Rgb.
+
+    See the Convention block on :func:`ycbcr_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -174,4 +204,14 @@ class YcbcrToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a YCbCr tensor to RGB.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to YCbCr channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return ycbcr_to_rgb(image)

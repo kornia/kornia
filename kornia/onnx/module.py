@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Optional, Union
 
 from kornia.core.external import onnx
@@ -29,30 +30,47 @@ __all__ = ["ONNXModule", "load"]
 class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     """ONNXModule to wrap an ONNX operator.
 
+    Calling the object runs the graph on numpy arrays or CPU torch tensors of a dtype numpy has (not bfloat16 or
+    float8) and returns a list of numpy arrays; see ``ONNXRuntimeMixin.__call__``.
+
     Args:
-        arg: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
+        op: One ONNX model: an ONNX ModelProto object, or a file path as ``str`` or :class:`os.PathLike` (a path
+            object always names a local file).
             For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
         providers: A list of execution providers for ONNXRuntime
-            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
+            (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']). A provider that the installed onnxruntime
+            build does not offer is skipped with onnxruntime's ``UserWarning``; the session runs on the CPU if none
+            is left. If None, the CPU.
         session_options: Optional ONNXRuntime session options for optimizing the session.
-        cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
+        cache_dir: The directory where downloaded ONNX models (``hf://`` names and URLs) are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
-        target_ir_version: The target IR version to convert to.
-        target_opset_version: The target OPSET version to convert to.
+        target_ir_version: The IR version to convert the model to. If None, the model keeps its IR version.
+        target_opset_version: The OPSET version to convert the model to. If None, the model keeps its OPSET version.
+        force_download: If True, an ``hf://`` name or a URL is downloaded again, and replaces the cached file, even
+            when it is cached. By default a cached file is used as it is, however old, and one that does not load
+            fails every time until it is deleted. It has no effect on a model object or a path to a local file.
+
+    Note:
+        Given an ``onnx.ModelProto``, the module holds that object itself, not a copy, unless a target version
+        converts it: with no target, or with a target the model already has, ``module.op is op``. Whatever edits the
+        wrapped graph in place, such as :meth:`add_metadata`, then changes the caller's model too. Pass a copy
+        (``copy.deepcopy(op)``) to keep the original unchanged.
 
     """
 
     def __init__(
         self,
-        op: Union[onnx.ModelProto, str],  # type:ignore
+        op: Union[onnx.ModelProto, str, os.PathLike],
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
+        *,
+        force_download: bool = False,
     ) -> None:
-        self.op = self._load_op(op, cache_dir)
+        self.op = self._load_op(op, cache_dir, force_download=force_download)
         if target_ir_version is not None or target_opset_version is not None:
             self.op = self._onnx_version_conversion(
                 self.op, target_ir_version=target_ir_version, target_opset_version=target_opset_version
@@ -62,26 +80,66 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
-    ) -> ort.InferenceSession:  # type: ignore
+    ) -> ort.InferenceSession:
+        """Create an ONNX Runtime session for the wrapped model graph.
+
+        Args:
+            providers: Optional ordered list of ONNX Runtime execution providers,
+                such as ``"CUDAExecutionProvider"`` followed by
+                ``"CPUExecutionProvider"``. The first available provider is used
+                according to ONNX Runtime's provider selection rules.
+            session_options: Optional ONNX Runtime session options controlling
+                graph optimization, threading, logging, and other runtime
+                execution settings.
+
+        Returns:
+            ONNX Runtime inference session bound to ``self.op``, the wrapped
+            ONNX model graph.
+        """
         return super()._create_session(self.op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
+        """Serialize the wrapped ONNX model graph to disk.
+
+        Args:
+            file_path: Destination path for the exported ``.onnx`` file.
+            kwargs: Additional keyword arguments forwarded to the underlying
+                ONNX export helper.
+        """
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:
+        """Attach metadata entries to the wrapped ONNX model graph.
+
+        The metadata is written into the wrapped graph in place. When the module was built from an
+        ``onnx.ModelProto``, that can be the caller's own object; see the note of :class:`ONNXModule`.
+
+        Args:
+            additional_metadata: Optional list of ``(key, value)`` string pairs
+                to store in the ONNX model metadata properties.
+
+        Returns:
+            The wrapped ONNX model graph after metadata has been added.
+        """
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: Union[onnx.ModelProto, str]) -> ONNXModule:  # type:ignore
+def load(model_name: Union[onnx.ModelProto, str, os.PathLike], *, force_download: bool = False) -> ONNXModule:
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with
     the `__call__` method, with less boilerplate.
 
     Args:
-        model_name: The name of the model to load. For Hugging Face-hosted models,
+        model_name: The name of the model to load: a file path as ``str`` or :class:`os.PathLike` (a path object
+            always names a local file), or an ONNX ModelProto object. For Hugging Face-hosted models,
             use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+        force_download: If True, download the model again and replace the cached file, even when it is cached.
+
+    Note:
+        Given an ``onnx.ModelProto``, the module holds that object itself; see the note of
+        :class:`~kornia.onnx.module.ONNXModule`.
 
     """
-    return ONNXModule(model_name)
+    return ONNXModule(model_name, force_download=force_download)

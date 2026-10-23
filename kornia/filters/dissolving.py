@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import os
 from typing import Any
 
@@ -140,15 +142,16 @@ class _DissolvingWraper_HF:
     @torch.no_grad()
     def encode_tensor_to_latent(self, image: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
-            image = (image / 0.5 - 1).to(self.model.device)
+            # The VAE weights stay in the pipeline dtype (e.g. float32), so inputs of any
+            # user dtype (e.g. float64) must be cast to it, not only moved to the device.
+            image = (image / 0.5 - 1).to(device=self.model.device, dtype=self.model.vae.dtype)
             latents = self.model.vae.encode(image)["latent_dist"].sample()
-            latents = latents * 0.18215
-        return latents
+            return latents * 0.18215
 
     @torch.no_grad()
     def decode_tensor_to_latent(self, latents: torch.Tensor) -> torch.Tensor:
-        # Perform in-place detach to reduce memory usage and copies
-        latents = latents.detach()
+        # Detach from autograd, then match the VAE device/dtype (allocates only on mismatch).
+        latents = latents.detach().to(device=self.model.device, dtype=self.model.vae.dtype)
         latents = latents * (1.0 / 0.18215)  # Fused division as multiplication (faster)
         # Reduce attribute lookups by localizing frequently used attributes
         vae_decode = self.model.vae.decode
@@ -190,16 +193,14 @@ class _DissolvingWraper_HF:
         else:
             noise_pred = self.model.unet(latent, t, cond_embeddings).sample
 
-        pred_x0 = self.predict_start_from_noise(noise_pred, t, latent)
-        return pred_x0
+        return self.predict_start_from_noise(noise_pred, t, latent)
 
     @torch.no_grad()
     def dissolve(self, image: torch.Tensor, t: int) -> torch.Tensor:
         self.init_prompt("")
         latent = self.encode_tensor_to_latent(image)
         ddim_latents = self.one_step_dissolve(latent, t)
-        dissolved = self.decode_tensor_to_latent(ddim_latents)
-        return dissolved
+        return self.decode_tensor_to_latent(ddim_latents)
 
 
 class StableDiffusionDissolving(ImageModule):
@@ -207,18 +208,21 @@ class StableDiffusionDissolving(ImageModule):
 
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
     reverse diffusion. Our implementation currently supports HuggingFace implementations of SD 1.4, 1.5
-    and SD XL (replacing the discontinued SD 2.1). SD 1.X tends to remove more details than SD-XL.
+    and SD XL (replacing the discontinued SD 2.1). SD 1.X tends to remove more details than SD XL.
 
-    .. list-table:: Title
+    .. list-table::
         :widths: 32 32 32
         :header-rows: 1
 
         * - SD 1.4
           - SD 1.5
           - SD XL
-        * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
+        * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
+          - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
+
+    Convention:
+        See the Convention block on :class:`~kornia.augmentation.RandomDissolving`.
 
     Args:
         version: the version of the stable diffusion model. Options: "1.4", "1.5", "xl".
@@ -231,7 +235,7 @@ class StableDiffusionDissolving(ImageModule):
         DDIMScheduler = diffusers.DDIMScheduler
 
         # Load the scheduler and model pipeline from diffusers library
-        scheduler = DDIMScheduler(  # type:ignore
+        scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
@@ -253,24 +257,48 @@ class StableDiffusionDissolving(ImageModule):
 
         if version == "1.4":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
             )
         elif version == "1.5":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
             )
         elif version == "xl":
             StableDiffusionXLPipeline = diffusers.StableDiffusionXLPipeline
-            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(
                 "stabilityai/stable-diffusion-xl-base-1.0", scheduler=scheduler, **kwargs
             )
             is_sdxl = True
         else:
-            raise NotImplementedError
+            raise NotImplementedError(
+                f"Unsupported Stable Diffusion version {version!r}. Supported versions are '1.4', '1.5', and 'xl'."
+            )
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000, is_sdxl=is_sdxl)
 
     def forward(self, input: torch.Tensor, step_number: int) -> torch.Tensor:
+        """Apply one Stable Diffusion dissolving step to an image tensor.
+
+        The wrapped diffusion model progressively removes or weakens image
+        content according to the requested diffusion timestep. Lower and higher
+        ``step_number`` values correspond to different points on the internal
+        denoising schedule configured by the wrapper.
+
+        Args:
+            input: Image tensor passed to the wrapped dissolving model. The
+                expected shape follows the model wrapper, typically
+                :math:`(B, C, H, W)`, where :math:`B` is the batch size,
+                :math:`C` is the channel count, :math:`H` is the image height,
+                and :math:`W` is the image width.
+            step_number: Integer diffusion timestep used by the dissolving
+                process. It selects how far along the configured DDIM schedule
+                the image is processed.
+
+        Returns:
+            Tensor produced by the diffusion model at ``step_number``. The
+            tensor follows the wrapper's image layout and represents the
+            dissolved version of ``input``.
+        """
         return self.model.dissolve(input, step_number)

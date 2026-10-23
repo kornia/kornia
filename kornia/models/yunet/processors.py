@@ -28,12 +28,14 @@ def decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> t
     """Decode locations from predictions using priors to undo the encoding for offset regression at train time.
 
     Args:
-        loc: location predictions for loc layers. Shape: [num_priors,4].
+        loc: location predictions for loc layers: the box offsets and five landmark offsets.
+            Shape: [num_priors,14].
         priors: Prior boxes in center-offset form. Shape: [num_priors,4].
         variances: (list[float]) Variances of priorboxes.
 
     Return:
-        torch.Tensor containing decoded bounding box predictions.
+        torch.Tensor containing the decoded box ``xmin, ymin, xmax, ymax`` and the five ``(x, y)`` landmarks, in the
+        normalized coordinates of the priors. Shape: [num_priors,14].
 
     """
     boxes = torch.cat(
@@ -78,11 +80,27 @@ class PriorBox:
         self.feature_maps = [self.feature_map_3th, self.feature_map_4th, self.feature_map_5th, self.feature_map_6th]
 
     def to(self, device: torch.device, dtype: torch.dtype) -> "PriorBox":
+        """Set the device and dtype used when creating prior boxes.
+
+        Args:
+            device: Target device for the generated prior-box tensor.
+            dtype: Target dtype for the generated prior-box tensor.
+
+        Returns:
+            ``self`` with updated tensor creation settings.
+        """
         self.device = device
         self.dtype = dtype
         return self
 
     def __call__(self) -> torch.Tensor:
+        """Generate YuNet prior boxes for all configured feature maps.
+
+        Returns:
+            Tensor with shape :math:`(N, 4)`, where :math:`N` is the total
+            number of anchors and the four values are normalized center-x,
+            center-y, width, and height.
+        """
         anchors: List[float] = []
         for k, f in enumerate(self.feature_maps):
             min_sizes: List[int] = self.min_sizes[k]

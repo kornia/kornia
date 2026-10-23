@@ -23,12 +23,20 @@ import torch
 class AverageMeter:
     """Computes and stores the average and current value.
 
+    Convention:
+        - ``update(val, n)`` adds ``val * n`` to ``sum`` and ``n`` to ``count``, so ``avg`` is the ``n``-weighted
+          mean: the mean over samples when every ``val`` is a batch mean and ``n`` its batch size. ``val`` keeps the
+          last value passed, unweighted.
+        - Values are not rescaled: :func:`~kornia.metrics.accuracy` percentages average to a percentage. A tensor
+          ``val`` keeps ``sum`` a tensor that holds its autograd graph; pass a detached tensor or a Python number to
+          avoid keeping it.
+
     Example:
         >>> stats = AverageMeter()
-        >>> acc1 = torch.tensor(0.99) # coming from K.metrics.accuracy
+        >>> acc1 = torch.tensor(99.0)  # top-1 accuracy of a batch in percent, as in K.metrics.accuracy(...)[0]
         >>> stats.update(acc1, n=1)  # where n is batch size usually
         >>> round(stats.avg, 2)
-        0.99
+        99.0
 
     """
 
@@ -41,12 +49,20 @@ class AverageMeter:
         self.reset()
 
     def reset(self) -> None:
+        """Reset the current value, accumulated sum, count, and average."""
         self.val = 0
         self._avg = 0
         self.sum = 0
         self.count = 0
 
     def update(self, val: Union[float, bool, torch.Tensor], n: int = 1) -> None:
+        """Add a new value to the running average.
+
+        Args:
+            val: New scalar value or scalar tensor to accumulate.
+            n: Weight for ``val``. This is usually the batch size represented
+                by the value.
+        """
         self.val = val
         self.sum += val * n
         self.count += n
@@ -54,6 +70,7 @@ class AverageMeter:
 
     @property
     def avg(self) -> float:
+        """Return the accumulated average as a Python float."""
         if isinstance(self._avg, torch.Tensor):
             return float(self._avg.item())
         return self._avg

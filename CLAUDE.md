@@ -1,107 +1,16 @@
-# CLAUDE.md
+# Claude guide for kornia
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+@AGENTS.md
 
-## About Kornia
+The operational guide is [AGENTS.md](AGENTS.md); the line above imports it for Claude Code.
 
-Kornia is a differentiable computer vision library built on PyTorch. It provides differentiable image processing, geometric vision algorithms, augmentation pipelines, and pre-trained AI models (feature detection/matching, segmentation, etc.).
+When helping a user in this repository:
 
-## Development Environment
+- Start from the smallest relevant code path and run focused checks before making broad claims.
+- Prefer existing kornia utilities and nearby patterns over introducing a parallel abstraction.
+- Preserve tensor device, dtype, batch semantics, gradients, and `torch.compile` behavior when they apply.
+- Treat float16, bfloat16, MPS, CUDA, JIT, and ONNX as distinct compatibility surfaces; do not assume a CPU float32 result covers them.
+- Explain what you verified and what remains unverified.
+- Ask before gathering broad environment information. Request only useful versions and hardware details, and remind users to redact paths, usernames, tokens, hostnames, and private data names.
 
-The project uses [pixi](https://pixi.sh) for environment management and `uv` for Python package management.
-
-```bash
-# Set up development environment (Python 3.11 default)
-pixi install
-
-# For specific Python versions
-pixi install -e py312
-pixi install -e py313
-
-# For CUDA development
-pixi run -e cuda install
-```
-
-## Common Commands
-
-```bash
-# Run all tests
-pixi run test
-
-# Run a specific test file
-pixi run test tests/test_geometry_transform.py
-
-# Run tests with pytest options (dtype: bfloat16, float16, float32, float64, all; device: cpu, cuda, mps, tpu, all)
-pixi run test tests/test_geometry_transform.py --dtype=float32,float64 --device=all
-
-# Run quick tests (excludes jit, grad, nn)
-pixi run test-quick
-
-# Linting (ruff via pre-commit)
-pixi run lint
-
-# Type checking (uses `ty`)
-pixi run typecheck
-
-# Doctests
-pixi run doctest
-
-# Build documentation
-pixi run build-docs
-
-# Run tests with specific device/dtype via env vars
-KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 pixi run test
-KORNIA_TEST_RUNSLOW=true pixi run test-slow
-```
-
-## Code Architecture
-
-The library is structured as submodules under `kornia/`:
-
-- **`kornia/filters/`** — Image filtering (Gaussian, Sobel, Median, Canny, etc.). Imported first in `__init__.py` as it's core.
-- **`kornia/geometry/`** — Geometric transformations (affine, homography, camera models, stereo, 3D). Also core, imported first.
-- **`kornia/augmentation/`** — Augmentation pipeline (`AugmentationSequential`, `RandomAffine`, etc.)
-- **`kornia/color/`** — Color space conversions (RGB, HSV, grayscale, etc.)
-- **`kornia/feature/`** — Feature detection and description (SIFT, HardNet, DISK, DeDoDe, LoFTR, LightGlue, etc.)
-- **`kornia/enhance/`** — Image enhancement (histogram equalization, CLAHE, gamma correction)
-- **`kornia/losses/`** — Loss functions (SSIM, PSNR, Dice, Hausdorff, etc.)
-- **`kornia/models/`** — Pre-trained AI models (YuNet face detection, SAM segmentation, etc.)
-- **`kornia/morphology/`** — Morphological operations (dilation, erosion, etc.)
-- **`kornia/onnx/`** — ONNX export and inference (`ONNXSequential`)
-- **`kornia/contrib/`** — Experimental/contributed modules
-- **`kornia/core/`** — Base classes (`ImageModule`, `ImageSequential`, `TensorWrapper`, ONNX mixins)
-- **`kornia/transpiler/`** — Multi-framework support via ivy (JAX, TensorFlow, NumPy backends)
-- **`testing/`** — Test utilities (not tests). `testing/base.py` contains `BaseTester` and `assert_close`.
-
-**Import order matters**: `filters` and `geometry` must be imported before other modules to avoid circular dependencies (see `kornia/__init__.py`).
-
-## Testing Patterns
-
-All tests should inherit from `BaseTester` (from `testing.base`):
-
-```python
-from testing.base import BaseTester
-
-class TestMyFunction(BaseTester):
-    def test_smoke(self, device, dtype): ...          # Basic run with all arg combinations
-    def test_exception(self, device, dtype): ...      # Exception cases
-    def test_cardinality(self, device, dtype): ...    # Output shapes
-    def test_gradcheck(self, device): ...             # Gradient checking via self.gradcheck()
-    def test_dynamo(self, device, dtype, torch_optimizer): ...  # torch.compile compat
-```
-
-The `device` and `dtype` fixtures are injected automatically. Use `self.assert_close()` for tensor comparisons. Test configurations are driven by env vars `KORNIA_TEST_DEVICE` and `KORNIA_TEST_DTYPE`, or by `--device`/`--dtype` pytest args.
-
-## Coding Standards
-
-- **Python >= 3.11** with `from __future__ import annotations` for non-JIT modules
-- **Line length**: 120 characters (ruff enforced)
-- **Type hints required** on all function inputs and outputs; use `torch.Tensor` directly (not string annotations for tensor types in JIT-compatible code)
-- **Only PyTorch** as a third-party dependency — no other libraries
-- **Use existing `kornia` utilities** rather than reimplementing with raw PyTorch
-- **Docstrings**: Follow existing codebase style; all public APIs need docstrings
-- Every source file must start with the Apache 2.0 license header (managed by `add-license-header`)
-
-## Pre-commit Hooks
-
-Install hooks with `pre-commit install`. CI enforces ruff formatting, linting, and docformatter.
+If you help prepare a contribution, summarize what you changed and checked so the user can reuse that information in the pull request.

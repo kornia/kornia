@@ -15,32 +15,41 @@
 # limitations under the License.
 #
 
+import math
 from typing import Dict, Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
+from .siftdesc import _gradient_magnitude_orientation
 
-urls: Dict[str, str] = {}
-urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
+urls: Dict[str, str | list[str]] = {}
+urls["orinet"] = [
+    hf_url("orinet", "OriNet.pth"),
+    "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth",
+]
 
 
 class PassLAF(nn.Module):
-    """Dummy module to use instead of local feature orientation or affine shape estimator."""
+    """Dummy module to use instead of local feature orientation or affine shape estimator.
+
+    Convention:
+        Returns its ``laf`` argument itself, not a copy, and does not use ``img``.
+    """
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
         Args:
             laf: :math:`(B, N, 2, 3)`
-            img: :math:`(B, 1, H, W)`
+            img: not used.
 
         Returns:
             LAF, unchanged :math:`(B, N, 2, 3)`
@@ -50,14 +59,29 @@ class PassLAF(nn.Module):
 
 
 class PatchDominantGradientOrientation(nn.Module):
-    """Module, which estimates the dominant gradient orientation of the given patches, in radians.
+    r"""Module, which estimates the direction of the dominant gradient of the given patches, as an angle in radians.
 
     Zero angle points towards right.
+
+    Convention:
+        - The angle is that of the dominant gradient, which points toward brighter values, counter-clockwise on
+          screen with image y pointing down: :math:`-\operatorname{atan2}(g_y, g_x)` in pixel coordinates. A gradient
+          pointing down the patch gives :math:`-\pi / 2`. :class:`~kornia.feature.LAFOrienter` adds the angle to the
+          LAF orientation.
+        - The angle is not wrapped into :math:`(-\pi, \pi]`: it can exceed :math:`\pi` by up to
+          ``pi / num_angular_bins``.
 
     Args:
         patch_size: size of the (square) input patch.
         num_angular_bins: number of histogram bins.
         eps: for safe division, and arctan.
+
+    Note:
+        Each gradient pixel is accumulated into its two neighbouring histogram bins with
+        ``scatter_add_``. On CUDA that accumulation uses atomics, so two calls on identical input
+        can differ at the ulp level, and a patch whose two strongest bins are nearly tied can
+        return the neighbouring peak. ``torch.use_deterministic_algorithms(True)`` selects the
+        deterministic kernel and restores run-to-run reproducibility.
 
     """
 
@@ -71,7 +95,12 @@ class PatchDominantGradientOrientation(nn.Module):
         with torch.no_grad():
             self.angular_smooth.weight[:] = get_gaussian_discrete_kernel1d(5, 1.6)
         sigma: float = float(self.patch_size) / 6.0
-        self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
+        # non-persistent: derived from `patch_size`, so it stays out of `state_dict()` but follows `.to()`
+        self.register_buffer(
+            "weighting",
+            get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True),
+            persistent=False,
+        )
 
     def __repr__(self) -> str:
         return (
@@ -94,40 +123,74 @@ class PatchDominantGradientOrientation(nn.Module):
             raise TypeError(
                 f"input shape should be must be [Bx1x{self.patch_size}x{self.patch_size}]. Got {patch.size()}"
             )
-        self.weighting = self.weighting.to(patch.dtype).to(patch.device)
-        self.angular_smooth = self.angular_smooth.to(patch.dtype).to(patch.device)
+        # cast into a local; rebinding `self.weighting` would make the buffer's dtype/device depend on
+        # whichever tensor was passed last, and is a `torch.compile` guard hazard.
+        weighting = self.weighting.to(patch.dtype).to(patch.device)
+        angular_smooth_weight = self.angular_smooth.weight.to(patch.dtype).to(patch.device)
+        angular_smooth_bias = self.angular_smooth.bias
+        if angular_smooth_bias is not None:
+            angular_smooth_bias = angular_smooth_bias.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch)
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * self.weighting
-        ori: torch.Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        # float16 is lifted to float32 inside: the squared gradient of a flat patch underflows
+        # and `sqrt(0 + eps)` with an underflowed `eps` is NaN in the backward and, through
+        # `atan2`, in the forward as well. bfloat16 holds both and takes the plain expression.
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
+        mag = mag * weighting
 
-        o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)
+        o_big = float(self.num_ang_bins) * (ori + math.pi) / (2.0 * math.pi)
         bo0_big = torch.floor(o_big)
         wo1_big = o_big - bo0_big
         bo0_big = bo0_big % self.num_ang_bins
         bo1_big = (bo0_big + 1) % self.num_ang_bins
         wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
-        ang_bins_list = []
-        for i in range(0, self.num_ang_bins):
-            ang_bins_i = F.adaptive_avg_pool2d(
-                (bo0_big == i).to(patch.dtype) * wo0_big + (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)
+        # Each pixel votes into just two bins. Accumulate those votes directly instead
+        # of scanning the entire patch once per angular bin. Like average pooling,
+        # accumulate half-precision inputs in float32, then divide before casting back.
+        accumulation_dtype = torch.float64 if patch.dtype == torch.float64 else torch.float32
+        ang_bins = torch.zeros(patch.shape[0], self.num_ang_bins, device=patch.device, dtype=accumulation_dtype)
+        # The `%` after the integer conversion only keeps the index in range: a NaN orientation
+        # casts to an arbitrary integer. A patch with NaN pixels returns a finite but arbitrary
+        # angle, as it did before this accumulation; the `max`/`where` below do not propagate NaN.
+        ang_bins.scatter_add_(
+            1, bo0_big.flatten(1).long() % self.num_ang_bins, wo0_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins.scatter_add_(
+            1, bo1_big.flatten(1).long() % self.num_ang_bins, wo1_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins = (ang_bins / (W * H)).to(patch.dtype).view(-1, 1, self.num_ang_bins)
+        angular_smooth_padding = self.angular_smooth.padding
+        if self.angular_smooth.padding_mode != "zeros":
+            ang_bins = F.pad(
+                ang_bins,
+                (angular_smooth_padding[0], angular_smooth_padding[0]),
+                mode=self.angular_smooth.padding_mode,
             )
-            ang_bins_list.append(ang_bins_i)
-        ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
-        ang_bins = self.angular_smooth(ang_bins).view(-1, self.num_ang_bins)
+            angular_smooth_padding = (0,)
+        ang_bins = F.conv1d(
+            ang_bins,
+            angular_smooth_weight,
+            angular_smooth_bias,
+            self.angular_smooth.stride,
+            angular_smooth_padding,
+            self.angular_smooth.dilation,
+            self.angular_smooth.groups,
+        ).view(-1, self.num_ang_bins)
         values, indices = ang_bins.max(1)
         indices_left = (self.num_ang_bins + indices - 1) % self.num_ang_bins
         indices_right = (indices + 1) % self.num_ang_bins
         left = torch.gather(ang_bins, 1, indices_left.reshape(-1, 1)).reshape(-1)
         center = values
         right = torch.gather(ang_bins, 1, indices_right.reshape(-1, 1)).reshape(-1)
-        c_subpix = 0.5 * (left - right) / (left + right - 2.0 * center)
-        angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
-        return angle
+        # A flat patch has an empty histogram (a zero-gradient pixel contributes no magnitude), and a
+        # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
+        denom = left + right - 2.0 * center
+        c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
+        return -((2.0 * math.pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - math.pi)
 
 
 class OriNet(nn.Module):
@@ -136,6 +199,15 @@ class OriNet(nn.Module):
     Zero angle points towards right. This is based on the original code from paper
     "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability"".
     See :cite:`AffNet2018` for more details.
+
+    Convention:
+        - With the pretrained weights, the angle turns with the patch content, in the sense of
+          :class:`~kornia.feature.PatchDominantGradientOrientation`: content turned counter-clockwise on screen
+          increases the angle. See :class:`~kornia.feature.LAFOrienter` for its use.
+        - Each patch is normalised first: its mean is subtracted and the result is divided by its standard deviation
+          plus ``1e-6``. An offset of its intensity therefore does not change the angle, and a positive gain changes it
+          only through that ``1e-6``: little on a textured patch, more as the patch flattens, up to ``pi`` rad on a
+          nearly flat one. An inverted patch generally gets a different angle.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
@@ -150,12 +222,12 @@ class OriNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> orinet = OriNet()
+        >>> orinet = OriNet(pretrained=False).eval()
         >>> angle = orinet(input) # 16
 
     """
 
-    def __init__(self, pretrained: bool = False, eps: float = 1e-8) -> None:
+    def __init__(self, pretrained: bool = True, eps: float = 1e-8) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -184,14 +256,16 @@ class OriNet(nn.Module):
         self.eps = eps
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["orinet"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["orinet"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=False)
-        self.eval()
+            self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Normalize the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        # `torch.std_mean` decomposes to `prims.sum`, which has no ONNX lowering; the split form is equivalent.
+        mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
+        sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
@@ -208,8 +282,7 @@ class OriNet(nn.Module):
 
         """
         xy = self.features(self._normalize_input(patch)).view(-1, 2)
-        angle = torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
-        return angle
+        return torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
 
 
 class LAFOrienter(nn.Module):
@@ -218,9 +291,20 @@ class LAFOrienter(nn.Module):
     Then runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
     :class:`~kornia.feature.OriNet` on patches and then rotates the LAFs by the estimated angles
 
+    Convention:
+        - Each LAF's patch (:func:`~kornia.feature.extract_patches_from_pyramid`) gives an angle, measured in the
+          patch, and the output orientation is the input orientation plus that angle, converted to degrees, modulo
+          360 degrees. :func:`~kornia.feature.get_laf_orientation` reads it back in ``[-180, 180]``. The centre, the
+          scale and the upright shape (:func:`~kornia.feature.make_upright`) of the LAF are kept.
+        - For an isotropic LAF, the default angle detector therefore turns the LAF's x axis onto the dominant
+          gradient, whatever the input orientation: content turned 30 degrees counter-clockwise on screen turns the
+          output orientation by +30, the sign of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`).
+
     Args:
-        patch_size:
-        num_angular_bins:
+        patch_size: side of the square patch sampled for each LAF.
+        num_angular_bins: number of histogram bins of the default angle detector; not used when ``angle_detector``
+          is given.
         angle_detector: Patch orientation estimator, e.g. :class:`~kornia.feature.PatchDominantGradientOrientation`
           or OriNet.
 

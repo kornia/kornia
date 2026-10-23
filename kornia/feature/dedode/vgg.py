@@ -60,11 +60,18 @@ class VGG(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""Run this DeDoDe module forward.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            Classification logits with shape :math:`(B, \text{num\_classes})`.
+        """
         x = self.features(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.classifier(x)
-        return x
+        return self.classifier(x)
 
 
 def make_layers(cfg: List[Union[str, int]], batch_norm: bool = False) -> nn.Sequential:
@@ -94,8 +101,7 @@ cfgs: Dict[str, List[Union[str, int]]] = {
 
 
 def _vgg(cfg: str, batch_norm: bool, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
-    model = VGG(make_layers(cfgs[cfg], batch_norm=batch_norm), **kwargs)
-    return model
+    return VGG(make_layers(cfgs[cfg], batch_norm=batch_norm), **kwargs)
 
 
 def vgg11(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:

@@ -22,12 +22,15 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
     r"""Apply random channel dropout to a batch of images.
 
     .. image:: _static/img/RandomChannelDropout.png
+
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         num_drop_channels: Number of channels to drop randomly. Default is 1.
@@ -40,6 +43,15 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
+
+    Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
+        - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``, an
+          ``int`` or ``float`` in ``[0, 1]`` checked at construction. Every other channel is left exactly as it
+          came in, so the input's value range is carried through.
+        - ``num_drop_channels`` is checked against the input's channel count on the forward pass.
+        - ``fill_value`` is held in a non-persistent buffer, so ``.to(...)`` moves and casts it while
+          ``state_dict()`` gains no key for it.
 
     .. note::
         If `num_drop_channels` is set to 1, it means that for each image in the batch,
@@ -84,12 +96,18 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
-        KORNIA_CHECK_TYPE(fill_value, float, f"`fill_value` must be a float. Got: {type(fill_value)}")
+        KORNIA_CHECK_TYPE(fill_value, (int, float), f"`fill_value` must be an int or a float. Got: {type(fill_value)}")
         KORNIA_CHECK(
             0.0 <= fill_value <= 1.0,
-            f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}",
+            f"Invalid value in `fill_value`. Must be a number between 0 and 1. Got: {fill_value}",
         )
-        self.fill_value = torch.tensor(fill_value)
+        # `fill_value` is fully determined by the constructor arg (derived state, not
+        # learned) -- register as a non-persistent buffer so `.to()` / `.cuda()` /
+        # `.half()` move it through the normal nn.Module machinery instead of leaving
+        # it behind as a plain attribute. persistent=False keeps state_dict() keys
+        # unchanged, same rationale/convention as #4079/#4319.
+        # float() keeps an int fill_value from registering an int64 buffer, which `.half()` would not cast.
+        self.register_buffer("fill_value", torch.tensor(float(fill_value)), persistent=False)
 
         KORNIA_CHECK_TYPE(num_drop_channels, int, f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}")
         KORNIA_CHECK(
@@ -114,8 +132,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         )
 
         out = input.clone()
-        out[params["batch_idx"], params["channel_idx"], ...] = self.fill_value.to(
-            device=input.device, dtype=input.dtype
-        )
+        batch_idx = _to_device_nonblocking(params["batch_idx"], input.device)
+        channel_idx = _to_device_nonblocking(params["channel_idx"], input.device)
+        out[batch_idx, channel_idx, ...] = _to_device_nonblocking(self.fill_value, input.device, input.dtype)
 
         return out

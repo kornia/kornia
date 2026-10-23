@@ -20,7 +20,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional, Sequence, TypeVar, cast
+from types import UnionType
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, TypeVar, Union, cast, get_args, get_origin
 
 import torch
 from torch import float16, float32, float64
@@ -45,7 +46,9 @@ __all__ = [
     "KORNIA_CHECK_LAF",
     "KORNIA_CHECK_SAME_DEVICE",
     "KORNIA_CHECK_SAME_DEVICES",
+    "KORNIA_CHECK_SAME_SIZE",
     "KORNIA_CHECK_SHAPE",
+    "KORNIA_CHECK_SIZES",
     "KORNIA_CHECK_TYPE",
     "KORNIA_UNWRAP",
     "BaseError",
@@ -81,6 +84,22 @@ def _should_enable_checks() -> bool:
 
 # Module-level flag - evaluated once at import time, but can be changed at runtime
 _KORNIA_CHECKS_ENABLED: bool = _should_enable_checks()
+
+if TYPE_CHECKING:
+    # A check message is a string, or a function without arguments that builds it; see ``KORNIA_CHECK``.
+    CheckMessage = Union[str, Callable[[], str]]
+else:
+    # TorchScript resolves the annotations at run time and has no type for a Python function, so it sees ``str``. A
+    # message function is Python-only, and ``_resolve_msg`` calls it under a bare ``is_scripting()`` guard.
+    CheckMessage = str
+
+
+def _resolve_msg(msg: Optional[CheckMessage]) -> Optional[str]:
+    """Return the message of a failed check, calling it first if it is a function."""
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if callable(msg):
+            return msg()
+    return msg
 
 
 def are_checks_enabled() -> bool:
@@ -128,7 +147,9 @@ def enable_checks() -> None:
 # Logger api
 
 
-def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_SHAPE(
+    x: torch.Tensor, shape: list[str], msg: Optional[CheckMessage] = None, raises: bool = True
+) -> bool:
     """Check whether a tensor has a specified shape.
 
     The shape can be specified with a implicit or explicit list of strings.
@@ -136,8 +157,10 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
 
     Args:
         x: the tensor to evaluate.
-        shape: a list with strings with the expected shape.
-        msg: optional custom message to append to error.
+        shape: a list with strings with the expected shape. A leading or trailing ``"*"`` matches any number
+            of dimensions; ``["*"]`` accepts any shape, and an empty list accepts only a scalar tensor.
+        msg: optional custom message to append to error, or a function that returns it; see
+            :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
@@ -159,14 +182,16 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    if "*" == shape[0]:
+    dimension_offset = 0
+    if len(shape) > 0 and "*" == shape[0]:
         shape_to_check = shape[1:]
-        x_shape_to_check = x.shape[-len(shape) + 1 :]
-    elif "*" == shape[-1]:
+        dimension_offset = max(len(x.shape) - len(shape_to_check), 0)
+        x_shape_to_check = x.shape[dimension_offset:]
+    elif len(shape) > 0 and "*" == shape[-1]:
         shape_to_check = shape[:-1]
         x_shape_to_check = x.shape[: len(shape) - 1]
     else:
@@ -175,6 +200,7 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
 
     if len(x_shape_to_check) != len(shape_to_check):
         if raises:
+            msg = _resolve_msg(msg)
             expected_dims = len(shape_to_check)
             actual_dims = len(x_shape_to_check)
             error_msg = f"Shape dimension mismatch: expected {expected_dims} dimensions, got {actual_dims}.\n"
@@ -188,8 +214,7 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
                 actual_shape=x_shape_list,
                 expected_shape=shape,
             )
-        else:
-            return False
+        return False
 
     for i in range(len(x_shape_to_check)):
         # The voodoo below is because torchscript does not like
@@ -200,7 +225,10 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
         dim = int(dim_)
         if x_shape_to_check[i] != dim:
             if raises:
-                error_msg = f"Shape mismatch at dimension {i}: expected {dim}, got {x_shape_to_check[i]}.\n"
+                msg = _resolve_msg(msg)
+                error_msg = (
+                    f"Shape mismatch at dimension {i + dimension_offset}: expected {dim}, got {x_shape_to_check[i]}.\n"
+                )
                 error_msg += f"  Expected shape: {shape}\n"
                 x_shape_list = list(x.shape)
                 error_msg += f"  Actual shape: {x_shape_list}"
@@ -211,17 +239,22 @@ def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = N
                     actual_shape=x_shape_list,
                     expected_shape=shape,
                 )
-            else:
-                return False
+            return False
     return True
 
 
-def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK(condition: bool, msg: Optional[CheckMessage] = None, raises: bool = True) -> bool:
     """Check any arbitrary boolean condition.
 
     Args:
         condition: the condition to evaluate.
-        msg: message to show in the exception.
+        msg: message to show in the exception, or a function without arguments that returns it. A function is
+            called only when the check fails. Python builds an f-string argument on every call, and under a
+            dynamic-shape ``torch.compile`` formatting a tensor size or an ``int`` argument specializes it, so each
+            new value would compile a new graph. A check on sizes therefore compares them with
+            :func:`KORNIA_CHECK_SAME_SIZE`, :func:`KORNIA_CHECK_SIZES` or :func:`KORNIA_CHECK_SHAPE`, which format
+            only on failure, and any other message that formats such a value is a function, as in
+            ``lambda: f"got {n}"``. TorchScript takes only a string.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
@@ -237,18 +270,18 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True
         >>> x = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK(x.shape[-2:] == (3, 3), "Invalid homography")
         True
+        >>> KORNIA_CHECK(x.shape[0] == 2, lambda: f"Expected a batch of 2, got {x.shape[0]}")
+        True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
     if not condition:
         if raises:
-            if msg is None:
-                error_msg = "Validation condition failed"
-            else:
-                error_msg = msg
+            msg = _resolve_msg(msg)
+            error_msg = "Validation condition failed" if msg is None else msg
             raise BaseError(error_msg)
         return False
     return True
@@ -266,16 +299,27 @@ def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:
     return cast(typ, maybe_obj)
 
 
-T = TypeVar("T", bound=type)
+_T = TypeVar("_T", bound=type)
 
 
-def KORNIA_CHECK_TYPE(x: Any, typ: T | tuple[T, ...], msg: Optional[str] = None, raises: bool = True) -> bool:
-    """Check the type of an aribratry variable.
+def _type_name(typ: Any) -> str:
+    """Name a type for an error message, spelling a union of any kind as ``int | str``."""
+    # A union's own name says nothing: typing.Union[...] is "Union", and from Python 3.14 on so is ``int | str``, which
+    # has no ``__name__`` before 3.14. Name it from its members instead.
+    if get_origin(typ) in (Union, UnionType):
+        return " | ".join("None" if arg is type(None) else _type_name(arg) for arg in get_args(typ))
+    return getattr(typ, "__name__", repr(typ))
+
+
+def KORNIA_CHECK_TYPE(
+    x: Any, typ: _T | tuple[_T, ...], msg: Optional[CheckMessage] = None, raises: bool = True
+) -> bool:
+    """Check the type of an arbitrary variable.
 
     Args:
         x: any input variable.
         typ: the expected type of the variable.
-        msg: message to show in the exception.
+        msg: message to show in the exception, or a function that returns it; see :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
@@ -292,40 +336,40 @@ def KORNIA_CHECK_TYPE(x: Any, typ: T | tuple[T, ...], msg: Optional[str] = None,
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
     if not isinstance(x, typ):
         if raises:
+            msg = _resolve_msg(msg)
             # JIT doesn't support try-except or type introspection, so use simple message
             if torch.jit.is_scripting():
                 error_msg = "Type mismatch."
                 if msg is not None:
                     error_msg += f"\n  {msg}"
                 raise TypeCheckError(error_msg)
-            else:
-                # In Python mode, we can safely use type introspection
-                expected_type_str = typ.__name__ if not isinstance(typ, tuple) else " | ".join(t.__name__ for t in typ)
-                type_name = str(type(x))
-                error_msg = f"Type mismatch: expected {expected_type_str}, got {type_name}."
-                if msg is not None:
-                    error_msg += f"\n  {msg}"
-                raise TypeCheckError(
-                    error_msg,
-                    actual_type=type(x),
-                    expected_type=typ,
-                )
+            # In Python mode, we can safely use type introspection
+            expected_type_str = " | ".join(_type_name(t) for t in typ) if isinstance(typ, tuple) else _type_name(typ)
+            type_name = str(type(x))
+            error_msg = f"Type mismatch: expected {expected_type_str}, got {type_name}."
+            if msg is not None:
+                error_msg += f"\n  {msg}"
+            raise TypeCheckError(
+                error_msg,
+                actual_type=type(x),
+                expected_type=typ,
+            )
         return False
     return True
 
 
-def KORNIA_CHECK_IS_TENSOR(x: Any, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_TENSOR(x: Any, msg: Optional[CheckMessage] = None, raises: bool = True) -> bool:
     """Check the input variable is a Tensor.
 
     Args:
         x: any input variable.
-        msg: message to show in the exception.
+        msg: message to show in the exception, or a function that returns it; see :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
@@ -343,29 +387,30 @@ def KORNIA_CHECK_IS_TENSOR(x: Any, msg: Optional[str] = None, raises: bool = Tru
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
     if not isinstance(x, torch.Tensor):
         if raises:
+            msg = _resolve_msg(msg)
             # JIT doesn't support try-except or type introspection, so use simple message
             if torch.jit.is_scripting():
                 error_msg = "Type mismatch: expected Tensor."
                 if msg is not None:
                     error_msg += f"\n  {msg}"
                 raise TypeCheckError(error_msg)
-            else:
-                # In Python mode, we can safely use type introspection
-                type_name = str(type(x))
-                error_msg = f"Type mismatch: expected Tensor, got {type_name}."
-                if msg is not None:
-                    error_msg += f"\n  {msg}"
-                raise TypeCheckError(
-                    error_msg,
-                    actual_type=type(x),
-                    expected_type=torch.Tensor,
-                )
+
+            # In Python mode, we can safely use type introspection
+            type_name = str(type(x))
+            error_msg = f"Type mismatch: expected Tensor, got {type_name}."
+            if msg is not None:
+                error_msg += f"\n  {msg}"
+            raise TypeCheckError(
+                error_msg,
+                actual_type=type(x),
+                expected_type=torch.Tensor,
+            )
         return False
     return True
 
@@ -397,14 +442,18 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[Any]], raises: bool = Tr
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
     are_tensors = isinstance(x, list) and all(isinstance(d, torch.Tensor) for d in x)
     if not are_tensors:
         if raises:
-            error_msg = f"Type mismatch: expected list[Tensor], got {type(x).__name__}."
+            got = type(x).__name__
+            if isinstance(x, list):
+                index = next(i for i, d in enumerate(x) if not isinstance(d, torch.Tensor))
+                got += f"; element {index} is {type(x[index]).__name__}"
+            error_msg = f"Type mismatch: expected list[Tensor], got {got}."
             raise TypeCheckError(
                 error_msg,
                 actual_type=type(x),
@@ -438,7 +487,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: torch.Tensor, y: torch.Tensor, raises: bool = Tr
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -456,15 +505,18 @@ def KORNIA_CHECK_SAME_DEVICE(x: torch.Tensor, y: torch.Tensor, raises: bool = Tr
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICES(tensors: list[torch.Tensor], msg: Optional[str] = None, raises: bool = True) -> bool:
-    """Check whether a list provided tensors live in the same device.
+def KORNIA_CHECK_SAME_DEVICES(
+    tensors: list[torch.Tensor], msg: Optional[CheckMessage] = None, raises: bool = True
+) -> bool:
+    """Check whether a non-empty list of tensors live on the same device.
 
     Args:
-        tensors: a list of tensors.
-        msg: message to show in the exception.
+        tensors: a non-empty list of tensors.
+        msg: message to show in the exception, or a function that returns it; see :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
+        TypeCheckError: if tensors is not a non-empty list of tensors and raises is True.
         DeviceError: if all the tensors are not in the same device and raises is True.
 
     Note:
@@ -480,13 +532,32 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[torch.Tensor], msg: Optional[str] = 
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element", raises)
+    if not (isinstance(tensors, list) and len(tensors) > 0 and all(isinstance(x, torch.Tensor) for x in tensors)):
+        if raises:
+            msg = _resolve_msg(msg)
+            prefix = "Expected a non-empty list of tensors, got"
+            suffix = "" if msg is None else f"\n  {msg}"
+            if not isinstance(tensors, list):
+                raise TypeCheckError(
+                    f"{prefix} {type(tensors).__name__}.{suffix}", actual_type=type(tensors), expected_type=list
+                )
+            if len(tensors) == 0:
+                raise TypeCheckError(f"{prefix} an empty list.{suffix}")
+            for x in tensors:
+                if not isinstance(x, torch.Tensor):
+                    raise TypeCheckError(
+                        f"{prefix} a list containing {type(x).__name__}.{suffix}",
+                        actual_type=type(x),
+                        expected_type=torch.Tensor,
+                    )
+        return False
     if not all(tensors[0].device == x.device for x in tensors):
         if raises:
+            msg = _resolve_msg(msg)
             devices = [x.device for x in tensors]
             error_msg = "Device mismatch: all tensors must be on the same device.\n"
             error_msg += f"  Expected device: {tensors[0].device}\n"
@@ -526,7 +597,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: torch.Tensor, y: torch.Tensor, raises: bool = Tru
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
@@ -546,12 +617,149 @@ def KORNIA_CHECK_SAME_SHAPE(x: torch.Tensor, y: torch.Tensor, raises: bool = Tru
     return True
 
 
-def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_SIZE(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    dim: int = 0,
+    allow_one: bool = False,
+    msg: Optional[CheckMessage] = None,
+    raises: bool = True,
+) -> bool:
+    """Check whether two tensors have the same size along a dimension.
+
+    The sizes are compared as they are and the error message is built only on failure, so under a dynamic-shape
+    ``torch.compile`` the check relates the two sizes without specializing either of them.
+
+    Args:
+        x: the tensor to evaluate.
+        y: the reference tensor.
+        dim: the dimension to compare; negative values count from the end.
+        allow_one: also accept a size of 1 for ``x``, such as a kernel or a parameter shared by the whole batch.
+        msg: message to append to the error, or a function that returns it; see :func:`KORNIA_CHECK`.
+        raises: bool indicating whether an exception should be raised upon failure.
+
+    Raises:
+        ShapeError: if a tensor has no dimension ``dim``, or the sizes differ (and that of ``x`` is not 1 with
+            ``allow_one``), and raises is True.
+
+    Note:
+        Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
+        environment variable. In TorchScript-compiled code, checks always run (TorchScript
+        cannot access module-level globals, but the validation logic is fast). When running
+        with `python -O`, Python's optimizer may eliminate some checks.
+
+    Example:
+        >>> image = torch.rand(4, 3, 8, 8)
+        >>> sigma = torch.rand(1, 2)
+        >>> KORNIA_CHECK_SAME_SIZE(sigma, image, allow_one=True)
+        True
+        >>> KORNIA_CHECK_SAME_SIZE(torch.rand(2, 2), image, raises=False)
+        False
+
+    """
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if not _KORNIA_CHECKS_ENABLED:
+            return True
+
+    # every ``.shape`` builds a new ``torch.Size``, so each is read once
+    x_shape, y_shape = x.shape, y.shape
+    x_ndim, y_ndim = len(x_shape), len(y_shape)
+    in_range = -x_ndim <= dim < x_ndim and -y_ndim <= dim < y_ndim
+    # A plain 1 passes before it is compared with the other size: under a size-oblivious torch.export, which the
+    # Dynamo ONNX exporter of torch 2.9.1 runs, ``1 == s`` guards a dynamic ``s`` against 1, and an export whose
+    # dynamic batch admits 1 then fails.
+    if not in_range or not (
+        (allow_one and isinstance(x_shape[dim], int) and x_shape[dim] == 1)
+        or x_shape[dim] == y_shape[dim]
+        or (allow_one and x_shape[dim] == 1)
+    ):
+        if raises:
+            msg = _resolve_msg(msg)
+            x_shape_list = list(x_shape)
+            y_shape_list = list(y_shape)
+            if not in_range:
+                error_msg = f"Size mismatch: the tensors have no dimension {dim}.\n"
+            else:
+                expected = f"{y_shape[dim]} or 1" if allow_one and y_shape[dim] != 1 else f"{y_shape[dim]}"
+                error_msg = f"Size mismatch at dimension {dim}: expected {expected}, got {x_shape[dim]}.\n"
+            error_msg += f"  First tensor shape: {x_shape_list}\n"
+            error_msg += f"  Second tensor shape: {y_shape_list}"
+            if msg is not None:
+                error_msg += f"\n  {msg}"
+            raise ShapeError(error_msg, actual_shape=x_shape_list, expected_shape=y_shape_list)
+        return False
+    return True
+
+
+def KORNIA_CHECK_SIZES(
+    x: torch.Tensor, sizes: list[Optional[int]], msg: Optional[CheckMessage] = None, raises: bool = True
+) -> bool:
+    """Check whether a tensor has the given sizes, which may be computed at run time.
+
+    It is the counterpart of :func:`KORNIA_CHECK_SHAPE` for sizes that are numbers rather than fixed strings, such as
+    the number of classes of a prediction or the batch of another tensor. The sizes are compared as they are and the
+    error message is built only on failure, so under a dynamic-shape ``torch.compile`` the check relates the sizes
+    without specializing them.
+
+    Args:
+        x: the tensor to evaluate.
+        sizes: the expected size of every dimension, or ``None`` for a dimension of any size.
+        msg: message to append to the error, or a function that returns it; see :func:`KORNIA_CHECK`.
+        raises: bool indicating whether an exception should be raised upon failure.
+
+    Raises:
+        ShapeError: if the tensor does not have ``len(sizes)`` dimensions, or one of them differs from a given size,
+            and raises is True.
+
+    Note:
+        Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
+        environment variable. In TorchScript-compiled code, checks always run (TorchScript
+        cannot access module-level globals, but the validation logic is fast). When running
+        with `python -O`, Python's optimizer may eliminate some checks.
+
+    Example:
+        >>> pred = torch.rand(2, 5, 4, 4)
+        >>> weight = torch.rand(5)
+        >>> KORNIA_CHECK_SIZES(weight, [pred.shape[1]])
+        True
+        >>> KORNIA_CHECK_SIZES(pred, [2, None, 4, 4])
+        True
+
+    """
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if not _KORNIA_CHECKS_ENABLED:
+            return True
+
+    x_shape = x.shape
+    matches = len(x_shape) == len(sizes)
+    if matches:
+        for i in range(len(sizes)):
+            size = sizes[i]
+            if size is not None and x_shape[i] != size:
+                matches = False
+                break
+    if not matches:
+        if raises:
+            msg = _resolve_msg(msg)
+            expected: list[str] = []
+            for size in sizes:
+                expected.append("*" if size is None else str(size))
+            x_shape_list = list(x.shape)
+            expected_str = ", ".join(expected) + ("," if len(expected) == 1 else "")
+            error_msg = f"Shape mismatch: expected ({expected_str}), got {x_shape_list}."
+            if msg is not None:
+                error_msg += f"\n  {msg}"
+            raise ShapeError(error_msg, actual_shape=x_shape_list, expected_shape=expected)
+        return False
+    return True
+
+
+def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[CheckMessage] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is a color images.
 
     Args:
         x: image tensor to evaluate.
-        msg: message to show in the exception.
+        msg: message to show in the exception, or a function that returns it; see :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
@@ -569,13 +777,14 @@ def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[str] = None, raises: bo
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
     if len(x.shape) < 3 or x.shape[-3] != 3:
         if raises:
-            error_msg = f"Not a color tensor. Got: {type(x)}."
+            msg = _resolve_msg(msg)
+            error_msg = f"Not a color tensor. Got shape {list(x.shape)}."
             if msg is not None:
                 error_msg += f"\n{msg}"
             raise ImageError(error_msg)
@@ -583,12 +792,12 @@ def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[str] = None, raises: bo
     return True
 
 
-def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[CheckMessage] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale.
 
     Args:
         x: image tensor to evaluate.
-        msg: message to show in the exception.
+        msg: message to show in the exception, or a function that returns it; see :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
@@ -606,13 +815,14 @@ def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: boo
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
     if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
         if raises:
-            error_msg = f"Not a gray tensor. Got: {type(x)}."
+            msg = _resolve_msg(msg)
+            error_msg = f"Not a gray tensor. Got shape {list(x.shape)}."
             if msg is not None:
                 error_msg += f"\n{msg}"
             raise ImageError(error_msg)
@@ -620,12 +830,12 @@ def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: boo
     return True
 
 
-def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[CheckMessage] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale or color.
 
     Args:
         x: image tensor to evaluate.
-        msg: message to show in the exception.
+        msg: message to show in the exception, or a function that returns it; see :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
@@ -643,13 +853,14 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, ra
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         if raises:
-            error_msg = f"Not a color or gray tensor. Got: {type(x)}."
+            msg = _resolve_msg(msg)
+            error_msg = f"Not a color or gray tensor. Got shape {list(x.shape)}."
             if msg is not None:
                 error_msg += f"\n{msg}"
             raise ImageError(error_msg)
@@ -657,12 +868,21 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, ra
     return True
 
 
-def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True, bits: int = 8) -> bool:
-    """Check whether an image tensor is ranged properly [0, 1] for float or [0, 2 ** bits] for int.
+# The unsigned dtypes wider than 8 bits, each with the signed dtype of the same width.
+_UNSIGNED_AS_SIGNED = {torch.uint16: torch.int16, torch.uint32: torch.int32, torch.uint64: torch.int64}
+
+
+def KORNIA_CHECK_IS_IMAGE(
+    x: torch.Tensor, msg: Optional[CheckMessage] = None, raises: bool = True, bits: int = 8
+) -> bool:
+    """Check whether a tensor is a color or gray image with values in [0, 1] for float or [0, 2 ** bits - 1] for int.
+
+    The shape must be :math:`(*, 3, H, W)` or :math:`(*, 1, H, W)`. A NaN value fails the range check, and an empty
+    image passes it.
 
     Args:
         x: image tensor to evaluate.
-        msg: message to show in the exception.
+        msg: message to show in the exception, or a function that returns it; see :func:`KORNIA_CHECK`.
         raises: bool indicating whether an exception should be raised upon failure.
         bits: the image bits. The default checks if given integer input image is an
             8-bit image (0-255) or not.
@@ -683,24 +903,34 @@ def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bo
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    # Combine the color or gray check with the range check
-    if not raises and not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
+    if not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
         return False
 
-    amin, amax = torch.aminmax(x)
+    if x.numel() == 0:
+        return True
 
-    if x.dtype in (float16, float32, float64):
-        invalid = (amin < 0) | (amax > 1)
+    offset = 0
+    if x.dtype in (torch.bfloat16, float16, float32, float64):
+        low, high = 0.0, 1.0
     else:
-        max_int_value = (1 << bits) - 1
-        invalid = (amin < 0) | (amax > max_int_value)
+        low, high = 0, (1 << bits) - 1
+        signed = _UNSIGNED_AS_SIGNED.get(x.dtype)
+        if signed is not None:
+            # torch.aminmax has no kernel for these dtypes. Flipping the sign bit of a same-width signed view maps the
+            # unsigned order onto the signed order; the offset is added back to the Python numbers below.
+            x = x.view(signed) ^ torch.iinfo(signed).min
+            offset = 1 << (torch.iinfo(signed).bits - 1)
 
-    if invalid.item():
-        return _handle_invalid_range(msg, raises, amin, amax)
+    # The bounds are compared as Python numbers, so 2 ** bits - 1 cannot overflow the dtype, and in this form
+    # a NaN, which fails every comparison, fails the check.
+    amin, amax = torch.stack(torch.aminmax(x)).tolist()
+    amin, amax = amin + offset, amax + offset
+    if not (low <= amin and amax <= high):
+        return _handle_invalid_range(msg, raises, amin, amax, (low, high))
 
     return True
 
@@ -731,10 +961,19 @@ def KORNIA_CHECK_DM_DESC(desc1: torch.Tensor, desc2: torch.Tensor, dm: torch.Ten
         True
 
     """
-    if not torch.jit.is_scripting():
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
+    if dm.dim() < 2 or desc1.dim() < 1 or desc2.dim() < 1:
+        if raises:
+            raise ShapeError(
+                "Distance matrix shape mismatch.\n"
+                "  Expected a distance matrix with at least 2 dimensions and descriptors with at least 1.\n"
+                f"  dm shape: {list(dm.shape)}, desc1 shape: {list(desc1.shape)}, desc2 shape: {list(desc2.shape)}",
+                actual_shape=list(dm.shape),
+            )
+        return False
     if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
         if raises:
             expected_shape = (desc1.size(0), desc2.size(0))
@@ -762,6 +1001,11 @@ def KORNIA_CHECK_DM_DESC(desc1: torch.Tensor, desc2: torch.Tensor, dm: torch.Ten
 def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
     """Check whether a Local Affine Frame (laf) has a valid shape.
 
+    Convention:
+        - Only the shape :math:`(B, N, 2, 3)` is checked: any dtype and any values pass, ``N = 0`` included. Use
+          :func:`~kornia.feature.laf_is_valid` to check the values.
+        - With ``raises=False``, a wrong shape returns ``False`` instead of raising.
+
     Args:
         laf: local affine frame tensor to evaluate.
         raises: bool indicating whether an exception should be raised upon failure.
@@ -785,20 +1029,18 @@ def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
 
 
 def _handle_invalid_range(
-    msg: Optional[str], raises: bool, min_val: float | torch.Tensor, max_val: float | torch.Tensor
+    msg: Optional[CheckMessage], raises: bool, min_val: float, max_val: float, expected_range: tuple[float, float]
 ) -> bool:
     """Handle invalid range cases."""
-    # Extract scalar values if tensors
-    min_scalar = min_val.item() if isinstance(min_val, torch.Tensor) else min_val
-    max_scalar = max_val.item() if isinstance(max_val, torch.Tensor) else max_val
-
-    err_msg = f"Value range mismatch: expected [0, 1], got [{min_scalar}, {max_scalar}]."
-    if msg is not None:
-        err_msg += f"\n  {msg}"
     if raises:
+        low, high = (f"{b:g}" if isinstance(b, float) else f"{b}" for b in expected_range)
+        err_msg = f"Value range mismatch: expected [{low}, {high}], got [{min_val}, {max_val}]."
+        msg = _resolve_msg(msg)
+        if msg is not None:
+            err_msg += f"\n  {msg}"
         raise ValueCheckError(
             err_msg,
-            actual_value=(min_scalar, max_scalar),
-            expected_range=(0.0, 1.0),
+            actual_value=(min_val, max_val),
+            expected_range=expected_range,
         )
     return False

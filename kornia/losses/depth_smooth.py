@@ -41,9 +41,22 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
 
     .. math::
 
-        \text{loss} = \left | \partial_x d_{ij} \right | e^{-\left \|
-        \partial_x I_{ij} \right \|} + \left |
-        \partial_y d_{ij} \right | e^{-\left \| \partial_y I_{ij} \right \|}
+        \text{loss} = \operatorname{mean}_{nij} \left| \partial_x d_{nij} \right|
+        e^{-\frac{1}{C} \sum_c \left| \partial_x I_{ncij} \right|}
+        + \operatorname{mean}_{nij} \left| \partial_y d_{nij} \right|
+        e^{-\frac{1}{C} \sum_c \left| \partial_y I_{ncij} \right|}
+
+    with forward differences :math:`\partial_x` and :math:`\partial_y`, each mean taken over its own differences.
+
+    Convention:
+        - ``idepth`` is penalised and ``image`` only sets the weights: a constant inverse depth gives 0 for any image,
+          and a constant image gives the plain mean of :math:`|\partial_x d|` plus that of :math:`|\partial_y d|`.
+        - The weights use the raw image values, so ``image`` is expected in a unit range: in ``[0, 255]``, a step of
+          a few levels already drives its weight to about 0.
+        - ``idepth`` is not normalised, so the loss is linear in its scale;
+          :ref:`Losses and metrics <losses-metrics-conventions>` shows how to port a normalised smoothness term.
+        - Only the rank, :math:`(H, W)`, device and dtype are validated: the channel counts are not, a batch of one
+          broadcasts against the other argument, and swapped arguments return a value.
 
     Args:
         idepth: tensor with the inverse depth with shape :math:`(N, 1, H, W)`.
@@ -101,9 +114,15 @@ class InverseDepthSmoothnessLoss(nn.Module):
 
     .. math::
 
-        \text{loss} = \left | \partial_x d_{ij} \right | e^{-\left \|
-        \partial_x I_{ij} \right \|} + \left |
-        \partial_y d_{ij} \right | e^{-\left \| \partial_y I_{ij} \right \|}
+        \text{loss} = \operatorname{mean}_{nij} \left| \partial_x d_{nij} \right|
+        e^{-\frac{1}{C} \sum_c \left| \partial_x I_{ncij} \right|}
+        + \operatorname{mean}_{nij} \left| \partial_y d_{nij} \right|
+        e^{-\frac{1}{C} \sum_c \left| \partial_y I_{ncij} \right|}
+
+    with forward differences :math:`\partial_x` and :math:`\partial_y`, each mean taken over its own differences.
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.inverse_depth_smoothness_loss`.
 
     Shape:
         - Inverse Depth: :math:`(N, 1, H, W)`
@@ -119,4 +138,16 @@ class InverseDepthSmoothnessLoss(nn.Module):
     """
 
     def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
+        """Compute image-aware smoothness regularization for inverse depth.
+
+        Args:
+            idepth: Inverse-depth tensor with shape :math:`(B, 1, H, W)`.
+            image: RGB image tensor with shape :math:`(B, 3, H, W)` used to
+                reduce the smoothness penalty across visible image edges.
+
+        Returns:
+            Scalar tensor containing the edge-aware smoothness loss. Smoothness
+            is encouraged in flat image regions and relaxed near strong image
+            gradients.
+        """
         return inverse_depth_smoothness_loss(idepth, image)

@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.color.utils import _apply_linear_transformation
@@ -40,6 +41,10 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    Convention:
+        Uses channels Y, U, V at axis -3. RGB inputs are unit-range; U and V are signed
+        chroma components centered at zero.
+
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
@@ -48,11 +53,13 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = rgb_to_yuv(input)  # 2x3x4x5
+        >>> rgb_to_yuv(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
+    dtype = image.dtype if image.is_floating_point() else torch.float32
     kernel = torch.tensor(
         [
             [0.299, 0.587, 0.114],
@@ -60,7 +67,7 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
             [0.615, -0.515, -0.100],
         ],
         device=image.device,
-        dtype=image.dtype,
+        dtype=dtype,
     )
 
     return _apply_linear_transformation(image, kernel)
@@ -78,6 +85,10 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    Convention:
+        Returns (Y, UV): Y has shape :math:`(*, 1, H, W)` and UV holds the U and V planes as two
+        channels, :math:`(*, 2, H/2, W/2)`. Height and width must be even.
+
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
@@ -87,26 +98,35 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
-        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x2x2x3)
+        >>> y, uv = rgb_to_yuv420(input)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 2, 3]))
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
-    return (
-        yuvimage[..., :1, :, :],
-        yuvimage[..., 1:3, :, :].unfold(-2, 2, 2).unfold(-2, 2, 2).mean((-1, -2)),
-    )
+    # A 2x2 box mean. avg_pool2d computes it directly; a mean over two unfolded window
+    # dims gives the same values but is several times slower, most of all on MPS.
+    uv = yuvimage[..., 1:3, :, :]
+    leading = list(uv.shape[:-3])
+    batch = 1
+    for size in leading:
+        batch *= size
+    height, width = uv.shape[-2], uv.shape[-1]
+    uv = F.avg_pool2d(uv.reshape([batch, 2, height, width]), 2)
+
+    return yuvimage[..., :1, :, :], uv.reshape(leading + [2, height // 2, width // 2])
 
 
 def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
-    Input need to be padded to be evenly divisible by 2 vertical.
+    Input width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
     :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
@@ -115,6 +135,10 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     The YUV model adopted here follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    Convention:
+        Returns (Y, UV): Y has shape :math:`(*, 1, H, W)` and UV holds the U and V planes as two
+        channels, :math:`(*, 2, H, W/2)`. Width must be even.
 
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
@@ -125,17 +149,22 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
-        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x1x4x3)
+        >>> y, uv = rgb_to_yuv422(input)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 4, 3]))
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+    if image.shape[-1] % 2 == 1:
+        raise ShapeError(f"Input W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
+    uv = yuvimage[..., 1:3, :, :]
 
-    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-1, 2, 2).mean(-1))
+    # The width axis by its positive index: the legacy (TorchScript) ONNX exporter lowers ``unfold(-1, ...)`` with
+    # the window and the window-count axes swapped, which gives UV planes of shape (*, 2, H, 2).
+    return (yuvimage[..., :1, :, :], uv.unfold(uv.dim() - 1, 2, 2).mean(-1))
 
 
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -148,6 +177,14 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    This is the exact inverse of :func:`~kornia.color.rgb_to_yuv`: its kernel is that function's
+    kernel inverted rather than a separately rounded copy of the published inverse relations, so
+    an RGB -> YUV -> RGB round trip is limited only by the precision of the input dtype.
+
+    Convention:
+        Expects Y, U, V at axis -3 in the unit-range/signed-chroma representation from
+        rgb_to_yuv.
+
     Args:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
@@ -156,19 +193,30 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = yuv_to_rgb(input)  # 2x3x4x5
+        >>> yuv_to_rgb(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
+    # The exact inverse of the rounded M/PAL kernel in ``rgb_to_yuv``, rather than a separately
+    # rounded copy of the published inverse relations, so a round trip is lossless to the dtype.
+    # Over the rationals that inverse is
+    #   [[1,      -1/25344,  144439/126720],
+    #    [1,  -10001/25344,  -73561/126720],
+    #    [1,   51499/25344,     -61/126720]]
+    # and every literal below is that value correctly rounded to float64. ``torch.linalg.inv``
+    # reproduces it only to 3.3e-16 -- its LU factorization does not even return an exact 1.0 in
+    # the first column -- so the constants are rounded from the exact fractions, not from it.
+    dtype = image.dtype if image.is_floating_point() else torch.float32
     kernel = torch.tensor(
         [
-            [1.0, 0.0, 1.14],
-            [1.0, -0.396, -0.581],
-            [1.0, 2.029, 0.0],
+            [1.0, -3.945707070707071e-05, 1.139827967171717],
+            [1.0, -0.39461016414141414, -0.5805003156565657],
+            [1.0, 2.0319996843434343, -0.00048137626262626264],
         ],
         device=image.device,
-        dtype=image.dtype,
+        dtype=dtype,
     )
 
     return _apply_linear_transformation(image, kernel)
@@ -186,6 +234,10 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    Convention:
+        Expects the Y and two-plane UV tensors returned by rgb_to_yuv420. UV is upsampled by
+        nearest-neighbor replication.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
         imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
@@ -196,20 +248,21 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
+        >>> yuv420_to_rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
     KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if (
         len(imageuv.shape) < 2
         or len(imagey.shape) < 2
-        or imagey.shape[-2] / imageuv.shape[-2] != 2
-        or imagey.shape[-1] / imageuv.shape[-1] != 2
+        or imagey.shape[-2] != 2 * imageuv.shape[-2]
+        or imagey.shape[-1] != 2 * imageuv.shape[-1]
     ):
         raise ShapeError(
             f"Input imageuv H&W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}"
@@ -227,7 +280,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV422 image to RGB.
 
-    Input need to be padded to be evenly divisible by 2 vertical.
+    Input width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -236,28 +289,39 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    Convention:
+        Expects the Y and two-plane UV tensors returned by rgb_to_yuv422. UV is upsampled along
+        width by nearest-neighbor replication.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
 
     Returns:
         RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
-        >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
+        >>> inputuv = torch.rand(2, 2, 4, 3)
+        >>> yuv422_to_rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
     KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
-    if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+    if imagey.shape[-1] % 2 == 1:
+        raise ShapeError(f"Input W must be evenly divisible by 2. Got {imagey.shape}")
 
-    if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
+    if (
+        len(imageuv.shape) < 2
+        or len(imagey.shape) < 2
+        or imagey.shape[-2] != imageuv.shape[-2]
+        or imagey.shape[-1] != 2 * imageuv.shape[-1]
+    ):
         raise ShapeError(
-            f"Input imageuv W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}"
+            f"Input imageuv H must match the luma plane and W must be half its size. "
+            f"Got {imagey.shape} and {imageuv.shape}"
         )
 
     # first upsample
@@ -268,6 +332,8 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
 class RgbToYuv(nn.Module):
     r"""Convert an image from RGB to YUV.
+
+    See the Convention block on :func:`rgb_to_yuv`.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -285,7 +351,8 @@ class RgbToYuv(nn.Module):
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> yuv = RgbToYuv()
-        >>> output = yuv(input)  # 2x3x4x5
+        >>> yuv(input).shape
+        torch.Size([2, 3, 4, 5])
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
@@ -296,13 +363,25 @@ class RgbToYuv(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB tensor to YUV.
+
+        Args:
+            input: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            YUV tensor with shape :math:`(*, 3, H, W)`.
+        """
         return rgb_to_yuv(input)
 
 
 class RgbToYuv420(nn.Module):
     r"""Convert an image from RGB to YUV420.
 
-    Width and Height evenly divisible by 2.
+    See the Convention block on :func:`rgb_to_yuv420`.
+
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -320,24 +399,39 @@ class RgbToYuv420(nn.Module):
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv420()
-        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x1x2x3)
+        >>> y, uv = yuv(yuvinput)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 2, 3]))
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
+        """Convert an RGB tensor to YUV420 planes.
+
+        Args:
+            yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
+            shape :math:`(*, 2, H / 2, W / 2)`. The ``1`` channel is luma and the ``2``
+            channels are chroma.
+        """
         return rgb_to_yuv420(yuvinput)
 
 
 class RgbToYuv422(nn.Module):
     r"""Convert an image from RGB to YUV422.
 
-    Width must be evenly disvisible by 2.
+    See the Convention block on :func:`rgb_to_yuv422`.
+
+    Width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -355,22 +449,37 @@ class RgbToYuv422(nn.Module):
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv422()
-        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x2x4x3)
+        >>> y, uv = yuv(yuvinput)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 4, 3]))
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
+        """Convert an RGB tensor to YUV422 planes.
+
+        Args:
+            yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
+            shape :math:`(*, 2, H, W / 2)`. The ``1`` channel is luma and the ``2`` channels
+            are chroma.
+        """
         return rgb_to_yuv422(yuvinput)
 
 
 class YuvToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
+
+    See the Convention block on :func:`yuv_to_rgb`.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -378,6 +487,9 @@ class YuvToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    This is the exact inverse of :class:`~kornia.color.RgbToYuv`, so an RGB -> YUV -> RGB round
+    trip is limited only by the precision of the input dtype.
 
     Returns:
         RGB version of the image.
@@ -389,7 +501,8 @@ class YuvToRgb(nn.Module):
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = YuvToRgb()
-        >>> output = rgb(input)  # 2x3x4x5
+        >>> rgb(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
 
@@ -397,11 +510,23 @@ class YuvToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Convert a YUV tensor to RGB.
+
+        Args:
+            input: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to YUV channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return yuv_to_rgb(input)
 
 
 class Yuv420ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
+
+    See the Convention block on :func:`yuv420_to_rgb`.
 
     Width and Height must be evenly divisible by 2.
 
@@ -424,21 +549,35 @@ class Yuv420ToRgb(nn.Module):
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> rgb = Yuv420ToRgb()
-        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+        >>> rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    # The shape of ``inputy``; ``inputuv`` is the subsampled chroma plane.
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
+        """Convert YUV420 luma/chroma planes to RGB.
+
+        Args:
+            inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
+            inputuv: Chroma tensor with shape :math:`(*, 2, H / 2, W / 2)`.
+                For both tensors, ``*`` means any number of leading dimensions (for example,
+                batch size), and ``H``/``W`` are the full-resolution height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return yuv420_to_rgb(inputy, inputuv)
 
 
 class Yuv422ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
-    Width must be evenly divisible by 2.
+    See the Convention block on :func:`yuv422_to_rgb`.
+
+    Width must be evenly divisible by 2; height may be odd.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -459,12 +598,24 @@ class Yuv422ToRgb(nn.Module):
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 4, 3)
         >>> rgb = Yuv422ToRgb()
-        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+        >>> rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    # The shape of ``inputy``; ``inputuv`` is the subsampled chroma plane.
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
+        """Convert YUV422 luma/chroma planes to RGB.
+
+        Args:
+            inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
+            inputuv: Chroma tensor with shape :math:`(*, 2, H, W / 2)`.
+                For both tensors, ``*`` means any number of leading dimensions (for example,
+                batch size), and ``H``/``W`` are the full-resolution height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return yuv422_to_rgb(inputy, inputuv)

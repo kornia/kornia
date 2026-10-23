@@ -40,7 +40,13 @@ def ssim_loss(
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
 
-    See :meth:`~kornia.losses.ssim` for details about SSIM.
+    Convention:
+        - See the Convention block of :func:`~kornia.metrics.ssim` for the window, the border and ``max_val``.
+        - The per-pixel loss is the structural dissimilarity clamped to :math:`[0, 1]`,
+          ``clamp((1 - SSIM) / 2, 0, 1)``; :ref:`Losses and metrics <losses-metrics-conventions>` relates it to the
+          ``1 - SSIM`` loss. The clamp acts only where roundoff pushes the map outside :math:`[-1, 1]`, as for images
+          with a large constant offset.
+        - The default ``reduction='mean'`` averages every element; ``'none'`` keeps the shape of the SSIM map.
 
     Args:
         img1: the first input image with shape :math:`(B, C, H, W)`.
@@ -91,7 +97,8 @@ class SSIMLoss(nn.Module):
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
 
-    See :meth:`~kornia.losses.ssim_loss` for details about SSIM.
+    Convention:
+        See the Convention block of :func:`~kornia.losses.ssim_loss`.
 
     Args:
         window_size: the size of the gaussian kernel to smooth the images.
@@ -126,4 +133,17 @@ class SSIMLoss(nn.Module):
         self.padding: str = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+        """Compute SSIM loss between two 2D image tensors.
+
+        Args:
+            img1: First image batch with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channel count,
+                :math:`H` is height, and :math:`W` is width.
+            img2: Second image batch with the same shape as ``img1``.
+
+        Returns:
+            SSIM loss tensor reduced according to ``self.reduction``. The loss
+            is derived from structural similarity, so lower values indicate
+            more similar local luminance, contrast, and structure.
+        """
         return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.padding)

@@ -26,6 +26,7 @@ from typing import Optional
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK
 from kornia.models.common import MLP, ConvNormAct
 
 
@@ -158,9 +159,7 @@ class MultiScaleDeformableAttention(nn.Module):
         out = _deformable_attention_kernel(value_buf, value_spatial_shapes, sampling_locations, attention_weights)
 
         # final projection
-        out = self.output_proj(out)
-
-        return out
+        return self.output_proj(out)
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -203,6 +202,21 @@ class TransformerDecoderLayer(nn.Module):
         memory_mask: Optional[torch.Tensor] = None,
         query_pos_embed: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Run one RT-DETR transformer decoder layer.
+
+        Args:
+            tgt: Query tensor with shape :math:`(B, N_q, D)`.
+            ref_points: Reference points for deformable cross-attention.
+            memory: Flattened encoder memory tensor.
+            memory_spatial_shapes: Spatial shape for each memory level.
+            memory_level_start_index: Optional start index for each level.
+            attn_mask: Optional self-attention mask.
+            memory_mask: Optional memory mask.
+            query_pos_embed: Optional positional embedding for object queries.
+
+        Returns:
+            Updated query tensor with shape :math:`(B, N_q, D)`.
+        """
         # TODO: rename variables because is confusing
         # self attention
         q = k = tgt + query_pos_embed
@@ -214,9 +228,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt = self.norm2(tgt + self.dropout2(out))
 
         # ffn
-        out = self.norm3(tgt + self.dropout4(self._ffn(tgt)))
-
-        return out
+        return self.norm3(tgt + self.dropout4(self._ffn(tgt)))
 
 
 class TransformerDecoder(nn.Module):
@@ -228,6 +240,11 @@ class TransformerDecoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
+        KORNIA_CHECK(
+            0 <= self.eval_idx < num_layers,
+            f"eval_idx must index one of the {num_layers} decoder layers ({-num_layers} to {num_layers - 1}), "
+            f"got {eval_idx}.",
+        )
 
     def forward(
         self,
@@ -242,6 +259,24 @@ class TransformerDecoder(nn.Module):
         attn_mask: Optional[torch.Tensor] = None,
         memory_mask: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Decode object queries into bounding boxes and class logits.
+
+        Args:
+            tgt: Initial query tensor with shape :math:`(B, N_q, D)`.
+            ref_points_unact: Unactivated reference boxes for the queries.
+            memory: Flattened encoder feature memory.
+            memory_spatial_shapes: Spatial shape for each feature level.
+            memory_level_start_index: Start index for each level in ``memory``.
+            bbox_head: Per-layer box prediction heads.
+            score_head: Per-layer class prediction heads.
+            query_pos_head: Module that maps reference boxes to query position
+                embeddings.
+            attn_mask: Optional query attention mask.
+            memory_mask: Optional encoder memory mask.
+
+        Returns:
+            Tuple ``(boxes, logits)`` stacked from the selected decoder layer.
+        """
         output: torch.Tensor = tgt
         dec_out_bboxes: list[torch.Tensor] = []
         dec_out_logits: list[torch.Tensor] = []
@@ -288,7 +323,11 @@ class TransformerDecoder(nn.Module):
 
 
 class RTDETRHead(nn.Module):
-    """Implement the RT-DETR prediction head for object detection."""
+    """Implement the RT-DETR prediction head for object detection.
+
+    ``eval_idx`` selects the decoder layer whose predictions the head returns; a negative value counts back from the
+    last layer (``-1``), and the layers after the selected one do not run.
+    """
 
     def __init__(
         self,
@@ -302,6 +341,7 @@ class RTDETRHead(nn.Module):
         num_levels: int = 3,
         dropout: float = 0.0,
         num_denoising: int = 100,
+        eval_idx: int = -1,
     ) -> None:
         super().__init__()
         self.num_classes = num_classes
@@ -328,7 +368,7 @@ class RTDETRHead(nn.Module):
         )
 
         self.decoder = TransformerDecoder(
-            hidden_dim=hidden_dim, decoder_layer=decoder_layer, num_layers=num_decoder_layers
+            hidden_dim=hidden_dim, decoder_layer=decoder_layer, num_layers=num_decoder_layers, eval_idx=eval_idx
         )
 
         # denoising part
@@ -352,6 +392,16 @@ class RTDETRHead(nn.Module):
         )
 
     def forward(self, feats: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Predict RT-DETR class logits and bounding boxes from neck features.
+
+        Args:
+            feats: Multi-level feature maps from the encoder/neck.
+
+        Returns:
+            Tuple ``(logits, boxes)`` for the final decoder output. ``logits``
+            stores class scores and ``boxes`` stores normalized box
+            coordinates.
+        """
         # input projection and embedding
         memory, spatial_shapes, level_start_index = self._get_encoder_input(feats)
 

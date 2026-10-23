@@ -18,92 +18,249 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Collection
 
 import torch
 from torch import nn
+from torch._subclasses.fake_tensor import is_fake
+from torch.fx.experimental.proxy_tensor import get_proxy_mode
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.utils import is_compiling
 from kornia.filters import filter2d, filter3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
+
+
+def _compute_dtype(dtype: torch.dtype) -> torch.dtype:
+    # The exp(-dist/h) kernel and its -h*log(...) inverse have a working range that float16 and
+    # bfloat16 cannot cover (see _check_h_range): run the cascade in float32 and cast the result
+    # back, the same way half-precision inputs are upcast elsewhere in kornia (e.g.
+    # PatchAffineShapeEstimator, extract_patches_from_pyramid).
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.float32
+    return dtype
+
+
+def _check_h_range(kernel_size: int, h: float, dtype: torch.dtype, ndim: int) -> None:
+    # The cascade needs every tap of the exp(-dist/h) kernel. The farthest one, the corner at distance
+    # sqrt(ndim) * k_half, underflows first; losing it changes the soft-min wherever the nearest source is diagonal.
+    # Checked against finfo.tiny (smallest normal), because MPS flushes subnormals to zero and CPU does not.
+    k_half = kernel_size // 2
+    farthest_tap = math.exp(-math.sqrt(ndim) * k_half / h)
+    KORNIA_CHECK(
+        farthest_tap >= torch.finfo(dtype).tiny,
+        lambda: (
+            f"h={h} is too small for kernel_size={kernel_size} at working precision {dtype}: the corner kernel tap "
+            f"exp(-sqrt({ndim})*{k_half}/h) falls below the smallest normal number of that precision and the result "
+            "would be wrong. Increase h or decrease kernel_size."
+        ),
+    )
+    # A pixel counts as reached when -h*log(sum of its window's taps over reached pixels) > 0, i.e. when that sum is
+    # below 1; a source pixel fails the test through its own centre tap, and that is how sources stay at 0. If the
+    # off-centre taps can sum to 1 or more, an unreached pixel whose window is full of reached pixels fails it too and
+    # reads as foreground (0).
+    # The sum below is taken in float64, but the cascade forms it in the working precision: each tap is rounded when
+    # the kernel is built (exp of a rounded argument), and the window sum adds kernel_size**ndim roundings.
+    # 4 * kernel_size**ndim * eps bounds both with room. On CUDA a float32 convolution may also run in TF32
+    # (PyTorch's default for cuDNN), which rounds each tap to 10 mantissa bits: a relative 2**-11 on a sum below 1.
+    margin = 4 * kernel_size**ndim * torch.finfo(dtype).eps + (2.0**-11 if dtype == torch.float32 else 0.0)
+    off_centre = _off_centre_tap_sum(kernel_size, h, ndim)
+    KORNIA_CHECK(
+        off_centre < 1.0 - margin,
+        lambda: (
+            f"h={h} is too large for kernel_size={kernel_size} in {ndim}-D: the kernel's off-centre taps sum to "
+            f"{off_centre:.7f}, not below 1 by the rounding margin {margin:.1e} of the {dtype} working precision, so a "
+            "pixel surrounded by reached pixels could read as foreground (distance 0). Decrease h."
+        ),
+    )
+
+
+def _off_centre_tap_sum(kernel_size: int, h: float, ndim: int) -> float:
+    # Sum of exp(-|q|/h) over the kernel offsets q != 0, one octant at a time: every nonzero coordinate has a mirror
+    # twin, so it counts twice. Plain Python on constants, so the check stays out of the traced graph (no tensor, no
+    # .item()); nested loops, because generator expressions in this inner loop made the check take seconds at large
+    # kernels.
+    k_half = kernel_size // 2
+    weight = [1.0] + [2.0] * k_half
+    square = [c * c for c in range(k_half + 1)]
+    total = 0.0
+    for a in range(k_half + 1):
+        for b in range(k_half + 1):
+            if ndim == 2:
+                total += weight[a] * weight[b] * math.exp(-math.sqrt(square[a] + square[b]) / h)
+                continue
+            for c in range(k_half + 1):
+                total += weight[a] * weight[b] * weight[c] * math.exp(-math.sqrt(square[a] + square[b] + square[c]) / h)
+    return total - 1.0  # drop the centre tap
+
+
+def _can_stop_cascade(image: torch.Tensor) -> bool:
+    # Capture and function transforms cannot branch on a tensor's value. Keep the fixed loop for
+    # differentiation as well, including forward AD on an input without requires_grad.
+    if torch.jit.is_scripting():
+        return False
+    if (
+        torch.jit.is_tracing()
+        or is_compiling()
+        or get_proxy_mode() is not None
+        or torch._C._are_functorch_transforms_active()
+    ):
+        return False
+    if image.requires_grad and torch.is_grad_enabled():
+        return False
+    # Read the flag only on the eager backends measured here. Meta and fake tensors hold no data, and a lazy backend
+    # such as XLA would run its pending graph at every read. A CUDA graph capture cannot synchronize.
+    if image.device.type not in ("cpu", "cuda", "mps") or is_fake(image):
+        return False
+    if image.is_cuda and torch.cuda.is_current_stream_capturing():
+        return False
+    return torch.autograd.forward_ad.unpack_dual(image).tangent is None
+
+
+def _stop_check_rounds(n_iters: int, device_type: str) -> Collection[int]:
+    """Rounds after which an eager cascade on ``device_type`` reads whether it has settled."""
+    if device_type != "mps":
+        # Every eighth round amortizes the read, which synchronizes CUDA. A range, so that membership costs constant
+        # memory however long the image is.
+        return range(8, n_iters + 1, 8)
+    # On MPS a read drains the command queue, which cost an M1 0.6 to 0.8 ms, the work of two or three rounds. Read
+    # every eighth round, a cascade that cannot stop early took 23 % longer than with no reads at 8 x 1 x 256 x 256 and
+    # 30 % at 1 x 1 x 512 x 512. There the gap between reads is the larger of eight rounds and a quarter of the rounds
+    # done, which also bounds how far a settled cascade runs on, and no read falls in the last eight rounds, where it
+    # cannot save its cost: those cascades take 10 % and 5 % longer. Outside the last eight rounds, the reads up to
+    # round 40 fall where the CPU's do.
+    rounds = []
+    done = 8
+    while n_iters - done >= 8:
+        rounds.append(done)
+        done += max(8, done // 4)
+    return frozenset(rounds)
 
 
 def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
     device = image.device
     dtype = image.dtype
+    compute_dtype = _compute_dtype(dtype)
     k_half = kernel_size // 2
 
     n_iters = math.ceil(max(image.shape[2], image.shape[3]) / k_half)
-    grid = create_meshgrid(kernel_size, kernel_size, False, device, dtype)
+    grid = create_meshgrid(kernel_size, kernel_size, False, device, compute_dtype)
     grid = grid - k_half
 
-    dist = torch.hypot(grid[0, ..., 0], grid[0, ..., 1])
+    # `torch.hypot` has no ONNX lowering; the grid offsets are small integers, so the plain form is exact enough.
+    dist = torch.sqrt(grid[0, ..., 0] ** 2 + grid[0, ..., 1] ** 2)
     kernel = torch.exp(-dist / h).unsqueeze(0)
 
-    out = torch.zeros_like(image)
-    boundary = image.clone()
+    out = torch.zeros_like(image, dtype=compute_dtype)
+    # Clamp the mask to [0, 1] through torch.where, not torch.clamp: where passes gradient 1 at exactly 0 and 1 on
+    # every torch version, while clamp's derivative at its bound is 1 on torch 2.5.1 and 2.9.1 and 0 on 2.14.
+    boundary = torch.where(
+        image > 1, torch.ones_like(image), torch.where(image < 0, torch.zeros_like(image), image)
+    ).to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
+    stop_checks = _stop_check_rounds(n_iters, image.device.type) if _can_stop_cascade(image) else ()
 
     for i in range(n_iters):
         cdt = filter2d(boundary, kernel, border_type="replicate")
-        cdt = -h * torch.log(cdt)
+        positive = cdt > 0
+        cdt = -h * torch.log(torch.where(positive, cdt, torch.ones_like(cdt)))
+        cdt = torch.where(positive, cdt, torch.zeros_like(cdt))
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
-        if not mask.any():
+        # Once the mask is empty the boundary cannot change, so every later iteration adds zero.
+        # Check only at a few rounds to amortize the device synchronization in eager inference.
+        if i + 1 in stop_checks and not bool(mask.any()):
             break
-
         offset: int = i * k_half
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
 
-    return out
+    return out.to(dtype)
 
 
 def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
     device = image.device
     dtype = image.dtype
+    compute_dtype = _compute_dtype(dtype)
     k_half = kernel_size // 2
 
     n_iters = math.ceil(max(image.shape[2:]) / k_half)
-    grid = create_meshgrid3d(kernel_size, kernel_size, kernel_size, False, device, dtype)
+    grid = create_meshgrid3d(kernel_size, kernel_size, kernel_size, False, device, compute_dtype)
     grid = grid - k_half
     dist = torch.norm(grid[0], p=2, dim=-1)
     kernel = torch.exp(-dist / h).unsqueeze(0)
 
-    out = torch.zeros_like(image)
-    boundary = image.clone()
+    out = torch.zeros_like(image, dtype=compute_dtype)
+    # The mask is clamped to [0, 1] through torch.where, as in 2-D.
+    boundary = torch.where(
+        image > 1, torch.ones_like(image), torch.where(image < 0, torch.zeros_like(image), image)
+    ).to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
+    stop_checks = _stop_check_rounds(n_iters, image.device.type) if _can_stop_cascade(image) else ()
 
     for i in range(n_iters):
         cdt = filter3d(boundary, kernel, border_type="replicate")
-        cdt = -h * torch.log(cdt)
+        positive = cdt > 0
+        cdt = -h * torch.log(torch.where(positive, cdt, torch.ones_like(cdt)))
+        cdt = torch.where(positive, cdt, torch.zeros_like(cdt))
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
-        if not mask.any():
+        # As in 2-D, retain a static loop for capture and differentiation, and amortize eager checks.
+        if i + 1 in stop_checks and not bool(mask.any()):
             break
-
         offset: int = i * k_half
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
 
-    return out
+    return out.to(dtype)
 
 
 def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
     r"""Approximates the Euclidean distance transform of images/volumes using cascaded convolution operations.
 
-    The value at each pixel/voxel represents the distance to the nearest non-zero element.
     It uses the method described in :cite:`pham2021dtlayer`.
     The transformation is applied independently across the channel dimension.
 
+    Convention:
+        - The distance is to the nearest positive pixel, where SciPy's ``distance_transform_edt`` and OpenCV's
+          ``distanceTransform`` measure it to the nearest zero: ``distance_transform(x)`` approximates
+          ``scipy.ndimage.distance_transform_edt(x <= 0)``, which is ``distance_transform_edt(x == 0)`` for a mask
+          of 0 and 1.
+        - ``image`` is a binary mask whose sources are the pixels equal to 1, read after clamping it to [0, 1]: a value
+          above 1 is a full source, as 1 is, and a negative value is background, as 0 is. Values above 1 or below 0
+          are clamped, so their gradient is 0, while values in [0, 1], the bounds included, pass the gradient
+          through. A value :math:`0 < v < 1` is a weaker source: it adds :math:`-h \log v` to a distance within
+          ``kernel_size // 2`` of it whose window holds no other source, less where the window holds one, as the
+          soft minimum sums them before its logarithm, and does not change the distances further away.
+        - A mask without any positive pixel gives 0 everywhere, as a full mask does, which keeps the output and its
+          gradient finite.
+        - Known defect: the result is not Euclidean, and there is no general bound on its error
+          (`#5956 <https://github.com/kornia/kornia/issues/5956>`_). From an isolated source it is exact only within
+          ``kernel_size // 2``; beyond, it follows the number of cascade steps, so a diagonal comes out short by up to
+          a fraction :math:`1 - 1/\sqrt{2}` (29 %) of its length in 2-D and :math:`1 - 1/\sqrt{3}` (42 %) in 3-D, at
+          any ``kernel_size``. Separately, the soft minimum pulls a value down wherever several foreground or already
+          reached pixels share its window (replicate padding counts a pixel on the image border twice), the more the
+          larger ``h``: at the default ``h`` by 0.167 px beside a straight edge, 0.243 px midway between two sources
+          2 px apart and 0.579 px in a one-pixel hole, and in a hole towards 0 as ``h`` nears its upper bound.
+
     Args:
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
-        kernel_size: size of the convolution kernel. Must be an odd number.
-        h: value that influence the approximation of the min function.
+        kernel_size: size of the convolution kernel. Must be an odd number of at least 3.
+        h: value that influences the approximation of the min function. The cascade's kernel taps are
+            ``exp(-dist/h)``. Accepted: ``h`` large enough that the corner tap (distance
+            ``sqrt(ndim) * (kernel_size // 2)``) stays at or above the smallest normal number of the working
+            precision, and small enough that the off-centre taps sum to less than 1 by a margin for the working
+            precision's rounding (2-D: below 0.5624 at ``kernel_size`` 3, 0.5626 in ``float64``, about 0.50 at
+            larger kernels; 3-D: below 0.4070 at 3, 0.4071 in ``float64``, about 0.38 at larger kernels).
+            Any other ``h`` raises:
+            a smaller one would give wrong distances, a larger one would give 0 at background pixels whose window
+            is full of reached pixels. ``float16`` and ``bfloat16`` inputs run the cascade in ``float32`` and cast the
+            result back, which widens the safe ``h`` range for those dtypes to match ``float32``.
 
     Returns:
-        tensor with the same shape as input.
+        tensor with the shape and dtype of the input.
 
     Example:
         >>> # 2D example:
@@ -132,6 +289,8 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     KORNIA_CHECK(kernel_size % 2 != 0 and kernel_size >= 3, "kernel_size must be an odd integer >= 3")
     KORNIA_CHECK(h > 0, f"h must be a positive float, got {h}")
 
+    compute_dtype = _compute_dtype(image.dtype)
+    _check_h_range(kernel_size, h, compute_dtype, image.ndim - 2)
     if image.ndim == 4:
         return _distance_transform_2d_impl(image, kernel_size, h)
 
@@ -141,9 +300,13 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
 class DistanceTransform(nn.Module):
     r"""Module that approximates the Euclidean distance transform of images/volumes using convolutions.
 
+    Convention:
+        See the Convention block of :func:`distance_transform`.
+
     Args:
         kernel_size: size of the convolution kernel.
-        h: value that influence the approximation of the min function.
+        h: value that influences the approximation of the min function. See :func:`distance_transform`
+            for the safe range of ``h`` relative to ``kernel_size`` and working precision.
 
     """
 
@@ -153,6 +316,22 @@ class DistanceTransform(nn.Module):
         self.h = h
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Compute the distance transform while preserving the original tensor layout.
+
+        Each channel is processed independently, as in :func:`distance_transform`.
+
+        Args:
+            image: Input tensor with shape :math:`(B, C, H, W)` for 2D data or
+                :math:`(B, C, D, H, W)` for 3D data, where:
+                - ``B`` is batch size,
+                - ``C`` is the number of channels,
+                - ``D`` is depth (only for 3D volumes),
+                - ``H`` is height,
+                - ``W`` is width.
+
+        Returns:
+            A distance-transform tensor with the same shape as ``image``.
+        """
         # Reshape multi-channel inputs to batch dimension to ensure independent processing
         if image.shape[1] > 1:
             # Dynamically determine spatial dimensions (works for H,W or D,H,W)

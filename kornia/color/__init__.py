@@ -72,7 +72,6 @@ from .yuv import (
 )
 
 __all__ = [
-    "AUTUMN",
     "CFA",
     "ApplyColorMap",
     "BgrToGrayscale",

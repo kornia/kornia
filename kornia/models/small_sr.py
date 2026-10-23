@@ -15,12 +15,13 @@
 # limitations under the License.
 #
 
+import os
+
 import torch
 from torch import nn
 
 from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb
-from kornia.config import kornia_config
-from kornia.onnx.download import CachedDownloader
+from kornia.core.download import load_state_dict_from_url
 
 url = "https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth"
 
@@ -32,6 +33,10 @@ class SmallSRNet(nn.Module):
     "Real-Time Single Image and Video Super-Resolution Using an Efficient Sub-Pixel Convolutional Neural Network"
     - Shi et al for increasing the resolution of an image by an upscale factor.
     Taken from https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html.
+
+    The pretrained weights are that tutorial's, trained for ``upscale_factor=3``; with ``pretrained=True`` any other
+    factor raises a size-mismatch :class:`RuntimeError`. Through :class:`~kornia.contrib.SmallSRBuilder` every input
+    is first resized to 224 x 224, so the output there is ``224 * upscale_factor`` square.
     """
 
     def __init__(self, upscale_factor: int, inplace: bool = False, pretrained: bool = True) -> None:
@@ -51,28 +56,57 @@ class SmallSRNet(nn.Module):
                 weight_init(self)
 
     def load_from_file(self, path_file: str) -> None:
-        # use torch.hub to load pretrained model
-        model_path = CachedDownloader.download_to_cache(
-            path_file, "small_sr.pth", download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
-        )
-        pretrained_dict = torch.load(model_path, map_location=torch.device("cpu"))
+        """Load pretrained super-resolution weights and switch the module to evaluation mode.
+
+        Args:
+            path_file: path of a local checkpoint file, or a URL accepted by
+                :func:`kornia.core.download.load_state_dict_from_url`. A string naming an existing file (a leading
+                ``~`` is expanded) is read with :func:`torch.load` and ``weights_only=True``; a URL (a string with
+                ``://``) goes through the torch hub cache. The state dictionary is loaded strictly.
+
+        Raises:
+            FileNotFoundError: If ``path_file`` is neither an existing file nor a URL.
+        """
+        local = os.path.expanduser(path_file)
+        if os.path.isfile(local):
+            with open(local, "rb") as f:
+                pretrained_dict = torch.load(f, map_location=torch.device("cpu"), weights_only=True)
+        elif "://" not in str(path_file):
+            # Not a URL either: name the missing file instead of load_state_dict_from_url's "not a URL" error.
+            raise FileNotFoundError(f"No checkpoint file at {local!r}.")
+        else:
+            pretrained_dict = load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Super-resolve a single-channel image tensor.
+
+        Args:
+            x: Luminance image tensor with shape :math:`(B, 1, H, W)`, where
+                :math:`B` is batch size, :math:`H` is height, and :math:`W` is
+                width.
+
+        Returns:
+            Upscaled luminance tensor with shape
+            :math:`(B, 1, H * r, W * r)`, where ``r`` is the configured
+            upscale factor.
+        """
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
-        x = self.pixel_shuffle(self.conv4(x))
-        return x
+        return self.pixel_shuffle(self.conv4(x))
 
 
-def weight_init(model: nn.Module) -> None:
-    """Initialize model weights."""
-    torch.nn.init.orthogonal_(model.conv1.weight, torch.nn.init.calculate_gain("relu"))
-    torch.nn.init.orthogonal_(model.conv2.weight, torch.nn.init.calculate_gain("relu"))
-    torch.nn.init.orthogonal_(model.conv3.weight, torch.nn.init.calculate_gain("relu"))
-    torch.nn.init.orthogonal_(model.conv4.weight)
+def weight_init(module: nn.Module) -> None:
+    """Initialize model weights for Conv2d layers."""
+    if isinstance(module, nn.Conv2d):
+        # Use orthogonal initialization with gain for all conv layers
+        # conv4 (the last layer before pixel shuffle) uses default gain
+        if module.out_channels in {64, 32}:  # conv1, conv2, conv3
+            torch.nn.init.orthogonal_(module.weight, torch.nn.init.calculate_gain("relu"))
+        else:  # conv4 (upscale_factor**2 channels)
+            torch.nn.init.orthogonal_(module.weight)
 
 
 class SmallSRNetWrapper(nn.Module):
@@ -91,6 +125,17 @@ class SmallSRNetWrapper(nn.Module):
         self.upscale_factor = upscale_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply RGB super-resolution through a luminance-only SR model.
+
+        Args:
+            input: RGB image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            RGB tensor upscaled by ``self.upscale_factor``. The Y channel is
+            predicted by the super-resolution model, while Cb and Cr channels
+            are resized with bicubic interpolation before conversion back to
+            RGB.
+        """
         ycbcr = self.rgb_to_ycbcr(input)
         y, cb, cr = ycbcr.split(1, dim=1)
         out_y = self.model(y)

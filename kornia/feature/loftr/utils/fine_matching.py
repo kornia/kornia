@@ -40,7 +40,8 @@ class FineMatching(nn.Module):
         Args:
             feat_f0 (torch.Tensor): [M, WW, C]
             feat_f1 (torch.Tensor): [M, WW, C]
-            data (dict)
+            data (dict): with keys ['mkpts0_c', 'mkpts1_c', 'mconf', 'b_ids', 'stride_f'], ``stride_f`` being the
+                pixel stride of the fine feature maps (2 by default)
         Update:
             data (dict):{
                 'expec_f' (torch.Tensor): [M, 3],
@@ -50,7 +51,8 @@ class FineMatching(nn.Module):
         """
         M, WW, C = feat_f0.shape
         W = int(math.sqrt(WW))
-        scale = data["hw0_i"][0] / data["hw0_f"][0]
+        # pixel stride of the fine feature maps (2 by default), for any image size
+        scale = data["stride_f"]
         self.M, self.W, self.WW, self.C, self.scale = M, W, WW, C, scale
 
         # corner case: if no coarse matches found
@@ -80,7 +82,13 @@ class FineMatching(nn.Module):
 
         # compute std over <x, y>
         var = torch.sum(grid_normalized**2 * heatmap.view(-1, WW, 1), dim=1) - coords_normalized**2  # [M, 2]
-        std = torch.sum(torch.sqrt(torch.clamp(var, min=1e-10)), -1)  # [M]  clamp needed for numerical stability
+        # A clamp floor under sqrt bounds the value, not the gradient: 1e-10 is 0 in float16, and torch < 2.14 passes
+        # clamp's gradient through at the bound, so sqrt'(0) = inf reached the features as nan (#4229). Differentiate
+        # sqrt only above the floor; at or below it the value is still sqrt(floor), with zero gradient.
+        floor = torch.full_like(var, 1e-10)
+        above = var > floor
+        safe_var = torch.where(above, var, torch.ones_like(var))
+        std = torch.sum(torch.where(above, safe_var.sqrt(), floor.sqrt()), -1)  # [M]
 
         # for fine-level supervision
         data.update({"expec_f": torch.cat([coords_normalized, std.unsqueeze(1)], -1)})
@@ -90,6 +98,15 @@ class FineMatching(nn.Module):
 
     @torch.no_grad()
     def get_fine_match(self, coords_normed: torch.Tensor, data: dict[str, Any]) -> None:
+        """Extract fine-level correspondences from the refined matching heatmap.
+
+        Args:
+            coords_normed: Normalized coordinate offsets with shape :math:`(M, 2)`.
+            data: Dictionary containing image features, keypoints, descriptors, and image sizes for matching.
+
+        Returns:
+            None. Updates ``data`` in place with fine-level matches.
+        """
         W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f

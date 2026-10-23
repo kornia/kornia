@@ -15,15 +15,36 @@
 # limitations under the License.
 #
 
+import contextlib
 import os
+import random
+import subprocess
+import sys
+import time
+from contextlib import contextmanager
 from functools import partial
 from itertools import product
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
+from torch.distributions import Distribution
 
 import kornia
+from kornia.core.download import load_state_dict_from_url
+
+from testing import conformance, conformance_promise
+from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
+from testing.half_precision_ci import (
+    FailureRecorder,
+    KnownFailureTracker,
+    ManifestProfile,
+    get_profile,
+    seed_test_rng,
+)
+from testing.known_failures import mark_known_failures
+from testing.reference_data import TEST_CHECKPOINT_URLS, TEST_DATA_URLS, load_reference_data
 
 try:
     import torch._dynamo
@@ -55,7 +76,7 @@ def get_test_devices() -> dict[str, torch.device]:
         devices["tpu"] = xm.xla_device()
 
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        devices["mps"] = torch.device("mps")
+        devices["mps"] = torch.device("mps:0")
 
     return devices
 
@@ -84,7 +105,7 @@ TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 
 
-@pytest.fixture()
+@pytest.fixture
 def device(device_name) -> torch.device:
     """Return device for testing, skipping if device is unavailable."""
     if device_name not in TEST_DEVICES:
@@ -92,13 +113,47 @@ def device(device_name) -> torch.device:
     return TEST_DEVICES[device_name]
 
 
-@pytest.fixture()
+@pytest.fixture
+def restore_torch_rng():
+    """Keep explicitly opted-in tests from shifting later CPU/CUDA/MPS random draws (#4446)."""
+    cpu_state = torch.random.get_rng_state()
+    # Initialize available generators before snapshotting: a test can make the first accelerator draw.
+    cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    mps_state = torch.mps.get_rng_state() if torch.backends.mps.is_available() else None
+    try:
+        yield
+    finally:
+        torch.random.set_rng_state(cpu_state)
+        if cuda_states is not None:
+            torch.cuda.set_rng_state_all(cuda_states)
+        if mps_state is not None:
+            torch.mps.set_rng_state(mps_state)
+
+
+@pytest.fixture
 def dtype(dtype_name) -> torch.dtype:
     """Return dtype for testing."""
     return TEST_DTYPES[dtype_name]
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
+def keep_distribution_validation():
+    """Leave ``torch.distributions`` argument validation as each test found it.
+
+    The first Dynamo entry in a process, ``torch.compile`` included, runs a one-time setup that calls
+    ``Distribution.set_default_validate_args(False)`` process-wide. Without this fixture every test after
+    that entry runs with validation off, so a test pinned on a validation error passes or fails depending
+    on whether a compile test ran before it in the session.
+    """
+    validate_args = Distribution._validate_args
+    try:
+        yield
+    finally:
+        if Distribution._validate_args != validate_args:
+            Distribution.set_default_validate_args(validate_args)
+
+
+@pytest.fixture
 def torch_optimizer(optimizer_backend):
     """Return torch optimizer based on backend selection.
 
@@ -118,12 +173,144 @@ def torch_optimizer(optimizer_backend):
     return partial(torch.compile, backend=optimizer_backend)
 
 
+@pytest.fixture
+def cudnn_tf32_follows_option(request):
+    """Assert that cuDNN precision follows the session's opt-in TF32 setting."""
+    if torch.backends.cudnn.allow_tf32 != request.config.getoption("--tf32"):
+        pytest.fail("cuDNN TF32 setting does not match --tf32")
+
+
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
     """Parse a test option from CLI, expanding 'all' to full list."""
     raw_value = config.getoption(option)
     if raw_value == "all":
         return list(all_values.keys()) if isinstance(all_values, dict) else list(all_values)
     return raw_value.split(",")
+
+
+def _explicit_option_value(args: tuple[str, ...], option: str) -> str | None:
+    """Return an explicitly supplied pytest option value, if present."""
+    for index, argument in enumerate(args):
+        if argument.startswith(f"{option}="):
+            return argument.partition("=")[2]
+        if argument == option and index + 1 < len(args):
+            return args[index + 1]
+    return None
+
+
+def _configure_known_failure_profile(config) -> ManifestProfile | None:
+    """Resolve and apply a CPU-half profile before pytest generates parameter IDs."""
+    profile_name = config.getoption("--known-failure-profile")
+    verify = config.getoption("--verify-known-failures")
+    record = config.getoption("--record-known-failures")
+    if profile_name is None:
+        if verify or record:
+            raise pytest.UsageError("selected complete mode requires --known-failure-profile")
+        return None
+
+    try:
+        profile = get_profile(profile_name)
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
+
+    args = tuple(config.invocation_params.args)
+    required = {"device": "cpu", "dtype": profile.dtype}
+    for name, expected in required.items():
+        option = f"--{name}"
+        environment_name = f"KORNIA_TEST_{name.upper()}"
+        explicit = _explicit_option_value(args, option)
+        if explicit is None:
+            explicit = os.environ.get(environment_name)
+        if explicit is not None and explicit != expected:
+            raise pytest.UsageError(
+                f"explicit {name}={explicit} conflicts with profile {profile.name}, which requires {name}={expected}"
+            )
+        setattr(config.option, name, expected)
+    return profile
+
+
+def _validate_complete_known_failure_run(config, option: str) -> None:
+    normalized_args = set()
+    for arg in config.args:
+        target = Path(arg.split("::", maxsplit=1)[0])
+        if target.is_absolute():
+            with contextlib.suppress(ValueError):
+                target = target.relative_to(config.rootpath)
+        normalized_args.add(target.as_posix().removeprefix("./").rstrip("/"))
+    if normalized_args != {"tests"}:
+        raise pytest.UsageError(f"{option} requires exactly the full tests/ target")
+
+    partial_options = {
+        "-k": config.option.keyword,
+        "-m": config.option.markexpr,
+        "--deselect": config.option.deselect,
+        "--maxfail/-x": config.option.maxfail,
+        "--lf": getattr(config.option, "lf", None),
+        "--ff": getattr(config.option, "failedfirst", None),
+        "--collect-only": config.option.collectonly,
+        "--ignore": getattr(config.option, "ignore", None),
+        "--ignore-glob": getattr(config.option, "ignore_glob", None),
+        "xdist": getattr(config.option, "numprocesses", None),
+        "-p": getattr(config.option, "plugins", None),
+    }
+    active = [name for name, value in partial_options.items() if value]
+    if active:
+        raise pytest.UsageError(f"{option} does not allow partial-selection options; remove: {', '.join(active)}")
+
+
+def pytest_configure(config) -> None:
+    """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
+    config._conformance = {}
+    for promise in conformance_promise.PROMISES:
+        try:
+            config._conformance[promise.marker] = conformance.selection(config, promise)
+        except ValueError as error:
+            raise pytest.UsageError(str(error)) from error
+        if config._conformance[promise.marker]:
+            plugin = conformance.KnownFailurePlugin(promise)
+            config.pluginmanager.register(plugin, f"{promise.field}-conformance-known-failures")
+    profile = _configure_known_failure_profile(config)
+    config._known_failure_profile = profile
+    if profile is None:
+        return
+
+    focus = config.getoption("--xfail-known-failures")
+    verify = config.getoption("--verify-known-failures")
+    record = config.getoption("--record-known-failures")
+    if sum((bool(focus), bool(verify), bool(record))) != 1:
+        raise pytest.UsageError(
+            "a CPU-half profile requires exactly one of --xfail-known-failures, "
+            "--verify-known-failures, or --record-known-failures"
+        )
+    if os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip() or config.getoption("--runslow"):
+        raise pytest.UsageError("CPU-half profiles require KORNIA_TEST_OPTIMIZER to be unset and --runslow disabled")
+    if getattr(config.option, "numprocesses", None):
+        raise pytest.UsageError("CPU-half profiles do not support xdist")
+
+    if verify or record:
+        _validate_complete_known_failure_run(config, "--verify-known-failures" if verify else "--record-known-failures")
+    manifest_override = config.getoption("--known-failure-manifest")
+    if record and manifest_override:
+        raise pytest.UsageError("--known-failure-manifest is a replay override and cannot be used while recording")
+    if focus or verify:
+        manifest_path = Path(manifest_override) if manifest_override else profile.manifest_path
+        try:
+            tracker = KnownFailureTracker(
+                profile,
+                manifest_path,
+                mode="complete" if verify else "focus",
+                selectors=() if verify else config.args,
+                rootpath=config.rootpath,
+            )
+        except (OSError, ValueError) as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+    else:
+        try:
+            recorder = FailureRecorder(profile, Path(record), rootpath=config.rootpath)
+        except (OSError, ValueError) as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(recorder, "half-precision-failure-recorder")
 
 
 def pytest_generate_tests(metafunc) -> None:
@@ -154,8 +341,65 @@ def pytest_generate_tests(metafunc) -> None:
     metafunc.parametrize(names, combinations)
 
 
+def _apply_device_skips(items, run_mps_process_abort: bool) -> None:
+    """Skip the test classes a device cannot run at all, before they are executed."""
+    # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
+    # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
+    # float64 gradcheck on the tpu fixture fails for a pure precision reason. Skip on both.
+    skip_gradcheck = pytest.mark.skip(reason="gradcheck requires float64, which this device does not compute in")
+    # MPS does not support complex128 (cdouble); skip tests parametrized with it
+    skip_mps_cdouble = pytest.mark.skip(reason="MPS does not support complex128 (cdouble)")
+    # MPS autocast uses float16 and does not preserve original dtype — skip autocast tests on MPS
+    skip_mps_autocast = pytest.mark.skip(reason="MPS autocast changes dtype to float16, not supported the same way")
+    # A module marked mps_process_abort takes the Metal shader compiler down on the paravirtualized
+    # GPU of the hosted macOS runners, and the next MPS allocation aborts the pytest process
+    # (SIGABRT). The abort site moves between runs, and SIGABRT has no exception type, so these
+    # cannot be pinned as strict xfails — the process dies and everything after it is lost. Real
+    # Apple hardware does not abort, so --run-mps-process-abort forces them back on for local
+    # diagnosis; note that doing so leaves failures the manifest does not pin. Tracked in #4204,
+    # and the marker lives on the test module so a rename cannot silently disarm this.
+    skip_mps_abort = pytest.mark.skip(
+        reason="aborts the pytest process on MPS on virtualized Apple GPUs (#4204); --run-mps-process-abort runs anyway"
+    )
+
+    for item in items:
+        name = item.name.lower()
+        on_mps = "[mps" in item.nodeid
+        if "gradcheck" in name and (on_mps or "[tpu" in item.nodeid):
+            item.add_marker(skip_gradcheck)
+        if on_mps and "cdtype1" in item.nodeid:
+            item.add_marker(skip_mps_cdouble)
+        if on_mps and "autocast" in name:
+            item.add_marker(skip_mps_autocast)
+        if on_mps and not run_mps_process_abort and item.get_closest_marker("mps_process_abort"):
+            item.add_marker(skip_mps_abort)
+
+
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
+    # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
+    # them once whenever CPU is part of the matrix instead of repeating the same work in every
+    # accelerator job. --run-device-agnostic forces them back on, so an accelerator-only run can
+    # still cover the whole suite when that is what the caller wants.
+    selected_devices = _parse_test_option(config, "--device", TEST_DEVICES)
+    if "cpu" not in selected_devices and not config.getoption("--run-device-agnostic"):
+        device_agnostic_items = [item for item in items if item.get_closest_marker("device_agnostic") is not None]
+        if device_agnostic_items:
+            config.hook.pytest_deselected(items=device_agnostic_items)
+            device_agnostic_ids = {id(item) for item in device_agnostic_items}
+            items[:] = [item for item in items if id(item) not in device_agnostic_ids]
+            # Say so out loud. The deselected set is not incidental -- it holds the ONNX and
+            # torch.export suites -- and a bare "N deselected" in the status line is easy to read
+            # as noise, so an accelerator-only run should not look like a full-suite run.
+            reporter = config.pluginmanager.get_plugin("terminalreporter")
+            if reporter is not None:
+                reporter.write_line(
+                    f"deselected {len(device_agnostic_items)} device_agnostic test(s): they exercise "
+                    "CPU-only code and CPU is not in --device. Pass --run-device-agnostic "
+                    "(or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
+                    yellow=True,
+                )
+
     # Deselect dynamo/compile tests when no optimizer is specified
     # Check environment variable directly (not config option which has default "inductor")
     optimizer_env = os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()
@@ -163,14 +407,54 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
-    if config.getoption("--runslow"):
-        # --runslow given in cli: do not skip slow tests
-        return
+    # The ONNX and torch.compile conformance tests (#5819) are opt-in: --onnx-conformance and --compile-conformance
+    # name the packages whose promised operators they run. When one is given, conformance.KnownFailurePlugin turns its
+    # known failures into strict xfails.
+    for promise in conformance_promise.PROMISES:
+        if config._conformance[promise.marker]:
+            continue
+        conformance_items = [item for item in items if item.get_closest_marker(promise.marker) is not None]
+        if conformance_items:
+            config.hook.pytest_deselected(items=conformance_items)
+            conformance_ids = {id(item) for item in conformance_items}
+            items[:] = [item for item in items if id(item) not in conformance_ids]
 
-    skip_slow = pytest.mark.skip(reason="need --runslow option to run")
-    for item in items:
-        if "slow" in item.keywords:
-            item.add_marker(skip_slow)
+    if config.getoption("--xfail-known-failures") and getattr(config, "_known_failure_profile", None) is None:
+        devices = _parse_test_option(config, "--device", TEST_DEVICES)
+        dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
+        if len(devices) != 1 or len(dtypes) != 1:
+            raise pytest.UsageError("--xfail-known-failures requires exactly one --device and one --dtype")
+        try:
+            tracker = mark_known_failures(items, devices[0], dtypes[0])
+        except (OSError, ValueError) as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(tracker, "known-failure-tracker")
+
+    _apply_device_skips(items, config.getoption("--run-mps-process-abort"))
+
+    tf32_enabled = config.getoption("--tf32")
+
+    if not config.getoption("--runslow"):
+        skip_slow = pytest.mark.skip(reason="need --runslow option to run")
+        for item in items:
+            if "slow" in item.keywords:
+                item.add_marker(skip_slow)
+
+    # Tests marked @pytest.mark.tf32 are known to produce incorrect results when
+    # TF32 is active (torch.set_float32_matmul_precision("high")).  When running
+    # without --tf32 (the default), mark them xfail so the suite stays green.
+    # When --tf32 is explicitly passed, run them normally so the failures are visible.
+    if not tf32_enabled:
+        xfail_tf32 = pytest.mark.xfail(
+            reason=(
+                "This test is sensitive to TF32 (TensorFloat-32) precision reduction in CUDA matrix "
+                "multiplications.  Run with --tf32 to reproduce the failure."
+            ),
+            strict=False,
+        )
+        for item in items:
+            if "tf32" in item.keywords:
+                item.add_marker(xfail_tf32)
 
 
 def pytest_addoption(parser):
@@ -181,7 +465,31 @@ def pytest_addoption(parser):
         KORNIA_TEST_DTYPE: Data type to test (default: float32)
         KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
+        KORNIA_TEST_TF32: Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications (default: false)
+        KORNIA_DOCTEST_DOWNLOAD: Let doctests download model weights (default: false)
     """
+    parser.addoption(
+        "--known-failure-profile",
+        action="store",
+        help="Select an explicit known-failure profile such as cpu-float16.",
+    )
+    parser.addoption(
+        "--verify-known-failures",
+        action="store_true",
+        help="Run the complete blocking known-failure verification for the selected profile.",
+    )
+    parser.addoption(
+        "--record-known-failures",
+        action="store",
+        metavar="PATH",
+        help="Record a complete known-failure candidate at a guarded, untracked PATH.",
+    )
+    parser.addoption(
+        "--known-failure-manifest",
+        action="store",
+        metavar="PATH",
+        help="Override the selected profile manifest for candidate replay.",
+    )
     parser.addoption(
         "--device",
         action="store",
@@ -206,12 +514,87 @@ def pytest_addoption(parser):
         default=os.environ.get("KORNIA_TEST_RUNSLOW", "false").lower() == "true",
         help="Run slow tests (env: KORNIA_TEST_RUNSLOW)",
     )
+    parser.addoption(
+        "--tf32",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_TF32", "false").lower() == "true",
+        help=(
+            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications and cuDNN convolutions. "
+            "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
+            "(env: KORNIA_TEST_TF32)"
+        ),
+    )
+    parser.addoption(
+        "--doctest-download",
+        action="store_true",
+        default=downloads_allowed(os.environ),
+        help=(
+            "Let doctests download pretrained model weights. Without this flag a doctest that "
+            "would hit the network is skipped instead, so `pixi run doctest` stays fast and "
+            "offline-safe on a cold cache; doctests whose weights are already cached still run. "
+            f"(env: {DOWNLOAD_ENV_VAR})"
+        ),
+    )
+    parser.addoption(
+        "--isolate-half-precision",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_ISOLATE_HALF", "false").lower() == "true",
+        help=(
+            "Run float16/bfloat16 CUDA tests in fresh subprocesses via subprocess.run. "
+            "Each test gets its own Python process with no shared CUDA state, so a "
+            "device-side assert cannot contaminate subsequent tests. "
+            "Without this flag, float16/bfloat16 CUDA tests are skipped. "
+            "(env: KORNIA_TEST_ISOLATE_HALF)"
+        ),
+    )
+    parser.addoption(
+        "--run-device-agnostic",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_RUN_DEVICE_AGNOSTIC", "false").lower() == "true",
+        help=(
+            "Run tests marked device_agnostic even when CPU is not part of the device matrix. "
+            "They exercise CPU-only code, so an accelerator-only run deselects them by default "
+            "to avoid repeating work the CPU job already did; pass this to run the whole suite "
+            "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
+        ),
+    )
+    parser.addoption(
+        "--run-mps-process-abort",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_RUN_MPS_PROCESS_ABORT", "false").lower() == "true",
+        help=(
+            "Run tests marked mps_process_abort on MPS. They take the Metal shader compiler down "
+            "on the paravirtualized GPU of the hosted macOS runners and abort the pytest process, "
+            "so they are skipped by default; real Apple hardware does not abort, and this restores "
+            "them for local diagnosis. Expect failures the known-failure manifest does not pin. "
+            "(env: KORNIA_TEST_RUN_MPS_PROCESS_ABORT)"
+        ),
+    )
+    for promise in conformance_promise.PROMISES:
+        parser.addoption(
+            promise.option,
+            action="store",
+            default=os.environ.get(promise.env_var, ""),
+            metavar="PACKAGES",
+            help=(
+                f"Run the {promise.name} conformance test ({promise.test_file}, #5819) for these stable-core "
+                "packages, comma-separated (geometry,color,...), or 'all'; it is deselected without this option. "
+                f"(env: {promise.env_var})"
+            ),
+        )
+    parser.addoption(
+        "--xfail-known-failures",
+        action="store_true",
+        help=(
+            "Strictly xfail the complete recorded baseline for the selected device and dtype. "
+            "A new failure, changed exception, skipped pin, or fixed pin fails the run."
+        ),
+    )
 
 
 def _setup_torch_compile() -> None:
     """Warm up torch.compile to reduce first-run latency in tests."""
     print("Setting up torch compile...")
-    torch.set_float32_matmul_precision("high")
 
     def _dummy_fn(x, y):
         return (x + y).sum()
@@ -226,13 +609,33 @@ def _setup_torch_compile() -> None:
 
 def pytest_sessionstart(session):
     """Start pytest session."""
-    try:
-        _setup_torch_compile()
-    except RuntimeError as ex:
-        if "not yet supported for torch.compile" not in str(
-            ex
-        ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
-            raise ex
+    # Enable TF32 only when explicitly requested via --tf32 / KORNIA_TEST_TF32=true.
+    #
+    # TF32 (TensorFloat-32) truncates float32 inputs to a 10-bit mantissa before
+    # CUDA matrix multiplications (torch.bmm, torch.mm, etc.), giving ~float16
+    # mantissa precision for those ops.  This can cause test failures for
+    # numerically sensitive operations even though the same test passes without TF32.
+    # By default we run with full float32 precision so that tests are deterministic
+    # and correct.  Use --tf32 to reproduce the behaviour of torch.compile("high")
+    # and to run the @pytest.mark.tf32-marked tests.
+    if session.config.getoption("--tf32"):
+        torch.set_float32_matmul_precision("high")
+    # cuDNN allows TF32 by default independently of matmul precision; keep it opt-in too.
+    torch.backends.cudnn.allow_tf32 = session.config.getoption("--tf32")
+
+    # Warm torch.compile only for explicit optimizer jobs. Ordinary jobs deselect compile tests,
+    # while subprocess mode also avoids startup overhead and captured-output pollution.
+    should_warm_compile = bool(os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()) and not os.environ.get(
+        "KORNIA_TEST_IN_SUBPROCESS"
+    )
+    if should_warm_compile:
+        try:
+            _setup_torch_compile()
+        except RuntimeError as ex:
+            if "not yet supported for torch.compile" not in str(ex) and "Dynamo is not supported on Python" not in str(
+                ex
+            ):
+                raise ex
 
     os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)
     torch.hub.set_dir(WEIGHTS_CACHE_DIR)
@@ -294,8 +697,19 @@ def pytest_report_header(config):
     except ImportError:
         accelerate_info = "`accelerate` not found"
 
-    import kornia_rs
-    import onnx
+    try:
+        import kornia_rs
+
+        rs_version = kornia_rs.__version__
+    except ImportError:
+        rs_version = "not found"
+
+    try:
+        import onnx
+
+        onnx_version = onnx.__version__
+    except ImportError:
+        onnx_version = "not found"
 
     env_info = _get_env_info()
     cached_weights = os.listdir(WEIGHTS_CACHE_DIR) if os.path.exists(WEIGHTS_CACHE_DIR) else []
@@ -317,16 +731,329 @@ main deps:
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
-        - nvidia-driver: {env_info["nvidia"] if "nvidia" in env_info else None}
+        - nvidia-driver: {env_info.get("nvidia")}
 x deps:
     - {accelerate_info}
 dev deps:
-    - kornia_rs-{kornia_rs.__version__}
-    - onnx-{onnx.__version__}
+    - kornia_rs-{rs_version}
+    - onnx-{onnx_version}
 {gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
 model weights cached: {cached_weights}
 """
+
+
+def _extract_failure_output(output: str) -> str:
+    """Return just the FAILURES/ERRORS section from pytest stdout, or full output as fallback."""
+    import re
+
+    m = re.search(r"^=+ (FAILURES|ERRORS) =+", output, re.MULTILINE)
+    if m:
+        return output[m.start() :].strip()
+    return output.strip()
+
+
+def _is_subprocess_isolated_test(item) -> bool:
+    """Return True if this test should be run in a fresh subprocess.
+
+    Checks that:
+    - ``--isolate-half-precision`` is set
+    - we are NOT already inside a subprocess (``KORNIA_TEST_IN_SUBPROCESS`` env var)
+    - the test is parametrised with a half-precision dtype on CUDA
+    """
+    if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
+        return False
+    if not item.config.getoption("--isolate-half-precision", default=False):
+        return False
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return False
+    params = callspec.params
+    if params.get("device_name") != "cuda":
+        return False
+    if params.get("dtype_name") in ("float16", "bfloat16"):
+        return True
+    return any(v in (torch.float16, torch.bfloat16) for v in params.values())
+
+
+def pytest_runtest_protocol(item, nextitem):
+    """Run float16/bfloat16 CUDA tests in a fresh subprocess for true isolation.
+
+    ``pytest-forked`` uses ``fork()``, which copies the parent's CUDA context handle
+    into the child.  A device-side assert in the child corrupts the *same* underlying
+    GPU state the parent holds — so the isolation is illusory for CUDA float16.
+
+    This hook uses ``subprocess.run`` instead, which spawns a completely independent
+    Python interpreter with no shared CUDA state.  The child's result (pass / fail /
+    skip) is parsed and reported back into the parent's session as a synthetic
+    ``TestReport``.
+    """
+    if not _is_subprocess_isolated_test(item):
+        return None  # use the default protocol
+
+    item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)
+
+    # Forward device/dtype so pytest_generate_tests in the subprocess produces the
+    # same parametrisation as the parent — without these the [cuda-float16] nodeid
+    # can't be found because the subprocess defaults to [cpu-float32].
+    params = item.callspec.params
+    device_name = params.get("device_name", "cpu")
+    dtype_name = params.get("dtype_name", "float32")
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        item.nodeid,
+        "-o",
+        "addopts=",
+        "--no-header",
+        "--tb=short",
+        "-q",
+        "--color=no",
+        f"--device={device_name}",
+        f"--dtype={dtype_name}",
+    ]
+    # The parent already decided this node runs, so the child must not re-apply a selection rule
+    # and collect nothing: it is handed a single --device=cuda, under which the device_agnostic
+    # deselection would fire. Exit code 5 is reported back as an ordinary skip, which would hide
+    # a test that never executed.
+    cmd.append("--run-device-agnostic")
+    if item.config.getoption("--runslow"):
+        cmd.append("--runslow")
+    if item.config.getoption("--tf32"):
+        cmd.append("--tf32")
+    optimizer_backend = params.get("optimizer_backend")
+    if optimizer_backend:
+        cmd.append(f"--optimizer={optimizer_backend}")
+
+    env = {**os.environ, "KORNIA_TEST_IN_SUBPROCESS": "1"}
+    # `-o addopts=` above only clears the ini value; the environment form is inherited and would
+    # push the child to -qq, where the summary line the parser relies on is no longer printed.
+    env.pop("PYTEST_ADDOPTS", None)
+    t0 = time.monotonic()
+    proc = subprocess.run(  # noqa: S603
+        cmd, capture_output=True, text=True, cwd=str(item.config.rootdir), env=env, check=False
+    )
+    duration = time.monotonic() - t0
+    output = (proc.stdout + proc.stderr).strip()
+
+    # exit code 5 → no tests collected (test was deselected or already parametrised away)
+    if proc.returncode == 5:
+        outcome: str = "skipped"
+        longrepr = ("", 0, "subprocess: no tests collected")
+    elif proc.returncode == 0:
+        # Distinguish a genuine pass from a skipped test
+        if "passed" not in output and "skipped" in output:
+            skip_line = next(
+                (ln.strip() for ln in output.splitlines() if "SKIP" in ln.upper()), "skipped in subprocess"
+            )
+            outcome = "skipped"
+            longrepr = ("", 0, skip_line)
+        else:
+            outcome = "passed"
+            longrepr = None
+    else:
+        outcome = "failed"
+        longrepr = _extract_failure_output(output)
+
+    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> pytest.TestReport:
+        return pytest.TestReport(
+            nodeid=item.nodeid,
+            location=item.location,
+            keywords=dict(item.keywords),
+            outcome=out,
+            longrepr=rep_longrepr,
+            when=when,
+            duration=dur,
+        )
+
+    for rep in [
+        _report("setup", "passed", None),
+        _report("call", outcome, longrepr, duration),
+    ]:
+        item.ihook.pytest_runtest_logreport(report=rep)
+
+    # The previous normal item may have kept module/class fixtures alive for this item.
+    # Unwind them for the next item without setting up the isolated item's fixtures here.
+    # Capture finalizer failures as teardown errors rather than aborting the runner.
+    if item.session.shouldfail or item.session.shouldstop:
+        nextitem = None
+    teardown = pytest.CallInfo.from_call(
+        lambda: item.session._setupstate.teardown_exact(nextitem),
+        when="teardown",
+        reraise=(KeyboardInterrupt, pytest.exit.Exception),
+    )
+    report = item.ihook.pytest_runtest_makereport(item=item, call=teardown)
+    item.ihook.pytest_runtest_logreport(report=report)
+
+    item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
+    return True
+
+
+@contextmanager
+def _isolated_test_rng(seed: int):
+    """Temporarily seed the process-global CPU RNGs and restore their exact states."""
+    python_state = random.getstate()
+    numpy_state = np.random.get_state()  # noqa: NPY002 - snapshot the process-global RNG used by existing tests.
+    torch_state = torch.random.get_rng_state()
+    try:
+        random.seed(seed)
+        np.random.seed(seed)  # noqa: NPY002 - the test suite uses NumPy's process-global RNG.
+        torch.random.default_generator.manual_seed(seed)
+        yield
+    finally:
+        random.setstate(python_state)
+        np.random.set_state(numpy_state)  # noqa: NPY002 - restore the process-global RNG exactly.
+        torch.random.set_rng_state(torch_state)
+
+
+@pytest.fixture
+def test_rng_seed(request) -> int:
+    """Return the stable seed for this pytest node without changing global RNG state."""
+    return seed_test_rng(request.node.nodeid)
+
+
+@pytest.fixture(autouse=True)
+def seed_half_precision_manifest_run(request, test_rng_seed: int):
+    """Isolate RNG state for explicit CPU-half known-failure profile runs."""
+    if getattr(request.config, "_known_failure_profile", None) is None:
+        yield
+        return
+    with _isolated_test_rng(test_rng_seed):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def skip_half_precision_on_cuda(request):
+    """Skip float16/bfloat16 CUDA tests unless running inside a subprocess.
+
+    CUDA device-side asserts are asynchronous: a failing half-precision kernel does not
+    raise immediately but corrupts the CUDA context until the next synchronisation point,
+    which may be inside a completely different (float32) test.  Once triggered, the
+    context is permanently broken for the process — all subsequent CUDA ops fail.
+
+    Default behaviour (no flag): float16/bfloat16 CUDA tests are *skipped*.
+
+    With ``--isolate-half-precision`` (or ``KORNIA_TEST_ISOLATE_HALF=true``): each
+    float16/bfloat16 CUDA test is intercepted by ``pytest_runtest_protocol`` *before*
+    any fixture runs and executed in a fresh ``subprocess.run`` process.  This fixture
+    only runs inside those subprocesses (where ``KORNIA_TEST_IN_SUBPROCESS=1`` is set)
+    and exits immediately so the test proceeds normally.
+
+    Usage::
+
+        pytest tests/color/ --device=cuda --dtype=bfloat16 --isolate-half-precision
+        pytest tests/       --device=cuda --dtype=all      --isolate-half-precision
+    """
+    # Inside a subprocess spawned by pytest_runtest_protocol — run the test normally.
+    if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
+        return
+
+    half_dtype = None
+    if "dtype" in request.fixturenames:
+        dtype = request.getfixturevalue("dtype")
+        if dtype in (torch.bfloat16, torch.float16):
+            half_dtype = dtype
+    elif hasattr(request.node, "callspec"):
+        half_dtype = next(
+            (v for v in request.node.callspec.params.values() if v in (torch.bfloat16, torch.float16)),
+            None,
+        )
+
+    if half_dtype is None:
+        return
+
+    if "device" not in request.fixturenames:
+        return
+
+    try:
+        device = request.getfixturevalue("device")
+    except pytest.FixtureLookupError:
+        return
+
+    if device.type != "cuda":
+        return
+
+    if not request.config.getoption("--isolate-half-precision"):
+        dtype_name = "bfloat16" if half_dtype == torch.bfloat16 else "float16"
+        pytest.skip(
+            f"{dtype_name} on CUDA: skipped by default to prevent device-side assert contamination. "
+            "Run with --isolate-half-precision to execute in isolated subprocesses."
+        )
+
+
+@pytest.fixture(autouse=True)
+def cuda_device_assert_guard(request):
+    """Guard against CUDA device-side assert contamination between tests.
+
+    Active only when running inside a subprocess (``KORNIA_TEST_IN_SUBPROCESS=1``)
+    or with ``--isolate-half-precision``, so regular float32 CI is not slowed
+    down by the extra host-device synchronisations.
+
+    This fixture synchronises CUDA before each test; if the context is already
+    corrupted the test is skipped rather than allowed to fail spuriously.
+    After each test a second synchronisation drains the queue so any async
+    device-side assert surfaces in the test that caused it, not the next one.
+    If a device-side assert is detected in the post-test sync the test is
+    failed (not silently passed) so asynchronous errors are always visible.
+    """
+    in_subprocess = os.environ.get("KORNIA_TEST_IN_SUBPROCESS")
+    isolate = request.config.getoption("--isolate-half-precision", default=False)
+    if not (in_subprocess or isolate):
+        yield
+        return
+
+    if "device" not in request.fixturenames:
+        yield
+        return
+
+    try:
+        device = request.getfixturevalue("device")
+    except pytest.FixtureLookupError:
+        yield
+        return
+
+    if device.type != "cuda":
+        yield
+        return
+
+    # Pre-test: verify the CUDA context is healthy.
+    try:
+        torch.cuda.synchronize(device)
+    except RuntimeError:
+        pytest.skip("CUDA context corrupted by a device-side assert in a previous test; run this test in isolation")
+
+    yield
+
+    # Post-test: drain the CUDA queue so any async device-side assert surfaces here,
+    # in the test that caused it, rather than at the start of the next test.
+    # Fail the test if a device-side assert is detected so it is not silently passed.
+    try:
+        torch.cuda.synchronize(device)
+    except RuntimeError as exc:
+        torch.cuda.empty_cache()
+        pytest.fail(f"CUDA device-side assert triggered during this test: {exc}")
+
+
+@pytest.fixture(autouse=True)
+def skip_doctests_needing_downloads(request, monkeypatch):
+    """Skip doctests that would download pretrained weights.
+
+    A dozen docstring examples in ``kornia/`` build pretrained models, which on a
+    cold cache turns ``pixi run doctest`` into an ~838 MB download. The guard
+    patches the download primitives, which run only on a cache miss, so an
+    example whose weights are already present still runs for real.
+
+    Opt in with ``--doctest-download`` / ``KORNIA_DOCTEST_DOWNLOAD=1``; the
+    scheduled main-branch documentation job does, so the examples keep real
+    coverage there.
+    """
+    if not isinstance(request.node, pytest.DoctestItem):
+        return
+    if request.config.getoption("--doctest-download"):
+        return
+
+    install_download_guard(monkeypatch.setattr, lambda url: pytest.skip(skip_reason(url)))
 
 
 @pytest.fixture(autouse=True)
@@ -337,30 +1064,14 @@ def add_doctest_deps(doctest_namespace):
     doctest_namespace["kornia"] = kornia
 
 
-# Test data commit hashes from kornia/data_test repository
-_DATA_TEST_SHA = {
-    "loftr": "cb8f42bf28b9f347df6afba5558738f62a11f28a",
-    "adalam": "f7d8da661701424babb64850e03c5e8faec7ea62",
-    "disk": "8b98f44abbe92b7a84631ed06613b08fee7dae14",
-}
-
-# URLs for test data files
-_TEST_DATA_URLS: dict[str, str] = {
-    "loftr_homo": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_outdoor_and_homography_data.pt?raw=true",
-    "loftr_fund": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_indoor_and_fundamental_data.pt?raw=true",
-    "adalam_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
-    "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
-    "disk_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['disk']}/knchurch_disk.pt?raw=true",
-    "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
-}
-
-
 @pytest.fixture(scope="session")
 def data(request):
     """Load test data from remote URL.
 
     Use with @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     """
-    if request.param not in _TEST_DATA_URLS:
-        raise ValueError(f"Unknown test data: {request.param}. Available: {list(_TEST_DATA_URLS.keys())}")
-    return torch.hub.load_state_dict_from_url(_TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))
+    if request.param in TEST_DATA_URLS:
+        return load_reference_data(request.param)
+    if request.param in TEST_CHECKPOINT_URLS:
+        return load_state_dict_from_url(TEST_CHECKPOINT_URLS[request.param], map_location=torch.device("cpu"))
+    raise ValueError(f"Unknown test data: {request.param}. Available: {[*TEST_DATA_URLS, *TEST_CHECKPOINT_URLS]}")

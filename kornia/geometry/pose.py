@@ -21,11 +21,14 @@ import uuid
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
+__all__ = ["NamedPose"]
 
-def check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
+
+def _check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
     """Verify matrix shape based on type."""
     target_shapes = []
     if matrix_type == "R":
@@ -44,13 +47,23 @@ class NamedPose:
 
     Internally represented by either Se2 or Se3.
 
+    Convention:
+        - ``NamedPose(pose, frame_src="a", frame_dst="b")`` is ``b_from_a``: :meth:`transform_points` maps points in
+          frame ``a`` to frame ``b``, so ``NamedPose(pose, frame_src="1", frame_dst="0")`` is ``trans_01`` in the
+          notation of :func:`~kornia.geometry.linalg.relative_transformation`, for an ``Se2`` and an ``Se3`` pose alike.
+        - ``c_from_b * b_from_a`` is ``c_from_a``, whose matrix is ``c_from_b.pose.matrix() @ b_from_a.pose.matrix()``.
+          The left operand's ``frame_src`` must equal the right operand's ``frame_dst``, otherwise ``*`` raises
+          ``ValueError``; :meth:`inverse` inverts the pose and swaps the frame names.
+        - The pose must be an ``Se2`` or an ``Se3``: an ``So3``, ``So2``, ``Quaternion`` or tensor is rejected at
+          construction (use :meth:`from_rt` or :meth:`from_matrix` to build a pose from one), and ``*`` raises
+          ``TypeError`` for a right operand that is not a ``NamedPose`` or holds the other group.
+
     Example:
         >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
         >>> b_from_a
         NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
-        translation: x: 0.0
-        y: 0.0
-        z: 0.0,
+        translation: Parameter containing:
+        tensor([0., 0., 0.], requires_grad=True),
         frame_src: frame_a -> frame_dst: frame_b)
 
     """
@@ -60,10 +73,14 @@ class NamedPose:
 
         Args:
             dst_from_src: Pose from source frame to destination frame.
-            frame_src: Name of frame a.
-            frame_dst: Name of frame b.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
+
+        Raises:
+            TypeCheckError: if ``dst_from_src`` is not an ``Se2`` or an ``Se3``.
 
         """
+        KORNIA_CHECK_TYPE(dst_from_src, (Se2, Se3))
         self._dst_from_src = dst_from_src
         self._frame_src = frame_src or uuid.uuid4().hex
         self._frame_dst = frame_dst or uuid.uuid4().hex
@@ -83,25 +100,28 @@ class NamedPose:
         Returns:
             Composed NamedPose.
 
+        Raises:
+            TypeError: if ``other`` is not a ``NamedPose`` or its pose is not of the same group as ``self.pose``.
+            ValueError: if ``self.frame_src`` is not ``other.frame_dst``.
+
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> c_from_b = NamedPose(Se3.identity(), frame_src="frame_b", frame_dst="frame_c")
             >>> c_from_b * b_from_a
             NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
-            translation: x: 0.0
-            y: 0.0
-            z: 0.0,
+            translation: tensor([0., 0., 0.], grad_fn=<AddBackward0>),
             frame_src: frame_a -> frame_dst: frame_c)
 
         """
+        if not isinstance(other, NamedPose):
+            raise TypeError(f"NamedPose can only be composed with a NamedPose, got {type(other)}")
         if self._frame_src != other._frame_dst:
             raise ValueError(f"Cannot compose {self} with {other}")
-        if isinstance(other.pose, Se2):
+        if isinstance(self.pose, Se2) and isinstance(other.pose, Se2):
             return NamedPose(self._dst_from_src._mul_se2(other.pose), other._frame_src, self._frame_dst)
-        elif isinstance(other.pose, Se3):
+        if isinstance(self.pose, Se3) and isinstance(other.pose, Se3):
             return NamedPose(self._dst_from_src._mul_se3(other.pose), other._frame_src, self._frame_dst)
-        else:
-            raise ValueError(f"Pose must be either Se2 or Se3, got {type(self._dst_from_src)}")
+        raise TypeError(f"Cannot compose an {type(self.pose).__name__} pose with an {type(other.pose).__name__} pose")
 
     @property
     def pose(self) -> Se2 | Se3:
@@ -141,8 +161,8 @@ class NamedPose:
         Args:
             rotation: Rotation part of the pose.
             translation: Translation part of the pose.
-            frame_src: Name of the source frame.
-            frame_dst: Name of the destination frame.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
         Returns:
             NamedPose constructed from rotation and translation.
@@ -160,17 +180,24 @@ class NamedPose:
         """
         if isinstance(rotation, (So3, Quaternion)):
             return cls(Se3(rotation, translation), frame_src, frame_dst)
-        elif isinstance(rotation, So2):
+        if isinstance(rotation, So2):
             return cls(Se2(rotation, translation), frame_src, frame_dst)
-        elif isinstance(rotation, torch.Tensor):
-            check_matrix_shape(rotation)
+        if isinstance(rotation, torch.Tensor):
+            _check_matrix_shape(rotation)
             dim = rotation.shape[-1]
+            batch_shape = rotation.shape[:-2]
+            if translation.shape != rotation.shape[:-1]:
+                raise ValueError(
+                    f"translation must have shape {tuple(rotation.shape[:-1])} for a rotation of shape "
+                    f"{tuple(rotation.shape)}, got {tuple(translation.shape)}"
+                )
             RT = torch.eye(dim + 1, device=rotation.device, dtype=rotation.dtype)
+            RT = RT.expand(*batch_shape, dim + 1, dim + 1).clone()
             RT[..., :dim, :dim] = rotation
             RT[..., :dim, dim] = translation
             if dim == 2:
                 return cls(Se2.from_matrix(RT), frame_src, frame_dst)
-            elif dim == 3:
+            if dim == 3:
                 return cls(Se3.from_matrix(RT), frame_src, frame_dst)
         else:
             raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(rotation)}")
@@ -184,14 +211,14 @@ class NamedPose:
 
         Args:
             matrix: Matrix representation of the pose.
-            frame_src: Name of the source frame.
-            frame_dst: Name of the destination frame.
+            frame_src: Name of the source frame; a random unique name when omitted or empty.
+            frame_dst: Name of the destination frame; a random unique name when omitted or empty.
 
         Returns:
             NamedPose constructed from a matrix.
 
         Example:
-            >>> b_from_a_matrix = Se3.identity().matrix()
+            >>> b_from_a_matrix = torch.eye(4)
             >>> b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
             NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
@@ -200,11 +227,11 @@ class NamedPose:
             frame_src: frame_a -> frame_dst: frame_b)
 
         """
-        check_matrix_shape(matrix, matrix_type="RT")
+        _check_matrix_shape(matrix, matrix_type="RT")
         dim = matrix.shape[-1]
         if dim == 3:
             return cls(Se2.from_matrix(matrix), frame_src, frame_dst)
-        elif dim == 4:
+        if dim == 4:
             return cls(Se3.from_matrix(matrix), frame_src, frame_dst)
         return None
 
@@ -218,9 +245,7 @@ class NamedPose:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.inverse()
             NamedPose(dst_from_src=rotation: tensor([1., -0., -0., -0.])
-            translation: x: 0.0
-            y: 0.0
-            z: 0.0,
+            translation: tensor([0., 0., 0.], grad_fn=<SliceBackward0>),
             frame_src: frame_b -> frame_dst: frame_a)
 
         """
@@ -238,7 +263,7 @@ class NamedPose:
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.transform_points(torch.tensor([1., 2., 3.]))
-            tensor([1., 2., 3.])
+            tensor([1., 2., 3.], grad_fn=<AddBackward0>)
 
         """
         return self._dst_from_src * points_in_src

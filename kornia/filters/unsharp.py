@@ -20,6 +20,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
+from .filter import _to_floating
 from .gaussian import gaussian_blur2d
 
 
@@ -33,16 +34,28 @@ def unsharp_mask(
 
     .. image:: _static/img/unsharp_mask.png
 
+    Convention:
+        - The blur in the formula above is :func:`~kornia.filters.gaussian_blur2d` with the same ``kernel_size``,
+          ``sigma`` and ``border_type``, and the detail it removes is added back with a fixed gain of 1. See the
+          Convention block on :func:`~kornia.filters.gaussian_blur2d` for the argument order.
+        - The output is not clamped: next to an edge it overshoots on both sides, so a step from 0 to 1 comes back
+          below 0 and above 1. :ref:`Filtering <filtering-conventions>` maps the call onto scikit-image.
+        - An integer or bool image is filtered in float32 and the result is float32 on its own scale, like
+          :func:`~kornia.filters.gaussian_blur2d`; a floating image keeps its dtype.
+        - Under ``torch.autocast`` the blur runs in the autocast dtype, as in :func:`~kornia.filters.gaussian_blur2d`
+          (autocast leaves a float64 image alone), and the result keeps the image's dtype, as for
+          :func:`~kornia.enhance.sharpness`.
+
     Args:
         input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
+        the sharpened torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -51,19 +64,26 @@ def unsharp_mask(
         torch.Size([2, 4, 5, 5])
 
     """
+    input = _to_floating(input)
     data_blur: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
-    return torch.lerp(data_blur, input, weight=2.0)
+    # Under autocast the blur, a convolution, comes back in the autocast dtype, and torch.lerp, which is not an autocast
+    # op and does not promote, raised on the dtype mismatch with the image. Casting the blur back gives the image's
+    # dtype, as 2 * image - blur would; the cast is a no-op outside autocast.
+    return torch.lerp(data_blur.to(input.dtype), input, weight=2.0)
 
 
 class UnsharpMask(nn.Module):
     r"""Create an operator that sharpens image with: out = 2 * image - gaussian_blur2d(image).
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.unsharp_mask`.
 
     Args:
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
         the sharpened torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -73,7 +93,7 @@ class UnsharpMask(nn.Module):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/unsharp_mask.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/unsharp_mask.html>`__.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -96,4 +116,22 @@ class UnsharpMask(nn.Module):
         self.border_type = border_type
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Sharpen an image by adding back high-frequency detail.
+
+        Unsharp masking first builds a blurred version of the image and then
+        uses the difference between the original and blurred images as a detail
+        signal. Adding that detail back emphasizes edges and fine texture while
+        keeping the tensor layout unchanged.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the image height, and :math:`W` is the
+                image width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the sharpened
+            image. The spatial scale of sharpening is set by the configured
+            Gaussian kernel size and sigma; the amount is fixed.
+        """
         return unsharp_mask(input, self.kernel_size, self.sigma, self.border_type)

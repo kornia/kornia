@@ -17,20 +17,23 @@
 
 from __future__ import annotations
 
+import importlib.util
 from typing import ClassVar, Union
 
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core.external import numpy as _np
+from kornia.core.external import onnxruntime as _ort
 
 from .utils import download_onnx_from_url, normalize_keypoints
 
-try:
-    import numpy as np
-    import onnxruntime as ort
-except ImportError:
-    np = None  # type: ignore
-    ort = None
+_KEYPOINT_RANGE_MSG = (
+    "Keypoints must lie inside the image: normalized by the image size they have to be in [-1, 1]. The keypoints are "
+    "(x, y) pixel coordinates. The image size is (width, height) for the ``image_size`` of LightGlue and "
+    "OnnxLightGlue, and (height, width) for the ``hw1`` / ``hw2`` of LightGlueMatcher; the wrong order, or keypoints "
+    "detected on a differently sized image, put them out of range."
+)
 
 __all__ = ["OnnxLightGlue"]
 
@@ -44,11 +47,18 @@ class OnnxLightGlue:
     If you have trained your own LightGlue model, see https://github.com/fabio-sim/LightGlue-ONNX
     for how to export the model to ONNX and optimize it.
 
+    Convention:
+        - See the Convention block on :class:`~kornia.feature.LightGlue`: the keypoints are normalised the same way,
+          with ``image_size`` in the order ``(W, H)``, and the same range check applies. Unlike
+          :class:`~kornia.feature.LightGlue`, it takes float32 inputs with a batch of one and no scales, orientations
+          or LAFs, and it runs on CPU or CUDA only.
+
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: Union[str, torch.device, None] to run inference on.
+        device: ``'cpu'`` or ``'cuda'`` to run inference on; another device raises ``ValueError``. ``None`` means
+          ``'cpu'``, as in the other kornia feature constructors, not torch's current default device.
 
     """
 
@@ -62,10 +72,13 @@ class OnnxLightGlue:
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
     def __init__(self, weights: str | None = None, device: Union[str, torch.device, None] = "cpu") -> None:
-        KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
-        KORNIA_CHECK(np is not None, "numpy is not installed.")
+        # Import onnxruntime through the lazy loader, not an `importlib.util.find_spec` probe, so that
+        # `kornia_config.lazyloader.installation_mode` handles a missing module before the weights are downloaded.
+        # `__version__` is module metadata, which the loader imports the module for; `__doc__` would not import it.
+        _ = _ort.__version__
+        KORNIA_CHECK(importlib.util.find_spec("numpy") is not None, "numpy is not installed.")
 
-        device = torch.device(device)  # type: ignore
+        device = torch.device("cpu") if device is None else torch.device(device)
         self.device = device
 
         if device.type == "cpu":
@@ -88,9 +101,17 @@ class OnnxLightGlue:
 
             weights = download_onnx_from_url(url)
 
-        self.session = ort.InferenceSession(weights, providers=providers)
+        self.session = _ort.InferenceSession(weights, providers=providers)
 
     def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+        """Run the ONNX LightGlue matcher.
+
+        Args:
+            data: Dictionary containing image features, keypoints, descriptors, and image sizes for matching.
+
+        Returns:
+            Dictionary containing ONNX LightGlue matches and matching scores.
+        """
         return self.forward(data)
 
     def forward(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
@@ -146,14 +167,14 @@ class OnnxLightGlue:
 
         # Normalize keypoints.
         size0, size1 = data0.get("image_size"), data1.get("image_size")
-        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
-        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
+        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]
+        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]
 
-        kpts0 = normalize_keypoints(kpts0_, size=size0)  # type: ignore
-        kpts1 = normalize_keypoints(kpts1_, size=size1)  # type: ignore
+        kpts0 = normalize_keypoints(kpts0_, size=size0)
+        kpts1 = normalize_keypoints(kpts1_, size=size1)
 
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), _KEYPOINT_RANGE_MSG)
+        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), _KEYPOINT_RANGE_MSG)
 
         # Inference.
         lightglue_inputs = {"kpts0": kpts0, "kpts1": kpts1, "desc0": desc0, "desc1": desc1}
@@ -165,7 +186,7 @@ class OnnxLightGlue:
                 name,
                 device_type=self.device.type,
                 device_id=0,
-                element_type=np.float32,
+                element_type=_np.float32,
                 shape=tuple(tensor.shape),
                 buffer_ptr=tensor.data_ptr(),
             )
@@ -176,12 +197,30 @@ class OnnxLightGlue:
         self.session.run_with_iobinding(binding)
 
         matches, mscores = binding.get_outputs()
+        # Prefer DLPack-based conversion when available for zero-copy transfer between them
+        # The fallback path uses NumPy, which incurs a device-to-host copy and is slower.
 
-        # TODO: The following is an unnecessary copy. Replace with a better solution when torch supports
-        # constructing a torch.Tensor from a data pointer, or when ORT supports converting to torch torch.Tensor.
-        # https://github.com/microsoft/onnxruntime/issues/15963
-        outputs = {
-            "matches": torch.from_dlpack(matches.numpy()).to(self.device),
-            "scores": torch.from_dlpack(mscores.numpy()).to(self.device),
-        }
+        # ORT's io_binding.get_outputs() returns Python-level OrtValue wrappers.
+        # The DLPack protocol (__dlpack__ + __dlpack_device__) is only available on
+        # the underlying pybind11 C object (_ortvalue), not the Python wrapper itself.
+        # We use getattr to handle both current ORT (needs ._ortvalue) and future ORT
+        # versions that may expose __dlpack__ directly on the wrapper.
+        # Both outputs must support the full protocol before taking the zero-copy path.
+        _m = getattr(matches, "_ortvalue", matches)
+        _s = getattr(mscores, "_ortvalue", mscores)
+        if (
+            hasattr(_m, "__dlpack__")
+            and hasattr(_m, "__dlpack_device__")
+            and hasattr(_s, "__dlpack__")
+            and hasattr(_s, "__dlpack_device__")
+        ):
+            outputs = {
+                "matches": torch.from_dlpack(_m),
+                "scores": torch.from_dlpack(_s),
+            }
+        else:
+            outputs = {
+                "matches": torch.from_numpy(matches.numpy()).to(self.device),
+                "scores": torch.from_numpy(mscores.numpy()).to(self.device),
+            }
         return outputs

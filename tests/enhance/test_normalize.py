@@ -24,10 +24,28 @@ from testing.base import BaseTester
 
 
 class TestNormalize(BaseTester):
+    @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (2, 3, 2, 4, 5)])
+    def test_noncontiguous(self, shape, device, dtype):
+        data = torch.rand(shape, device=device, dtype=dtype).transpose(-1, -2)
+        mean = torch.tensor([0.25, 0.5, 0.75], device=device, dtype=dtype)
+        std = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
+        broadcast_shape = (1, 3) + (1,) * (data.ndim - 2)
+        expected = (data - mean.reshape(broadcast_shape)) / std.reshape(broadcast_shape)
+
+        assert not data.is_contiguous()
+        self.assert_close(kornia.enhance.normalize(data, mean, std), expected)
+        self.assert_close(kornia.enhance.Normalize(mean, std)(data), expected)
+
+    def test_noncontiguous_gradcheck(self, device):
+        data = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64).transpose(-1, -2)
+        mean = torch.tensor([0.25, 0.5], device=device, dtype=torch.float64)
+        std = torch.tensor([0.5, 2.0], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.enhance.Normalize(mean, std), (data,))
+
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
-        repr = "Normalize(mean=tensor([[0.5000]]), std=tensor([[0.1000]]))"
+        repr = "Normalize(mean=[0.5], std=[0.1])"
         assert str(kornia.enhance.Normalize(mean, std)) == repr
 
     def test_normalize(self, device, dtype):
@@ -41,6 +59,47 @@ class TestNormalize(BaseTester):
 
         f = kornia.enhance.Normalize(mean, std)
         self.assert_close(f(data), expected)
+
+    def test_empty_batch(self, device, dtype):
+        data = torch.rand(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
+        mean = torch.tensor([0.5], device=device, dtype=dtype, requires_grad=True)
+        std = torch.tensor([0.5], device=device, dtype=dtype, requires_grad=True)
+
+        output = kornia.enhance.normalize(data, mean, std)
+        augmentation_output = kornia.augmentation.Normalize(mean, std, p=1.0)(data)
+
+        assert output.shape == data.shape
+        assert output.device == data.device
+        assert output.dtype == data.dtype
+        assert augmentation_output.shape == data.shape
+
+        output.sum().backward()
+
+        assert data.grad is not None
+        assert mean.grad is not None
+        assert std.grad is not None
+        assert data.grad.abs().sum() == 0
+        assert mean.grad.abs().sum() == 0
+        assert std.grad.abs().sum() == 0
+
+    def test_rank2_normalize(self, device, dtype):
+        data = torch.ones(2, 3, device=device, dtype=dtype)
+        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
+        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype)
+
+        expected = (data - mean) / std
+
+        self.assert_close(kornia.enhance.normalize(data, mean, std), expected)
+
+    def test_empty_rank2_normalize(self, device, dtype):
+        data = torch.empty(0, 3, device=device, dtype=dtype)
+        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
+        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype)
+
+        output = kornia.enhance.normalize(data, mean, std)
+
+        assert output.shape == data.shape
+        self.assert_close(output, data)
 
     def test_broadcast_normalize(self, device, dtype):
         # prepare input data
@@ -120,7 +179,7 @@ class TestNormalize(BaseTester):
         # prepare input data
         mean = torch.tensor(2, device=device, dtype=dtype)
         std = torch.tensor(3, device=device, dtype=dtype)
-        data = torch.ones(2, 3, 256, 313, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 16, 17, device=device, dtype=dtype)
 
         # expected output
         expected = (data - mean) / std
@@ -143,7 +202,7 @@ class TestNormalize(BaseTester):
     )
     def test_random_normalize_different_parameter_types(self, mean, std):
         f = kornia.enhance.Normalize(mean=mean, std=std)
-        data = torch.ones(2, 3, 256, 313)
+        data = torch.ones(2, 3, 16, 17)
         if isinstance(mean, float):
             expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:
@@ -163,6 +222,128 @@ class TestNormalize(BaseTester):
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
+        pass
+
+
+class TestNormalizeConstantsAreBuffers(BaseTester):
+    """Tensor arguments move with the module; Python constants follow the input."""
+
+    @staticmethod
+    def _modules():
+        return {
+            "Normalize": kornia.enhance.Normalize(torch.zeros(3), torch.ones(3)),
+            "Denormalize": kornia.enhance.Denormalize(torch.zeros(3), torch.ones(3)),
+            "Rescale": kornia.enhance.Rescale(torch.tensor(2.0)),
+        }
+
+    def test_constants_are_registered_buffers(self, device, dtype):
+        for name, module in self._modules().items():
+            assert list(module.buffers()), f"{name} registered no buffers"
+
+    @pytest.mark.parametrize(
+        "name,attrs",
+        [
+            ("Normalize", ("mean", "std")),
+            ("Denormalize", ("mean", "std")),
+            ("Rescale", ("factor",)),
+        ],
+    )
+    def test_to_moves_the_constants(self, name, attrs, device, dtype):
+        """dtype stands in for device, so the check runs on CPU-only CI.
+
+        Asserted on the attributes by name rather than by iterating buffers:
+        iterating would pass vacuously on a module that registered none, which
+        is exactly the bug.
+        """
+        moved = self._modules()[name].to(torch.float64)
+        for attr in attrs:
+            value = getattr(moved, attr)
+            assert isinstance(value, torch.Tensor), f"{name}.{attr} is not a tensor"
+            assert value.dtype == torch.float64, f"{name}.{attr} stayed {value.dtype} after .to(float64)"
+
+    def test_the_constants_stay_out_of_the_state_dict(self, device, dtype):
+        """They are constructor arguments, not learned state.
+
+        Registering them persistently would make every existing checkpoint
+        report unexpected keys, so they are non-persistent buffers.
+        """
+        for name, module in self._modules().items():
+            assert module.state_dict() == {}, f"{name} state_dict is not empty"
+
+    def test_denormalize_coerces_scalars(self, device, dtype):
+        """Scalar arguments stay as Python values and are materialized per input."""
+        module = kornia.enhance.Denormalize(0.0, 255.0)
+        assert module.mean == 0.0
+        assert module.std == 255.0
+        assert not list(module.buffers())
+
+    def test_python_constants_preserve_float64_precision(self):
+        x = torch.full((1, 3, 1, 1), 0.3, dtype=torch.float64)
+        normalize = kornia.enhance.Normalize(0.1, 0.3).double()
+        denormalize = kornia.enhance.Denormalize(0.1, 0.3).double()
+        rescale = kornia.enhance.Rescale(0.1).double()
+
+        assert torch.equal(normalize(x), (x - 0.1) / 0.3)
+        assert torch.equal(denormalize(x), x * 0.3 + 0.1)
+        assert torch.equal(rescale(x), x * 0.1)
+
+    def test_normalize_sequence_constants_preserve_float64_precision(self):
+        x = torch.full((1, 2, 1, 1), 0.3, dtype=torch.float64)
+        module = kornia.enhance.Normalize((0.1, 0.2), (0.3, 0.4))
+        mean = torch.tensor([[0.1, 0.2]], dtype=torch.float64)
+        std = torch.tensor([[0.3, 0.4]], dtype=torch.float64)
+
+        assert torch.equal(module(x), (x - mean.reshape(1, 2, 1, 1)) / std.reshape(1, 2, 1, 1))
+
+    def test_denormalize_sequence_is_checked_against_the_channels(self):
+        """A (C,) list must not broadcast a 1-channel input to C channels."""
+        module = kornia.enhance.Denormalize([0.1, 0.2, 0.3], [1.0, 1.0, 1.0])
+        with pytest.raises(ValueError):
+            module(torch.ones(2, 1, 4, 4))
+
+    def test_denormalize_nested_sequence_gives_per_sample_statistics(self):
+        x = torch.ones(2, 3, 1, 1)
+        out = kornia.enhance.Denormalize([[0.0] * 3, [1.0] * 3], [[1.0] * 3, [2.0] * 3])(x)
+        expected = torch.tensor([1.0, 3.0]).view(2, 1, 1, 1).expand(2, 3, 1, 1)
+        assert torch.equal(out, expected)
+
+    def test_python_constants_take_the_onnx_branch(self, monkeypatch):
+        """The ONNX branch indexes ``mean.shape[0]``, so a 0-d constant would raise IndexError."""
+        monkeypatch.setattr(torch.onnx, "is_in_onnx_export", lambda: True)
+        x = torch.full((1, 3, 2, 2), 0.5)
+        self.assert_close(kornia.enhance.Normalize(0.1, 0.4)(x), torch.full_like(x, 1.0))
+        self.assert_close(kornia.enhance.Denormalize(0.1, 0.4)(x), torch.full_like(x, 0.3))
+
+    def test_forward_is_unchanged(self, device, dtype):
+        x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        mean = torch.zeros(3, device=device, dtype=dtype)
+        std = 2.0 * torch.ones(3, device=device, dtype=dtype)
+        self.assert_close(
+            kornia.enhance.Normalize(mean, std)(x),
+            kornia.enhance.normalize(x, mean, std),
+        )
+        self.assert_close(
+            kornia.enhance.Denormalize(mean, std)(x),
+            kornia.enhance.denormalize(x, mean, std),
+        )
+        self.assert_close(kornia.enhance.Rescale(2.0)(x), x * 2.0)
+
+    def test_smoke(self, device, dtype):
+        pass
+
+    def test_cardinality(self, device, dtype):
+        pass
+
+    def test_exception(self, device, dtype):
+        pass
+
+    def test_gradcheck(self, device):
+        pass
+
+    def test_module(self, device, dtype):
+        pass
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
         pass
 
 
@@ -278,7 +459,298 @@ class TestDenormalize(BaseTester):
         pass
 
 
+class TestNormalizeIntegerStatistics(BaseTester):
+    """A Python ``int`` ``mean`` or ``std`` is handled like the equal ``float`` (#6060).
+
+    The functions wrapped only a ``float`` statistic into a tensor, so an ``int`` reached ``mean.shape`` and raised
+    ``AttributeError``, although ``Normalize(0, 255)`` and ``Denormalize(0, 255)`` accepted the same values.
+    """
+
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    @pytest.mark.parametrize("mean, std", [(0, 255), (0.0, 255), (0, 255.0), (1, 2)])
+    def test_int_statistics_match_the_float_ones_6060(self, device, dtype, fn, mean, std):
+        op = getattr(kornia.enhance, fn)
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 4, 5, generator=g).to(device, dtype)
+
+        out = op(img, mean, std)
+
+        assert out.dtype == dtype
+        assert out.shape == img.shape
+        assert torch.equal(out, op(img, float(mean), float(std)))
+
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    def test_int_statistics_on_integer_input_6060(self, device, fn):
+        op = getattr(kornia.enhance, fn)
+        img = torch.tensor([[[[0, 128, 255]]]], device=device, dtype=torch.uint8)
+
+        out = op(img, 0, 255) if fn == "normalize" else op(img, 1, 2)
+
+        expected = [0.0, 128.0 / 255.0, 1.0] if fn == "normalize" else [1.0, 257.0, 511.0]
+        self.assert_close(out, torch.tensor([[[expected]]], device=device))
+
+    @pytest.mark.parametrize("module, fn", [("Normalize", "normalize"), ("Denormalize", "denormalize")])
+    def test_modules_and_functions_agree_on_int_statistics_6060(self, device, dtype, module, fn):
+        g = torch.Generator().manual_seed(0)
+        img = torch.rand(2, 3, 4, 5, generator=g).to(device, dtype)
+
+        out = getattr(kornia.enhance, fn)(img, 0, 255)
+
+        assert torch.equal(out, getattr(kornia.enhance, module)(0, 255).to(device)(img))
+
+
+class TestNormalizeIntegerInput(BaseTester):
+    """`normalize` and `denormalize` used to cast mean and std to an integer input's dtype (#5403).
+
+    A fractional statistic then truncated to an integer (0.5 -> 0) and the arithmetic ran in the integer dtype, so
+    `normalize` divided by zero and `denormalize` wrapped. Integer and bool inputs are now promoted to torch's
+    default floating dtype first, as `x * 0.5` does, and both functions return that dtype.
+    """
+
+    INTEGER_DTYPES = (torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool)
+
+    @staticmethod
+    def _image(device, input_dtype):
+        g = torch.Generator().manual_seed(0)
+        values = torch.randint(0, 2 if input_dtype is torch.bool else 128, (2, 3, 4, 5), generator=g)
+        return values.to(device, input_dtype)
+
+    @pytest.mark.parametrize("input_dtype", INTEGER_DTYPES)
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    @pytest.mark.parametrize("stats", ["float", "tensor"])
+    def test_integer_input_matches_the_float_path_5403(self, device, input_dtype, fn, stats):
+        # The same values held as float32 are the reference: nothing is truncated, wrapped or non-finite.
+        op = getattr(kornia.enhance, fn)
+        img = self._image(device, input_dtype)
+        if stats == "float":
+            mean, std = 0.5, 0.25
+        else:
+            mean = torch.tensor([0.5, 0.25, 0.75], device=device)
+            std = torch.tensor([0.25, 0.5, 2.0], device=device)
+
+        out = op(img, mean, std)
+
+        assert out.dtype == torch.get_default_dtype()
+        assert out.shape == img.shape
+        assert torch.isfinite(out).all()
+        self.assert_close(out, op(img.to(torch.get_default_dtype()), mean, std))
+
+    def test_issue_values_5403(self, device):
+        x = torch.tensor([[[[0, 128, 255]]]], device=device, dtype=torch.uint8)
+
+        # 0.5 used to truncate to 0: [nan, inf, inf]
+        self.assert_close(
+            kornia.enhance.normalize(x, 0.5, 0.5),
+            torch.tensor([[[[-1.0, 255.0, 509.0]]]], device=device),
+        )
+        # 0 - 100 used to wrap to 156 in uint8: [3.12, 0.56, 3.10]
+        self.assert_close(
+            kornia.enhance.normalize(x, 100.0, 50.0),
+            torch.tensor([[[[-2.0, 0.56, 3.1]]]], device=device),
+        )
+        # used to return [0, 0, 0] uint8
+        self.assert_close(
+            kornia.enhance.denormalize(x, 0.5, 0.5),
+            torch.tensor([[[[0.5, 64.5, 128.0]]]], device=device),
+        )
+        # 128 * 2 + 10 and 255 * 2 + 10 used to wrap in uint8: [10, 10, 8]
+        self.assert_close(
+            kornia.enhance.denormalize(x, 10.0, 2.0),
+            torch.tensor([[[[10.0, 266.0, 520.0]]]], device=device),
+        )
+
+    @pytest.mark.parametrize("module", ["Normalize", "Denormalize"])
+    def test_modules_promote_integer_input_5403(self, device, module):
+        img = self._image(device, torch.uint8)
+        op = getattr(kornia.enhance, module)(0.5, 0.25).to(device)
+
+        out = op(img)
+
+        assert out.dtype == torch.get_default_dtype()
+        assert torch.isfinite(out).all()
+        self.assert_close(out, op(img.to(torch.get_default_dtype())))
+
+    def test_uint8_pixel_scale_round_trip_5403(self, device):
+        # Statistics in the 0-255 pixel scale are what a caller holding a uint8 image passes.
+        mean = torch.tensor([123.675, 116.28, 103.53], device=device)
+        std = torch.tensor([58.395, 57.12, 57.375], device=device)
+        img = torch.randint(0, 256, (2, 3, 6, 7), device=device, dtype=torch.uint8)
+
+        normalized = kornia.enhance.normalize(img, mean, std)
+
+        assert normalized.dtype == torch.get_default_dtype()
+        assert normalized.abs().max() < 3.0
+        self.assert_close(kornia.enhance.denormalize(normalized, mean, std), img.to(normalized.dtype))
+
+    def test_integer_input_follows_the_default_dtype_5403(self, device):
+        # The promotion target is torch's default floating dtype, the same as `x * 0.5`, not a hardcoded float32.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        img = self._image(device, torch.uint8)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            assert (img * 0.5).dtype == torch.float64
+            assert kornia.enhance.normalize(img, 0.5, 0.25).dtype == torch.float64
+            assert kornia.enhance.denormalize(img, 0.5, 0.25).dtype == torch.float64
+        finally:
+            torch.set_default_dtype(previous)
+
+    def test_float_input_keeps_its_dtype_5403(self, device, dtype):
+        # Only integer and bool inputs are promoted; a floating input is returned in its own dtype.
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        assert kornia.enhance.normalize(img, 0.5, 0.25).dtype == dtype
+        assert kornia.enhance.denormalize(img, 0.5, 0.25).dtype == dtype
+
+    @pytest.mark.parametrize("fn", ["normalize", "denormalize"])
+    def test_complex_input_is_not_cast_5403(self, device, fn):
+        # Promoting a complex tensor to a real dtype would drop its imaginary part, so it must stay complex.
+        op = getattr(kornia.enhance, fn)
+        img = torch.complex(torch.rand(1, 3, 2, 2), torch.rand(1, 3, 2, 2)).to(device)
+
+        out = op(img, 0.5, 0.25)
+
+        assert out.dtype == img.dtype
+        assert out.imag.abs().sum() > 0
+
+
 class TestNormalizeMinMax(BaseTester):
+    @pytest.mark.parametrize("input_dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 2, 3), (2, 2, 2, 3), (2, 2, 2, 2, 3)])
+    def test_signed_integer_range(self, device, input_dtype, shape):
+        """Promote integer pixels before subtracting, so a span wider than the signed range does not wrap."""
+        limits = torch.iinfo(input_dtype)
+        pixels = torch.tensor([limits.min, 0, limits.max], device=device, dtype=input_dtype)
+        image = pixels.repeat(torch.Size(shape).numel() // 3).reshape(shape).transpose(-1, -2)
+        expected_row = [-1.0, 1.0 / (limits.max - limits.min), 1.0]
+        expected = torch.tensor(expected_row, device=device).repeat(torch.Size(shape).numel() // 3)
+        expected = expected.reshape(shape).transpose(-1, -2)
+
+        actual = kornia.enhance.normalize_min_max(image, min_val=-1.0, max_val=1.0)
+
+        assert actual.dtype == torch.get_default_dtype()
+        assert actual.shape == image.shape
+        assert actual.device == image.device
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize(
+        "input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool]
+    )
+    def test_integer_and_bool_values(self, device, input_dtype):
+        """Integer and boolean planes normalize to the same pixel values as their floating equivalents."""
+        values = [0, 0, 1] if input_dtype == torch.bool else [1, 2, 3]
+        image = torch.tensor(values, device=device, dtype=input_dtype).reshape(1, 1, 1, 3)
+        expected = torch.tensor([0.0, 0.0, 1.0] if input_dtype == torch.bool else [0.0, 0.5, 1.0], device=device)
+        actual = kornia.enhance.normalize_min_max(image)
+        self.assert_close(actual.flatten(), expected)
+
+    @pytest.mark.parametrize(
+        "input_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64, torch.bool]
+    )
+    def test_constant_integer_plane(self, device, input_dtype):
+        """Constant integer planes map to min_val, including a one-pixel boolean mask."""
+        image = torch.ones(2, 3, 1, 1, device=device, dtype=input_dtype)
+        actual = kornia.enhance.normalize_min_max(image, min_val=-2.0, max_val=3.0)
+        self.assert_close(actual, torch.full(image.shape, -2.0, device=device))
+
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_integer_follows_default_dtype(self, device, scripted):
+        """The integer promotion follows normalize/denormalize and torch's default floating dtype."""
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        image = torch.tensor([-128, 0, 127], device=device, dtype=torch.int8).reshape(1, 3)
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            op = kornia.enhance.normalize_min_max
+            actual = (torch.jit.script(op) if scripted else op)(image)
+            expected = torch.tensor([[0.0, 128.0 / (255.0 + 1e-6), 255.0 / (255.0 + 1e-6)]], device=device)
+            assert actual.dtype == torch.float64
+            self.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+        finally:
+            torch.set_default_dtype(previous)
+
+    @pytest.mark.parametrize("input_dtype", [torch.int8, torch.bool])
+    def test_integer_jit(self, device, input_dtype):
+        """Scripted min-max normalization uses the same integer promotion as eager execution."""
+        values = [-128, 0, 127] if input_dtype == torch.int8 else [0, 1, 0]
+        image = torch.tensor(values, device=device, dtype=input_dtype).reshape(1, 3)
+        op = kornia.enhance.normalize_min_max
+        self.assert_close(torch.jit.script(op)(image), op(image.to(torch.get_default_dtype())))
+
+    @pytest.mark.parametrize("input_dtype", [torch.int8, torch.bool])
+    def test_integer_dynamo(self, device, input_dtype, torch_optimizer):
+        """Compiled min-max normalization keeps integer promotion inside the captured operation."""
+        values = [-128, 0, 127] if input_dtype == torch.int8 else [0, 1, 0]
+        image = torch.tensor(values, device=device, dtype=input_dtype).reshape(1, 3)
+        op = kornia.enhance.normalize_min_max
+        self.assert_close(torch_optimizer(op)(image), op(image.to(torch.get_default_dtype())))
+
+    @pytest.mark.parametrize("shape", [(2, 3, 6, 8), (0, 3, 6, 8), (2, 0, 3, 6, 8)])
+    def test_dynamo(self, shape, device, dtype, torch_optimizer):
+        data = torch.rand(shape, device=device, dtype=dtype)
+        op = kornia.enhance.normalize_min_max
+        self.assert_close(torch_optimizer(op)(data), op(data))
+
+    @pytest.mark.parametrize("shape", [(0, 3, 6, 8), (2, 0, 3, 6, 8), (0, 2, 3, 6, 8), (2, 1, 0, 3, 6, 8)])
+    def test_empty_leading_dimensions(self, shape, device, dtype):
+        data = torch.empty(shape, device=device, dtype=dtype, requires_grad=True)
+        actual = kornia.enhance.normalize_min_max(input=data, min_val=-2.0, max_val=3.0)
+        assert actual.shape == data.shape
+        assert actual.dtype == data.dtype
+        assert actual.device == data.device
+        assert actual.numel() == 0
+        actual.sum().backward()
+        assert data.grad is not None
+        assert data.grad.shape == data.shape
+
+    @pytest.mark.parametrize("shape", [(0, 8), (3, 0, 8), (0, 6, 8), (2, 0, 6, 8), (0, 3, 0, 8), (0, 3, 6, 0)])
+    def test_empty_image_planes_rejected(self, shape, device, dtype):
+        with pytest.raises(ValueError):
+            kornia.enhance.normalize_min_max(torch.empty(shape, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(), (3,), (0,)])
+    def test_invalid_rank(self, shape, device, dtype):
+        with pytest.raises(ValueError, match="at least two dimensions"):
+            kornia.enhance.normalize_min_max(torch.empty(shape, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("kwargs", [{"min_val": 0}, {"max_val": 1}])
+    def test_empty_batch_validates_range_types(self, kwargs, device, dtype):
+        with pytest.raises(TypeError):
+            kornia.enhance.normalize_min_max(torch.empty(0, 3, 6, 8, device=device, dtype=dtype), **kwargs)
+
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 2, 3), (2, 2, 2, 3), (2, 2, 2, 2, 3)])
+    def test_tied_extrema_gradients(self, shape, device, dtype):
+        # Indexed extrema must retain the first-tie gradient behavior of the BCHW implementation.
+        data = torch.tensor([0.0, 0.0, 1.0, 2.0, 2.0, 1.0], device=device, dtype=dtype)
+        data = data.repeat(torch.Size(shape).numel() // 6).reshape(shape).requires_grad_()
+        reference = data.detach().clone().requires_grad_()
+        planes = reference.reshape(-1, 6)
+        low = planes.min(-1, keepdim=True)[0]
+        high = planes.max(-1, keepdim=True)[0]
+        expected = (3.0 * (planes - low) / (high - low + 1e-6) - 1.0).reshape(shape)
+        actual = kornia.enhance.normalize_min_max(data, min_val=-1.0, max_val=2.0)
+        self.assert_close(actual, expected)
+        weights = torch.arange(data.numel(), device=device, dtype=dtype).reshape(shape)
+        (actual * weights).sum().backward()
+        (expected * weights).sum().backward()
+        self.assert_close(data.grad, reference.grad)
+
+    @pytest.mark.parametrize("shape", [(4, 5), (3, 4, 5), (2, 3, 4, 5), (2, 2, 3, 4, 5)])
+    def test_noncontiguous(self, shape, device, dtype):
+        data = torch.rand(shape, device=device, dtype=dtype).transpose(-1, -2)
+        low = data.amin(dim=(-2, -1), keepdim=True)
+        high = data.amax(dim=(-2, -1), keepdim=True)
+        expected = 3.0 * (data - low) / (high - low + 1e-6) - 1.0
+
+        assert not data.is_contiguous()
+        actual = kornia.enhance.normalize_min_max(data, min_val=-1.0, max_val=2.0)
+        self.assert_close(actual, expected)
+
+    def test_noncontiguous_gradcheck(self, device):
+        data = torch.arange(12, device=device, dtype=torch.float64).reshape(1, 1, 3, 4).transpose(-1, -2)
+        self.gradcheck(kornia.enhance.normalize_min_max, (data,))
+
     def test_smoke(self, device, dtype):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         assert kornia.enhance.normalize_min_max(x) is not None
@@ -317,14 +789,16 @@ class TestNormalizeMinMax(BaseTester):
         actual = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
         self.assert_close(actual, expected, low_tolerance=True)
 
-    @pytest.mark.skip(reason="args and kwargs in decorator")
-    def test_jit(self, device, dtype):
-        x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+    @pytest.mark.parametrize(
+        "shape", [(1, 1, 1, 1), (6, 8), (3, 6, 8), (2, 3, 6, 8), (2, 2, 3, 6, 8), (0, 3, 6, 8), (2, 0, 3, 6, 8)]
+    )
+    def test_jit(self, shape, device, dtype):
+        # Non-constant planes of every rank: the scripted function must normalise the same (*, C, H, W) planes as eager.
+        x = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)
         op = kornia.enhance.normalize_min_max
         op_jit = torch.jit.script(op)
         self.assert_close(op(x), op_jit(x))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.normalize_min_max, (x,))
@@ -376,3 +850,10 @@ class TestNormalizeMinMax(BaseTester):
 
         # Verify shape is preserved
         assert out.shape == input_shape
+
+    def test_keyword_argument(self, device, dtype):
+        # Regression test for #3745: the image keyword must match the documented `input` signature.
+        x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
+        out_kwarg = kornia.enhance.normalize_min_max(input=x, min_val=-1.0, max_val=1.0)
+        out_positional = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
+        self.assert_close(out_kwarg, out_positional)

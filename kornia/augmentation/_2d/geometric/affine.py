@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -22,6 +23,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core.utils import _as_tensor_nonblocking
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
@@ -61,6 +63,19 @@ class RandomAffine(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
+        - ``translate=(a, b)`` samples pixel offsets from ``[-a W, a W]`` and ``[-b H, b H]``; positive offsets
+          move content right and down.
+        - a positive ``degrees`` rotates the displayed image clockwise, unlike :class:`RandomRotation`
+          (:doc:`/get-started/conventions`, `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - ``shear`` draws degrees, converted to radians and applied about the image centre with the sign and the
+          x-then-y order of :func:`~kornia.geometry.transform.get_shear_matrix2d`, as
+          :class:`~kornia.geometry.transform.Affine` applies its ``shear``.
+        - in :class:`~kornia.augmentation.container.AugmentationSequential`, a ``fill_value`` with more than one
+          element pads only the image: masks are padded with zero, forward and inverse, unless
+          ``extra_args[DataKey.MASK]`` sets their ``fill_value``; a one-element ``fill_value`` applies to both.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
@@ -124,13 +139,19 @@ class RandomAffine(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        # ``torch.deg2rad`` lowers as ``aten::deg2rad`` which the legacy ONNX exporter
+        # does not support at opset 20. Multiply by ``pi/180`` explicitly same value,
+        # but only basic arithmetic ops in the trace.
+        deg2rad_factor: float = math.pi / 180.0
+        shear_x = _as_tensor_nonblocking(params["shear_x"], input.device, input.dtype) * deg2rad_factor
+        shear_y = _as_tensor_nonblocking(params["shear_y"], input.device, input.dtype) * deg2rad_factor
         return get_affine_matrix2d(
-            torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
-            torch.deg2rad(torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
-            torch.deg2rad(torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
+            _as_tensor_nonblocking(params["translations"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["center"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["scale"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["angle"], input.device, input.dtype),
+            shear_x,
+            shear_y,
         )
 
     def apply_transform(

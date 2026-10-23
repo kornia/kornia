@@ -16,24 +16,46 @@
 #
 
 from enum import Enum
+from functools import update_wrapper
+from inspect import getattr_static
+from types import FunctionType
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import (
-    _adapted_rsampling,
-    _adapted_sampling,
     _transform_output_shape,
     override_parameters,
 )
-from kornia.core.utils import is_autocast_enabled
+from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
+
+def _mixed_gate_shape_error(
+    input_shape: Tuple[int, ...], output_shape: Tuple[int, ...], inverse: bool = False
+) -> ValueError:
+    """Build the error for a per-row gate on an augmentation that changes the sample shape.
+
+    A batch can only hold one sample shape, so the rows the gate skips cannot keep their own shape next to the
+    rows it applies to. ``inverse`` names the inverse call, which maps the output shape back to the input shape.
+    See `#4497 <https://github.com/kornia/kornia/issues/4497>`_.
+    """
+    subject = "the inverse of this augmentation" if inverse else "this augmentation"
+    return ValueError(
+        f"`batch_prob` mixes applied and skipped rows, but {subject} changes the sample shape from "
+        f"{tuple(input_shape)} to {tuple(output_shape)}, so the skipped rows cannot keep their shape. "
+        "Pass a `batch_prob` that is all ones or all zeros."
+    )
+
+
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
+
+# Sentinel for ``_commit_state`` fields: distinguishes "not provided" from an explicit ``None``.
+_UNSET: Any = object()
 
 
 # Trick mypy into not applying contravariance rules to inputs by defining
@@ -52,8 +74,8 @@ class _BasicAugmentationBase(nn.Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.
 
     Plain augmentation base class without the functionality of transformation matrix calculations.
-    By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
-    To change this behaviour, please use ``set_rng_device_and_dtype``.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -70,9 +92,39 @@ class _BasicAugmentationBase(nn.Module):
 
     """
 
-    # TODO: Hard to support. Many codes are not ONNX-friendly that contains lots of if-else blocks, etc.
-    # Please contribute if anyone interested.
-    ONNX_EXPORTABLE = False
+    # A class-level flag that ``aug.exportable`` returns. It is True unless a subclass sets it, and no subclass does.
+    # Nothing in kornia reads it, and it does not say whether an export works: the augmentations that
+    # ``tests/augmentation/test_onnx_export.py`` exports are listed in that file, not selected by this flag.
+    ONNX_EXPORTABLE = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Dynamo caches by code object. Sharing an inherited forward across all augmentation
+        # classes exhausts its recompilation limit after only a few distinct augmentations.
+        # Copy the implementation (not a wrapper that re-enters the shared frame), once per
+        # class. Keep overrides and the original globals/closure, including zero-argument super.
+        # This isolates the entry frame only: graph-break resumptions inside shared helpers
+        # can still share caches (for example RandomCrop padding in a mixed pipeline).
+        forward = getattr_static(cls, "forward")
+        if "forward" not in cls.__dict__ and isinstance(forward, FunctionType):
+            code = forward.__code__.replace(
+                co_name=f"{cls.__name__}.forward", co_qualname=f"{cls.__qualname__}.forward"
+            )
+            clone = FunctionType(code, forward.__globals__, "forward", forward.__defaults__, forward.__closure__)
+            update_wrapper(clone, forward)
+            clone.__kwdefaults__ = forward.__kwdefaults__
+            clone.__qualname__ = f"{cls.__qualname__}.forward"
+            clone.__module__ = cls.__module__
+            cls.forward = clone
+
+    @property
+    def exportable(self) -> bool:
+        """The class-level ``ONNX_EXPORTABLE`` flag, ``True`` unless a subclass sets it.
+
+        Nothing in kornia reads the flag, and it makes no statement about whether, or with which exporter, an
+        augmentation exports.
+        """
+        return bool(self.ONNX_EXPORTABLE)
 
     def __init__(
         self,
@@ -87,12 +139,6 @@ class _BasicAugmentationBase(nn.Module):
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
         self._params: Dict[str, torch.Tensor] = {}
-        self._p_gen: Distribution
-        self._p_batch_gen: Distribution
-        if p != 0.0 or p != 1.0:
-            self._p_gen = Bernoulli(self.p)
-        if p_batch != 0.0 or p_batch != 1.0:
-            self._p_batch_gen = Bernoulli(self.p_batch)
         self._param_generator: Optional[RandomGeneratorBase] = None
         self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device("cpu"), torch.get_default_dtype())
@@ -101,9 +147,17 @@ class _BasicAugmentationBase(nn.Module):
 
     def to(self, *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
         r"""Set the device and dtype for the random number generator."""
-        device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
-        self.set_rng_device_and_dtype(device, dtype)
+        # Module.to validates arguments before _apply updates the samplers.
         return super().to(*args, **kwargs)
+
+    def _apply(self, fn: Callable[[torch.Tensor], torch.Tensor], *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
+        # Module migrations recurse through _apply. The generator moves with the children;
+        # also update the augmentation's probability samplers, including in containers.
+        out = super()._apply(fn, *args, **kwargs)
+        probe = fn(torch.zeros((), device=self.device, dtype=self.dtype))
+        dtype = probe.dtype if probe.is_floating_point() else self.dtype
+        self.set_rng_device_and_dtype(probe.device, dtype)
+        return out
 
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
@@ -148,6 +202,14 @@ class _BasicAugmentationBase(nn.Module):
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
 
+        .. warning::
+            This updates both the gate and the parameter generator's samplers, but returned parameters
+            can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
+            sampling occurred. Some generators also retain internal CPU tensors or ignore the requested
+            precision, and some generator/device combinations can still fail during forward. Tracked in
+            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the :doc:`/get-started/conventions`
+            page describes placement and the affected classes.
+
         """
         self.device = device
         self.dtype = dtype
@@ -163,31 +225,57 @@ class _BasicAugmentationBase(nn.Module):
     ) -> torch.Tensor:
         batch_prob: torch.Tensor
         if p_batch == 1:
-            batch_prob = torch.zeros(1) + 1
+            batch_prob = torch.ones(1, device=self.device, dtype=self.dtype)
         elif p_batch == 0:
-            batch_prob = torch.zeros(1)
-        elif isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
-            # NOTE: there is no simple way to know if the sampler has `rsample` or not
-            batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
+            batch_prob = torch.zeros(1, device=self.device, dtype=self.dtype)
         else:
-            batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
+            batch_prob = (torch.rand(1, device=self.device) < p_batch).to(self.dtype)
 
-        if batch_prob.sum() == 1:
-            elem_prob: torch.Tensor
-            if p == 1:
-                elem_prob = torch.zeros(batch_shape[0]) + 1
-            elif p == 0:
-                elem_prob = torch.zeros(batch_shape[0])
-            elif isinstance(self._p_gen, (RelaxedBernoulli,)):
-                elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
-            else:
-                elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
-            batch_prob = batch_prob * elem_prob
+        # Per-sample gate. `p` and `same_on_batch` are Python values, so these branches are
+        # resolved at trace time (no graph break).
+        elem_prob: torch.Tensor
+        if p == 1:
+            elem_prob = torch.ones(batch_shape[0], device=self.device, dtype=self.dtype)
+        elif p == 0:
+            elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
+        elif same_on_batch:
+            elem_prob = (torch.rand(1, device=self.device) < p).to(self.dtype).expand(batch_shape[0])
         else:
-            batch_prob = batch_prob.repeat(batch_shape[0])
+            elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
+
+        # Branchless combine (replaces the data-dependent `if batch_prob.sum() == 1`).
+        # batch_prob is (1,) in {0, 1}: a selected batch yields elem_prob, a deselected one
+        # yields zeros — identical to the old branch, without the graph break.
+        batch_prob = batch_prob * elem_prob
+
         if len(batch_prob.shape) == 2:
             return batch_prob[..., 0]
         return batch_prob
+
+    def _commit_state(
+        self,
+        *,
+        params: Any = _UNSET,
+        transform_matrix: Any = _UNSET,
+        lazy_matrix_args: Any = _UNSET,
+    ) -> None:
+        """Record per-call state on ``self`` for post-call retrieval.
+
+        Covers ``._params`` (and, on the rigid/affine subclass, ``.transform_matrix`` /
+        ``_lazy_matrix_args``). This is the single writer of that state. It is skipped inside a
+        ``torch.export`` capture, which rejects attribute mutation in ``forward``; the captured
+        image output is unchanged — only reading the state back afterwards (meaningless in an
+        exported graph) is skipped. Each field is written only when explicitly passed (``None`` is
+        a valid value, hence the ``_UNSET`` sentinel).
+        """
+        if is_exporting():
+            return
+        if params is not _UNSET:
+            self._params = params
+        if transform_matrix is not _UNSET:
+            self._transform_matrix = transform_matrix
+        if lazy_matrix_args is not _UNSET:
+            self._lazy_matrix_args = lazy_matrix_args
 
     def _process_kwargs_to_params_and_flags(
         self,
@@ -196,16 +284,16 @@ class _BasicAugmentationBase(nn.Module):
         **kwargs: Any,
     ) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
         # NOTE: determine how to save self._params
-        save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+        save_kwargs = kwargs.get("save_kwargs", False)
 
         params = self._params if params is None else params
         flags = self.flags if flags is None else flags
 
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
-            self._params = params
+            self._commit_state(params=params)
         else:
-            self._params = params
+            self._commit_state(params=params)
             params = override_parameters(params, kwargs, in_place=False)
 
         flags = override_parameters(flags, kwargs, in_place=False)
@@ -213,14 +301,13 @@ class _BasicAugmentationBase(nn.Module):
 
     def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
-        to_apply = batch_prob > 0.5
-        _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
+        _params = self.generate_parameters(batch_shape)
         if _params is None:
             _params = {}
         _params["batch_prob"] = batch_prob
         # Added another input_size parameter for geometric transformations
         # This might be needed for correctly inversing.
-        input_size = torch.tensor(batch_shape, dtype=torch.long)
+        input_size = _constant_tensor(batch_shape, dtype=torch.long)
         _params.update({"forward_input_shape": input_size})
         return _params
 
@@ -252,7 +339,7 @@ class _BasicAugmentationBase(nn.Module):
             params = self.forward_parameters(batch_shape)
 
         if "batch_prob" not in params:
-            params["batch_prob"] = torch.tensor([True] * batch_shape[0])
+            params["batch_prob"] = torch.ones(batch_shape[0], dtype=torch.bool)
 
         params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 
@@ -276,6 +363,9 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     """
 
+    # Only transforms that reject skipped input values or have unbounded derivatives need substitution.
+    SUBSTITUTE_SKIPPED_SAMPLES = False
+
     def apply_transform(
         self,
         input: torch.Tensor,
@@ -297,6 +387,43 @@ class _AugmentationBase(_BasicAugmentationBase):
         # where batch_prob == False.
         return input
 
+    @staticmethod
+    def _blend_by_prob(
+        transformed: torch.Tensor, not_transformed: torch.Tensor, to_apply: torch.Tensor
+    ) -> torch.Tensor:
+        """Select transformed vs non-transformed samples element-wise by ``to_apply``.
+
+        When the two branches share a shape this is a ``torch.where`` blend (onnx- and
+        fullgraph-friendly). Shape-changing augmentations (e.g. crop/resize) whose branches
+        differ in spatial size fall back to a Python branch on ``to_apply.any()``, which is
+        not onnx-exportable. Such a fallback cannot select rows, so a ``to_apply`` that mixes applied and skipped
+        rows raises ``ValueError`` instead of transforming the skipped rows too. An empty gate has no row to skip
+        and takes the transformed branch, so an empty batch gets the configured output size whatever ``p`` is.
+        """
+        if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (len(transformed.shape) - 1))), transformed.device
+            )
+            return torch.where(to_apply_expanded, transformed, not_transformed)
+        if to_apply.numel() == 0:
+            return transformed
+        apply_any = bool(to_apply.any())
+        if apply_any and not bool(to_apply.all()) and transformed.shape[1:] != not_transformed.shape[1:]:
+            raise _mixed_gate_shape_error(not_transformed.shape[1:], transformed.shape[1:])
+        return transformed if apply_any else not_transformed
+
+    def _gate(self, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Return the per-sample ``to_apply`` mask that the label and ``inverse`` handlers blend with.
+
+        With static ``p == 1`` and ``p_batch == 1`` every sample is transformed, as on the image and matrix fast
+        paths, so a ``batch_prob`` in ``params`` is not consulted (#5585). The decision is static: eager and compiled
+        runs agree, and no handler synchronizes with the device. Skip samples by hand with ``p < 1``.
+        """
+        to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
+        if self.p == 1.0 and self.p_batch == 1.0:
+            return torch.ones_like(to_apply)
+        return to_apply
+
     def transform_inputs(
         self,
         input: torch.Tensor,
@@ -309,35 +436,35 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
 
         self.validate_tensor(in_tensor)
-        if to_apply.all():
+
+        if self.p == 1.0 and self.p_batch == 1.0:
+            # Always applied (static probabilities): the output is unconditionally the
+            # transformed one. Skip the non-transform branch and the blend entirely — this
+            # also makes shape-changing augmentations (e.g. Resize) fullgraph-compilable,
+            # since the data-dependent shape comparison / `to_apply.any()` fallback is avoided.
+            # (The `to_apply` gate is only needed on the p < 1 path below, so it is not computed
+            # here.)
             output = self.apply_transform(in_tensor, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform(
-                in_tensor[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
-            output = output.index_put((to_apply,), applied)
-
-        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
+        else:
+            to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
+            transform_input = in_tensor
+            if self.SUBSTITUTE_SKIPPED_SAMPLES:
+                gate = _to_device_nonblocking(to_apply.view(-1, *([1] * (in_tensor.ndim - 1))), in_tensor.device)
+                transform_input = torch.where(gate, in_tensor, 0.5)
+            output_transformed = self.apply_transform(transform_input, params, flags, transform=transform)
+            output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
+            output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
         if is_autocast_enabled():
             output = output.type(input.dtype)
-        return output
+
+        # `_transform_output_shape` only reshapes (preserves dtype), so no second autocast cast is
+        # needed after it — the cast above already restored `input.dtype`.
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
     def transform_masks(
         self,
@@ -352,28 +479,34 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = self._gate(params)
         ori_shape = input.shape
 
         shape = params["forward_input_shape"]
+
+        # A batched call has one gate per sample, so ``batch_prob`` gives the batch size as a Python int. The shape
+        # helpers read it from the ``forward_input_shape`` tensor, a data-dependent branch that breaks
+        # ``torch.compile(fullgraph=True)`` for a ``(B, H, W)`` mask (#5598). Scalar gates keep the shape helpers.
+        channel_dim: Optional[int] = None
+        if input.dim() == 3 and batch_prob.dim() == 1:
+            channel_dim = 1 if input.shape[0] == batch_prob.shape[0] else 0
+            input = input.unsqueeze(channel_dim)
+
         in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
 
         self.validate_tensor(in_tensor)
-        if to_apply.all():
-            output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform_mask(
-                in_tensor[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            output = output.index_put((to_apply,), applied)
-        output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
-        return output
+
+        output_transformed = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
+
+        # An empty gate takes the transformed branch, so the mask lands on the image's canvas (#4429).
+        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
+
+        if not self.keepdim:
+            return output
+        if channel_dim is not None:
+            return output.squeeze(channel_dim)
+        return _transform_output_shape(output, ori_shape, reference_shape=shape)
 
     def transform_boxes(
         self,
@@ -390,26 +523,25 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        output: Boxes
-        if to_apply.bool().all():
-            output = self.apply_transform_box(input, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_box(input, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_box(input, params, flags, transform=transform)
-            applied = self.apply_transform_box(
-                input[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
+        to_apply = self._gate(params)
 
-            output = output.index_put((to_apply,), applied)
+        output_transformed = self.apply_transform_box(input, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_box(input, params, flags, transform=transform)
+
+        data_transformed = output_transformed.data
+        data_not_transformed = output_not_transformed.data
+
+        if is_autocast_enabled():
+            data_transformed = data_transformed.type(input.data.dtype)
+            data_not_transformed = data_not_transformed.type(input.data.dtype)
+
+        blended_data = self._blend_by_prob(data_transformed, data_not_transformed, to_apply)
+
+        # Reuse the not-transformed Boxes container (preserves mode/_N/is_batched/etc.)
+        # and swap in the blended data, same effect as the index_put on .data.
+        output = output_not_transformed.clone()
+        output._data = blended_data
+        output._valid = self._blend_by_prob(output_transformed._valid, output_not_transformed._valid, to_apply)
         return output
 
     def transform_keypoints(
@@ -427,24 +559,22 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        if to_apply.all():
-            output = self.apply_transform_keypoint(input, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
-            applied = self.apply_transform_keypoint(
-                input[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
-            output = output.index_put((to_apply,), applied)
+        to_apply = self._gate(params)
+
+        output_transformed = self.apply_transform_keypoint(input, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
+
+        data_transformed = output_transformed.data
+        data_not_transformed = output_not_transformed.data
+
+        if is_autocast_enabled():
+            data_transformed = data_transformed.type(input.data.dtype)
+            data_not_transformed = data_not_transformed.type(input.data.dtype)
+
+        blended_data = self._blend_by_prob(data_transformed, data_not_transformed, to_apply)
+
+        output = output_not_transformed.clone()
+        output._data = blended_data
         return output
 
     def transform_classes(
@@ -459,22 +589,12 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        if to_apply.all():
-            output = self.apply_transform_class(input, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_class(input, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_class(input, params, flags, transform=transform)
-            applied = self.apply_transform_class(
-                input[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            output = output.index_put((to_apply,), applied)
-        return output
+        to_apply = self._gate(params)
+
+        output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)
+
+        return self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
     def apply_non_transform_mask(
         self,
@@ -565,6 +685,4 @@ class _AugmentationBase(_BasicAugmentationBase):
         if flags is None:
             flags = self.flags
 
-        output = self.transform_inputs(in_tensor, params, flags)
-
-        return output
+        return self.transform_inputs(in_tensor, params, flags)

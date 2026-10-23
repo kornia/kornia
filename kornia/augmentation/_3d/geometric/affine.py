@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -22,6 +23,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 
 
@@ -31,7 +33,9 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     The transformation is computed so that the center is kept invariant.
 
     Args:
-        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from. The three
+            are sampled independently and concatenated into one axis-angle vector, not composed
+            as per-axis Euler rotations; see :class:`RandomRotation3D` for the convention.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -54,7 +58,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (shear[i, 0], shear[i, 1])
             will be applied.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
@@ -63,13 +67,25 @@ class RandomAffine3D(GeometricAugmentationBase3D):
           to the batch form (False). Default: False.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.Tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - each sampled ``degrees`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations; see :class:`RandomRotation3D` for the convention.
+        - A positive roll turns a displayed ``H x W`` slice counter-clockwise, and the rotation
+          block is the transpose of :class:`RandomRotation3D`'s
+          (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - the default is bilinear resampling with ``align_corners=False``.
+        - a two-value ``scale=(a, b)`` is isotropic: one factor per sample is drawn from ``[a, b]`` and applied
+          to all three axes, as the 2D :class:`~kornia.augmentation.RandomAffine` does. The three-pair form
+          ``((a, b), (c, d), (e, f))`` draws each axis independently.
 
     Examples:
         >>> import torch
@@ -116,7 +132,6 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             ]
         ] = None,
         shears: Union[
-            None,
             torch.Tensor,
             float,
             Tuple[float, float],
@@ -129,6 +144,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
                 Tuple[float, float],
                 Tuple[float, float],
             ],
+            None,
         ] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
@@ -148,19 +164,23 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        # Inline ``deg2rad`` so the trace lowers to plain multiply (legacy ONNX has
+        # no symbolic for ``aten::deg2rad`` at opset 20).
+        deg2rad_factor: float = math.pi / 180.0
         transform: torch.Tensor = get_affine_matrix3d(
             params["translations"],
             params["center"],
             params["scale"],
             params["angles"],
-            torch.deg2rad(params["sxy"]),
-            torch.deg2rad(params["sxz"]),
-            torch.deg2rad(params["syx"]),
-            torch.deg2rad(params["syz"]),
-            torch.deg2rad(params["szx"]),
-            torch.deg2rad(params["szy"]),
-        ).to(input)
-        return transform
+            params["sxy"] * deg2rad_factor,
+            params["sxz"] * deg2rad_factor,
+            params["syx"] * deg2rad_factor,
+            params["syz"] * deg2rad_factor,
+            params["szx"] * deg2rad_factor,
+            params["szy"] * deg2rad_factor,
+        )
+        # Built from the CPU parameters, then moved once without waiting for the queued kernels.
+        return _to_device_nonblocking(transform, input.device, input.dtype)
 
     def apply_transform(
         self,
@@ -170,7 +190,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if not isinstance(transform, torch.Tensor):
-            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
         return warp_affine3d(
             input,

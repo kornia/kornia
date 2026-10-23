@@ -24,6 +24,9 @@ from torch import nn
 class Lambda(nn.Module):
     """Applies user-defined lambda as a transform.
 
+    Convention:
+        :meth:`forward` calls ``func(img, *args, **kwargs)`` and returns its result unchecked; it need not be a tensor.
+
     Args:
         func: Callable function.
 
@@ -39,12 +42,29 @@ class Lambda(nn.Module):
 
     """
 
-    def __init__(self, func: Callable[..., torch.Tensor]) -> None:
+    def __init__(self, func: Callable[..., Any]) -> None:
         super().__init__()
         if not callable(func):
-            raise TypeError(f"Argument lambd should be callable, got {type(func).__name__!r}")
+            raise TypeError(f"Argument func should be callable, got {type(func).__name__!r}")
 
         self.func = func
 
-    def forward(self, img: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def forward(self, img: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
+        """Run the user-provided transform function.
+
+        This method simply forwards all arguments to ``self.func``.
+        It is useful when you want to insert a custom Python callable inside a
+        ``torch.nn.Module`` pipeline.
+
+        Args:
+            img: Primary input tensor passed as the first positional argument.
+                For image tasks this is commonly shaped ``(B, C, H, W)``, where
+                ``B`` = batch size, ``C`` = number of channels,
+                ``H`` = height, and ``W`` = width.
+            *args: Additional positional arguments forwarded to ``self.func``.
+            **kwargs: Additional keyword arguments forwarded to ``self.func``.
+
+        Returns:
+            Whatever ``self.func`` returns.
+        """
         return self.func(img, *args, **kwargs)

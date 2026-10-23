@@ -1,0 +1,42 @@
+{
+  "kornia.contrib": [
+    "BoxMotTracker"
+  ],
+  "kornia.contrib.boxmot_tracker": [
+    "BoxMotTracker"
+  ],
+  "kornia.models.qwen25": [
+    "Qwen2VLVisionTransformer"
+  ],
+  "kornia.models.sam3": [
+    "ImageEncoderHiera"
+  ],
+  "kornia.models.sam3.architecture": [
+    "Attention",
+    "CrossAttentionTransformer",
+    "ImageEncoderHiera",
+    "MLPBlock",
+    "MaskDecoder",
+    "PatchEmbedding",
+    "PositionalEncoding",
+    "PromptEncoder",
+    "ViTBlock"
+  ],
+  "kornia.models.sam3.architecture.common": [
+    "Attention",
+    "MLPBlock"
+  ],
+  "kornia.models.sam3.architecture.image_encoder": [
+    "ImageEncoderHiera",
+    "PatchEmbedding",
+    "ViTBlock"
+  ],
+  "kornia.models.sam3.architecture.mask_decoder": [
+    "CrossAttentionTransformer",
+    "MaskDecoder"
+  ],
+  "kornia.models.sam3.architecture.prompt_encoder": [
+    "PositionalEncoding",
+    "PromptEncoder"
+  ]
+}

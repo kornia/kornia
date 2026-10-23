@@ -1,0 +1,100 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+from typing import Any, Dict, List, Optional, Union
+
+import torch
+
+from kornia.augmentation import random_generator as rg
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.constants import DataKey
+
+
+class PatchMix(MixAugmentationBaseV2):
+    r"""PatchMix augmentation.
+
+    .. image:: _static/img/PatchMix.png
+
+    Replaces a random patch in each image of a batch with the corresponding
+    region from a randomly chosen batch image, which can be the same image.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    Implementation for `CutMix: Regularization Strategy to Train Strong
+    Classifiers with Localizable Features` :cite:`yun2019cutmix`.
+
+    Args:
+        alpha: Hyperparameter for the Beta distribution used to generate the
+            mixing parameter lambda.
+        patch_size: The size of the square patch to mix.
+        p: Probability for applying the augmentation.
+        same_on_batch: Apply the same transformation across the batch.
+        keepdim: Whether to keep the output shape the same as input ``True``
+            or broadcast it to the batch form ``False``.
+
+    Convention:
+        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``; a larger
+          value, such as the default ``16`` on a smaller image, raises ``ValueError`` when parameters are drawn,
+          whatever the gate. Each output sample copies that square from its paired input, ``_params["mix_pairs"]``,
+          at the same sampled ``(x, y)`` top-left corner, ``_params["patch_coords"]``. The sampled ``lam`` is
+          stored but blends nothing.
+        - ``p`` is a batch-wide gate (`#4425 <https://github.com/kornia/kornia/issues/4425>`_).
+          ``same_on_batch=True`` shares the patch corner, not the pairing, which may pair a sample with itself.
+          Only image input is implemented.
+
+    Examples:
+        >>> aug = PatchMix(alpha=1.0, patch_size=4)
+        >>> x = torch.rand(2, 3, 32, 32)
+        >>> out = aug(x)
+        >>> out.shape
+        torch.Size([2, 3, 32, 32])
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        patch_size: int = 16,
+        p: float = 1.0,
+        same_on_batch: bool = False,
+        keepdim: bool = False,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+    ) -> None:
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
+        self.alpha = alpha
+        self.patch_size = patch_size
+        self._param_generator = rg.PatchMixGenerator(alpha, patch_size, p)
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return self._param_generator(batch_shape, self.same_on_batch)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], extra_args: Dict[str, Any]
+    ) -> torch.Tensor:
+        B, _, _, _ = input.shape
+        # The pairs and corners index Python slices, so read them where they were drawn: on the CPU that costs no
+        # device synchronization, while reading them from the GPU would cost one per sample.
+        idx = params["mix_pairs"].tolist()
+        patch_coords = params["patch_coords"].tolist()
+
+        out = input.clone()
+        for i in range(B):
+            x, y = int(patch_coords[i][0]), int(patch_coords[i][1])
+            out[i, :, y : y + self.patch_size, x : x + self.patch_size] = input[
+                idx[i], :, y : y + self.patch_size, x : x + self.patch_size
+            ]
+
+        return out

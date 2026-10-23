@@ -25,19 +25,7 @@
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
-import logging
-
 from torch import Tensor, nn
-
-logger = logging.getLogger("dinov2")
-
-
-try:
-    from xformers.ops import fmha, memory_efficient_attention, unbind
-
-    XFORMERS_AVAILABLE = True
-except ImportError:
-    XFORMERS_AVAILABLE = False
 
 
 class Attention(nn.Module):
@@ -72,6 +60,15 @@ class Attention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Run this DeDoDe module forward.
+
+        Args:
+            x: Input token sequence with shape :math:`(B, N, C)`, where ``B`` is batch size,
+               ``N`` is number of tokens (patches + class token), and ``C`` is the embedding dimension.
+
+        Returns:
+            Attention output with shape :math:`(B, N, C)`.
+        """
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
 
@@ -83,27 +80,27 @@ class Attention(nn.Module):
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        return self.proj_drop(x)
 
 
 class MemEffAttention(Attention):
-    """Implement a memory-efficient version of Multi-Head Self-Attention using xFormers."""
+    """Implement Multi-Head Self-Attention under the class name the vendored DINOv2 builders select.
 
-    def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
-        if not XFORMERS_AVAILABLE:
-            if attn_bias is not None:
-                raise ValueError("xFormers is required for nested tensors usage")
-            return super().forward(x)
+    The computation is the one of :class:`Attention`. The class name is kept because the DINOv2 model
+    builders reference it; the extra ``attn_bias`` argument is kept so :meth:`forward` matches the upstream
+    DINOv2 signature. Nothing in kornia passes it, and it must be ``None``.
+    """
 
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
+    def forward(self, x: Tensor, attn_bias=None) -> Tensor:
+        """Run this DeDoDe module forward.
 
-        q, k, v = unbind(qkv, 2)
+        Args:
+            x: Input token sequence with shape :math:`(B, N, C)`.
+            attn_bias: Unsupported; must be ``None``.
 
-        x = memory_efficient_attention(q, k, v, attn_bias=attn_bias)
-        x = x.reshape([B, N, C])
-
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        Returns:
+            Attention output with shape :math:`(B, N, C)`.
+        """
+        if attn_bias is not None:
+            raise NotImplementedError("attn_bias is not supported")
+        return super().forward(x)

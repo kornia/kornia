@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import elastic_transform2d
 
@@ -30,15 +31,25 @@ class RandomElasticTransform(AugmentationBase2D):
 
     .. image:: _static/img/RandomElasticTransform.png
 
+    Convention:
+        This is a dense backward sampling field with no ``transform_matrix`` or ``inverse``; spatial labels in
+        containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        Noise has shape ``(B, 2, H, W)`` with channels ``(x, y)``; ``alpha`` scales displacement in
+        normalized sampling coordinates, whereas ``kernel_size`` and ``sigma`` use ``(y, x)`` order.
+        Coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``. Zero
+        ``alpha`` is an identity warp up to interpolation roundoff for either ``align_corners``. Its defaults and
+        the ``align_corners`` split across classes (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are
+        listed on :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
+
     Args:
-        kernel_size: the size of the Gaussian kernel.
+        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
         sigma: The standard deviation of the Gaussian in the y and x directions,
           respectively. Larger sigma results in smaller pixel displacements.
         alpha: The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively.
+          in the x and y directions, respectively -- the opposite order to ``kernel_size`` and ``sigma``.
         align_corners: Interpolation flag used by `grid_sample`.
         resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
-        padding_mode: The padding used by ```grid_sample```. Either 'torch.zeros', 'border' or 'refection'.
+        padding_mode: The padding used by ``grid_sample``. Either 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -102,7 +113,7 @@ class RandomElasticTransform(AugmentationBase2D):
     ) -> torch.Tensor:
         return elastic_transform2d(
             input,
-            params["noise"].to(input),
+            _to_device_nonblocking(params["noise"], input.device, input.dtype),
             flags["kernel_size"],
             flags["sigma"],
             flags["alpha"],
