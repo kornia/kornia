@@ -508,6 +508,14 @@ def test_auto_enhancer_matches_pil_6253(operation, factor, pixels, device, dtype
     assert_close(aug(image, params=params), output, rtol=0, atol=0)
 
 
+def test_auto_contrast_blends_towards_each_images_own_mean_6253(device, dtype):
+    """Blend each image towards its own grayscale mean, as PIL does, not towards the batch mean."""
+    # A constant image is its own grayscale mean, so PIL's contrast leaves it unchanged at any factor.
+    image = torch.stack([torch.full((3, 4, 5), 0.2), torch.full((3, 4, 5), 0.8)]).to(device=device, dtype=dtype)
+    aug = ops.Contrast(initial_magnitude=0.5, initial_probability=1.0).to(dtype=dtype)
+    assert_close(aug(image), image)
+
+
 @pytest.mark.parametrize("operation", [ops.Brightness, ops.Contrast, ops.Saturate])
 def test_auto_enhancer_keeps_magnitude_gradient_6253(operation, device, dtype):
     """Keep finite nonzero magnitude gradients for each enhancement operation."""

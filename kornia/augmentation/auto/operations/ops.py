@@ -122,7 +122,6 @@ class Brightness(OperationBase):
     Unlike :class:`~kornia.augmentation.RandomBrightness`, the factor multiplies
     the input. The policy factors match the PIL ImageEnhance convention.
 
-
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
@@ -150,11 +149,10 @@ class Brightness(OperationBase):
 
 
 class Contrast(OperationBase):
-    """Apply PIL-style contrast by blending towards the mean grayscale value.
+    """Apply PIL-style contrast by blending each image towards its mean grayscale value.
 
     Unlike :class:`~kornia.augmentation.RandomContrast`, the factor scales the
     difference from the mean rather than multiplying the input directly.
-
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
@@ -216,7 +214,6 @@ class Saturate(OperationBase):
 
     Unlike :class:`~kornia.augmentation.RandomSaturation`, this blends RGB
     values with grayscale rather than scaling HSV saturation.
-
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
