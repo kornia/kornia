@@ -166,7 +166,8 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     boxes_2 = _promote_integer_boxes(boxes_2)
 
     output_dtype = torch.promote_types(boxes_1.dtype, boxes_2.dtype)
-    # Promote before format conversion: adding a small width to a large half-precision position can erase it.
+    # Compute half-precision boxes in float32 from the start: the corners (x + w) round in their dtype, which can erase
+    # a small width at a large position, and image-sized areas overflow float16.
     if boxes_1.dtype in (torch.float16, torch.bfloat16):
         boxes_1 = boxes_1.float()
     if boxes_2.dtype in (torch.float16, torch.bfloat16):
