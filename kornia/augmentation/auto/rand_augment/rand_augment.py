@@ -183,14 +183,6 @@ class RandAugment(PolicyAugmentBase):
                 else:
                     mag = m * float(maxval - minval) + minval
 
-                # RandAugment magnitudes for translation are specified as fractions
-                # of the image dimensions, while RandomTranslate stores pixel
-                # translations in its sampled parameters.
-                if op._factor_name == "translate_x":
-                    mag = mag * batch_shape[-1]
-                elif op._factor_name == "translate_y":
-                    mag = mag * batch_shape[-2]
-
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it
             param = ParamItem(name, [ParamItem(next(iter(module.named_children()))[0], mod_param)])
