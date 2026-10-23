@@ -1837,3 +1837,25 @@ class TestEmptyIntensity(BaseTester):
         assert output.device == image.device
         assert output.dtype == dtype
         self.assert_close(output, expected)
+
+
+class TestClipUnitFreshBuffer(BaseTester):
+    # adjust_brightness and adjust_contrast clamp their own fresh result in place when no gradient is recorded, so a
+    # batch-32 call allocates one image-sized temporary fewer. The caller's tensor is never modified, and the values
+    # and gradients equal the out-of-place clamp.
+    @pytest.mark.parametrize("op", ["adjust_brightness", "adjust_contrast"])
+    def test_input_unmodified_and_values_match_with_and_without_a_gradient(self, device, dtype, op):
+        fn = getattr(enhance, op)
+        image = torch.linspace(-0.5, 1.5, 2 * 3 * 4 * 4, device=device, dtype=dtype).reshape(2, 3, 4, 4)
+        original = image.clone()
+        factor = torch.tensor([0.3, 1.4], device=device, dtype=dtype)
+        with torch.no_grad():
+            out_no_grad = fn(image, factor)
+        out_plain = fn(image, factor)
+        leaf = image.clone().requires_grad_()
+        out_grad = fn(leaf, factor)
+        assert torch.equal(image, original)
+        assert torch.equal(out_no_grad, out_plain)
+        assert torch.equal(out_no_grad, out_grad.detach())
+        out_grad.sum().backward()
+        assert leaf.grad is not None

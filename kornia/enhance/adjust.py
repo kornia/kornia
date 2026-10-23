@@ -75,6 +75,18 @@ def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
     torch._assert_async(cond, msg)
 
 
+def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
+    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no gradient is recorded.
+
+    The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
+    allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
+    the heap on every call. Only call it on a tensor no caller can see.
+    """
+    if torch.is_grad_enabled() and image.requires_grad:
+        return image.clamp(min=0.0, max=1.0)
+    return image.clamp_(min=0.0, max=1.0)
+
+
 def _check_floating_image(image: torch.Tensor, op: str) -> None:
     """Reject an integer image in an op that expects floating-point values in ``[0, 1]``.
 
@@ -551,7 +563,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     # Truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -675,7 +687,7 @@ def adjust_brightness(
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
