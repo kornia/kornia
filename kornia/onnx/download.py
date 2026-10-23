@@ -101,8 +101,13 @@ class CachedDownloader:
         *,
         cache_dir: Optional[str] = None,
         suffix: Optional[str] = None,
+        force_download: bool = False,
     ) -> str:
         """Resolve a remote file into Kornia's local cache and download it when needed.
+
+        A file that is in the cache is used as it is, for as long as it exists: a model updated on the server is not
+        fetched again, and a cached file that is damaged, or was replaced by hand, stays so. Pass
+        ``force_download=True`` to fetch the file again, or delete the cached file.
 
         Args:
             url: HTTP or HTTPS URL of the file to cache.
@@ -116,6 +121,9 @@ class CachedDownloader:
                 ``kornia.config.kornia_config.hub_cache_dir``; ``""`` is the
                 current working directory.
             suffix: Appended to the file name unless it already ends with it.
+            force_download: If ``True``, fetch the file from ``url`` even when it is already cached, and replace the
+                cached file with it. The old file is replaced only once the new one is complete, so a fetch that
+                fails leaves it as it was. Needs ``download=True``. Defaults to ``False``.
 
         Returns:
             Local filesystem path to the cached file.
@@ -123,8 +131,9 @@ class CachedDownloader:
         Raises:
             ValueError: If ``url`` is not an HTTP or HTTPS URL, if ``name`` is absolute or has a drive or an empty,
                 ``.`` or ``..`` component, if ``suffix`` adds a directory to the file name, if download is disabled
-                and the file is missing, if the server answers with an HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT``
-                is set to anything but a positive number of seconds.
+                and the file is missing, if ``force_download`` is ``True`` while ``download`` is ``False``, if the
+                server answers with an HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT`` is set to anything but a
+                positive number of seconds.
             TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds without answering (see ``download``).
             urllib.error.URLError: If the server cannot be reached, or ``urllib.error.ContentTooShortError``
                 if the body is shorter than its ``Content-Length`` (see ``download``).
@@ -132,7 +141,9 @@ class CachedDownloader:
         """
         if url.startswith(("http:", "https:")):
             file_path = cls._get_file_path(name, cache_dir, suffix=suffix)
-            cls.download(url, file_path, download_if_not_exists=download)
+            # passed only when set, so that a subclass whose ``download`` predates the keyword keeps working
+            extra = {"force_download": True} if force_download else {}
+            cls.download(url, file_path, download_if_not_exists=download, **extra)
             return file_path
         raise ValueError(f"URL must start with 'http:' or 'https:'. Got {url}")
 
@@ -142,6 +153,8 @@ class CachedDownloader:
         url: str,
         file_path: str,
         download_if_not_exists: bool = True,
+        *,
+        force_download: bool = False,
     ) -> None:
         """Download an ONNX model from the specified URL and save it to the specified file path.
 
@@ -149,21 +162,30 @@ class CachedDownloader:
             url: The URL of the ONNX model to download.
             file_path: The local path where the downloaded model should be saved.
             download_if_not_exists: If True, the file will be downloaded if it's not already downloaded.
+            force_download: If True, download the file even when ``file_path`` exists, and replace it. The old file
+                is replaced only once the new one is complete, so a download that fails leaves it as it was. Needs
+                ``download_if_not_exists=True``.
 
         Raises:
-            ValueError: If the file is missing and ``download_if_not_exists`` is ``False``, if ``url`` is not an
-                HTTP or HTTPS URL, if the server answers with an HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT`` is
-                set to anything but a positive number of seconds.
+            ValueError: If the file is missing and ``download_if_not_exists`` is ``False``, if ``force_download`` is
+                ``True`` while ``download_if_not_exists`` is ``False``, if ``url`` is not an HTTP or HTTPS URL, if
+                the server answers with an HTTP error, or if ``KORNIA_DOWNLOAD_TIMEOUT`` is set to anything but a
+                positive number of seconds.
             TimeoutError: If the server goes ``KORNIA_DOWNLOAD_TIMEOUT`` seconds (30 s when it is unset) without
-                answering. Nothing is left at ``file_path``.
-            urllib.error.ContentTooShortError: If the body is shorter than its ``Content-Length``. Nothing is
-                left at ``file_path``, so the next call downloads again.
-            http.client.IncompleteRead: If a chunked body is cut mid-chunk. Nothing is left at ``file_path``.
+                answering. An existing cached file is left unchanged.
+            urllib.error.ContentTooShortError: If the body is shorter than its ``Content-Length``. An existing cached
+                file is left unchanged.
+            http.client.IncompleteRead: If a chunked body is cut mid-chunk. An existing cached file is left unchanged.
             urllib.error.URLError: If the server cannot be reached.
 
         """
         file_path = os.path.expanduser(file_path)
-        if os.path.exists(file_path):
+        if force_download and not download_if_not_exists:
+            # the two flags ask for opposite things, and ignoring either would hide a mistake in the call
+            raise ValueError(
+                "`force_download=True` needs `download=True`: it cannot fetch a file that may not be downloaded."
+            )
+        if os.path.exists(file_path) and not force_download:
             _logger.info(f"Loading `{url}` from `{file_path}`.")
             return
 

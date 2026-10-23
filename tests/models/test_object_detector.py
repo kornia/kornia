@@ -23,7 +23,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core._compat import torch_version_lt
 from kornia.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 
 from testing.base import BaseTester
@@ -128,18 +128,6 @@ class TestObjectDetector(BaseTester):
     @pytest.mark.slow
     @pytest.mark.timeout(120)
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
-    @pytest.mark.xfail(
-        torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
-        reason=(
-            "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph: "
-            "DispatchError 'No ONNX function found for aten.mul.Scalar'. Same exporter gap as "
-            "test_sam_onnx.py::test_sam_encoder_to_onnx; not yet reported upstream"
-        ),
-        raises=torch.onnx.OnnxExporterError,
-        # Strict, as in test_sam_onnx.py: an upstream fix inside 2.14.x must announce itself as
-        # an XPASS rather than sit silent until the 2.15 bound expires. Both variants fail today.
-        strict=True,
-    )
     @pytest.mark.parametrize("variant", ["resnet50d", "hgnetv2_l"])
     def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
         config = RTDETRConfig(variant, 1)
@@ -171,7 +159,7 @@ class TestObjectDetector(BaseTester):
     def test_output_check_keeps_an_image_module_cache(self):
         # ObjectDetector.to_onnx first runs the detector once to tell a per-image list from one tensor. That run, like
         # the export's own, leaves the show()/save() cache of an image module inside the detector as it was.
-        from kornia.contrib.object_detection import _returns_detections_per_image
+        from kornia.core.mixin.onnx import _returns_per_image_outputs
 
         class _Pre(kornia.core.ImageModule):
             def forward(self, x):
@@ -194,8 +182,71 @@ class TestObjectDetector(BaseTester):
         detector = kornia.contrib.object_detection.ObjectDetector(_Model(), pre, _Post())
         pre(torch.rand(1, 3, 8, 8))
         cache = pre.__dict__["_output_image"]
-        assert not _returns_detections_per_image(detector, torch.rand(2, 3, 16, 16))
+        assert not _returns_per_image_outputs(detector, torch.rand(2, 3, 16, 16))
         assert pre.__dict__["_output_image"] is cache
+
+    def test_output_check_gives_back_the_random_state(self):
+        # The output check runs the detector in eval mode; a model that still draws there must not consume the
+        # global random state, wherever the check runs, before the export or after it.
+        from kornia.core.mixin.onnx import _returns_per_image_outputs
+
+        class _Pre(torch.nn.Module):
+            def forward(self, x):
+                return x, x.new_full((x.shape[0], 2), float(x.shape[-1]))
+
+        class _DrawingModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(3, 6, 1)
+
+            def forward(self, x):
+                y = self.conv(x + 0.0 * torch.rand_like(x)).mean((-2, -1))
+                return y[:, None, :2], y[:, None, 2:]
+
+        class _Post(torch.nn.Module):
+            def forward(self, logits, boxes, sizes):
+                return torch.cat([logits, boxes], -1)
+
+        detector = kornia.contrib.object_detection.ObjectDetector(_DrawingModel(), _Pre(), _Post())
+        images = torch.rand(2, 3, 16, 16)
+        state = torch.get_rng_state()
+        assert not _returns_per_image_outputs(detector, images)
+        assert torch.equal(torch.get_rng_state(), state)
+
+    @pytest.mark.parametrize("exporter", [{}, {"dynamo": False}], ids=["default-exporter", "legacy-exporter"])
+    def test_export_gives_back_the_random_state_6140(self, exporter):
+        # ObjectDetector.to_onnx draws an input for its output check before the export draws its dummy. Both give back
+        # what they drew, so the draws after an export are the ones the same calls make without it.
+        pytest.importorskip("onnx")
+        if not exporter and not torch_version_lt(2, 9, 0):
+            pytest.importorskip("onnxscript")  # the default exporter from torch 2.9 is the dynamo one, which needs it
+
+        class _Pre(kornia.core.ImageModule):
+            def forward(self, x):
+                return x, x.new_full((x.shape[0], 2), float(x.shape[-1]))
+
+        class _Model(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = torch.nn.Conv2d(3, 6, 1)
+
+            def forward(self, x):
+                y = self.conv(x).mean((-2, -1))
+                return y[:, None, :2], y[:, None, 2:]
+
+        class _Post(torch.nn.Module):
+            def forward(self, logits, boxes, sizes):
+                return torch.cat([logits, boxes], -1)
+
+        def _draws_after(export):
+            torch.manual_seed(0)
+            detector = kornia.contrib.object_detection.ObjectDetector(_Model(), _Pre(), _Post())
+            detector(torch.rand(1, 3, 16, 16))
+            if export:
+                detector.to_onnx(image_size=16, save=False, **exporter)
+            return torch.rand(8)
+
+        self.assert_close(_draws_after(True), _draws_after(False))
 
     def test_results_from_detections_misspelt_format_5907(self, device, dtype):
         detections = torch.zeros(1, 6, device=device, dtype=dtype)

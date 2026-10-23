@@ -1383,34 +1383,14 @@ class TestQuaternionToRotationMatrix(BaseTester):
 
         assert_close(out, torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16))
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="normalize_quaternion returns a non-unit quaternion below eps -- kornia#3952",
-        strict=True,
-    )
-    def test_convention_normalize_quaternion_is_unit_below_eps_3952(self, device, dtype):
-        # Intended behavior: a unit quaternion, or an error. Below eps the output is scaled by
-        # ||q|| / eps instead (norm 0.1 at ||q|| = 1e-13, eps = 1e-12). Companion wart:
-        # test_wart_normalize_quaternion_scales_by_norm_over_eps_3952.
-        if dtype == torch.float16:
-            pytest.skip("float16 cannot represent the non-zero 1e-13 input used to pin the sub-eps behavior")
-
-        quaternion = torch.tensor([1e-13, 0.0, 0.0, 0.0], device=device, dtype=dtype)
-
-        out = kornia.geometry.conversions.normalize_quaternion(quaternion, eps=1e-12)
-
-        assert abs(out.norm().item() - 1.0) < 1e-2, (
-            "kornia#3952: normalize_quaternion returned a non-unit quaternion below eps"
-        )
-
     @pytest.mark.parametrize("quaternion_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
-    def test_wart_normalize_quaternion_scales_by_norm_over_eps_3952(self, device, quaternion_dtype):
-        # Wart pin for kornia#3952, companion to the strict xfail above. Two cells, each flipping
-        # under a different fix shape:
+    def test_convention_normalize_quaternion_floors_the_norm_at_eps_3952(self, device, quaternion_dtype):
+        # Convention (kornia#3952, kept by maintainer decision): the divisor is the norm floored at
+        # eps, so a quaternion below eps comes back as q / eps rather than a unit quaternion, and the
+        # zero quaternion comes back as zeros. Two cells:
         #   (1) ||q|| = 1e-13 with eps = 1e-12 comes back as [0.1, 0, 0, 0] (not float16, which
         #       cannot represent the input);
-        #   (2) the zero quaternion comes back as zeros -- a "leave sub-eps input alone" fix would
-        #       fix (1) and not this one.
+        #   (2) the zero quaternion comes back as zeros.
         # The dtypes are hardcoded so the float16 cell runs in every test configuration.
         # Snippet used to generate expected (torch, cpu, float64):
         #   normalize_quaternion(torch.tensor([1e-13, 0., 0., 0.], dtype=torch.float64), eps=1e-12)
@@ -1425,7 +1405,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
             assert_close(
                 sub_eps,
                 torch.tensor([0.1, 0.0, 0.0, 0.0], device=device, dtype=quaternion_dtype),
-                msg=_issue_msg("kornia#3952: a sub-eps quaternion is no longer scaled by ||q|| / eps"),
+                msg=_issue_msg("kornia#3952 convention: a sub-eps quaternion must come back as q / eps"),
             )
         zero = torch.zeros(4, device=device, dtype=quaternion_dtype)
         assert_close(
@@ -1433,7 +1413,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
             zero,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer passes through unchanged"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must pass through unchanged"),
         )
 
     @pytest.mark.parametrize("quaternion_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
@@ -1480,7 +1460,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
         assert torch.isfinite(q.grad).all()
         self.assert_close(q.grad, expected, atol=1e-3, rtol=1e-3)
 
-        # Confirm zeros(4) with eps=0.0 still returns all-NaN on the forward pass (pre-existing issue #3952 behavior).
+        # Confirm zeros(4) with eps=0.0 still returns all-NaN on the forward pass (the documented eps=0.0 behavior).
         zero_out = kornia.geometry.conversions.normalize_quaternion(torch.zeros(4, device=device, dtype=dtype), eps=0.0)
         assert torch.isnan(zero_out).all()
 
@@ -1492,16 +1472,12 @@ class TestQuaternionToRotationMatrix(BaseTester):
         assert torch.isnan(kornia.geometry.conversions.normalize_quaternion(q, eps=eps)).all()
         assert torch.isnan(kornia.geometry.conversions.quaternion_to_rotation_matrix(q)).all()
 
-    def test_wart_zero_quaternion_becomes_the_identity_matrix_3952(self, device, dtype):
-        # Wart pin for the downstream consequence of kornia#3952: because normalize_quaternion
-        # returns the zero vector unchanged for a zero input (cell 2 of the wart above),
+    def test_convention_zero_quaternion_gives_the_identity_matrix_3952(self, device, dtype):
+        # Convention (kornia#3952, kept by maintainer decision): normalize_quaternion returns the zero
+        # vector unchanged for a zero input (cell 2 of the convention above), so
         # quaternion_to_rotation_matrix(zeros(4)) evaluates 1 - 0 on the diagonal and returns the
-        # IDENTITY -- the zero quaternion, which is not a rotation at all, silently becomes "no
-        # rotation". Pinned separately from the normalize_quaternion cells because it flips under
-        # two independent fixes: fixing #3952 in normalize_quaternion, or giving
-        # quaternion_to_rotation_matrix its own guard while normalize_quaternion stays as it is.
-        # If it fails, one of those happened -- flip/remove the #3952 strict xfail above and check
-        # which. NOT a contract that the zero quaternion must map to the identity.
+        # identity rather than raising. Pinned separately from the normalize_quaternion cells because
+        # quaternion_to_rotation_matrix could also change it with a guard of its own.
         # Snippet used to generate expected (torch only, executed on cpu at every floating dtype):
         #   quaternion_to_rotation_matrix(torch.zeros(4, dtype=torch.float64))
         #     -> [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]
@@ -1510,7 +1486,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
         assert_close(
             out,
             torch.eye(3, device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer maps to the identity matrix"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must map to the identity matrix"),
         )
 
 
@@ -5407,10 +5383,8 @@ class TestCARKitToColmap(BaseTester):
         # Convention pin: the input quaternion does not have to be unit -- the pipeline normalizes
         # it -- and q and -q describe the same rotation, so both give the same pose. Two legs
         # because they are independent: scaling exercises the normalizer, negating exercises the
-        # double cover. What this pin does NOT decide is the zero quaternion, which is absorbed by
-        # the normalizer's eps guard and silently produces a plausible pose (documented, not pinned:
-        # the intended answer there is a maintainer decision, tracked in kornia#3952 -- this is the
-        # downstream reach of that issue's sub-eps clamp).
+        # double cover. The zero quaternion, which the normalizer's eps floor absorbs into the
+        # identity's pose, has its own convention pin below (kornia#3952).
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   ARKitQTVecs_to_ColmapQTVecs(q * 1000, t) == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
         #   ARKitQTVecs_to_ColmapQTVecs(-q, t)       == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
@@ -5427,20 +5401,17 @@ class TestCARKitToColmap(BaseTester):
         self.assert_close(q_negated, q_reference)
         self.assert_close(t_negated, t_reference)
 
-    def test_wart_zero_quaternion_is_absorbed_3952(self, device, dtype):
-        # Wart pin for the downstream reach of kornia#3952 into this function, companion to its
-        # zero-quaternion warning: the all-zero input is not rejected. normalize_quaternion's
-        # ‖q‖ < eps clamp absorbs the zero at every dtype, the internal rotation comes back as the
-        # identity, and the call returns exactly what the IDENTITY quaternion returns -- a
-        # plausible pose, silently, for an input that is not a rotation at all.
+    def test_convention_zero_quaternion_is_absorbed_3952(self, device, dtype):
+        # Convention pin (kornia#3952, kept by maintainer decision), companion to the docstring's
+        # zero-quaternion bullet: the all-zero input is not rejected. normalize_quaternion's eps
+        # floor keeps the zero at every dtype, the internal rotation comes back as the identity,
+        # and the call returns exactly what the IDENTITY quaternion returns.
         # The first two legs assert against the IDENTITY input's own output rather than against a
         # literal, so the claim the docstring makes -- "the same answer as the identity input" --
         # is what runs, at every dtype and on every backend, with no constant to re-measure per
-        # build. The third leg pins the one value the warning quotes outright, t = (-1, 1, 1),
+        # build. The third leg pins the one value the docstring quotes outright, t = (-1, 1, 1),
         # which is exact in every dtype here; without it the first two would still pass if BOTH
         # routes moved together.
-        # If this fails, #3952 was (partly) fixed, or this function grew a guard -- check which.
-        # NOT a contract that absorbing the zero quaternion is correct.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(1, 4), torch.ones(1, 3, 1))
         #     -> q [0., 1., 0., 0.], t [-1., 1., 1.]         (float64 q_x: 1.0000000012499999)
@@ -5458,21 +5429,21 @@ class TestCARKitToColmap(BaseTester):
             q_identity,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's rotation"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's rotation"),
         )
         assert_close(
             t_zero,
             t_identity,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's translation"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's translation"),
         )
         assert_close(
             t_zero,
             torch.tensor([[[-1.0], [1.0], [1.0]]], device=device, dtype=dtype),
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the absorbed zero quaternion no longer produces the documented pose"),
+            msg=_issue_msg("kornia#3952 convention: the absorbed zero quaternion must produce the documented pose"),
         )
 
     def test_convention_input_is_camtoworld_graphics_and_output_is_worldtocam_vision(self, device, dtype):
@@ -5647,13 +5618,11 @@ class TestCARKitToColmap(BaseTester):
         )
         self.assert_close(t_colmap_back, t_colmap)
 
-    def test_wart_reverse_zero_quaternion_is_absorbed_3952(self, device, dtype):
-        # Wart pin for kornia#3952's reach into ColmapQTVecs_to_ARKitQTVecs, companion to its
-        # zero-quaternion warning; same mechanism and same structure as
-        # test_wart_zero_quaternion_is_absorbed_3952 above. The documented pose t = (-1, -1, -1) is
-        # exact in every dtype.
-        # If this fails, #3952 was (partly) fixed, or this function grew a guard -- check which.
-        # NOT a contract that absorbing the zero quaternion is correct.
+    def test_convention_reverse_zero_quaternion_is_absorbed_3952(self, device, dtype):
+        # Convention pin (kornia#3952, kept by maintainer decision) for ColmapQTVecs_to_ARKitQTVecs,
+        # companion to its zero-quaternion docstring bullet; same mechanism and same structure as
+        # test_convention_zero_quaternion_is_absorbed_3952 above. The documented pose
+        # t = (-1, -1, -1) is exact in every dtype.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   ColmapQTVecs_to_ARKitQTVecs(torch.zeros(1, 4), torch.ones(1, 3, 1))
         #     -> q [0., 1., 0., 0.], t [-1., -1., -1.]
@@ -5670,21 +5639,21 @@ class TestCARKitToColmap(BaseTester):
             q_identity,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's rotation"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's rotation"),
         )
         assert_close(
             t_zero,
             t_identity,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's translation"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's translation"),
         )
         assert_close(
             t_zero,
             torch.tensor([[[-1.0], [-1.0], [-1.0]]], device=device, dtype=dtype),
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the absorbed zero quaternion no longer produces the documented pose"),
+            msg=_issue_msg("kornia#3952 convention: the absorbed zero quaternion must produce the documented pose"),
         )
 
     @pytest.mark.parametrize("op", [ARKitQTVecs_to_ColmapQTVecs, ColmapQTVecs_to_ARKitQTVecs])

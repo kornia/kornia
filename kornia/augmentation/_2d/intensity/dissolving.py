@@ -31,7 +31,8 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
     reverse diffusion. Our implementation currently supports the HuggingFace implementations of SD 1.4, SD 1.5
-    and SD XL; once ``diffusers`` is importable, any other ``version`` raises a bare ``NotImplementedError``
+    and SD XL; once ``diffusers`` is importable, any other ``version`` raises ``NotImplementedError``
+    with the unsupported value and the supported versions
     (without it, construction fails on the optional-dependency prompt before the version is looked at).
 
     .. list-table::

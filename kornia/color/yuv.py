@@ -160,8 +160,11 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         raise ShapeError(f"Input W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
+    uv = yuvimage[..., 1:3, :, :]
 
-    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-1, 2, 2).mean(-1))
+    # The width axis by its positive index: the legacy (TorchScript) ONNX exporter lowers ``unfold(-1, ...)`` with
+    # the window and the window-count axes swapped, which gives UV planes of shape (*, 2, H, 2).
+    return (yuvimage[..., :1, :, :], uv.unfold(uv.dim() - 1, 2, 2).mean(-1))
 
 
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:

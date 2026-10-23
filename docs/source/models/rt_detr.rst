@@ -38,7 +38,9 @@ Run it
 
 Detections are filtered with ``confidence_threshold=0.3`` by default; pass a different value to ``build`` to keep
 more or fewer boxes. ``detector.visualize(image, detections, output_type="pil")`` draws the boxes for you, and
-``detector.to_onnx("rtdetr-640.onnx", image_size=640)`` exports the model together with its pre- and post-processing.
+``detector.to_onnx("rtdetr-640.onnx", image_size=640)`` exports the model together with its pre- and
+post-processing. With the default confidence filtering the exported graph is for a batch of one image; build the
+detector with ``confidence_filtering=False`` to export a graph for any batch.
 
 Available variants, from fastest to most accurate: ``rtdetr_r18vd``, ``rtdetr_r34vd``, ``rtdetr_r50vd_m``,
 ``rtdetr_r50vd`` and ``rtdetr_r101vd``. When ``build`` is given a ``model_name`` it always resizes the input to the

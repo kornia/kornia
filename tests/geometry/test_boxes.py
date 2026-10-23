@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
+import io
 import pickle
+import warnings
 from functools import partial
 
 import pytest
@@ -25,7 +27,22 @@ from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
+
+
+def _legacy_onnx_to_mask_pairs(
+    model: torch.nn.Module, vertices: list[torch.Tensor]
+) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    """Export ``model`` with the legacy exporter on ``vertices[0]``; return ``(onnxruntime, eager)`` for each set."""
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    buffer = io.BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        torch.onnx.export(model, (vertices[0],), buffer, input_names=["vertices"], opset_version=18, dynamo=False)
+    session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+    assert [graph_input.name for graph_input in session.get_inputs()] == ["vertices"]
+    return [(torch.from_numpy(session.run(None, {"vertices": boxes.numpy()})[0]), model(boxes)) for boxes in vertices]
 
 
 def _unbatched_geometry_data(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
@@ -89,6 +106,47 @@ class TestBoxes2D(BaseTester):
             return Boxes.from_tensor(data, mode=mode, validate_boxes=True).data
 
         self.assert_close(torch_optimizer(import_boxes, fullgraph=True)(vertices), import_boxes(vertices))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh"])
+    def test_coordinate_import_checks_skipped_under_any_capture_5037(self, mode, device, dtype):
+        # The coordinate modes check finiteness and extents on the host, which a fullgraph trace cannot do, so any
+        # capture skips the check, not only export (#5037). Eager still raises on a non-finite coordinate; a traced
+        # call does not.
+        from torch._dynamo.testing import CompileCounter
+
+        def import_boxes(data: torch.Tensor) -> torch.Tensor:
+            return Boxes.from_tensor(data, mode=mode).data
+
+        valid = torch.tensor([[[1.0, 2.0, 6.0, 7.0], [0.0, 0.0, 3.0, 4.0]]], device=device, dtype=dtype)
+        invalid = valid.clone()
+        invalid[0, 1, 0] = float("nan")
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(import_boxes, backend=counter, fullgraph=True)
+        self.assert_close(traced(valid), import_boxes(valid), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        with pytest.raises(ValueError, match="non-finite coordinates"):
+            import_boxes(invalid)
+        assert torch.isnan(traced(invalid)).any()
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_to_mask_traces_the_vectorized_path_5037(self, device, dtype):
+        # The CPU loop slices with bounds read from the boxes, host reads that inductor cannot lower in a fullgraph
+        # trace; any capture takes the vectorized path, not only export (#5037), and it fills the same mask.
+        from torch._dynamo.testing import EagerAndRecordGraphs
+
+        def to_mask(data: torch.Tensor) -> torch.Tensor:
+            return Boxes(data, mode="vertices_plus").to_mask(9, 11)
+
+        xyxy = [[[1.0, 2.0, 6.0, 7.0], [-2.0, -1.0, 4.0, 3.0], [1.4, 1.6, 5.5, 4.4]]]
+        data = Boxes.from_tensor(torch.tensor(xyxy, device=device, dtype=dtype), mode="xyxy_plus").data
+        backend = EagerAndRecordGraphs()
+        torch._dynamo.reset()
+        traced = torch.compile(to_mask, backend=backend, fullgraph=True)
+        self.assert_close(traced(data), to_mask(data), atol=0.0, rtol=0.0)
+        assert len(backend.graphs) == 1
+        assert ".item()" not in backend.graphs[0].code
 
     @pytest.mark.parametrize("container", ["Boxes", "Boxes3D"])
     def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, container, device, dtype):
@@ -968,7 +1026,7 @@ class TestBoxes2D(BaseTester):
         expected_mask = before.to_mask(6, 6)
         expected_mask[invalid] = 0
         self.assert_close(filtered.to_mask(6, 6), expected_mask, atol=0.0, rtol=0.0)
-        monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        monkeypatch.setattr(boxes_module, "is_compiling", lambda: True)
         self.assert_close(filtered.to_mask(6, 6), expected_mask, atol=0.0, rtol=0.0)
         if not inplace:
             self.assert_close(boxes.to_tensor("xyxy"), xyxy, atol=0.0, rtol=0.0)
@@ -1234,7 +1292,7 @@ class TestBoxes2D(BaseTester):
             boxes = boxes.transform_boxes(transform.expand(3, -1, -1))
         original_data = boxes.data.clone()
         if export_path:
-            monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+            monkeypatch.setattr(boxes_module, "is_compiling", lambda: True)
         mask = boxes.to_mask(6, 6)
         expected = torch.zeros(3, 2, 6, 6, device=device, dtype=dtype)
         expected[1:, 0, offset, offset] = 1.0
@@ -1245,8 +1303,8 @@ class TestBoxes2D(BaseTester):
     @pytest.mark.parametrize("case", ["fractional", "outside", "negative", "rotated", "batched"])
     def test_convention_to_mask_export_path_matches_loop_path(self, case, device, dtype, monkeypatch):
         # Convention pin: the CPU/MPS loop path and the vectorized path taken on CUDA and under
-        # export produce the same mask. The vectorized branch is selected by patching the module's
-        # is_exporting predicate; on CUDA both calls already take it.
+        # graph capture produce the same mask. The vectorized branch is selected by patching the module's
+        # is_compiling predicate; on CUDA both calls already take it.
         fractional = torch.tensor([[[1.4, 1.4], [3.6, 1.4], [3.6, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
         data = {
             "fractional": fractional,
@@ -1256,10 +1314,44 @@ class TestBoxes2D(BaseTester):
             "batched": fractional.expand(2, 3, 4, 2).contiguous(),
         }[case]
         loop = Boxes(data).to_mask(5, 6)
-        monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        monkeypatch.setattr(boxes_module, "is_compiling", lambda: True)
         vectorized = Boxes(data).to_mask(5, 6)
         assert loop.shape == vectorized.shape
         self.assert_close(loop, vectorized, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("size", [(0, 6), (5, 0), (0, 0)])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_convention_to_mask_zero_size_image_matches_export_path(self, size, batched, device, dtype, monkeypatch):
+        # Convention pin: an image with a side of 0 gives an empty (N, H, W) or (B, N, H, W) mask on the CPU loop path
+        # as on the vectorized one. The loop used to raise in view(-1, height, width), which cannot infer B * N there.
+        data = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        if batched:
+            data = data.expand(2, 3, 4, 2).contiguous()
+        loop = Boxes(data).to_mask(*size)
+        monkeypatch.setattr(boxes_module, "is_compiling", lambda: True)
+        vectorized = Boxes(data).to_mask(*size)
+        assert loop.shape == vectorized.shape == (*data.shape[:-2], *size)
+        assert loop.dtype == vectorized.dtype == dtype
+
+    @pytest.mark.device_agnostic
+    def test_to_mask_legacy_onnx_export_reads_its_input_6164(self):
+        # The legacy exporter traces outside is_compiling(). It used to trace the CPU loop and lose its in-place
+        # writes: a graph with no input that returned zeros for every box (#6164). The graph must read the boxes, so
+        # boxes other than the traced ones (overlapping, fractional, partly or wholly outside the image) give their
+        # own masks.
+        class ToMask(torch.nn.Module):
+            def forward(self, vertices: torch.Tensor) -> torch.Tensor:
+                return Boxes(vertices).to_mask(9, 11)
+
+        xyxy = [
+            [[[1.0, 2.0, 6.0, 7.0], [0.0, 0.0, 2.0, 1.0]]],
+            [[[-2.0, -1.0, 4.0, 3.0], [3.0, 3.0, 14.0, 12.0]]],
+            [[[1.4, 1.6, 5.5, 4.4], [20.0, 20.0, 25.0, 25.0]]],
+        ]
+        vertices = [Boxes.from_tensor(torch.tensor(boxes), mode="xyxy_plus").data for boxes in xyxy]
+        for actual, expected in _legacy_onnx_to_mask_pairs(ToMask(), vertices):
+            assert expected.sum() > 0
+            self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
 
 class TestTransformBoxes2D(BaseTester):
@@ -1381,6 +1473,31 @@ class TestBbox3D(BaseTester):
                     invalid_source.reshape(-1, 6)[1, coordinate_index] = non_finite
                     with pytest.raises(ValueError, match="non-finite coordinates"):
                         Boxes3D.from_tensor(invalid_source, mode=mode, validate_boxes=True)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("mode", ["xyzxyz", "xyzxyz_plus", "xyzwhd"])
+    def test_import_checks_skipped_under_any_capture_5037(self, mode, device, dtype):
+        # The import checks finiteness and extents on the host, which a fullgraph trace cannot do, so any capture
+        # skips the check, not only export (#5037). Eager still raises on a non-finite coordinate; a traced call
+        # does not.
+        from torch._dynamo.testing import CompileCounter
+
+        def import_boxes(data: torch.Tensor) -> torch.Tensor:
+            return Boxes3D.from_tensor(data, mode=mode).data
+
+        valid = torch.tensor(
+            [[[1.0, 2.0, 1.0, 5.0, 7.0, 4.0], [0.0, 0.0, 0.0, 3.0, 4.0, 2.0]]], device=device, dtype=dtype
+        )
+        invalid = valid.clone()
+        invalid[0, 1, 0] = float("nan")
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(import_boxes, backend=counter, fullgraph=True)
+        self.assert_close(traced(valid), import_boxes(valid), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        with pytest.raises(ValueError, match="non-finite coordinates"):
+            import_boxes(invalid)
+        assert torch.isnan(traced(invalid)).any()
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
@@ -1979,8 +2096,8 @@ class TestBbox3D(BaseTester):
 
     @pytest.mark.parametrize("case", ["fractional", "outside", "negative", "batched"])
     def test_convention_to_mask_export_path_matches_loop_path(self, case, device, dtype, monkeypatch):
-        # Convention pin: the loop path and the grid-comparison path taken under export produce
-        # the same mask. The export branch is selected by patching the module's is_exporting predicate.
+        # Convention pin: the loop path and the grid-comparison path taken under graph capture produce
+        # the same mask. The capture branch is selected by patching the module's is_compiling predicate.
         fractional = self._fractional_cuboid(device, dtype)
         data = {
             "fractional": fractional,
@@ -1989,10 +2106,59 @@ class TestBbox3D(BaseTester):
             "batched": fractional.expand(2, 2, 8, 3).contiguous(),
         }[case]
         loop = Boxes3D(data).to_mask(5, 5, 6)
-        monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        monkeypatch.setattr(boxes_module, "is_compiling", lambda: True)
         vectorized = Boxes3D(data).to_mask(5, 5, 6)
         assert loop.shape == vectorized.shape
         self.assert_close(loop, vectorized, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("size", [(0, 5, 6), (4, 0, 6), (4, 5, 0)])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_convention_to_mask_zero_size_volume_matches_export_path(self, size, batched, device, dtype, monkeypatch):
+        # Convention pin: a volume with a side of 0 gives an empty mask on the loop path as on the grid-comparison
+        # path. The loop used to raise in view(-1, depth, height, width), which cannot infer B * N there.
+        data = self._fractional_cuboid(device, dtype)
+        if batched:
+            data = data.expand(2, 2, 8, 3).contiguous()
+        loop = Boxes3D(data).to_mask(*size)
+        monkeypatch.setattr(boxes_module, "is_compiling", lambda: True)
+        vectorized = Boxes3D(data).to_mask(*size)
+        assert loop.shape == vectorized.shape == (*data.shape[:-2], *size)
+        assert loop.dtype == vectorized.dtype == dtype
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_to_mask_traces_the_grid_comparison_path_5037(self, device, dtype):
+        # The loop slices with bounds read from the boxes, host reads that inductor cannot lower in a fullgraph trace;
+        # any capture compares a coordinate grid against the bounds instead, not only export (#5037), and it fills the
+        # same mask.
+        from torch._dynamo.testing import EagerAndRecordGraphs
+
+        def to_mask(data: torch.Tensor) -> torch.Tensor:
+            return Boxes3D(data, mode="xyzxyz_plus").to_mask(5, 5, 6)
+
+        data = torch.cat([self._fractional_cuboid(device, dtype), self._fractional_cuboid(device, dtype) - 1.0])
+        backend = EagerAndRecordGraphs()
+        torch._dynamo.reset()
+        traced = torch.compile(to_mask, backend=backend, fullgraph=True)
+        self.assert_close(traced(data), to_mask(data), atol=0.0, rtol=0.0)
+        assert len(backend.graphs) == 1
+        assert ".item()" not in backend.graphs[0].code
+
+    @pytest.mark.device_agnostic
+    def test_to_mask_legacy_onnx_export_reads_its_input_6164(self):
+        # As for Boxes.to_mask: the legacy exporter traced the loop and exported a constant all-zero mask (#6164).
+        class ToMask(torch.nn.Module):
+            def forward(self, vertices: torch.Tensor) -> torch.Tensor:
+                return Boxes3D(vertices).to_mask(5, 6, 7)
+
+        xyzxyz = [
+            [[[1.0, 1.0, 1.0, 4.0, 3.0, 2.0], [0.0, 2.0, 3.0, 6.0, 5.0, 4.0]]],
+            [[[3.0, 0.0, 2.0, 5.0, 5.0, 3.0], [-2.0, -1.0, 0.0, 2.0, 1.0, 9.0]]],
+            [[[1.4, 1.6, 0.6, 3.5, 4.4, 2.4], [20.0, 20.0, 20.0, 25.0, 25.0, 25.0]]],
+        ]
+        vertices = [Boxes3D.from_tensor(torch.tensor(boxes), mode="xyzxyz_plus").data for boxes in xyzxyz]
+        for actual, expected in _legacy_onnx_to_mask_pairs(ToMask(), vertices):
+            assert expected.sum() > 0
+            self.assert_close(actual, expected, atol=0.0, rtol=0.0)
 
     def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
         # Convention pin: the copy path leaves the source untouched and returns a new object; the

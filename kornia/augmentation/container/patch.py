@@ -118,6 +118,12 @@ class PatchSequential(ImageSequential):
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_patch_sequential.html>`__.
 
+    .. warning::
+        Under ``torch.compile`` with the default inductor backend, torch earlier than 2.15 returns wrong values when a
+        child reads the patches at other positions, a flip for example, after an earlier child has written them
+        (`pytorch/pytorch#198270 <https://github.com/pytorch/pytorch/issues/198270>`__). Eager execution,
+        the ``aot_eager`` backend and torch 2.15 or later are not affected.
+
     Examples:
         >>> import kornia.augmentation as K
         >>> input = torch.randn(2, 3, 224, 224)
@@ -422,10 +428,11 @@ class PatchSequential(ImageSequential):
 
         """
         if self.random_apply:
-            with_mix = False
+            # A mix augmentation may be drawn until one has been added, so at most one is applied in this call.
+            with_mix = True
             for i in range(batch_shape[0]):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
-                with_mix = mix_added
+                with_mix = with_mix and not mix_added
                 for s in seq:
                     if isinstance(s[1], (_AugmentationBase, SequentialBase, K.MixAugmentationBaseV2)):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i

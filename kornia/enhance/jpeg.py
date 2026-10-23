@@ -27,7 +27,7 @@ from torch import nn
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling, is_exporting
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling
 from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
@@ -641,8 +641,9 @@ def jpeg_codec_differentiable(
     # Check resulting shape of quantization tables
     KORNIA_CHECK_SHAPE(quantization_table_y, ["B", "8", "8"])
     KORNIA_CHECK_SHAPE(quantization_table_c, ["B", "8", "8"])
-    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip under export.
-    if not is_exporting():
+    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip it under any
+    # capture (torch.compile, torch.export).
+    if not is_compiling():
         KORNIA_CHECK(
             (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
             lambda: (

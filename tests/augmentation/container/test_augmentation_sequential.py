@@ -2551,13 +2551,14 @@ class TestConventionAugmentationSequential(BaseTester):
     )
     @pytest.mark.parametrize("p", [0.5, 1.0])
     def test_empty_batch_mask_round_trip_follows_image_4429(self, make_op, p, device, dtype):
-        # The mask takes the image's canvas under every gate, and the inverse restores both. With p < 1 the empty
-        # image keeps its input size (the blend fallback tracked in #4429), so only the parity is pinned here.
+        # An empty batch takes the configured size under every gate (#4429): the mask follows the image onto that
+        # canvas, and the inverse restores both.
         image = torch.empty(0, 3, 8, 10, device=device, dtype=dtype)
         mask = torch.empty(0, 1, 8, 10, device=device, dtype=torch.int64)
         seq = K.AugmentationSequential(make_op(p), data_keys=["input", "mask"])
         out_image, out_mask = seq(image, mask)
-        assert out_mask.shape == (0, 1, *out_image.shape[-2:])
+        assert out_image.shape == (0, 3, 4, 5)
+        assert out_mask.shape == (0, 1, 4, 5)
         restored_image, restored_mask = seq.inverse(out_image, out_mask)
         assert restored_image.shape == image.shape
         assert restored_mask.shape == mask.shape
@@ -3091,7 +3092,8 @@ class TestCrop3DShapePropagation(BaseTester):
         handle.remove()
         self.assert_close(actual, expected)
         saved = deepcopy(seq._params)
-        canvas = (4, 5, 6) if p == 1.0 else (8, 10, 12)
+        # A skipped crop keeps its input canvas; an empty batch has no sample to skip (#4429).
+        canvas = (4, 5, 6) if p == 1.0 or batch == 0 else (8, 10, 12)
         assert seen == [torch.Size((batch, 1, *canvas))]
         assert tuple(saved[1].data["forward_input_shape"]) == seen[0]
         assert saved[1].data["output_size"].shape == (batch, 3)
@@ -3180,3 +3182,48 @@ class TestCrop3DShapePropagation(BaseTester):
                 actual = _get_new_batch_shape(params, image.shape, op)
             assert [type(dim) for dim in actual] == [int] * 5
             assert actual == (batch, 1, 4, 5, 6)
+
+
+class TestPadToMosaicShapePropagation(BaseTester):
+    @pytest.mark.parametrize(
+        "make_first",
+        [
+            lambda: K.PadTo((40, 48)),
+            lambda: K.PadTo((16, 48), crop_if_exceeds=False),  # keeps the larger input height, pads the width
+            lambda: K.RandomMosaic(output_size=(20, 30), p=1.0),
+        ],
+        ids=["PadTo", "PadTo-no-crop", "RandomMosaic"],
+    )
+    @pytest.mark.parametrize(
+        "make_second",
+        [lambda: K.Resize(16), lambda: K.CenterCrop(8, cropping_mode="resample")],
+        ids=["Resize-int", "CenterCrop-resample"],
+    )
+    def test_next_child_sees_the_new_canvas_6043(self, make_first, make_second, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("2D bilinear grid sampling is unsupported for this device/dtype.")
+        image = torch.rand(2, 3, 24, 40).to(device, dtype)
+        seq = K.AugmentationSequential(make_first(), make_second())
+        actual = seq(image)
+        canvas = seq[0](image, params=seq._params[0].data)
+        assert tuple(seq._params[1].data["forward_input_shape"].tolist()) == tuple(canvas.shape)
+        self.assert_close(actual, make_second()(canvas))
+
+    @pytest.mark.parametrize("batch", [0, 2])
+    @pytest.mark.parametrize("exporting", [False, True])
+    def test_tracked_size_6043(self, batch, exporting):
+        from kornia.augmentation.container.image import _get_new_batch_shape
+
+        shape = torch.Size((batch, 3, 24, 40))
+        # RandomMosaic resizes to ``output_size`` also when the mosaic is skipped, and keeps the size without one.
+        cases = [
+            (K.PadTo((40, 48)), (40, 48)),
+            (K.PadTo((16, 48)), (16, 48)),  # a target below the input height crops it
+            (K.PadTo((16, 48), crop_if_exceeds=False), (24, 48)),  # keeps the larger input height
+            (K.RandomMosaic(output_size=(20, 30), p=0.0), (20, 30)),
+            (K.RandomMosaic(p=1.0), (24, 40)),
+        ]
+        for op, size in cases:
+            params = ParamItem("op", op.forward_parameters(shape))
+            with patch("kornia.augmentation.container.image.is_exporting", return_value=exporting):
+                assert _get_new_batch_shape(params, shape, op) == (batch, 3, *size)

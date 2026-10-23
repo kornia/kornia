@@ -92,11 +92,9 @@ class _BasicAugmentationBase(nn.Module):
 
     """
 
-    # Flag for whether this augmentation supports ONNX export. Override to False in subclasses
-    # that use ops the legacy tracer can't lower (e.g. ``torch.histc``,
-    # ``torch.distributions.Beta``).
-    # Users can introspect via ``aug.exportable``; CI iterates the known-exportable
-    # subset in ``tests/augmentation/test_onnx_export.py``.
+    # A class-level flag that ``aug.exportable`` returns. It is True unless a subclass sets it, and no subclass does.
+    # Nothing in kornia reads it, and it does not say whether an export works: the augmentations that
+    # ``tests/augmentation/test_onnx_export.py`` exports are listed in that file, not selected by this flag.
     ONNX_EXPORTABLE = True
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -121,13 +119,10 @@ class _BasicAugmentationBase(nn.Module):
 
     @property
     def exportable(self) -> bool:
-        """Whether this augmentation supports ONNX export via the legacy tracer at opset 20.
+        """The class-level ``ONNX_EXPORTABLE`` flag, ``True`` unless a subclass sets it.
 
-        Reflects the class-level ``ONNX_EXPORTABLE`` flag. Note that ``True`` here
-        means *the graph traces and exports* — it does not guarantee the resulting
-        ONNX runtime output is bit-equivalent to eager. See the categorisation in
-        ``tests/augmentation/test_onnx_export.py`` for the numerical-correctness
-        signal per augmentation.
+        Nothing in kornia reads the flag, and it makes no statement about whether, or with which exporter, an
+        augmentation exports.
         """
         return bool(self.ONNX_EXPORTABLE)
 
@@ -402,13 +397,16 @@ class _AugmentationBase(_BasicAugmentationBase):
         fullgraph-friendly). Shape-changing augmentations (e.g. crop/resize) whose branches
         differ in spatial size fall back to a Python branch on ``to_apply.any()``, which is
         not onnx-exportable. Such a fallback cannot select rows, so a ``to_apply`` that mixes applied and skipped
-        rows raises ``ValueError`` instead of transforming the skipped rows too.
+        rows raises ``ValueError`` instead of transforming the skipped rows too. An empty gate has no row to skip
+        and takes the transformed branch, so an empty batch gets the configured output size whatever ``p`` is.
         """
         if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
             to_apply_expanded = _to_device_nonblocking(
                 to_apply.view(-1, *([1] * (len(transformed.shape) - 1))), transformed.device
             )
             return torch.where(to_apply_expanded, transformed, not_transformed)
+        if to_apply.numel() == 0:
+            return transformed
         apply_any = bool(to_apply.any())
         if apply_any and not bool(to_apply.all()) and transformed.shape[1:] != not_transformed.shape[1:]:
             raise _mixed_gate_shape_error(not_transformed.shape[1:], transformed.shape[1:])
@@ -501,12 +499,8 @@ class _AugmentationBase(_BasicAugmentationBase):
         output_transformed = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
 
-        # With an empty, statically always-applied batch, the image path takes the transformed shape.
-        # An empty gate has no rows to blend, so keep the mask on that same canvas (#4429).
-        if self.p == 1.0 and self.p_batch == 1.0 and batch_prob.numel() == 0:
-            output = output_transformed
-        else:
-            output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
+        # An empty gate takes the transformed branch, so the mask lands on the image's canvas (#4429).
+        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
         if not self.keepdim:
             return output

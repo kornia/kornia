@@ -156,31 +156,9 @@ def _unit_atol(base: float, dtype: torch.dtype) -> float:
     return base + {torch.float64: 0.0, torch.float32: 1e-6, torch.float16: 2e-3, torch.bfloat16: 1.2e-2}.get(dtype, 0.0)
 
 
-@pytest.fixture(autouse=True)
-def _cudnn_tf32_disabled(request):
-    """Compute in real float32 on CUDA by default, so every tolerance here means what it derives.
-
-    Off cpu, ``_apply_linear_transformation`` takes the ``F.conv2d`` branch, and cuDNN keeps
-    PyTorch's ``allow_tf32 = True`` default -- conftest's ``--tf32`` flag drives only
-    ``set_float32_matmul_precision``, which does not reach cuDNN. TF32 rounds both conv inputs
-    and every kernel literal to 10 mantissa bits, so one forward transform carries up to
-    ``2 * 2**-11 * sum|k_i * x_i|`` = 1.2e-3 of backend noise on the V row alone -- twice
-    _FORWARD_ATOL, and the same order as the 1.356e-3 constants defect this file exists to pin.
-    Every tolerance here is derived from the *constants*, not from a backend's kernel precision,
-    so an ordinary run takes TF32 out of the picture rather than budgeting it into each assertion.
-
-    The flag follows ``--tf32`` rather than being forced off, so this module does not become the
-    one place in the suite that ignores the option: a ``--tf32`` run gets TF32 in cuDNN as well
-    as in matmul, and measures the backend instead of the constants. The repo-wide fix is for
-    ``pytest_sessionstart`` to set ``cudnn.allow_tf32`` from the same option -- until then this
-    is the only module whose derived bounds depend on it.
-    """
-    previous = torch.backends.cudnn.allow_tf32
-    torch.backends.cudnn.allow_tf32 = bool(request.config.getoption("--tf32"))
-    try:
-        yield
-    finally:
-        torch.backends.cudnn.allow_tf32 = previous
+# These bounds cover differences between the pinned constants and the reference transform, not
+# backend precision. The root pytest session follows --tf32 for cuDNN as well as matmul, so the
+# default run uses real float32 and an explicit --tf32 run measures the lower-precision backend.
 
 
 # The three generators below deliberately build on cpu/float64 and leave the move to the

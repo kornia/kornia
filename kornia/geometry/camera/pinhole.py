@@ -105,9 +105,7 @@ class PinholeCamera:
     @staticmethod
     def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
         if len(data.shape) not in (3, 4) or data.shape[-2:] != (4, 4):
-            raise ValueError(
-                f"Argument {data_name} shape must be in the following shape Bx4x4 or BxNx4x4. Got {data.shape}"
-            )
+            raise ValueError(f"Argument {data_name} shape must be Bx4x4 or BxNx4x4. Got {data.shape}")
         return True
 
     @staticmethod
@@ -550,6 +548,12 @@ class PinholeCamerasList(PinholeCamera):
     def __init__(self, pinholes_list: Iterable[PinholeCamera]) -> None:
         self._initialize_parameters(pinholes_list)
 
+    @staticmethod
+    def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
+        if len(data.shape) != 4 or data.shape[-2:] != (4, 4):
+            raise ValueError(f"Argument {data_name} shape must be in the following shape BxNx4x4. Got {data.shape}")
+        return True
+
     def _initialize_parameters(self, pinholes: Iterable[PinholeCamera]) -> "PinholeCamerasList":
         r"""Initialise the class attributes given a cameras list."""
         if not isinstance(pinholes, (list, tuple)):
@@ -568,6 +572,24 @@ class PinholeCamerasList(PinholeCamera):
         self.width: torch.Tensor = torch.stack(width, dim=1)
         self._intrinsics: torch.Tensor = torch.stack(intrinsics, dim=1)
         self._extrinsics: torch.Tensor = torch.stack(extrinsics, dim=1)
+        return self
+
+    def clone(self) -> "PinholeCamerasList":
+        return PinholeCamerasList([self.get_pinhole(index).clone() for index in range(self.num_cameras)])
+
+    def scale(self, scale_factor: torch.Tensor) -> "PinholeCamerasList":
+        return self.clone().scale_(scale_factor)
+
+    def scale_(self, scale_factor: Union[float, torch.Tensor]) -> "PinholeCamerasList":
+        r"""Scale the cameras in place, applying a vector factor along the batch dimension."""
+        if isinstance(scale_factor, torch.Tensor) and scale_factor.ndim == 1:
+            scale_factor = scale_factor[..., None]
+        self.intrinsics[..., 0, 0] *= scale_factor
+        self.intrinsics[..., 1, 1] *= scale_factor
+        self.intrinsics[..., 0, 2] *= scale_factor
+        self.intrinsics[..., 1, 2] *= scale_factor
+        self.height = self.height * scale_factor
+        self.width = self.width * scale_factor
         return self
 
     @property

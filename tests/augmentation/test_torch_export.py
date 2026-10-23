@@ -38,6 +38,7 @@ from typing import Callable, Tuple
 
 import pytest
 import torch
+from torch.export.graph_signature import InputKind
 
 import kornia.augmentation as K
 
@@ -67,12 +68,18 @@ def _pad_to() -> torch.nn.Module:
     return K.PadTo((40, 40))
 
 
+def _pad_to_no_crop() -> torch.nn.Module:
+    # The 32 x 32 input is taller than the target, so its height passes through and its width is padded.
+    return K.PadTo((16, 40), crop_if_exceeds=False)
+
+
 TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
     ("Normalize", _normalize),
     ("Denormalize", _denormalize),
     ("Resize", _resize),
     ("CenterCrop", _center_crop),
     ("PadTo", _pad_to),
+    ("PadTo[no-crop]", _pad_to_no_crop),
 ]
 
 
@@ -189,6 +196,34 @@ def test_torch_export_container_int_size_resize_6024(
     torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)
 
 
+PAD_TO_FOLLOWERS: list[Tuple[str, Callable[[], list[torch.nn.Module]]]] = [
+    ("Resize", lambda: [K.Resize(16)]),
+    ("CenterCrop-resample", lambda: [K.CenterCrop(8, cropping_mode="resample")]),
+    ("Resize,CenterCrop-resample", lambda: [K.Resize(16), K.CenterCrop(8, cropping_mode="resample")]),
+]
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("name,factory", PAD_TO_FOLLOWERS, ids=[n for n, _ in PAD_TO_FOLLOWERS])
+@pytest.mark.device_agnostic
+def test_torch_export_container_pad_to_then_shape_dependent_6043(
+    name: str, factory: Callable[[], list[torch.nn.Module]]
+) -> None:
+    """A shape-dependent child after ``PadTo`` plans for the padded canvas under ``torch.export`` (#6043)."""
+    torch.manual_seed(0)
+    x = torch.randn(2, 3, 24, 40)
+    augs = [K.PadTo((40, 48)), *factory()]
+    expected = x
+    for aug in augs:
+        expected = aug(expected)
+    seq = K.AugmentationSequential(*augs, data_keys=["input"])
+    out = torch.export.export(seq, (x,)).module()(x)
+    assert out.shape == expected.shape, f"{name}: shape {out.shape} vs {expected.shape}"
+    torch.testing.assert_close(out, expected, atol=1e-5, rtol=1e-5)
+
+
 def _mask_export_case(case: str) -> Tuple[torch.nn.Module, tuple, Callable[[object], torch.Tensor], torch.Tensor]:
     """Build a float64 image/mask pipeline for ``case``: the module, its arguments, a mask getter, the expected mask."""
     image = torch.zeros(1, 1, 1, 2, dtype=torch.float64)
@@ -248,3 +283,56 @@ def test_torch_export_integer_mask_labels_4478(image_dtype: torch.dtype) -> None
     for invalid in (label, torch.iinfo(torch.int64).max):
         with pytest.raises(RuntimeError, match="Integer mask labels"):
             exported(image, torch.full_like(mask, invalid))
+
+
+class _ReplayWithConstantParams(torch.nn.Module):
+    """Call ``seq`` with the params of its last eager call held constant, as an exported replay does."""
+
+    def __init__(self, seq: torch.nn.Module, params: list) -> None:
+        super().__init__()
+        self.seq = seq
+        self.params = params
+
+    def forward(self, *args: torch.Tensor) -> object:
+        return self.seq(*args, params=self.params)
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("data_key", ["mask", "keypoints", "bbox_xyxy"])
+@pytest.mark.device_agnostic
+def test_torch_export_annotation_replay_copies_no_constant_6166(data_key: str) -> None:
+    """The annotation handlers recompute a child's matrix from copies of constant params under export (#6166).
+
+    Params held constant are graph constants in the exported program. ``RandomAffine`` writes ``center`` as-is into
+    its matrix, and torch 2.9's dynamo ONNX exporter drops the same-dtype cast it lowers that ``copy`` to, renames the
+    constant after the copy and then rejects it, so the export failed. The decomposed graph that exporter lowers must
+    hold no ``copy`` of a constant on any torch, and the exported annotations must match eager.
+    """
+    torch.manual_seed(0)
+    image = torch.rand(2, 3, 16, 20)
+    extra = {
+        "mask": (torch.rand(2, 1, 16, 20) > 0.5).float(),
+        "keypoints": torch.tensor([[[3.0, 4.0], [12.0, 9.0]]]).repeat(2, 1, 1),
+        "bbox_xyxy": torch.tensor([[[2.0, 3.0, 10.0, 12.0]]]).repeat(2, 1, 1),
+    }[data_key]
+    seq = K.AugmentationSequential(K.RandomAffine(15.0, p=1.0), data_keys=["input", data_key])
+    seq(image, extra)
+    model = _ReplayWithConstantParams(seq, seq._params)
+    eager = model(image, extra)
+
+    program = torch.export.export(model, (image, extra), strict=False)
+    graph = program.run_decompositions()
+    constants = {spec.arg.name for spec in graph.graph_signature.input_specs if spec.kind == InputKind.CONSTANT_TENSOR}
+    copies_of_constants = [
+        node.name
+        for node in graph.graph.nodes
+        if node.target == torch.ops.aten.copy.default and getattr(node.args[1], "name", None) in constants
+    ]
+    assert not copies_of_constants, f"{data_key}: {copies_of_constants} copy a graph constant as-is"
+
+    out = program.module()(image, extra)
+    assert len(out) == len(eager) == 2
+    for got, expected in zip(out, eager, strict=True):
+        torch.testing.assert_close(got, expected, atol=1e-5, rtol=1e-5)

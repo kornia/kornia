@@ -288,7 +288,14 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         image = torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64)
         lafs = torch.tensor([[[[2.0, 0.0, 3.0], [0.0, 2.0, 3.0]]]], device=device, dtype=torch.float64)
         feature = SIFTDescriptorFromPyramid(spatial_bin_size=3).to(device, torch.float64)
-        self.gradcheck(lambda image: feature.orient_and_describe(image, lafs, upright=upright)[1], (image,))
+        # On CUDA the image gradient of the patch sampling comes from grid_sampler_2d_backward_cuda, which
+        # accumulates with atomicAdd (no deterministic implementation; a gather-based sampler would backpropagate
+        # through an equally atomic scatter_add). Repeated backward passes differ by at most ~1.3e-15 here, a few
+        # float64 ulps, so the reentrancy check allows 1e-12; the CPU backward is deterministic and stays exact.
+        nondet_tol = 1e-12 if device.type == "cuda" else 0.0
+        self.gradcheck(
+            lambda image: feature.orient_and_describe(image, lafs, upright=upright)[1], (image,), nondet_tol=nondet_tol
+        )
 
     @pytest.mark.parametrize("inference", [False, True])
     def test_dynamo(self, device, dtype, torch_optimizer, inference):
