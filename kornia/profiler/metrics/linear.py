@@ -40,14 +40,15 @@ def linear_cka(x: Tensor, y: Tensor) -> Tensor:
     x = x - x.mean(dim=0, keepdim=True)
     y = y - y.mean(dim=0, keepdim=True)
 
-    xy = x.T @ y
-    xx = x.T @ x
-    yy = y.T @ y
+    xy = x @ y.T
+    xx = x @ x.T
+    yy = y @ y.T
 
     numerator = xy.square().sum()
     denominator = torch.linalg.norm(xx) * torch.linalg.norm(yy)
 
-    return numerator / denominator.clamp_min(torch.finfo(denominator.dtype).eps)
+    eps = torch.finfo(denominator.dtype).eps
+    return torch.where(denominator > 0, numerator / denominator.clamp_min(eps), 0.0)
 
 
 class LinearSimilarity(Metric):

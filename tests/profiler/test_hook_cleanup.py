@@ -1,4 +1,3 @@
-
 # LICENSE HEADER MANAGED BY add-license-header
 #
 # Copyright 2018 Kornia Team
@@ -87,10 +86,7 @@ def test_feature_snapshot_isolated_from_subsequent_forward() -> None:
     collector.attach(model)
     try:
         first_features = collector(x=x)
-        saved_features = {
-            name: feature.clone()
-            for name, feature in first_features.items()
-        }
+        saved_features = {name: feature.clone() for name, feature in first_features.items()}
 
         # Run the model directly while the collector's hooks remain attached.
         # This should not change the feature snapshot returned by the collector.
