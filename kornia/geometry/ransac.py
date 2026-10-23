@@ -243,9 +243,10 @@ class RANSAC(nn.Module):
           one. PROSAC sampling and DEGENSAC are not supported.
         - Known defect: after compiled estimation on the CPU, a later CUDA process sharing the same inductor cache can
           save a CPU program as its CUDA artifact, and every CUDA process that loads it then crashes with a
-          segmentation fault on its first call. Use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device, delete
-          ``<TORCHINDUCTOR_CACHE_DIR>/kornia_ransac/`` after mixing devices, or set ``KORNIA_RANSAC_AOT=0`` to skip
-          the artifact (`#6278 <https://github.com/kornia/kornia/issues/6278>`_).
+          segmentation fault on its first call. Use a separate ``TORCHINDUCTOR_CACHE_DIR`` per device, or set
+          ``KORNIA_RANSAC_AOT=0`` to skip the artifact. Deleting only ``<TORCHINDUCTOR_CACHE_DIR>/kornia_ransac/``
+          does not help: the next CUDA compile reads the same inductor cache and saves the CPU program again
+          (`#6278 <https://github.com/kornia/kornia/issues/6278>`_).
         - A caller's autocast region does not change the estimate.
 
     Args:
