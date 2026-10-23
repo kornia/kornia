@@ -155,7 +155,7 @@ def _bilateral_blur_cpu(
 ) -> torch.Tensor:
     """Bilateral filter as a loop over the kernel taps, without unfolding every window.
 
-    The unfold path materialises several :math:`(B, C, H, W, k_y, k_x)` tensors, :math:`k_y k_x` times the image; on a
+    The unfold path materialises several :math:`(B, C, H, k_y, W, k_x)` tensors, :math:`k_y k_x` times the image; on a
     large CPU batch they are fresh memory, faulted in on every call. Here every tap takes shifted slices of the padded
     guidance and input, computes its weights with the unfold path's expression, so they are the same numbers, and adds
     them to the weighted sum and to the normalizer; only the order of the :math:`k_y k_x` terms of those two sums
@@ -269,31 +269,50 @@ def _bilateral_blur(
         sigma_color = sigma_color.view(-1, 1, 1, 1, 1, 1)
     pad_y, pad_x = _compute_zero_padding(kernel_size)
 
-    # Keep both patch axes: flattening them would copy every overlapping window.
+    # Keep both patch axes: flattening them would copy every overlapping window. The windows are viewed in the order of
+    # their elements in memory, (B, C, H, Ky, W, Kx), so that the arithmetic allocates every temporary contiguous, and
+    # every reduction, here and in the backward, runs over one axis. MPS reduces a permuted 6-D tensor about 150 times
+    # slower than a contiguous one (an M1: 238 ms against 1.4 ms for the colour distance of an 8 x 3 x 256 x 256 batch
+    # with a 5 x 5 kernel), and two axes that are not adjacent, such as Ky and Kx, about 140 times slower than one at a
+    # time, on torch 2.14 and on a 2.16 nightly alike.
     padded_input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
-    unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1)  # (B, C, H, W, Ky, Kx)
+    unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).permute(0, 1, 2, 4, 3, 5)  # (B, C, H, Ky, W, Kx)
 
     if guidance is None:
         guidance = input
         unfolded_guidance = unfolded_input
     else:
         padded_guidance = F.pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
-        unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1)  # (B, C, H, W, Ky, Kx)
-
-    diff = unfolded_guidance - guidance[..., None, None]
-    if color_distance_type == "l1":
-        color_distance_sq = diff.abs().sum(1, keepdim=True).square()
-    elif color_distance_type == "l2":
-        color_distance_sq = diff.square().sum(1, keepdim=True)
-    else:
+        unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1).permute(0, 1, 2, 4, 3, 5)
+    # After the padding, whose errors come first, as in the tap loop, and before any window arithmetic.
+    if color_distance_type not in ("l1", "l2"):
         raise ValueError("color_distance_type only accepts l1 or l2")
-    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, Ky, Kx)
+
+    # The centre pixel is broadcast over Kx by an expand and over Ky by the subtraction, so that the backward sums its
+    # gradient over one axis at a time.
+    centre = guidance.unsqueeze(-1).expand(-1, -1, -1, -1, kx).unsqueeze(3)  # (B, C, H, 1, W, Kx)
+    diff = unfolded_guidance - centre
+    if diff.shape[1] == 1:
+        # One channel's sum is the value itself, so the sum is skipped: on torch 2.14, MPS reduces over an axis of
+        # size 1 about 270 times slower than it squares (222 ms against 0.8 ms). l1 keeps its abs(): |d|^2 is d^2
+        # only for a real difference, not for a complex one.
+        color_distance_sq = diff.abs().square() if color_distance_type == "l1" else diff.square()
+    elif color_distance_type == "l1":
+        color_distance_sq = diff.abs().sum(1, keepdim=True).square()
+    else:
+        color_distance_sq = diff.square().sum(1, keepdim=True)
+    del diff
 
     space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
-    space_kernel = space_kernel.view(-1, 1, 1, 1, ky, kx)
+    space_kernel = space_kernel.view(-1, 1, 1, ky, 1, kx)
 
-    kernel = space_kernel * color_kernel
-    return (unfolded_input * kernel).sum((-2, -1)) / kernel.sum((-2, -1))
+    # Each window-sized temporary is freed once consumed. Without a gradient that lowers the peak memory by 27-42 % (an
+    # 8 x 3 or 8 x 1 x 256 x 256 batch, 5 x 5 kernel), and a fresh CPU process, whose glibc heap still returns a few MB
+    # to the system on every free, faults fewer pages back in per call.
+    kernel = space_kernel * (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, Ky, W, Kx)
+    del color_distance_sq
+    # Over Kx, then over Ky.
+    return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
 
 
 def bilateral_blur(
