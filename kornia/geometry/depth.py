@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
 from kornia.core.exceptions import ShapeError
 from kornia.core.utils import _autocast_disabled, _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
@@ -791,7 +791,8 @@ def _per_sample_camera_parameter(parameter: float | torch.Tensor, disparity: tor
     if not isinstance(parameter, torch.Tensor) or parameter.ndim == 0 or parameter.shape == (1,):
         return parameter
     if parameter.ndim == 1 and disparity.ndim >= 3:
-        KORNIA_CHECK_SHAPE(parameter, [str(disparity.shape[0])])
+        # Compared as a number: a string would turn a symbolic batch size into a graph break under torch.compile.
+        KORNIA_CHECK_SIZES(parameter, [disparity.shape[0]])
         return parameter.reshape(disparity.shape[0], *([1] * (disparity.ndim - 1)))
     KORNIA_CHECK_SHAPE(parameter, ["1"])
     return parameter
