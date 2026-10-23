@@ -31,7 +31,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from kornia_moons.feature import visualize_LAF
-from kornia.utils import draw_rectangle, tensor_to_image
+from kornia.image import draw_rectangle, tensor_to_image
 from matplotlib.axes import Axes
 from PIL import Image
 
