@@ -196,7 +196,8 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         for image, detection in zip(images, dets):
             out_img = image[None].clone()
             for out in detection:
-                box = torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
+                box = torch.stack((out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]))
+                box = box.reshape(1, 1, 4).to(device=out_img.device)
                 # a detection that reaches or crosses the border stays visible on all four sides
                 box[..., 0::2] = box[..., 0::2].clamp(0, out_img.shape[-1] - 1)
                 box[..., 1::2] = box[..., 1::2].clamp(0, out_img.shape[-2] - 1)

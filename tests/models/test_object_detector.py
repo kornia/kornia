@@ -91,6 +91,22 @@ class TestObjectDetector(BaseTester):
         assert (out[:, :, 0] == 0).all()
         assert (out[:, :, w - 1] == 0).all()
 
+    def test_visualize_keeps_boxes_on_image_device(self, monkeypatch):
+        detector = kornia.contrib.object_detection.ObjectDetector(
+            torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()
+        )
+        images = torch.ones(1, 3, 8, 8, device="meta")
+        detections = [torch.tensor([[0.0, 0.9, 1.0, 1.0, 2.0, 2.0]])]
+
+        def assert_same_device(image, rectangle):
+            assert rectangle.device == image.device
+            return image
+
+        monkeypatch.setattr(kornia.contrib.object_detection, "draw_rectangle", assert_same_device)
+        output = detector.visualize(images, detections)
+
+        assert output[0].device == images.device
+
     def test_smoke(self, device, dtype):
         batch_size = 2
         confidence = 0.3
