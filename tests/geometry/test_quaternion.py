@@ -868,3 +868,45 @@ class TestQuaternionConventions(BaseTester):
                 assert out.shape == (1, 4)
                 # to_axis_angle is the principal log, so the arbitrary sign of the eigenvector does not matter
                 self.assert_close(out.to_axis_angle(), expected.to(device=device, dtype=dtype), rtol=0.0, atol=tol)
+
+
+def _average_with_fixed_sign_6213(data, reference, weights=None):
+    # The mean's sign is arbitrary; fix it against a reference for central differences.
+    mean = average_quaternions(Quaternion(data), weights).data
+    return mean * torch.where((mean.detach() * reference).sum(-1, keepdim=True) < 0, -1.0, 1.0)
+
+
+def _yaw_only_6213(device):
+    yaw = torch.tensor([0.1, -0.3, 0.5, 0.2], dtype=torch.float64)
+    zero = torch.zeros_like(yaw)
+    return torch.stack([torch.cos(yaw / 2), zero, zero, torch.sin(yaw / 2)], -1).to(device)
+
+
+class TestQuaternionAverageGradient(BaseTester):
+    """``average_quaternions``' gradient is finite when the three smaller eigenvalues are not distinct (#6213)."""
+
+    def test_identical_members_6213(self, device):
+        # Two identity quaternions: sum q q^T = diag(2, 0, 0, 0), and eigh's backward divided by the zero gaps.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        data = torch.tensor([[1.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
+        reference = average_quaternions(Quaternion(data)).data.detach()
+        self.gradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (data,), fast_mode=False)
+
+    def test_rotations_about_one_axis_have_first_and_second_derivatives_6213(self, device):
+        # Members about a common coordinate axis span a plane, so two of the eigenvalues are zero.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        data = _yaw_only_6213(device)
+        reference = average_quaternions(Quaternion(data)).data.detach()
+        self.gradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (data,), fast_mode=False)
+        q = data.clone().requires_grad_(True)
+        assert torch.autograd.gradgradcheck(lambda q: _average_with_fixed_sign_6213(q, reference), (q,))
+
+    def test_weighted_rotations_about_one_axis_6213(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        data = _yaw_only_6213(device)
+        weights = torch.tensor([0.5, 1.0, 2.0, 0.25], device=device, dtype=torch.float64)
+        reference = average_quaternions(Quaternion(data), weights).data.detach()
+        self.gradcheck(lambda q, w: _average_with_fixed_sign_6213(q, reference, w), (data, weights), fast_mode=False)

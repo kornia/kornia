@@ -26,7 +26,14 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE, are_checks_enabled
 from kornia.core.exceptions import BaseError, ValueCheckError
 from kornia.core.tensor_wrapper import _unwrap, _wrap
-from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast, is_compiling, register_module_state
+from kornia.core.utils import (
+    _right_singular_vector,
+    _svd_work_dtype,
+    _torch_linalg_svdvals,
+    _torch_svd_cast,
+    is_compiling,
+    register_module_state,
+)
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
 
@@ -330,19 +337,22 @@ def fit_plane(points: Vector3) -> Hyperplane:
     points_centered = points_work - mean
 
     # With at least three 3D points, reduced SVD retains all right singular vectors while
-    # avoiding an unused N-by-N left factor, including when autograd saves it for backward.
-    _, S, V = _torch_svd_cast(points_centered, full_matrices=False)
+    # avoiding an unused N-by-N left factor. The SVD is of the detached points: the normal's gradient comes from
+    # _right_singular_vector, which stays finite when the two in-plane singular values are equal.
+    work = points_centered.detach().to(_svd_work_dtype(points_centered))
+    _, S, V = _torch_svd_cast(work, full_matrices=False)
 
     # The plane is determined when the centred points have rank 2: the second singular value
     # must be nonzero relative to the first, a scale-invariant test that keeps a small or thin
     # valid set working. Keep the input-dtype tolerance even when the fit uses higher precision.
-    if checks and not bool((S[..., 1] > S[..., 0] * _rank_tolerance(points_data.dtype)).all()):
+    S_work = S.to(points_work.dtype)
+    if checks and not bool((S_work[..., 1] > S_work[..., 0] * _rank_tolerance(points_data.dtype)).all()):
         raise ValueCheckError(
             "fit_plane requires points that are not collinear; the given points do not determine a plane."
         )
 
     # the first left eigenvector is the direction on the fited line
-    direction = V[..., :, -1]  # BxD
+    direction = _right_singular_vector(points_centered, S, V, -1).to(points_work.dtype)  # BxD
     origin = mean[..., 0, :]  # BxD
     if half:
         offset = -batched_dot_product(direction, origin)
