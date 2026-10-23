@@ -293,9 +293,10 @@ def _bilateral_blur(
     centre = guidance.unsqueeze(-1).expand(-1, -1, -1, -1, kx).unsqueeze(3)  # (B, C, H, 1, W, Kx)
     diff = unfolded_guidance - centre
     if diff.shape[1] == 1:
-        # One channel's sum is the value itself, and |d|^2 == d^2: both distances are the squared difference. On torch
-        # 2.14, MPS also reduces over an axis of size 1 about 270 times slower than it squares (222 ms against 0.8 ms).
-        color_distance_sq = diff.square()
+        # One channel's sum is the value itself, so the sum is skipped: on torch 2.14, MPS reduces over an axis of
+        # size 1 about 270 times slower than it squares (222 ms against 0.8 ms). l1 keeps its abs(): |d|^2 is d^2
+        # only for a real difference, not for a complex one.
+        color_distance_sq = diff.abs().square() if color_distance_type == "l1" else diff.square()
     elif color_distance_type == "l1":
         color_distance_sq = diff.abs().sum(1, keepdim=True).square()
     else:

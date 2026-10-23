@@ -284,6 +284,24 @@ class TestBilateralBlur(BaseTester):
         if guidance is not None:
             self.assert_close(guidance.grad, guidance_ref.grad.to(device, dtype), rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("joint", [False, True])
+    def test_complex_single_channel_l1_weighs_the_squared_magnitude(self, joint):
+        # l1 weighs a difference d by |d|^2, which for a complex d is not d^2, also where one channel skips the sum.
+        image = torch.tensor([[[[0j, 1j, 0j]]]], dtype=torch.complex64)
+        sigma_space = torch.tensor([[1.0, 1.0]])
+        args = ((1, 3), 1.0, sigma_space)
+        kwargs = {"border_type": "constant", "color_distance_type": "l1"}
+        if joint:
+            actual = joint_bilateral_blur(image, image.clone(), *args, **kwargs)
+        else:
+            actual = bilateral_blur(image, *args, **kwargs)
+        # Space weights exp(-1/2) beside the centre, colour weights exp(-|d|^2 / 2) with |d|^2 = 1 next to 1j.
+        e = math.exp(-0.5)
+        edge = e**2 / (1 + e + e**2)
+        expected = torch.tensor([[[[edge * 1j, 1j / (1 + 2 * e**2), edge * 1j]]]], dtype=torch.complex64)
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("sigma_color", [1, 0.1])
