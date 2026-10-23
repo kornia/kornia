@@ -178,16 +178,16 @@ The result block below lists, per machine, only each suite's fastest and slowest
 - Result set: kornia 0.9.0, committed in `benchmarks/results/0.9.0/` (per-machine
   snapshots; reproduce with `python benchmarks/<dir>/<script>.py --contribute benchmarks/results`,
   the script each suite maps to in `benchmarks/README.md`).
-- augmentation on apple-m1-pro/cpu (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall opencv RandomGrayscale@8 at 103112 img/s; slowest kornia op ColorJiggle@1 at 291 img/s.
-- augmentation on apple-m1-pro/mps (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall opencv RandomGrayscale@8 at 103678 img/s; slowest kornia op ColorJiggle@1 at 239 img/s.
+- augmentation on apple-m1-pro/cpu (kornia 0.9.0 @ e674077f, 2026-10-23): fastest overall opencv RandomGrayscale@32 at 101730 img/s; slowest kornia op ColorJiggle@1 at 249 img/s.
+- augmentation on apple-m1-pro/mps (kornia 0.9.0 @ e674077f, 2026-10-23): fastest overall opencv RandomGrayscale@8 at 100247 img/s; slowest kornia op ColorJiggle@1 at 210 img/s.
 - augmentation on i7-14700k-rtx-4090/cpu (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall opencv RandomHorizontalFlip@1 at 285491 img/s; slowest kornia op ColorJiggle@32 at 369 img/s.
 - augmentation on i7-14700k-rtx-4090/cuda (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall torchvision v2 RandomHorizontalFlip@32 at 1580739 img/s; slowest kornia op RandomPerspective@1 at 504 img/s.
 - color on apple-m1-pro/cpu (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall opencv (stacked) rgb_to_grayscale@32 at 311995 img/s; slowest kornia op rgb_to_lab@1 at 679 img/s.
 - color on apple-m1-pro/mps (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall opencv (stacked) rgb_to_grayscale@32 at 303264 img/s; slowest kornia op rgb_to_lab@1 at 793 img/s.
 - color on i7-14700k-rtx-4090/cpu (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall opencv (stacked) rgb_to_grayscale@8 at 263849 img/s; slowest kornia op rgb_to_lab@32 at 500 img/s.
 - color on i7-14700k-rtx-4090/cuda (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall torchvision v2 rgb_to_grayscale@32 at 1054836 img/s; slowest kornia op rgb_to_lab@32 at 504 img/s.
-- contrib on apple-m1-pro/cpu (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall kornia-rs connected_components_union_find@1 at 15732 img/s; slowest kornia op distance_transform@1 at 14 img/s.
-- contrib on apple-m1-pro/mps (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall kornia-rs connected_components_union_find@1 at 17167 img/s; slowest kornia op distance_transform@1 at 17 img/s.
+- contrib on apple-m1-pro/cpu (kornia 0.9.0 @ e674077f, 2026-10-23): fastest overall kornia-rs connected_components_union_find@1 at 14209 img/s; slowest kornia op distance_transform@1 at 13 img/s.
+- contrib on apple-m1-pro/mps (kornia 0.9.0 @ e674077f, 2026-10-23): fastest overall kornia-rs connected_components_union_find@1 at 14489 img/s; slowest kornia op distance_transform@1 at 91 img/s.
 - contrib on i7-14700k-rtx-4090/cpu (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall opencv connected_components_union_find@1 at 34965 img/s; slowest kornia op distance_transform@32 at 15 img/s.
 - contrib on i7-14700k-rtx-4090/cuda (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall opencv connected_components_union_find@1 at 36035 img/s; slowest kornia op distance_transform@1 at 141 img/s.
 - enhance on apple-m1-pro/cpu (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall kornia (compiled) normalize@32 at 52849 img/s; slowest kornia op equalize_clahe@1 at 352 img/s.
@@ -202,8 +202,8 @@ The result block below lists, per machine, only each suite's fastest and slowest
 - feature-laf-ops on apple-m1-pro/mps (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall kornia (compiled) laf_is_inside_image@1,n_lafs=20000 at 82034032 LAFs/s; slowest kornia op extract_patches_from_pyramid@1,n_lafs=2000 at 106876 LAFs/s.
 - feature-laf-ops on i7-14700k-rtx-4090/cpu (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall kornia (compiled) laf_is_inside_image@1,n_lafs=20000 at 1050248510 LAFs/s; slowest kornia op extract_patches_from_pyramid@8,n_lafs=2000 at 80344 LAFs/s.
 - feature-laf-ops on i7-14700k-rtx-4090/cuda (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall kornia (compiled) laf_is_inside_image@1,n_lafs=20000 at 592275800 LAFs/s; slowest kornia op extract_patches_from_pyramid@1,n_lafs=2000 at 1324566 LAFs/s.
-- filters on apple-m1-pro/cpu (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall kornia-rs gaussian_blur2d@1 at 29682 img/s; slowest kornia op median_blur@8 at 141 img/s.
-- filters on apple-m1-pro/mps (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall kornia (compiled) box_blur_separable@32 at 37557 img/s; slowest kornia op bilateral_blur@1 at 14 img/s.
+- filters on apple-m1-pro/cpu (kornia 0.9.0 @ e674077f, 2026-10-23): fastest overall kornia-rs box_blur@1 at 24130 img/s; slowest kornia op median_blur@1 at 120 img/s.
+- filters on apple-m1-pro/mps (kornia 0.9.0 @ e674077f, 2026-10-23): fastest overall kornia (compiled) box_blur_separable@32 at 36826 img/s; slowest kornia op median_blur@1 at 48 img/s.
 - filters on i7-14700k-rtx-4090/cpu (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall opencv gaussian_blur2d@8 at 51163 img/s; slowest kornia op median_blur@32 at 86 img/s.
 - filters on i7-14700k-rtx-4090/cuda (kornia 0.9.0 @ 52e3397aa, 2026-10-22): fastest overall kornia (compiled) box_blur_separable@32 at 432421 img/s; slowest kornia op median_blur@1 at 278 img/s.
 - geometry on apple-m1-pro/cpu (kornia 0.9.0 @ 52e3397a, 2026-10-22): fastest overall kornia (compiled) get_perspective_transform@32 at 1049180 items/s; slowest kornia op warp_perspective@1 at 913 items/s.
