@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import torch
@@ -28,6 +29,14 @@ from kornia.losses.one_hot import one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
+
+
+def _check_parameters(alpha: float, beta: float, eps: float) -> None:
+    # Only Python numbers are checked: a tensor weight (a 0-d device tensor, or one weight per class) worked before,
+    # and reading its value here would cost a host sync on every call and break a fullgraph compile.
+    for name, value in (("alpha", alpha), ("beta", beta), ("eps", eps)):
+        if isinstance(value, (int, float)) and not (value >= 0.0 and math.isfinite(value)):
+            raise ValueError(f"{name} must be non-negative and finite. Got: {value}")
 
 
 def tversky_loss(
@@ -95,6 +104,9 @@ def tversky_loss(
     if not isinstance(pred, torch.Tensor):
         raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}")
 
+    if not isinstance(target, torch.Tensor):
+        raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}")
+
     if not len(pred.shape) == 4:
         raise ValueError(f"Invalid pred shape, we expect BxNxHxW. Got: {pred.shape}")
 
@@ -106,6 +118,8 @@ def tversky_loss(
 
     if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
         raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
+
+    _check_parameters(alpha, beta, eps)
 
     # Keep the ratio's backward pass in float32 through softmax for half inputs.
     reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype
@@ -181,6 +195,7 @@ class TverskyLoss(nn.Module):
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: Optional[int] = -100) -> None:
         super().__init__()
+        _check_parameters(alpha, beta, eps)
         self.alpha: float = alpha
         self.beta: float = beta
         self.eps: float = eps
