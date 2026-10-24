@@ -144,6 +144,16 @@ class RandomRotation(GeometricAugmentationBase2D):
         )
 
 
+def _range_allows_odd_turns(low: float, high: float) -> bool:
+    """Whether a ``times`` draw from ``[low, high]`` can round to an odd number of quarter turns.
+
+    The bounds are rounded the way ``compute_transformation`` rounds a draw. Two different whole numbers always include
+    an odd one, and a single whole number is either odd or even.
+    """
+    low, high = round(low), round(high)
+    return high > low or low % 2 != 0
+
+
 class RandomRotation90(GeometricAugmentationBase2D):
     r"""Apply a random 90 * n degree rotation to a torch.Tensor image or a batch of torch.Tensor images.
 
@@ -167,7 +177,12 @@ class RandomRotation90(GeometricAugmentationBase2D):
         - a range of whole numbers for ``times`` is closed and uniform: ``times=(-1, 1)`` gives a clockwise quarter
           turn, no turn and a counter-clockwise quarter turn with the same probability. A range with a fractional
           bound is still drawn continuously and rounded.
-        - a non-square image keeps its ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
+        - an odd number of quarter turns swaps the height and the width, but the output keeps the ``(H, W)`` of the
+          input, so part of a non-square image would be cut off. A non-square input therefore raises ``ValueError``
+          when the ``times`` range allows an odd number of quarter turns, even if a given call would draw an even one.
+          Square images, and ranges of even numbers only such as ``times=(2, 2)``, are unaffected. Use
+          :class:`~kornia.augmentation.RandomRotation` with a fixed angle of 90 degrees to rotate and crop, or
+          :func:`torch.rot90` to turn a whole batch exactly.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively
@@ -211,8 +226,21 @@ class RandomRotation90(GeometricAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.Rotation90Generator(times)
+        low, high = self._param_generator.times.tolist()
+        self._allows_odd_turns = _range_allows_odd_turns(low, high)
 
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
+
+    def validate_tensor(self, input: torch.Tensor) -> None:
+        super().validate_tensor(input)
+        height, width = input.shape[-2:]
+        if self._allows_odd_turns and height != width:
+            raise ValueError(
+                f"`RandomRotation90` keeps the (H, W) shape, so an odd number of quarter turns of a non-square "
+                f"{height}x{width} image would cut off part of it, and `times` allows one. Use a square image, "
+                "`RandomRotation` with a fixed angle of 90 degrees to rotate and crop, or `torch.rot90` to turn "
+                "the whole batch exactly."
+            )
 
     def compute_transformation(
         self, input: torch.Tensor, params: dict[str, torch.Tensor], flags: dict[str, Any]
