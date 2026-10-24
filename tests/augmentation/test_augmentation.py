@@ -123,6 +123,10 @@ class CommonTests(BaseTester):
     ############################################################################################################
     _augmentation_cls: Optional[Type[AugmentationBase2D]] = None
     _default_param_set: Dict["str", Any] = {}
+    # input shapes the shared tests use; override for an augmentation that needs square images
+    _batch_shape = (4, 3, 5, 6)
+    _p0_shape = (2, 3, 4, 5)
+    _inverse_shape = (1, 3, 50, 100)
 
     ############################################################################################################
     # Fixtures
@@ -206,7 +210,7 @@ class CommonTests(BaseTester):
         )
 
         # generate_parameters can be called and returns the correct amount of parameters
-        batch_shape = (4, 3, 5, 6)
+        batch_shape = self._batch_shape
         generated_params = augmentation.forward_parameters(batch_shape)
         assert isinstance(generated_params, dict)
 
@@ -227,7 +231,7 @@ class CommonTests(BaseTester):
         assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):
-        batch_shape = (4, 3, 5, 6)
+        batch_shape = self._batch_shape
         expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
         augmentation = self._create_augmentation_from_params(**params)
@@ -264,7 +268,7 @@ class CommonTests(BaseTester):
 
     def _test_random_p_0_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.0)
-        test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
+        test_input = torch.rand(self._p0_shape, device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
         self.assert_close(output, test_input)
 
@@ -316,7 +320,7 @@ class CommonTests(BaseTester):
     def _test_inverse_coordinate_check_implementation(self, params):
         torch.manual_seed(42)
 
-        input_tensor = torch.zeros((1, 3, 50, 100), device=self.device, dtype=self.dtype)
+        input_tensor = torch.zeros(self._inverse_shape, device=self.device, dtype=self.dtype)
         input_tensor[:, :, 20:30, 40:60] = 1.0
 
         augmentation = self._create_augmentation_from_params(**params, p=1.0)
@@ -754,6 +758,10 @@ class TestRandomRotation90(CommonTests):
         "align_corners": (False, True),
     }
     _augmentation_cls = RandomRotation90
+    # an odd number of quarter turns of a non-square image raises (#4409), so use square images
+    _batch_shape = (4, 3, 5, 5)
+    _p0_shape = (2, 3, 5, 5)
+    _inverse_shape = (1, 3, 50, 50)
     _default_param_set: dict["str", Any] = {
         "times": (-3, 3),
         "align_corners": True,
@@ -768,7 +776,7 @@ class TestRandomRotation90(CommonTests):
 
     @pytest.mark.parametrize(
         "input_shape,expected_output_shape",
-        [((3, 4, 5), (1, 3, 4, 5)), ((2, 3, 4, 5), (2, 3, 4, 5))],
+        [((3, 5, 5), (1, 3, 5, 5)), ((2, 3, 5, 5), (2, 3, 5, 5))],
     )
     def test_cardinality(self, input_shape, expected_output_shape):
         self._test_cardinality_implementation(

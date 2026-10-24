@@ -89,7 +89,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         >>> import kornia.augmentation as K
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
-        >>> originals = torch.randn(2, 3, 5, 6)
+        >>> originals = torch.randn(2, 3, 6, 6)
         >>> aug_list = [
         ...     K.RandomRotation90(times=(0, 3), p=1),
         ...     K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1),

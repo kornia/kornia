@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation._2d.geometric.rotation import _range_allows_odd_turns
 from kornia.constants import Resample, SamplePadding
 
 from testing.base import BaseTester
@@ -350,10 +351,97 @@ class TestConventionGeometricMatrices(BaseTester):
         assert output[0, 0].argmax().item() == 2 * 7 + 1
         assert output[1, 0].argmax().item() == 1 * 7 + 4
 
+    # A quarter turn swaps the height and the width, but the class keeps the input's `(H, W)`, so on a non-square image
+    # the turned picture did not fit: part of it was cut off and a strip of zeros appeared, with no warning (#4409).
+    # A `times` range that allows an odd number of turns now raises on a non-square input, whatever a given call
+    # would draw. A range with a fractional bound is judged by the whole numbers its draws round to.
+    # Snippet used to generate expected:
+    #   x = torch.arange(48.0).reshape(1, 1, 6, 8)
+    #   K.RandomRotation90((1, 1), p=1.0)(x)
+    # executed 2026-10-24 (torch 2.14.0, cpu) -> before: shape `(1, 1, 6, 8)` with columns 0 and 7 of `x` missing
+    # and an all-zero first and last column; now: `ValueError`.
     @pytest.mark.device_agnostic
-    def test_wart_random_rotation90_keeps_non_square_shape_4409(self):
-        x = torch.zeros(1, 1, 5, 7)
-        assert K.RandomRotation90((1, 1), p=1.0)(x).shape == x.shape
+    @pytest.mark.parametrize("shape", [(6, 8), (8, 6), (1, 5)])
+    @pytest.mark.parametrize("times", [(1, 1), (-1, 1), (0, 2), (2, 3), (0, 3), 1, (0.5, 2.5), (1.4, 1.6)])
+    def test_convention_random_rotation90_raises_on_a_non_square_image_that_may_turn_oddly_4409(self, times, shape):
+        x = torch.zeros(1, 1, *shape)
+        with pytest.raises(ValueError, match=r"`RandomRotation` with a fixed angle of 90 degrees.*`torch\.rot90`"):
+            K.RandomRotation90(times, p=1.0)(x)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(2, 2), (0, 0), (-2, -2), 0, (0.2, 0.4), (2.2, 2.4), (-0.4, 0.4)])
+    def test_convention_random_rotation90_keeps_a_non_square_image_when_every_turn_is_even_4409(self, times):
+        x = torch.rand(2, 1, 6, 8)
+        assert K.RandomRotation90(times, p=1.0)(x).shape == x.shape
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(1, 1), (-1, 1), (0, 3), 1])
+    def test_convention_random_rotation90_keeps_working_on_a_square_image_4409(self, times):
+        x = torch.rand(2, 1, 6, 6)
+        assert K.RandomRotation90(times, p=1.0)(x).shape == x.shape
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_square_quarter_turn_matches_rot90_4409(self):
+        x = torch.arange(36.0).reshape(1, 1, 6, 6)
+        output = K.RandomRotation90((1, 1), p=1.0)(x)
+        # The warp leaves float32 noise around 1e-5, so the integer-valued result is rounded before it is compared.
+        assert torch.equal(output.round(), torch.rot90(x, 1, (-2, -1)))
+
+    # The check runs in `validate_tensor`, so it depends on the input shape and the range only: not on `p` (a call
+    # with `p=0.5` may select no image), not on how the input is batched, not on a `params` argument and not on the
+    # container that calls the augmentation.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    def test_convention_random_rotation90_raise_does_not_depend_on_p_4409(self, p):
+        for _ in range(5):
+            with pytest.raises(ValueError, match="non-square"):
+                K.RandomRotation90((1, 1), p=p)(torch.zeros(4, 1, 6, 8))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("shape", [(1, 6, 8), (6, 8)])
+    def test_convention_random_rotation90_raises_on_an_unbatched_non_square_input_4409(self, shape):
+        with pytest.raises(ValueError, match="non-square"):
+            K.RandomRotation90((1, 1), p=1.0)(torch.zeros(*shape))
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_raises_when_params_are_passed_4409(self):
+        x = torch.zeros(1, 1, 6, 8)
+        augmentation = K.RandomRotation90((1, 1), p=1.0)
+        with pytest.raises(ValueError, match="non-square"):
+            augmentation(x, params=augmentation.forward_parameters(x.shape))
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_raises_inside_a_container_4409(self):
+        sequential = K.AugmentationSequential(K.RandomRotation90((1, 1), p=1.0), data_keys=["input", "mask"])
+        with pytest.raises(ValueError, match="non-square"):
+            sequential(torch.zeros(1, 1, 6, 8), torch.zeros(1, 1, 6, 8))
+
+    # The bounds are rounded the way `compute_transformation` rounds a draw, so the rule is about the whole numbers
+    # a draw can become: `(0.2, 0.4)` only ever becomes 0, while `(0.5, 2.5)` can become 1.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "low,high,expected",
+        [
+            (2, 2, False),
+            (0, 0, False),
+            (-2, -2, False),
+            (1, 1, True),
+            (-1, -1, True),
+            (-3, -3, True),
+            (0, 2, True),
+            (2, 4, True),
+            (-1, 1, True),
+            (0, 3, True),
+            (0.2, 0.4, False),
+            (2.2, 2.4, False),
+            (-0.4, 0.4, False),
+            (0.5, 2.5, True),
+            (1.4, 1.6, True),
+            (2.4, 2.6, True),
+        ],
+    )
+    def test_convention_random_rotation90_range_allows_odd_turns_4409(self, low, high, expected):
+        assert _range_allows_odd_turns(low, high) is expected
 
     @pytest.mark.device_agnostic
     def test_wart_align_corners_defaults_split_geometric_augmentations_4412(self):
@@ -388,6 +476,5 @@ class TestConventionGeometricMatrices(BaseTester):
         }
         perspective_output = K.RandomPerspective(0.5, p=1.0)(x, params=perspective_params)
         rotation_output = K.RandomRotation((45.0, 45.0), p=1.0)(x)
-        rotation90_output = K.RandomRotation90((1, 1), p=1.0)(x)
-        for border in (perspective_output[..., 0, :], rotation_output[..., 0, 0], rotation90_output[..., :, 0]):
+        for border in (perspective_output[..., 0, :], rotation_output[..., 0, 0]):
             self.assert_close(border, torch.zeros_like(border))
