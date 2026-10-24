@@ -17,6 +17,7 @@
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling
 
 from .confusion_matrix import confusion_matrix
@@ -60,6 +61,9 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
         tensor([[1., 1., 1.]])
 
     """
+    if isinstance(eps, (int, float)):
+        KORNIA_CHECK(eps >= 0.0, "eps must be non-negative.")
+
     # we first compute the confusion matrix, which validates the labels and the class count
     conf_mat: torch.Tensor = confusion_matrix(pred, target, num_classes)
 
@@ -159,6 +163,12 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
                 [0.1429, 0.2500]])
 
     """
+    KORNIA_CHECK_IS_TENSOR(boxes_1)
+    KORNIA_CHECK_IS_TENSOR(boxes_2)
+    KORNIA_CHECK_SAME_DEVICE(boxes_1, boxes_2)
+    KORNIA_CHECK_SHAPE(boxes_1, ["B1", "4"])
+    KORNIA_CHECK_SHAPE(boxes_2, ["B2", "4"])
+
     # Integer boxes would otherwise form every width, area and the union in their own dtype, where uint8, int8 and
     # int16 wrap around. Promote them before the format conversion too, because 'xywh' adds x + w in the box dtype.
     # Bool boxes are covered as well (they cannot be subtracted). The result is float32 for integer input either way.

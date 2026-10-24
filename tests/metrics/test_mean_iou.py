@@ -21,7 +21,7 @@ from torch._dynamo.testing import CompileCounter
 
 import kornia
 from kornia.core._compat import torch_version_lt
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, DeviceError, ShapeError, TypeCheckError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -362,6 +362,39 @@ class TestMeanIoUBBox(BaseTester):
         self.assert_close(scripted(boxes_1, boxes_2), kornia.metrics.mean_iou_bbox(boxes_1, boxes_2))
         with pytest.raises(torch.jit.Error, match="Boxes_1 contains invalid boxes"):
             scripted(boxes_1.flip(-1), boxes_2)
+
+    @pytest.mark.parametrize("invalid_shape", [(4,), (2, 3, 4), (2, 5), (2, 3)])
+    def test_invalid_shape(self, invalid_shape, device, dtype):
+        """Reject box tensors whose shapes are not (B, 4)."""
+        valid_boxes = torch.tensor([[0.0, 0.0, 4.0, 4.0]], device=device, dtype=dtype)
+        invalid_boxes = torch.zeros(invalid_shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.metrics.mean_iou_bbox(invalid_boxes, valid_boxes)
+        with pytest.raises(ShapeError):
+            kornia.metrics.mean_iou_bbox(valid_boxes, invalid_boxes)
+
+    def test_non_tensor_inputs(self):
+        """Reject non-tensor inputs for boxes_1 and boxes_2."""
+        valid_boxes = torch.tensor([[0.0, 0.0, 4.0, 4.0]])
+        list_boxes = [[0.0, 0.0, 4.0, 4.0]]
+        with pytest.raises(TypeCheckError):
+            kornia.metrics.mean_iou_bbox(list_boxes, valid_boxes)  # type: ignore[arg-type]
+        with pytest.raises(TypeCheckError):
+            kornia.metrics.mean_iou_bbox(valid_boxes, list_boxes)  # type: ignore[arg-type]
+
+    def test_device_mismatch(self):
+        """Reject boxes_1 and boxes_2 on different devices."""
+        boxes_1 = torch.tensor([[0.0, 0.0, 4.0, 4.0]], device="cpu")
+        boxes_2 = torch.tensor([[0.0, 0.0, 4.0, 4.0]], device="meta")
+        with pytest.raises(DeviceError):
+            kornia.metrics.mean_iou_bbox(boxes_1, boxes_2)
+
+    def test_invalid_eps_in_mean_iou(self, device):
+        """Reject negative eps in mean_iou."""
+        pred = torch.tensor([[0, 1, 0]], device=device)
+        target = torch.tensor([[0, 1, 0]], device=device)
+        with pytest.raises(BaseError, match="eps must be non-negative"):
+            kornia.metrics.mean_iou(pred, target, num_classes=3, eps=-1.0)
 
 
 class TestConventionsMeanIoU(BaseTester):

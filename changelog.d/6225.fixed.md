@@ -1,0 +1,1 @@
+`mean_iou_bbox` validates input tensors, shapes `(B, 4)`, and matching devices, raising `ShapeError`, `TypeCheckError`, or `DeviceError` instead of raw `IndexError` or PyTorch runtime errors. `mean_iou` also validates that `eps` is non-negative.
