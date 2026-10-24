@@ -77,6 +77,23 @@ class TestPSNRLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(pred, target))
 
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    def test_scripted_tensor_range(self, device, scalar_range):
+        image = torch.tensor([32.0], device=device)
+        target = torch.zeros_like(image)
+        values = 512.0 if scalar_range else [512.0, 1024.0]
+        max_val = torch.tensor(values, device=device, requires_grad=True)
+        expected = 20 * torch.log10(max_val.detach() / 32)
+        metric = torch.jit.script(kornia.metrics.psnr)
+        loss = torch.jit.script(kornia.losses.psnr_loss)
+        module = torch.jit.script(kornia.losses.PSNRLoss(max_val))
+        actuals = [(metric(image, target, max_val), 1), (loss(image, target, max_val), -1), (module(image, target), -1)]
+        for actual, sign in actuals:
+            assert actual.shape == max_val.shape
+            self.assert_close(actual, sign * expected)
+            (range_grad,) = torch.autograd.grad(actual.sum(), max_val)
+            self.assert_close(range_grad, sign * 20 / (math.log(10) * max_val.detach()))
+
     def test_integer_images(self, device):
         # psnr_loss and PSNRLoss inherit the float32 computation of integer images from psnr (#5536).
         generator = torch.Generator().manual_seed(0)

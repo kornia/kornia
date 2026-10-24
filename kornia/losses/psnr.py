@@ -23,7 +23,7 @@ from torch import nn
 from kornia import metrics
 
 
-def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
+def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float | torch.Tensor) -> torch.Tensor:
     r"""Compute the PSNR loss.
 
     The loss is computed as follows:
@@ -39,10 +39,10 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
     Args:
         image: the input image with shape :math:`(*)`.
         target : the labels image with shape :math:`(*)`.
-        max_val: the data range of the images, :math:`\text{MAX}_I`.
+        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float or tensor.
 
     Return:
-        the computed loss as a scalar.
+        the computed loss as a scalar for a scalar range, or with the shape of a tensor range.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -67,12 +67,12 @@ class PSNRLoss(nn.Module):
         inputs give ``-inf``.
 
     Args:
-        max_val: the data range of the images, :math:`\text{MAX}_I`.
+        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float or tensor.
 
     Shape:
         - Image: arbitrary dimensional tensor :math:`(*)`.
         - Target: arbitrary dimensional tensor :math:`(*)` same shape as image.
-        - Output: a scalar.
+        - Output: a scalar for a scalar range, or with the shape of a tensor range.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -82,9 +82,9 @@ class PSNRLoss(nn.Module):
 
     """
 
-    def __init__(self, max_val: float) -> None:
+    def __init__(self, max_val: float | torch.Tensor) -> None:
         super().__init__()
-        self.max_val: float = max_val
+        self.max_val: float | torch.Tensor = max_val
 
     def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute the negative PSNR loss between two tensors.
@@ -94,7 +94,7 @@ class PSNRLoss(nn.Module):
             target: Reference tensor with the same shape as ``image``.
 
         Returns:
-            Scalar tensor containing the PSNR-based loss computed with
+            Tensor containing the PSNR-based loss computed with
             ``self.max_val``. Lower values correspond to higher peak signal to
             noise ratio.
         """

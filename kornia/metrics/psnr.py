@@ -19,7 +19,7 @@ import torch
 from torch.nn.functional import mse_loss as mse
 
 
-def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
+def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float | torch.Tensor) -> torch.Tensor:
     r"""Create a function that calculates the PSNR between 2 images.
 
     PSNR is the Peak Signal to Noise Ratio. For one m x n image, the PSNR is:
@@ -38,7 +38,7 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     (e.g for floating point images :math:`\text{MAX}_I=1`).
 
     Convention:
-        - One MSE is pooled over every element, batch and channels included, and the result is a single value: for a
+        - One MSE is pooled over every element, batch and channels included. A scalar range gives one PSNR: for a
           batch it is the PSNR of the pooled MSE, not the mean of per-image PSNRs, so compute per-image values one
           image at a time. :ref:`Losses and metrics <losses-metrics-conventions>` maps both onto scikit-image and
           torchmetrics.
@@ -54,10 +54,10 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     Args:
         image: the input image with arbitrary shape :math:`(*)`.
         target: the labels image with arbitrary shape :math:`(*)`.
-        max_val: the data range of the images, :math:`\text{MAX}_I`.
+        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float or tensor.
 
     Return:
-        the PSNR as a scalar.
+        the PSNR as a scalar for a scalar range, or with the shape of a tensor range.
 
     .. note::
         Integer and bool images are converted to float32, as in :func:`~kornia.metrics.ssim`, and the two images are
@@ -100,7 +100,9 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     # The legacy (TorchScript) ONNX exporter writes ``log10`` as a division by a ``(1,)`` constant, which turns a 0-d
     # result into a one-element vector. Reshaping to the shape of the ratio keeps the eager shape there (``()`` for a
     # scalar ``max_val``, the shape of a tensor one) and is a no-op view eagerly.
-    ratio = max_val**2 / mse(image, target, reduction="mean")
+    mse_value = mse(image, target, reduction="mean")
+    # TorchScript needs the union refined before selecting a pow overload.
+    ratio = torch.pow(max_val, 2) / mse_value if isinstance(max_val, torch.Tensor) else max_val**2 / mse_value
     result = 10.0 * torch.log10(ratio)
     if dtype in (torch.float16, torch.bfloat16):
         result = result.to(result_dtype)
