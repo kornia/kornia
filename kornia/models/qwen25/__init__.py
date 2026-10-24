@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Qwen2.5-VL vision tower and its configuration."""
+
 from .config import Qwen25VisionConfig
 from .vision import Qwen25VisionTransformer
 
