@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
+from kornia.core.exceptions import BaseError, DeviceError, ShapeError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -231,6 +231,10 @@ class TestMeanAbsoluteDisparityError(BaseTester):
             kornia.metrics.mean_absolute_disparity_error(sample, sample, mask)
         assert "broadcastable" in str(errinfo.value)
 
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_absolute_disparity_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.mean_absolute_disparity_error(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo.value)
@@ -303,6 +307,10 @@ class TestRootMeanSquaredDisparityError(BaseTester):
         with pytest.raises(TypeCheckError) as errinfo:
             kornia.metrics.root_mean_squared_disparity_error(None, sample)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.root_mean_squared_disparity_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.root_mean_squared_disparity_error(sample, 2.0 * sample, reduction="foo")
@@ -399,6 +407,10 @@ class TestMeanBadPixelError(BaseTester):
         with pytest.raises(TypeCheckError) as errinfo:
             kornia.metrics.mean_bad_pixel_error(None, sample)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_bad_pixel_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.mean_bad_pixel_error(sample, 2.0 * sample, reduction="foo")
@@ -569,6 +581,10 @@ class TestKittiD1Error(BaseTester):
             kornia.metrics.kitti_d1_error(sample, sample, valid_mask=mask)
         assert "broadcastable" in str(errinfo.value)
 
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.kitti_d1_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.kitti_d1_error(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo.value)
@@ -658,3 +674,37 @@ class TestConventionsDisparity(BaseTester):
         # a (B,) mask is aligned with W, not with the batch: rejected here since W = 4 != B = 2 (W == B would broadcast)
         with pytest.raises((ValueError, BaseError)):
             metric(input, target, valid_mask=torch.tensor([True, False], device=device))
+
+
+_DISPARITY_METRICS = (
+    kornia.metrics.mean_absolute_disparity_error,
+    kornia.metrics.root_mean_squared_disparity_error,
+    kornia.metrics.mean_bad_pixel_error,
+    kornia.metrics.kitti_d1_error,
+)
+
+
+class TestDisparityDevices(BaseTester):
+    @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
+    def test_valid_mask_on_another_device(self, device, dtype, reduction):
+        # A CPU mask with maps on an accelerator is moved to the maps (0.9.0rc1 indexed the maps with it).
+        sample = torch.tensor([[1.0, 2.0, 30.0], [4.0, 5.0, 60.0]], device=device, dtype=dtype)
+        target = torch.tensor([[1.5, 9.0, 30.0], [4.0, 1.0, 50.0]], device=device, dtype=dtype)
+        mask = torch.tensor([[True, True, False], [True, True, True]])
+        for metric in _DISPARITY_METRICS:
+            expected = metric(sample, target, valid_mask=mask.to(device), reduction=reduction)
+            actual = metric(sample, target, valid_mask=mask, reduction=reduction)
+            self.assert_close(actual, expected, rtol=0, atol=0)
+            # The same path on every CI leg: maps on the meta device with a CPU mask.
+            out = metric(sample.to("meta"), target.to("meta"), valid_mask=mask, reduction=reduction)
+            assert out.device.type == "meta"
+
+    def test_scalar_maps_on_two_devices(self, device, dtype):
+        # A 0-d CPU map is a scalar that torch combines with a map on any device.
+        sample = torch.tensor(7.0, device=device, dtype=dtype)
+        target = torch.tensor(3.0, dtype=dtype)
+        for metric in _DISPARITY_METRICS:
+            self.assert_close(metric(sample, target), metric(sample, target.to(device)), rtol=0, atol=0)
+            self.assert_close(metric(target, sample), metric(target.to(device), sample), rtol=0, atol=0)
+        out = _DISPARITY_METRICS[0](sample.to("meta"), target)
+        assert out.device.type == "meta"

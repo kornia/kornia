@@ -19,7 +19,12 @@ from typing import Optional
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_DEVICE,
+    KORNIA_CHECK_SAME_SHAPE,
+)
 
 
 def _is_broadcastable_to(shape: torch.Size, target_shape: torch.Size) -> bool:
@@ -36,6 +41,9 @@ def _check_disparity_inputs(
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(target)
     KORNIA_CHECK_SAME_SHAPE(input, target)
+    # A 0-d map on the CPU is a scalar that torch combines with a map on any device, so only maps are checked.
+    if input.ndim > 0:
+        KORNIA_CHECK_SAME_DEVICE(input, target)
     # The reductions below accumulate in float32 and cast back to the map dtype. For an integer
     # map that cast truncates, which would turn a ratio into 0 instead of raising, so reject
     # integers here. KITTI ships disparity as a uint16 PNG, so this is a realistic input.
@@ -54,7 +62,8 @@ def _check_disparity_inputs(
         f"valid_mask shape must be broadcastable to the input shape. Got: {valid_mask.shape} and {input.shape}",
     )
 
-    return valid_mask.to(torch.bool).broadcast_to(input.shape)
+    # A mask on another device, such as a CPU mask with CUDA maps, is moved to the maps.
+    return valid_mask.to(device=input.device, dtype=torch.bool).broadcast_to(input.shape)
 
 
 def _reduce_disparity_error(error: torch.Tensor, valid_mask: Optional[torch.Tensor], reduction: str) -> torch.Tensor:
