@@ -2206,8 +2206,7 @@ class TestRANSACCompiled(BaseTester):
         assert list((cache / "inductor-cpu").glob("*.bin"))
         assert list((cache / "inductor-cuda").glob("*.bin"))
 
-        # Also switch devices in one process. The device cache context clears process-wide FX/AOT caches between
-        # compiles; both AOT artifacts should load from their own persistent directories.
+        # The subprocesses seed persistent artifacts; switching devices in one process must load each device's artifact.
         script = (
             "import torch\n"
             "from kornia.geometry import RANSAC\n"
