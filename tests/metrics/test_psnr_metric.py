@@ -191,7 +191,8 @@ class TestPSNRHalfPrecision(BaseTester):
         values = 512.0 if scalar_range else [512.0, 1024.0]
         max_val = torch.tensor(values, device=device, dtype=range_dtype, requires_grad=True)
         expected_dtype = torch.promote_types(image_dtype, range_dtype)
-        reference = (20 * torch.log10(max_val.detach().double() / 32)).to(expected_dtype)
+        reference_range = max_val.detach().cpu().double()
+        reference = (20 * torch.log10(reference_range / 32)).to(device=device, dtype=expected_dtype)
 
         actual = kornia.metrics.psnr(image, torch.zeros_like(image), max_val)
         assert actual.shape == max_val.shape
@@ -199,7 +200,8 @@ class TestPSNRHalfPrecision(BaseTester):
         assert torch.isfinite(actual).all()
         self.assert_close(actual, reference)
         actual.sum().backward()
-        self.assert_close(max_val.grad, (20 / (math.log(10) * max_val.detach().double())).to(range_dtype))
+        expected_range_grad = (20 / (math.log(10) * reference_range)).to(device=device, dtype=range_dtype)
+        self.assert_close(max_val.grad, expected_range_grad)
         self.assert_close(image.grad, image.new_tensor([-20 * max_val.numel() / (math.log(10) * 32)]))
 
     @pytest.mark.parametrize("residual,max_val", [(1e-4, 1.0), (1.0 / 512, 1.0), (300.0, 512.0)])
