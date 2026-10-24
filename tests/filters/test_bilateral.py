@@ -302,6 +302,34 @@ class TestBilateralBlur(BaseTester):
         expected = torch.tensor([[[[edge * 1j, 1j / (1 + 2 * e**2), edge * 1j]]]], dtype=torch.complex64)
         self.assert_close(actual, expected)
 
+    @pytest.mark.device_agnostic
+    def test_half_precision_sigma_gradients(self, device):
+        # A two-step window sum in half precision truncated intermediate partial sums, raising sigma gradient relative
+        # error to ~7.5e-2 for sigma_color and ~3.8e-2 for sigma_space (#6284). Single-step reduction restores < 2.5e-2.
+        if device.type == "mps":
+            pytest.skip("MPS retains two-step sum for reduction performance")
+        if not supports_reflect_padding(device, torch.float16):
+            pytest.skip("reflection padding is unsupported for this device/dtype")
+        torch.manual_seed(0)
+        x = torch.rand(1, 3, 32, 40)
+        sigma_color = torch.tensor([0.1])
+        sigma_space = torch.tensor([[1.5, 1.5]])
+        w = torch.rand(1, 3, 32, 40)
+
+        def grads(dtype):
+            leaves = [t.to(device=device, dtype=dtype).clone().requires_grad_() for t in (x, sigma_color, sigma_space)]
+            out = bilateral_blur(leaves[0], (5, 5), leaves[1], leaves[2])
+            (out.float() * w.to(device=device)).sum().backward()
+            return [t.grad.float().cpu() for t in leaves]
+
+        ref = grads(torch.float32)
+        actual = grads(torch.float16)
+
+        rel_color = ((actual[1] - ref[1]).abs().max() / ref[1].abs().max()).item()
+        rel_space = ((actual[2] - ref[2]).abs().max() / ref[2].abs().max()).item()
+        assert rel_color < 0.025
+        assert rel_space < 0.025
+
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("sigma_color", [1, 0.1])
