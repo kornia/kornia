@@ -12,3 +12,4 @@ vary by class; mixing does not imply support for every annotation type.
 .. autoclass:: RandomMixUpV2
 .. autoclass:: RandomMosaic
 .. autoclass:: RandomTransplantation
+.. autoclass:: TokenMix
