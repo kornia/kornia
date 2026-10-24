@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Kimi-VL vision components: the MoonViT encoder, its projector, their configurations and a checkpoint builder."""
+
 from __future__ import annotations
 
 from .builder import KimiVLBuilder

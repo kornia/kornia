@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""YuNet face detection model and the prior-box and decoding helpers it predicts with."""
+
 from .model import YuNet
 
 __all__ = ["YuNet"]

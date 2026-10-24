@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Epipolar geometry: fundamental and essential matrices, camera motion, triangulation, projections and metrics."""
+
 from ._metrics import (
     left_to_right_epipolar_distance,
     right_to_left_epipolar_distance,

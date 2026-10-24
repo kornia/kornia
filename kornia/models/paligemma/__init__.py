@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""PaliGemma vision-language model, pairing a SigLip2 vision encoder with a Gemma language decoder."""
+
 from .configuration_paligemma import PaliGemmaConfig
 from .modeling_paligemma import PaliGemma
 

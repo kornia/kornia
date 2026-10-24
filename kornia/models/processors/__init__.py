@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+"""Model pre- and post-processors: image resizing, output range clipping and NaFlex flexible-size embeddings."""
+
 from typing import List, Tuple, Union
 
 import torch

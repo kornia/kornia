@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""SmolVLM2 vision-language model scaffold."""
+
 from .smolvlm2 import SmolVLM2
 
 __all__ = ["SmolVLM2"]
