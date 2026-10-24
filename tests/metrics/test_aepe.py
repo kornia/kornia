@@ -155,9 +155,7 @@ class TestAepeGradientAtExactMatch(BaseTester):
         epe = kornia.metrics.aepe(flow, target, reduction=reduction)
         (grad,) = torch.autograd.grad(epe.sum(), flow)
         scale = 1.0 / 3.0 if reduction == "mean" else 1.0
-        expected = torch.tensor(
-            [[[0.0, 0.0], [-1.0 * scale, 0.0], [0.0, 1.0 * scale]]], device=device, dtype=dtype
-        )
+        expected = torch.tensor([[[0.0, 0.0], [-1.0 * scale, 0.0], [0.0, 1.0 * scale]]], device=device, dtype=dtype)
         assert torch.isfinite(grad).all()
         self.assert_close(grad, expected)
 
