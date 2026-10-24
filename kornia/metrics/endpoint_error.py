@@ -18,7 +18,11 @@
 import torch
 from torch import Tensor, nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import (
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_SHAPE,
+    KORNIA_CHECK_SHAPE,
+)
 
 
 def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
@@ -68,9 +72,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     KORNIA_CHECK_IS_TENSOR(target)
     KORNIA_CHECK_SHAPE(input, ["*", "2"])
     KORNIA_CHECK_SHAPE(target, ["*", "2"])
-    KORNIA_CHECK(
-        input.shape == target.shape, f"input and target shapes must be the same. Got: {input.shape} and {target.shape}"
-    )
+    KORNIA_CHECK_SAME_SHAPE(input, target)
 
     output_dtype = torch.promote_types(input.dtype, target.dtype)
     # The distance can be representable even when its squared components overflow or underflow in half precision.

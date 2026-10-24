@@ -74,6 +74,7 @@ class TestAepe(BaseTester):
         from kornia.core.exceptions import ShapeError
 
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+
         with pytest.raises(ShapeError) as errinfo:
             _ = kornia.metrics.aepe(sample, 2.0 * sample[..., 0], reduction="mean")
         assert (
@@ -81,6 +82,16 @@ class TestAepe(BaseTester):
             or "Expected shape" in str(errinfo.value)
             or "shape must be" in str(errinfo.value)
         )
+
+        with pytest.raises(ShapeError) as errinfo:
+            _ = kornia.metrics.aepe(sample, torch.ones(2, 2, 2, device=device, dtype=dtype))
+        assert "Shape mismatch" in str(errinfo.value)
+
+    def test_single_vector_target_on_cpu(self, device, dtype):
+        # A (2,) flow vector indexes to 0-d tensors, which torch combines across devices: a CPU target works.
+        input = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        target = torch.tensor([4.0, 6.0], dtype=dtype)
+        self.assert_close(kornia.metrics.aepe(input, target), torch.tensor(5.0, device=device, dtype=dtype))
 
     def test_smoke(self, device, dtype):
         input = torch.rand(3, 3, 2, device=device, dtype=dtype)
