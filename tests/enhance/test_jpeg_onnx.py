@@ -20,12 +20,11 @@ import io
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_ge
 from kornia.enhance import JPEGCodecDifferentiable
 from kornia.enhance.jpeg import _chroma_subsampling, _chroma_upsampling, _perform_padding
 from kornia.geometry.transform import rescale
 
-from testing.base import assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_available
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
@@ -63,14 +62,24 @@ def _export_codec(model: JPEGCodecDifferentiable, example: tuple[torch.Tensor, t
     return buffer.getvalue()
 
 
+# One exporter per ID, on every torch version. conftest.py deselects IDs that contain "dynamo" unless
+# KORNIA_TEST_OPTIMIZER is set, hence ``torch_export``.
 @pytest.mark.timeout(240)
-@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
-def test_jpeg_codec_onnx_matches_eager_at_other_shapes(export_kwargs):
+@pytest.mark.parametrize(
+    "dynamo",
+    [
+        pytest.param(False, id="torchscript"),
+        pytest.param(
+            True,
+            id="torch_export",
+            marks=pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+        ),
+    ],
+)
+def test_jpeg_codec_onnx_matches_eager_at_other_shapes(dynamo):
     """Traced once, the graph follows the batch, height and width, including sizes that are not multiples of 16."""
     pytest.importorskip("onnx")
     ort = pytest.importorskip("onnxruntime")
-    # ``default`` is the dynamo exporter from torch 2.9 on, and the legacy one before.
-    dynamo = export_kwargs.get("dynamo", torch_version_ge(2, 9, 0))
     if dynamo:
         pytest.importorskip("onnxscript")
 
