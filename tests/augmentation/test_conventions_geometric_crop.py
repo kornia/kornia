@@ -305,6 +305,11 @@ class TestGeometricCropConventions(BaseTester):
         assert K.RandomCrop((10, 10), padding=(1, 2), cropping_mode=mode, p=1.0)(image).shape == (1, 1, 10, 10)
         assert K.RandomCrop((10, 10), pad_if_needed=True, cropping_mode=mode, p=1.0)(image).shape == (1, 1, 10, 10)
         assert K.RandomCrop((6, 8), cropping_mode=mode, p=1.0)(image).shape == (1, 1, 6, 8)
+        # pad_if_needed only pads an input smaller than size, so negative explicit padding can leave a 6 x 7 canvas;
+        # with pad_if_needed=True that is not rejected, and the crop keeps its resize.
+        for padding in [(-1, 0, 0, 0), -1]:
+            crop = K.RandomCrop((6, 8), padding=padding, pad_if_needed=True, cropping_mode=mode, p=1.0)
+            assert crop(image).shape == (1, 1, 6, 8)
 
     @pytest.mark.parametrize("mode", ["slice", "resample"])
     @pytest.mark.parametrize("size", [(10, 10), (10, 4), (4, 10)])

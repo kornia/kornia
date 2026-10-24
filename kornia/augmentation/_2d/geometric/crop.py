@@ -452,9 +452,12 @@ class RandomCrop(GeometricAugmentationBase2D):
             )
         )
         size = self.flags["size"]
-        # A malformed ``size`` is left to the crop generator, whose message names the argument.
+        # A malformed ``size`` is left to the crop generator, whose message names the argument. With
+        # ``pad_if_needed=True``, negative explicit padding can still leave the canvas short of ``size``; that case
+        # keeps its resize, as before.
         if (
-            isinstance(size, (tuple, list))
+            not self.flags["pad_if_needed"]
+            and isinstance(size, (tuple, list))
             and len(size) == 2
             and (size[0] > batch_shape_new[2] or size[1] > batch_shape_new[3])
         ):
