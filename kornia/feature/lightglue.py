@@ -165,7 +165,7 @@ class Attention(nn.Module):
         if self.allow_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
             args = [x.half().contiguous() for x in [q, k, v]]
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)
             return v if mask is None else v.nan_to_num()
         args = [x.contiguous() for x in [q, k, v]]
         if self._windows_old_torch and q.device.type == "cpu" and q.dtype == torch.float64 and q.ndim == 4:
@@ -175,7 +175,7 @@ class Attention(nn.Module):
             q_, k_, v_ = (x.unsqueeze(0) for x in args)
             v = F.scaled_dot_product_attention(q_, k_, v_, attn_mask=mask).squeeze(0)
         else:
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask)
         return v if mask is None else v.nan_to_num()
 
 
