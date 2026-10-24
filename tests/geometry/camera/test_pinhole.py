@@ -22,8 +22,50 @@ import torch
 
 import kornia
 from kornia.geometry.camera.pinhole import PinholeCamerasList
+from kornia.geometry.camera.utils import create_extrinsics_with_rotation, create_four_cameras, create_pinhole_camera
 
 from testing.base import BaseTester
+
+
+class TestCameraFactories(BaseTester):
+    def test_float_angles(self, device: torch.device, dtype: torch.dtype) -> None:
+        actual = create_extrinsics_with_rotation(
+            [0.0, math.pi / 2], [0.0, 0.0], [0.0, 0.0], [1.0, 2.0], [3.0, 4.0], [5.0, 6.0], device, dtype
+        )
+        expected = torch.tensor(
+            [
+                [[1, 0, 0, 1], [0, 1, 0, 3], [0, 0, 1, 5], [0, 0, 0, 1]],
+                [[1, 0, 0, 2], [0, 0, 1, 4], [0, -1, 0, 6], [0, 0, 0, 1]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(actual, expected)
+        assert actual.device == device
+        assert actual.dtype == dtype
+
+    @pytest.mark.parametrize("batch_size", [1, 4])
+    def test_factory(self, batch_size: int, device: torch.device, dtype: torch.dtype) -> None:
+        camera = (
+            create_pinhole_camera(480, 640, device, dtype) if batch_size == 1 else create_four_cameras(device, dtype)
+        )
+        assert camera.batch_size == batch_size
+        assert camera.intrinsics.device == device
+        assert camera.intrinsics.dtype == dtype
+        self.assert_close(
+            camera.rotation_matrix @ camera.rotation_matrix.transpose(-1, -2),
+            torch.eye(3, device=device, dtype=dtype).expand(batch_size, -1, -1),
+        )
+
+    def test_gradcheck(self, device: torch.device) -> None:
+        angles = torch.tensor([0.2, -0.3, 0.4], device=device, dtype=torch.float64, requires_grad=True)
+
+        def extrinsics(angles: torch.Tensor) -> torch.Tensor:
+            return create_extrinsics_with_rotation(
+                [angles[0]], [angles[1]], [angles[2]], [1.0], [2.0], [3.0], device, angles.dtype
+            )
+
+        self.gradcheck(extrinsics, (angles,))
 
 
 def _k44(device, dtype, fx=100.0, fy=100.0, cx=4.0, cy=3.0):

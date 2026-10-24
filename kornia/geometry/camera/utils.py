@@ -123,6 +123,9 @@ def create_extrinsics_with_rotation(
     """
     extrinsics_batch: list[torch.Tensor] = []
     for alpha, beta, gamma, tx, ty, tz in zip(alphas, betas, gammas, txs, tys, tzs):
+        alpha = torch.as_tensor(alpha, device=device, dtype=dtype)
+        beta = torch.as_tensor(beta, device=device, dtype=dtype)
+        gamma = torch.as_tensor(gamma, device=device, dtype=dtype)
         Rx = torch.eye(3, device=device, dtype=dtype)
         Rx[1, 1] = torch.cos(alpha)
         Rx[1, 2] = torch.sin(alpha)
