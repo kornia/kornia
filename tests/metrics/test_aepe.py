@@ -200,8 +200,14 @@ class TestAepeGradientAtExactMatch(BaseTester):
         self.gradcheck(kornia.metrics.aepe, (flow, target), requires_grad=[True, True])
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        flow = torch.rand(2, 4, 4, 2, device=device, dtype=dtype)
-        target = flow.clone()
+        flow = torch.rand(2, 4, 4, 2, device=device, dtype=dtype, requires_grad=True)
+        target = flow.detach().clone()
         target[:, 0] += 0.5
-        op = torch_optimizer(kornia.metrics.aepe)
-        self.assert_close(op(flow, target), kornia.metrics.aepe(flow, target))
+        op = torch_optimizer(kornia.metrics.aepe, fullgraph=True)
+        compiled = op(flow, target)
+        self.assert_close(compiled, kornia.metrics.aepe(flow, target))
+        (grad,) = torch.autograd.grad(compiled.sum(), flow)
+        expected = torch.zeros_like(flow)
+        expected[:, 0] = -(2.0**-0.5) / (flow.shape[0] * flow.shape[1] * flow.shape[2])
+        assert torch.isfinite(grad).all()
+        self.assert_close(grad, expected)
