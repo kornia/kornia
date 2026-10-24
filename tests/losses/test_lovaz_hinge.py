@@ -71,7 +71,15 @@ class TestLovaszHingeLoss(BaseTester):
         assert criterion(logits, labels) is not None
 
     def test_exception(self):
+        from kornia.core.exceptions import TypeCheckError
+
         criterion = kornia.losses.LovaszHingeLoss()
+
+        with pytest.raises(TypeCheckError):
+            criterion([1.0], torch.rand(1, 1, 1))
+
+        with pytest.raises(TypeCheckError):
+            criterion(torch.rand(1, 1, 1, 1), [1.0])
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1, 1, 1, 2), torch.rand(1, 1, 1))
