@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numpy as np
 import pytest
 import torch
 
@@ -45,7 +46,60 @@ class TestHausdorffLoss(BaseTester):
 
         loss(logits, labels)
 
+    @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
+    def test_input_type_validation(self, loss_cls):
+        with pytest.raises(TypeError) as errinf:
+            loss_cls()(None, torch.zeros(1, 1, 1, 1, dtype=torch.long))
+        assert "pred type is not a torch.Tensor" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            loss_cls()(torch.zeros(1, 2, 1, 1), [1, 2, 3])
+        assert "target type is not a torch.Tensor" in str(errinf)
+
+    def test_integer_like_k_negative_alpha_and_zero_k(self, device, dtype):
+        # The loss sums k erosions weighted by (i + 1) ** alpha: any integer type of k, alpha < 0 and k = 0 are valid.
+        logits = torch.rand(2, 3, 8, 8, device=device, dtype=dtype).softmax(1)
+        labels = torch.randint(0, 3, (2, 1, 8, 8), device=device)
+        expected = kornia.losses.HausdorffERLoss(k=3)(logits, labels)
+        for k in (np.int64(3), torch.tensor(3)):
+            self.assert_close(kornia.losses.HausdorffERLoss(k=k)(logits, labels), expected, rtol=0, atol=0)
+        loss = kornia.losses.HausdorffERLoss(alpha=-1.0)(logits, labels)
+        assert torch.isfinite(loss)
+        self.assert_close(kornia.losses.HausdorffERLoss(k=0)(logits, labels), torch.zeros_like(expected))
+
     def test_exception_2d(self):
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss()(
+                torch.zeros(1, 2, 1, 1), torch.zeros(1, 1, 1, 1, dtype=torch.long, device="meta")
+            )
+        assert "Device mismatch" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss(k=1.5)
+        assert "k must be an integer" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss(k="10")
+        assert "k must be an integer" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss(k=True)
+        assert "k must be an integer" in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss(k=-1)
+        assert "k must be non-negative" in str(errinf)
+
+        for alpha in (float("nan"), float("inf")):
+            with pytest.raises(ValueError) as errinf:
+                kornia.losses.HausdorffERLoss(alpha=alpha)
+            assert "alpha must be finite" in str(errinf)
+
+        with pytest.raises(NotImplementedError) as errinf:
+            kornia.losses.HausdorffERLoss(reduction="invalid")
+        assert "reduction `invalid` has not been implemented yet" in str(errinf)
+
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss()((torch.rand(1, 2, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
         assert "Only 2D images supported. Got " in str(errinf)

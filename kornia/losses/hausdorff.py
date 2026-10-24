@@ -17,11 +17,14 @@
 
 from __future__ import annotations
 
+import math
+import operator
 from typing import Callable
 
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.core.utils import is_compiling
 
 
@@ -50,6 +53,19 @@ class _HausdorffERLossBase(nn.Module):
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
+        if not math.isfinite(alpha):
+            raise ValueError(f"alpha must be finite. Got {alpha}.")
+        if isinstance(k, bool):
+            raise TypeError("k must be an integer. Got bool.")
+        try:
+            # NumPy integers and integer 0-d tensors are integers too.
+            k = operator.index(k)
+        except TypeError:
+            raise TypeError(f"k must be an integer. Got {type(k).__name__}.") from None
+        if k < 0:
+            raise ValueError(f"k must be non-negative. Got {k}.")
+        if reduction not in ("mean", "sum", "none"):
+            raise NotImplementedError(f"reduction `{reduction}` has not been implemented yet.")
         self.alpha = alpha
         self.k = k
         self.reduction = reduction
@@ -107,6 +123,8 @@ class _HausdorffERLossBase(nn.Module):
             Estimated Hausdorff Loss.
 
         """
+        KORNIA_CHECK_SAME_DEVICE(pred, target)
+
         if not (pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1):
             raise ValueError(
                 "Prediction and target need to be of same size, and target should not be one-hot."
@@ -223,6 +241,10 @@ class HausdorffERLoss(_HausdorffERLossBase):
             Estimated Hausdorff Loss.
 
         """
+        if not isinstance(pred, torch.Tensor):
+            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
+        if not isinstance(target, torch.Tensor):
+            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
 
@@ -301,6 +323,10 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
             Estimated Hausdorff Loss.
 
         """
+        if not isinstance(pred, torch.Tensor):
+            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
+        if not isinstance(target, torch.Tensor):
+            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
         if pred.dim() != 5:
             raise ValueError(f"Only 3D images supported. Got {pred.dim()}.")
 
