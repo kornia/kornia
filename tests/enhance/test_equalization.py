@@ -165,7 +165,6 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize(
         "B, clip, grid, exception_type, expected_error_msg",
         [
-            (0, 1.0, (2, 2), ValueError, "Invalid input tensor, it is empty."),  # from perform_keep_shape_image
             (1, 1, (2, 2), TypeError, "Input clip_limit type is not float. Got"),
             (1, 2.0, 2, TypeError, "Input grid_size type is not Tuple. Got"),
             (1, 2.0, (2, 2, 2), TypeError, "Input grid_size is not a Tuple with 2 elements. Got 3"),
@@ -668,3 +667,14 @@ class TestEqualization(BaseTester):
         ).transpose(-2, -1)
 
         self.assert_close(output, output_transposed, low_tolerance=True)
+
+    @pytest.mark.parametrize("shape", [(0, 3, 16, 24), (0, 3, 16, 16), (2, 0, 3, 16, 24)])
+    def test_clahe_empty_batch(self, shape, device, dtype):
+        # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+        x = torch.rand(*shape, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(x, slow_and_differentiable=True)
+        assert out.shape == x.shape
+        assert out.dtype == x.dtype
+        out = enhance.equalize_clahe(x, slow_and_differentiable=False)
+        assert out.shape == x.shape
+        assert out.dtype == x.dtype

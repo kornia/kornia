@@ -175,8 +175,8 @@ def _patchify_8x8(input: torch.Tensor) -> torch.Tensor:
     """
     # Get input shape
     B, H, W = input.shape
-    # Patchify to shape [B, N, H // 8, W // 8]
-    output: torch.Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).reshape(B, -1, 8, 8)
+    # Patchify to shape [B, N, 8, 8] by first reshaping to [B, H // 8, 8, W // 8, 8] and then permuting and flattening.
+    output: torch.Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).flatten(1, 2)
     return output
 
 
@@ -645,7 +645,8 @@ def jpeg_codec_differentiable(
     # capture (torch.compile, torch.export).
     if not is_compiling():
         KORNIA_CHECK(
-            (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
+            jpeg_quality.numel() == 0
+            or ((jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0)),
             lambda: (
                 "JPEG quality is out of range. Expected range is [0, 100], "
                 f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality."
