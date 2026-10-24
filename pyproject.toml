@@ -299,8 +299,6 @@ ignore = [
   "UP045",  # Use `X | None` for type annotations
   "RUF005",  # Consider `(*points_in_cam_canonical.shape[:-1], 1)` instead of concatenation. Note: breaks JIT.
   "D100",  # Allow Undocumented public module
-  "D101",  # TODO: Undocumented public class
-  "D102",  # TODO: Undocumented public method
   "D104",  # TODO: Undocumented public package
   "D105",  # Allow Undocumented magic method
   "D107",  # TODO: Undocumented public init
