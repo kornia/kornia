@@ -18,8 +18,11 @@
 import torch
 from torch.nn.functional import mse_loss as mse
 
+# Unlike Python's numeric tower, TorchScript unions need int explicitly to keep integer ranges accepted.
+_PSNRMaxVal = float | int | torch.Tensor
 
-def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float | torch.Tensor) -> torch.Tensor:
+
+def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> torch.Tensor:
     r"""Create a function that calculates the PSNR between 2 images.
 
     PSNR is the Peak Signal to Noise Ratio. For one m x n image, the PSNR is:
@@ -54,7 +57,7 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float | torch.Tenso
     Args:
         image: the input image with arbitrary shape :math:`(*)`.
         target: the labels image with arbitrary shape :math:`(*)`.
-        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float or tensor.
+        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
 
     Return:
         the PSNR as a scalar for a scalar range, or with the shape of a tensor range.
@@ -102,7 +105,12 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float | torch.Tenso
     # scalar ``max_val``, the shape of a tensor one) and is a no-op view eagerly.
     mse_value = mse(image, target, reduction="mean")
     # TorchScript needs the union refined before selecting a pow overload.
-    ratio = torch.pow(max_val, 2) / mse_value if isinstance(max_val, torch.Tensor) else max_val**2 / mse_value
+    if isinstance(max_val, torch.Tensor):
+        ratio = torch.pow(max_val, 2) / mse_value
+    elif isinstance(max_val, int):
+        ratio = max_val**2 / mse_value
+    else:
+        ratio = max_val**2 / mse_value
     result = 10.0 * torch.log10(ratio)
     if dtype in (torch.float16, torch.bfloat16):
         result = result.to(result_dtype)

@@ -21,9 +21,10 @@ import torch
 from torch import nn
 
 from kornia import metrics
+from kornia.metrics.psnr import _PSNRMaxVal
 
 
-def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float | torch.Tensor) -> torch.Tensor:
+def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> torch.Tensor:
     r"""Compute the PSNR loss.
 
     The loss is computed as follows:
@@ -39,7 +40,7 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float | torch.
     Args:
         image: the input image with shape :math:`(*)`.
         target : the labels image with shape :math:`(*)`.
-        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float or tensor.
+        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
 
     Return:
         the computed loss as a scalar for a scalar range, or with the shape of a tensor range.
@@ -67,7 +68,7 @@ class PSNRLoss(nn.Module):
         inputs give ``-inf``.
 
     Args:
-        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float or tensor.
+        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
 
     Shape:
         - Image: arbitrary dimensional tensor :math:`(*)`.
@@ -82,9 +83,9 @@ class PSNRLoss(nn.Module):
 
     """
 
-    def __init__(self, max_val: float | torch.Tensor) -> None:
+    def __init__(self, max_val: _PSNRMaxVal) -> None:
         super().__init__()
-        self.max_val: float | torch.Tensor = max_val
+        self.max_val: _PSNRMaxVal = max_val
 
     def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute the negative PSNR loss between two tensors.
