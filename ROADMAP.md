@@ -29,10 +29,12 @@ wheel passed the CPU/MPS workflow smoke checks, including compiled RANSAC on CPU
 Stable and versioned documentation serve the 0.9.0 LLM files.
 
 Development now targets `0.9.1.dev`. The next patch prioritizes confirmed regressions
-and compatible fixes. Box/camera/augmentation convention decisions, the external
-conformance corpus, and the proposed Tier A policy remain separate longer-term
-work under the existing stability policy. The current release sequence and
-follow-ups are tracked in [#4620](https://github.com/kornia/kornia/issues/4620).
+and compatible fixes. With 0.9.0 out, the repair & deprecation window (step 2 of the
+first guiding theme below) is open on `main`: the box, camera and augmentation
+convention repairs land there under the existing stability policy. The external
+conformance corpus and the proposed Tier A policy remain longer-term work. The
+current release sequence and follow-ups are tracked in
+[#4620](https://github.com/kornia/kornia/issues/4620).
 
 ## Guiding themes
 
@@ -161,9 +163,9 @@ will ship in 0.9.1. Confirmed downstream regressions take precedence.
 
 ## Medium term — ~6 months
 
-- **The Repair & Deprecation window → Tier A v1.** Execute the one coordinated
-  release motion for the semantic and default-value repairs accumulated by the
-  audit (e.g. `warp_image_tps` `align_corners` default
+- **The Repair & Deprecation window → Tier A v1.** *Open on `main` since 0.9.0.*
+  Execute the one coordinated release motion for the semantic and default-value
+  repairs accumulated by the audit (e.g. `warp_image_tps` `align_corners` default
   [#3928](https://github.com/kornia/kornia/issues/3928), `pyrdown` output rounding,
   inconsistent 3D-crop defaults, bbox width arithmetic
   [#3934](https://github.com/kornia/kornia/issues/3934)) — each change with an
