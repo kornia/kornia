@@ -143,3 +143,71 @@ class TestAepeHalfPrecision(BaseTester):
         assert torch.isfinite(grad_target).all()
         self.assert_close(grad_flow, expected_grad)
         self.assert_close(grad_target, -expected_grad)
+
+
+class TestAepeGradientAtExactMatch(BaseTester):
+    """The derivative of sqrt at 0 is infinite; an exact match must get a zero gradient, not NaN (#6295)."""
+
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_gradient_is_zero_at_exact_match_and_unchanged_elsewhere(self, device, dtype, reduction):
+        target = torch.tensor([[[1.0, 2.0], [3.5, 4.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        flow = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [0.0, 3.0]]], device=device, dtype=dtype, requires_grad=True)
+        epe = kornia.metrics.aepe(flow, target, reduction=reduction)
+        (grad,) = torch.autograd.grad(epe.sum(), flow)
+        scale = 1.0 / 3.0 if reduction == "mean" else 1.0
+        expected = torch.tensor([[[0.0, 0.0], [-1.0 * scale, 0.0], [0.0, 1.0 * scale]]], device=device, dtype=dtype)
+        assert torch.isfinite(grad).all()
+        self.assert_close(grad, expected)
+
+    def test_masked_loss_gradient_is_finite(self, device, dtype):
+        flow = torch.zeros(1, 4, 4, 2, device=device, dtype=dtype, requires_grad=True)
+        target = torch.zeros(1, 4, 4, 2, device=device, dtype=dtype)
+        target[0, 0, 0] = 1.0
+        mask = torch.zeros(1, 4, 4, device=device, dtype=dtype)
+        mask[0, 0, 0] = 1.0  # only the mismatched pixel counts; NaN * 0 must not leak in from the matching ones
+        loss = (kornia.metrics.aepe(flow, target, reduction="none") * mask).sum()
+        (grad,) = torch.autograd.grad(loss, flow)
+        assert torch.isfinite(grad).all()
+        assert (grad[0, 1:] == 0).all()
+
+    def test_target_gradient_is_zero_at_exact_match(self, device, dtype):
+        flow = torch.ones(2, 3, 2, device=device, dtype=dtype)
+        target = flow.clone().requires_grad_(True)
+        (grad,) = torch.autograd.grad(kornia.metrics.aepe(flow, target), target)
+        assert (grad == 0).all()
+
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_value_matches_the_plain_sqrt_formula(self, device, dtype, reduction):
+        gen = torch.Generator(device="cpu").manual_seed(0)
+        flow = torch.randn(2, 8, 8, 2, generator=gen).to(device=device, dtype=dtype)
+        target = torch.randn(2, 8, 8, 2, generator=gen).to(device=device, dtype=dtype)
+        target[:, :3] = flow[:, :3]  # exact matches, where the safe argument is substituted
+        f32_flow, f32_target = flow.float(), target.float()
+        sq = (f32_flow[..., 0] - f32_target[..., 0]) ** 2 + (f32_flow[..., 1] - f32_target[..., 1]) ** 2
+        expected = sq.sqrt() if dtype not in (torch.float32, torch.float64) else None
+        if expected is None:
+            expected = ((flow[..., 0] - target[..., 0]) ** 2 + (flow[..., 1] - target[..., 1]) ** 2).sqrt()
+        expected = expected if reduction == "none" else expected.mean() if reduction == "mean" else expected.sum()
+        actual = kornia.metrics.aepe(flow, target, reduction=reduction)
+        if dtype in (torch.float32, torch.float64):
+            assert torch.equal(actual, expected)
+        else:
+            self.assert_close(actual, expected.to(dtype))
+
+    def test_gradcheck(self, device):
+        flow = torch.randn(2, 3, 2, device=device, dtype=torch.float64) + 2.0
+        target = torch.randn(2, 3, 2, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.metrics.aepe, (flow, target), requires_grad=[True, True])
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        flow = torch.rand(2, 4, 4, 2, device=device, dtype=dtype, requires_grad=True)
+        target = flow.detach().clone()
+        target[:, 0] += 0.5
+        op = torch_optimizer(kornia.metrics.aepe, fullgraph=True)
+        compiled = op(flow, target)
+        self.assert_close(compiled, kornia.metrics.aepe(flow, target))
+        (grad,) = torch.autograd.grad(compiled.sum(), flow)
+        expected = torch.zeros_like(flow)
+        expected[:, 0] = -(2.0**-0.5) / (flow.shape[0] * flow.shape[1] * flow.shape[2])
+        assert torch.isfinite(grad).all()
+        self.assert_close(grad, expected)
