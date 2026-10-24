@@ -22,12 +22,43 @@ import torch
 
 import kornia
 from kornia.geometry.camera.pinhole import PinholeCamerasList
-from kornia.geometry.camera.utils import create_extrinsics_with_rotation, create_four_cameras, create_pinhole_camera
+from kornia.geometry.camera.utils import (
+    create_extrinsics_with_rotation,
+    create_four_cameras,
+    create_intrinsics,
+    create_pinhole_camera,
+)
 
 from testing.base import BaseTester
 
 
 class TestCameraFactories(BaseTester):
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_intrinsics_principal_point_gradients(self, batch_size, device, dtype):
+        cx = torch.full((batch_size,), 319.5, device=device, dtype=dtype, requires_grad=True)
+        cy = torch.full((batch_size,), 239.5, device=device, dtype=dtype, requires_grad=True)
+        intrinsics = create_intrinsics([500.0] * batch_size, [600.0] * batch_size, cx, cy, device, dtype)
+        assert intrinsics.requires_grad
+        self.assert_close(intrinsics[:, 0, 2], cx)
+        self.assert_close(intrinsics[:, 1, 2], cy)
+        camera = kornia.geometry.camera.PinholeCamera(
+            intrinsics,
+            torch.eye(4, device=device, dtype=dtype).expand(batch_size, -1, -1),
+            torch.full((batch_size,), 480.0, device=device, dtype=dtype),
+            torch.full((batch_size,), 640.0, device=device, dtype=dtype),
+        )
+        points = torch.tensor([[[1.0, 2.0, 4.0], [2.0, 1.0, 2.0]]], device=device, dtype=dtype)
+        gradients = torch.autograd.grad(camera.project(points.expand(batch_size, -1, -1)).sum(), (cx, cy))
+        for gradient in gradients:
+            self.assert_close(gradient, torch.full_like(cx, 2.0))
+
+    def test_intrinsics_gradcheck(self, device):
+        cx = torch.tensor([319.5, 315.25], device=device, dtype=torch.float64, requires_grad=True)
+        cy = torch.tensor([239.5, 241.5], device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(
+            lambda cx, cy: create_intrinsics([500.0, 600.0], [550.0, 650.0], cx, cy, device, cx.dtype), (cx, cy)
+        )
+
     def test_float_angles(self, device: torch.device, dtype: torch.dtype) -> None:
         actual = create_extrinsics_with_rotation(
             [0.0, math.pi / 2], [0.0, 0.0], [0.0, 0.0], [1.0, 2.0], [3.0, 4.0], [5.0, 6.0], device, dtype
