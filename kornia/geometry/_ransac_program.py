@@ -426,7 +426,7 @@ def _dynamo_config() -> Iterator[None]:
 
 
 def _device_cache_dir(key: Tuple) -> str:
-    from torch._inductor.runtime.cache_dir_utils import cache_dir
+    from torch._inductor.runtime.runtime_utils import cache_dir
 
     return os.path.join(cache_dir(), "kornia_ransac", f"inductor-{torch.device(key[5]).type}")
 
@@ -434,12 +434,27 @@ def _device_cache_dir(key: Tuple) -> str:
 @contextlib.contextmanager
 def _device_inductor_cache(key: Tuple) -> Iterator[None]:
     """Isolate this AOT compile and artifact load from other device types in PyTorch's cache."""
-    from torch._inductor.runtime.cache_dir_utils import temporary_cache_dir
+    from torch._inductor.utils import clear_inductor_caches
 
-    # PyTorch's helper also clears its in-memory FX/AOT caches on entry and exit. These caches are process-wide,
-    # so a path change alone would not isolate two devices compiled by the same process.
-    with temporary_cache_dir(_device_cache_dir(key)):
+    # The cache path and FX/AOT caches are process-wide, so isolate both while loading or saving an artifact.
+    cache_path = _device_cache_dir(key)
+    previous_cache = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
+    previous_triton_cache = os.environ.get("TRITON_CACHE_DIR")
+    clear_inductor_caches()
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = cache_path
+    os.environ["TRITON_CACHE_DIR"] = os.path.join(cache_path, "triton")
+    try:
         yield
+    finally:
+        if previous_cache is None:
+            os.environ.pop("TORCHINDUCTOR_CACHE_DIR", None)
+        else:
+            os.environ["TORCHINDUCTOR_CACHE_DIR"] = previous_cache
+        if previous_triton_cache is None:
+            os.environ.pop("TRITON_CACHE_DIR", None)
+        else:
+            os.environ["TRITON_CACHE_DIR"] = previous_triton_cache
+        clear_inductor_caches()
 
 
 def _artifact_path(key: Tuple) -> str:
@@ -456,7 +471,7 @@ def _artifact_path(key: Tuple) -> str:
     machine = (platform.platform(), platform.machine(), str(pick_vec_isa()), accelerator)
     for part in (torch.__version__, kornia.__version__, sys.version, machine, key, _source_digest()):
         digest.update(repr(part).encode())
-    from torch._inductor.runtime.cache_dir_utils import cache_dir
+    from torch._inductor.runtime.runtime_utils import cache_dir
 
     return os.path.join(cache_dir(), f"{digest.hexdigest()[:32]}.bin")
 

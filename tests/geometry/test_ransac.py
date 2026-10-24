@@ -2193,6 +2193,7 @@ class TestRANSACCompiled(BaseTester):
         for device in ("cpu", "cuda"):
             result = subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
                 [sys.executable, str(benchmark), "--device", device, "--compile", "--ops", "H"],
+                check=False,
                 cwd=benchmark.parents[2],
                 env=env,
                 capture_output=True,
@@ -2205,8 +2206,8 @@ class TestRANSACCompiled(BaseTester):
         assert list((cache / "inductor-cpu").glob("*.bin"))
         assert list((cache / "inductor-cuda").glob("*.bin"))
 
-        # Also switch devices in one process. PyTorch's temporary-cache context clears its process-wide FX/AOT caches
-        # between device compiles; both AOT artifacts should load from their own persistent directories.
+        # Also switch devices in one process. The device cache context clears process-wide FX/AOT caches between
+        # compiles; both AOT artifacts should load from their own persistent directories.
         script = (
             "import torch\n"
             "from kornia.geometry import RANSAC\n"
@@ -2221,6 +2222,7 @@ class TestRANSACCompiled(BaseTester):
         )
         result = subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
             [sys.executable, "-c", script],
+            check=False,
             cwd=benchmark.parents[2],
             env=env,
             capture_output=True,
