@@ -46,7 +46,8 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         - The result is the matrix product ``trans_01 @ trans_12``, with the frame naming of
           :func:`relative_transformation`. Only the top three rows of each input are read and the last row of the
           result is always :math:`[0, 0, 0, 1]`: any affine pair composes exactly, and a projective input is used as
-          if its last row were :math:`[0, 0, 0, 1]`.
+          if its last row were :math:`[0, 0, 0, 1]`. An unbatched :math:`(4, 4)` input broadcasts as a batch of one
+          against a batched input; two unbatched inputs return an unbatched result.
 
     Args:
         trans_01: tensor with the homogeneous transformation from
@@ -75,8 +76,11 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     if not ((trans_12.dim() in (2, 3)) and (trans_12.shape[-2:] == (4, 4))):
         raise ValueError(f"Input trans_12 must be a of the shape Nx4x4 or 4x4. Got {trans_12.shape}")
 
-    if trans_01.dim() != trans_12.dim():
-        raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
+    unbatched_output = trans_01.dim() == trans_12.dim() == 2
+    if trans_01.dim() == 2:
+        trans_01 = trans_01.unsqueeze(0)
+    if trans_12.dim() == 2:
+        trans_12 = trans_12.unsqueeze(0)
 
     try:
         batch_shape = torch.broadcast_shapes(trans_01.shape[:-2], trans_12.shape[:-2])
@@ -97,7 +101,7 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     trans_02[..., :3, :3] = rmat_02
     trans_02[..., :3, 3:] = tvec_02
     trans_02[..., 3, 3] = 1.0
-    return trans_02
+    return trans_02.squeeze(0) if unbatched_output else trans_02
 
 
 def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
@@ -167,7 +171,8 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     Convention:
         - ``trans_ab`` (:math:`T_a^{b}`) maps points in frame ``b`` to frame ``a``, :math:`p_a = T_a^{b} p_b`:
           ``transform_points(trans_01, points_1)`` returns ``points_0``, and
-          ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``.
+          ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``. An unbatched :math:`(4, 4)` input
+          broadcasts as a batch of one against a batched input; two unbatched inputs return an unbatched result.
           :ref:`Rotations and rigid motions <rotation-conventions>` maps this onto other libraries.
         - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`, and the last row of
           ``trans_02`` is read as :math:`[0, 0, 0, 1]`, as in :func:`compose_transformations`. Neither is validated:
@@ -197,8 +202,11 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
         raise ValueError(f"Input must be a of the shape Nx4x4 or 4x4. Got {trans_01.shape}")
     if not ((trans_02.dim() in (2, 3)) and (trans_02.shape[-2:] == (4, 4))):
         raise ValueError(f"Input must be a of the shape Nx4x4 or 4x4. Got {trans_02.shape}")
-    if not trans_01.dim() == trans_02.dim():
-        raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
+    unbatched_output = trans_01.dim() == trans_02.dim() == 2
+    if trans_01.dim() == 2:
+        trans_01 = trans_01.unsqueeze(0)
+    if trans_02.dim() == 2:
+        trans_02 = trans_02.unsqueeze(0)
 
     try:
         batch_shape = torch.broadcast_shapes(trans_01.shape[:-2], trans_02.shape[:-2])
@@ -217,7 +225,7 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     trans_12[..., :3, 3:4] = tvec_12
     trans_12[..., 3, 3] = 1.0
 
-    return trans_12
+    return trans_12.squeeze(0) if unbatched_output else trans_12
 
 
 def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Tensor:
