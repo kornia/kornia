@@ -425,29 +425,21 @@ def _dynamo_config() -> Iterator[None]:
         yield
 
 
-def _ransac_cache_dir() -> str:
+def _device_cache_dir(key: Tuple) -> str:
     from torch._inductor.runtime.cache_dir_utils import cache_dir
 
-    return os.path.join(cache_dir(), "kornia_ransac")
+    return os.path.join(cache_dir(), "kornia_ransac", f"inductor-{torch.device(key[5]).type}")
 
 
-def _can_use_aot(key: Tuple) -> bool:
-    """Avoid AOTAutograd's cross-device cache when this cache already has a different-device program."""
-    device_type = torch.device(key[5]).type
-    if device_type not in ("cpu", "cuda"):
-        return True
-    other_device = "cuda" if device_type == "cpu" else "cpu"
-    return not os.path.exists(os.path.join(_ransac_cache_dir(), f".{other_device}.aot"))
+@contextlib.contextmanager
+def _device_inductor_cache(key: Tuple) -> Iterator[None]:
+    """Isolate this AOT compile and artifact load from other device types in PyTorch's cache."""
+    from torch._inductor.runtime.cache_dir_utils import temporary_cache_dir
 
-
-def _mark_aot_device(key: Tuple) -> None:
-    """Remember which device types have used the shared Inductor cache for RANSAC AOT compilation."""
-    device_type = torch.device(key[5]).type
-    if device_type in ("cpu", "cuda"):
-        directory = _ransac_cache_dir()
-        os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, f".{device_type}.aot"), "a"):
-            pass
+    # PyTorch's helper also clears its in-memory FX/AOT caches on entry and exit. These caches are process-wide,
+    # so a path change alone would not isolate two devices compiled by the same process.
+    with temporary_cache_dir(_device_cache_dir(key)):
+        yield
 
 
 def _artifact_path(key: Tuple) -> str:
@@ -464,7 +456,9 @@ def _artifact_path(key: Tuple) -> str:
     machine = (platform.platform(), platform.machine(), str(pick_vec_isa()), accelerator)
     for part in (torch.__version__, kornia.__version__, sys.version, machine, key, _source_digest()):
         digest.update(repr(part).encode())
-    return os.path.join(_ransac_cache_dir(), f"{digest.hexdigest()[:32]}.bin")
+    from torch._inductor.runtime.cache_dir_utils import cache_dir
+
+    return os.path.join(cache_dir(), f"{digest.hexdigest()[:32]}.bin")
 
 
 def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callable[..., Tuple]:
@@ -474,9 +468,9 @@ def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callab
     settings which Dynamo guards.  Autocast is instead disabled while the program is traced and called, so an
     estimator traced outside autocast is usable inside it too.
 
-    Compiled once per process. The compiled function is also saved next to inductor's own cache
-    (``TORCHINDUCTOR_CACHE_DIR``) and loaded from there by later processes, which then skip tracing. The number of
-    correspondences is dynamic, so the program serves every ``N``. ``KORNIA_RANSAC_AOT=0`` disables the artifact.
+    Compiled once per process. The compiled function is also saved in a device-specific subdirectory of the Inductor
+    cache (``TORCHINDUCTOR_CACHE_DIR``) and loaded from there by later processes, which then skip tracing. The number
+    of correspondences is dynamic, so the program serves every ``N``. ``KORNIA_RANSAC_AOT=0`` disables the artifact.
     """
     with _PROGRAM_LOCK:
         program = _PROGRAMS.get(key)
@@ -485,24 +479,18 @@ def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callab
         compiled = torch.compile(build_lm_program(*key[:4]), fullgraph=True)
         traced = _traced(compiled)
         program = traced
-        if os.environ.get("KORNIA_RANSAC_AOT", "1") != "0" and _can_use_aot(key):
+        if os.environ.get("KORNIA_RANSAC_AOT", "1") != "0":
             try:
-                # Mark before compiling so a later process using the other device falls back to torch.compile.
-                # PyTorch's experimental aot_compile can otherwise reuse the first device's FX/AOT cache entry.
-                _mark_aot_device(key)
-                artifact = _load_or_save_artifact(key, compiled, _mark_dynamic(example_inputs))
+                # PyTorch's experimental AOT path can reuse another device's cache entry unless both its in-memory
+                # caches and on-disk cache are isolated for the full artifact load/compile/save operation.
+                with _device_inductor_cache(key):
+                    artifact = _load_or_save_artifact(key, compiled, _mark_dynamic(example_inputs))
                 program = _artifact_or_traced(artifact, traced)
             except Exception as error:  # noqa: BLE001 - the AOT API is experimental; the traced program is equivalent
                 warnings.warn(
                     f"RANSAC(compile=True) could not use its on-disk artifact: {type(error).__name__}: {error}",
                     stacklevel=3,
                 )
-        elif os.environ.get("KORNIA_RANSAC_AOT", "1") != "0":
-            warnings.warn(
-                "RANSAC(compile=True) found a different-device AOT artifact in the shared Inductor cache; "
-                "using torch.compile to avoid a PyTorch AOT cache mismatch",
-                stacklevel=3,
-            )
         _PROGRAMS[key] = program
         return program
 

@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 import torch
@@ -2173,49 +2174,60 @@ class TestRANSACCompiled(BaseTester):
     rather than on every pull request.
     """
 
-    def test_aot_cache_disables_mixed_device_reuse(self, monkeypatch, tmp_path):
+    def test_aot_cache_directories_are_device_specific(self, monkeypatch, tmp_path):
         from kornia.geometry import _ransac_program
 
-        monkeypatch.setattr(_ransac_program, "_ransac_cache_dir", lambda: str(tmp_path))
+        monkeypatch.setenv("TORCHINDUCTOR_CACHE_DIR", str(tmp_path))
         cpu_key = ("homography", "msac", 0, 0, torch.float32, "cpu", 1, torch.float32, "cpu")
         cuda_key = (*cpu_key[:5], "cuda", *cpu_key[6:])
 
-        assert _ransac_program._can_use_aot(cpu_key)
-        _ransac_program._mark_aot_device(cpu_key)
-        assert not _ransac_program._can_use_aot(cuda_key)
+        assert _ransac_program._device_cache_dir(cpu_key) == str(tmp_path / "kornia_ransac" / "inductor-cpu")
+        assert _ransac_program._device_cache_dir(cuda_key) == str(tmp_path / "kornia_ransac" / "inductor-cuda")
 
-        _ransac_program._mark_aot_device(cuda_key)
-        assert not _ransac_program._can_use_aot(cpu_key)
-
-    @pytest.mark.slow
     @pytest.mark.skipif(_NO_COMPILED_PROGRAM, reason=_NO_COMPILED_PROGRAM_REASON)
-    def test_compile_cpu_then_cuda_uses_traced_program(self, tmp_path):
+    def test_compile_cpu_sweep_then_cuda_uses_separate_aot_cache(self, tmp_path):
         if not torch.cuda.is_available():
             pytest.skip("requires CUDA to reproduce cross-device AOT cache reuse")
-        script = (
-            "import os, torch\n"
-            "from kornia.geometry import RANSAC\n"
-            "torch.set_num_threads(1)\n"
-            "device = os.environ['RANSAC_TEST_DEVICE']\n"
-            "g = torch.Generator().manual_seed(0)\n"
-            "kp1 = torch.rand(50, 2, generator=g, dtype=torch.float32) * 600\n"
-            "kp2 = kp1 * 1.1 + 5\n"
-            "model, mask = RANSAC('homography', seed=0, max_lo_iters=0, refine_iters=0, compile=True)"
-            "(kp1.to(device), kp2.to(device))\n"
-            "assert model.device.type == device and mask.shape == (50,)\n"
-        )
+        benchmark = Path(__file__).resolve().parents[2] / "benchmarks" / "geometry" / "ransac_compile_synthetic.py"
         env = {**os.environ, "TORCHINDUCTOR_CACHE_DIR": str(tmp_path), "KORNIA_RANSAC_AOT": "1"}
         for device in ("cpu", "cuda"):
-            subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
-                [sys.executable, "-c", script],
-                env={**env, "RANSAC_TEST_DEVICE": device},
+            result = subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
+                [sys.executable, str(benchmark), "--device", device, "--compile", "--ops", "H"],
+                cwd=benchmark.parents[2],
+                env=env,
                 capture_output=True,
                 text=True,
-                check=True,
-                timeout=600,
+                timeout=1800,
             )
-        assert (tmp_path / "kornia_ransac" / ".cpu.aot").exists()
-        assert not (tmp_path / "kornia_ransac" / ".cuda.aot").exists()
+            assert result.returncode == 0, f"{device} benchmark failed:\n{result.stdout}\n{result.stderr}"
+
+        cache = tmp_path / "kornia_ransac"
+        assert list((cache / "inductor-cpu").glob("*.bin"))
+        assert list((cache / "inductor-cuda").glob("*.bin"))
+
+        # Also switch devices in one process. PyTorch's temporary-cache context clears its process-wide FX/AOT caches
+        # between device compiles; both AOT artifacts should load from their own persistent directories.
+        script = (
+            "import torch\n"
+            "from kornia.geometry import RANSAC\n"
+            "torch.set_num_threads(1)\n"
+            "g = torch.Generator().manual_seed(0)\n"
+            "kp1 = torch.rand(500, 2, generator=g, dtype=torch.float32) * 600\n"
+            "kp2 = kp1 * 1.1 + 5\n"
+            "for device in ('cpu', 'cuda'):\n"
+            "    model, mask = RANSAC('homography', seed=0, max_lo_iters=0, refine_iters=0, compile=True)"
+            "(kp1.to(device), kp2.to(device))\n"
+            "    assert model.device.type == device and mask.shape == (500,)\n"
+        )
+        result = subprocess.run(  # noqa: S603 - fixed script and interpreter; no shell or external input.
+            [sys.executable, "-c", script],
+            cwd=benchmark.parents[2],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        assert result.returncode == 0, f"same-process device switch failed:\n{result.stdout}\n{result.stderr}"
 
     def test_graph_mode_rejects_unsupported_configurations(self):
         if torch_version_lt(2, 14, 0):
@@ -2667,7 +2679,7 @@ class TestRANSACCompiled(BaseTester):
                 timeout=600,
             )
             outputs.append(result.stdout.split())
-        assert list((tmp_path / "kornia_ransac").glob("*.bin"))
+        assert list((tmp_path / "kornia_ransac" / "inductor-cpu").glob("*.bin"))
         assert [output[0] for output in outputs] == ["300"] * 3
         assert int(outputs[0][1]) >= 1
         assert int(outputs[1][1]) >= 1
