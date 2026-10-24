@@ -599,6 +599,7 @@
     "imgwarp",
     "infer_bbox_shape",
     "infer_bbox_shape3d",
+    "intrinsics_from_homographies",
     "intrinsics_like",
     "inverse_transformation",
     "invert_affine_transform",
@@ -743,10 +744,14 @@
   ],
   "kornia.geometry.calibration": [
     "distort_points",
+    "intrinsics_from_homographies",
     "solve_pnp_dlt",
     "tilt_projection",
     "undistort_image",
     "undistort_points"
+  ],
+  "kornia.geometry.calibration.intrinsics": [
+    "intrinsics_from_homographies"
   ],
   "kornia.geometry.camera": [
     "PinholeCamera",
