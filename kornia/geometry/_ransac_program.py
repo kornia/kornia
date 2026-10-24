@@ -425,9 +425,40 @@ def _dynamo_config() -> Iterator[None]:
         yield
 
 
+def _device_cache_dir(key: Tuple) -> str:
+    from torch._inductor.runtime.runtime_utils import cache_dir
+
+    return os.path.join(cache_dir(), "kornia_ransac", f"inductor-{torch.device(key[5]).type}")
+
+
+@contextlib.contextmanager
+def _device_inductor_cache(key: Tuple) -> Iterator[None]:
+    """Isolate this AOT compile and artifact load from other device types in PyTorch's cache."""
+    from torch._inductor.utils import clear_inductor_caches
+
+    # The cache path and FX/AOT caches are process-wide, so isolate both while loading or saving an artifact.
+    cache_path = _device_cache_dir(key)
+    previous_cache = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
+    previous_triton_cache = os.environ.get("TRITON_CACHE_DIR")
+    clear_inductor_caches()
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = cache_path
+    os.environ["TRITON_CACHE_DIR"] = os.path.join(cache_path, "triton")
+    try:
+        yield
+    finally:
+        if previous_cache is None:
+            os.environ.pop("TORCHINDUCTOR_CACHE_DIR", None)
+        else:
+            os.environ["TORCHINDUCTOR_CACHE_DIR"] = previous_cache
+        if previous_triton_cache is None:
+            os.environ.pop("TRITON_CACHE_DIR", None)
+        else:
+            os.environ["TRITON_CACHE_DIR"] = previous_triton_cache
+        clear_inductor_caches()
+
+
 def _artifact_path(key: Tuple) -> str:
     from torch._inductor.cpu_vec_isa import pick_vec_isa
-    from torch._inductor.runtime.cache_dir_utils import cache_dir
 
     digest = hashlib.sha256()
     # The generated CPU kernels target this machine's vector instructions, which a shared cache directory may not.
@@ -440,7 +471,9 @@ def _artifact_path(key: Tuple) -> str:
     machine = (platform.platform(), platform.machine(), str(pick_vec_isa()), accelerator)
     for part in (torch.__version__, kornia.__version__, sys.version, machine, key, _source_digest()):
         digest.update(repr(part).encode())
-    return os.path.join(cache_dir(), "kornia_ransac", f"{digest.hexdigest()[:32]}.bin")
+    from torch._inductor.runtime.runtime_utils import cache_dir
+
+    return os.path.join(cache_dir(), f"{digest.hexdigest()[:32]}.bin")
 
 
 def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callable[..., Tuple]:
@@ -450,9 +483,9 @@ def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callab
     settings which Dynamo guards.  Autocast is instead disabled while the program is traced and called, so an
     estimator traced outside autocast is usable inside it too.
 
-    Compiled once per process. The compiled function is also saved next to inductor's own cache
-    (``TORCHINDUCTOR_CACHE_DIR``) and loaded from there by later processes, which then skip tracing. The number of
-    correspondences is dynamic, so the program serves every ``N``. ``KORNIA_RANSAC_AOT=0`` disables the artifact.
+    Compiled once per process. The compiled function is also saved in a device-specific subdirectory of the Inductor
+    cache (``TORCHINDUCTOR_CACHE_DIR``) and loaded from there by later processes, which then skip tracing. The number
+    of correspondences is dynamic, so the program serves every ``N``. ``KORNIA_RANSAC_AOT=0`` disables the artifact.
     """
     with _PROGRAM_LOCK:
         program = _PROGRAMS.get(key)
@@ -463,7 +496,10 @@ def load_program(key: Tuple, example_inputs: Tuple[torch.Tensor, ...]) -> Callab
         program = traced
         if os.environ.get("KORNIA_RANSAC_AOT", "1") != "0":
             try:
-                artifact = _load_or_save_artifact(key, compiled, _mark_dynamic(example_inputs))
+                # PyTorch's experimental AOT path can reuse another device's cache entry unless both its in-memory
+                # caches and on-disk cache are isolated for the full artifact load/compile/save operation.
+                with _device_inductor_cache(key):
+                    artifact = _load_or_save_artifact(key, compiled, _mark_dynamic(example_inputs))
                 program = _artifact_or_traced(artifact, traced)
             except Exception as error:  # noqa: BLE001 - the AOT API is experimental; the traced program is equivalent
                 warnings.warn(
