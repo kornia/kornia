@@ -32,6 +32,13 @@ from kornia.enhance import (
     adjust_saturation_with_gray_subtraction,
 )
 
+
+def _fraction_to_pixels(mag: Optional[torch.Tensor], size: int) -> Optional[torch.Tensor]:
+    # RandomTranslate's generator samples a fraction of the image and stores it in pixels, so a magnitude that
+    # replaces the draw has to be converted the same way.
+    return None if mag is None else mag * size
+
+
 __all__ = [
     "AutoContrast",
     "Brightness",
@@ -497,8 +504,12 @@ class Rotate(OperationBase):
 class ShearX(OperationBase):
     """Apply shear operation along x-axis.
 
+    The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`. It is mapped to the wrapped augmentation's degrees with
+    ``rad2deg(atan(magnitude))``, so a magnitude of ``0.3`` shears by about ``16.7`` degrees.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a shear factor.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -509,8 +520,9 @@ class ShearX(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
@@ -537,8 +549,12 @@ class ShearX(OperationBase):
 class ShearY(OperationBase):
     """Apply shear operation along y-axis.
 
+    The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`. It is mapped to the wrapped augmentation's degrees with
+    ``rad2deg(atan(magnitude))``, so a magnitude of ``0.3`` shears by about ``16.7`` degrees.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a shear factor.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -549,8 +565,9 @@ class ShearY(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
@@ -582,8 +599,12 @@ class ShearY(OperationBase):
 class TranslateX(OperationBase):
     """Apply translate operation along x-axis.
 
+    The magnitude is a fraction of the image width, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`; the wrapped augmentation translates by that fraction
+    of the width in pixels.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a fraction of the image width.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -612,12 +633,31 @@ class TranslateX(OperationBase):
             symmetric_megnitude=symmetric_megnitude,
         )
 
+    def forward_parameters(
+        self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Sample parameters, converting a set magnitude from a fraction of the width to pixels.
+
+        Args:
+            batch_shape: Input batch shape used for sampling.
+            mag: Optional magnitude override, a fraction of the image width.
+
+        Returns:
+            Parameter dictionary consumed by :meth:`forward`.
+        """
+        mag = _fraction_to_pixels(self.magnitude if mag is None else mag, batch_shape[-1])
+        return super().forward_parameters(batch_shape, mag)
+
 
 class TranslateY(OperationBase):
     """Apply translate operation along y-axis.
 
+    The magnitude is a fraction of the image height, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`; the wrapped augmentation translates by that fraction
+    of the height in pixels.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a fraction of the image height.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -645,3 +685,18 @@ class TranslateY(OperationBase):
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
+
+    def forward_parameters(
+        self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Sample parameters, converting a set magnitude from a fraction of the height to pixels.
+
+        Args:
+            batch_shape: Input batch shape used for sampling.
+            mag: Optional magnitude override, a fraction of the image height.
+
+        Returns:
+            Parameter dictionary consumed by :meth:`forward`.
+        """
+        mag = _fraction_to_pixels(self.magnitude if mag is None else mag, batch_shape[-2])
+        return super().forward_parameters(batch_shape, mag)

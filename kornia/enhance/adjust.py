@@ -400,7 +400,8 @@ def adjust_gamma(
     r"""Perform gamma correction on an image.
 
     Convention:
-        Applies gain * input ** gamma elementwise, then clamps to [0, 1].
+        Applies gain * input ** gamma elementwise, then clamps to [0, 1]. For ``0 < gamma < 1`` the derivative of
+        ``input ** gamma`` at a black pixel (``input == 0``) is infinite; the gradient there is 0 instead.
 
     .. image:: _static/img/adjust_contrast.png
 
@@ -467,7 +468,15 @@ def adjust_gamma(
                 if input.dtype == torch.float32:
                     gamma = struct.unpack("f", struct.pack("f", gamma))[0]
                     gain = struct.unpack("f", struct.pack("f", gain))[0]
-                return (input.pow(gamma) * gain).clamp(0.0, 1.0)
+                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
+                    # As in the tensor path below.
+                    black = input == 0
+                    power = torch.where(
+                        black, torch.zeros_like(input), torch.where(black, torch.ones_like(input), input).pow(gamma)
+                    )
+                else:
+                    power = input.pow(gamma)
+                return (power * gain).clamp(0.0, 1.0)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
@@ -490,8 +499,18 @@ def adjust_gamma(
     gamma = _make_factor_broadcastable(gamma, input)
     gain = _make_factor_broadcastable(gain, input)
 
-    # Apply the gamma correction
-    x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
+    # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
+    # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
+    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
+    # masking only runs when autograd records a gradient for the input.
+    if torch.is_grad_enabled() and input.requires_grad:
+        black = (input == 0) & (gamma > 0) & (gamma < 1)
+        power = torch.where(
+            black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
+        )
+    else:
+        power = torch.pow(input, gamma)
+    x_adjust: torch.Tensor = gain * power
 
     # Truncate between pixel values
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)

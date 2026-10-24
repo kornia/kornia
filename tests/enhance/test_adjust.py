@@ -360,6 +360,24 @@ class TestAdjustGamma(BaseTester):
         gain = torch.tensor([0.7, 0.9], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.adjust_gamma, (image, gamma, gain))
 
+    @pytest.mark.parametrize("gamma", [0.0, 0.25, 0.5, 0.9, 2.0])
+    @pytest.mark.parametrize("scalar", [True, False])
+    def test_black_pixel_gradient(self, device, dtype, gamma, scalar):
+        # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0; the gradient there is 0, as for the other
+        # exponents. x = 1 is left out: the derivative of the output clamp at its bound differs across torch releases.
+        image = torch.tensor([0.0, 0.25, 0.5], device=device, dtype=dtype).reshape(1, 1, 3).requires_grad_()
+        param = gamma if scalar else torch.tensor([gamma], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_gamma(image, param)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        # in the image dtype, as adjust_gamma rounds the exponent
+        exponent = torch.tensor(gamma, device=device, dtype=dtype)
+        expected = image.detach().pow(exponent)
+        expected_grad = exponent * image.detach().pow(exponent - 1)
+        expected_grad[..., 0] = 0.0
+        self.assert_close(out, expected)
+        assert torch.isfinite(grad).all()
+        self.assert_close(grad, expected_grad)
+
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_scalar_export(self, device, dtype):
         image = torch.full((1, 2, 2), 0.4, device=device, dtype=dtype)
