@@ -107,12 +107,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         and the mask is padded with zero unless ``extra_args[DataKey.MASK]`` sets its ``fill``; a scalar ``fill``
         applies to both.
 
-        With ``pad_if_needed=False``, an oversized request does not raise: slice mode resizes the available slice,
-        and resample mode uses a mis-scaled warp that rescales both matrix axes and can blend in zero padding
-        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). Slice mode scales only the matrix axes along
-        which the request exceeds the canvas, as its resize does, and on the resize's half-pixel grid:
-        ``x' = (x + 0.5) * W_out / W_in - 0.5`` along a stretched axis (likewise for ``y``). The scale is computed
-        against the padded canvas, so a crop that fits after explicit padding gets no scale correction.
+        With ``pad_if_needed=False``, a ``size`` larger than the canvas after explicit ``padding`` raises
+        ``ValueError`` on either axis, whether or not the batch is selected; it used to return an upscale of the
+        input. A crop that fits once padded is unaffected. Replayed ``params`` whose ``src`` box exceeds the canvas
+        are not checked: slice mode resizes the available slice and scales only the matrix axes along which the box
+        exceeds the canvas, on the resize's half-pixel grid, ``x' = (x + 0.5) * W_out / W_in - 0.5`` along a
+        stretched axis (likewise for ``y``), and resample mode uses a warp that rescales both matrix axes and can
+        blend in zero padding.
 
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and
@@ -450,6 +451,20 @@ class RandomCrop(GeometricAugmentationBase2D):
                 batch_shape[3] + input_pad[0] + input_pad[1],  # original width + left + right padding
             )
         )
+        size = self.flags["size"]
+        # A malformed ``size`` is left to the crop generator, whose message names the argument.
+        if (
+            isinstance(size, (tuple, list))
+            and len(size) == 2
+            and (size[0] > batch_shape_new[2] or size[1] > batch_shape_new[3])
+        ):
+            # A crop box past the canvas would be resampled into an upscale of the whole input.
+            raise ValueError(
+                f"RandomCrop size {tuple(size)} is larger than the input "
+                f"{tuple(batch_shape[2:4])} (padded canvas {tuple(batch_shape_new[2:4])}) with "
+                "pad_if_needed=False. Pass pad_if_needed=True to pad the input up to the crop size, "
+                "or crop to a smaller size."
+            )
         padding_size = _constant_tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
         # An empty batch has no padding rows and no pixels to pad. Keep its original canvas for inverse replay.
         _params = super().forward_parameters(batch_shape if batch_shape[0] == 0 else batch_shape_new)

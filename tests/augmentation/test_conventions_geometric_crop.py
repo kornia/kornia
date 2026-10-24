@@ -21,8 +21,10 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey, Resample
 
+from testing.augmentation.utils import oversized_random_crop_params
 from testing.base import BaseTester, supports_2d_border_padding, supports_bilinear_2d_grid_sample
 
 
@@ -222,7 +224,10 @@ class TestGeometricCropConventions(BaseTester):
         boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
         crop = K.RandomCrop((6, 4), padding=1, cropping_mode=mode, p=1.0)
         seq = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"])
-        params = seq.forward_parameters(image.shape)
+        # A forward call rejects the oversized crop (#4414); its replay still scales against the padded canvas.
+        params = [
+            ParamItem(name, oversized_random_crop_params(child, image.shape)) for name, child in seq.named_children()
+        ]
         params[0].data["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 5], [0, 5]]])
         params[0].data["dst"] = image.new_tensor([[[0, 0], [3, 0], [3, 5], [0, 5]]])
         output, out_points, out_boxes = seq(image, points, boxes, params=params)
@@ -272,14 +277,43 @@ class TestGeometricCropConventions(BaseTester):
         self.assert_close(output[0, 0, 0], image.new_tensor([0, 0, 0, 0]))
         assert output.shape == (1, 1, 6, 4)
 
+    @pytest.mark.parametrize("p", [1.0, 0.0])
     @pytest.mark.parametrize("mode", ["slice", "resample"])
     @pytest.mark.parametrize("size", [(10, 10), (10, 4), (4, 10)])
-    def test_wart_random_crop_oversized_rescales_matrix_axes_4414(self, device, dtype, mode, size):
-        """Resample mode rescales both matrix axes (#4414); slice mode only the oversized one, as its resize (#5463),
-        on the resize's half-pixel grid (#5481)."""
+    def test_convention_random_crop_oversized_size_raises_4414(self, device, dtype, mode, size, p):
+        # #4414: a crop larger than the input without pad_if_needed returned an upscale of the input. It raises
+        # whether or not the batch is selected, so a p < 1 pipeline does not fail only on some calls.
+        image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        crop = K.RandomCrop(size, cropping_mode=mode, p=p)
+        with pytest.raises(
+            ValueError, match=r"size \(\d+, \d+\) is larger than the input \(6, 8\).*pad_if_needed=True"
+        ):
+            crop(image)
+        with pytest.raises(ValueError, match="pad_if_needed"):
+            crop.forward_parameters(image.shape)
+        with pytest.raises(ValueError, match="pad_if_needed"):
+            K.AugmentationSequential(crop, data_keys=["input", "keypoints"])(image, image.new_zeros(2, 1, 2))
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_convention_random_crop_size_is_checked_against_the_padded_canvas_4414(self, device, dtype, mode):
+        image = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        # One pixel of padding per side leaves an 8 x 10 canvas: too small for 10 x 10, enough for 8 x 10.
+        with pytest.raises(ValueError, match=r"padded canvas \(8, 10\)"):
+            K.RandomCrop((10, 10), padding=1, cropping_mode=mode, p=1.0)(image)
+        assert K.RandomCrop((8, 10), padding=1, cropping_mode=mode, p=1.0)(image).shape == (1, 1, 8, 10)
+        # (1, 2) pads each side of the width by one and of the height by two, a 10 x 10 canvas.
+        assert K.RandomCrop((10, 10), padding=(1, 2), cropping_mode=mode, p=1.0)(image).shape == (1, 1, 10, 10)
+        assert K.RandomCrop((10, 10), pad_if_needed=True, cropping_mode=mode, p=1.0)(image).shape == (1, 1, 10, 10)
+        assert K.RandomCrop((6, 8), cropping_mode=mode, p=1.0)(image).shape == (1, 1, 6, 8)
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(10, 10), (10, 4), (4, 10)])
+    def test_convention_random_crop_oversized_replay_rescales_matrix_axes_4414(self, device, dtype, mode, size):
+        """Replayed oversized params are not checked (#4414): resample mode rescales both matrix axes; slice mode only
+        the oversized one, as its resize (#5463), on the resize's half-pixel grid (#5481)."""
         image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
         crop = K.RandomCrop(size, cropping_mode=mode, p=1.0)
-        params = crop.forward_parameters(image.shape)
+        params = oversized_random_crop_params(crop, image.shape)
         h, w = size
         left, top = (2, 0) if size == (10, 4) else ((0, 1) if size == (4, 10) else (0, 0))
         params["src"] = image.new_tensor(
@@ -358,7 +392,8 @@ class TestGeometricCropConventions(BaseTester):
         ys, xs = torch.meshgrid(torch.arange(5), torch.arange(5), indexing="ij")
         ramp = ((xs + 2 * ys) / 15)[None, None].to(device, dtype)
         crop = K.RandomCrop((10, 10), p=1.0, cropping_mode=mode)
-        restored = crop.inverse(crop(ramp))
+        # A forward call rejects the oversized crop (#4414); the inverse of its replay still undoes the scale.
+        restored = crop.inverse(crop(ramp, params=oversized_random_crop_params(crop, ramp.shape)))
         # Slice mode upsamples on the half-pixel grid, which clamps at the border.
         self.assert_close(restored[..., 1:-1, 1:-1], ramp[..., 1:-1, 1:-1], low_tolerance=True)
 
@@ -477,7 +512,11 @@ class TestGeometricCropConventions(BaseTester):
         )
         ramp = ramp.expand(2, -1, -1, -1).contiguous()
         crop = make_crop(align_corners)
-        restored = crop.inverse(crop(ramp))
+        if isinstance(crop, K.RandomCrop):
+            # A forward call rejects an oversized crop (#4414); its replay still records the stretched matrix.
+            restored = crop.inverse(crop(ramp, params=oversized_random_crop_params(crop, ramp.shape)))
+        else:
+            restored = crop.inverse(crop(ramp))
         assert restored.shape == ramp.shape
         # Canvas pixels that map at least one pixel inside the crop output.
         # Mapped on the CPU in float64 (MPS has no float64).
