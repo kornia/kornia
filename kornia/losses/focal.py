@@ -22,7 +22,13 @@ from typing import Any, Optional
 import torch
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_DEVICE,
+    KORNIA_CHECK_SAME_SHAPE,
+    KORNIA_CHECK_SHAPE,
+)
 from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 from kornia.losses._utils import mask_ignore_pixels
 from kornia.losses.one_hot import _check_class_labels, one_hot
@@ -239,15 +245,14 @@ def focal_loss(
         >>> output.backward()
 
     """
+    KORNIA_CHECK_IS_TENSOR(pred)
+    KORNIA_CHECK_IS_TENSOR(target)
+    KORNIA_CHECK_SAME_DEVICE(pred, target)
     KORNIA_CHECK_SHAPE(pred, ["B", "C", "*"])
     out_size = (pred.shape[0],) + pred.shape[2:]
     KORNIA_CHECK(
         (pred.shape[0] == target.shape[0] and target.shape[1:] == pred.shape[2:]),
         f"Expected target size {out_size}, got {target.shape}",
-    )
-    KORNIA_CHECK(
-        pred.device == target.device,
-        f"pred and target must be in the same device. Got: {pred.device} and {target.device}",
     )
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
@@ -314,10 +319,7 @@ def focal_loss(
             f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
             f"{pred.shape}",
         )
-        KORNIA_CHECK(
-            weight.device == pred.device,
-            f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
-        )
+        KORNIA_CHECK_SAME_DEVICE(weight, pred)
 
         weight = weight.view(broadcast_dims)
         loss_tmp = weight * loss_tmp
@@ -482,12 +484,11 @@ def binary_focal_loss_with_logits(
         >>> output.backward()
 
     """
+    KORNIA_CHECK_IS_TENSOR(pred)
+    KORNIA_CHECK_IS_TENSOR(target)
+    KORNIA_CHECK_SAME_DEVICE(pred, target)
     KORNIA_CHECK_SHAPE(pred, ["B", "C", "*"])
-    KORNIA_CHECK(pred.shape == target.shape, f"Expected target size {pred.shape}, got {target.shape}")
-    KORNIA_CHECK(
-        pred.device == target.device,
-        f"pred and target must be in the same device. Got: {pred.device} and {target.device}",
-    )
+    KORNIA_CHECK_SAME_SHAPE(pred, target)
 
     log_probs_pos: torch.Tensor = nn.functional.logsigmoid(pred)
     log_probs_neg: torch.Tensor = nn.functional.logsigmoid(-pred)
@@ -514,10 +515,7 @@ def binary_focal_loss_with_logits(
             f"pos_weight must hold one value per class of pred: got pos_weight of shape {pos_weight.shape} for pred "
             f"of shape {pred.shape}",
         )
-        KORNIA_CHECK(
-            pos_weight.device == pred.device,
-            f"pos_weight and pred must be in the same device. Got: {pos_weight.device} and {pred.device}",
-        )
+        KORNIA_CHECK_SAME_DEVICE(pos_weight, pred)
 
         pos_weight = pos_weight.view(broadcast_dims)
         pos_term = pos_weight * pos_term
@@ -530,10 +528,7 @@ def binary_focal_loss_with_logits(
             f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
             f"{pred.shape}",
         )
-        KORNIA_CHECK(
-            weight.device == pred.device,
-            f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
-        )
+        KORNIA_CHECK_SAME_DEVICE(weight, pred)
 
         weight = weight.view(broadcast_dims)
         loss_tmp = weight * loss_tmp
