@@ -175,7 +175,7 @@ class TestRgbToGrayscale(BaseTester):
         assert kornia.color.rgb_to_grayscale(img).shape == (batch_size, 1, height, width)
 
     def test_exception(self, device, dtype):
-        from kornia.core.exceptions import TypeCheckError
+        from kornia.core.exceptions import ShapeError, TypeCheckError
 
         with pytest.raises(TypeCheckError):
             assert kornia.color.rgb_to_grayscale([0.0])
@@ -192,6 +192,31 @@ class TestRgbToGrayscale(BaseTester):
         rgb_weights = torch.tensor([0.2, 0.8])
         with pytest.raises(ValueError):
             assert kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
+
+        with pytest.raises(TypeCheckError):
+            assert kornia.color.rgb_to_grayscale(img, rgb_weights=[0.299, 0.587, 0.114])
+
+        with pytest.raises(ShapeError):
+            assert kornia.color.rgb_to_grayscale(img, rgb_weights=torch.ones(1, 3))
+
+        with pytest.raises(TypeCheckError):
+            kornia.color.RgbToGrayscale(rgb_weights=[0.299, 0.587, 0.114])
+
+        with pytest.raises(ShapeError):
+            kornia.color.RgbToGrayscale(rgb_weights=torch.tensor([0.2, 0.8]))
+
+    def test_broadcastable_rgb_weights(self, device, dtype):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        w = torch.tensor([0.2, 0.5, 0.3], device=device, dtype=dtype)
+        expected = kornia.color.rgb_to_grayscale(img, rgb_weights=w)
+        self.assert_close(kornia.color.rgb_to_grayscale(img, rgb_weights=w.view(3, 1, 1)), expected, rtol=0, atol=0)
+        self.assert_close(kornia.color.RgbToGrayscale(rgb_weights=w.view(3, 1, 1))(img), expected, rtol=0, atol=0)
+
+        w_batch = torch.tensor([[0.2, 0.7], [0.5, 0.2], [0.3, 0.1]], device=device, dtype=dtype).view(3, 2, 1, 1)
+        expected_batch = torch.stack(
+            [kornia.color.rgb_to_grayscale(img[i], rgb_weights=w_batch[:, i, 0, 0]) for i in range(2)]
+        )
+        self.assert_close(kornia.color.rgb_to_grayscale(img, rgb_weights=w_batch), expected_batch, rtol=0, atol=0)
 
     def test_unsupported_dtype_raises(self, device):
         # int32 is not uint8 and not a float dtype -> TypeError

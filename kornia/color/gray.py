@@ -23,7 +23,7 @@ import torch
 from torch import nn
 
 from kornia.color.rgb import bgr_to_rgb
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
 from kornia.core.utils import _to_device_nonblocking
 
@@ -117,6 +117,8 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
             raise TypeError(f"Unknown data type: {image.dtype}")
     else:
         # is torch.Tensor that we make sure is in the same device/dtype
+        KORNIA_CHECK_IS_TENSOR(rgb_weights)
+        KORNIA_CHECK_SHAPE(rgb_weights, ["3", "*"])
         rgb_weights = _to_device_nonblocking(rgb_weights, image.device, image.dtype)
 
     # Unpack channels (View, don't copy)
@@ -224,6 +226,9 @@ class RgbToGrayscale(nn.Module):
 
     def __init__(self, rgb_weights: Optional[torch.Tensor] = None) -> None:
         super().__init__()
+        if rgb_weights is not None:
+            KORNIA_CHECK_IS_TENSOR(rgb_weights)
+            KORNIA_CHECK_SHAPE(rgb_weights, ["3", "*"])
         # None stays None: rgb_to_grayscale then picks the weights for the image dtype. Float32 defaults stored here
         # were cast to the image, so a uint8 image got the weights [0, 0, 0] and came back all zeros, and a float64
         # image got float32-rounded weights (#5109).
