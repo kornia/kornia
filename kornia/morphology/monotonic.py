@@ -23,7 +23,14 @@ import torch
 import torch.nn.functional as F
 
 
-def dilation1d(input: torch.Tensor, kernel_size: int, stride: int = 1, padding: Optional[int] = None) -> torch.Tensor:
+def dilation1d(
+    input: torch.Tensor,
+    kernel_size: int,
+    stride: int = 1,
+    padding: Optional[Union[int, Tuple[int, int]]] = None,
+    mode: str = "constant",
+    value: float = -float("inf"),
+) -> torch.Tensor:
     r"""Applies 1D morphological dilation over input tensor.
 
     Args:
@@ -31,21 +38,32 @@ def dilation1d(input: torch.Tensor, kernel_size: int, stride: int = 1, padding: 
         kernel_size: Size of the 1D flat structuring element.
         stride: Stride of the window (default: 1).
         padding: Padding added to both sides. If None, padding = kernel_size // 2 (same-size output).
+            Can be int for symmetric padding or a tuple (pad_left, pad_right) for asymmetric padding.
+        mode: Padding mode for :func:`torch.nn.functional.pad`.
+        value: Fill value for constant padding.
 
     Returns:
         Dilated tensor with preserved feature dimensions.
     """
-    if padding is None:
-        pad: int = kernel_size // 2
+    if isinstance(padding, int):
+        pad_left = pad_right = padding
+    elif isinstance(padding, (tuple, list)):
+        if len(padding) != 2:
+            raise ValueError("padding tuple must have length 2")
+        pad_left = int(padding[0])
+        pad_right = int(padding[1])
+    elif padding is None:
+        p = kernel_size // 2
+        pad_left = pad_right = p
     else:
-        pad = padding
+        raise TypeError("padding must be int, tuple of two ints, or None")
 
     orig_shape = input.shape
     L = orig_shape[-1]
     flat_x = input.reshape(-1, 1, L)
 
-    if pad > 0:
-        padded = F.pad(flat_x, [pad, pad], mode="constant", value=-float("inf"))
+    if pad_left != 0 or pad_right != 0:
+        padded = F.pad(flat_x, [pad_left, pad_right], mode=mode, value=value)
     else:
         padded = flat_x
 
@@ -54,7 +72,14 @@ def dilation1d(input: torch.Tensor, kernel_size: int, stride: int = 1, padding: 
     return out.reshape(out_shape)
 
 
-def erosion1d(input: torch.Tensor, kernel_size: int, stride: int = 1, padding: Optional[int] = None) -> torch.Tensor:
+def erosion1d(
+    input: torch.Tensor,
+    kernel_size: int,
+    stride: int = 1,
+    padding: Optional[Union[int, Tuple[int, int]]] = None,
+    mode: str = "constant",
+    value: float = float("inf"),
+) -> torch.Tensor:
     r"""Applies 1D morphological erosion over input tensor.
 
     Args:
@@ -62,11 +87,14 @@ def erosion1d(input: torch.Tensor, kernel_size: int, stride: int = 1, padding: O
         kernel_size: Size of the 1D flat structuring element.
         stride: Stride of the window (default: 1).
         padding: Padding added to both sides. If None, padding = kernel_size // 2.
+            Can be int for symmetric padding or a tuple (pad_left, pad_right) for asymmetric padding.
+        mode: Padding mode for :func:`torch.nn.functional.pad`.
+        value: Fill value for constant padding.
 
     Returns:
         Eroded tensor.
     """
-    return -dilation1d(-input, kernel_size=kernel_size, stride=stride, padding=padding)
+    return -dilation1d(-input, kernel_size=kernel_size, stride=stride, padding=padding, mode=mode, value=-value)
 
 
 def separable_dilation2d(
@@ -98,12 +126,20 @@ def separable_dilation2d(
         pad_h, pad_w = kh // 2, kw // 2
     elif isinstance(padding, int):
         pad_h = pad_w = padding
+    elif isinstance(padding, (tuple, list)):
+        if len(padding) != 2:
+            raise ValueError("padding must be int or tuple of length 2")
+        pad_h, pad_w = int(padding[0]), int(padding[1])
     else:
-        pad_h, pad_w = padding
+        raise TypeError("padding must be int, tuple of two ints, or None")
 
-    out_h = dilation1d(input, kernel_size=kw, stride=1, padding=pad_w)
+    out_h = dilation1d(
+        input, kernel_size=kw, stride=1, padding=pad_w, mode="constant", value=-float("inf")
+    )
     out_trans = out_h.transpose(-2, -1)
-    out_v = dilation1d(out_trans, kernel_size=kh, stride=1, padding=pad_h)
+    out_v = dilation1d(
+        out_trans, kernel_size=kh, stride=1, padding=pad_h, mode="constant", value=-float("inf")
+    )
     return out_v.transpose(-2, -1)
 
 
@@ -131,10 +167,14 @@ def separable_erosion2d(
         pad_h, pad_w = kh // 2, kw // 2
     elif isinstance(padding, int):
         pad_h = pad_w = padding
+    elif isinstance(padding, (tuple, list)):
+        if len(padding) != 2:
+            raise ValueError("padding must be int or tuple of length 2")
+        pad_h, pad_w = int(padding[0]), int(padding[1])
     else:
-        pad_h, pad_w = padding
+        raise TypeError("padding must be int, tuple of two ints, or None")
 
-    out_h = erosion1d(input, kernel_size=kw, stride=1, padding=pad_w)
+    out_h = erosion1d(input, kernel_size=kw, stride=1, padding=pad_w, mode="constant", value=float("inf"))
     out_trans = out_h.transpose(-2, -1)
-    out_v = erosion1d(out_trans, kernel_size=kh, stride=1, padding=pad_h)
+    out_v = erosion1d(out_trans, kernel_size=kh, stride=1, padding=pad_h, mode="constant", value=float("inf"))
     return out_v.transpose(-2, -1)

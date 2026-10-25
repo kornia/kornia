@@ -445,12 +445,21 @@ def dilation(
             reduction_min,
         )
     elif engine == "monotonic":
-        if structuring_element is not None or not bool(torch.all(kernel == 1)):
+        if structuring_element is not None:
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
+        if not bool(torch.all(kernel != 0)):
+            raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
+        if border_type == "geodesic":
+            raise NotImplementedError("engine='monotonic' does not support border_type='geodesic'")
 
-        pad_h = origin[0]
-        pad_w = origin[1]
-        return separable_dilation2d(tensor, kernel_size=(se_h, se_w), padding=(pad_h, pad_w))
+        pad_e: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
+        x = tensor.to(dtype=compute_dtype)
+        if border_type == "constant":
+            x_pad = F.pad(x, pad_e, mode=border_type, value=border_value)
+        else:
+            x_pad = F.pad(x, pad_e, mode=border_type)
+        out = separable_dilation2d(x_pad, kernel_size=(se_h, se_w), padding=(0, 0))
+        return out
     else:
         raise NotImplementedError(
             f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'"
@@ -638,12 +647,21 @@ def erosion(
             reduction_max,
         )
     elif engine == "monotonic":
-        if structuring_element is not None or not bool(torch.all(kernel == 1)):
+        if structuring_element is not None:
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
+        if not bool(torch.all(kernel != 0)):
+            raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
+        if border_type == "geodesic":
+            raise NotImplementedError("engine='monotonic' does not support border_type='geodesic'")
 
-        pad_h = origin[0]
-        pad_w = origin[1]
-        return separable_erosion2d(tensor, kernel_size=(se_h, se_w), padding=(pad_h, pad_w))
+        pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+        x = tensor.to(dtype=compute_dtype)
+        if border_type == "constant":
+            x_pad = F.pad(x, pad_e, mode=border_type, value=border_value)
+        else:
+            x_pad = F.pad(x, pad_e, mode=border_type)
+        out = separable_erosion2d(x_pad, kernel_size=(se_h, se_w), padding=(0, 0))
+        return out
     else:
         raise NotImplementedError(
             f"engine {engine} is unknown, use 'auto', 'convolution', 'shift', 'monotonic' or 'unfold'"
