@@ -449,15 +449,15 @@ def dilation(
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
         if not bool(torch.all(kernel != 0)):
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
-        if border_type == "geodesic":
-            raise NotImplementedError("engine='monotonic' does not support border_type='geodesic'")
 
-        pad_e: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
+        pad_e_m: List[int] = [se_w - origin[1] - 1, origin[1], se_h - origin[0] - 1, origin[0]]
         x = tensor.to(dtype=compute_dtype)
-        if border_type == "constant":
-            x_pad = F.pad(x, pad_e, mode=border_type, value=border_value)
+        if border_type == "geodesic":
+            x_pad = F.pad(x, pad_e_m, mode="constant", value=-float("inf"))
+        elif border_type == "constant":
+            x_pad = F.pad(x, pad_e_m, mode=border_type, value=border_value)
         else:
-            x_pad = F.pad(x, pad_e, mode=border_type)
+            x_pad = F.pad(x, pad_e_m, mode=border_type)
         out = separable_dilation2d(x_pad, kernel_size=(se_h, se_w), padding=(0, 0))
         return out
     else:
@@ -651,15 +651,15 @@ def erosion(
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
         if not bool(torch.all(kernel != 0)):
             raise ValueError("The 'monotonic' engine requires flat rectangular structuring elements.")
-        if border_type == "geodesic":
-            raise NotImplementedError("engine='monotonic' does not support border_type='geodesic'")
 
-        pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+        pad_e_m: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
         x = tensor.to(dtype=compute_dtype)
-        if border_type == "constant":
-            x_pad = F.pad(x, pad_e, mode=border_type, value=border_value)
+        if border_type == "geodesic":
+            x_pad = F.pad(x, pad_e_m, mode="constant", value=float("inf"))
+        elif border_type == "constant":
+            x_pad = F.pad(x, pad_e_m, mode=border_type, value=border_value)
         else:
-            x_pad = F.pad(x, pad_e, mode=border_type)
+            x_pad = F.pad(x, pad_e_m, mode=border_type)
         out = separable_erosion2d(x_pad, kernel_size=(se_h, se_w), padding=(0, 0))
         return out
     else:
