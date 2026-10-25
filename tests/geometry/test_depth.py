@@ -1088,6 +1088,50 @@ class TestDepthWarperConventions(BaseTester):
                 image,
             )
 
+    def test_convention_align_corners_false_keeps_out_of_bounds_x_on_a_singleton_axis(self, device, dtype):
+        # A singleton axis is the one size whose align_corners=False rescale is not (size - 1) / size: that
+        # factor is zero, and normalize_pixel_coordinates keeps the lone pixel at its pixel coordinate
+        # (scale 1, offset 0), so a zero factor collapses every projected coordinate onto the pixel centre.
+        # grid_sample(align_corners=False) places that pixel at 0 with scale 2, so the factor has to be 2.0.
+        # Compared against the corner-aligned grid of the same warp, the fixed axis is exactly twice it while
+        # the non-singleton axis keeps (size - 1) / size.
+        identity = _eye4(device, dtype)
+        intrinsics = _k44_warp(device, dtype)
+        height = torch.tensor([4], device=device)
+        width = torch.tensor([1], device=device)
+        depth_src = torch.ones(1, 1, 4, 1, device=device, dtype=dtype)
+        grids = {}
+        for align_corners in (True, False):
+            warper = DepthWarper(
+                PinholeCamera(intrinsics.clone(), identity.clone(), height, width),
+                4,
+                1,
+                align_corners=align_corners,
+            )
+            warper.compute_projection_matrix(
+                PinholeCamera(intrinsics.clone(), _tx_plus_one(device, dtype), height, width)
+            )
+            grids[align_corners] = warper.warp_grid(depth_src)
+        corner = grids[True]
+        aligned = grids[False]
+        # The +1 x translation projects one pixel right of the lone column, so the axis the fix rescales is
+        # not the centre; a zero factor would make the aligned grid read 0 there.
+        assert (corner[..., 0].abs() > 0).all()
+        self.assert_close(aligned[..., 0], corner[..., 0] * 2.0)
+        self.assert_close(aligned[..., 1], corner[..., 1] * (4 - 1) / 4)
+        # One pixel outside the lone column has to sample the configured padding, not that pixel.
+        warped = DepthWarper(
+            PinholeCamera(intrinsics.clone(), identity.clone(), height, width),
+            4,
+            1,
+            align_corners=False,
+        )
+        warped.compute_projection_matrix(
+            PinholeCamera(intrinsics.clone(), _tx_plus_one(device, dtype), height, width)
+        )
+        patch = torch.full((1, 1, 4, 1), 7.0, device=device, dtype=dtype)
+        self.assert_close(warped(depth_src, patch), torch.zeros_like(patch))
+
     def test_convention_warp_grid_requires_compute_projection_matrix_first(self, device, dtype):
         # DepthWarper is a two-step API: before compute_projection_matrix, warp_grid and forward raise ValueError
         # and compute_subpixel_step raises RuntimeError. Afterwards warp_grid returns the NORMALIZED (B, H, W, 2)
