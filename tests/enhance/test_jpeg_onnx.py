@@ -20,6 +20,7 @@ import io
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_lt
 from kornia.enhance import JPEGCodecDifferentiable
 from kornia.enhance.jpeg import _chroma_subsampling, _chroma_upsampling, _perform_padding
 from kornia.geometry.transform import rescale
@@ -72,7 +73,13 @@ def _export_codec(model: JPEGCodecDifferentiable, example: tuple[torch.Tensor, t
         pytest.param(
             True,
             id="torch_export",
-            marks=pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+            marks=[
+                pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON),
+                # Below torch 2.14 the exporter does not keep the codec's height and width dynamic. On 2.9.1 it
+                # applies torch.export's suggested fix, which restricts both to multiples of 16, so the padding of
+                # the traced 32 x 48 example is frozen at zero. On 2.5.1 torch.export rejects the batch constraint.
+                pytest.mark.skipif(torch_version_lt(2, 14, 0), reason="the dynamo ONNX exporter needs torch 2.14 here"),
+            ],
         ),
     ],
 )
