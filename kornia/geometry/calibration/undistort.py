@@ -32,10 +32,13 @@ from .distort import distort_points, tilt_projection
 
 def _distort_normalized(
     x: torch.Tensor, y: torch.Tensor, dist: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     r2 = x * x + y * y
     numerator = 1 + r2 * (dist[..., 0:1] + r2 * (dist[..., 1:2] + r2 * dist[..., 4:5]))
     denominator = 1 + r2 * (dist[..., 5:6] + r2 * (dist[..., 6:7] + r2 * dist[..., 7:8]))
+    valid = torch.isfinite(denominator) & (denominator != 0)
+    # Mask before division: rejecting the result later does not prevent NaN gradients.
+    denominator = torch.where(valid, denominator, torch.ones_like(denominator))
     radial = numerator / denominator
     xd = (
         x * radial
@@ -49,7 +52,7 @@ def _distort_normalized(
         + 2 * dist[..., 3:4] * x * y
         + r2 * (dist[..., 10:11] + r2 * dist[..., 11:12])
     )
-    return xd, yd, radial, numerator, denominator
+    return xd, yd, radial, numerator, denominator, valid
 
 
 def _undistort_points_newton(
@@ -59,7 +62,7 @@ def _undistort_points_newton(
     # fixed set of damping candidates so no tensor value controls a Python loop.
     x0, y0 = x, y
     for _ in range(num_iters):
-        xd, yd, radial, numerator, denominator = _distort_normalized(x, y, dist)
+        xd, yd, radial, numerator, denominator, valid = _distort_normalized(x, y, dist)
         rx, ry = xd - x0, yd - y0
         error = rx.square() + ry.square()
         r2 = x * x + y * y
@@ -75,18 +78,18 @@ def _undistort_points_newton(
         c = cross + 2 * x * py
         d = radial + 2 * y * y * dr + 6 * p1 * y + 2 * p2 * x + 2 * y * py
         det = a * d - b * c
-        usable = torch.isfinite(det) & (det != 0)
+        usable = valid & torch.isfinite(det) & (det != 0)
         divisor = torch.where(usable, det, torch.ones_like(det))
         dx, dy = (d * rx - b * ry) / divisor, (a * ry - c * rx) / divisor
         next_x, next_y = x, y
         accepted = torch.zeros_like(usable)
         for step in (1.0, 0.5, 0.25, 0.125):
             candidate_x, candidate_y = x - step * dx, y - step * dy
-            candidate_xd, candidate_yd, _, _, _ = _distort_normalized(candidate_x, candidate_y, dist)
+            candidate_xd, candidate_yd, _, _, _, candidate_valid = _distort_normalized(candidate_x, candidate_y, dist)
             candidate_error = (candidate_xd - x0).square() + (candidate_yd - y0).square()
             # Accept equality too: at an exact root the Newton update still
             # carries derivatives with respect to the distortion coefficients.
-            take = usable & ~accepted & torch.isfinite(candidate_error) & (candidate_error <= error)
+            take = usable & candidate_valid & ~accepted & torch.isfinite(candidate_error) & (candidate_error <= error)
             next_x = torch.where(take, candidate_x, next_x)
             next_y = torch.where(take, candidate_y, next_y)
             accepted = accepted | take

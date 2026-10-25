@@ -466,6 +466,38 @@ class TestUndistortPointsNewton(BaseTester):
         actual = undistort_points(points, K, dist, method="newton")
         self.assert_close(actual, points)
 
+    @pytest.mark.parametrize("num_iters", [1, 5])
+    def test_zero_denominator_gradient(self, device, dtype, num_iters):
+        K = torch.eye(3, device=device, dtype=dtype)
+        points = torch.tensor([[1.0, 0.0], [0.1, 0.2]], device=device, dtype=dtype, requires_grad=True)
+        dist = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
+        actual = undistort_points(points, K, dist, num_iters=num_iters, method="newton")
+        self.assert_close(actual[0], points[0])
+        # A point at the rational pole must not contaminate the shared coefficient gradient.
+        point_grad, dist_grad = torch.autograd.grad(actual[1].sum(), (points, dist))
+        assert torch.isfinite(point_grad).all()
+        assert torch.isfinite(dist_grad).all()
+        self.assert_close(point_grad[0], torch.zeros_like(point_grad[0]))
+
+        valid_points = points[1:].detach().requires_grad_()
+        valid_dist = dist.detach().requires_grad_()
+        expected = undistort_points(valid_points, K, valid_dist, num_iters=num_iters, method="newton")
+        expected_point_grad, expected_dist_grad = torch.autograd.grad(expected.sum(), (valid_points, valid_dist))
+        self.assert_close(actual[1:], expected)
+        self.assert_close(point_grad[1:], expected_point_grad)
+        self.assert_close(dist_grad, expected_dist_grad)
+
+    def test_rejected_pole_candidate_gradient(self, device, dtype):
+        K = torch.eye(3, device=device, dtype=dtype)
+        points = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        dist = torch.tensor([-19.0, 0.0, 0.0, 6.0, 0.0, -1.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
+        # The full step reaches the pole at x=1; the quarter step is accepted.
+        actual = undistort_points(points, K, dist, num_iters=1, method="newton")
+        self.assert_close(actual, points.new_tensor([[0.625, 0.0]]))
+        point_grad, dist_grad = torch.autograd.grad(actual.sum(), (points, dist))
+        assert torch.isfinite(point_grad).all()
+        assert torch.isfinite(dist_grad).all()
+
     def test_damped_step(self, device, dtype):
         K = torch.eye(3, device=device, dtype=dtype)
         points = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
