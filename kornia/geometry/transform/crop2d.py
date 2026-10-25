@@ -467,6 +467,9 @@ def crop_by_indices(
         - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
           slice does not match ``size``, whether or not ``src_box`` is identical across
           the batch — each row's output depends only on its own box.
+        - the part of a box outside the image is clipped on every side, a box that starts left of or above the
+          image included, and ``shape_compensation`` then applies. With ``'pad'`` the padding goes on the side
+          where the box overflowed, so every kept pixel stays at its position in the box.
 
     .. note::
         Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'``,
@@ -546,6 +549,12 @@ def crop_by_indices(
     # stacked tensor) instead of a ``unique`` per column plus a device-to-host ``int(...)`` inside
     # every loop iteration — the coordinates index Python-level slicing, so they must be host ints.
     x1l, x2l, y1l, y2l = torch.stack([x1, x2, y1, y2], dim=0).tolist()
+    # A negative index would wrap to the far edge, so the part of a box left of or above the image is clipped,
+    # like the part past the right or bottom edge, which the slice clips. ``'pad'`` pads it back on that side.
+    left = [max(-v, 0) for v in x1l]
+    top = [max(-v, 0) for v in y1l]
+    x1l, x2l = [max(v, 0) for v in x1l], [max(v, 0) for v in x2l]
+    y1l, y2l = [max(v, 0) for v in y1l], [max(v, 0) for v in y2l]
 
     # ``B > 0``: an empty batch has no first box to compare against, and takes the general path below,
     # which returns an empty ``(0, C, *size)`` tensor (#4429).
@@ -555,6 +564,8 @@ def crop_by_indices(
         and x2l.count(x2l[0]) == B
         and y1l.count(y1l[0]) == B
         and y2l.count(y2l[0]) == B
+        and left.count(left[0]) == B
+        and top.count(top[0]) == B
     ):
         out = input_tensor[..., y1l[0] : y2l[0], x1l[0] : x2l[0]]
         if size is not None and out.shape[-2:] != size:
@@ -567,7 +578,7 @@ def crop_by_indices(
                     side="short",
                     antialias=antialias,
                 )
-            return F.pad(out, [0, size[1] - out.shape[-1], 0, size[0] - out.shape[-2]])
+            return _pad_to_size(out, size, left[0], top[0])
 
     if size is None:
         h, w = infer_bbox_shape(src)
@@ -608,7 +619,7 @@ def crop_by_indices(
                     antialias=antialias,
                 )
             else:
-                _out = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
+                _out = _pad_to_size(_out, size, left[i], top[i])
         if out is None:
             crops.append(_out)
         else:
@@ -616,6 +627,14 @@ def crop_by_indices(
     if out is None:
         return torch.cat(crops).contiguous()
     return out
+
+
+def _pad_to_size(crop: torch.Tensor, size: Tuple[int, int], left: int, top: int) -> torch.Tensor:
+    # ``left`` and ``top`` are the box columns and rows clipped before the image, so every kept pixel stays at its
+    # position in the box; the rest of ``size`` is padded (or, for a larger slice, trimmed) at the right and bottom.
+    # A box entirely outside the image clips more than ``size``: it is all padding, as past the right edge.
+    left, top = min(left, size[1]), min(top, size[0])
+    return F.pad(crop, [left, size[1] - crop.shape[-1] - left, top, size[0] - crop.shape[-2] - top])
 
 
 def _crop_by_indices_export(
@@ -745,6 +764,14 @@ class CenterCrop2D(nn.Module):
             )
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
+            # A size larger than the input overflows the image: zero-pad around it, as the resample mode does. An
+            # in-bounds box never needs compensation, so it keeps the default, which compiles with fullgraph=True.
+            shape_compensation = "pad" if dst_h > src_h or dst_w > src_w else "resize"
+            return crop_by_indices(
+                input,
+                self.points_src.expand(batch_size, -1, -1).to(input),
+                self.flags["size"],
+                shape_compensation=shape_compensation,
+            )
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
