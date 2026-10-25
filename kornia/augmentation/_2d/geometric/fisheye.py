@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.grid import create_meshgrid
+from kornia.geometry.linalg import euclidean_distance
 from kornia.geometry.transform import remap
 
 
@@ -39,6 +40,7 @@ class RandomFisheye(AugmentationBase2D):
         Sampling is bilinear with zero padding and ``align_corners=True``; these settings are fixed.
         There is no ``transform_matrix`` or ``inverse``; spatial labels in containers have limitations
         (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        A ``mask`` data key raises ``NotImplementedError`` identifying this augmentation, even at ``p=0``.
 
     Args:
         center_x: Ranges to sample respect to x-coordinate center with shape (2,).
@@ -110,7 +112,33 @@ class RandomFisheye(AugmentationBase2D):
         center_y = _to_device_nonblocking(params["center_y"].view(B, 1, 1), input.device, input.dtype)
         gamma = _to_device_nonblocking(params["gamma"].view(B, 1, 1), input.device, input.dtype)
         # compute and apply the distances respect to the camera optical center
-        distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** 0.5
+        distance = euclidean_distance(
+            torch.stack((center_x, center_y), dim=-1), torch.stack((field_x, field_y), dim=-1)
+        )
         field_x = field_x + field_x * distance**gamma  # BxHxw
         field_y = field_y + field_y * distance**gamma  # BxHxW
         return remap(input, field_x, field_y, normalized_coordinates=True, align_corners=True)
+
+    def apply_transform_mask(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Reject mask inputs, which this augmentation does not support."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support mask inputs. See https://github.com/kornia/kornia/issues/4420."
+        )
+
+    def apply_non_transform_mask(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Reject mask inputs even when the transformation is not applied."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support mask inputs. See https://github.com/kornia/kornia/issues/4420."
+        )

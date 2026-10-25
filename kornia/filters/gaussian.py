@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_compiling
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_autocast_enabled, is_compiling
 
 from .filter import _to_floating, filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
@@ -102,6 +102,8 @@ def gaussian_blur2d(
           first, so ``sigma[0]`` blurs along ``H`` and ``sigma[1]`` along ``W``.
           :ref:`Filtering <filtering-conventions>` maps both pairs onto OpenCV and scipy.
         - The border modes are :func:`~kornia.filters.filter2d`'s; see its Convention block.
+        - Float16 and bfloat16 inputs use float32 kernels and convolution, including both separable passes,
+          and are rounded to the input dtype once at return. Enclosing autocast is disabled for this computation.
         - An integer or bool input is blurred in float32 and the output is float32, as in
           :func:`~kornia.filters.filter2d`; ``sigma`` is cast to float32 as well.
 
@@ -159,6 +161,22 @@ def gaussian_blur2d(
     # promote before casting sigma and the kernel to the input's dtype, where an integer dtype truncates them (#5155)
     input = _to_floating(input)
 
+    if input.dtype in (torch.float16, torch.bfloat16):
+        if torch.jit.is_scripting():
+            return _gaussian_blur2d(input.float(), kernel_size, sigma, border_type, separable).to(input.dtype)
+        with _autocast_disabled(input.device.type):
+            return _gaussian_blur2d(input.float(), kernel_size, sigma, border_type, separable).to(input.dtype)
+    return _gaussian_blur2d(input, kernel_size, sigma, border_type, separable)
+
+
+def _gaussian_blur2d(
+    input: torch.Tensor,
+    kernel_size: tuple[int, int] | int,
+    sigma: tuple[float, float] | torch.Tensor,
+    border_type: str,
+    separable: bool,
+) -> torch.Tensor:
+    """Construct and apply the kernels in the working dtype."""
     # The positivity check below reads ``host_sigma``: the Python numbers, or ``sigma`` in the input dtype on the
     # device it came on, so that a CPU sigma, as the augmentations pass it, is checked without reading the GPU.
     host_sigma: tuple[float, float] | torch.Tensor

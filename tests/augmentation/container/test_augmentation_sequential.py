@@ -2551,13 +2551,14 @@ class TestConventionAugmentationSequential(BaseTester):
     )
     @pytest.mark.parametrize("p", [0.5, 1.0])
     def test_empty_batch_mask_round_trip_follows_image_4429(self, make_op, p, device, dtype):
-        # The mask takes the image's canvas under every gate, and the inverse restores both. With p < 1 the empty
-        # image keeps its input size (the blend fallback tracked in #4429), so only the parity is pinned here.
+        # An empty batch takes the configured size under every gate (#4429): the mask follows the image onto that
+        # canvas, and the inverse restores both.
         image = torch.empty(0, 3, 8, 10, device=device, dtype=dtype)
         mask = torch.empty(0, 1, 8, 10, device=device, dtype=torch.int64)
         seq = K.AugmentationSequential(make_op(p), data_keys=["input", "mask"])
         out_image, out_mask = seq(image, mask)
-        assert out_mask.shape == (0, 1, *out_image.shape[-2:])
+        assert out_image.shape == (0, 3, 4, 5)
+        assert out_mask.shape == (0, 1, 4, 5)
         restored_image, restored_mask = seq.inverse(out_image, out_mask)
         assert restored_image.shape == image.shape
         assert restored_mask.shape == mask.shape
@@ -2818,14 +2819,46 @@ class TestConventionAugmentationSequential(BaseTester):
         assert bool(((out == 0) | (out == 1)).all())
         assert aug.flags["resample"] == Resample.BILINEAR
 
+    @pytest.mark.parametrize("augmentation", ["RandomThinPlateSpline", "RandomFisheye"])
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_unsupported_non_rigid_mask_reports_augmentation_4420(self, augmentation, p, device, dtype):
+        if augmentation == "RandomThinPlateSpline":
+            aug = K.RandomThinPlateSpline(p=p)
+        else:
+            aug = K.RandomFisheye(
+                torch.tensor([-0.3, 0.3], device=device, dtype=dtype),
+                torch.tensor([-0.3, 0.3], device=device, dtype=dtype),
+                torch.tensor([0.9, 1.0], device=device, dtype=dtype),
+                p=p,
+            )
+        image = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        mask = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        with pytest.raises(NotImplementedError, match=rf"{augmentation}.*mask.*4420"):
+            K.AugmentationSequential(aug, data_keys=["input", "mask"])(image, mask)
+
+    @pytest.mark.parametrize("augmentation", ["RandomThinPlateSpline", "RandomFisheye"])
+    @pytest.mark.parametrize("method", ["apply_transform_mask", "apply_non_transform_mask"])
+    def test_unsupported_non_rigid_mask_hooks_report_augmentation_4420(self, augmentation, method, device, dtype):
+        # The container calls the transform hook first even at p=0, so exercise the skipped-input hook directly.
+        if augmentation == "RandomThinPlateSpline":
+            aug = K.RandomThinPlateSpline()
+        else:
+            aug = K.RandomFisheye(
+                torch.tensor([-0.3, 0.3], device=device, dtype=dtype),
+                torch.tensor([-0.3, 0.3], device=device, dtype=dtype),
+                torch.tensor([0.9, 1.0], device=device, dtype=dtype),
+            )
+        mask = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        with pytest.raises(NotImplementedError, match=rf"{augmentation}.*mask.*4420"):
+            getattr(aug, method)(mask, {}, aug.flags)
+
     def test_wart_non_rigid_augmentation_desynchronizes_the_data_keys_4420(self, device, dtype):
         # Wart pin (#4420): the container promises that one call applies the same sampled transform to every
         # registered data type, but a non-rigid augmentation has no transform matrix, so the coordinate keys
         # pass through untouched instead of raising: `RandomElasticTransform` warps the image *and* the mask
         # - it carries its own mask path, which resamples the mask through the very same displacement field,
         # nearest - while the keypoints and the boxes stay exactly where they were, and
-        # `RandomThinPlateSpline` / `RandomFisheye` raise a bare `NotImplementedError` (no message) on a mask
-        # key.
+        # `RandomThinPlateSpline` / `RandomFisheye` raise `NotImplementedError` on a mask key.
         # Seed zero and a checkerboard with a stronger displacement expose both the image and mask warp.
         torch.manual_seed(0)
         aug = K.AugmentationSequential(
@@ -3091,7 +3124,8 @@ class TestCrop3DShapePropagation(BaseTester):
         handle.remove()
         self.assert_close(actual, expected)
         saved = deepcopy(seq._params)
-        canvas = (4, 5, 6) if p == 1.0 else (8, 10, 12)
+        # A skipped crop keeps its input canvas; an empty batch has no sample to skip (#4429).
+        canvas = (4, 5, 6) if p == 1.0 or batch == 0 else (8, 10, 12)
         assert seen == [torch.Size((batch, 1, *canvas))]
         assert tuple(saved[1].data["forward_input_shape"]) == seen[0]
         assert saved[1].data["output_size"].shape == (batch, 3)

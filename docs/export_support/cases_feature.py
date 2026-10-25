@@ -37,6 +37,8 @@ IMG_BIG = torch.rand(1, 1, 64, 80)  # detectors need a pyramid
 IMG3_BIG = torch.rand(1, 3, 64, 80)
 IMG3_96 = torch.rand(1, 3, 64, 96)  # divisible by 16 and 32 (DISK / XFeat)
 IMG3_DEDODE = torch.rand(1, 3, 56, 84)  # divisible by 14
+# 8-pixel checkerboard: strong corners, so the Harris response (~1e-3 on noise) is large against the default atol
+IMG_CORNERS = ((torch.arange(32)[:, None] // 8 + torch.arange(40)[None, :] // 8) % 2).float()[None, None]
 PATCH32 = torch.rand(2, 1, 32, 32)
 PATCH41 = torch.rand(2, 1, 41, 41)
 PATCH19 = torch.rand(2, 1, 19, 19)
@@ -142,7 +144,7 @@ CASES: list = []
 # ----------------------------------------------------------------------------- responses
 R = "feature.responses"
 CASES += [
-    case("feature.harris_response", R, KF.harris_response, [IMG]),
+    case("feature.harris_response", R, KF.harris_response, [IMG_CORNERS]),
     case("feature.harris_response[sigmas]", R, KF.harris_response, [IMG, torch.tensor([1.5])], note="sigmas (B,) live"),
     case("feature.harris_response[diff]", R, KF.harris_response, [IMG], {"grads_mode": "diff"}),
     case("feature.gftt_response", R, KF.gftt_response, [IMG]),
@@ -156,7 +158,7 @@ CASES += [
         tags=("3d",),
     ),
     case("feature.dog_response_single", R, KF.dog_response_single, [IMG], {"sigma1": 1.0, "sigma2": 1.6}),
-    case("feature.CornerHarris", R, KF.CornerHarris(0.04), [IMG]),
+    case("feature.CornerHarris", R, KF.CornerHarris(0.04), [IMG_CORNERS]),
     case("feature.CornerGFTT", R, KF.CornerGFTT(), [IMG]),
     case("feature.BlobHessian", R, KF.BlobHessian(), [IMG]),
     case(

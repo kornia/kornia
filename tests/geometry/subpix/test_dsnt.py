@@ -195,7 +195,7 @@ class TestSpatialSoftmax2d(BaseTester):
 
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5)])
+    @pytest.mark.parametrize("shape", [(0, 3, 4, 5), (2, 0, 4, 5), (2, 3, 0, 5), (2, 3, 4, 0)])
     def test_empty_batch_or_channels(self, device, dtype, shape):
         input = torch.rand(shape, device=device, dtype=dtype)
         actual = kornia.geometry.subpix.spatial_softmax2d(input)
@@ -275,6 +275,28 @@ class TestSpatialSoftmax2d(BaseTester):
             temperature = torch.tensor(float("nan"), device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Temperature should be positive"):
             kornia.geometry.subpix.spatial_softmax2d(input, temperature)
+
+    @pytest.mark.parametrize("map_dtype", [torch.uint8, torch.int64])
+    def test_integer_map_is_divided_in_floating_point(self, device, map_dtype):
+        # The per-map shift must not run in the map's integer dtype: in uint8, 0 - 255 wraps to 1.
+        heatmap = torch.tensor([[[[0, 255], [3, 7]]]], device=device)
+        expected = kornia.geometry.subpix.spatial_softmax2d(heatmap.to(torch.get_default_dtype()))
+        self.assert_close(kornia.geometry.subpix.spatial_softmax2d(heatmap.to(map_dtype)), expected)
+
+    def test_sharp_temperature_does_not_overflow_float16(self, device):
+        # #6087: dividing the raw logits by a sharp temperature overflowed float16 (max|logit| / temperature >
+        # 65504) before softmax could stabilize them, so a finite heatmap returned NaN coordinates.
+        heatmap = torch.zeros(1, 1, 64, 64, device=device, dtype=torch.float16)
+        heatmap[..., 32, 31] = 10.0
+        heatmap[..., 32, 32] = 11.0
+        temperature = torch.tensor(1e-4, device=device, dtype=torch.float16)
+
+        probabilities = kornia.geometry.subpix.spatial_softmax2d(heatmap, temperature)
+        assert torch.isfinite(probabilities).all(), "expected a finite distribution"
+        self.assert_close(probabilities.sum(dim=(-2, -1)), torch.ones(1, 1, device=device, dtype=heatmap.dtype))
+
+        coordinates = kornia.geometry.subpix.spatial_soft_argmax2d(heatmap, temperature, normalized_coordinates=False)
+        self.assert_close(coordinates, torch.tensor([[[32.0, 32.0]]], device=device, dtype=heatmap.dtype))
 
 
 class TestSpatialExpectation2d(BaseTester):

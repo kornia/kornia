@@ -82,10 +82,16 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     if temperature is None:
         temperature = 1.0
     _check_positive_temperature(temperature)
-    compute_dtype = torch.promote_types(input.dtype, torch.float32)
+    x = input.reshape(batch_size, channels, height * width)
+    # An integer map is divided in the default floating dtype, as ``x / temperature`` does; the shift below would wrap
+    # in its own dtype (``uint8``).
+    if not x.is_floating_point():
+        x = x.to(torch.get_default_dtype())
+
+    compute_dtype = torch.promote_types(x.dtype, torch.float32)
     temperature = torch.as_tensor(temperature, device=input.device, dtype=compute_dtype)
-    x = input.reshape(batch_size, channels, height * width).to(compute_dtype)
-    if x.shape[-1] > 0:
+    x = x.to(compute_dtype)
+    if height * width > 0:
         # For large temperatures, scale before shifting so finite extreme logits cannot overflow during subtraction.
         # For sharper temperatures, shifting first avoids overflow during division. Both forms are shift-invariant.
         x_max = x.amax(dim=-1, keepdim=True).detach()

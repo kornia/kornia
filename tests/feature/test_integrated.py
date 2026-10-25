@@ -461,8 +461,12 @@ class TestDescriptorModuleIsNotModified(BaseTester):
             module = torch.jit.trace(SIFTDescriptor(32).to(device), patch)
         before = self._state(module)
         if kind == "trace_sift" and image_dtype == torch.float64:
-            # the trace holds float32 constants, so a cast copy fails exactly as the module cast in place did
-            with pytest.raises(RuntimeError, match="Double but found Float"):
+            # the trace holds float32 constants, so a cast copy fails exactly as the module cast in place did; the
+            # CPU and CUDA convolutions word the dtype mismatch differently
+            with pytest.raises(
+                RuntimeError,
+                match=r"Double but found Float|Input type \(\S*DoubleTensor\) and weight type \(\S*FloatTensor\)",
+            ):
                 get_laf_descriptors(img, lafs, module, 32)
             self._assert_state_equal(before, self._state(module))
             return
@@ -486,9 +490,10 @@ class TestDescriptorModuleIsNotModified(BaseTester):
         assert out.shape == (1, 0, 5)
         assert out.dtype == torch.float32
 
-    def test_torchscript_gradients_reach_the_module_5724(self, device):
+    def test_torchscript_gradients_reach_the_module_5724(self, device, cudnn_tf32_follows_option):
         # a float32 CPU module: on the CPU the image is float64 (a dtype cast), elsewhere the module is on another
-        # device than the image (a device cast)
+        # device than the image (a device cast). On CUDA, cuDNN's default TF32 convolutions make even two eager
+        # backward passes differ by ~5e-5, so the fixture keeps them in float32 unless --tf32 is passed.
         image_dtype = torch.float64 if torch.device(device).type == "cpu" else torch.float32
         img, lafs = self._inputs(device, image_dtype)
         plain = HardNet(False).eval()

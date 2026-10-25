@@ -847,7 +847,8 @@ class TestConvQuadInterp3dModule(BaseTester):
     def test_gradcheck(self, device):
         sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
         sample[0, 0, 1, 2, 2] += 20.0
-        self.gradcheck(kornia.geometry.ConvQuadInterp3d(), (sample), atol=1e-3, rtol=1e-3)
+        # nondet_tol: CUDA's backward accumulates with atomics, so repeated backward passes differ by roundoff.
+        self.gradcheck(kornia.geometry.ConvQuadInterp3d(), (sample), atol=1e-3, rtol=1e-3, nondet_tol=1e-8)
 
     def test_diag(self, device, dtype):
         sample = torch.tensor(
@@ -1025,6 +1026,7 @@ class TestConvQuadInterp3d(BaseTester):
             (sample,),
             atol=1e-3,
             rtol=1e-3,
+            nondet_tol=1e-8,  # CUDA's backward accumulates with atomics, so repeated passes differ by roundoff
         )
 
     def test_dynamo(self, device, dtype, torch_optimizer):

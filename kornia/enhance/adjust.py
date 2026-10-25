@@ -75,6 +75,28 @@ def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
     torch._assert_async(cond, msg)
 
 
+def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
+    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no gradient is recorded.
+
+    The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
+    allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
+    the heap on every call. Only call it on a tensor no caller can see.
+
+    An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
+    promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
+    transform: vmap has a batching rule for ``clamp`` but not for ``clamp_``, whose fallback loops over the batch and
+    rejects an empty one. TorchScript cannot compile the function-transform query, so a scripted call keeps it too.
+    """
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if (
+            image.is_floating_point()
+            and not (torch.is_grad_enabled() and image.requires_grad)
+            and not torch._C._are_functorch_transforms_active()
+        ):
+            return image.clamp_(min=0.0, max=1.0)
+    return image.clamp(min=0.0, max=1.0)
+
+
 def _check_floating_image(image: torch.Tensor, op: str) -> None:
     """Reject an integer image in an op that expects floating-point values in ``[0, 1]``.
 
@@ -378,7 +400,8 @@ def adjust_gamma(
     r"""Perform gamma correction on an image.
 
     Convention:
-        Applies gain * input ** gamma elementwise, then clamps to [0, 1].
+        Applies gain * input ** gamma elementwise, then clamps to [0, 1]. For ``0 < gamma < 1`` the derivative of
+        ``input ** gamma`` at a black pixel (``input == 0``) is infinite; the gradient there is 0 instead.
 
     .. image:: _static/img/adjust_contrast.png
 
@@ -445,7 +468,15 @@ def adjust_gamma(
                 if input.dtype == torch.float32:
                     gamma = struct.unpack("f", struct.pack("f", gamma))[0]
                     gain = struct.unpack("f", struct.pack("f", gain))[0]
-                return (input.pow(gamma) * gain).clamp(0.0, 1.0)
+                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
+                    # As in the tensor path below.
+                    black = input == 0
+                    power = torch.where(
+                        black, torch.zeros_like(input), torch.where(black, torch.ones_like(input), input).pow(gamma)
+                    )
+                else:
+                    power = input.pow(gamma)
+                return (power * gain).clamp(0.0, 1.0)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
@@ -468,8 +499,18 @@ def adjust_gamma(
     gamma = _make_factor_broadcastable(gamma, input)
     gain = _make_factor_broadcastable(gain, input)
 
-    # Apply the gamma correction
-    x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
+    # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
+    # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
+    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
+    # masking only runs when autograd records a gradient for the input.
+    if torch.is_grad_enabled() and input.requires_grad:
+        black = (input == 0) & (gamma > 0) & (gamma < 1)
+        power = torch.where(
+            black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
+        )
+    else:
+        power = torch.pow(input, gamma)
+    x_adjust: torch.Tensor = gain * power
 
     # Truncate between pixel values
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
@@ -551,7 +592,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     # Truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -675,7 +716,7 @@ def adjust_brightness(
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -1135,10 +1176,10 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     r"""Vectorized histogram equalization over the leading ``(B, C)`` planes.
 
     Computes all per-plane histograms/LUTs in a single batched pass instead of a Python loop of
-    ``B * C`` serial ``torch.histc`` calls. The per-plane histogram is built with ``scatter_add``
-    instead of ``torch.histc``; the two agree except for a handful of values landing exactly on a
-    bin edge (``~1%`` of pixels shift by one 256-bin, i.e. ``~1/255`` in the output), which is
-    within the equalization test tolerance.
+    ``B * C`` serial calls. Each pixel is counted in the LUT entry it reads, its 8-bit level
+    ``(x * 255).long()`` computed in the input dtype, so a plane whose LUT step is not 0 comes out as
+    ``PIL.ImageOps.equalize`` of those levels while the counts and their running sums are exact (a plane of
+    up to ``2**24`` pixels in float32); a plane whose step is 0 is returned unchanged.
 
     Args:
         input: image tensor shaped ``(B, C, *spatial)`` with values in ``[0, 1]``.
@@ -1150,8 +1191,8 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     n = shape[0] * shape[1]
     scaled = input.flatten(0, 1).flatten(1) * 255.0  # (N, P)
 
-    # Input is expected in [0, 1]. The histogram index below is clamped, but the LUT lookup indexes
-    # with the unclamped ``scaled.long()``, which is out of bounds unless ``scaled`` is in (-1, 256).
+    # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``scaled.long()``,
+    # which is out of bounds unless ``scaled`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
     # on MPS before torch 2.13 it costs one host sync instead (see ``_lookup_value_check``). Inputs the
     # lookup can index keep working exactly as before.
@@ -1165,13 +1206,12 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # cannot hold. float16 rounds counts above 2048 and their total overflows to inf past 65504, and
     # bfloat16 rounds counts above 256.
     count_dtype = _normalize_to_float32_or_float64(scaled.dtype)
-    # Per-plane 256-bin histogram matching ``torch.histc(x, 256, 0, 255)`` bin placement. The bin is computed
-    # from the same ``scaled`` the lookup below reads, but in ``count_dtype``: an 8-bit level v gives
-    # ``scaled == v`` in every dtype, and v * 256 / 255 rounds up to bin v + 1 in float16 (v >= 240) and
-    # bfloat16 (v >= 128), which counted the pixel one bin above the entry it reads.
-    bins = torch.clamp((scaled.to(count_dtype) * (256.0 / 255.0)).floor().long(), 0, 255)
+    # Per-plane 256-bin histogram on the index the lookup below reads, so every pixel is counted in its own
+    # entry, as PIL counts and reads one 8-bit level. ``torch.histc(x, 256, 0, 255)`` bins in ``floor(256 x)``,
+    # which puts every value in ``[k/256, k/255)``, about half of a continuous image, one bin above that entry.
+    index = scaled.long()
     histo = torch.zeros(n, 256, device=input.device, dtype=count_dtype)
-    histo.scatter_add_(1, bins, torch.ones_like(scaled, dtype=count_dtype))
+    histo.scatter_add_(1, index, torch.ones_like(scaled, dtype=count_dtype))
 
     # step = (sum(nonzero) - last_nonzero) // 255, per plane.
     total = histo.sum(1)
@@ -1189,7 +1229,7 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # The LUT holds integers in [0, 255], which every floating dtype represents exactly.
     lut = torch.clamp(lut, 0, 255).to(scaled.dtype)
 
-    result = lut.gather(1, scaled.long())
+    result = lut.gather(1, index)
     result = torch.where(step_col == 0, scaled, result)
     return (result / 255.0).reshape(shape)
 
@@ -1215,12 +1255,16 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 
     .. note::
        The input is expected as a floating-point image in :math:`[0, 1]`, and each channel is equalized from
-       a 256-bin histogram. An integer or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a
-       :exc:`TypeError`); convert 8-bit data with ``image.float() / 255`` first. Values the 256-bin lookup
-       cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the range. The check is
-       ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older MPS release the
-       condition is read on the host instead, one device sync per call, and is skipped there under
-       ``torch.compile``.
+       a 256-bin histogram. Each pixel is counted in the lookup-table entry it reads, its 8-bit level
+       ``(x * 255).long()`` in the input dtype, so a float32 or float64 image gives ``PIL.ImageOps.equalize``
+       of those levels. A channel whose lookup step is 0 is returned unchanged, and a float32 image counts in
+       float32, which is exact while a channel holds at most ``2**24`` pixels (4096 x 4096). An integer or
+       boolean image raises
+       :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
+       ``image.float() / 255`` first. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
+       raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel
+       from torch ``2.13``; on an older MPS release the condition is read on the host instead, one device sync
+       per call, and is skipped there under ``torch.compile``.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
