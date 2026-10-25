@@ -24,10 +24,25 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils._crop import _compiled_slice_resize
 from kornia.constants import Resample
-from kornia.core.utils import is_compiling
+from kornia.core.utils import _to_device_nonblocking, is_compiling
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.transform._crop import (
+    _compiled_slice_resize,
+    _corner_aligned_resize_transform,
+    _half_pixel_resize_transform,
+)
+from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat
+
+
+def _one_pixel_axes(box: torch.Tensor, device: torch.device) -> torch.Tensor:
+    """``(B, 2)`` mask of the x and y axes along which an inclusive box is one pixel wide.
+
+    Read from the box in its stored dtype: cast to a half-precision input's dtype first, neighbouring coordinates
+    above 256 can round to one value in bfloat16 and make a two-pixel box look one pixel wide.
+    """
+    box = _to_device_nonblocking(box, device)
+    return (box[:, 2] - box[:, 0]) == 0
 
 
 class RandomResizedCrop(GeometricAugmentationBase2D):
@@ -73,12 +88,17 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         short on the longer side also fits (8x6 gives 7x6 in about 18% of draws, as in torchvision). Unlike
         torchvision, which centres the fallback crop, it is placed at a random position like any other crop.
 
-        Both cropping modes use the configured interpolation and ``align_corners``, so slice mode raises for
-        ``resample="nearest"`` unless ``align_corners=None``
-        (`#4802 <https://github.com/kornia/kornia/issues/4802>`_). At ``align_corners=False`` the two modes give
-        different images, and slice mode does not follow ``transform_matrix``
-        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). Only resample mode supports :meth:`inverse`,
-        which resamples onto the original canvas and cannot recover discarded information.
+        Both cropping modes use the configured interpolation and ``align_corners``. Slice mode ignores
+        ``align_corners`` for ``resample="nearest"``. With bilinear or bicubic interpolation, each mode's image
+        follows its ``transform_matrix``, and at ``align_corners=False`` the two modes give different images: slice
+        mode resizes the crop on the half-pixel grid, ``x' = (x - x0 + 0.5) * W_out / W_crop - 0.5`` for a crop
+        starting at column ``x0`` (likewise for ``y``), while resample mode maps the crop's corner pixel centres
+        onto the output's. Nearest sampling in slice mode uses the half-pixel grid and PyTorch's
+        ``nearest-exact`` interpolation. With corner alignment, an axis where the output is one pixel long samples
+        the crop's first row or column, and one where the crop is one pixel long repeats it, as ``F.interpolate``
+        does, in both modes. Both modes support
+        :meth:`inverse`, which warps the output back onto the original canvas with the inverse of the mode's
+        ``transform_matrix`` and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -141,8 +161,24 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        if flags["cropping_mode"] == "slice" and (
+            flags["resample"] == Resample.NEAREST
+            or (not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC))
+        ):
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            return _half_pixel_resize_transform(src, dst).expand(input.shape[0], -1, -1)
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            transform: torch.Tensor = get_perspective_transform(src, dst)
+            # A one-pixel crop or output axis makes the box vertices collinear, and the solve returns NaN or a
+            # singular matrix. Corner-aligned resizing samples the crop's first pixel along that axis, which the
+            # extent matrix encodes; every other box keeps the solved matrix bit for bit.
+            one_pixel = (
+                _one_pixel_axes(params["src"], input.device) | _one_pixel_axes(params["dst"], input.device)
+            ).any(-1)
+            transform = torch.where(one_pixel[:, None, None], _corner_aligned_resize_transform(src, dst), transform)
             return transform.expand(input.shape[0], -1, -1)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
@@ -157,7 +193,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             if not isinstance(transform, torch.Tensor):
                 raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
-            return crop_by_transform_mat(
+            output = crop_by_transform_mat(
                 input,
                 transform[:, :2, :],
                 flags["size"],
@@ -165,19 +201,49 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 padding_mode="zeros",
                 align_corners=flags["align_corners"],
             )
+            # A one-pixel crop axis has no scale to warp with: the matrix puts its pixel at output index 0, and the
+            # rest of that axis repeats it, as slice mode's interpolation does.
+            one_pixel = _one_pixel_axes(params["src"], input.device)
+            output = torch.where(one_pixel[:, 0, None, None, None], output[..., :1].expand_as(output), output)
+            return torch.where(one_pixel[:, 1, None, None, None], output[..., :1, :].expand_as(output), output)
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            mode = "nearest-exact" if flags["resample"] == Resample.NEAREST else flags["resample"].name.lower()
+            # ``interpolate`` rejects ``align_corners`` for nearest resampling.
+            align_corners = None if mode in ("nearest", "nearest-exact") else flags["align_corners"]
             if is_compiling():
-                return _compiled_slice_resize(
-                    input, params["src"], flags["size"], flags["resample"].name.lower(), flags["align_corners"]
-                )
+                return _compiled_slice_resize(input, params["src"], flags["size"], mode, align_corners)
             return crop_by_indices(
                 input,
                 params["src"],
                 flags["size"],
-                interpolation=flags["resample"].name.lower(),
-                align_corners=flags["align_corners"],
+                interpolation=mode,
+                align_corners=align_corners,
             )
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
+
+    def inverse_inputs(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+        **kwargs: Any,
+    ) -> torch.Tensor:
+        output = super().inverse_inputs(input, params, flags, transform, **kwargs)
+        # A one-pixel crop axis is a translation in the matrix, so the inverse warp also lays the repeated pixel
+        # onto the canvas pixels after it. With zero padding, everything outside the crop is zero.
+        if kwargs.get("padding_mode", flags["padding_mode"]) != "zeros" or output.shape[0] == 0:
+            return output
+        gate = _to_device_nonblocking(self._gate(params), output.device)
+        one_pixel = _one_pixel_axes(params["src"], output.device) & gate[:, None]
+        # Integer pixel indices: in bfloat16 neighbouring indices above 256 round to the same value.
+        start = _to_device_nonblocking(params["src"][:, 0], output.device).round().long()
+        columns = torch.arange(output.shape[-1], device=output.device)
+        rows = torch.arange(output.shape[-2], device=output.device)
+        keep_columns = ~one_pixel[:, :1] | (columns == start[:, :1])
+        keep_rows = ~one_pixel[:, 1:] | (rows == start[:, 1:])
+        keep = keep_rows[:, None, :, None] & keep_columns[:, None, None, :]
+        return torch.where(keep, output, torch.zeros_like(output))
 
     def inverse_transform(
         self,
@@ -186,19 +252,15 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
         if not isinstance(size, tuple):
-            raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
+            raise TypeError(f"Expected the size be a tuple. Got {type(size)}")
 
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
-        return crop_by_transform_mat(
+        return _crop_inverse_by_transform_mat(
             input,
-            transform[:, :2, :],
+            transform,
             size,
             flags["resample"].name.lower(),
             flags["padding_mode"],

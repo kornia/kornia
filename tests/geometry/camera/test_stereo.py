@@ -21,7 +21,7 @@ import torch
 from kornia.geometry.camera import StereoCamera
 from kornia.geometry.camera.stereo import StereoException, reproject_disparity_to_3D
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 @pytest.fixture(params=[1, 2, 4])
@@ -209,10 +209,11 @@ class TestStereoCamera(BaseTester):
         disparity = torch.ones(disparity_shape, device=device, dtype=dtype)
 
         with pytest.raises(StereoException) as exc_info:
-            if entrypoint == "method":
+            (
                 camera.reproject_disparity_to_3D(disparity)
-            else:
-                reproject_disparity_to_3D(disparity, camera.Q)
+                if entrypoint == "method"
+                else reproject_disparity_to_3D(disparity, camera.Q)
+            )
 
         assert str(exc_info.value).splitlines()[0] == (
             "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
@@ -258,6 +259,26 @@ class TestStereoCamera(BaseTester):
         assert stereo_camera.Q.shape == (0, 4, 4)
         assert stereo_camera.Q.dtype == dtype
         assert stereo_camera.Q.device == device
+
+    @pytest.mark.parametrize("size", [(4, 5), (0, 5), (0, 0)])
+    @pytest.mark.parametrize("entrypoint", ["method", "function"])
+    def test_reproject_disparity_empty_batch_4281(self, size, entrypoint, device, dtype):
+        # The empty rig of kornia#4281 also reprojects an empty batch of disparity maps.
+        stereo_camera = StereoCamera(*_SmokeTestData._create_stereo_camera(0, device, dtype, tx_fx=-10))
+        disparity = torch.rand(0, *size, 1, device=device, dtype=dtype, requires_grad=True)
+
+        xyz = (
+            stereo_camera.reproject_disparity_to_3D(disparity)
+            if entrypoint == "method"
+            else reproject_disparity_to_3D(disparity, stereo_camera.Q)
+        )
+
+        assert xyz.shape == (0, *size, 3)
+        assert xyz.dtype == dtype
+        assert xyz.device == device
+        xyz.sum().backward()
+        assert disparity.grad is not None
+        assert disparity.grad.shape == disparity.shape
 
     def test_stereo_camera_attributes_real(self, batch_size, device, dtype):
         """Test proper setup of the class for real data."""
@@ -422,7 +443,7 @@ class TestStereoCamera(BaseTester):
     def test_wart_reproject_disparity_zero_disparity_returns_the_numerator_4555(self, device, dtype):
         # kornia#4555: zero disparity (a point at infinity) gives W = 0, and the masked homogeneous divide (the
         # #4267 rule) returns the numerator as a finite placeholder -- behind the camera on a real rig, and Q and
-        # -Q disagree there -- with nothing flagging it invalid. Update when #4555 adds a validity signal.
+        # -Q disagree there. Keep that default, while the opt-in reconstruction mask flags both placeholders.
         disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
         self.assert_close(
             self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity),
@@ -436,6 +457,11 @@ class TestStereoCamera(BaseTester):
         expected = torch.tensor([[[[1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
         self.assert_close(reproject_disparity_to_3D(disparity, q), expected)
         self.assert_close(reproject_disparity_to_3D(disparity, -q), -expected)
+        points, valid = reproject_disparity_to_3D(disparity, q, return_mask=True)
+        self.assert_close(points, expected)
+        assert not valid.any()
+        _, negative_valid = reproject_disparity_to_3D(disparity, -q, return_mask=True)
+        assert torch.equal(valid, negative_valid)
 
     def test_convention_reproject_disparity_uses_the_column_as_u_4269(self, device, dtype):
         # u is the column index and v the row index, as in cv2.reprojectImageTo3D: X = (u - cx) Z / fx,
@@ -497,6 +523,33 @@ class TestStereoCamera(BaseTester):
         # a real baseline on the same fixture still reprojects away from the origin
         disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
         assert self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity).abs().max().item() > 0.1
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("entrypoint", ["Q", "reproject_disparity_to_3D"])
+    def test_rig_checks_skipped_under_any_capture_5037(self, entrypoint, device, dtype):
+        # The constructor checks the intrinsics and the baseline on the host, which a fullgraph trace cannot do, so
+        # any capture skips the checks, not only export (#5037). Eager still raises on a zero baseline; a traced call
+        # does not.
+        from torch._dynamo.testing import CompileCounter
+
+        rig = self._asymmetric_stereo(device, dtype)
+        left, right = rig.rectified_left_camera, rig.rectified_right_camera
+        disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
+
+        def op(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+            cam = StereoCamera(left, right)
+            return cam.Q if entrypoint == "Q" else cam.reproject_disparity_to_3D(disparity)
+
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(op, backend=counter, fullgraph=True)
+        self.assert_close(traced(left, right), op(left, right), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        no_baseline = right.clone()
+        no_baseline[..., 0, 3] = 0.0
+        with pytest.raises(StereoException, match="non-zero stereo baseline"):
+            op(left, no_baseline)
+        assert traced(left, no_baseline).shape == op(left, right).shape
 
     def test_convention_stereo_rejects_a_four_by_four_pair_4270(self, device, dtype):
         cam = self._asymmetric_stereo(device, dtype)

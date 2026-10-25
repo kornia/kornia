@@ -15,27 +15,20 @@
 # limitations under the License.
 #
 
+import math
 from collections.abc import Sequence
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Distribution
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.constants import pi
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
 def _contiguous_output(output: torch.Tensor) -> torch.Tensor:
     return output.contiguous()
-
-
-def _identity(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    # torch.cond rejects an output that aliases an input, so a neutral factor returns a copy. Every
-    # branch returns a contiguous tensor: their forward and backward metadata must agree under Inductor,
-    # which rejects preserve_format branches for channels-last and transposed inputs.
-    return input.contiguous().clone()
 
 
 def _adjust_brightness(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
@@ -51,7 +44,7 @@ def _adjust_saturation(input: torch.Tensor, factor: torch.Tensor) -> torch.Tenso
 
 
 def _adjust_hue(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    return _contiguous_output(adjust_hue(input, factor * 2 * pi))
+    return _contiguous_output(adjust_hue(input, factor * 2 * math.pi))
 
 
 _StepFn = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
@@ -66,11 +59,16 @@ def _apply_order_cond(
     input: torch.Tensor,
     factors: Tuple[torch.Tensor, ...],
 ) -> torch.Tensor:
-    # torch.cond runs only the selected branch, so a neutral step is skipped without a data-dependent Python
-    # branch and the loop stays fullgraph-compilable. It traces both branches, so it needs an RGB input.
+    # Every step runs, and torch.where keeps its output only when a factor in the batch is not neutral. There is
+    # no data-dependent Python branch, so eager and compiled mode run this same code path, and fullgraph
+    # compilation holds. A step runs even when it is skipped, so this path needs an RGB input. The condition is
+    # computed from the CPU factors and moved without waiting for the queued kernels, as a CPU condition in
+    # ``torch.where`` would be copied with a blocking transfer.
     for idx in order:
         factor = factors[idx]
-        input = torch.cond((factor != neutral[idx]).any(), branches[idx], _identity, (input, factor))
+        output = branches[idx](input, factor)
+        apply = _to_device_nonblocking((factor != neutral[idx]).any(), input.device)
+        input = torch.where(apply, output, input)
     return input
 
 
@@ -85,26 +83,23 @@ def _dispatch_color_steps(
     """Apply the four colour steps in order, skipping a step whose factors all equal its ``neutral`` value.
 
     Shared by :class:`ColorJiggle` and :class:`ColorJitter`. A fixed order on an RGB input goes through ``cond_fn``
-    (a :func:`_apply_order_cond` over the same ``neutral`` values) in eager and compiled mode alike; every other
-    call uses Python ``.any()`` guards, which accept any channel count for the skipped steps. ``cond_fn`` is
-    ``None`` for a random order and where Dynamo, which ``torch.cond`` requires, is unavailable.
+    (a :func:`_apply_order_cond` over the same ``neutral`` values) in eager and compiled mode alike. It computes
+    all four steps and selects each result with :func:`torch.where`. Every other call uses Python ``.any()``
+    guards, which run only the steps that apply and accept any channel count for the skipped ones. ``cond_fn`` is
+    ``None`` for a random order.
     """
     factors = tuple(params[key] for key in _FACTOR_KEYS)
     if fixed_order is not None and cond_fn is not None and input.shape[-3] == 3:
-        # An eager torch.cond enters Dynamo, whose one-time setup calls
-        # ``Distribution.set_default_validate_args(False)`` process-wide; restore the caller's setting.
-        validate_args = Distribution._validate_args
-        try:
-            return cond_fn(fixed_order, input, factors)
-        finally:
-            if Distribution._validate_args != validate_args:
-                Distribution.set_default_validate_args(validate_args)
+        return cond_fn(fixed_order, input, factors)
 
     order = fixed_order if fixed_order is not None else params["order"].tolist()
+    output = input
     for idx in order:
         if (factors[idx] != neutral[idx]).any():
-            input = steps[idx](input, factors[idx])
-    return input
+            output = steps[idx](output, factors[idx])
+    # With every step skipped, return a copy, as the fixed-order dispatcher and ``p=0`` do, so that writing into
+    # the output never changes the caller's input.
+    return output.clone() if output is input else output
 
 
 def _brightness_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
@@ -112,7 +107,7 @@ def _brightness_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
 
 
 def _hue_step(input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    return adjust_hue(input, factor * 2 * pi)
+    return adjust_hue(input, factor * 2 * math.pi)
 
 
 _NEUTRAL = (1.0, 1.0, 1.0, 0.0)
@@ -150,6 +145,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the steps use kornia's own primitives: brightness is additive (the drawn factor is re-based to
           ``factor - 1`` for :func:`kornia.enhance.adjust_brightness`, as :class:`RandomBrightness` does),
           contrast scales the raw values (:func:`kornia.enhance.adjust_contrast`), saturation scales the HSV
@@ -163,14 +160,9 @@ class ColorJiggle(IntensityAugmentationBase2D):
         - ``brightness`` is bounded to ``[0, 2]`` in both argument forms: ``(0.0, 3.0)`` and the scalar ``1.5``,
           whose implied range reaches ``2.5``, raise at construction, where :class:`ColorJitter` accepts either.
         - a step is skipped when every drawn factor in the batch is neutral, so ``ColorJiggle(0, 0, 0, 0)`` is
-          the identity for any input, and the channel count only has to suit the steps that run: saturation and
-          hue need three channels, a brightness- or contrast-only configuration accepts any. The brightness and
-          contrast steps clamp into ``[0, 1]``; saturation and hue do not clamp the RGB result.
-
-    .. warning::
-        Because the brightness and contrast steps clamp, an all-negative input can come back as an all-zero
-        image, depending on the drawn factors and on which steps run. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+          the identity for an input in ``[0, 1]``. The channel count only has to suit the steps that run:
+          saturation and hue need three channels; a brightness- or contrast-only configuration accepts any.
+          The input and final RGB result are clamped even when every step is neutral.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`,
@@ -228,9 +220,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
-        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
+        self._cond_fn = _apply_cond if order is not None else None
 
     def apply_transform(
         self,
@@ -239,8 +229,10 @@ class ColorJiggle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # A fixed order runs the same torch.cond dispatcher in eager and compiled mode. Every torch.cond
-        # branch is traced, including branches that are not selected at runtime, so the dispatcher is
-        # restricted to RGB inputs: tracing the hue/saturation branches would otherwise reject the neutral
-        # one- and four-channel configurations accepted by the Python dispatch.
-        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)
+        # A fixed order on an RGB input runs the branch-free dispatcher in eager and compiled mode alike. It is
+        # restricted to RGB inputs because it runs the hue and saturation steps, which require three channels,
+        # even when they are skipped.
+        input = _clamp_unit_range(input)
+        return _clamp_unit_range(
+            _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, _STEPS)
+        )

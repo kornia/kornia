@@ -11,6 +11,10 @@ Image container
     :members:
     :undoc-members:
 
+.. autoclass:: ColorSpace
+    :members:
+    :undoc-members:
+
 .. autoclass:: ChannelsOrder
     :members:
     :undoc-members:

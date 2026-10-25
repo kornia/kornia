@@ -42,10 +42,11 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the output is :func:`kornia.enhance.normalize_min_max` of the input: each channel of each sample is
           rescaled by its own minimum and maximum as ``(x - min) / (max - min + 1e-6)``. This is a rescale, not
           a clamp, so an input outside ``[0, 1]`` is mapped into range rather than clipped, and a constant
-          channel comes back as zeros.
+          channel comes back as zeros. Empty batches preserve their shape, dtype and device.
 
     """
 

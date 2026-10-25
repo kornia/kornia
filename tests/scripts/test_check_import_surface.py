@@ -972,6 +972,30 @@ def test_main_exits_zero_and_reports_a_recorded_removal(tmp_path, capsys):
     assert "::error" not in captured.out
 
 
+def test_main_accepts_a_deleted_module_recorded_by_an_emptied_entry(tmp_path, capsys):
+    # A tracked submodule deleted after its deprecation window: dropping its key is fatal, so the
+    # emptied entry is the record, and a module that no longer exists exports nothing.
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").unlink()
+    _write_inventory(repo, {"kornia.mymodule": []})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.out
+    assert "::error" not in captured.out
+
+
+def test_main_deleted_module_without_emptied_entry_is_still_fatal(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").unlink()
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    assert exit_code == 1
+    assert "::error" in capsys.readouterr().out
+
+
 def test_main_error_message_names_the_escape_hatch(tmp_path, capsys):
     # #4190: the pytest assertion tells contributors the procedure and this check did not,
     # so a contributor could satisfy the test that names it and still be blocked here with
@@ -1120,8 +1144,11 @@ def test_mixed_removals_have_separate_actionable_remedies(tmp_path, capsys):
     assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
     errors = [line for line in capsys.readouterr().out.splitlines() if "Removed from __all__" in line]
     assert len(errors) == 2
-    assert "['a']" in errors[0] and INVENTORY_PATH in errors[0] and REMOVALS_PATH not in errors[0]
-    assert "['b']" in errors[1] and REMOVALS_PATH in errors[1]
+    assert "['a']" in errors[0]
+    assert INVENTORY_PATH in errors[0]
+    assert REMOVALS_PATH not in errors[0]
+    assert "['b']" in errors[1]
+    assert REMOVALS_PATH in errors[1]
 
 
 def test_explicit_record_does_not_replace_exact_inventory_update(tmp_path, capsys):

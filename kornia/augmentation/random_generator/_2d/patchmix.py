@@ -65,13 +65,18 @@ class PatchMixGenerator(RandomGeneratorBase):
         return f"alpha={self.alpha}, patch_size={self.patch_size}, p={self.p}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # Beta draws through Dirichlet, which has no CPU half-precision kernel: draw in float32 for half precision.
+        beta_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.beta_sampler = Beta(
-            torch.tensor(self.alpha, device=device, dtype=dtype),
-            torch.tensor(self.alpha, device=device, dtype=dtype),
+            torch.tensor(self.alpha, device=device, dtype=beta_dtype),
+            torch.tensor(self.alpha, device=device, dtype=beta_dtype),
         )
+        # The draw is truncated to a patch start, so keep it in float32: half-precision
+        # torch.rand on MPS can return exactly 1.0, which lands one past the last valid start (#4553).
+        sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype),
-            torch.tensor(1.0, device=device, dtype=dtype),
+            torch.tensor(0.0, device=device, dtype=sampler_dtype),
+            torch.tensor(1.0, device=device, dtype=sampler_dtype),
         )
         self.pair_sampler = Uniform(
             torch.tensor(0.0, device=device, dtype=dtype),

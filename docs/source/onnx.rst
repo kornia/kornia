@@ -14,6 +14,8 @@ ONNX graphs (local files, ``onnx.ModelProto`` objects, or pre-exported Kornia op
 .. autoclass:: kornia.onnx.module.ONNXModule
     :members:
 
+.. autofunction:: kornia.onnx.load
+
 .. autoclass:: kornia.onnx.sequential.ONNXSequential
     :members:
 
@@ -26,5 +28,15 @@ ONNX graphs (local files, ``onnx.ModelProto`` objects, or pre-exported Kornia op
 
         # Load a Hugging Face operator
         ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")
-        # Load a local converted/downloaded operator
-        ONNXLoader.load_model("operators/kornia.color.gray.GrayscaleToRgb")
+        # Load a downloaded operator from the cache: the same name, served from the cache directory
+        # (".kornia_hub/onnx_models" by default) without a download
+        ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb", download=False)
+        # Load a local file by its path
+        ONNXLoader.load_model(".kornia_hub/onnx_models/operators/kornia.color.gray.GrayscaleToRgb.onnx")
+
+.. autofunction:: kornia.onnx.utils.add_metadata
+
+.. autofunction:: kornia.onnx.utils.io_name_conversion
+
+.. autoclass:: kornia.onnx.download.CachedDownloader
+    :members:

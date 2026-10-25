@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import SamplePadding
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 
@@ -38,6 +39,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         Sampling is bilinear, with no interpolation-mode argument. Zero scale is an identity warp up to
         interpolation roundoff for either ``align_corners``. There is no ``transform_matrix`` or ``inverse``;
         spatial labels in containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        A ``mask`` data key raises ``NotImplementedError`` identifying this augmentation, even at ``p=0``.
         Its defaults and the ``align_corners`` split across classes
         (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
         :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
@@ -116,8 +118,32 @@ class RandomThinPlateSpline(AugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        src = params["src"].to(input)
-        dst = params["dst"].to(input)
+        src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+        dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
         # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
         return warp_image_tps(input, src, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())
+
+    def apply_transform_mask(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Reject mask inputs, which this augmentation does not support."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support mask inputs. See https://github.com/kornia/kornia/issues/4420."
+        )
+
+    def apply_non_transform_mask(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Reject mask inputs even when the transformation is not applied."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support mask inputs. See https://github.com/kornia/kornia/issues/4420."
+        )

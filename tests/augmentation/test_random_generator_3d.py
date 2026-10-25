@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from unittest.mock import patch
 
 import pytest
@@ -28,6 +29,7 @@ from kornia.augmentation.random_generator import (
     RotationGenerator3D,
     center_crop_generator3d,
 )
+from kornia.geometry.bbox import infer_bbox_shape3d
 
 from testing.base import assert_close
 
@@ -67,9 +69,10 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, depth, height, width, distortion_scale, device, dtype):
-        with pytest.raises(Exception):
-            param_gen = PerspectiveGenerator3D(distortion_scale=distortion_scale.to(device=device, dtype=dtype))
-            param_gen(batch_shape=torch.Size((2, depth, height, width)))
+        with pytest.raises(AssertionError):
+            PerspectiveGenerator3D(distortion_scale=distortion_scale.to(device=device, dtype=dtype))(
+                batch_shape=torch.Size((2, depth, height, width))
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -201,6 +204,50 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
         assert_close(res["start_points"], expected["start_points"], atol=1e-4, rtol=1e-4)
         assert_close(res["end_points"], expected["end_points"], atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("depth,height,width", [(1, 4, 4), (4, 1, 4), (4, 4, 1), (1, 1, 1), (2, 3, 5)])
+    @pytest.mark.device_agnostic
+    def test_traced_singleton_axis_5110(self, depth, height, width):
+        # #5110: torch.jit.trace passes the sizes as 0-d tensors, so the size-1 rule of #5071 has to be tensor
+        # arithmetic to reach the graph: a unit source extent and no corner offset along that axis. Every other axis
+        # keeps the eager extent, so the traced parameters equal the eager ones for the same seed.
+        class _Params(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.generator = PerspectiveGenerator3D(torch.tensor(1.0))
+
+            def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                params = self.generator(x.shape)
+                return params["start_points"], params["end_points"]
+
+        volume = torch.zeros(2, 1, depth, height, width)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(_Params(), volume, check_trace=False)
+        torch.manual_seed(0)
+        start, end = traced(volume)
+        torch.manual_seed(0)
+        eager = PerspectiveGenerator3D(torch.tensor(1.0))(volume.shape)
+
+        x_end, y_end, z_end = max(width - 1, 1), max(height - 1, 1), max(depth - 1, 1)
+        expected = torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [x_end, 0.0, 0.0],
+                [x_end, y_end, 0.0],
+                [0.0, y_end, 0.0],
+                [0.0, 0.0, z_end],
+                [x_end, 0.0, z_end],
+                [x_end, y_end, z_end],
+                [0.0, y_end, z_end],
+            ]
+        ).expand(2, 8, 3)
+        assert torch.equal(start, expected)
+        assert torch.equal(start, eager["start_points"])
+        assert torch.equal(end, eager["end_points"])
+        for axis, size in ((0, width), (1, height), (2, depth)):
+            if size == 1:
+                assert torch.equal(end[..., axis], start[..., axis])
+
 
 class TestRandomAffineGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_shape", [(0, 200, 300, 400), (1, 200, 300, 400), (8, 200, 300, 400)])
@@ -236,7 +283,6 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             (100, 100, -100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
             # (100, 100, 100, torch.tensor([0, 9]), None, None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
-            (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1]), None, None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([[0.2, 0.2, 0.2]]), None),
             (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([0.2]), None),
@@ -254,9 +300,13 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
         if isinstance(shear, torch.Tensor):
             shear.to(dtype=dtype, device=device)
 
-        with pytest.raises(Exception):
-            param_gen = AffineGenerator3D(degrees=degrees, translate=translate, scale=scale, shears=shear)
-            param_gen(batch_shape=torch.Size((2, depth, height, width)))
+        with pytest.raises(
+            (AssertionError, TypeError, ValueError),
+            match=r"depth|height|width|[Dd]egrees|translate|scale",
+        ):
+            AffineGenerator3D(degrees=degrees, translate=translate, scale=scale, shears=shear)(
+                batch_shape=torch.Size((2, depth, height, width))
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -352,9 +402,8 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
         [(torch.tensor(-10)), (torch.tensor([-10])), (torch.tensor([[0, 30]])), (torch.tensor([[0, 30], [0, 30]]))],
     )
     def test_invalid_param_combinations(self, degrees, device, dtype):
-        with pytest.raises(Exception):
-            param_gen = RotationGenerator3D(degrees=degrees.to(device=device, dtype=dtype))
-            param_gen(torch.Size((2,)))
+        with pytest.raises(ValueError, match=r"must be a positive number|Degrees must be"):
+            RotationGenerator3D(degrees=degrees.to(device=device, dtype=dtype))(torch.Size((2,)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -391,6 +440,34 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
 
 class TestRandomCropGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 2])
+    @pytest.mark.parametrize("size", [(5, 5, 6), (4, 6, 6), (4, 5, 7)])
+    @pytest.mark.parametrize("resize_to", [None, (2, 2, 2)])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_oversized_crop_is_rejected_for_empty_batches_4429(
+        self, batch_size, size, resize_to, same_on_batch, device, dtype
+    ):
+        """A fixed crop must fit the source volume even when no rows are sampled."""
+        generator = CropGenerator3D(size, resize_to)
+        generator.set_rng_device_and_dtype(device, dtype)
+
+        with pytest.raises(ValueError, match=r"size.*must not exceed.*input_size=\(4, 5, 6\)"):
+            generator((batch_size, 1, 4, 5, 6), same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    def test_dynamo_fixed_crop_parameters_4429(self, batch_size, device, dtype, torch_optimizer):
+        """Fullgraph compilation captures a legal fixed-size crop for empty and non-empty batches."""
+        generator = CropGenerator3D((3, 4, 5))
+        generator.set_rng_device_and_dtype(device, dtype)
+        optimized = torch_optimizer(generator, fullgraph=True)
+
+        params = optimized((batch_size, 1, 4, 5, 6))
+
+        assert params["src"].shape == (batch_size, 8, 3)
+        assert params["dst"].shape == (batch_size, 8, 3)
+        assert params["output_size"].tolist() == [[3, 4, 5]] * batch_size
+        assert params["output_size"].dtype == torch.long
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
     @pytest.mark.parametrize("input_size", [(200, 200, 200)])
     @pytest.mark.parametrize("size", [(100, 100, 100), torch.tensor([50, 60, 70])])
     @pytest.mark.parametrize("resize_to", [None, (100, 100, 100)])
@@ -400,7 +477,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
             size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
 
         param_gen = CropGenerator3D(size=size, resize_to=resize_to)
-        param_gen(batch_shape=torch.Size((batch_size, 1, *input_size)), same_on_batch=same_on_batch)
+        params = param_gen(batch_shape=torch.Size((batch_size, 1, *input_size)), same_on_batch=same_on_batch)
+        expected = torch.as_tensor(resize_to if resize_to is not None else size).expand(batch_size, 3)
+        assert_close(params["output_size"].to(device=device, dtype=dtype), expected.to(device=device, dtype=dtype))
 
     @pytest.mark.parametrize(
         "input_size,size,resize_to",
@@ -412,12 +491,22 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
-        with pytest.raises(Exception):
-            param_gen = CropGenerator3D(
+        with pytest.raises((AssertionError, ValueError), match=r"batch_shape|size|resize_to"):
+            CropGenerator3D(
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to,
-            )
-            param_gen(batch_shape=torch.Size((2, 1, *input_size)))
+            )(batch_shape=torch.Size((2, 1, *input_size)))
+
+    @pytest.mark.parametrize("resize_to", [None, (2, 3, 2)])
+    def test_boxes_measure_crop_and_output_size_4018(self, resize_to, device, dtype):
+        # kornia#4018: src measures the crop size and dst the output size, inclusively, with dst at the origin.
+        size = torch.tensor([[2, 3, 4], [1, 1, 1], [4, 5, 6]], device=device, dtype=dtype)
+        params = CropGenerator3D(size, resize_to)(torch.Size((3, 1, 4, 5, 6)))
+        output_size = size if resize_to is None else torch.tensor([resize_to] * 3, device=device, dtype=dtype)
+        for key, expected in (("src", size), ("dst", output_size)):
+            measured = torch.stack(infer_bbox_shape3d(params[key].to(dtype)), dim=-1)
+            assert_close(measured, expected, atol=0.0, rtol=0.0)
+        assert_close(params["dst"][:, 0], torch.zeros(3, 3, device=device, dtype=params["dst"].dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -480,7 +569,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
         }
+        expected["output_size"] = torch.tensor([[100, 100, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"], expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"], expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -546,7 +637,9 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
         }
+        expected["output_size"] = torch.tensor([[100, 100, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"], expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"], expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -569,7 +662,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, depth, height, width, size, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises((AssertionError, ValueError), match=r"depth|height|width|size"):
             center_crop_generator3d(batch_size=2, depth=depth, height=height, width=width, size=size)
 
     def test_random_gen(self, device, dtype):
@@ -609,7 +702,9 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
                 dtype=torch.long,
             ).repeat(2, 1, 1),
         }
+        expected["output_size"] = torch.tensor([[120, 150, 100]]).expand(2, -1)
         assert res.keys() == expected.keys()
+        assert_close(res["output_size"].cpu(), expected["output_size"])
         assert_close(res["src"].to(device=device), expected["src"], atol=1e-4, rtol=1e-4)
         assert_close(res["dst"].to(device=device), expected["dst"], atol=1e-4, rtol=1e-4)
 
@@ -645,14 +740,12 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
         ],
     )
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
-        with pytest.raises(Exception):
-            param_gen = MotionBlurGenerator3D(
+        with pytest.raises((AssertionError, ValueError), match=r"kernel_size|direction out of bounds"):
+            MotionBlurGenerator3D(
                 kernel_size=kernel_size,
                 angle=angle.to(device=device, dtype=dtype),
                 direction=direction.to(device=device, dtype=dtype),
-            )
-
-            param_gen(batch_shape=torch.Size((2,)))
+            )(batch_shape=torch.Size((2,)))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -795,3 +888,13 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
                 angle=torch.tensor([(0.0, 0.0)] * 3, device=device, dtype=dtype),
                 direction=torch.tensor([0.0, 0.0], device=device, dtype=dtype),
             )
+
+
+def test_crop3d_output_size_owns_storage(device):
+    size = torch.tensor([[4, 5, 6]], device=device, dtype=torch.long)
+    generator = CropGenerator3D(size)
+    params = generator((1, 1, 8, 10, 12))
+    params["output_size"][0, 0] = 2
+    assert_close(size, torch.tensor([[4, 5, 6]], device=device))
+    size[0, 1] = 3
+    assert_close(params["output_size"], torch.tensor([[2, 5, 6]], device=device))

@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import get_perspective_transform, warp_perspective
 
 
@@ -54,8 +55,10 @@ class RandomPerspective(GeometricAugmentationBase2D):
         - ``basic`` samples each corner inward by at most ``distortion_scale * (W, H) / 2``. ``area_preserving``
           samples each coordinate in both directions over the same extent.
         - with ``distortion_scale=0`` and ``H > 1``, ``W > 1``, the warp is an identity up to numerical precision
-          for either ``align_corners``. If either spatial dimension is 1, the coincident source corners give a NaN
-          matrix and output even at zero distortion (`#4787 <https://github.com/kornia/kornia/issues/4787>`_).
+          for either ``align_corners``.
+        - a spatial dimension of 1 is not distorted: its source corners span a unit extent instead of ``0`` and
+          its offsets are zero, so the single row or column maps onto itself and only the other axis is warped.
+          At ``distortion_scale=0`` this is the identity.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_perspective`.
@@ -102,7 +105,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
+        start_points = _to_device_nonblocking(params["start_points"], input.device, input.dtype)
+        end_points = _to_device_nonblocking(params["end_points"], input.device, input.dtype)
+        return get_perspective_transform(start_points, end_points)
 
     def apply_transform(
         self,

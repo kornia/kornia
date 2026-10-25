@@ -25,12 +25,14 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES
 from kornia.core.exceptions import ShapeError
+from kornia.core.utils import _autocast_disabled, _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
+from .camera.pinhole import _embed_intrinsics
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
 
@@ -47,6 +49,28 @@ __all__ = [
     "unproject_meshgrid",
     "warp_frame_depth",
 ]
+
+
+def _depth_grid_dtype(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.dtype:
+    """Return the dtype the pixel grid is built in before unprojection.
+
+    The grid holds the integer pixel indices at the precision of the promoted inputs: a bfloat16 or
+    float16 grid rounds them, and an integer grid cannot represent them. Integer inputs promote to
+    the default floating dtype instead: ``promote_types`` does not support unsigned/signed integer
+    pairs. A complex promotion keeps a real grid, because ``arange`` has no complex kernels and the
+    subsequent arithmetic promotes to complex anyway, which also unblocks complex inputs. An all-half
+    call keeps its half grid.
+    """
+    depth_is_float = depth.is_floating_point()
+    camera_is_float = camera_matrix.is_floating_point()
+    if not depth_is_float and not camera_is_float and not depth.is_complex() and not camera_matrix.is_complex():
+        return torch.empty(0, device=depth.device).dtype
+    promoted = torch.promote_types(depth.dtype, camera_matrix.dtype)
+    # A complex32 promotion is checked through the tensors, not the promoted dtype: TorchScript sees a
+    # dtype as an integer, so a membership test on dtype attributes would not compile.
+    if depth.is_complex() or camera_matrix.is_complex():
+        return torch.empty(0, device=depth.device, dtype=promoted).real.dtype
+    return promoted
 
 
 def unproject_meshgrid(
@@ -80,7 +104,7 @@ def unproject_meshgrid(
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         device: device to place the result on.
-        dtype: dtype of the result.
+        dtype: dtype of the pixel grid; the output dtype follows promotion with ``camera_matrix``.
 
     Return:
         tensor with a 3d point per pixel, with shape :math:`(B, H, W, 3)`.
@@ -131,10 +155,13 @@ def depth_to_3d_v2(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`). It equals
           :func:`~kornia.geometry.depth.depth_to_3d` after ``permute(0, 2, 3, 1)``.
         - without ``xyz_grid``, ``camera_matrix`` must be exactly :math:`(B, 3, 3)` (another shape raises
-          ``ShapeError``); with ``xyz_grid`` it is never read.
+          ``ShapeError``); with ``xyz_grid`` only its shape is checked.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - ``xyz_grid`` replaces the grid construction; pass what :func:`~kornia.geometry.depth.unproject_meshgrid`
           returns for the same camera.
+        - without ``xyz_grid``, the pixel grid is built in ``promote_types(depth.dtype, camera_matrix.dtype)``
+          when either input is floating (the default floating dtype when both are integer), so half-precision
+          depth does not round the pixel indices below the intrinsics' precision.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
@@ -165,7 +192,9 @@ def depth_to_3d_v2(
     points_xyz: torch.Tensor = (
         xyz_grid
         if xyz_grid is not None
-        else unproject_meshgrid(height, width, camera_matrix, normalize_points, depth.device, depth.dtype)
+        else unproject_meshgrid(
+            height, width, camera_matrix, normalize_points, depth.device, _depth_grid_dtype(depth, camera_matrix)
+        )
     )
 
     KORNIA_CHECK_SHAPE(points_xyz, ["*", "H", "W", "3"])
@@ -189,6 +218,9 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
           :func:`~kornia.geometry.depth.depth_to_3d_v2` after ``permute(0, 2, 3, 1)``.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - an integer ``depth`` is not rejected; the result takes the floating dtype of ``camera_matrix``.
+          The pixel grid is built in ``promote_types(depth.dtype, camera_matrix.dtype)`` when either input is
+          floating (the default floating dtype when both are integer), so half-precision ``depth`` does not
+          round the pixel indices below the intrinsics' precision.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
@@ -214,7 +246,11 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     # create base coordinates grid
     _, _, height, width = depth.shape
     points_2d: torch.Tensor = create_meshgrid(
-        height, width, normalized_coordinates=False, device=depth.device, dtype=depth.dtype
+        height,
+        width,
+        normalized_coordinates=False,
+        device=depth.device,
+        dtype=_depth_grid_dtype(depth, camera_matrix),
     )  # 1xHxWx2
 
     # depth should come in Bx1xHxW
@@ -239,6 +275,9 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
           the columns tilts it towards ``-x``, one growing along the rows towards ``-y``.
         - the arguments mean what they mean for :func:`~kornia.geometry.depth.depth_to_3d`, and the result
           has its :math:`(B, 3, H, W)` layout.
+        - float16 and bfloat16 inputs are widened to float32 first. The result has the promoted dtype of ``depth`` and
+          ``camera_matrix``, or the default floating dtype when both are integer, and it does not follow an
+          enclosing autocast region: its dtype and values are the same inside autocast as outside.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`, with
@@ -273,11 +312,21 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
             expected_shape=["B", "1", "H >= 2", "W >= 2"],
         )
 
+    dtype = torch.promote_types(depth.dtype, camera_matrix.dtype)
+    # Compute in float32 when either input is half precision: bfloat16 cannot hold the pixel grid past 256 and the
+    # float16 cross product of small pixel tangents underflows. The grid takes the promoted dtype, so cast each input.
+    if depth.dtype in (torch.float16, torch.bfloat16):
+        depth = depth.float()
+    if camera_matrix.dtype in (torch.float16, torch.bfloat16):
+        camera_matrix = camera_matrix.float()
+
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW
+    dtype = dtype if dtype.is_floating_point else xyz.dtype
 
-    # compute the pointcloud spatial gradients
-    gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
+    # Keep the gradient convolution in the point-cloud dtype under autocast.
+    with _autocast_disabled(xyz.device.type):
+        gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
     # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
     # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides
@@ -286,7 +335,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     b: torch.Tensor = gradients[:, :, 1].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
 
     normals: torch.Tensor = torch.linalg.cross(a, b, dim=-1)  # BxHxWx3
-    return F.normalize(normals, dim=-1, p=2).permute(0, 3, 1, 2)  # Bx3xHxW
+    return F.normalize(normals, dim=-1, p=2).to(dtype).permute(0, 3, 1, 2)  # Bx3xHxW
 
 
 def depth_from_plane_equation(
@@ -402,6 +451,11 @@ def warp_frame_depth(
     KORNIA_CHECK_SHAPE(depth_dst, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
+    KORNIA_CHECK(
+        image_src.shape[-2:] == depth_dst.shape[-2:],
+        f"image_src and depth_dst must have the same height and width. "
+        f"Got {list(image_src.shape[-2:])} and {list(depth_dst.shape[-2:])}.",
+    )
 
     if (
         image_src.shape[0] == 0
@@ -427,7 +481,7 @@ def warp_frame_depth(
     height, width = depth_dst.shape[-2:]
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
-    return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)
+    return _torch_grid_sample(image_src, points_2d_src_norm, align_corners=True)
 
 
 class DepthWarper(nn.Module):
@@ -449,6 +503,8 @@ class DepthWarper(nn.Module):
         - :meth:`compute_projection_matrix` stores ``K_dst @ (E_dst @ inverse(E_src))``, the matrix above, from
           the constructor's ``pinhole_dst`` and that method's ``pinhole_src`` (both
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
+          Both cameras use only the top-left 3x3 block of their intrinsics, embedded in
+          homogeneous 4x4 form; the stored fourth row and column are ignored.
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
           ``align_corners=True`` normalized coordinates of the **destination** image.
@@ -548,8 +604,7 @@ class DepthWarper(nn.Module):
         dst_trans_src[..., :3, :3] = composed_rmat
         dst_trans_src[..., :3, 3:] = composed_tvec
 
-        # intrinsics (Nx3x3) @ extrinsics (Nx4x4)
-        dst_proj_src = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
+        dst_proj_src = torch.matmul(_embed_intrinsics(self._pinhole_dst.camera_matrix), dst_trans_src)
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
@@ -676,7 +731,7 @@ class DepthWarper(nn.Module):
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
 
         """
-        return F.grid_sample(
+        return _torch_grid_sample(
             patch_dst,
             self.warp_grid(depth_src),
             mode=self.mode,
@@ -736,7 +791,8 @@ def _per_sample_camera_parameter(parameter: float | torch.Tensor, disparity: tor
     if not isinstance(parameter, torch.Tensor) or parameter.ndim == 0 or parameter.shape == (1,):
         return parameter
     if parameter.ndim == 1 and disparity.ndim >= 3:
-        KORNIA_CHECK_SHAPE(parameter, [str(disparity.shape[0])])
+        # Compared as a number: a string would turn a symbolic batch size into a graph break under torch.compile.
+        KORNIA_CHECK_SIZES(parameter, [disparity.shape[0]])
         return parameter.reshape(disparity.shape[0], *([1] * (disparity.ndim - 1)))
     KORNIA_CHECK_SHAPE(parameter, ["1"])
     return parameter
@@ -748,18 +804,25 @@ def depth_from_disparity(
     """Compute depth from disparity.
 
     Convention:
-        - the depth is ``baseline * focal / disparity``, elementwise: ``baseline`` is the distance between the
-          two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a baseline of
-          0.5 and a focal length of 100 gives a depth of 25.
+        - the depth is ``baseline * focal / (disparity + 1e-8)``, elementwise: ``baseline`` is the distance
+          between the two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a
+          baseline of 0.5 and a focal length of 100 gives a depth of 25. The ``1e-8`` lowers the depth by a
+          relative ``1e-8 / disparity``. Float32 rounds that away from a disparity of 0.25 up; below it the bias
+          shows, ``1e-6`` relative (10 float32 ulps) at a disparity of 0.01.
+        - a zero disparity (no stereo match, or a point at infinity) gives a finite far depth,
+          ``baseline * focal / 1e-8`` (``5e9`` for baseline 0.5 and focal 100), not ``inf``. Such a point warps
+          as a point at infinity, along the rotation-only homography, in
+          :func:`~kornia.geometry.depth.warp_frame_depth`, whereas an ``inf`` depth would turn into ``NaN`` in
+          :func:`~kornia.geometry.depth.depth_to_3d` wherever a ray component is zero. The far depth is a
+          placeholder, not a measurement: mask ``disparity > 0`` to tell matched pixels apart.
+        - in float16 the ``1e-8`` rounds to ``0`` and the far depth would overflow anyway, so a zero disparity
+          gives ``inf``. A float32 far depth turns back into ``inf`` wherever the warp casts it to float16, as a
+          float16 pose or float16 autocast does, so run the whole warp (depth, image, pose and camera matrix) in
+          float32, outside float16 autocast, when zero disparities flow into it.
         - ``baseline`` and ``focal`` are each a scalar (Python number, 0-d or :math:`(1,)` tensor) shared by the
           whole disparity, or a :math:`(B,)` tensor paired with ``disparity[b]``, which then needs a leading
           batch axis of size ``B`` (otherwise ``ShapeError``). The two may mix.
         - ``disparity`` is :math:`(*, H, W)` and the result has its shape. Its sign is not checked.
-
-    .. warning::
-        The divisor is ``disparity + 1e-8``, so a zero disparity (no stereo match) returns a large finite depth
-        set by the epsilon (``5e9`` for baseline ``0.5``, focal ``100``) rather than ``inf``, except where the
-        epsilon underflows: `#4272 <https://github.com/kornia/kornia/issues/4272>`_.
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.

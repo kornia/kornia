@@ -27,8 +27,9 @@ and ``linalg.det`` gives ``"lu_factor_cusolver" not implemented for 'Half'``.
 
 The contract is deliberately minimal, because the callers own the policy:
 
-- They compute in whatever dtype the caller supplies. **No promotion** -- that belongs to
-  :func:`kornia.core.utils._torch_inverse_cast`.
+- They compute in whatever dtype the caller supplies. **No promotion** -- that belongs to the
+  dispatchers :func:`kornia.core.utils._torch_inverse_cast` and
+  :func:`kornia.core.utils._inverse_3x3_closed_form`, which both invert half input in float32.
 - Exact shape and a real floating dtype are **caller preconditions, not runtime checks**.
   Behavior on anything else is unspecified: ``_adjugate_3x3`` of a 4x4 silently uses the
   leading 3x3 block, and of a 2x2 raises an incidental ``IndexError``. The contractual size
@@ -50,6 +51,9 @@ __all__ = [
     "_adjugate_2x2",
     "_adjugate_3x3",
     "_adjugate_4x4",
+    "_det_perm_2x2",
+    "_det_perm_3x3",
+    "_det_perm_4x4",
     "_inverse_3x3_cross",
     "_inverse_3x3_scalar",
 ]
@@ -160,6 +164,117 @@ def _adjugate_4x4(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return adj, det
 
 
+def _det_perm_2x2(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the determinant of batched 2x2 matrices and the permanent of their absolute values.
+
+    The permanent of ``|A|`` is the sum of the absolute values of the terms of the determinant expansion,
+    so it is the scale of the rounding error of the determinant computed here, and the scale against which
+    a determinant counts as zero.
+    """
+    a = input[..., 0, 0]
+    b = input[..., 0, 1]
+    c = input[..., 1, 0]
+    d = input[..., 1, 1]
+    ad = a * d
+    bc = b * c
+    return ad - bc, ad.abs() + bc.abs()
+
+
+def _det_perm_3x3(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the determinant of batched 3x3 matrices and the permanent of their absolute values.
+
+    Both expand along the first row: the determinant with signed 2x2 minors, the permanent of ``|A|`` with
+    the absolute values of the same products added.
+    """
+    a = input[..., 0, 0]
+    b = input[..., 0, 1]
+    c = input[..., 0, 2]
+    d = input[..., 1, 0]
+    e = input[..., 1, 1]
+    f = input[..., 1, 2]
+    g = input[..., 2, 0]
+    h = input[..., 2, 1]
+    i = input[..., 2, 2]
+    ei = e * i
+    fh = f * h
+    di = d * i
+    fg = f * g
+    dh = d * h
+    eg = e * g
+    det = a * (ei - fh) - b * (di - fg) + c * (dh - eg)
+    perm = a.abs() * (ei.abs() + fh.abs()) + b.abs() * (di.abs() + fg.abs()) + c.abs() * (dh.abs() + eg.abs())
+    return det, perm
+
+
+def _det_perm_4x4(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the determinant of batched 4x4 matrices and the permanent of their absolute values.
+
+    Laplace expansion over the 2x2 minors of the top two rows against the complementary minors of the
+    bottom two rows, as :func:`_adjugate_4x4`; the permanent of ``|A|`` pairs the 2x2 permanents of
+    ``|A|`` the same way.
+    """
+    a = input[..., 0, 0]
+    b = input[..., 0, 1]
+    c = input[..., 0, 2]
+    d = input[..., 0, 3]
+    e = input[..., 1, 0]
+    f = input[..., 1, 1]
+    g = input[..., 1, 2]
+    h = input[..., 1, 3]
+    i = input[..., 2, 0]
+    j = input[..., 2, 1]
+    k = input[..., 2, 2]
+    l_ = input[..., 2, 3]
+    m = input[..., 3, 0]
+    n = input[..., 3, 1]
+    o = input[..., 3, 2]
+    p = input[..., 3, 3]
+
+    af = a * f
+    be = b * e
+    ag = a * g
+    ce = c * e
+    ah = a * h
+    de = d * e
+    bg = b * g
+    cf = c * f
+    bh = b * h
+    df = d * f
+    ch = c * h
+    dg = d * g
+
+    kp = k * p
+    lo = l_ * o
+    jp = j * p
+    ln = l_ * n
+    jo = j * o
+    kn = k * n
+    ip = i * p
+    lm = l_ * m
+    io = i * o
+    km = k * m
+    in_ = i * n
+    jm = j * m
+
+    det = (
+        (af - be) * (kp - lo)
+        - (ag - ce) * (jp - ln)
+        + (ah - de) * (jo - kn)
+        + (bg - cf) * (ip - lm)
+        - (bh - df) * (io - km)
+        + (ch - dg) * (in_ - jm)
+    )
+    perm = (
+        (af.abs() + be.abs()) * (kp.abs() + lo.abs())
+        + (ag.abs() + ce.abs()) * (jp.abs() + ln.abs())
+        + (ah.abs() + de.abs()) * (jo.abs() + kn.abs())
+        + (bg.abs() + cf.abs()) * (ip.abs() + lm.abs())
+        + (bh.abs() + df.abs()) * (io.abs() + km.abs())
+        + (ch.abs() + dg.abs()) * (in_.abs() + jm.abs())
+    )
+    return det, perm
+
+
 def _inverse_3x3_cross(input: torch.Tensor) -> torch.Tensor:
     """Closed-form 3x3 inverse via three fused cross products. The eager path.
 
@@ -173,12 +288,13 @@ def _inverse_3x3_cross(input: torch.Tensor) -> torch.Tensor:
     dtype makes this raise rather than return -- torch 2.5.1 has no ``bfloat16`` ``cross`` on
     MPS, while 2.9.1 does.
 
-    ONNX lowering is *not* a reason, measured: ``torch.linalg.cross`` lowers on both torch
-    versions kornia's CI runs -- 2.5.1 (legacy exporter) and 2.9.1 (legacy and dynamo) -- to
-    ``Slice``/``Mul``/``Sub``/``Concat``. What neither exporter lowers on either version is
+    ONNX lowering is *not* a reason, measured: ``torch.linalg.cross`` lowers on the torch versions
+    kornia's CI runs -- 2.5.1 (legacy exporter), 2.9.1 (legacy and dynamo), and 2.14.0 (legacy
+    and dynamo). The legacy exporter emits ``Slice``/``Mul``/``Sub``/``Concat``; the dynamo exporter
+    emits ``Split`` in place of ``Slice``, on 2.9.1 as on 2.14.0. What neither exporter lowers is
     ``aten::linalg_inv``, which is what :func:`kornia.core.utils._torch_inverse_cast` avoids by
-    reaching for a closed form in the first place. torch 2.0-2.4 is below the declared floor; CI does not run it
-    either.
+    reaching for a closed form in the first place. torch 2.0-2.4 is below the declared floor; CI
+    does not run it either.
     """
     col_a = input[..., :, 0]
     col_b = input[..., :, 1]

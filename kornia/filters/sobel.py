@@ -25,6 +25,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
+from .filter import _to_floating
 from .kernels import (
     _normalize_kernel2d_2nd_order,
     get_spatial_gradient_kernel2d,
@@ -38,16 +39,27 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
 
     .. image:: _static/img/spatial_gradient.png
 
+    Convention:
+        - The derivatives are the kernels of :func:`~kornia.filters.get_spatial_gradient_kernel2d`, stacked on a
+          new axis 2 in that function's order and with its sign; see its Convention block.
+        - For ``order=1`` with the default ``normalized=True``, an axis-aligned linear ramp with slope ``s`` has
+          response ``s`` in the corresponding channel away from the replicated border. With
+          ``normalized=False``, the Sobel response is ``8 s``. :ref:`Filtering <filtering-conventions>` maps both
+          scales onto OpenCV, scipy and scikit-image.
+        - The border is always replicated, so for ``order=1`` with ``normalized=True``, a linear ramp's derivative
+          is half its slope on the first and last pixel along that axis. There is no ``border_type``, unlike
+          :func:`~kornia.filters.filter2d` and :func:`~kornia.filters.laplacian`, whose default is ``'reflect'``.
+
     Args:
         input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
         normalized: if ``True``, scale the kernels so that every output channel estimates the derivative
-          itself, exact on linear surfaces for ``order=1`` and on quadratic surfaces for ``order=2``. If
-          ``False``, return the raw kernel responses.
+          itself away from the replicated border: exact on linear surfaces for ``order=1`` and on quadratic
+          surfaces for ``order=2``. If ``False``, return the raw kernel responses.
 
     Return:
-        the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)` holding
+        the derivatives of the input feature map, with shape :math:`(B, C, 2, H, W)` holding
         :math:`(dx, dy)` for ``order=1`` and :math:`(B, C, 3, H, W)` holding :math:`(dxx, dxy, dyy)`
         for ``order=2``.
 
@@ -63,12 +75,14 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    # in its own dtype, uint8 wraps the differences and an integer kernel truncates the half and quarter taps (#5155)
+    input = _to_floating(input)
 
     # The first-order Sobel kernels are fixed. Construct them directly instead
     # of allocating one kernel, transposing it, stacking both directions, and
-    # normalizing at runtime. Keep the generic construction for integer and
-    # complex inputs, whose division semantics are part of the public API.
-    if mode == "sobel" and order == 1 and input.is_floating_point():
+    # normalizing at runtime. Keep the generic construction for complex inputs,
+    # whose division semantics are part of the public API.
+    if mode.lower() == "sobel" and order == 1 and input.is_floating_point():
         if normalized:
             kernel = torch.tensor(
                 [
@@ -107,9 +121,17 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
 def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) -> torch.Tensor:
     r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
+    Convention:
+        - The derivatives are the kernels of :func:`~kornia.filters.get_spatial_gradient_kernel3d`, stacked on a
+          new axis 2; see its Convention block for their order and units. There is no ``normalized`` argument: a
+          floating input gives derivative units.
+        - The border is always replicated, as in :func:`~kornia.filters.spatial_gradient`.
+        - An integer or bool input is differentiated in float32 and the output is float32, on the input's scale,
+          as :func:`~kornia.filters.filter3d` does (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
     Args:
         input: input features torch.Tensor with shape :math:`(B, C, D, H, W)`.
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, case-insensitive; only ``'diff'`` is implemented.
         order: the order of the derivatives.
 
     Return:
@@ -126,11 +148,13 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])
+    # in its own dtype, uint8 wraps the differences and an integer kernel truncates the half and quarter taps (#5155)
+    input = _to_floating(input)
 
     b, c, d, h, w = input.shape
     dev = input.device
     dtype = input.dtype
-    if (mode == "diff") and (order == 1):
+    if mode.lower() == "diff" and order == 1:
         # we go for the special case implementation due to conv3d bad speed
         x: torch.Tensor = F.pad(input, 6 * [1], "replicate")
         center = slice(1, -1)
@@ -169,6 +193,15 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
 
     .. image:: _static/img/sobel.png
 
+    Convention:
+        - The output is :math:`\sqrt{g_x^2 + g_y^2 + \epsilon}` per channel, where :math:`(g_x, g_y)` is
+          ``spatial_gradient(input, 'sobel', normalized=normalized)``; see the Convention block on
+          :func:`~kornia.filters.spatial_gradient`. Away from the replicated border, an axis-aligned ramp of slope
+          ``s`` gives :math:`\sqrt{s^2 + \epsilon}`, about :math:`|s|`, with the default ``normalized=True``;
+          ``normalized=False`` gives about :math:`8 |s|`, the scale :func:`~kornia.filters.canny` thresholds.
+        - ``eps`` sits inside the square root, so a flat region returns :math:`\sqrt{\epsilon}`, ``1e-3`` by
+          default, not 0.
+
     Args:
         input: the input image with shape :math:`(B,C,H,W)`.
         normalized: if True, L1 norm of the kernel is set to 1.
@@ -204,19 +237,22 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
 
 
 class SpatialGradient(nn.Module):
-    r"""Compute the first order image derivative in both x and y using a Sobel operator.
+    r"""Compute the first or second order image derivative in x and y using a Sobel or diff operator.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.spatial_gradient`.
 
     Args:
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
         normalized: whether the output is normalized.
 
     Return:
-        the sobel edges of the input feature map.
+        the derivatives of the input feature map.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, 2, H, W)`
+        - Output: :math:`(B, C, 2, H, W)` for ``order=1`` and :math:`(B, C, 3, H, W)` for ``order=2``
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -251,10 +287,11 @@ class SpatialGradient(nn.Module):
 
         Returns:
             Gradient tensor from :func:`spatial_gradient`. For first-order
-            derivatives the shape is typically :math:`(B, C, 2, H, W)`, where
+            derivatives the shape is :math:`(B, C, 2, H, W)`, where
             the derivative axis of size ``2`` stores the response along
-            :math:`x` (width) and :math:`y` (height). Higher orders may expose
-            additional derivative components according to the functional API.
+            :math:`x` (width) and :math:`y` (height). For second-order
+            derivatives it is :math:`(B, C, 3, H, W)`, holding
+            :math:`(dxx, dxy, dyy)`.
         """
         return spatial_gradient(input, self.mode, self.order, self.normalized)
 
@@ -262,8 +299,11 @@ class SpatialGradient(nn.Module):
 class SpatialGradient3d(nn.Module):
     r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.spatial_gradient3d`.
+
     Args:
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, case-insensitive; only ``'diff'`` is implemented.
         order: the order of the derivatives.
 
     Return:
@@ -317,6 +357,9 @@ class SpatialGradient3d(nn.Module):
 
 class Sobel(nn.Module):
     r"""Compute the Sobel operator and returns the magnitude per channel.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.sobel`.
 
     Args:
         normalized: if True, L1 norm of the kernel is set to 1.

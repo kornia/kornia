@@ -79,8 +79,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
-        # `engine="convolution"` feeds the geodesic `+max_val` pad through `F.conv2d`, so its error scales with
-        # `max_val` (about one float32 ULP of the default 1e4 on CPU); `engine="unfold"` is exact. Tracked in #4734.
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
@@ -99,7 +98,7 @@ class TestErode(BaseTester):
             atol=1e-4,
             rtol=1e-4,
         )
-        # See test_kernel: the convolution engine's error scales with `max_val` (#4734).
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(
             erosion(
                 tensor,
@@ -121,7 +120,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        # See test_kernel: the convolution engine's error scales with `max_val` (#4734).
+        # The convolution and unfold engines agree within the test tolerance.
         assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
 
     def test_exception(self, device, dtype):
@@ -134,12 +133,12 @@ class TestErode(BaseTester):
         with pytest.raises(TypeError):
             assert erosion(tensor, [0.0])
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert erosion(test, kernel)
 
+        test = torch.ones(2, 3, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert erosion(tensor, test)
 
         with pytest.raises(ValueError, match="Unknown `border_type`"):
@@ -160,14 +159,46 @@ class TestErode(BaseTester):
         assert actual.dtype == expected.dtype
         assert torch.equal(actual, expected)
 
-    def test_integer_image_keeps_the_kernel_dtype(self, device):
-        # Only a floating-point image lends its dtype to a non-float kernel (#4736). An integer image
-        # keeps the kernel's own dtype, as before: int32 with int64 computes and returns int64.
-        tensor = torch.tensor([[0, 3, 0, 0, 7]], dtype=torch.int32, device=device)[None, None]
-        kernel = torch.tensor([[1, 0, 1]], dtype=torch.int64, device=device)
-        actual = erosion(tensor, kernel)
-        assert actual.dtype == torch.int64
-        assert actual.flatten().tolist() == [3, 0, 0, 0, 0]
+    @pytest.mark.parametrize("se_dtype", [torch.bool, torch.uint8, torch.int8, torch.int64])
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution", "auto"])
+    def test_non_float_structuring_element_matches_float(self, device, dtype, se_dtype, engine):
+        # Every engine subtracts a bool or integer structuring element in the compute dtype, so it gives the
+        # float structuring element's result. ``shift`` used to negate it in its own dtype, which wrapped
+        # ``-uint8(2)`` to 254 and ``-int8(-128)`` to -128 and raised for bool, as ``unfold`` also did.
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+        values = [[0, 1, 0], [1, 2, 1], [0, 1, 0]]
+        if se_dtype in (torch.int8, torch.int64):
+            values[0][0] = -128
+        structuring_element = torch.tensor(values, device=device).to(se_dtype)
+
+        expected = erosion(tensor, kernel, structuring_element=structuring_element.to(dtype), engine=engine)
+        actual = erosion(tensor, kernel, structuring_element=structuring_element, engine=engine)
+
+        assert actual.dtype == tensor.dtype
+        assert torch.equal(actual, expected)
+
+    @pytest.mark.parametrize("engine", ["unfold", "shift", "convolution"])
+    @pytest.mark.parametrize("non_flat", [False, True])
+    def test_non_contiguous_kernel(self, device, dtype, engine, non_flat):
+        # A transposed kernel or structuring element is a strided view, which every engine must read by its
+        # values. ``convolution`` flattened the kernel with ``view`` and raised on one.
+        tensor = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        kernel = torch.tensor([[1.0, 0.0, 0.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype).T
+        structuring_element = None
+        if non_flat:
+            structuring_element = torch.tensor([[0.0, 1.0, 0.0], [2.0, 0.0, 3.0]], device=device, dtype=dtype).T
+        assert not kernel.is_contiguous()
+
+        expected = erosion(
+            tensor,
+            kernel.contiguous(),
+            structuring_element=structuring_element.contiguous() if structuring_element is not None else None,
+            engine=engine,
+        )
+        actual = erosion(tensor, kernel, structuring_element=structuring_element, engine=engine)
+
+        assert torch.equal(actual, expected)
 
     @pytest.mark.parametrize("border_type", ["geodesic", "constant", "reflect", "replicate", "circular"])
     def test_accepted_border_types(self, device, dtype, border_type):
@@ -195,17 +226,19 @@ class TestErode(BaseTester):
     def test_convolution_engine_dtype_mismatch(self, device, dtype):
         # engine="convolution" used to crash when tensor.dtype != kernel.dtype, because the
         # conv weight/bias were built from kernel.dtype instead of the input's dtype. See #4541.
-        # Passing a mismatched kernel must match casting the kernel to the input dtype up front;
-        # that is the same computation, so the results are bitwise equal (no tolerance needed).
+        # It now computes in torch.promote_types(tensor.dtype, kernel.dtype), matching unfold and
+        # shift (#4762). Passing a mismatched kernel must match casting both operands to that
+        # promoted dtype up front; that is the same computation, so the results are bitwise equal.
         other_dtype = torch.float16 if dtype == torch.float32 else torch.float32
+        compute_dtype = torch.promote_types(dtype, other_dtype)
 
         tensor = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=other_dtype)
 
         result = erosion(tensor, kernel, engine="convolution")
 
-        assert result.dtype == dtype
-        self.assert_close(result, erosion(tensor, kernel.to(dtype), engine="convolution"))
+        assert result.dtype == compute_dtype
+        self.assert_close(result, erosion(tensor.to(compute_dtype), kernel.to(compute_dtype), engine="convolution"))
 
     def test_auto_engine(self, device, dtype):
         # engine="auto", the default, runs "unfold" on CUDA and the exact "shift" engine everywhere
@@ -423,6 +456,34 @@ class TestErode(BaseTester):
 
         self.assert_close(erosion(tensor, kernel), op_optimized(tensor, kernel))
 
+    def test_shift_engine_flat_kernel_matches_zero_structuring_element(self, device, dtype):
+        # Without a structuring element the shift engine skips the offset addition and reads each cell straight
+        # from the image or identity plane. That path has to agree bitwise with an explicit all-zero structuring
+        # element, nan and infinite pixels and excluded cells included (a sign of zero may differ, values not).
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
+        tensor[0, 0, 2, 3] = nan
+        tensor[0, 1, 4, 5] = inf
+        tensor[1, 2, 0, 0] = -inf
+        kernel = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        flat = erosion(tensor, kernel, engine="shift")
+        explicit = erosion(tensor, kernel, structuring_element=torch.zeros_like(kernel), engine="shift")
+        torch.testing.assert_close(flat, explicit, rtol=0.0, atol=0.0, equal_nan=True)
+        assert flat.dtype == explicit.dtype
+
+    def test_shift_engine_excluded_cell_ignores_infinite_structuring_element(self, device, dtype):
+        # An excluded cell contributes the reduction identity whatever its structuring element entry: an
+        # infinite entry there must not turn the identity into nan. Only the included cells' entries matter.
+        tensor = torch.rand(1, 1, 6, 7, device=device, dtype=dtype)
+        kernel = torch.tensor([[1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        finite = torch.tensor([[0.5, 0.0, -0.25]], device=device, dtype=dtype)
+        spiked = torch.tensor([[0.5, float("inf"), -0.25]], device=device, dtype=dtype)
+        for engine in ("shift", "unfold"):
+            expected = erosion(tensor, kernel, structuring_element=finite, engine=engine)
+            actual = erosion(tensor, kernel, structuring_element=spiked, engine=engine)
+            assert torch.equal(actual, expected), engine
+            assert bool(torch.isfinite(actual).all()), engine
+
     def test_shift_engine_forward_only_matches_autograd_safe(self, device, dtype):
         tensor = torch.rand(2, 3, 9, 9, device=device, dtype=dtype)
         kernel = torch.randn(3, 3, device=device, dtype=dtype)
@@ -506,7 +567,7 @@ class TestErode(BaseTester):
         original = morphology_module._shift_reduce
 
         def wrapped(*args, **kwargs):
-            calls.append(args[-1])
+            calls.append(args[-2])
             return original(*args, **kwargs)
 
         monkeypatch.setattr(morphology_module, "_shift_reduce", wrapped)
@@ -530,6 +591,58 @@ class TestErode(BaseTester):
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         assert torch.equal(op_script(tensor, kernel, engine="shift"), erosion(tensor, kernel, engine="shift"))
+
+    @pytest.mark.parametrize("kernel_shape", [(3, 3), (3, 4), (5, 5)])
+    @pytest.mark.parametrize("partial", [False, True])
+    @pytest.mark.parametrize("border_type", ["geodesic", "constant", "replicate"])
+    def test_unfold_engine_forward_only_matches_autograd_path(self, device, dtype, kernel_shape, partial, border_type):
+        if border_type == "replicate" and not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        # Without a backward graph a flat ``unfold`` reduction takes ``amin``; it must return the values of the
+        # ``torch.min`` path. A window tying ``+0.0`` with ``-0.0`` may return either zero, as on every engine.
+        nan, inf = float("nan"), float("inf")
+        tensor = torch.rand(2, 3, 9, 11, device=device, dtype=dtype)
+        tensor[0, 0, 2, 3] = nan
+        tensor[0, 1, 4, 5] = inf
+        tensor[1, 2, 0, 0] = -inf
+        tensor[1, 0, ::2] = -0.0
+        tensor[1, 0, 1::2] = 0.0
+        kernel = torch.ones(kernel_shape, device=device, dtype=dtype)
+        if partial:
+            kernel[0, 0] = 0.0
+            kernel[-1, 1] = 0.0
+
+        forward = erosion(tensor, kernel, border_type=border_type, engine="unfold")
+        recorded = erosion(tensor.clone().requires_grad_(True), kernel, border_type=border_type, engine="unfold")
+
+        torch.testing.assert_close(forward, recorded.detach(), rtol=0.0, atol=0.0, equal_nan=True)
+        assert forward.dtype == recorded.dtype
+
+    def test_unfold_engine_reduces_values_only_without_derivatives(self, device, dtype, monkeypatch):
+        calls = []
+        original = morphology_module._unfold_reduces_values_only
+
+        def wrapped(*args, **kwargs):
+            calls.append(original(*args, **kwargs))
+            return calls[-1]
+
+        monkeypatch.setattr(morphology_module, "_unfold_reduces_values_only", wrapped)
+
+        tensor = torch.rand(1, 1, 9, 11, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        erosion(tensor, kernel, engine="unfold")
+        erosion(tensor, kernel, structuring_element=torch.zeros_like(kernel), engine="unfold")
+        with torch.enable_grad():
+            erosion(tensor.clone().requires_grad_(True), kernel, engine="unfold")
+        with torch.no_grad():
+            erosion(tensor.clone().requires_grad_(True), kernel, engine="unfold")
+        with torch.autograd.forward_ad.dual_level():
+            erosion(torch.autograd.forward_ad.make_dual(tensor, torch.rand_like(tensor)), kernel, engine="unfold")
+        torch.func.vmap(lambda x: erosion(x, kernel, engine="unfold"))(tensor[None])
+
+        plain = device.type in ("cpu", "cuda")
+        assert calls == [plain, False, False, plain, False, False]
 
     def test_convention_erosion_does_not_reflect_kernel(self, device, dtype):
         # `erosion` does not reflect the kernel: `out(p) = min_{q: kernel[q] != 0} x(p + (q - origin))`. The
@@ -568,7 +681,8 @@ class TestErode(BaseTester):
         # origin are an adjoint pair, `dilation(x) <= y` everywhere exactly when `x <= erosion(y)`
         # everywhere, while no window is empty. The kernel changes under a 180-degree flip, so a reflection
         # mismatch between the two would break the pair, and it holds its default origin cell [1, 1], so no
-        # window is empty. The empty-window counterexample is test_wart_dilation_max_val_sentinel_leaks_4734.
+        # window is empty. Empty windows use the reduction identity; see
+        # test_convention_dilation_ignores_finite_max_val_sentinel_4734.
         x = torch.tensor(
             [[3.0, 0.0, 5.0, 1.0, 2.0, 7.0], [0.0, 4.0, 1.0, 6.0, 0.0, 2.0], [2.0, 1.0, 0.0, 3.0, 5.0, 1.0]],
             device=device,
@@ -694,7 +808,7 @@ class TestErode(BaseTester):
         # when its origin cell is a member (`[[1, 0, 1, 0, 1]]`); they agree for a rectangle of ones, where
         # every pixel the replicate pad duplicates is already inside the window.
         # With a single-cell kernel that reads `x(p - 2)`, the two leftmost `geodesic` windows are empty (what
-        # they return is the #4734 wart, pinned in test_dilation.py), while `replicate` returns `x(0)`.
+        # they return is the reduction identity, while `replicate` returns `x(0)`.
         ramp = torch.tensor([[1.0, 2.0, 3.0, 4.0, 5.0]], device=device, dtype=dtype)[None, None]
         side_kernel = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
 

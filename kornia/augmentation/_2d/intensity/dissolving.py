@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.filters import StableDiffusionDissolving
 
 
@@ -31,25 +31,20 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
     reverse diffusion. Our implementation currently supports the HuggingFace implementations of SD 1.4, SD 1.5
-    and SD XL; once ``diffusers`` is importable, any other ``version`` raises a bare ``NotImplementedError``
+    and SD XL; once ``diffusers`` is importable, any other ``version`` raises ``NotImplementedError``
+    with the unsupported value and the supported versions
     (without it, construction fails on the optional-dependency prompt before the version is looked at).
 
-    .. note::
-        The table below does not render: its cells are missing the ``..`` directive marker, so Sphinx
-        prints ``figure:: https://...`` as text, and the ``SD xl`` column still points at the SD 2.1
-        image because ``dslv-sd-xl.png`` is a 404 in the ``kornia/data`` repository. Tracked in
-        `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
-
-    .. list-table:: Title
+    .. list-table::
         :widths: 32 32 32
         :header-rows: 1
 
         * - SD 1.4
           - SD 1.5
-          - SD xl
-        * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
+          - SD XL
+        * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
+          - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
 
     Args:
         p: probability of applying the transformation.
@@ -65,8 +60,9 @@ class RandomDissolving(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the result is decoded by the Stable Diffusion VAE and clamped into ``[0, 1]``, whatever range the input
-          is in.
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+        - the clamped input is encoded by the Stable Diffusion VAE; its decoded result is also clamped.
 
     .. note::
         The transform is delegated to ``kornia.filters.StableDiffusionDissolving``, which the constructor
@@ -96,4 +92,5 @@ class RandomDissolving(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        return self._dslv(input, params["step_range_factor"][0].long().item())
+        input = _clamp_unit_range(input)
+        return _clamp_unit_range(self._dslv(input, params["step_range_factor"][0].long().item()))

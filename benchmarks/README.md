@@ -14,28 +14,46 @@ otherwise reach for. All flagships share one command line, one console layout an
 | Suite | Flagship ops | Baselines |
 | --- | --- | --- |
 | [`augmentation`](augmentation/flagship.py) | flip, affine, perspective, resized crop, color jiggle, blur, brightness, grayscale (class API, sampling included) | torchvision v2, albumentations, OpenCV, PIL |
-| [`color`](color/flagship.py) | grayscale, HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL |
-| [`contrib`](contrib/flagship.py) | exact connected components, distance transform | scikit-image, SciPy, OpenCV |
-| [`enhance`](enhance/flagship.py) | normalize, gamma, hue, saturation, equalize, CLAHE | torchvision v2, albumentations, scikit-image, OpenCV, PIL |
-| [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN matching | scikit-image, OpenCV |
-| [`filters`](filters/flagship.py) | Gaussian, Sobel, Laplacian, median, box, Canny, unsharp, bilateral, guided, motion, Otsu | torchvision v2, albumentations, scikit-image, OpenCV, kornia-rs, PIL |
-| [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, perspective-transform solve | torchvision v2, OpenCV |
+| [`color`](color/flagship.py) | grayscale, RGB↔HSV, Lab, YCbCr, Bayer demosaic | torchvision v2, scikit-image, OpenCV (per image and stacked), PIL, kornia-rs |
+| [`contrib`](contrib/flagship.py) | exact connected components, distance transform | scikit-image, SciPy, OpenCV, kornia-rs |
+| [`enhance`](enhance/flagship.py) | normalize, gamma, hue, saturation, equalize, CLAHE | torchvision v2, albumentations, scikit-image, OpenCV, PIL, kornia-rs |
+| [`feature`](feature/flagship.py) | Harris and GFTT responses, SIFT detect+describe, SNN/MNN/SMNN matching, batched SMNN | scikit-image, OpenCV, kornia-rs |
+| [`filters`](filters/flagship.py) | Gaussian, Sobel magnitude and spatial gradients, Laplacian, median, box, Canny, unsharp, bilateral, guided, motion, Otsu | torchvision v2, albumentations, scikit-image, OpenCV, kornia-rs, PIL |
+| [`geometry`](geometry/flagship.py) | warp perspective/affine, rotate, resize, remap, point transforms, depth unprojection, perspective-transform solve | torchvision v2, OpenCV, kornia-rs |
 | [`io`](io/flagship.py) | JPEG and PNG decode to an RGB uint8 tensor | torchvision, OpenCV, PIL |
-| [`losses`](losses/flagship.py) | binary focal, focal, Dice, SSIM, total variation (forward + backward) | torchvision |
+| [`losses`](losses/flagship.py) | binary focal, focal, Dice (micro, macro, weighted), SSIM, total variation (forward + backward) | torchvision |
 | [`metrics`](metrics/flagship.py) | PSNR, SSIM, mean IoU | scikit-image, OpenCV |
-| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | torchmorph (CUDA only), albumentations, scikit-image, OpenCV |
+| [`morphology`](morphology/flagship.py) | dilation, erosion, opening, gradient | torchmorph (CUDA only), albumentations, scikit-image, OpenCV, kornia-rs |
 
 Modules without a flagship: `models`, `tracking` and the model wrappers in `contrib` need
 downloaded weights (learned local features are covered by `feature/local_features.py`); `nerf`,
 `sensors`, `x`, `onnx`, `transpiler`, `grad_estimator`, `image`, `core`, `utils` and `testing`
 are training loops, containers, exporters or plumbing whose cost is the ops above.
 
+Coverage is a curated sample, not a usage ranking or an exhaustive API inventory. In particular:
+
+- Color now measures both directions of RGB/HSV; inverse inputs are prepared in each backend's
+  native hue units (radians, turns, degrees, or PIL's quantized bytes).
+- Filters distinguish Sobel magnitude from normalized x/y `spatial_gradient`; the latter's
+  OpenCV counterpart uses prepared float32 inputs, replicate padding, and scale 1/8.
+- Geometry includes image remapping, H*W-point projective transforms, and z-depth unprojection.
+  The depth row has no external baseline; an unrelated operation is not substituted for it.
+- Feature matching includes SNN, MNN, symmetric SNN, and batched symmetric SNN on identical
+  descriptor pairs. OpenCV's baseline includes the required ratio and mutuality filters;
+  its per-pair loop also provides context for Kornia's batched API.
+- Remaining gaps include functional brightness/contrast (augmentation's sampled class calls
+  measure different work), enhancement/normalization variants, 3D gradients and volumetric
+  warps, camera/epipolar primitives, and loss options such as class counts, ignored labels,
+  reductions, Tversky/Lovasz and robust regression. The Dice micro/macro/weighted rows cover
+  distinct reduction paths but do not exhaust those loss regimes. Learned feature/model
+  timing remains in the separate weight-dependent suites below.
+
 Deeper, single-topic scripts:
 
 | Directory | Contents |
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
-| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
+| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. [`ransac.py`](geometry/ransac.py): batched RANSAC runtime and IMC pose accuracy on cached correspondences. [`ransac_cpu.py`](geometry/ransac_cpu.py): repeatable CPU base/branch comparison of H/F/E latency and geometric quality on HEB and PhotoTourism. [`heb.py`](geometry/heb.py): homography RANSAC time versus reprojection mAA on a HEB scene. |
 | [`morphology/`](morphology/) | [`flagship.py`](morphology/flagship.py): representative morphology ops vs torchmorph, albumentations, scikit-image and OpenCV. [`engines.py`](morphology/engines.py): dilation engine comparison across explicit public engines. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL/scikit-image. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions (`*_test.py`). |
@@ -46,6 +64,47 @@ Deeper, single-topic scripts:
 [`feature/sift_scale_space.py`](feature/sift_scale_space.py) compares complete SIFT
 extraction, matching and homography quality on CPU, CUDA or MPS;
 [device results and usage](feature/sift_summary.md).
+
+### CPU RANSAC base/branch comparison
+
+For a self-contained latency and recovery comparison without downloaded data, run
+`geometry/ransac_compile_synthetic.py --compile --json /tmp/ransac.json` from
+each checkout. It measures H/F7/F8/E public forward calls on fixed noisy scenes,
+with separate repeated medians for each estimator seed. Use `--confidence 1
+--max-samples 2048` to compare equal sample budgets, and `--sample-batch` to
+inspect explicit batch sizes. Compilation and loading are warmed outside the
+timed region. The JSON records the sampling configuration, artifact mode,
+source digests, inlier recall and false positives alongside latency. PR #5117's
+[follow-up comparison](geometry/ransac_compile_results/followup.md) records the
+cache/RNG/refinement fixes and the speed/memory tradeoffs of splitting large CPU batches.
+
+Run the same harness from each checkout, using a PhotoTourism NPZ prepared by
+[`ransac.py prepare`](geometry/ransac.py) and a HEB scene HDF5 file:
+
+```bash
+python benchmarks/geometry/ransac_cpu.py --npz /data/phototourism-7x10.npz \
+    --heb /data/NYC_Library_homographies.h5 --pairs 10 --h-pairs 30 \
+    --models H,F,E --budgets 256,4096 --seeds 0,1,2 --threads 4 --json /tmp/cpu.json
+```
+
+The default `--pairs 2` selects two pairs per scene/feature; `--pairs 10` uses up to
+70 pairs per feature in a seven-scene, ten-pair export (fewer if a feature is missing
+from some scenes). Timings are repeated public
+`RANSAC.forward` calls at seed zero (median and IQR, `--min-run-time 0.1`); geometric
+quality uses every requested seed. H measures ground-truth-inlier reprojection mAA
+at 1–20 pixels; F/E measure recovered-pose mAA at 1–10 degrees, with scenes and seeds
+weighted equally. Failures count as misses. JSON records every pair and an aggregate
+summary. Use `--no-timing` for a quality-only run. PR #5095's measured base/branch comparison and
+rejected batch experiments are in its [archived report](https://github.com/kornia/kornia/blob/7730b96647e7dc517c44ebb6ab4e81c92f239a86/benchmarks/geometry/ransac_cpu.md).
+
+Sampling, scoring, batching, and local optimization use the class defaults;
+`--confidence` defaults to 0.999. Pixel inlier thresholds default to H=8,
+SIFT F/E=0.75, SIFT8k=0.5, and
+ALIKED-LightGlue=1.5. Override with `--h-threshold` or repeatable
+`--epi-threshold FEATURE=PX`. PhotoTourism correspondence order is preserved by
+default (`--sort-matches` sorts scores/ratios); HEB uses the same seeded selection,
+SNN<0.8 filter, and stable ratio ordering as `heb.py`. Optional `h5py` reads HEB;
+OpenCV provides pose recovery for F/E. Neither PoseLib nor an IMC package is needed.
 
 ## Methodology contract
 
@@ -108,6 +167,10 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   The `0.9.0rc1` result files predate the pin and have no `opencv_num_threads`: on the
   i7-14700K Linux runs, the OpenCV and albumentations cells used every core while torch used 4.
   The Apple runs are unaffected, because GCD ignores the pin.
+  `setup_run` also sets `RAYON_NUM_THREADS` to `--threads` before the first native operation.
+  Run each CLI in a fresh process: an existing Rayon global pool cannot be resized by changing
+  the environment. `rayon_num_threads_requested` records the request, not an observed count;
+  older result files may have used Rayon's unrestricted default.
 - **Public API only:** benchmark `kornia.*` as users call it — no private helpers, no
   reimplementations inside the script.
 
@@ -187,14 +250,28 @@ All flagships build on the same helpers in [`common.py`](common.py), so their ou
 5. Document the regimes in the module docstring; keep the honest framing.
 
 The filters flagship includes optional scikit-image baselines. To exercise every
-current baseline, install the benchmark-only dependencies with
-`uv pip install --upgrade --prerelease allow scikit-image kornia-rs`; this currently
-selects scikit-image 0.26 and kornia-rs 0.1.15rc5. Its module docstring lists
+current baseline, install the benchmark-only dependency with
+`uv pip install scikit-image`; kornia-rs, a kornia dependency, supplies Gaussian,
+box and median blur, Sobel, grayscale bilateral, and Canny. Its module docstring lists
 differences in padding, kernel support, normalization, and clipping; empty cells
 indicate an unavailable dependency or a missing native counterpart.
-The kornia-rs adapters detect APIs individually: stable 0.1.14 supplies Gaussian
-and box blur; 0.1.15rc5 also supplies median, Sobel, and grayscale bilateral.
-The latter has a separate row because its Python API only accepts grayscale.
+The grayscale bilateral has a separate row because its Python API only accepts grayscale.
+The [0.2.0 PyPI wheel](https://pypi.org/project/kornia-rs/0.2.0/) also supplies CPU baselines for
+all six color rows, affine/perspective warps, rotations (via affine), resize, normalization,
+equalize/CLAHE, all four morphology rows, SIFT detect+describe, and connected components.
+The optional API resolver supports both the `imgproc` namespace and legacy top-level exports;
+missing functions skip individual cells without requiring a dependency upgrade. Native HSV
+uses 0–255 channels; Lab uses normalized RGB; `ycbcr_from_rgb` returns Y/Cr/Cb. Normalization
+receives mean/std multiplied by 255 because it casts bytes without rescaling. Warp borders,
+demosaicing edges and CLAHE rounding can differ; suite docstrings and parity tests record these.
+All `kornia-rs` columns are CPU loops, including in a `--device cuda` run. The wheel also has
+CUDA APIs, but these need separate device-resident columns: their accepted dtypes and borders
+differ from the NumPy paths. `features.match_descriptors` is a binary Hamming matcher and is
+not a counterpart to these float-descriptor rows; `imgproc.Sift.match` is a possible future
+baseline after its ratio/mutuality semantics are checked. There is no exposed image remap or
+depth-backprojection counterpart in this wheel. The I/O suite already measures Kornia's
+kornia-rs-backed decoding path.
+
 See [median parallelism notes](filters/median_parallelism.md) for the CPU/CUDA/MPS
 implementation audit and related PyTorch issues and pull requests.
 
@@ -232,6 +309,10 @@ PR #4638 keeps its historical measurements in an [immutable archive](https://git
 with figures embedded in the PR description. Local reruns should write JSON outside the checkout.
 
 ## Sample results — geometry flagship ops
+
+Historical rotation comparisons below used torchvision’s default nearest interpolation against
+Kornia’s bilinear interpolation. Do not use those ratios to compare libraries. The current
+harness explicitly uses bilinear and distinguishes shared angles from per-image parameters.
 
 Directional numbers only — reproduce on your own hardware for anything you cite. Measured
 2026-08-07, commit `5eaa7a10`, Apple Silicon (macOS 26.5, arm64), Python 3.11, torch 2.9.1,
@@ -289,9 +370,9 @@ NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
 - **Batched GPU is kornia's regime and the margin is large:** compiled `warp_perspective` at
   batch 32 beats OpenCV's per-image CPU loop by ~45× (L4) to ~72× (RTX PRO 6000); eager alone
   is ~20–30×.
-- **`rotate` is a found weak spot:** torchvision v2 beats kornia on every GPU tested
-  (~1.7–2×, up to ~4× vs eager where compile was unavailable). First data-driven optimization
-  target for the Stage-3 iteration.
+- **Historical `rotate` ratios do not establish a library ranking:** the apparent torchvision
+  advantage used nearest interpolation against Kornia's bilinear interpolation. Remeasure with
+  the current matched-interpolation harness, distinguishing shared angles from per-image parameters.
 - **`resize`:** kornia eager matches torchvision almost exactly (same underlying kernel);
   `torch.compile` is a large win at big batches on newer GPUs (3.6M img/s at batch 128 on
   Blackwell) but *regressed* resize on L4 at batch ≤ 32 — compile is not a free win, measure
@@ -399,7 +480,8 @@ The honest reading:
   patch extractors, ~25× below `ellipse_to_laf`, and the least moved by `torch.compile` there
   (1.26×, against up to 9.1× elsewhere). On CPU it was ~9× slower than the similar-sized
   `make_upright`. #4217 removed the cause; see the last bullet for what it actually was. The
-  tables above predate that change, as do their `laf_is_inside_image` rows, which share it.
+  tables above predate that change, as do their `laf_is_inside_image` rows, measured when that
+  op still called `laf_to_boundary_points`.
 - **Small N on CUDA is launch-latency bound, not work bound:** at B=1 N=2000 the three cheapest
   ops all land within 8.2–14.2M LAFs/s regardless of what they compute, ~8.5–11× below their own
   B=1 N=20000 figures. Read the N=20000 rows for kernel cost and the N=2000 rows for per-call
@@ -431,12 +513,15 @@ The honest reading:
   for 1.5× the arithmetic, identically at 1, 4 and 8 threads (M=1 0.33 ms, M=2 0.65, M=3 14.87,
   M=4 16.26). #4217 multiplies by the `(2, 3)` LAF directly. Quiet back-to-back A/B on the M1
   (torch 2.14.0, 4 threads, B=1 N=20000): `laf_to_boundary_points` 1.07M → 29.6M LAFs/s eager on
-  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which calls it with `n_pts=12` on every
-  detector forward, 9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
+  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which then called it with `n_pts=12`,
+  9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
   the transfer was visible by reading the source and the cliff was only visible by timing the
   components, so the readable diagnosis got written up first and would have shipped a 1.00× fix.
 
 ## Sample results — augmentation flagship (class API)
+
+Historical `RandomAffine` comparisons below used nearest interpolation for torchvision and
+bilinear for Kornia. The current harness matches bilinear interpolation; rerun before comparing.
 
 Directional numbers only — reproduce on your own hardware for anything you cite. Measured
 2026-08-08, commit `c97b0f9a`, Apple Silicon (macOS 26.5, arm64), Python 3.11, torch 2.9.1,

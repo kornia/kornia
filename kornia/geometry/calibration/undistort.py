@@ -23,7 +23,6 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -100,6 +99,7 @@ def undistort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
+    has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = F.pad(dist, [0, 14 - dist.shape[-1]])
@@ -114,12 +114,9 @@ def undistort_points(
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
 
-    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
-    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
-    capture = is_exporting()
-    if not torch.jit.is_scripting():
-        capture = capture or is_compiling()
-    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
+    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
+    if has_tilt:
         inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
         if inv_tilt.dim() == 2:
             inv_tilt = inv_tilt.unsqueeze(0)
@@ -209,14 +206,15 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     if not image.is_floating_point():
         raise ValueError(f"Invalid input image data type. Input should be float. Got {image.dtype}.")
 
-    if image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]:
-        # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4)
-        # allowed to avoid a breaking change.
-        if not all((image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())):
-            raise ValueError(
-                "Input shape is invalid. Input batch dimensions should match. "
-                f"Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}."
-            )
+    # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4)
+    # allowed to avoid a breaking change.
+    if (image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]) and not all(
+        (image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())
+    ):
+        raise ValueError(
+            "Input shape is invalid. Input batch dimensions should match. "
+            f"Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}."
+        )
 
     channels, rows, cols = image.shape[-3:]
     B = image.numel() // (channels * rows * cols)

@@ -25,8 +25,10 @@ import torch.nn.functional as F
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
 from kornia.core.utils import (
+    _autocast_disabled,
     _inverse_3x3_closed_form,
     _normalize_to_float32_or_float64,
+    _torch_grid_sample,
     _torch_inverse_cast,
     _torch_solve_cast,
 )
@@ -35,6 +37,9 @@ from kornia.geometry.conversions import (
     axis_angle_to_rotation_matrix,
     convert_affinematrix_to_homography,
     convert_affinematrix_to_homography3d,
+    convert_points_from_homogeneous,
+    normal_transform_pixel,
+    normal_transform_pixel3d,
     normalize_homography,
     normalize_homography3d,
     normalize_pixel_coordinates,
@@ -92,6 +97,41 @@ def _remap_grid_dtype(map_xy: torch.Tensor, normalized_coordinates: bool) -> tor
     # Read the default floating dtype off a zero-element promotion rather than
     # ``torch.get_default_dtype()``, which TorchScript does not expose.
     return (map_xy.reshape(-1)[:0] * 1.0).dtype
+
+
+def _runs_in_float32(src: torch.Tensor, other: torch.Tensor) -> bool:
+    """Return whether a warp of ``src`` builds its sampling grid and samples in float32.
+
+    torch's CPU float16/bfloat16 ``grid_sample`` returns wrong values, NaN and up to 3.4e38 once
+    the source is about 128 px or larger (torch 2.9.1 and 2.14), and torch 2.5.1 has no such kernel
+    at all; a half-precision sampling grid is also off by more than half a pixel at 256 px in
+    bfloat16 (#5751). A CPU half warp therefore runs in float32 and returns the input dtype, as the LAF
+    patch extractors already do. A mismatched ``other`` (transform or map) keeps the half path, so
+    it is rejected exactly as before. Other devices and dtypes are unaffected.
+    """
+    return src.device.type == "cpu" and src.dtype in (torch.float16, torch.bfloat16) and other.dtype == src.dtype
+
+
+def _unit_projective_scale(matrix: torch.Tensor) -> torch.Tensor:
+    """Return the detached projective scale of ``matrix``: the value closest to 1 in its nonzero-magnitude range.
+
+    A homography and any nonzero multiple of it describe the same map, yet
+    :func:`kornia.geometry.convert_points_from_homogeneous` leaves a point with ``|w| <= eps``
+    undivided using an *absolute* ``eps``. Feeding that routine a grid built from an arbitrarily
+    scaled matrix therefore changes the sampled pixels instead of the warp. Dividing by this scale
+    first puts every equivalent matrix in the same numeric range. Choosing between the largest and
+    smallest nonzero magnitude, rather than just dividing by the largest, keeps a unit diagonal from
+    being shrunk toward zero by large translations. The scale is a projective gauge, so detaching it
+    leaves the warp's derivative unchanged.
+    """
+    magnitude = matrix.detach().abs()
+    largest = magnitude.amax(dim=(-2, -1), keepdim=True)
+    smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
+    scale = torch.minimum(largest, torch.ones_like(largest)).clamp_min(smallest)
+    # An all-zero matrix leaves `smallest` infinite, and dividing by infinity would collapse the
+    # warp's gradient to zero. Anything that is not a finite positive scale is left alone.
+    usable = (scale > 0) & torch.isfinite(scale)
+    return torch.where(usable, scale, torch.ones_like(scale))
 
 
 def _empty_warp_output_2d(
@@ -168,9 +208,18 @@ def _empty_warp_output_2d(
     if padding_mode == "fill" and allow_fill:
         if fill_value is None:
             fill_value = torch.zeros(sample_channels, device=src.device, dtype=src.dtype)
-        sampled = _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+        sampled = _fill_and_warp(
+            sample_src,
+            grid,
+            align_corners=align_corners,
+            mode=mode,
+            fill_value=fill_value,
+            out_shape=[src_batch, src.shape[1], dsize[0], dsize[1]],
+        )
     else:
-        sampled = F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+        sampled = _torch_grid_sample(
+            sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode
+        )
     out_zero = sampled.reshape(-1)[:1].sum() * 0.0
     return out_zero.reshape(1, 1, 1, 1).expand(src_batch, src.shape[1], dsize[0], dsize[1])
 
@@ -199,7 +248,7 @@ def _empty_warp_output_3d(
     if src.shape[-3] == 0 or src.shape[-2] == 0 or src.shape[-1] == 0:
         src_zero = src.reshape(-1)[:1].sum() * 0.0
         sample_src = src_zero.reshape(1, 1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1, 1)
-    return F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    return _torch_grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
 def warp_perspective(
@@ -229,6 +278,8 @@ def warp_perspective(
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
+        - a nonzero scalar multiple of ``M`` describes the same warp; uniformly small or large
+          nonzero entries are rescaled toward unit magnitude before the coordinate change and inversion
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
@@ -240,7 +291,9 @@ def warp_perspective(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+            fill. Defaults to zeros.
 
     Returns:
         the warped input image :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
@@ -271,13 +324,6 @@ def warp_perspective(
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 torch.Tensor. Got {M.shape}")
 
-    # fill padding is only supported for 3 channels because we can't set fill_value default
-    # to None as this gives jit issues.
-    if fill_value is None:
-        fill_value = torch.zeros(3)
-    if padding_mode == "fill" and fill_value.shape != torch.Size([3]):
-        raise ValueError(f"Padding_tensor only supported for 3 channels. Got {fill_value.shape}")
-
     B, _, H, W = src.size()
     h_out, w_out = dsize
     if h_out < 0 or w_out < 0:
@@ -286,8 +332,16 @@ def warp_perspective(
         return _empty_warp_output_2d(
             src, M, dsize, mode, padding_mode, align_corners, _matrix_warp_grid_dtype(src, M), fill_value
         )
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
-    # we F.normalize the 3x3 transformation matrix and convert to 3x4
+    # H and s*H represent the same projective map. Remove that arbitrary scale before
+    # the coordinate change and inverse: the cubic determinant can overflow/underflow
+    # even when every entry, the sampling positions and their gradients are finite.
+    if M.is_floating_point():
+        M = M / _unit_projective_scale(M)
+
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M, (H, W), (h_out, w_out), align_corners=align_corners
     )  # Bx3x3
@@ -318,8 +372,14 @@ def warp_perspective(
         grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
 
     if padding_mode == "fill":
-        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+        # One zero per channel, as in warp_affine. It is built here, not before the empty-destination return, whose
+        # helper builds its own default for its stand-in channels (#6021).
+        if fill_value is None:
+            fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
+        out_dtype
+    )
 
 
 def warp_affine(
@@ -361,7 +421,9 @@ def warp_affine(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners : mode for grid_generation.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+            fill.
 
     Returns:
         the warped torch.Tensor with shape :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
@@ -409,6 +471,9 @@ def warp_affine(
             fill_value,
             transform_batch_broadcast="src_when_larger",
         )
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize, align_corners=align_corners)
@@ -451,19 +516,31 @@ def warp_affine(
         gx = m[:, 0, 0, None, None] * base_x + m[:, 0, 1, None, None] * base_y + m[:, 0, 2, None, None]
         gy = m[:, 1, 0, None, None] * base_x + m[:, 1, 1, None, None] * base_y + m[:, 1, 2, None, None]
         grid = torch.stack([gx, gy], dim=-1)  # (B_M, H, W, 2)
-    if B_M == 1 and B > 1:
+    if torch.jit.is_tracing():
+        # Keep both batch sizes dynamic. Using their maximum expands a shared grid for non-empty images,
+        # but leaves a singleton grid intact for an empty source so grid_sample still rejects that pairing.
+        batch = torch.maximum(torch._shape_as_tensor(src)[0], torch._shape_as_tensor(M)[0])
+        grid = grid.expand(batch, -1, -1, -1)
+    elif B_M == 1 and B > 1:
         grid = grid.expand(B, -1, -1, -1)
 
     if padding_mode == "fill":
         if fill_value is None:
             fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
-        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value).to(out_dtype)
 
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode).to(
+        out_dtype
+    )
 
 
 def _fill_and_warp(
-    src: torch.Tensor, grid: torch.Tensor, mode: str, align_corners: bool, fill_value: torch.Tensor
+    src: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str,
+    align_corners: bool,
+    fill_value: torch.Tensor,
+    out_shape: Optional[list[int]] = None,
 ) -> torch.Tensor:
     r"""Warp a mask of torch.ones, then multiply with fill_value and add to default warp.
 
@@ -472,11 +549,37 @@ def _fill_and_warp(
         grid: grid torch.Tensor from `transform_points`.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
+        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, H, W)` without changing it, such as :math:`(B, C, 1, 1)`.
+        out_shape: the output shape ``fill_value`` is checked against, when ``src`` and ``grid`` stand in for an
+            empty destination; the fill is then reduced to one value. Defaults to the shape sampled from ``src``
+            and ``grid``.
 
     Returns:
         the warped and filled torch.Tensor with shape :math:`(B, C, H, W)`.
     """
+    stand_in = out_shape is not None
+    if out_shape is None:
+        out_shape = [src.shape[0], src.shape[1], grid.shape[1], grid.shape[2]]
+    # 0-d and 1-D fills are per channel; any other fill broadcasts as given. Either way it must leave the output
+    # shape unchanged: a fill that broadcast to more channels turned a one-channel image into three (#6021).
+    fill_shape = list(fill_value.shape)
+    if len(fill_shape) == 1:
+        fill_shape = [1, fill_shape[0], 1, 1]
+    fits = len(fill_shape) <= 4
+    for i in range(1, min(len(fill_shape), 4) + 1):
+        if fill_shape[-i] != 1 and fill_shape[-i] != out_shape[-i]:
+            fits = False
+    if not fits:
+        raise ValueError(
+            f"fill_value of shape {list(fill_value.shape)} does not broadcast to the warped image of shape "
+            f"{out_shape} without changing it; use one value, one per channel ({out_shape[1]}), or a shape such as "
+            "(B, C, 1, 1) or (B, C, H, W)."
+        )
+    if stand_in:
+        # The stand-ins' result is discarded: a constant-size fill, still connected to autograd, keeps a spatial fill
+        # from broadcasting the 1x1 stand-ins up to its own size.
+        fill_value = fill_value.sum().reshape(1)
     ones_mask = torch.ones_like(src)
     fill_value = fill_value.to(ones_mask)
 
@@ -485,11 +588,13 @@ def _fill_and_warp(
     elif fill_value.ndim == 1:
         fill_value = fill_value.view(1, -1, 1, 1)
 
-    inv_ones_mask = 1 - F.grid_sample(ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros")
+    inv_ones_mask = 1 - _torch_grid_sample(
+        ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros"
+    )
 
     inv_color_mask = inv_ones_mask * fill_value
 
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
 
 
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
@@ -501,6 +606,12 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
         - only the :math:`(1, H, W, 2)` grid broadcasts over homography batches; a batched grid
           requires a matching batch of :math:`N` homographies
+        - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
+          returns the same grid, except at grid points whose homogeneous coordinate is within
+          ``1e-8`` of zero after that rescaling: those are left undivided, as
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
+          infinity
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`, or :math:`(N, H, W, 2)` with a
@@ -519,10 +630,57 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1)  # NxHxWx2
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 3, 3)  # Nx1x3x3
+    # H and s*H are the same warp, but the absolute eps inside convert_points_from_homogeneous
+    # would otherwise make the sampled grid depend on the matrix's arbitrary scale.
+    if src_homo_dst.is_floating_point():
+        src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,
     # the grid is copied to input device and casted to the same type
     flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxHxWx2
     return flow.view(batch_size, height, width, 2)  # NxHxWx2
+
+
+def _pixel_grid_work_dtype(src_homo_dst: torch.Tensor) -> torch.dtype:
+    """Return the dtype a pixel-coordinate sampling grid is warped and normalized in: float32 for a half homography.
+
+    Pixel coordinates reach the image size, where float16 rounds them to half pixels from 512 and to whole pixels from
+    1024, and bfloat16 already from 64 and 128. The grid is therefore warped and normalized in float32, and only the
+    normalized result, whose values lie near ``[-1, 1]``, returns to the homography's dtype. Other dtypes are kept.
+    """
+    if src_homo_dst.dtype in (torch.float16, torch.bfloat16):
+        return torch.float32
+    return src_homo_dst.dtype
+
+
+def _warp_pixel_grid(src_homo_dst: torch.Tensor, height: int, width: int) -> torch.Tensor:
+    """Warp the ``(height, width)`` grid of destination pixels by ``src_homo_dst`` into source pixel coordinates.
+
+    The grid is built and warped in :func:`_pixel_grid_work_dtype`, whatever the default dtype, with the projective
+    gauge and homogeneous division of :func:`warp_grid`. The homography is applied as a sum of elementwise column
+    products rather than a matrix product: a caller's autocast region would run a matrix product in half precision,
+    also in a scripted call, which cannot leave it, and round the pixel coordinates of a 640 px wide grid to whole
+    pixels in bfloat16. Autocast leaves elementwise products alone, so eager and scripted calls compute the same grid.
+    """
+    work_dtype = _pixel_grid_work_dtype(src_homo_dst)
+    grid = create_meshgrid(height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype)
+    matrix = src_homo_dst.to(work_dtype)
+    matrix = matrix / _unit_projective_scale(matrix)
+    # Broadcasting covers both (N, 3, 3) and (N, 1, 3, 3).
+    matrix = matrix.reshape(src_homo_dst.shape[0], 1, 1, 3, 3)
+    warped = grid[..., :1] * matrix[..., 0] + grid[..., 1:] * matrix[..., 1] + matrix[..., 2]
+    return convert_points_from_homogeneous(warped)
+
+
+def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, align_corners: bool) -> torch.Tensor:
+    """Map a ``(N, H, W, 2)`` grid of source pixel coordinates to the ``[-1, 1]`` coordinates ``grid_sample`` reads.
+
+    ``height`` and ``width`` are the source's. The map is :func:`~kornia.geometry.conversions.normal_transform_pixel`
+    under ``align_corners``, the one :func:`warp_perspective` conjugates its pixel homography with, applied per axis.
+    """
+    norm = normal_transform_pixel(height, width, device=grid.device, dtype=grid.dtype, align_corners=align_corners)[0]
+    scale = torch.stack((norm[0, 0], norm[1, 1]))
+    offset = torch.stack((norm[0, 2], norm[1, 2]))
+    return grid * scale + offset
 
 
 def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
@@ -535,6 +693,12 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
         - only the :math:`(1, D, H, W, 3)` grid broadcasts over homography batches; a batched
           grid requires a matching batch of :math:`N` homographies
+        - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
+          homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
+          returns the same grid, except at grid points whose homogeneous coordinate is within
+          ``1e-8`` of zero after that rescaling: those are left undivided, as
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does for points at
+          infinity
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`, or :math:`(N, D, H, W, 3)`
@@ -553,10 +717,52 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     grid = grid.expand(batch_size, -1, -1, -1, -1)  # NxDxHxWx3
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 4, 4)  # Nx1x3x3
+    # Same projective gauge as in warp_grid: a scaled 4x4 matrix must not move the grid.
+    if src_homo_dst.is_floating_point():
+        src_homo_dst = src_homo_dst / _unit_projective_scale(src_homo_dst)
     # perform the actual grid transformation,
     # the grid is copied to input device and casted to the same type
     flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxDxHxWx3
     return flow.view(batch_size, depth, height, width, 3)  # NxDxHxWx3
+
+
+def _warp_pixel_grid3d(src_homo_dst: torch.Tensor, depth: int, height: int, width: int) -> torch.Tensor:
+    """Warp the ``(depth, height, width)`` grid of destination voxels by ``src_homo_dst`` into source voxels.
+
+    The 3-D counterpart of :func:`_warp_pixel_grid`: the grid is built and warped in :func:`_pixel_grid_work_dtype`,
+    whatever the default dtype, with the projective gauge and homogeneous division of :func:`warp_grid3d`, as a sum of
+    elementwise column products that a caller's autocast region leaves alone, scripted or not. The result is
+    :math:`(N, D, H, W, 3)` in the ``(x, y, z)`` order the homography and ``grid_sample`` read.
+    """
+    work_dtype = _pixel_grid_work_dtype(src_homo_dst)
+    grid = create_meshgrid3d(
+        depth, height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype
+    )
+    matrix = src_homo_dst.to(work_dtype)
+    matrix = matrix / _unit_projective_scale(matrix)
+    # Broadcasting covers both (N, 4, 4) and (N, 1, 4, 4).
+    matrix = matrix.reshape(src_homo_dst.shape[0], 1, 1, 1, 4, 4)
+    # create_meshgrid3d is (d, x, y); the homography acts on (x, y, z).
+    x, y, z = grid[..., 1:2], grid[..., 2:3], grid[..., 0:1]
+    warped = x * matrix[..., 0] + y * matrix[..., 1] + z * matrix[..., 2] + matrix[..., 3]
+    return convert_points_from_homogeneous(warped)
+
+
+def _normalize_warped_pixel_grid3d(
+    grid: torch.Tensor, depth: int, height: int, width: int, align_corners: bool
+) -> torch.Tensor:
+    """Map a ``(N, D, H, W, 3)`` grid of ``(x, y, z)`` source voxels to the ``[-1, 1]`` coordinates of ``grid_sample``.
+
+    ``depth``, ``height`` and ``width`` are the source's. The map is
+    :func:`~kornia.geometry.conversions.normal_transform_pixel3d` under ``align_corners``, the one
+    :func:`warp_perspective3d` conjugates its voxel homography with, applied per axis.
+    """
+    norm = normal_transform_pixel3d(
+        depth, height, width, device=grid.device, dtype=grid.dtype, align_corners=align_corners
+    )[0]
+    scale = torch.stack((norm[0, 0], norm[1, 1], norm[2, 2]))
+    offset = torch.stack((norm[0, 3], norm[1, 3], norm[2, 3]))
+    return grid * scale + offset
 
 
 # TODO: move to kornia.geometry.projective
@@ -667,6 +873,7 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - points: ``(x, y)``, pixel centers, origin at top-left; shape :math:`(B, 4, 2)`
         - returns the source→destination **pixel** homography :math:`(B, 3, 3)` that
           :func:`warp_perspective` takes
+        - a caller's autocast region does not change the result, outside TorchScript
 
     Args:
         points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
@@ -694,7 +901,12 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     # ``torch.linalg.solve``. Both yield the perspective transform mapping ``points_src`` onto
     # ``points_dst``; the closed form additionally needs no LAPACK/cusolver backend (so it runs on
     # the Jetson wheel, where ``linalg.solve`` dlopen-fails) and traces cleanly for ONNX.
-    return _get_perspective_transform_closed_form(points_src, points_dst)
+    # A caller's autocast region would run its products in half precision: about 1 px off at the corners of a 640 x
+    # 480 image. TorchScript has no context managers; a scripted call keeps the caller's precision.
+    if torch.jit.is_scripting():
+        return _get_perspective_transform_closed_form(points_src, points_dst)
+    with _autocast_disabled(points_src.device.type):
+        return _get_perspective_transform_closed_form(points_src, points_dst)
 
 
 # TODO: move to kornia.geometry.affine
@@ -735,6 +947,10 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     Returns:
         the affine matrix of 2D rotation with shape :math:`(B, 2, 3)`.
 
+    Raises:
+        TypeError: If any input is not a tensor.
+        ValueError: If input shapes are invalid, or batch sizes, devices or dtypes do not match.
+
     Example:
         >>> center = torch.zeros(1, 2)
         >>> scale = torch.ones((1, 2))
@@ -771,10 +987,14 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
             f"{scale.shape}"
         )
 
-    if not (center.device == angle.device == scale.device) or not (center.dtype == angle.dtype == scale.dtype):
+    if not (center.device == angle.device == scale.device):
         raise ValueError(
-            f"Inputs must have same device Got center ({center.device}, {center.dtype}), angle ({angle.device}, "
-            f"{angle.dtype}) and scale ({scale.device}, {scale.dtype})"
+            f"Inputs must have same device. Got center {center.device}, angle {angle.device} and scale {scale.device}."
+        )
+
+    if not (center.dtype == angle.dtype == scale.dtype):
+        raise ValueError(
+            f"Inputs must have same dtype. Got center {center.dtype}, angle {angle.dtype} and scale {scale.dtype}."
         )
 
     shift_m = eye_like(3, center)
@@ -880,6 +1100,9 @@ def remap(
             allow_fill=False,
             operand="map",
         )
+    out_dtype = image.dtype
+    if _runs_in_float32(image, map_xy):
+        image, map_xy = image.float(), map_xy.float()
 
     # F.normalize coordinates if not already normalized
     if not normalized_coordinates:
@@ -889,7 +1112,9 @@ def remap(
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp the image tensor and return
-    return F.grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return _torch_grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners).to(
+        out_dtype
+    )
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
@@ -947,6 +1172,8 @@ def get_affine_matrix2d(
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
         - positive ``angle`` rotates **clockwise** as displayed — this function negates ``angle``
           before delegating to :func:`get_rotation_matrix2d`, whose convention is CCW-positive
+        - ``sx`` and ``sy`` are angles in radians, using :func:`get_shear_matrix2d`'s
+          negative-tangent, x-then-y shear about ``center``, applied before rotation, scale and translation
         - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
 
     Args:
@@ -954,8 +1181,8 @@ def get_affine_matrix2d(
         center: torch.Tensor containing the center vector with shape :math:`(B, 2)`.
         scale: torch.Tensor containing the scale factor with shape :math:`(B, 2)`.
         angle: torch.Tensor of angles in degrees :math:`(B)`.
-        sx: torch.Tensor containing the shear factor in the x-direction with shape :math:`(B)`.
-        sy: torch.Tensor containing the shear factor in the y-direction with shape :math:`(B)`.
+        sx: torch.Tensor containing the shear angle in radians in the x-direction with shape :math:`(B)`.
+        sy: torch.Tensor containing the shear angle in radians in the y-direction with shape :math:`(B)`.
 
     Returns:
         the affine transformation matrix :math:`(B, 3, 3)`.
@@ -1013,14 +1240,19 @@ def get_shear_matrix2d(
             a & ab + 1 \\
         \end{bmatrix}
 
+    Here :math:`a = -\tan(sy)` and :math:`b = -\tan(sx)`.
+
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
+        - ``sx`` and ``sy`` are angles in radians; about ``center = (cx, cy)``, the forward mapping is
+          ``x_out = x - tan(sx) * (y - cy)``, then ``y_out = y - tan(sy) * (x_out - cx)``.
+          Pixel x increases rightward and y downward. This differs from :func:`shear`'s raw factors.
         - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
 
     Args:
         center: shearing center coordinates of (x, y).
-        sx: shearing angle along x axis in radiants.
-        sy: shearing angle along y axis in radiants
+        sx: shearing angle along x axis in radians.
+        sy: shearing angle along y axis in radians
 
     Returns:
         params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
@@ -1249,8 +1481,11 @@ def warp_affine3d(
           exactly that many voxels under either setting; the two differ only in out-of-bounds
           handling
         - padding_mode: ``'zeros'`` by default
+        - an empty batch returns shape :math:`(0, C, d, h, w)` with gradients connected to both inputs
+          even when a source spatial dimension is zero
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
+        - a nonempty batch requires positive source spatial dimensions for a nonempty output
 
     Args:
         src : input torch.Tensor of shape :math:`(B, C, D, H, W)`.
@@ -1280,8 +1515,13 @@ def warp_affine3d(
     B, C, D, H, W = src.size()
     if dsize[0] < 0 or dsize[1] < 0 or dsize[2] < 0:
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
-    if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
+    # affine_grid rejects a zero batch: an empty batch takes the empty-output path, which keeps the
+    # sampling-option, dtype, device and batch checks and the autograd links to both inputs.
+    if B == 0 or dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
         return _empty_warp_output_3d(src, M, dsize, flags, padding_mode, align_corners)
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
     size_src: tuple[int, int, int] = (D, H, W)
     size_out: tuple[int, int, int] = dsize
@@ -1299,7 +1539,9 @@ def warp_affine3d(
     # compute meshgrid and apply to input
     dsize_out: list[int] = [B, C, *list(size_out)]
     grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
+    return _torch_grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode).to(
+        out_dtype
+    )
 
 
 def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
@@ -1380,7 +1622,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     from_origin_mat[..., :3, -1] += center
 
     to_origin_mat = from_origin_mat.clone()
-    to_origin_mat = _torch_inverse_cast(from_origin_mat)
+    # An identity plus a translation column is unit triangular, so it is always invertible.
+    to_origin_mat = _torch_inverse_cast(from_origin_mat, check_errors=False)
 
     # append translation with torch.zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
@@ -1680,10 +1923,13 @@ def warp_perspective3d(
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
         return _empty_warp_output_3d(src, M, dsize, flags, border_mode, align_corners)
+    out_dtype = src.dtype
+    if _runs_in_float32(src, M):
+        src, M = src.float(), M.float()
 
     # launches the warper
     d, h, w = src.shape[-3:]
-    return _transform_warp_impl3d(src, M, (d, h, w), dsize, flags, border_mode, align_corners)
+    return _transform_warp_impl3d(src, M, (d, h, w), dsize, flags, border_mode, align_corners).to(out_dtype)
 
 
 def homography_warp(
@@ -1705,15 +1951,19 @@ def homography_warp(
         coordinates and ``align_corners`` sampling rules.
 
         - input: :math:`(N, C, H, W)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`, in normalized
-          :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), when
-          ``normalized_homography=True`` (default); with ``normalized_homography=False`` it is
-          consumed as the source→destination **pixel** homography, exactly like
-          :func:`warp_perspective`
+        - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)` when
+          ``normalized_homography=True`` (default), in normalized :math:`[-1, 1]` coordinates by default
+          (``normalized_coordinates=True``). With ``normalized_coordinates=False`` it is in **pixel**
+          coordinates, pixel centres at integers: it maps the pixel ``(x, y)`` of the ``dsize`` output to the
+          source pixel it samples, so an identity returns the top-left ``dsize`` window of the input
+        - with ``normalized_homography=False`` it is consumed as the source→destination **pixel** homography,
+          exactly like :func:`warp_perspective`, and ``normalized_coordinates`` is ignored
+        - with ``normalized_coordinates=False`` the pixel grid is warped and normalized in at least float32, also
+          under a half default dtype and in a caller's autocast region, and then cast to the homography's dtype
         - ``dsize`` is ``(h, w)``
-        - align_corners: ``False`` by default (differs from :func:`warp_perspective`)
-        - with ``normalized_homography=False``, ``mode`` and ``align_corners`` are ignored and
-          ``'bilinear'``/``True`` are used (`#4772 <https://github.com/kornia/kornia/issues/4772>`_)
+        - align_corners: ``False`` by default (differs from :func:`warp_perspective`). Along a source axis longer
+          than one pixel, a pixel homography samples the same positions under both settings, which then differ
+          only in ``padding_mode="reflection"``
         - negative output dimensions raise ``ValueError``
 
     Args:
@@ -1721,15 +1971,15 @@ def homography_warp(
         src_homo_dst: The homography or torch.stack of homographies of shape :math:`(N, 3, 3)` —
             destination to source when ``normalized_homography=True`` (default), source to
             destination (pixel) when ``normalized_homography=False``.
-        dsize:
-          if homography normalized: The height and width of the image to warp.
-          if homography not normalized: size of the output image (height, width).
+        dsize: output size ``(h, w)``.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
-        normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
-        normalized_homography: whether ``src_homo_dst`` is a normalized (destination→source)
-            homography (``True``, default) or a pixel source→destination homography (``False``).
+        normalized_coordinates: whether ``src_homo_dst`` is in normalized :math:`[-1, 1]` coordinates
+            (``True``) or in pixel coordinates (``False``). Ignored when ``normalized_homography=False``.
+        normalized_homography: whether ``src_homo_dst`` is a destination→source homography in the coordinates
+            ``normalized_coordinates`` selects (``True``, default) or a pixel source→destination homography
+            (``False``).
 
     Return:
         Patch sampled at locations from source to destination.
@@ -1756,19 +2006,29 @@ def homography_warp(
         )
     if normalized_homography:
         height, width = dsize
-        grid = create_meshgrid(
-            height,
-            width,
-            normalized_coordinates=normalized_coordinates,
-            device=patch_src.device,
-            dtype=patch_src.dtype,
-            align_corners=align_corners,
-        )
-        warped_grid = warp_grid(grid, src_homo_dst)
+        if normalized_coordinates:
+            grid = create_meshgrid(
+                height,
+                width,
+                normalized_coordinates=True,
+                device=patch_src.device,
+                dtype=patch_src.dtype,
+                align_corners=align_corners,
+            )
+            warped_grid = warp_grid(grid, src_homo_dst)
+        else:
+            # A pixel homography lands on source pixels, which grid_sample reads normalized. The pixel arithmetic
+            # runs in at least float32, unaffected by autocast, then the grid returns to the homography's dtype.
+            warped_grid = _warp_pixel_grid(src_homo_dst, height, width)
+            warped_grid = _normalize_warped_pixel_grid(
+                warped_grid, patch_src.shape[-2], patch_src.shape[-1], align_corners
+            ).to(src_homo_dst.dtype)
 
-        return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+        return _torch_grid_sample(
+            patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
+        )
     return warp_perspective(
-        patch_src, src_homo_dst, dsize, mode="bilinear", padding_mode=padding_mode, align_corners=True
+        patch_src, src_homo_dst, dsize, mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
 
 
@@ -1799,10 +2059,10 @@ def homography_warp3d(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by normalized 3D homographies.
+    r"""Warp image patches or tensors by 3D homographies.
 
     Convention:
-        - input: :math:`(N, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
+        - input: :math:`(N, C, D, H, W)`; ``dsize`` is the output size ``(d, h, w)``
         - ``src_homo_dst`` is the destination→source homography :math:`(N, 4, 4)`, in normalized
           :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), and acts on
           ``(x, y, z, 1)`` column vectors: ``x`` indexes ``W``, ``y`` indexes ``H``, ``z`` indexes
@@ -1811,9 +2071,20 @@ def homography_warp3d(
           ``(d, x, y)`` (see :func:`~kornia.geometry.grid.create_meshgrid3d`), so the sampling grid
           is reordered here before the homography is applied; nothing else in the module changes
           its order
-        - align_corners: ``False`` by default. It selects the normalization of the sampling grid
-          as well as the ``grid_sample`` call, so the two agree and an identity homography
-          reproduces the input under either setting
+        - with ``normalized_coordinates=False`` ``src_homo_dst`` is in **voxel** coordinates, voxel
+          centres at integers, in the same ``(x, y, z)`` order: it maps the voxel ``(x, y, z)`` of the
+          ``dsize`` output to the source voxel it samples, so an identity returns the ``dsize`` window
+          of the input that starts at voxel ``(0, 0, 0)``. The warped voxel grid is normalized with the
+          source size under ``align_corners`` before ``grid_sample``
+        - with ``normalized_coordinates=False`` the voxel grid is warped and normalized in at least
+          float32, also under a half default dtype and in a caller's autocast region, and then cast to
+          the homography's dtype
+        - align_corners: ``False`` by default. With ``normalized_coordinates=True`` it selects the
+          normalization of the sampling grid as well as the ``grid_sample`` call, so the two agree and an
+          identity homography reproduces the input under either setting. With
+          ``normalized_coordinates=False`` and a source axis longer than one voxel, a voxel homography
+          samples the same positions under both settings, which then differ only in
+          ``padding_mode="reflection"``
         - padding_mode: ``'zeros'`` by default
         - negative output dimensions raise ``ValueError``
 
@@ -1821,11 +2092,12 @@ def homography_warp3d(
         patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
         src_homo_dst: The homography or torch.stack of homographies from destination to source of shape
           :math:`(N, 4, 4)`.
-        dsize: The depth, height and width of the volume to warp.
+        dsize: output size ``(d, h, w)``.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
-        normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
+        normalized_coordinates: whether ``src_homo_dst`` is in normalized :math:`[-1, 1]` coordinates
+          (``True``) or in voxel coordinates (``False``).
 
     Return:
         Patch sampled at locations from source to destination.
@@ -1844,20 +2116,34 @@ def homography_warp3d(
             f"src_H_dst.device: {src_homo_dst.device}."
         )
 
+    out_dtype = patch_src.dtype
+    if _runs_in_float32(patch_src, src_homo_dst):
+        patch_src, src_homo_dst = patch_src.float(), src_homo_dst.float()
     depth, height, width = dsize
-    grid = create_meshgrid3d(
-        depth,
-        height,
-        width,
-        normalized_coordinates=normalized_coordinates,
-        device=patch_src.device,
-        dtype=torch.promote_types(patch_src.dtype, src_homo_dst.dtype),
-        align_corners=align_corners,
-    )
-    # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
-    # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
-    # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
-    grid = grid[..., [1, 2, 0]]
-    warped_grid = warp_grid3d(grid, src_homo_dst)
+    if normalized_coordinates:
+        grid = create_meshgrid3d(
+            depth,
+            height,
+            width,
+            normalized_coordinates=True,
+            device=patch_src.device,
+            dtype=torch.promote_types(patch_src.dtype, src_homo_dst.dtype),
+            align_corners=align_corners,
+        )
+        # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
+        # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
+        # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
+        # Stacked rather than indexed with a list, which is copied to the device with a blocking transfer.
+        grid = torch.stack((grid[..., 1], grid[..., 2], grid[..., 0]), -1)
+        warped_grid = warp_grid3d(grid, src_homo_dst)
+    else:
+        # A voxel homography lands on source voxels, which grid_sample reads normalized. The voxel arithmetic runs
+        # in at least float32, unaffected by autocast, then the grid returns to the homography's dtype.
+        warped_grid = _warp_pixel_grid3d(src_homo_dst, depth, height, width)
+        warped_grid = _normalize_warped_pixel_grid3d(
+            warped_grid, patch_src.shape[-3], patch_src.shape[-2], patch_src.shape[-1], align_corners
+        ).to(src_homo_dst.dtype)
 
-    return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return _torch_grid_sample(
+        patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners
+    ).to(out_dtype)

@@ -33,6 +33,7 @@ import kornia
 from kornia.core._compat import torch_version_lt
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.epipolar.numeric import matrix_cofactor_tensor
+from kornia.geometry.line import fit_line
 
 # Every tensor here is created device-free and fed to onnxruntime as numpy: the work is CPU-bound
 # whatever ``--device`` says, so the accelerator legs must not repeat it.
@@ -107,6 +108,12 @@ def _cases():
             id="warp_perspective",
         ),
         pytest.param(kornia.filters.MedianBlur((3, 3)), (img,), id="MedianBlur"),
+        # A kernel factory has no tensor input: add it to one. The ramp was an int64 arange times a float, an
+        # ``aten.mul.Scalar`` the 2.14 dynamo exporter has no translation for with onnxscript 0.7.1.
+        pytest.param(_Fn(lambda x: kornia.filters.get_hanning_kernel1d(9) + x), (torch.zeros(9),), id="hanning1d"),
+        pytest.param(
+            _Fn(lambda x: kornia.filters.get_hanning_kernel2d((5, 7)) + x), (torch.zeros(5, 7),), id="hanning2d"
+        ),
         pytest.param(_Fn(kornia.contrib.distance_transform), ((gray > 0.7).float(),), id="distance_transform"),
         pytest.param(
             kornia.losses.HausdorffERLoss(),
@@ -147,12 +154,55 @@ def _cases():
             ),
             id="depth_from_plane_equation_grazing",
         ),
+        pytest.param(
+            # An exactly vertical row: the exported atan2 returns -pi for atan2(+0, negative), where eager returns
+            # +pi, so the fit computes theta from atan2(-0, negative), which both return as -pi (#5040). The eager
+            # line stores its origin and direction as parameters, hence the detach.
+            _Fn(
+                lambda p, w: tuple(
+                    t.detach() for line in (fit_line(p), fit_line(p, w)) for t in (line.origin, line.direction)
+                )
+            ),
+            (
+                torch.stack(
+                    [
+                        torch.stack([torch.full((7,), 0.7), torch.linspace(0.1, 0.7, 7)], -1),
+                        torch.stack([torch.linspace(0.0, 3.0, 7), torch.linspace(1.0, -1.0, 7) ** 2], -1),
+                    ]
+                ),
+                torch.rand(2, 7) + 0.5,
+            ),
+            id="fit_line_2d_vertical",
+        ),
+        pytest.param(
+            # Exactly 0 and 180 degrees, and a zero vector: the exported atan2 returns -pi for atan2(+0, negative) and
+            # maps NaN to 0, where eager returns +pi and NaN (#5500).
+            _Fn(
+                lambda R1, R2, v1, v2: (kornia.metrics.angle_error_mat(R1, R2), kornia.metrics.angle_error_vec(v1, v2))
+            ),
+            (
+                torch.stack([torch.eye(3), torch.eye(3)]),
+                torch.stack([torch.eye(3), torch.diag(torch.tensor([1.0, -1.0, -1.0]))]),
+                torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+                torch.tensor([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+            ),
+            id="angle_error_kinks",
+        ),
     ]
 
 
 @pytest.mark.parametrize("module,inputs", _cases())
 def test_onnx_export_matches_eager(module, inputs):
     eager, ort_out = _export_and_run(module, inputs)
+    _assert_same(eager, ort_out)
+
+
+@pytest.mark.parametrize("reduction", ["mean", "sum"])
+def test_focal_loss_export(reduction):
+    # The CPU label check's aminmax must lower through ONNX, not only through torch.export.
+    logits = torch.linspace(-2.0, 2.0, 24).reshape(2, 3, 4)
+    labels = torch.tensor([[0, 1, 2, -100], [2, 0, 1, 2]])
+    eager, ort_out = _export_and_run(kornia.losses.FocalLoss(alpha=0.25, reduction=reduction), (logits, labels))
     _assert_same(eager, ort_out)
 
 

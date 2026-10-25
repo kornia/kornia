@@ -33,7 +33,8 @@ from common import git_commit, run_batch_sweep, run_metadata, save_json, time_us
 
 def test_time_us_returns_median_and_spread():
     median, iqr = time_us(lambda: sum(range(100)), min_run_time=0.05)
-    assert median > 0 and not math.isnan(median)
+    assert median > 0
+    assert not math.isnan(median)
     assert iqr >= 0
 
 
@@ -42,7 +43,8 @@ def test_time_us_failure_is_nan():
         raise RuntimeError("expected")
 
     median, iqr = time_us(boom, min_run_time=0.05)
-    assert math.isnan(median) and math.isnan(iqr)
+    assert math.isnan(median)
+    assert math.isnan(iqr)
 
 
 def test_time_us_accepts_sync_callable():
@@ -124,15 +126,19 @@ def test_run_batch_sweep_rows_and_skip_cells(capsys):
     rows = run_batch_sweep([1, 2], build, ["fast", "missing"], row_fields=lambda b: {"size": 8}, min_run_time=0.05)
     measured = [r for r in rows if r.get("error") is None]
     assert [r["batch"] for r in measured] == [1, 2]
-    assert measured[0]["op"] == "opA" and measured[0]["backend"] == "fast" and measured[0]["size"] == 8
-    assert measured[0]["median_us"] > 0 and measured[0]["throughput_per_s"] > 0
+    assert measured[0]["op"] == "opA"
+    assert measured[0]["backend"] == "fast"
+    assert measured[0]["size"] == 8
+    assert measured[0]["median_us"] > 0
+    assert measured[0]["throughput_per_s"] > 0
     # the unavailable backend is recorded, not dropped, so the JSON shows the gap
     skipped = [r for r in rows if r["backend"] == "missing"]
     assert len(skipped) == 2
     assert all(r["median_us"] is None and r["throughput_per_s"] is None for r in skipped)
     assert all(r["error"] == "unavailable" for r in skipped)
     out = capsys.readouterr().out
-    assert "batch=1" in out and "batch=2" in out
+    assert "batch=1" in out
+    assert "batch=2" in out
     assert "-" in out  # the skip cell
 
 
@@ -150,17 +156,21 @@ def test_run_batch_sweep_accepts_non_batch_configs(capsys):
         units="LAFs/s",
         min_run_time=0.05,
     )
-    assert rows[0]["batch"] == 2 and rows[0]["n"] == 100  # row_fields overrides the config object
+    # row_fields overrides the config object
+    assert rows[0]["batch"] == 2
+    assert rows[0]["n"] == 100
     per_call_s = rows[0]["median_us"] * 1e-6
     assert math.isclose(rows[0]["throughput_per_s"], 200 / per_call_s)  # items_fn drives it, not the config
     out = capsys.readouterr().out
-    assert "B=2 N=100" in out and "(LAFs/s)" in out
+    assert "B=2 N=100" in out
+    assert "(LAFs/s)" in out
 
 
 def test_versions_line_reports_stack_and_gaps():
     line = versions_line({"torch": "2.9.1", "kornia": "0.9.0", "torchvision": None})
     assert line.startswith("#")
-    assert "torch 2.9.1" in line and "kornia 0.9.0" in line
+    assert "torch 2.9.1" in line
+    assert "kornia 0.9.0" in line
     assert "torchvision -" in line  # missing libs shown as '-', never dropped
 
 
@@ -206,7 +216,8 @@ def test_run_batch_sweep_records_warmup_failure_in_rows():  # 'compile' in a NAM
     )
     failed = next(r for r in rows if r["backend"] == "kornia (compiled)")
     assert failed["error"] == "InductorError"  # the exception type reaches the JSON, not just stdout
-    assert failed["median_us"] is None and failed["throughput_per_s"] is None
+    assert failed["median_us"] is None
+    assert failed["throughput_per_s"] is None
 
 
 def test_collect_load_metrics_aggregate_only() -> None:
@@ -277,8 +288,11 @@ def _flagship_parser(**kwargs):
 def test_add_flagship_args_shared_defaults() -> None:
     args = _flagship_parser(ops=("a", "b")).parse_args([])
     assert (args.batches, args.size, args.device, args.dtype, args.threads) == ("1,8,32", 256, "cpu", "float32", 4)
-    assert args.ops is None and args.skip_compile_ops == frozenset() and args.min_run_time == 1.0
-    assert args.json is None and args.contribute is None
+    assert args.ops is None
+    assert args.skip_compile_ops == frozenset()
+    assert args.min_run_time == 1.0
+    assert args.json is None
+    assert args.contribute is None
 
 
 def test_add_flagship_args_rejects_unknown_ops(capsys) -> None:
@@ -364,9 +378,12 @@ def test_run_batch_sweep_records_raising_backend(capsys) -> None:
 
     rows = run_batch_sweep([1], build, ["ok", "bad"], row_fields=lambda b: {}, min_run_time=0.05)
     bad = next(r for r in rows if r["backend"] == "bad")
-    assert bad["error"] == "ValueError" and bad["median_us"] is None and bad["throughput_per_s"] is None
+    assert bad["error"] == "ValueError"
+    assert bad["median_us"] is None
+    assert bad["throughput_per_s"] is None
     out = capsys.readouterr().out
-    assert "✗" in out and "a_very_long_operation_name_here/bad" in out
+    assert "✗" in out
+    assert "a_very_long_operation_name_here/bad" in out
     # the label column grows to fit the longest op name instead of running into the first cell
     line = next(line for line in out.splitlines() if line.startswith("a_very_long_operation_name_here"))
     assert line[len("a_very_long_operation_name_here")] == " "
@@ -414,7 +431,8 @@ def test_start_run_notes_when_opencv_ignores_threads(monkeypatch, capsys) -> Non
     args = _flagship_parser().parse_args([])
     common.start_run("flagship demo", args, torch.device("cpu"), units="img/s")
     out = capsys.readouterr().out
-    assert f"OpenCV ignored --threads {torch.get_num_threads()}" in out and "runs on 8 threads" in out
+    assert f"OpenCV ignored --threads {torch.get_num_threads()}" in out
+    assert "runs on 8 threads" in out
 
 
 def test_setup_run_without_opencv_leaves_it_out(monkeypatch, capsys) -> None:
@@ -443,4 +461,5 @@ def test_setup_run_without_opencv_leaves_it_out(monkeypatch, capsys) -> None:
         sys.modules.pop("cv2", None)
     assert meta["opencv_num_threads"] is None
     out = capsys.readouterr().out
-    assert "# device=cpu, dtype=float32, threads=3, size=" in out and "OpenCV ignored" not in out
+    assert "# device=cpu, dtype=float32, threads=3, size=" in out
+    assert "OpenCV ignored" not in out

@@ -22,6 +22,7 @@ import kornia
 import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
+from testing.two_view import two_view_scene
 
 
 class TestSkewSymmetric(BaseTester):
@@ -107,3 +108,18 @@ class TestVecLike:
         assert vec.shape == (B, N, 1)
         assert vec.device == image.device
         assert vec.dtype == image.dtype
+
+
+class TestConventionCrossProductMatrix(BaseTester):
+    def test_convention_cross_product_matrix_equals_vector_to_skew_symmetric_matrix(self, device, dtype):
+        two_view = two_view_scene(device, dtype)
+        v = two_view["X"][0]  # (12, 3), no two entries equal
+        M = epi.cross_product_matrix(v)
+        # The same matrix as kornia.geometry.conversions.vector_to_skew_symmetric_matrix, to the bit.
+        assert torch.equal(M, kornia.geometry.conversions.vector_to_skew_symmetric_matrix(v))
+        # Skew-symmetric, with [v]x w = v x w (the transposed matrix would give w x v).
+        assert torch.equal(M.transpose(-2, -1), -M)
+        w = two_view["t"][0, :, 0].expand_as(v)
+        self.assert_close((M @ w[..., None])[..., 0], torch.linalg.cross(v, w, dim=-1), low_tolerance=True)
+        # Any number of leading dims.
+        assert epi.cross_product_matrix(two_view["X"].reshape(2, 2, 3, 3)).shape == (2, 2, 3, 3, 3)

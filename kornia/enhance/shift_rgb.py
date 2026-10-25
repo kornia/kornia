@@ -18,17 +18,27 @@
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _to_device_nonblocking
+from kornia.enhance.adjust import _check_floating_image
 
 
 def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor, b_shift: torch.Tensor) -> torch.Tensor:
     """Shift rgb channels.
 
+    Convention:
+        Input must have shape (B, 3, H, W); another rank raises ``ShapeError`` and another channel
+        count raises ``ImageError``. One RGB shift per batch element is assembled as (B, 3, 1, 1),
+        then results are clamped to [0, 1].
+
     Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
     """
+    _check_floating_image(image, "shift_rgb")
     KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_IS_COLOR(image, f"with shape {image.shape}")
+    KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
 
     shifts = [r_shift, g_shift, b_shift]
 
-    return (image + torch.stack(shifts, dim=1).view(-1, 3, 1, 1).to(image)).clamp_(min=0, max=1)
+    shift = _to_device_nonblocking(torch.stack(shifts, dim=1).view(-1, 3, 1, 1), image.device, image.dtype)
+    return (image + shift).clamp_(min=0, max=1)

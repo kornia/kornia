@@ -30,12 +30,15 @@ class DISKFeatures:
 
     Since DISK detects a varying number of keypoints per image, `DISKFeatures` is not batched.
 
+    Convention:
+        The keypoints, scores and descriptors that :class:`~kornia.feature.DISK` returns for one image; its
+        Convention block gives their frame and order.
+
     Args:
         keypoints: torch.Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
         descriptors: torch.Tensor of shape :math:`(N, D)`, where :math:`D` is the descriptor dimension.
-        detection_scores: torch.Tensor of shape :math:`(N,)` where the detection score can be interpreted as
-                          the log-probability of keeping a keypoint after it has been proposed (see the paper
-                          section *Method → Feature distribution* for details).
+        detection_scores: torch.Tensor of shape :math:`(N,)`, the detection heatmap value at each keypoint: a raw
+                          logit of the network, not a log-probability.
 
     """
 
@@ -54,10 +57,10 @@ class DISKFeatures:
 
     @property
     def device(self) -> Union[str, torch.device, None]:
-        """Return the device of the stored tensors or module parameters.
+        """Return the device of the stored tensors.
 
         Returns:
-            Device used by the model parameters.
+            Device of the keypoints.
         """
         return self.keypoints.device
 
@@ -108,4 +111,6 @@ class Keypoints:
         desc = descriptors[:, y, x].T
         desc = F.normalize(desc, dim=-1)
 
-        return DISKFeatures(self.xys.to(dtype), desc, self.detection_logp.to(dtype))
+        # The integer pixels go to at least float32: bfloat16 holds no odd integer above 256, float16 none above 2048.
+        xys = self.xys.to(torch.promote_types(dtype, torch.float32))
+        return DISKFeatures(xys, desc, self.detection_logp.to(dtype))

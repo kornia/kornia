@@ -16,6 +16,8 @@
 #
 
 
+import pickle
+
 import pytest
 import torch
 
@@ -24,7 +26,154 @@ from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 from kornia.models.efficient_vit import backbone as vit
 
 
+class _NotAWeight:
+    """An arbitrary class, which ``torch.load(..., weights_only=True)`` refuses to unpickle."""
+
+
 class TestEfficientViT:
+    @staticmethod
+    def _fake_checkpoint() -> dict[str, torch.Tensor]:
+        """Mimic the hosted checkpoints: backbone weights under a ``backbone.`` prefix plus a ``head.`` classifier."""
+        model = vit.efficientvit_backbone_b1()
+        state_dict = {
+            f"backbone.{key}": val.clone()
+            for key, val in model.state_dict().items()
+            if "num_batches_tracked" not in key
+        }
+        state_dict["head.classifier.weight"] = torch.randn(1000, 128)
+        state_dict["head.classifier.bias"] = torch.randn(1000)
+        return state_dict
+
+    def test_load_pretrained_loads_the_checkpoint_weights(self, monkeypatch):
+        # GH#5276: strict=False over the raw checkpoint silently loaded no weight at all
+        state_dict = self._fake_checkpoint()
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: {"state_dict": state_dict},
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig())
+
+        for key, val in state_dict.items():
+            if key.startswith("backbone."):
+                assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
+
+    def test_load_local_checkpoint(self, tmp_path, monkeypatch):
+        state_dict = self._fake_checkpoint()
+        checkpoint = tmp_path / "b1-local.pt"
+        torch.save(state_dict, checkpoint)
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: pytest.fail("local checkpoints must not be downloaded"),
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig(checkpoint=str(checkpoint)))
+
+        for key, val in state_dict.items():
+            if key.startswith("backbone."):
+                assert torch.equal(model.backbone.state_dict()[key[len("backbone.") :]], val)
+
+    def test_load_local_checkpoint_expands_user(self, tmp_path, monkeypatch):
+        # a ``~`` path must not reach the URL loader, which resolves a name already in the hub cache to that file
+        state_dict = self._fake_checkpoint()
+        torch.save(state_dict, tmp_path / "b1-r224.pt")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: pytest.fail("local checkpoints must not be downloaded"),
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig(checkpoint="~/b1-r224.pt"))
+
+        key = "input_stem.op_list.0.conv.weight"
+        assert torch.equal(model.backbone.state_dict()[key], state_dict[f"backbone.{key}"])
+
+    def test_load_local_checkpoint_is_weights_only(self, tmp_path, monkeypatch):
+        # a local file is unpickled with weights_only=True, as the URL path and ModelBase.load_checkpoint do
+        checkpoint = tmp_path / "b1-local.pt"
+        torch.save({"payload": _NotAWeight()}, checkpoint)
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: pytest.fail("local checkpoints must not be downloaded"),
+        )
+
+        with pytest.raises(pickle.UnpicklingError):
+            EfficientViT.from_config(EfficientViTConfig(checkpoint=str(checkpoint)))
+
+    def test_load_failure_preserves_cause(self, monkeypatch):
+        cause = RuntimeError("download failed")
+
+        def fail_download(*args, **kwargs):
+            raise cause
+
+        monkeypatch.setattr("kornia.models.efficient_vit.model.load_state_dict_from_url", fail_download)
+
+        with pytest.raises(RuntimeError, match="Unable to load the model") as exc_info:
+            EfficientViT.from_config(EfficientViTConfig())
+
+        assert exc_info.value.__cause__ is cause
+
+    @pytest.mark.parametrize("drift", ["missing", "unexpected"])
+    def test_load_pretrained_is_strict(self, monkeypatch, drift):
+        # a checkpoint that lacks a backbone entry, or holds one the backbone has no slot for, raises
+        state_dict = self._fake_checkpoint()
+        if drift == "missing":
+            del state_dict["backbone.input_stem.op_list.0.conv.weight"]
+        else:
+            state_dict["backbone.input_stem.extra.weight"] = torch.zeros(1)
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: {"state_dict": state_dict},
+        )
+
+        with pytest.raises(RuntimeError, match=f"{drift.capitalize()} key"):
+            EfficientViT.from_config(EfficientViTConfig())
+
+    def test_load_pretrained_accepts_a_backbone_state_dict(self, monkeypatch):
+        # a state dict saved from the backbone itself has no "backbone." prefix
+        state_dict = {key: val + 1 for key, val in vit.efficientvit_backbone_b1().state_dict().items()}
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig())
+
+        loaded = model.backbone.state_dict()
+        assert loaded.keys() == state_dict.keys()
+        for key, val in state_dict.items():
+            assert torch.equal(loaded[key], val)
+
+    def test_load_pretrained_returns_eval_mode(self, monkeypatch):
+        state_dict = self._fake_checkpoint()
+        monkeypatch.setattr(
+            "kornia.models.efficient_vit.model.load_state_dict_from_url",
+            lambda *args, **kwargs: {"state_dict": state_dict},
+        )
+
+        model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224))
+
+        # ``training`` of the model and of every submodule: ``{False}`` is evaluation mode throughout.
+        assert {m.training for m in model.modules()} == {False}
+
+    @pytest.mark.slow
+    def test_load_pretrained_is_batch_independent(self):
+        model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224))
+        running_means = [m.running_mean.clone() for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d)]
+        generator = torch.Generator().manual_seed(0)
+        x1 = torch.rand(1, 3, 224, 256, generator=generator)
+        x2 = torch.rand(1, 3, 224, 256, generator=generator)
+
+        with torch.no_grad():
+            alone = model(x1)["stage_final"][0]
+            batched = model(torch.cat([x1, x2]))["stage_final"][0]
+
+        # In evaluation mode sample 0 does not see sample 1; only the kernels' summation order may change with the
+        # batch size, so the float32 tolerance is widened to 1e-4.
+        torch.testing.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
+        after = [m.running_mean for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d)]
+        assert all(torch.equal(a, b) for a, b in zip(after, running_means))
+
     def _test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         model = getattr(vit, f"efficientvit_backbone_{model_name}")()
         model = model.to(device=device, dtype=dtype)
@@ -72,3 +221,16 @@ class TestEfficientViT:
         config = EfficientViTConfig.from_pretrained(model_type, resolution)
         assert model_type in config.checkpoint
         assert str(resolution) in config.checkpoint
+
+    def test_forward_returns_a_dict(self, device, dtype):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        model = EfficientViT(backbone=vit.efficientvit_backbone_b0()).to(device, dtype).eval()
+        image = torch.rand(1, 3, 64, 96, device=device, dtype=dtype)
+
+        with torch.no_grad():
+            out = model(image)
+
+        assert isinstance(out, dict)
+        # stride 32: (64 // 32, 96 // 32)
+        assert out["stage_final"].shape[-2:] == (2, 3)

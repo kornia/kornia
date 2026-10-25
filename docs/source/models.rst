@@ -2,13 +2,21 @@ kornia.models
 =============
 
 .. meta::
-   :description: The Kornia models overview provides detailed information about key built-in models for computer vision tasks, including real-time object detection (RT-DETR), edge detection (DexiNed) and semantic segmentation (a wrapper for segmentation_models_pytorch networks). It offers comprehensive documentation on each model, including methods, parameters, and example usage to streamline the integration of these models into computer vision workflows.
+   :description: The Kornia models overview provides detailed information about key built-in models for computer vision tasks, including real-time object detection (RT-DETR), edge detection (DexiNed), super-resolution (Real-ESRGAN), semantic segmentation (a wrapper for segmentation_models_pytorch networks) and the Kimi-VL and Qwen2.5-VL vision encoders. It offers comprehensive documentation on each model, including methods, parameters, and example usage to streamline the integration of these models into computer vision workflows.
 
 
-Builders for Kornia's ready-to-use models (object detection, edge detection, semantic segmentation and Kimi-VL).
-Each builder returns a configured model with pretrained weights. For the papers behind the models, see the :doc:`Models </models/index>` section.
-Pretrained weights are downloaded on first use, and the model builders return a regular ``nn.Module`` that accepts a
-batched ``(B, 3, H, W)`` float image in ``[0, 1]``. :func:`kornia.io.get_sample_images` provides a couple of sample images for quick experiments.
+Builders for Kornia's ready-to-use models (object detection, edge detection, super-resolution, semantic segmentation
+and Kimi-VL), each returning a regular ``nn.Module``. The object detection, edge detection and super-resolution
+builders load pretrained weights by default and ``KimiVLBuilder.from_pretrained_hf`` loads them always, downloading
+them on first use. ``SegmentationModelsBuilder`` downloads nothing: it wraps a network you built yourself. The page
+also covers the vision tower of Qwen2.5-VL, whose weights kornia does not host: ``Qwen25VisionTransformer.from_pretrained``
+reads a checkpoint you downloaded yourself (see :ref:`Qwen25VisionTransformer`). For the papers behind the models, see
+the :doc:`Models </models/index>` section. Every model here accepts a batched ``(B, 3, H, W)`` float image in
+``[0, 1]``, except Kimi-VL, Qwen2.5-VL and a ``SegmentationModelsBuilder`` model built without ``preproc_params``,
+which passes its input to the network unchanged. Kimi-VL takes that image normalized with mean = std = 0.5 per channel
+(``2 * x - 1``), as its checkpoint's ``preprocessor_config.json`` specifies, with ``H`` and ``W`` multiples of 28 (see
+``kornia.models.kimi_vl.KimiVLModel.forward``). The Qwen2.5-VL vision tower takes it normalized with the CLIP mean and
+std. :func:`kornia.io.get_sample_images` provides a couple of sample images for quick experiments.
 
 .. _RTDETRDetectorBuilder:
 
@@ -190,6 +198,29 @@ loading currently supports only the converted Kimi-VL-A3B-Instruct vision encode
        from kornia.models.kimi_vl import KimiVLBuilder
 
        model = KimiVLBuilder.from_pretrained_hf().eval()
+
+.. _Qwen25VisionTransformer:
+
+Qwen25VisionTransformer
+-----------------------
+
+The `Qwen25VisionTransformer` class is the vision tower of Qwen2.5-VL. It takes a batched ``(B, 3, H, W)`` image,
+with ``H`` and ``W`` multiples of 28, already normalized with the CLIP mean and std the checkpoint's
+``preprocessor_config.json`` names, and returns the merged vision tokens. kornia does not host the weights:
+`from_pretrained` reads the ``visual.*`` tensors of a Qwen2.5-VL checkpoint you downloaded yourself.
+
+.. autoclass:: kornia.models.qwen25.Qwen25VisionTransformer
+   :members: forward, from_pretrained
+
+   .. rubric:: Example
+
+   .. code-block:: python
+
+       from kornia.models.qwen25 import Qwen25VisionTransformer
+
+       model = Qwen25VisionTransformer.from_pretrained("path/to/Qwen2.5-VL-3B-Instruct")
+
+.. autoclass:: kornia.models.qwen25.Qwen25VisionConfig
 
 ----
 

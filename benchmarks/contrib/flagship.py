@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Flagship contrib benchmark: kornia.contrib binary-image ops vs OpenCV, scikit-image and SciPy.
+"""Flagship contrib benchmark: kornia.contrib binary-image ops vs OpenCV, scikit-image, SciPy and kornia-rs.
 
 ``kornia.contrib`` mixes model wrappers (detectors, super-resolution, ViTs) that need downloaded
 weights with classic binary-image operations. This suite covers the latter; the dedicated
@@ -33,7 +33,7 @@ Regimes (see ``benchmarks/README.md``): kornia runs a batched float B1HW mask on
 OpenCV, scikit-image and SciPy run single masks on CPU in a Python loop, their native regime. The
 mask is thresholded Gaussian-blurred noise (about 30% foreground, blobs of varying size and
 shape), the same for every backend. Connected components are exact 8-connected labelings in all
-three columns; kornia's default ``connected_components`` is left out because its fixed pooling
+labeling columns; kornia's default ``connected_components`` is left out because its fixed pooling
 budget does not guarantee a correct partition (see ``connected_components.md``). The distance
 transforms differ in accuracy: kornia's is a cascaded-convolution approximation
 (``kernel_size=3``), OpenCV's a 5x5 chamfer approximation, and SciPy's exact. kornia measures the
@@ -41,7 +41,10 @@ distance to the nearest foreground pixel, OpenCV and SciPy to the nearest zero, 
 receive the inverted mask and all three answer the same question. The labelers get the mask in
 their fastest input type, converted outside the timed call: ``uint8`` for OpenCV and ``bool`` for
 scikit-image and SciPy (scikit-image's ``label`` takes a much faster path on ``bool`` and returns
-the same labels). Throughput is img/s.
+the same labels). kornia-rs 0.2+ adds an exact 8-connected CPU labeler, using prebuilt contiguous
+uint8 HWC1 masks and returning native component counts and int32 labels. Label IDs and whether
+counts include the background are backend conventions; the foreground partition is the comparison.
+Its column stays on CPU even when Kornia runs on CUDA or MPS. Throughput is img/s.
 
 Usage:
     python benchmarks/contrib/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -69,6 +72,7 @@ from common import (
     batch_list,
     finish_run,
     image_row_fields,
+    kornia_rs_fn,
     optional_import,
     run_batch_sweep,
     setup_run,
@@ -121,6 +125,9 @@ def build_ops(
         row["opencv"] = (lambda: [cv2.connectedComponents(m, connectivity=8) for m in masks_u8]) if cv2 else None
         row["scikit-image"] = (lambda: [skmeasure.label(m, connectivity=2) for m in masks_bool]) if skmeasure else None
         row["SciPy"] = (lambda: [ndimage.label(m, structure=connectivity8) for m in masks_bool]) if ndimage else None
+        rs_label = kornia_rs_fn("connected_components")
+        rs_masks = [np.ascontiguousarray(m[..., None]) for m in masks_u8]
+        row["kornia-rs"] = (lambda: [rs_label(m, connectivity=8) for m in rs_masks]) if rs_label else None
         ops["connected_components_union_find"] = row
 
     if include("distance_transform"):
@@ -141,20 +148,36 @@ def main() -> None:
     cv2, cv2_error = optional_import("cv2")
     skmeasure, skmeasure_error = optional_import("skimage.measure")
     ndimage, ndimage_error = optional_import("scipy.ndimage")
+    krs, krs_error = optional_import("kornia_rs")
 
-    libs = [(skmeasure, "scikit-image", skmeasure_error), (ndimage, "SciPy", ndimage_error), (cv2, "opencv", cv2_error)]
+    libs = [
+        (skmeasure, "scikit-image", skmeasure_error),
+        (ndimage, "SciPy", ndimage_error),
+        (cv2, "opencv", cv2_error),
+        (krs, "kornia-rs", krs_error),
+    ]
     meta = start_run(
         "flagship contrib",
         args,
         device,
         units="img/s",
         regimes=[
-            "kornia: batched float B1HW mask; opencv/scikit-image/SciPy: per-image loop (CPU), "
-            "uint8 masks except bool for scikit-image and SciPy labeling"
+            (
+                "kornia: batched float B1HW mask; opencv/scikit-image/SciPy: per-image loop (CPU), "
+                "uint8 masks except bool for scikit-image and SciPy labeling"
+            ),
+            "kornia-rs: CPU per-image 8-connected labeling, prebuilt uint8 HWC1; native count and int32 labels",
         ],
-        missing=[(name, err) for lib, name, err in libs if lib is None],
+        missing=[(name, err) for lib, name, err in libs if lib is None]
+        + (
+            [("kornia-rs/connected_components_union_find", "connected_components unavailable")]
+            if krs is not None
+            and (args.ops is None or "connected_components_union_find" in args.ops)
+            and kornia_rs_fn("connected_components") is None
+            else []
+        ),
     )
-    backends = ["kornia (eager)", "kornia (compiled)", "scikit-image", "SciPy", "opencv"]
+    backends = ["kornia (eager)", "kornia (compiled)", "scikit-image", "SciPy", "opencv", "kornia-rs"]
     results = run_batch_sweep(
         batch_list(args),
         lambda b: build_ops(

@@ -80,8 +80,8 @@ class Rand(nn.Module):
     def forward(self, *xs):
         return self.aug(*xs[: self.n_data])
 
-    def eval(self):  # keep the augmentation in train mode (harness calls .eval())
-        return self
+    def train(self, mode: bool = True):  # keep the augmentation in train mode whatever eval() / train(False) ask
+        return super().train(True)
 
 
 CASES: list = []

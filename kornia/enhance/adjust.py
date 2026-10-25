@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import struct
 from math import pi
 from typing import ClassVar, Optional, Union
 
@@ -30,9 +31,12 @@ from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
+    are_checks_enabled,
 )
-from kornia.core.utils import _torch_histc_cast, is_compiling
-from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
+from kornia.core.exceptions import TypeCheckError
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking, is_compiling
+from kornia.image.utils import _to_bcdhw, _to_bchw
 
 
 def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
@@ -71,6 +75,56 @@ def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
     torch._assert_async(cond, msg)
 
 
+def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
+    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no gradient is recorded.
+
+    The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
+    allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
+    the heap on every call. Only call it on a tensor no caller can see.
+
+    An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
+    promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
+    transform: vmap has a batching rule for ``clamp`` but not for ``clamp_``, whose fallback loops over the batch and
+    rejects an empty one. TorchScript cannot compile the function-transform query, so a scripted call keeps it too.
+    """
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if (
+            image.is_floating_point()
+            and not (torch.is_grad_enabled() and image.requires_grad)
+            and not torch._C._are_functorch_transforms_active()
+        ):
+            return image.clamp_(min=0.0, max=1.0)
+    return image.clamp(min=0.0, max=1.0)
+
+
+def _check_floating_image(image: torch.Tensor, op: str) -> None:
+    """Reject an integer image in an op that expects floating-point values in ``[0, 1]``.
+
+    These ops clamp to ``[0, 1]``, scale by 255 or index a 256-entry table, so an 8-bit image would
+    otherwise come back saturated, wrapped or negative without an error (#5981). The equalize family's
+    ``[0, 1]`` range check let an integer 0/1 mask through, which ``equalize_clahe`` then mapped to wrong
+    values. The check reads only the dtype, so it stays ``torch.compile(fullgraph=True)``-safe, and
+    ``disable_checks()`` skips it like every kornia check. A non-tensor is left to the op's own type check.
+    As in the core checks, TorchScript compiles neither the checks flag nor the exception metadata, so a
+    scripted op raises a plain message instead.
+    """
+    if not isinstance(image, torch.Tensor) or image.is_floating_point():
+        return
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if not are_checks_enabled():
+            return
+    if torch.jit.is_scripting():
+        raise TypeCheckError(
+            op + " expects a floating-point image in [0, 1]; convert it first, e.g. image.float() / 255."
+        )
+    raise TypeCheckError(
+        f"{op} expects a floating-point image in [0, 1], got {image.dtype}. "
+        "Convert it first, for example image.float() / 255 for 8-bit data.",
+        actual_type=image.dtype,
+        expected_type=(torch.float16, torch.bfloat16, torch.float32, torch.float64),
+    )
+
+
 def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
     """Right-pad ``factor`` with singleton dimensions so it broadcasts against ``image``.
 
@@ -79,6 +133,8 @@ def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> tor
     only lines the ranks up: shapes that still do not broadcast are reported by the op itself.
     """
     if factor.dim() > image.dim():
+        if torch.jit.is_scripting():
+            raise ValueError("Factor has more dimensions than the image and cannot be broadcast.")
         raise ValueError(
             f"Factor has more dimensions than the image and cannot be broadcast: got factor shape "
             f"{tuple(factor.shape)} for image shape {tuple(image.shape)}."
@@ -93,6 +149,10 @@ def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> tor
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
+    Convention:
+        Expects HSV, not RGB. The saturation channel is multiplied by factor
+        and clamped to [0, 1]; :func:`adjust_saturation` performs RGB conversion.
+
     Expecting image to be in hsv format already.
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
@@ -102,7 +162,7 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -120,6 +180,10 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
 
 def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image by blending the image with its grayscaled version.
+
+    Convention:
+        factor=0 selects grayscale and factor=1 preserves RGB input; grayscale
+        input is returned unchanged. This differs from HSV saturation scaling.
 
     The image is expected to be an RGB image or a gray image in the range of [0, 1].
     If it is an RGB image, returns blending of the image with its grayscaled version.
@@ -147,6 +211,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
         torch.Size([2, 3, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_saturation_with_gray_subtraction")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
     KORNIA_CHECK_IS_COLOR_OR_GRAY(image, "Image should be an RGB or gray image")
@@ -158,7 +223,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -175,6 +240,12 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
 
 def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
+
+    Convention:
+        Expects RGB in [0, 1] with channel dimension -3. factor=1 preserves the image;
+        factor=0 removes HSV saturation, so each pixel becomes max(R, G, B) rather than its luma.
+        :func:`adjust_saturation_with_gray_subtraction` blends with luma, as torchvision and PIL do;
+        see :func:`adjust_saturation_raw` for the HSV-domain primitive.
 
     .. image:: _static/img/adjust_saturation.png
 
@@ -216,7 +287,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     if isinstance(factor, float):
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     else:
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
     if factor.shape[-3] != 1:
@@ -242,6 +313,10 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
 def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image.
 
+    Convention:
+        Expects HSV. factor is an angle in radians added to the hue, and the sum is wrapped into
+        [0, 2π). :func:`adjust_hue` supplies the RGB-domain wrapper.
+
     Expecting image to be in hsv format already.
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
@@ -251,9 +326,9 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
     )
 
     if isinstance(factor, float):
-        factor = torch.as_tensor(factor)
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
 
-    factor = factor.to(image.device, image.dtype)
+    factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -262,7 +337,9 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
     # transform the hue value and appl module
     divisor: float = 2 * pi
-    h_out: torch.Tensor = torch.fmod(h + factor, divisor)
+    h_out: torch.Tensor = torch.remainder(h + factor, divisor)
+    # A small negative sum rounds up to the period itself (0 - 1e-8 gives 2π in float32); fold it to 0.
+    h_out = h_out.masked_fill(h_out >= divisor, 0.0)
 
     # pack back back the corrected hue
     out: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
@@ -272,6 +349,10 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
 def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image.
+
+    Convention:
+        Expects RGB in [0, 1] with channel dimension -3. factor is a hue angle
+        in radians; see :func:`adjust_hue_raw` for the HSV operation.
 
     .. image:: _static/img/adjust_hue.png
 
@@ -318,6 +399,10 @@ def adjust_gamma(
 ) -> torch.Tensor:
     r"""Perform gamma correction on an image.
 
+    Convention:
+        Applies gain * input ** gamma elementwise, then clamps to [0, 1]. For ``0 < gamma < 1`` the derivative of
+        ``input ** gamma`` at a black pixel (``input == 0``) is infinite; the gradient there is 0 instead.
+
     .. image:: _static/img/adjust_contrast.png
 
     The input image is expected to be in the range of [0, 1].
@@ -352,6 +437,7 @@ def adjust_gamma(
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(input, "adjust_gamma")
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -361,11 +447,42 @@ def adjust_gamma(
     if not isinstance(gain, (float, torch.Tensor)):
         raise TypeError(f"The gain should be a positive float or torch.Tensor. Got {type(gain)}")
 
+    # Python scalars need no device-side validation or parameter transfers. Half precision
+    # keeps the tensor path: rounding a parameter before the operation matters there.
+    # Keep invalid values on that path too, including negatives that round to signed zero.
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript must skip the eager-only body
+        if (
+            not torch.jit.is_tracing()
+            and not is_compiling()
+            and isinstance(gamma, float)
+            and isinstance(gain, float)
+            and input.dtype in (torch.float32, torch.float64)
+            and input.ndim > 0
+        ):
+            limits = torch.finfo(input.dtype)
+            if 0.0 <= gamma <= limits.max and 0.0 <= gain <= limits.max:
+                # Scalar power inspects its exponent before converting to the tensor dtype.
+                # Round on the host first, as tensor construction did: near zero/one this
+                # affects both the value at black pixels and its gradient. Captured calls
+                # retain the tensor expression, which the compiler can constant-fold.
+                if input.dtype == torch.float32:
+                    gamma = struct.unpack("f", struct.pack("f", gamma))[0]
+                    gain = struct.unpack("f", struct.pack("f", gain))[0]
+                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
+                    # As in the tensor path below.
+                    black = input == 0
+                    power = torch.where(
+                        black, torch.zeros_like(input), torch.where(black, torch.ones_like(input), input).pow(gamma)
+                    )
+                else:
+                    power = input.pow(gamma)
+                return (power * gain).clamp(0.0, 1.0)
+
     if isinstance(gamma, float):
-        gamma = torch.Tensor([gamma])
+        gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
 
     if isinstance(gain, float):
-        gain = torch.Tensor([gain])
+        gain = torch.tensor([gain], device=input.device, dtype=input.dtype)
 
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
@@ -382,8 +499,18 @@ def adjust_gamma(
     gamma = _make_factor_broadcastable(gamma, input)
     gain = _make_factor_broadcastable(gain, input)
 
-    # Apply the gamma correction
-    x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
+    # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
+    # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
+    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
+    # masking only runs when autograd records a gradient for the input.
+    if torch.is_grad_enabled() and input.requires_grad:
+        black = (input == 0) & (gamma > 0) & (gamma < 1)
+        power = torch.where(
+            black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
+        )
+    else:
+        power = torch.pow(input, gamma)
+    x_adjust: torch.Tensor = gain * power
 
     # Truncate between pixel values
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
@@ -393,6 +520,10 @@ def adjust_gamma(
 
 def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], clip_output: bool = True) -> torch.Tensor:
     r"""Adjust the contrast of an image torch.Tensor.
+
+    Convention:
+        Contrast is a direct multiplicative scale of RGB values; factor=1
+        preserves input and clip_output controls the final [0, 1] clamp.
 
     .. image:: _static/img/adjust_contrast.png
 
@@ -438,6 +569,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_contrast")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -445,7 +577,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -460,7 +592,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     # Truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -495,6 +627,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_contrast_with_mean_subtraction")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -502,16 +635,13 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
     # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
-    if image.shape[-3] == 3:
-        img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
-    else:
-        img_mean = image.mean((-3, -2, -1), True)
+    img_mean = rgb_to_grayscale(image).mean((-2, -1), True) if image.shape[-3] == 3 else image.mean((-3, -2, -1), True)
 
     # Apply contrast factor subtracting the mean
     img_adjust: torch.Tensor = image * factor + img_mean * (1 - factor)
@@ -523,6 +653,9 @@ def adjust_brightness(
     image: torch.Tensor, factor: Union[float, torch.Tensor], clip_output: bool = True
 ) -> torch.Tensor:
     r"""Adjust the brightness of an image torch.Tensor.
+
+    Convention:
+        Adds factor to RGB values; clip_output controls the final [0, 1] clamp.
 
     .. image:: _static/img/adjust_brightness.png
 
@@ -565,6 +698,7 @@ def adjust_brightness(
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_brightness")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -573,7 +707,7 @@ def adjust_brightness(
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -582,7 +716,7 @@ def adjust_brightness(
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -591,6 +725,10 @@ def adjust_brightness_accumulative(
     image: torch.Tensor, factor: Union[float, torch.Tensor], clip_output: bool = True
 ) -> torch.Tensor:
     r"""Adjust the brightness accumulatively of an image torch.Tensor.
+
+    Convention:
+        Multiplies each image by factor; factor=1 preserves it and factor=0
+        produces black, unlike :func:`adjust_brightness` which adds factor.
 
     This implementation follows PIL convention.
 
@@ -618,6 +756,7 @@ def adjust_brightness_accumulative(
         torch.Size([2, 5, 3, 3])
 
     """
+    _check_floating_image(image, "adjust_brightness_accumulative")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, torch.Tensor)), "Factor should be float or torch.Tensor.")
 
@@ -626,7 +765,7 @@ def adjust_brightness_accumulative(
         # TODO: figure out how to create later a torch.Tensor without importing torch
         factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, torch.Tensor):
-        factor = factor.to(image.device, image.dtype)
+        factor = _to_device_nonblocking(factor, image.device, image.dtype)
 
     factor = _make_factor_broadcastable(factor, image)
 
@@ -642,6 +781,9 @@ def adjust_brightness_accumulative(
 
 def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> torch.Tensor:
     """Adjust sigmoid correction on the input image torch.Tensor.
+
+    Convention:
+        Applies a sigmoid around cutoff; inv selects its complementary curve.
 
     The input image is expected to be in the range of [0, 1].
 
@@ -665,17 +807,18 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
                   [0.5000, 0.5000]]]])
 
     """
+    _check_floating_image(image, "adjust_sigmoid")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    if inv:
-        img_adjust = 1 - 1 / (1 + (gain * (cutoff - image)).exp())
-    else:
-        img_adjust = 1 / (1 + (gain * (cutoff - image)).exp())
-    return img_adjust
+    return 1 - 1 / (1 + (gain * (cutoff - image)).exp()) if inv else 1 / (1 + (gain * (cutoff - image)).exp())
 
 
 def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_output: bool = True) -> torch.Tensor:
     """Adjust log correction on the input image torch.Tensor.
+
+    Convention:
+        inv selects exponential instead of logarithmic correction; clip_output
+        controls the final [0, 1] clamp.
 
     The input image is expected to be in the range of [0, 1].
 
@@ -698,12 +841,10 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
                   [0., 0.]]]])
 
     """
+    _check_floating_image(image, "adjust_log")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    if inv:
-        img_adjust = (2**image - 1) * gain
-    else:
-        img_adjust = (1 + image).log2() * gain
+    img_adjust = (2**image - 1) * gain if inv else (1 + image).log2() * gain
 
     # truncate between pixel values
     if clip_output:
@@ -738,7 +879,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
             raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # Reshape the per-sample threshold to broadcast over (C, H, W) rather than iterating the
         # tensor (`for x in thresholds` breaks torch.compile); the `where` below broadcasts identically.
-        thresholds = thresholds.to(input.device).to(input.dtype)
+        thresholds = _to_device_nonblocking(thresholds, input.device).to(input.dtype)
         thresholds = thresholds.view([-1] + [1] * (input.ndim - 1))
 
     return torch.where(input < thresholds, input, 1.0 - input)
@@ -750,6 +891,10 @@ def solarize(
     additions: Optional[Union[float, torch.Tensor]] = None,
 ) -> torch.Tensor:
     r"""Add an amount to every pixel, clamp, then invert the pixels at or above a threshold.
+
+    Convention:
+        additions are applied and clamped before values at or above thresholds
+        are inverted about one.
 
     .. image:: _static/img/solarize.png
 
@@ -790,6 +935,7 @@ def solarize(
         torch.Size([2, 4, 3, 3])
 
     """
+    _check_floating_image(input, "solarize")
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -797,17 +943,22 @@ def solarize(
         raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(thresholds)}")
 
     if isinstance(thresholds, float):
-        thresholds = torch.as_tensor(thresholds)
+        thresholds = torch.as_tensor(thresholds, device=input.device, dtype=input.dtype)
 
     if additions is not None:
         if not isinstance(additions, (float, torch.Tensor)):
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 
         if isinstance(additions, float):
-            additions = torch.as_tensor(additions)
+            # Check the Python value on the host: rounded to float16/bfloat16, a value just past the bound
+            # passes, and the check is skipped for a tensor on MPS.
+            in_range = torch.tensor(-0.5 <= additions <= 0.5)
+            additions = torch.as_tensor(additions, device=input.device, dtype=input.dtype)
+        else:
+            in_range = ((additions <= 0.5) & (additions >= -0.5)).all()
 
         _assert_async_value_check(
-            ((additions <= 0.5) & (additions >= -0.5)).all(),
+            in_range,
             "The addition must be in the closed range [-0.5, 0.5]. Clamp it first: min(max(additions, -0.5), 0.5) "
             "for floats, additions.clamp(-0.5, 0.5) for tensors.",
         )
@@ -817,7 +968,7 @@ def solarize(
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
             # Broadcast the per-sample scalar over (C, H, W) by reshaping instead of iterating the
             # tensor (`for x in additions` breaks the graph); numerically identical.
-            additions = additions.to(input.device).to(input.dtype)
+            additions = _to_device_nonblocking(additions, input.device).to(input.dtype)
             additions = additions.view([-1] + [1] * (input.ndim - 1))
         input = input + additions
         input = input.clamp(0.0, 1.0)
@@ -825,9 +976,23 @@ def solarize(
     return _solarize(input, thresholds)
 
 
-@perform_keep_shape_image
+def _prepare_intensity_input(input: torch.Tensor, spatial_dims: int) -> torch.Tensor:
+    """Batch image or volume inputs without accepting empty channels or spatial dimensions."""
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if 0 in input.shape[-(spatial_dims + 1) :]:
+        raise ValueError(f"Input channel and spatial dimensions must be non-zero. Got {input.shape}.")
+    return _to_bcdhw(input) if spatial_dims == 3 else _to_bchw(input)
+
+
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
     r"""Reduce the number of bits for each color channel.
+
+    Convention:
+        Expects values in [0, 1] and quantizes them through 8-bit integers; bits=8 returns the
+        input unchanged. bits is a scalar, (1,), or a leading prefix of the input shape such as
+        (B,) or (B, C), with arbitrary leading image dimensions flattened into B.
+        Empty leading dimensions are supported; channels and spatial dimensions must be non-empty.
 
     .. image:: _static/img/posterize.png
 
@@ -836,12 +1001,13 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Args:
         input: image torch.Tensor with shape :math:`(*, C, H, W)` to posterize.
         bits: number of high bits. Must be in range [0, 8].
-            If int or one element torch.Tensor, input will be posterized by this bits.
-            If 1-d torch.Tensor, input will be posterized sample-wise, len(bits) == input.shape[0]
-            -- one value per sample in the batch, not per channel; any other length raises
+            If int or one-element torch.Tensor, the same bits value is used across the whole batch.
+            A 1-d tensor with multiple elements specifies one value per sample, not per channel;
+            its length must equal the normalized batch size ``B`` after flattening leading dimensions.
+            Any other length raises
             ``Batch size must be equal between bits and input``.
-            If n-d torch.Tensor, input will be posterized element-channel-wisely,
-            bits.shape == input.shape[:len(bits.shape)]
+            A tensor with multiple dimensions specifies element-channel-wise values; its shape must
+            match the corresponding leading dimensions of the normalized ``(B, C, H, W)`` input.
 
     Returns:
         Image with reduced color channels with shape :math:`(*, C, H, W)`.
@@ -857,8 +1023,12 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         torch.Size([2, 6, 3, 3])
 
     """
+    _check_floating_image(input, "posterize")
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    input_shape = input.shape
+    input = _prepare_intensity_input(input, 2)
 
     if not isinstance(bits, (int, torch.Tensor)):
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
@@ -897,7 +1067,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         return torch.where(bits == 8, input, out)
 
     if len(bits.shape) == 0 or (len(bits.shape) == 1 and len(bits) == 1):
-        return _posterize_one(input, bits)
+        return _posterize_one(input, bits).reshape(input_shape)
 
     if len(bits.shape) == 1:
         if bits.shape[0] != input.shape[0]:
@@ -907,7 +1077,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
         # Broadcast the per-sample bits over (B, C, H, W) and posterize in one vectorised call
         # instead of a Python loop over the batch (which launched a kernel per sample).
-        return _posterize_one(input, bits.view(-1, *([1] * (input.ndim - 1))))
+        return _posterize_one(input, bits.view(-1, *([1] * (input.ndim - 1)))).reshape(input_shape)
 
     if bits.shape != input.shape[: len(bits.shape)]:
         raise AssertionError(
@@ -916,12 +1086,17 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         )
     # Broadcast per-(batch, channel) bits over the spatial dims and posterize in one call.
     _bits = bits.view(*bits.shape, *([1] * (input.ndim - bits.ndim)))
-    return _posterize_one(input, _bits)
+    return _posterize_one(input, _bits).reshape(input_shape)
 
 
-@perform_keep_shape_image
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Apply sharpness to the input torch.Tensor.
+
+    Convention:
+        factor=0 selects the blurred image and factor=1 preserves the input;
+        factor is a float or a (B,) tensor with one value per image, with arbitrary leading image
+        dimensions flattened into B. Empty leading dimensions are supported; channels must be
+        non-empty and both spatial dimensions must be at least 3 pixels.
 
     .. image:: _static/img/sharpness.png
 
@@ -933,8 +1108,10 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         factor: blend factor between the smoothed copy and the input. ``0`` returns the smoothed image,
             ``1`` returns the input, and a factor above ``1`` sharpens. It is not validated: ``0`` and
             negative factors are accepted and extrapolate past the smoothed image.
-            If float or one element torch.Tensor, input will be sharpened by the same factor across the whole batch.
-            If 1-d torch.Tensor, input will be sharpened element-wisely, len(factor) == len(input).
+            A scalar or 0-d tensor applies the same factor across the whole batch.
+            A 1-d tensor specifies one factor per sample; its length must equal the normalized batch
+            size ``B`` after flattening leading dimensions. A length-one vector does not broadcast
+            when ``B`` is greater than one.
 
     Returns:
         Sharpened image or images with shape :math:`(*, C, H, W)`.
@@ -945,12 +1122,21 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         torch.Size([1, 1, 5, 5])
 
     """
-    if not isinstance(factor, torch.Tensor):
+    _check_floating_image(input, "sharpness")
+    batched_input = _prepare_intensity_input(input, 2)
+    input_shape = input.shape
+    input = batched_input
+
+    if isinstance(factor, (int, float)):
+        # Filled on the device: ``torch.as_tensor(..., device=cuda)`` copies from the host and waits for every
+        # queued kernel.
+        factor = _device_literal(factor, device=input.device, dtype=input.dtype)
+    elif not isinstance(factor, torch.Tensor):
         factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
     else:
         # Match the input's device/dtype (as adjust_brightness/contrast do). Augmentation
         # generators may sample the factor on a different device (e.g. CPU) than the image.
-        factor = factor.to(device=input.device, dtype=input.dtype)
+        factor = _to_device_nonblocking(factor, input.device, input.dtype)
 
     if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
         raise AssertionError(
@@ -959,7 +1145,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         )
 
     kernel = (
-        torch.as_tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
+        _device_literal([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
         .view(1, 1, 3, 3)
         .repeat(input.size(1), 1, 1, 1)
         / 13
@@ -983,30 +1169,17 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     # bites for extrapolation, matching the previous behavior.
     if len(factor.size()) != 0:
         factor = factor.view(-1, *([1] * (result.dim() - 1)))
-    return torch.clamp(result + (input - result) * factor, 0.0, 1.0)
-
-
-def _build_lut(histo: torch.Tensor, step: torch.Tensor) -> torch.Tensor:
-    # Compute the cumulative sum, shifting by step // 2
-    # and then normalization by step.
-    step_trunc = torch.div(step, 2, rounding_mode="trunc")
-    lut = torch.div(torch.cumsum(histo, 0) + step_trunc, step, rounding_mode="trunc")
-    # Shift lut, prepending with 0.
-    lut = torch.cat([torch.zeros(1, device=lut.device, dtype=lut.dtype), lut[:-1]])
-    # Clip the counts to be in range.  This is done
-    # in the C code for image.point.
-    return torch.clamp(lut, 0, 255)
+    return torch.clamp(result + (input - result) * factor, 0.0, 1.0).reshape(input_shape)
 
 
 def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     r"""Vectorized histogram equalization over the leading ``(B, C)`` planes.
 
-    Equivalent to stacking ``_scale_channel`` over every ``(B, C)`` plane, but computes all
-    per-plane histograms/LUTs in a single batched pass instead of a Python loop of ``B * C``
-    serial ``torch.histc`` calls. The per-plane histogram is built with ``scatter_add`` instead
-    of ``torch.histc``; the two agree except for a handful of values landing exactly on a bin
-    edge (``~1%`` of pixels shift by one 256-bin, i.e. ``~1/255`` in the output), which is within
-    the equalization test tolerance.
+    Computes all per-plane histograms/LUTs in a single batched pass instead of a Python loop of
+    ``B * C`` serial calls. Each pixel is counted in the LUT entry it reads, its 8-bit level
+    ``(x * 255).long()`` computed in the input dtype, so a plane whose LUT step is not 0 comes out as
+    ``PIL.ImageOps.equalize`` of those levels while the counts and their running sums are exact (a plane of
+    up to ``2**24`` pixels in float32); a plane whose step is 0 is returned unchanged.
 
     Args:
         input: image tensor shaped ``(B, C, *spatial)`` with values in ``[0, 1]``.
@@ -1016,10 +1189,10 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     """
     shape = input.shape
     n = shape[0] * shape[1]
-    scaled = input.reshape(n, -1) * 255.0  # (N, P)
+    scaled = input.flatten(0, 1).flatten(1) * 255.0  # (N, P)
 
-    # Input is expected in [0, 1]. The histogram index below is clamped, but the LUT lookup indexes
-    # with the unclamped ``scaled.long()``, which is out of bounds unless ``scaled`` is in (-1, 256).
+    # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``scaled.long()``,
+    # which is out of bounds unless ``scaled`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
     # on MPS before torch 2.13 it costs one host sync instead (see ``_lookup_value_check``). Inputs the
     # lookup can index keep working exactly as before.
@@ -1029,10 +1202,16 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
         "for example image / 255.0 for 8-bit data.",
     )
 
-    # Per-plane 256-bin histogram matching ``torch.histc(x, 256, 0, 255)`` bin placement.
-    bins = torch.clamp((scaled * (256.0 / 255.0)).floor().long(), 0, 255)
-    histo = torch.zeros(n, 256, device=input.device, dtype=scaled.dtype)
-    histo.scatter_add_(1, bins, torch.ones_like(scaled))
+    # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
+    # cannot hold. float16 rounds counts above 2048 and their total overflows to inf past 65504, and
+    # bfloat16 rounds counts above 256.
+    count_dtype = _normalize_to_float32_or_float64(scaled.dtype)
+    # Per-plane 256-bin histogram on the index the lookup below reads, so every pixel is counted in its own
+    # entry, as PIL counts and reads one 8-bit level. ``torch.histc(x, 256, 0, 255)`` bins in ``floor(256 x)``,
+    # which puts every value in ``[k/256, k/255)``, about half of a continuous image, one bin above that entry.
+    index = scaled.long()
+    histo = torch.zeros(n, 256, device=input.device, dtype=count_dtype)
+    histo.scatter_add_(1, index, torch.ones_like(scaled, dtype=count_dtype))
 
     # step = (sum(nonzero) - last_nonzero) // 255, per plane.
     total = histo.sum(1)
@@ -1047,59 +1226,21 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     step_trunc = torch.div(step, 2, rounding_mode="trunc").unsqueeze(1)
     lut = torch.div(histo.cumsum(1) + step_trunc, step_col.clamp(min=1), rounding_mode="trunc")
     lut = torch.cat([torch.zeros(n, 1, device=input.device, dtype=lut.dtype), lut[:, :-1]], 1)
-    lut = torch.clamp(lut, 0, 255)
+    # The LUT holds integers in [0, 255], which every floating dtype represents exactly.
+    lut = torch.clamp(lut, 0, 255).to(scaled.dtype)
 
-    result = lut.gather(1, scaled.long())
+    result = lut.gather(1, index)
     result = torch.where(step_col == 0, scaled, result)
     return (result / 255.0).reshape(shape)
 
 
-# Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im: torch.Tensor) -> torch.Tensor:
-    r"""Scale the data in the channel to implement equalize.
-
-    Args:
-        im: image torch.Tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
-
-    Returns:
-        image torch.Tensor with the batch in the zero position.
-
-    """
-    min_ = im.min()
-    max_ = im.max()
-
-    if min_.item() < 0.0 and not torch.isclose(min_, torch.as_tensor(0.0, dtype=min_.dtype)):
-        raise ValueError(f"Values in the input torch.Tensor must greater or equal to 0.0. Found {min_.item()}.")
-
-    if max_.item() > 1.0 and not torch.isclose(max_, torch.as_tensor(1.0, dtype=max_.dtype)):
-        raise ValueError(f"Values in the input torch.Tensor must lower or equal to 1.0. Found {max_.item()}.")
-
-    ndims = len(im.shape)
-    if ndims not in (2, 3):
-        raise TypeError(f"Input torch.Tensor must have 2 or 3 dimensions. Found {ndims}.")
-
-    im = im * 255.0
-    # Compute the histogram of the image channel.
-    histo = _torch_histc_cast(im, bins=256, min=0, max=255)
-    # For the purposes of computing the step, filter out the nonzeros.
-    nonzero_histo = torch.reshape(histo[histo != 0], [-1])
-    step = torch.div(torch.sum(nonzero_histo) - nonzero_histo[-1], 255, rounding_mode="trunc")
-
-    # If step is zero, return the original image.  Otherwise, build
-    # lut from the full histogram and step and then index from it.
-    if step == 0:
-        result = im
-    else:
-        # can't index using 2d index. Have to flatten and then reshape
-        result = torch.gather(_build_lut(histo, step), 0, im.flatten().long())
-        result = result.reshape_as(im)
-
-    return result / 255.0
-
-
-@perform_keep_shape_image
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input torch.Tensor.
+
+    Convention:
+        Equalizes each channel of each image independently over [0, 1].
+        :func:`equalize3d` applies the corresponding operation to volumes.
+        Empty leading dimensions are supported; channels and spatial dimensions must be non-empty.
 
     .. image:: _static/img/equalize.png
 
@@ -1113,11 +1254,17 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         Equalized image torch.Tensor with shape :math:`(*, C, H, W)`.
 
     .. note::
-       The input is expected in :math:`[0, 1]`, and each channel is equalized from a 256-bin histogram.
-       Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
-       naming the range. The check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``;
-       on an older MPS release the condition is read on the host instead, one device sync per call, and is
-       skipped there under ``torch.compile``.
+       The input is expected as a floating-point image in :math:`[0, 1]`, and each channel is equalized from
+       a 256-bin histogram. Each pixel is counted in the lookup-table entry it reads, its 8-bit level
+       ``(x * 255).long()`` in the input dtype, so a float32 or float64 image gives ``PIL.ImageOps.equalize``
+       of those levels. A channel whose lookup step is 0 is returned unchanged, and a float32 image counts in
+       float32, which is exact while a channel holds at most ``2**24`` pixels (4096 x 4096). An integer or
+       boolean image raises
+       :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
+       ``image.float() / 255`` first. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
+       raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel
+       from torch ``2.13``; on an older MPS release the condition is read on the host instead, one device sync
+       per call, and is skipped there under ``torch.compile``.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
@@ -1125,13 +1272,18 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         torch.Size([1, 2, 3, 3])
 
     """
+    _check_floating_image(input, "equalize")
     # Scales each channel independently, batched over (B, C) in a single pass.
-    return _scale_channel_batched(input)
+    return _scale_channel_batched(_prepare_intensity_input(input, 2)).reshape(input.shape)
 
 
-@perform_keep_shape_video
 def equalize3d(input: torch.Tensor) -> torch.Tensor:
     r"""Equalize the values for a 3D volumetric torch.Tensor.
+
+    Convention:
+        Equalizes each channel of each volume independently over [0, 1]; see
+        :func:`equalize` for the image variant and :func:`equalize_clahe` for local tiling.
+        Empty leading dimensions are supported; channels and spatial dimensions must be non-empty.
 
     Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
@@ -1140,25 +1292,31 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
         input: image torch.Tensor with shape :math:`(*, C, D, H, W)` to equalize.
 
     Returns:
-        Equalized volume with shape :math:`(B, C, D, H, W)`.
+        Equalized volume with the same shape as the input.
 
     .. note::
-       The input is expected in :math:`[0, 1]`, and each channel's whole :math:`(D, H, W)` volume is
-       equalized from one 256-bin histogram. The lookup step is an integer division by 255, so a volume
-       with no more than 255 voxels per channel is returned unchanged up to floating-point roundoff; just
-       above that, whether it changes
-       depends on the values. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
-       raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS
-       kernel from torch ``2.13``; on an older MPS release the condition is read on the host instead, one
-       device sync per call, and is skipped there under ``torch.compile``.
+       The input is expected as a floating-point volume in :math:`[0, 1]`, and each channel's whole
+       :math:`(D, H, W)` volume is equalized from one 256-bin histogram. The lookup step is an integer
+       division by 255, so a volume with no more than 255 voxels per channel is returned unchanged up to
+       floating-point roundoff; just above that, whether it changes depends on the values. An integer or
+       boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, as for :func:`equalize`. Values
+       the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the
+       range. The check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older
+       MPS release the condition is read on the host instead, one device sync per call, and is skipped there
+       under ``torch.compile``.
 
     """
+    _check_floating_image(input, "equalize3d")
     # Scales each channel independently (each (D, H, W) volume), batched over (B, C).
-    return _scale_channel_batched(input)
+    return _scale_channel_batched(_prepare_intensity_input(input, 3)).reshape(input.shape)
 
 
 def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Invert the values of an input image torch.Tensor by its maximum value.
+
+    Convention:
+        Returns max_val - image elementwise. Omitting max_val uses one in the
+        input dtype and device; pass max_val=torch.tensor(255) for uint8 images.
 
     .. image:: _static/img/invert.png
 
@@ -1184,10 +1342,7 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
     if not isinstance(image, torch.Tensor):
         raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
 
-    if max_val is None:
-        _max_val = torch.tensor([1.0])
-    else:
-        _max_val = max_val
+    _max_val = torch.tensor([1.0]) if max_val is None else max_val
     if not isinstance(_max_val, torch.Tensor):
         raise AssertionError(f"max_val is not a torch.Tensor. Got: {type(_max_val)}")
 
@@ -1196,6 +1351,9 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
 
 class AdjustSaturation(nn.Module):
     r"""Adjust color saturation of an image.
+
+    Convention:
+        See :func:`adjust_saturation` for the RGB input and factor policy.
 
     The input image is expected to be an RGB image in the range of [0, 1].
 
@@ -1251,6 +1409,9 @@ class AdjustSaturation(nn.Module):
 
 class AdjustSaturationWithGraySubtraction(nn.Module):
     r"""Adjust color saturation of an image.
+
+    Convention:
+        See :func:`adjust_saturation_with_gray_subtraction` for blending.
 
     It blends the image with its grayscale, ``factor * image + (1 - factor) * gray``, as torchvision and PIL do.
     The input image is expected to be in the range of [0, 1].
@@ -1313,6 +1474,9 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
 class AdjustHue(nn.Module):
     r"""Adjust hue of an image.
 
+    Convention:
+        See :func:`adjust_hue` for RGB input and radians convention.
+
     ``factor`` is in radians: it matches torchvision's ``adjust_hue`` with ``hue_factor = factor / (2 * pi)``.
     The input image is expected to be in the range of [0, 1].
 
@@ -1373,6 +1537,9 @@ class AdjustHue(nn.Module):
 class AdjustGamma(nn.Module):
     r"""Perform gamma correction on an image.
 
+    Convention:
+        See :func:`adjust_gamma` for the elementwise power convention.
+
     The input image is expected to be in the range of [0, 1].
 
     Args:
@@ -1421,6 +1588,9 @@ class AdjustGamma(nn.Module):
 class AdjustContrast(nn.Module):
     r"""Adjust Contrast of an image.
 
+    Convention:
+        See :func:`adjust_contrast` for the multiplicative scale; this module always clips to [0, 1].
+
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
     The input image is expected to be in the range of [0, 1].
 
@@ -1466,6 +1636,9 @@ class AdjustContrast(nn.Module):
 
 class AdjustContrastWithMeanSubtraction(nn.Module):
     r"""Adjust Contrast of an image.
+
+    Convention:
+        See :func:`adjust_contrast_with_mean_subtraction` for its mean blend.
 
     For an RGB image it blends the image with its grayscale mean, ``factor * image + (1 - factor) * mean``, as
     torchvision and PIL do.
@@ -1518,6 +1691,9 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
 class AdjustBrightness(nn.Module):
     r"""Adjust Brightness of an image.
 
+    Convention:
+        See :func:`adjust_brightness` for the additive factor; this module always clips to [0, 1].
+
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
     The input image is expected to be in the range of [0, 1].
 
@@ -1563,6 +1739,9 @@ class AdjustBrightness(nn.Module):
 class AdjustSigmoid(nn.Module):
     r"""Adjust the contrast of an image torch.Tensor or performs sigmoid correction on the input image torch.Tensor.
 
+    Convention:
+        See :func:`adjust_sigmoid` for cutoff and inverse-curve policy.
+
     The input image is expected to be in the range of [0, 1].
 
     Reference:
@@ -1605,6 +1784,9 @@ class AdjustSigmoid(nn.Module):
 class AdjustLog(nn.Module):
     """Adjust log correction on the input image torch.Tensor.
 
+    Convention:
+        See :func:`adjust_log` for logarithmic and inverse behavior.
+
     The input image is expected to be in the range of [0, 1].
 
     Reference:
@@ -1645,6 +1827,10 @@ class AdjustLog(nn.Module):
 
 class AdjustBrightnessAccumulative(nn.Module):
     r"""Adjust Brightness of an image accumulatively.
+
+    Convention:
+        See :func:`adjust_brightness_accumulative` for the multiplicative factor; this module always clips
+        to [0, 1].
 
     It multiplies the image by ``factor``, as torchvision's and PIL's brightness does.
     The input image is expected to be in the range of [0, 1].
@@ -1690,6 +1876,9 @@ class AdjustBrightnessAccumulative(nn.Module):
 
 class Invert(nn.Module):
     r"""Invert the values of an input torch.Tensor by its maximum value.
+
+    Convention:
+        See :func:`invert` for max-value subtraction behavior.
 
     Args:
         input: The input torch.Tensor to invert with an arbitatry shape.

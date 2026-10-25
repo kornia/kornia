@@ -99,9 +99,18 @@ jobs:
 
           CHANGED_FILES=$(git diff --name-only "$PREV_SHA" HEAD)
 
-          # Skip only if every changed file is documentation
+          # Skip only if every changed file is documentation. The export survey, its snapshot and the stability page
+          # live under docs/ but define what the ONNX and compile conformance jobs check (#5819), and the
+          # support-statement generator renders the promise that tests/test_generate_export_support.py checks.
           SHOULD_SKIP="true"
           for file in $CHANGED_FILES; do
+            if [[ "$file" =~ ^docs/export_support/ ]] || \
+               [[ "$file" == "docs/generate_export_support.py" ]] || \
+               [[ "$file" == "docs/source/_data/export_support.json" ]] || \
+               [[ "$file" == "docs/source/get-started/stability.rst" ]]; then
+              SHOULD_SKIP="false"
+              break
+            fi
             if [[ ! "$file" =~ ^docs/ ]] && \
                [[ ! "$file" =~ \.md$ ]] && \
                [[ "$file" != "LICENSE" ]] && \
@@ -180,14 +189,46 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1"]'
+      pytorch-version: '["2.14.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
+      # Same hang guard as the PR half-precision job (#5493).
+      pytest-extra: --timeout=600 --timeout-method=thread -o faulthandler_timeout=300
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
+
+  # ONNX conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers 2.14.0
+  # for the packages a change touches and the packages that import them.
+  onnx-conformance:
+    needs: [check-skip]
+    if: needs.check-skip.outputs.should-skip == 'false'
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.9.1", "2.14.0"]'
+      pytorch-dtype: float32
+      test-path: tests/onnx/test_conformance.py
+      # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
+      pytest-extra: --onnx-conformance=all --timeout=600
+
+  # torch.compile conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers
+  # 2.14.0 for the packages a change touches and the packages that import them.
+  compile-conformance:
+    needs: [check-skip]
+    if: needs.check-skip.outputs.should-skip == 'false'
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.9.1", "2.14.0"]'
+      pytorch-dtype: float32
+      test-path: tests/test_inductor_conformance.py
+      # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
+      pytest-extra: --compile-conformance=all --timeout=600
 
   tests-cpu-windows:
     needs: [check-skip, pre-tests]

@@ -81,16 +81,33 @@ class DeDoDe(nn.Module):
 
     See :cite:`edstedt2024dedode` for details.
 
-    .. note:: DeDode takes ImageNet normalized images as input (not in range [0, 1]).
+    Convention:
+        - :meth:`forward`, :meth:`detect` and :meth:`describe` take RGB images in the range :math:`[0, 1]` and apply
+          the ImageNet normalization themselves; pass ``apply_imagenet_normalization=False`` for images that are
+          already normalized. ``pad_if_not_divisible`` zero-pads the normalized image at the bottom and right to
+          multiples of 14, so the padding is the ImageNet mean colour, and removes it from the maps again.
+        - :meth:`forward` returns pixel ``i`` as ``i + 0.5``: subtract 0.5 for the pixel frame of
+          :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          :meth:`detect` returns it normalized, as ``(2 i + 1) / (W, H) - 1`` in :math:`[-1, 1]`
+          (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a
+          ``k`` to kornia's frame. A description is read at the centre of pixel ``i``.
+        - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
+          threshold and no padding. Keypoints, and the descriptions of
+          :meth:`forward` and of ``describe(images, keypoints)``, are float32; descriptions are not normalized. The
+          dense map of ``describe(images)`` follows the network dtype: ``amp_dtype`` on CUDA, the dtype of the model
+          on CPU and MPS.
+        - ``amp_dtype`` is CUDA mixed precision in every component: on CUDA tensors the networks run under
+          ``torch.autocast`` in ``amp_dtype`` (and the DINOv2 backbone of the ``G`` descriptor is cast to it). On CPU
+          and MPS it has no effect, so the default argument runs there with float32 weights and images.
 
     Args:
         detector_model: The detector model kind. Available options are: `L`.
         descriptor_model: The descriptor model kind. Available options are: `G` or `B`
-        amp_dtype: The automatic mixed precision desired.
+        amp_dtype: The dtype of the automatic mixed precision used on CUDA; it has no effect on other devices.
 
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
-        >>> images = torch.randn(1, 3, 256, 256)
+        >>> images = torch.rand(1, 3, 256, 256)
         >>> keypoints, scores = dedode.detect(images)
         >>> descriptions = dedode.describe(images, keypoints = keypoints)
         >>> keypoints, scores, features = dedode(images) # alternatively do both
@@ -109,6 +126,23 @@ class DeDoDe(nn.Module):
         self.descriptor: DeDoDeDescriptor = get_descriptor(descriptor_model, amp_dtype)
         self.normalizer = Normalize(torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
 
+    def _preprocess(
+        self, images: torch.Tensor, apply_imagenet_normalization: bool, pad_if_not_divisible: bool
+    ) -> torch.Tensor:
+        """Normalise, then zero-pad to a multiple of 14.
+
+        The pad is applied after the normalisation so that it is the ImageNet mean colour, the neutral value the
+        networks see, in every entry point.
+        """
+        if apply_imagenet_normalization:
+            images = self.normalizer(images)
+        if pad_if_not_divisible:
+            H, W = images.shape[-2:]
+            pd_h = 14 - H % 14 if H % 14 > 0 else 0
+            pd_w = 14 - W % 14 if W % 14 > 0 else 0
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+        return images
+
     def forward(
         self,
         images: torch.Tensor,
@@ -119,10 +153,14 @@ class DeDoDe(nn.Module):
         """Detect and describe keypoints in the input images.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             n: The number of keypoints to detect.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: F.pad image shape if not evenly divisible.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
+            pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
+                multiples of 14; the pad is the ImageNet mean colour. The padding is removed from the scoremap, so
+                keypoints are never reported in it.
 
         Returns:
             keypoints: A torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
@@ -131,21 +169,21 @@ class DeDoDe(nn.Module):
             scores: A torch.Tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
 
             descriptions: A torch.Tensor of shape :math:`(B, N, DIM)` containing the descriptions
-                of the detected keypoints. DIM is 256 for B and 512 for G.
+                of the detected keypoints. DIM is 256 for both B and G.
 
         """
-        if apply_imagenet_normalization:
-            images = self.normalizer(images)
         _B, _C, H, W = images.shape
-        if pad_if_not_divisible:
-            pd_h = 14 - H % 14 if H % 14 > 0 else 0
-            pd_w = 14 - W % 14 if W % 14 > 0 else 0
-            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
-        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
-        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
+        images = self._preprocess(images, apply_imagenet_normalization, pad_if_not_divisible)
+        # ``images`` is already normalised and, when asked, padded: the calls below must do neither again.
+        keypoints, scores = self.detect(
+            images, n=n, apply_imagenet_normalization=False, pad_if_not_divisible=False, crop_h=H, crop_w=W
+        )
+        descriptions = self.describe(
+            images, keypoints, apply_imagenet_normalization=False, pad_if_not_divisible=False, crop_h=H, crop_w=W
+        )
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def detect(
         self,
         images: torch.Tensor,
@@ -163,10 +201,14 @@ class DeDoDe(nn.Module):
             detector is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             n: The number of keypoints to detect.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: F.pad image shape if not evenly divisible.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
+            pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
+                multiples of 14; the pad is the ImageNet mean colour, as in :meth:`forward` and :meth:`describe`. The
+                padding is removed from the scoremap, so keypoints are never reported in it.
             crop_h: The height of the crop to be used for detection. If None, the full image is used.
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
@@ -179,13 +221,7 @@ class DeDoDe(nn.Module):
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
         B, _C, H, W = images.shape
-        if pad_if_not_divisible:
-            h, w = images.shape[2:]
-            pd_h = 14 - h % 14 if h % 14 > 0 else 0
-            pd_w = 14 - w % 14 if w % 14 > 0 else 0
-            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
-        if apply_imagenet_normalization:
-            images = self.normalizer(images)
+        images = self._preprocess(images, apply_imagenet_normalization, pad_if_not_divisible)
         logits = self.detector.forward(images)
         # Remove the padding, if any
         logits = logits[..., :H, :W]
@@ -196,7 +232,7 @@ class DeDoDe(nn.Module):
         keypoints, confidence = sample_keypoints(scoremap, num_samples=n)
         return keypoints, confidence
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def describe(
         self,
         images: torch.Tensor,
@@ -214,11 +250,15 @@ class DeDoDe(nn.Module):
             descriptor is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+                :math:`[0, 1]`.
             keypoints: An optional torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
-            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: Zero-pad the image so H and W are divisible by 14. Required when
-                using the ``G`` descriptor backed by DINOv2 (patch size 14). Ignored for ``B``.
+            apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
+                ``False`` if they are already ImageNet-normalized.
+            pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
+                multiples of 14; the pad is the ImageNet mean colour, as in :meth:`forward` and :meth:`detect`.
+                Required when using the ``G`` descriptor backed by DINOv2 (patch size 14). The padding is removed from
+                the descriptor map, so the map has the size of the input image.
             crop_h: The height of the crop to be used for description. If None, the full image is used.
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
@@ -232,17 +272,13 @@ class DeDoDe(nn.Module):
         _B, _C, H, W = images.shape
         if keypoints is not None:
             KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
-        if apply_imagenet_normalization:
-            images = self.normalizer(images)
-        if pad_if_not_divisible:
-            pd_h = 14 - H % 14 if H % 14 > 0 else 0
-            pd_w = 14 - W % 14 if W % 14 > 0 else 0
-            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+        images = self._preprocess(images, apply_imagenet_normalization, pad_if_not_divisible)
         self.train(False)
         descriptions = self.descriptor.forward(images)
         if crop_h is not None and crop_w is not None:
-            descriptions = descriptions[..., :crop_h, :crop_w]
             H, W = crop_h, crop_w
+        # Remove the padding, so that the normalised keypoints of `detect` index the map of the input image.
+        descriptions = descriptions[..., :H, :W]
 
         if keypoints is not None:
             return F.grid_sample(descriptions.float(), keypoints[:, None], mode="bilinear", align_corners=False)[
@@ -269,8 +305,10 @@ class DeDoDe(nn.Module):
                 One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'B-C4', 'B-SO2', 'G-C4', 'G-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
                 Default is 'G-upright'.
-            amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
-            Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
+            amp_dtype: the dtype of the automatic mixed precision used on CUDA, one of torch.float16 or
+                torch.float32. It has no effect on CPU or MPS, where every component runs in the dtype of the
+                input and the model.
+                Default is torch.float16.
 
         Returns:
             The pretrained model.
@@ -280,8 +318,8 @@ class DeDoDe(nn.Module):
         # e.g. "L-C4-v2" -> "L", "G-upright" -> "G". All current checkpoints follow this
         # convention intentionally so that new variants only need a new URL entry.
         model: DeDoDe = cls(
-            detector_model=detector_weights[0],  # type: ignore[arg-type]
-            descriptor_model=descriptor_weights[0],  # type: ignore[arg-type]
+            detector_model=detector_weights[0],
+            descriptor_model=descriptor_weights[0],
             amp_dtype=amp_dtype,
         )
         model.detector.load_state_dict(

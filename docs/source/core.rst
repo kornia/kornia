@@ -12,6 +12,17 @@ kornia.core
 
 .. autofunction:: kornia.core.utils.batched_forward
 
+Device and autocast helpers
+---------------------------
+
+.. autofunction:: kornia.core.utils.get_cuda_device_if_available
+
+.. autofunction:: kornia.core.utils.get_mps_device_if_available
+
+.. autofunction:: kornia.core.utils.get_cuda_or_mps_device_if_available
+
+.. autofunction:: kornia.core.utils.is_autocast_enabled
+
 Weights
 -------
 
@@ -34,6 +45,27 @@ callable that lets the download half reject a truncated cache entry.
 
 .. autofunction:: check_safetensors
 
+Validation
+----------
+
+.. currentmodule:: kornia.core.check
+
+The ``KORNIA_CHECK*`` helpers validate inputs and raise the errors below. A check on sizes compares them with
+:func:`KORNIA_CHECK_SAME_SIZE`, :func:`KORNIA_CHECK_SIZES` or :func:`KORNIA_CHECK_SHAPE`, which build their message only
+when the check fails. Any other message that formats a tensor size or an ``int`` argument is passed as a function,
+``KORNIA_CHECK(condition, lambda: f"...")``: an f-string argument is built on every call, and under a dynamic-shape
+``torch.compile`` that specializes the value, so each new value would compile a new graph.
+
+.. autofunction:: KORNIA_CHECK
+
+.. autofunction:: KORNIA_CHECK_SHAPE
+
+.. autofunction:: KORNIA_CHECK_SAME_SHAPE
+
+.. autofunction:: KORNIA_CHECK_SAME_SIZE
+
+.. autofunction:: KORNIA_CHECK_SIZES
+
 Exceptions
 ----------
 
@@ -41,10 +73,17 @@ Exceptions
 
 The errors raised by kornia's ``KORNIA_CHECK*`` validation helpers in
 ``kornia.core.check`` (and by a few functions directly), such as a tensor with
-the wrong shape. All of them derive from :exc:`BaseError`, which derives from
-:exc:`Exception`, so ``except BaseError`` catches any of them. It does not catch
-every input error: many functions validate their inputs themselves and raise the
-built-in :exc:`ValueError` or :exc:`TypeError` instead.
+the wrong shape. All of them derive from :exc:`BaseError`, so ``except BaseError``
+catches any of them. Each subclass also derives from the built-in exception that
+matches its failure: :exc:`TypeCheckError` is also a :exc:`TypeError`, and
+:exc:`ShapeError`, :exc:`ValueCheckError`, :exc:`DeviceError` and
+:exc:`ImageError` are each also a :exc:`ValueError`. Many functions validate
+their inputs themselves and raise the built-in :exc:`ValueError` or
+:exc:`TypeError`, so ``except ValueError`` or ``except TypeError`` catches those
+and the matching kornia errors alike; ``except BaseError`` does not catch those
+built-ins. :exc:`BaseError` itself derives only from :exc:`Exception`: a failed
+``KORNIA_CHECK(condition)`` raises it, and neither of those two clauses catches
+it.
 
 .. autoexception:: BaseError
     :show-inheritance:

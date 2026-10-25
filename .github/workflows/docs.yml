@@ -5,6 +5,9 @@ on:
       - 'docs/**'
       - '*.rst'
       - '.github/workflows/docs.yml'
+      # the support statement of the export-support page is rendered from the conformance promise and its manifests
+      - 'testing/conformance_promise.py'
+      - 'testing/known_failure_xfails/*_conformance_*.txt'
   workflow_call:
     inputs:
       python-version:
@@ -15,10 +18,6 @@ on:
         required: false
         type: boolean
         default: false
-      ref:
-        required: false
-        type: string
-        default: ${{ github.sha }}
       cache-path:
         required: false
         type: string
@@ -58,7 +57,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       # On direct pull_request runs (empty inputs) fall back to a prefix restore of the
       # model-weights caches saved by the test workflows. A dozen doctests build

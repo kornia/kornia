@@ -27,6 +27,68 @@ from testing.base import BaseTester
 
 
 class TestConventionGeometricMatrices(BaseTester):
+    def test_nearest_resize_uses_nearest_exact_and_half_pixel_matrix(self):
+        image = torch.arange(49, dtype=torch.float64).view(1, 1, 7, 7)
+        augmentation = K.Resize((14, 21), resample="nearest")
+
+        output = augmentation(image)
+        expected = torch.nn.functional.interpolate(image, size=(14, 21), mode="nearest-exact")
+        self.assert_close(output, expected)
+        self.assert_close(
+            augmentation.transform_matrix,
+            image.new_tensor([[[3.0, 0.0, 1.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]]),
+        )
+
+    @pytest.mark.parametrize("input_size,output_size", [((7, 7), (21, 21)), ((12, 12), (9, 9)), ((5, 5), (8, 8))])
+    def test_nearest_resize_inverse_roundtrip(self, input_size, output_size):
+        image = torch.arange(input_size[0] * input_size[1], dtype=torch.float32).view(1, 1, *input_size)
+        augmentation = K.AugmentationSequential(K.Resize(output_size, resample="nearest"))
+        restored = augmentation.inverse(augmentation(image))
+        assert restored.shape == image.shape
+        # Nearest downsampling is lossy, but inverse resampling must still cover both image edges.
+        self.assert_close(restored[..., 0, 0], image[..., 0, 0])
+        self.assert_close(restored[..., -1, -1], image[..., -1, -1])
+
+    @pytest.mark.parametrize(
+        "augmentation", [K.LongestMaxSize(21, resample="nearest"), K.SmallestMaxSize(9, resample="nearest")]
+    )
+    def test_nearest_max_size_matches_nearest_exact(self, augmentation):
+        image = torch.arange(35, dtype=torch.float64).view(1, 1, 5, 7)
+        output = augmentation(image)
+        expected = torch.nn.functional.interpolate(image, size=output.shape[-2:], mode="nearest-exact")
+        self.assert_close(output, expected)
+
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_nearest_slice_resized_crop_uses_nearest_exact(self, align_corners):
+        image = torch.arange(11, dtype=torch.float64).view(1, 1, 1, 11).expand(1, 1, 5, -1)
+        augmentation = K.RandomResizedCrop(
+            (6, 21), resample="nearest", align_corners=align_corners, cropping_mode="slice"
+        )
+        params = augmentation.forward_parameters(image.shape)
+        params["src"] = image.new_tensor([[[2, 1], [8, 1], [8, 3], [2, 3]]])
+
+        output = augmentation(image, params=params)
+        expected = torch.nn.functional.interpolate(image[..., 1:4, 2:9], size=(6, 21), mode="nearest-exact")
+        self.assert_close(output, expected)
+        self.assert_close(
+            augmentation.transform_matrix,
+            image.new_tensor([[[3.0, 0.0, -5.0], [0.0, 2.0, -1.5], [0.0, 0.0, 1.0]]]),
+        )
+
+    @pytest.mark.parametrize(
+        "augmentation,output_size",
+        [
+            (K.Resize((6, 9), resample="nearest"), (6, 9)),
+            (K.LongestMaxSize(9, resample="nearest"), (7, 9)),
+            (K.SmallestMaxSize(6, resample="nearest"), (6, 7)),
+        ],
+    )
+    def test_nearest_resize_handles_empty_batch(self, augmentation, output_size):
+        image = torch.empty(0, 1, 4, 5)
+        output = augmentation(image)
+        assert output.shape == (0, 1, *output_size)
+        assert augmentation.transform_matrix.shape == (0, 3, 3)
+
     def test_convention_flips_use_inclusive_pixel_coordinates(self, device, dtype):
         x = torch.zeros(1, 1, 5, 7, device=device, dtype=dtype)
         x[..., 1, 2] = 1
@@ -108,9 +170,11 @@ class TestConventionGeometricMatrices(BaseTester):
         extent = basic_offset.new_tensor([1.75, 1.25])
 
         assert (basic_offset[:, 0] >= 0).all()
-        assert (basic_offset[:, 1, 0] <= 0).all() and (basic_offset[:, 1, 1] >= 0).all()
+        assert (basic_offset[:, 1, 0] <= 0).all()
+        assert (basic_offset[:, 1, 1] >= 0).all()
         assert (basic_offset[:, 2] <= 0).all()
-        assert (basic_offset[:, 3, 0] >= 0).all() and (basic_offset[:, 3, 1] <= 0).all()
+        assert (basic_offset[:, 3, 0] >= 0).all()
+        assert (basic_offset[:, 3, 1] <= 0).all()
         assert (basic_offset.abs() <= extent).all()
         assert (basic_offset.abs().amax(dim=(0, 1)) > 0.9 * extent).all()
         assert (area_offset.abs() <= extent).all()
@@ -147,16 +211,47 @@ class TestConventionGeometricMatrices(BaseTester):
 
     @pytest.mark.parametrize("size", [(1, 7), (5, 1), (1, 1)])
     @pytest.mark.parametrize("align_corners", [False, True])
-    def test_wart_random_perspective_singleton_dimensions_4787(self, device, dtype, size, align_corners):
+    def test_convention_random_perspective_singleton_dimensions_4787(self, device, dtype, size, align_corners):
+        # #4787: a size-1 axis gets a unit source extent and no offset, so the solve is not degenerate and
+        # zero distortion is the identity.
         height, width = size
         image = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width)
         augmentation = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)
 
         output = augmentation(image)
 
-        # Coincident source corners make the perspective solve degenerate, even without distortion.
-        assert torch.isnan(augmentation.transform_matrix).all()
-        assert torch.isnan(output).all()
+        assert torch.isfinite(augmentation.transform_matrix).all()
+        self.assert_close(output, image, low_tolerance=True)
+
+    @pytest.mark.parametrize("sampling_method", ["basic", "area_preserving"])
+    @pytest.mark.parametrize("size", [(1, 7), (5, 1)])
+    def test_convention_random_perspective_does_not_distort_a_singleton_axis_4787(
+        self, device, dtype, size, sampling_method
+    ):
+        height, width = size
+        torch.manual_seed(0)
+        image = torch.rand(4, 1, height, width, device=device, dtype=dtype)
+        augmentation = K.RandomPerspective(1.0, p=1.0, sampling_method=sampling_method)
+
+        output = augmentation(image)
+
+        assert torch.isfinite(output).all()
+        # The singleton axis spans a unit source extent (the other axis keeps its inclusive corners).
+        start = augmentation._params["start_points"]
+        x_end, y_end = (width - 1, 1) if height == 1 else (1, height - 1)
+        expected = torch.tensor([[0, 0], [x_end, 0], [x_end, y_end], [0, y_end]]).to(start).expand_as(start)
+        assert torch.equal(start, expected)
+        matrix = augmentation.transform_matrix.to(torch.float32)
+        assert torch.isfinite(matrix).all()
+        # The singleton row (or column) maps onto itself, while the other axis is still warped.
+        axis = 1 if height == 1 else 0
+        extent = width if height == 1 else height
+        points = torch.zeros(4, extent, 2, device=device)
+        points[..., 1 - axis] = torch.arange(extent, device=device, dtype=torch.float32)
+        homogeneous = torch.cat([points, torch.ones_like(points[..., :1])], dim=-1) @ matrix.transpose(-1, -2)
+        mapped = homogeneous[..., :2] / homogeneous[..., 2:]
+        self.assert_close(mapped[..., axis], torch.zeros_like(mapped[..., axis]), low_tolerance=True)
+        assert not torch.allclose(mapped[..., 1 - axis], points[..., 1 - axis], atol=1e-2)
 
     def test_wart_random_affine_rotation_sign_4408(self, device, dtype):
         x = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)
@@ -168,14 +263,85 @@ class TestConventionGeometricMatrices(BaseTester):
         assert rotation[0, 0].argmax().item() == 2 * 7 + 1
         assert affine[0, 0].argmax().item() == 4 * 7 + 5
 
-    def test_wart_random_rotation90_continuously_samples_then_rounds_4409(self, device, dtype):
+    # Rounding a continuous draw on `[lo, hi]` gave the two end points half the weight of the others, so
+    # `times=(-1, 1)` drew 0 about twice as often as -1 or 1 (25% / 50% / 25%). The draw is now floored on
+    # `[lo, hi + 1)`, so every whole number of a closed range has the same probability.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0)
+    #   drawn = K.RandomRotation90((-1, 1), p=1.0).forward_parameters((9000, 1, 4, 4))["times"]
+    #   print(torch.unique(drawn, return_counts=True))
+    # The pin allows 15% around the uniform count, 8 sigma for 3000 draws per value, and what it has to separate
+    # is a factor of two, not a few percent.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(-1, 1), (0, 2), (0, 3), (-3, 3)])
+    def test_convention_random_rotation90_times_are_closed_and_uniform_4409(self, times):
+        low, high = times
+        count = high - low + 1
+        torch.manual_seed(0)
+        drawn = K.RandomRotation90(times, p=1.0).forward_parameters((count * 3000, 1, 4, 4))["times"]
+
+        assert torch.equal(drawn, drawn.round())
+        assert (int(drawn.min()), int(drawn.max())) == (low, high)
+        counts = torch.bincount((drawn - low).long(), minlength=count)
+        expected = drawn.numel() / count
+        assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), counts.tolist()
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_same_on_batch_shares_one_whole_number_4409(self):
+        torch.manual_seed(0)
+        drawn = K.RandomRotation90((-3, 3), p=1.0, same_on_batch=True).forward_parameters((16, 1, 4, 4))["times"]
+
+        assert drawn.shape == (16,)
+        assert bool((drawn == drawn[0]).all())
+        assert float(drawn[0]) == float(drawn[0].round())
+
+    # The excluded end point of the half-open sampler range is clamped back, not drawn: for the largest value
+    # `torch.rand` can return, `lo + u * (hi + 1 - lo)` rounds up onto `hi + 1` in float32 for these ranges
+    # (`1 + (1 - 2 ** -24) * 1` is exactly `2.0`), which `floor` would keep -- about one draw in 2**24, and
+    # `times=(1, 1)` would turn a quarter turn into a half turn.
+    # Snippet used to generate expected: the same ranges, with `torch.rand` patched to return `1 - 2 ** -24`.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(1, 1), (-3, -3), (-2, -2), (1, 2)])
+    def test_convention_random_rotation90_largest_draw_stays_in_the_closed_range_4409(self, monkeypatch, times):
+        largest = 1 - 2**-24
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.full_like(real_rand(*args, **kwargs), largest))
+        drawn = K.RandomRotation90(times, p=1.0).forward_parameters((4, 1, 4, 4))["times"]
+
+        assert drawn.tolist() == [float(times[1])] * 4
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "times,error,match",
+        [
+            ((2, 1), ValueError, r"times\[0\] should be smaller than times\[1\]"),
+            ((-4, 4), ValueError, "times out of bounds"),
+            ((float("nan"), 1), ValueError, "must be finite"),
+            ((1, 2, 3), TypeError, "length 2"),
+        ],
+    )
+    def test_convention_random_rotation90_times_range_validation_is_unchanged_4409(self, times, error, match):
+        with pytest.raises(error, match=match):
+            K.RandomRotation90(times, p=1.0)
+
+    # A range with a fractional bound is not a closed range of whole numbers, so it keeps the continuous draw
+    # that is rounded when the matrix is built, and an integer tensor range draws its upper bound too.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_fractional_and_tensor_ranges_4409(self):
+        torch.manual_seed(0)
+        fractional = K.RandomRotation90((0.5, 2.5), p=1.0).forward_parameters((6000, 1, 4, 4))["times"]
+        assert float(fractional.min()) >= 0.5
+        assert float(fractional.max()) <= 2.5
+        assert not torch.equal(fractional, fractional.round())
+
+        tensor_range = K.RandomRotation90(torch.tensor([0, 2]), p=1.0).forward_parameters((6000, 1, 4, 4))["times"]
+        assert tensor_range.dtype == torch.int64
+        assert set(tensor_range.tolist()) == {0, 1, 2}
+
+    def test_convention_random_rotation90_rounds_supplied_times_4409(self, device, dtype):
+        # `times` passed through `params`, for instance saved by an earlier release that drew them continuously,
+        # is still rounded to a whole number of quarter turns.
         augmentation = K.RandomRotation90((0, 1), p=1.0)
-        torch.manual_seed(1)
-        params = augmentation.forward_parameters((64, 1, 5, 7))
-
-        assert ((params["times"] >= 0) & (params["times"] <= 1)).all()
-        assert not torch.equal(params["times"], params["times"].round())
-
         x = torch.zeros(2, 1, 7, 7, device=device, dtype=dtype)
         x[..., 1, 4] = 1
         params = augmentation.forward_parameters(x.shape)

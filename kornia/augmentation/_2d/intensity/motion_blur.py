@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur
 
@@ -58,13 +59,16 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - a positive ``angle`` turns the blur line counter-clockwise as the image is displayed, as in
           :func:`kornia.filters.motion_blur` and :func:`kornia.filters.get_motion_kernel2d`.
         - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight evenly, and
           ``-1`` and ``+1`` pile it at opposite ends. The rotation then resamples the kernel with ``resample``:
           ``"nearest"`` can drop or duplicate taps, so the line's length and end weights change with ``angle``, and
           ``"bilinear"`` or ``"bicubic"`` also spread weight off the line.
-        - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
+        - the default ``resample="nearest"`` is the function's own default. The default ``border_type="constant"``
+          is not: the class zero-pads by its own default, while :func:`kornia.filters.motion_blur` defaults to
+          ``"reflect"``. Pass ``border_type="reflect"`` to match the function.
         - a ranged ``kernel_size`` is drawn once per call and repeated into ``_params["ksize_factor"]`` with
           shape ``(B,)``, so every sample uses that size even with ``same_on_batch=False``; angle and direction
           are drawn per sample unless ``same_on_batch=True``. A tuple range draws each odd size inside it with
@@ -77,12 +81,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           the kernel negative weights, and the result can overshoot both extremes.
         - an image smaller than the kernel is accepted, down to ``1 x 1``, at the default
           ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` needs each spatial axis longer than
-          the kernel radius along it, and ``"circular"`` at least that long.
-
-    .. warning::
-        Under ``"reflect"`` and ``"circular"`` an image too small for the drawn kernel raises a raw torch padding
-        error, where :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise a ``ValueError`` naming the
-        class and the shape. Tracked in `#4784 <https://github.com/kornia/kornia/issues/4784>`_.
+          the kernel radius along it, and ``"circular"`` at least that long; below that both raise a
+          ``ValueError`` naming the class, the drawn kernel and the input shape, as :class:`RandomBoxBlur` and
+          :class:`RandomGaussianBlur` do.
 
     Note:
         This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
@@ -153,13 +154,18 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             # entries are equal and taking the first is legit.) This branch is inherently
             # data-dependent and not fullgraph-compilable.
             kernel_size_list: List[int] = params["ksize_factor"].tolist()
+            if not kernel_size_list and input.shape[0] == 0:
+                # An empty batch draws no kernel size and has nothing to blur; motion blur keeps the shape (#4429).
+                return input.clone()
             idx: int = cast(int, params["idx"][0])
             kernel_size = kernel_size_list[idx]
+        border_type = flags["border_type"].name.lower()
+        _check_filter_min_size("RandomMotionBlur", input, kernel_size, border_type=border_type)
         return motion_blur(
             input,
             kernel_size=kernel_size,
             angle=params["angle_factor"],
             direction=params["direction_factor"],
-            border_type=flags["border_type"].name.lower(),
+            border_type=border_type,
             mode=flags["resample"].name.lower(),
         )

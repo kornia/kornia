@@ -20,6 +20,20 @@ measured in confidence, not API count — a strong release can contain zero new 
 APIs and still deliver better `torch.compile` coverage, fixed convention ambiguity,
 improved numerical stability, and stronger dtype/device behavior.
 
+## Release status — 2026-10-23
+
+[Kornia 0.9.0](https://github.com/kornia/kornia/releases/tag/v0.9.0) is released and
+verified. The published PyPI wheel and source archive match the CI build and GitHub
+assets. Fresh Python 3.11/3.13 installs passed imports and image I/O; the installed
+wheel passed the CPU/MPS workflow smoke checks, including compiled RANSAC on CPU.
+Stable and versioned documentation serve the 0.9.0 LLM files.
+
+Development now targets `0.9.1.dev`. The next patch prioritizes confirmed regressions
+and compatible fixes. Box/camera/augmentation convention decisions, the external
+conformance corpus, and the proposed Tier A policy remain separate longer-term
+work under the existing stability policy. The current release sequence and
+follow-ups are tracked in [#4620](https://github.com/kornia/kornia/issues/4620).
+
 ## Guiding themes
 
 Four engineering north stars shape the roadmap below.
@@ -42,12 +56,13 @@ Four engineering north stars shape the roadmap below.
       default-value bugs, so downstream users face a single loud migration instead of
       a drizzle of breaking changes. The window runs *under* the
       [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html),
-      not around it: every semantic or default change gets the policy's deprecation
-      treatment (at least one minor release of warnings, landing at a 0.x minor
-      boundary) — "coordinated" means the changes are batched into one migration,
-      not that the deprecation rules are waived. Only clearly-broken-output bugs
-      (NaN, crashes) use the policy's correctness escape hatch and land early as
-      ordinary bugfixes.
+      not around it: a deliberate change to a default or convention gets the
+      policy's deprecation treatment (at least one minor release of warnings,
+      landing at a 0.x minor boundary) — "coordinated" means the changes are batched
+      into one migration, not that the deprecation rules are waived. Correctness
+      fixes (NaN, crashes, wrong math, or a result that contradicts what the
+      operation is documented to do) use the policy's escape hatch and land when
+      ready, with a release note that says what the old behavior was.
    3. **Freeze** — after the window, a **Tier A ("Kornia Core")** set is declared:
       symbols with the strongest guarantees (autograd, gradcheck, compile, dtype/
       device correctness, explicit conventions, semantic stability). Tier A starts
@@ -67,13 +82,14 @@ Four engineering north stars shape the roadmap below.
 2. **Compile-first (`torch.compile` / dynamo).** The numeric core (filters, color,
    geometry, enhance, losses) is already largely compile-clean. The remaining work is
    concentrated in the stochastic augmentation pipeline and the dynamic-shape feature
-   detectors, which branch on tensor values and break the graph — the augmentation
-   classes fail structurally in data-dependent parameter generation
-   ([#3913](https://github.com/kornia/kornia/issues/3913)). Compile support is
+   detectors, which branch on tensor values and break the graph. The geometric parameter
+   generators (`RandomAffine`, `RandomPerspective`, `RandomResizedCrop`) now compile
+   fullgraph; the data-dependent crops and the `AugmentationSequential` container still
+   break ([#5137](https://github.com/kornia/kornia/issues/5137)). Compile support is
    claimed **per evidenced surface**: today that means the functional core, not the
    augmentation classes as a class-level guarantee — many individual augmentations
    already run fullgraph in the PR-time dynamo job (see the compile/export spine
-   below), but the data-dependent parameter generators keep the class-level claim
+   below), but the remaining breaks and CUDA coverage keep the class-level claim
    off the table — and docs state the scope explicitly.
 
 3. **Export-first (ONNX).** ONNX export fails on the *same* patterns that break
@@ -109,22 +125,25 @@ maintainer with model-work capacity joins the project. Contributions already in
 flight before the freeze (an open issue plus a PR under review) are grandfathered
 and finish under the rules they started under.
 
-## Short term — next release
+## Short term — 0.9.1 maintenance candidates
 
-- **Stabilize CI and the augmentation core.** Recent fixes repaired regressions from the
-  ONNX-exportability refactor and healed the scheduled test matrix. Ship these in a
-  release so users get the fixes.
-- **Convention-block batches.** Continue the per-op audit:
-  `geometry.conversions` → bounding boxes
-  ([#3934](https://github.com/kornia/kornia/issues/3934)) → camera → augmentation
-  classes. Each batch delivers Convention blocks, pinning tests, and dedicated
-  issues for any behavior bug found.
-- **Broken-output bugfixes** from the audit, landing ahead of the repair window:
-  pyramid bounds check ([#3927](https://github.com/kornia/kornia/issues/3927)),
-  1-pixel crop NaN ([#3929](https://github.com/kornia/kornia/issues/3929)).
-- **CI truthfulness.** Every advertised CI matrix axis must actually reach the code
-  under test; first repair is the unused pytorch-version axis
-  ([#3930](https://github.com/kornia/kornia/issues/3930)).
+These are priorities to investigate and validate, not a promise that every item
+will ship in 0.9.1. Confirmed downstream regressions take precedence.
+
+- **Bilateral-filter half gradients:** restore accuracy for learnable tensor sigmas
+  without losing backend performance ([#6284](https://github.com/kornia/kornia/issues/6284)).
+  Float32 sigmas remain the documented workaround until a fix is verified.
+- **Compiled RANSAC cache safety:** isolate the CPU-to-CUDA cache collision and
+  verify a fix or mitigation ([#6278](https://github.com/kornia/kornia/issues/6278)).
+  Separate `TORCHINDUCTOR_CACHE_DIR` directories per device, or `KORNIA_RANSAC_AOT=0`,
+  remain the current workarounds.
+- **CUDA reliability:** triage the Kannala-Brandt TorchScript second-call hang
+  ([#6257](https://github.com/kornia/kornia/issues/6257)); consolidate the 29 recorded
+  pre-existing CUDA-half test failures into explicit tracking and coverage work.
+  CUDA-half support is not a blanket patch-release guarantee.
+- **Post-release checks and documentation:** confirm the next scheduled cross-platform
+  PyPI-package test, retain the verified release evidence, and decide how stable/versioned
+  LLM documents should link to their matching documentation rather than `/en/latest/`.
 - **Contribution documentation:** keep the social contract, technical guidance, and
   project automation consistent and easy to understand.
 - **Progressively enable more `ruff` rule sets** to raise code health
@@ -168,10 +187,11 @@ and finish under the rules they started under.
   compiles fullgraph.* The stochastic-apply path, the `_extract_device_dtype`/version-check
   helpers, the transform-matrix blend, and the shape-changing crops (`Resize`, `CenterCrop`)
   have all landed as genuine single-path fixes; common intensity ops (color jitter, solarize,
-  brightness/contrast, erasing, flips) are fullgraph on the CI torch. Remaining: the
-  data-dependent tail — random-coordinate `RandomCrop`/`crop_by_indices`, histogram-based
-  `equalize`, and random-permutation dispatch — which need redesign, not guards
-  ([#3913](https://github.com/kornia/kornia/issues/3913)). On the export
+  brightness/contrast, erasing, flips), `equalize`, and the geometric parameter generators
+  (`RandomAffine`, `RandomPerspective`, `RandomResizedCrop`) are fullgraph on the CI torch.
+  Remaining: the data-dependent tail — random-coordinate `RandomCrop`/`crop_by_indices` and
+  the `AugmentationSequential` container, including its random-permutation dispatch — which
+  needs redesign, not guards ([#5137](https://github.com/kornia/kornia/issues/5137)). On the export
   side: solve multi-output ONNX export generically so tuple-returning modules (e.g. `Canny`,
   YUV conversions) are no longer blocked, and converge on a single modern ONNX opset.
 - **Dynamo tests in CI — landed for the compile-clean core.** A PR-time `dynamo` job now runs

@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -24,7 +24,8 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
-from kornia.geometry.boxes import Boxes
+from kornia.augmentation.utils.helpers import _frame_boxes, _video_boxes
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
 
 from .params import ParamItem
@@ -138,7 +139,7 @@ class VideoSequential(ImageSequential):
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply_weights: Optional[Union[Sequence[float], torch.Tensor]] = None,
         if_unsupported_ops: str = "raise",
     ) -> None:
         super().__init__(
@@ -189,6 +190,77 @@ class VideoSequential(ImageSequential):
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 
+    def _broadcast_cutmix_params(self, params: Dict[str, torch.Tensor], frame_num: int) -> None:
+        """Repeat the parameters of :class:`~kornia.augmentation.RandomCutMixV2` over the frames of each video.
+
+        The generator lays its parameters out as ``(num_mix, B, ...)``: the video is axis 1, so the repeat of
+        :meth:`__broadcast_param__` over axis 0 would repeat the mixes instead of the frames. ``mix_pairs`` also
+        holds video indices, which must become indices into the ``B * T`` flattened frames. Frame ``t`` of a video
+        is mixed with frame ``t`` of its partner video, so all frames of a video cut the same box from the same
+        partner.
+
+        Args:
+            params: Parameters drawn for the ``B`` videos; updated in place to cover the ``B * T`` frames.
+            frame_num: Number of frames ``T`` in each video.
+        """
+        for key, value in list(params.items()):
+            if not value.numel():
+                continue
+            if key == "mix_pairs":
+                # (num_mix, B) => (num_mix, B * T), entry [m, b * T + t] = pairs[m, b] * T + t.
+                frames = torch.arange(frame_num, device=value.device, dtype=value.dtype)
+                params[key] = (value[..., None] * frame_num + frames).reshape(value.shape[0], -1)
+            elif key == "crop_src":
+                # (num_mix, B, 4, 2) => (num_mix, B * T, 4, 2)
+                params[key] = value.repeat_interleave(frame_num, dim=1)
+            elif key == "batch_prob":
+                # (B,) => (B * T,)
+                params[key] = self.__repeat_param_across_channels__(value, frame_num)
+            # ``image_shape`` is the (H, W) of every image and ``forward_input_shape`` / ``video_batch_size`` are
+            # metadata: none of them has a per-video axis, so they stay as drawn.
+
+    @staticmethod
+    def _batch_index_param(module: nn.Module) -> Optional[str]:
+        """Name the parameter of a mix augmentation that holds indices into the image batch.
+
+        Along its first axis the parameter has one row per image, and its values index the batch as well. Drawn per
+        video, those values are video indices, which must become indices into the ``B * T`` flattened frames.
+        """
+        if isinstance(module, K.RandomMixUpV2):
+            return "mixup_pairs"
+        if isinstance(module, K.PatchMix):
+            return "mix_pairs"
+        if isinstance(module, K.RandomMosaic):
+            return "permutation"
+        return None
+
+    @staticmethod
+    def _video_to_frame_indices(v: torch.Tensor, frame_num: int) -> torch.Tensor:
+        """Map video indices, already repeated over the frames, to frame ``t`` of each indexed video."""
+        frames = torch.arange(v.shape[0], device=v.device, dtype=v.dtype) % frame_num
+        return v * frame_num + frames.view(-1, *([1] * (v.ndim - 1)))
+
+    @staticmethod
+    def _record_video_batch_size(
+        param: Union[Dict[str, torch.Tensor], List[ParamItem]], original_batch_size: int
+    ) -> None:
+        """Attach the original video batch size to nested replay metadata.
+
+        Args:
+            param: Parameter tree returned by a nested sequential container.
+            original_batch_size: Batch size of the public video before frame flattening.
+        """
+        if isinstance(param, dict):
+            if "forward_input_shape" in param:
+                param["video_batch_size"] = torch.full(
+                    (), original_batch_size, device=param["forward_input_shape"].device, dtype=torch.long
+                )
+            return
+        if isinstance(param, list):
+            for item in param:
+                if isinstance(item, ParamItem) and isinstance(item.data, (dict, list)):
+                    VideoSequential._record_video_batch_size(item.data, original_batch_size)
+
     def _input_shape_convert_in(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
@@ -200,6 +272,15 @@ class VideoSequential(ImageSequential):
         return input.reshape(-1, *input.shape[2:])
 
     def _input_shape_convert_back(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
+        """Reshape a flattened video tensor back to its original layout.
+
+        Args:
+            input: Flattened tensor with the frame dimension merged into the batch axis.
+            frame_num: Number of frames in each video clip.
+
+        Returns:
+            The tensor reshaped back to the original video layout.
+        """
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -219,6 +300,7 @@ class VideoSequential(ImageSequential):
             across frames depending on ``same_on_frame`` and module settings.
         """
         frame_num = batch_shape[self._temporal_channel]
+        original_batch_size = batch_shape[0]
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
@@ -226,7 +308,13 @@ class VideoSequential(ImageSequential):
         params = []
         for name, module in named_modules:
             if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
-                is_same_on_batch = getattr(module, "same_on_batch", False)
+                batch_index_param = self._batch_index_param(module)
+                is_cutmix = isinstance(module, K.RandomCutMixV2)
+                # A mix pairs the images of a batch with each other, so it needs one draw per video, or per frame with
+                # same_on_frame=False, never a shared one. Its own generator applies same_on_batch.
+                is_same_on_batch = (
+                    getattr(module, "same_on_batch", False) and batch_index_param is None and not is_cutmix
+                )
 
                 if self.same_on_frame and is_same_on_batch:
                     mod_shape = torch.Size([1, *batch_shape[1:]])
@@ -239,10 +327,16 @@ class VideoSequential(ImageSequential):
 
                 mod_param = module.forward_parameters(mod_shape)
 
-                if isinstance(mod_param, dict):
-                    for k, v in mod_param.items():
+                if isinstance(mod_param, dict) and self.same_on_frame and is_cutmix:
+                    self._record_video_batch_size(mod_param, original_batch_size)
+                    self._broadcast_cutmix_params(mod_param, frame_num)
+                elif isinstance(mod_param, dict):
+                    self._record_video_batch_size(mod_param, original_batch_size)
+                    for k, v in list(mod_param.items()):
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
                         if k == "order" and isinstance(module, (K.ColorJiggle, K.ColorJitter)):
+                            continue
+                        if k == "video_batch_size":
                             continue
                         if k == "forward_input_shape":
                             mod_param.update({k: v})
@@ -250,11 +344,18 @@ class VideoSequential(ImageSequential):
                         mod_param[k] = self.__broadcast_param__(
                             v, batch_shape, frame_num, self.same_on_frame, is_same_on_batch
                         )
+                        if self.same_on_frame and k == batch_index_param:
+                            mod_param[k] = self._video_to_frame_indices(mod_param[k], frame_num)
+                elif isinstance(mod_param, list):
+                    self._record_video_batch_size(mod_param, original_batch_size)
 
                 param = ParamItem(name, mod_param)
 
             elif isinstance(module, (SequentialBase,)):
-                seq_param = module.forward_parameters(batch_shape)
+                # Frames are flattened to (B * T, ...) before the nested container runs, so it
+                # needs one draw per frame, like the unnested branch above.
+                seq_param = module.forward_parameters(torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]]))
+                self._record_video_batch_size(seq_param, original_batch_size)
                 if self.same_on_frame:
                     raise ValueError("nn.Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
@@ -262,7 +363,7 @@ class VideoSequential(ImageSequential):
             else:
                 param = ParamItem(name, None)
 
-            batch_shape = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape, module)
             params.append(param)
 
         return params
@@ -347,7 +448,7 @@ class VideoSequential(ImageSequential):
 
         return self._input_shape_convert_back(input, frame_num)
 
-    def transform_boxes(  # type: ignore[override]
+    def transform_boxes(
         self, input: Union[torch.Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[torch.Tensor, Boxes]:
         """Transform bounding boxes.
@@ -360,14 +461,19 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = Boxes.from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            )
             input = super().transform_boxes(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 4, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
+        elif isinstance(input, VideoBoxes):
+            frames = super().transform_boxes(_frame_boxes(input), params, extra_args=extra_args)
+            input = _video_boxes(frames, input.temporal_channel_size)
         else:
             input = super().transform_boxes(input, params, extra_args=extra_args)
         return input
 
-    def inverse_boxes(  # type: ignore[override]
+    def inverse_boxes(
         self, input: Union[torch.Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[torch.Tensor, Boxes]:
         """Transform bounding boxes.
@@ -380,14 +486,19 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = Boxes.from_tensor(
+                input.reshape(batchsize * frame_num, input.size(2), input.size(3), input.size(4)), mode="vertices_plus"
+            )
             input = super().inverse_boxes(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 4, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 4, 2)
+        elif isinstance(input, VideoBoxes):
+            frames = super().inverse_boxes(_frame_boxes(input), params, extra_args=extra_args)
+            input = _video_boxes(frames, input.temporal_channel_size)
         else:
             input = super().inverse_boxes(input, params, extra_args=extra_args)
         return input
 
-    def transform_keypoints(  # type: ignore[override]
+    def transform_keypoints(
         self,
         input: Union[torch.Tensor, Keypoints],
         params: List[ParamItem],
@@ -403,14 +514,14 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Keypoints(input.view(-1, input.size(2), input.size(3)))
+            input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().transform_keypoints(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
         else:
             input = super().transform_keypoints(input, params, extra_args=extra_args)
         return input
 
-    def inverse_keypoints(  # type: ignore[override]
+    def inverse_keypoints(
         self,
         input: Union[torch.Tensor, Keypoints],
         params: List[ParamItem],
@@ -425,10 +536,10 @@ class VideoSequential(ImageSequential):
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if isinstance(input, torch.Tensor):
-            frame_num, batchsize = input.size(0), input.size(1)
-            input = Keypoints(input.view(-1, input.size(2), input.size(3)))
+            batchsize, frame_num = input.size(0), input.size(1)
+            input = Keypoints(input.reshape(batchsize * frame_num, input.size(2), input.size(3)))
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
-            input = input.data.view(batchsize, frame_num, -1, 2)
+            input = input.data.reshape(batchsize, frame_num, input.data.size(1), 2)
         else:
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
         return input

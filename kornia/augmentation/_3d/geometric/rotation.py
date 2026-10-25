@@ -23,6 +23,7 @@ import kornia
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry import affine3d
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 
@@ -57,9 +58,19 @@ class RandomRotation3D(GeometricAugmentationBase3D):
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
-        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
-          roll turns a displayed ``H x W`` slice clockwise, as :func:`kornia.geometry.transform.rotate3d` does;
-          :class:`RandomAffine3D`, the 2D :class:`~kornia.augmentation.RandomRotation` and
+        - each sampled ``degrees`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations, exactly as :func:`kornia.geometry.transform.rotate3d` does. The rotation axis
+          is ``(rx, ry, rz) / ||(rx, ry, rz)||`` and the angle is ``||(rx, ry, rz)||`` degrees, so a
+          sampled ``(90, 90, 0)`` turns through ``90 * sqrt(2)`` degrees about ``(1, 1, 0) / sqrt(2)``
+          while a sampled ``(30, 0, 0)`` is a 30-degree turn about ``x``. One non-zero component is
+          therefore the per-axis rotation it names; two or more are not, and neither Euler order
+          reproduces the axis-angle result. To rotate about the axes in turn, compose the rotation
+          matrix yourself and convert it with
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`, which returns radians.
+        - A positive roll turns a displayed ``H x W`` slice clockwise, as
+          :func:`kornia.geometry.transform.rotate3d` does; :class:`RandomAffine3D`, the 2D
+          :class:`~kornia.augmentation.RandomRotation` and
           :func:`kornia.geometry.transform.rotate` turn it counter-clockwise
           (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - the default interpolation is bilinear with ``align_corners=False``.
@@ -114,9 +125,9 @@ class RandomRotation3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        yaw: torch.Tensor = params["yaw"].to(input)
-        pitch: torch.Tensor = params["pitch"].to(input)
-        roll: torch.Tensor = params["roll"].to(input)
+        yaw: torch.Tensor = _to_device_nonblocking(params["yaw"], input.device, input.dtype)
+        pitch: torch.Tensor = _to_device_nonblocking(params["pitch"], input.device, input.dtype)
+        roll: torch.Tensor = _to_device_nonblocking(params["roll"], input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center3d(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
@@ -137,6 +148,6 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if not isinstance(transform, torch.Tensor):
-            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Got {type(transform)}")
 
         return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

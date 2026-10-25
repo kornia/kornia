@@ -208,18 +208,21 @@ class StableDiffusionDissolving(ImageModule):
 
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
     reverse diffusion. Our implementation currently supports HuggingFace implementations of SD 1.4, 1.5
-    and SD XL (replacing the discontinued SD 2.1). SD 1.X tends to remove more details than SD-XL.
+    and SD XL (replacing the discontinued SD 2.1). SD 1.X tends to remove more details than SD XL.
 
-    .. list-table:: Title
+    .. list-table::
         :widths: 32 32 32
         :header-rows: 1
 
         * - SD 1.4
           - SD 1.5
           - SD XL
-        * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
+        * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
+          - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
+
+    Convention:
+        See the Convention block on :class:`~kornia.augmentation.RandomDissolving`.
 
     Args:
         version: the version of the stable diffusion model. Options: "1.4", "1.5", "xl".
@@ -232,7 +235,7 @@ class StableDiffusionDissolving(ImageModule):
         DDIMScheduler = diffusers.DDIMScheduler
 
         # Load the scheduler and model pipeline from diffusers library
-        scheduler = DDIMScheduler(  # type:ignore
+        scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
@@ -254,22 +257,24 @@ class StableDiffusionDissolving(ImageModule):
 
         if version == "1.4":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
             )
         elif version == "1.5":
             StableDiffusionPipeline = diffusers.StableDiffusionPipeline
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(
                 "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
             )
         elif version == "xl":
             StableDiffusionXLPipeline = diffusers.StableDiffusionXLPipeline
-            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(  # type:ignore
+            self._sdm_model = StableDiffusionXLPipeline.from_pretrained(
                 "stabilityai/stable-diffusion-xl-base-1.0", scheduler=scheduler, **kwargs
             )
             is_sdxl = True
         else:
-            raise NotImplementedError
+            raise NotImplementedError(
+                f"Unsupported Stable Diffusion version {version!r}. Supported versions are '1.4', '1.5', and 'xl'."
+            )
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000, is_sdxl=is_sdxl)
 

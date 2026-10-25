@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -40,7 +41,9 @@ class EfficientViTConfig:
     The model weights are hosted on HuggingFace's model hub: https://huggingface.co/kornia.
 
     Args:
-        checkpoint: URL or local path of model weights.
+        checkpoint: URL or local path of model weights. :meth:`EfficientViT.from_config` reads the architecture from
+            the file name, which must start with the model type and a ``-`` (``b0``, ``b1``, ``b2``, ``b3``, ``l0``,
+            ``l1``, ``l2`` or ``l3``), as in ``b1-r224.pt``: ``my_efficientvit.pt`` raises ``ValueError``.
 
     """
 
@@ -61,7 +64,12 @@ class EfficientViTConfig:
 
 
 class EfficientViT(ModelBase[EfficientViTConfig]):
-    """EfficientViT backbone model."""
+    """EfficientViT backbone model.
+
+    The pretrained backbones were trained on images normalized with the ImageNet mean and standard deviation, so a
+    :math:`[0, 1]` image goes in as
+    ``kornia.enhance.normalize(image, torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225]))``.
+    """
 
     def __init__(self, backbone: vit.EfficientViTBackbone | vit.EfficientViTLargeBackbone) -> None:
         super().__init__()
@@ -75,36 +83,46 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
             config: EfficientViT configuration object. See :class:`EfficientViTConfig`.
 
         Returns:
-            EfficientViT: the EfficientViT model.
+            EfficientViT: the EfficientViT model, in evaluation mode, since it always loads ``config.checkpoint``
+            (see :ref:`pretrained-models-conventions`).
 
         """
-        # load the model from the checkpoint
+        # load the model from the checkpoint; expand ``~`` first, or a ``~`` path reaches the URL loader, which
+        # resolves a file name already in the hub cache to that cached file instead of the local one
+        checkpoint = os.path.expanduser(config.checkpoint)
         try:
-            model_file = load_state_dict_from_url(config.checkpoint, map_location="cpu")
-            model_file = model_file["state_dict"] if "state_dict" in model_file else model_file
-        except RuntimeError:
-            raise RuntimeError(f"Unable to load the model from {config.checkpoint}.") from None
+            if os.path.isfile(checkpoint):
+                with open(checkpoint, "rb") as f:
+                    model_file = torch.load(f, map_location="cpu", weights_only=True)
+            else:
+                model_file = load_state_dict_from_url(config.checkpoint, map_location="cpu")
+            model_file = model_file.get("state_dict", model_file)
+        except RuntimeError as exc:
+            raise RuntimeError(f"Unable to load the model from {config.checkpoint}.") from exc
 
-        file_name = config.checkpoint.split("/")[-1]
+        file_name = os.path.basename(checkpoint)
         model_type = file_name.split("-")[0]
 
         if model_type not in ["b0", "b1", "b2", "b3", "l0", "l1", "l2", "l3"]:
             raise ValueError(f"Unknown model type: {model_type}.")
 
-        # create and load the model weights without strict until we polish the model files
         model = getattr(vit, f"efficientvit_backbone_{model_type}")()
-        model.load_state_dict(model_file, strict=False)
+        # The hosted checkpoints hold the backbone under a "backbone." prefix, next to a "head." classifier the
+        # backbone has no slot for. A state dict saved from the backbone itself has no prefix and loads as it is.
+        state_dict = {key[len("backbone.") :]: val for key, val in model_file.items() if key.startswith("backbone.")}
+        model.load_state_dict(state_dict or model_file, strict=True)
 
-        return EfficientViT(backbone=model)
+        return EfficientViT(backbone=model).eval()
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, images: torch.Tensor) -> dict[str, torch.Tensor]:
         """Extract features from the input images.
 
         Args:
             images: input images tensor of shape :math:`(B, C, H, W)`.
 
         Returns:
-            Dict[str, torch.Tensor]: a dictionary containing the features.
+            a dictionary with the input under ``"input"``, the output of each stage under ``"stage0"``,
+            ``"stage1"``, and so on, and the last stage's output again under ``"stage_final"``.
 
         """
         return self.backbone(images)

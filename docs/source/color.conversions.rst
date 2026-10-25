@@ -3,9 +3,8 @@ Color conversion
 
 .. currentmodule:: kornia.color
 
-Conversions between color spaces, on float image tensors of shape :math:`(*, C, H, W)` with values in
-:math:`[0, 1]`. Every conversion exists as a function and as an ``nn.Module``; each page below documents
-one color scheme.
+Conversions between color spaces, on float image tensors of shape :math:`(*, C, H, W)`. Most
+conversions exist as a function and as an ``nn.Module``; each page below documents one color scheme.
 
 .. toctree::
    :maxdepth: 1

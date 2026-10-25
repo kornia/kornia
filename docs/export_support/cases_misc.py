@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""ONNX export survey — area `misc`: everything in color/enhance/filters/losses/metrics/utils/morphology
+"""ONNX export survey — area `misc`: everything in color/enhance/filters/losses/metrics/utils/morphology/image
 not already covered by the first pass (survey.json)."""
 
 import sys
@@ -31,6 +31,8 @@ import kornia.losses as KL
 import kornia.metrics as KM
 from kornia.color import CFA, ColorMap, ColorMapType
 from kornia.enhance import ThresholdType
+from kornia.image import ChannelsOrder, Image, ImageLayout, ImageSize, PixelFormat
+from kornia.image.base import ColorSpace
 from kornia.utils import torch_meshgrid as _torch_meshgrid
 
 torch.manual_seed(0)
@@ -219,14 +221,14 @@ add(
     g,
     KE.AddWeighted(torch.full((1, 3, 32, 40), 0.6), torch.full((1, 3, 32, 40), 0.4), torch.full((1, 3, 32, 40), 0.1)),
     [IMG, IMG2],
-    note="tensor alpha/beta/gamma must equal src shape (kornia check); constructed -> constants",
+    note="tensor alpha/beta/gamma must broadcast to src shape (kornia check); constructed -> constants",
 )
 add(
     "enhance.add_weighted[live_weights]",
     g,
     KE.add_weighted,
     [IMG, torch.full((1, 3, 32, 40), 0.6), IMG2, torch.full((1, 3, 32, 40), 0.4), torch.full((1, 3, 32, 40), 0.1)],
-    note="alpha/beta/gamma live tensors (must be full src shape)",
+    note="alpha/beta/gamma live tensors (full src shape here; broadcastable shapes also work)",
 )
 add("enhance.AdjustBrightness", g, KE.AdjustBrightness(0.2), [IMG])
 add("enhance.AdjustBrightnessAccumulative", g, KE.AdjustBrightnessAccumulative(0.2), [IMG])
@@ -509,10 +511,6 @@ add(
     lambda x, s: KF.gaussian_blur2d(x, (5, 5), s, separable=False),
     [IMG, torch.tensor([[1.5, 2.0]])],
 )
-add("filters.gaussian_blur2d_t", g, None, [], skip="deprecated alias of gaussian_blur2d")
-add("filters.get_gaussian_kernel1d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel1d")
-add("filters.get_gaussian_kernel2d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel2d")
-add("filters.get_gaussian_kernel3d_t", g, None, [], skip="deprecated alias of get_gaussian_kernel3d")
 add(
     "filters.gaussian",
     g,
@@ -1145,7 +1143,7 @@ add(
     g,
     None,
     [],
-    skip="deprecated alias of kornia.losses.one_hot (kornia.utils is a deprecation shim, not an attribute of kornia)",
+    skip="deprecated alias of kornia.losses.one_hot; measured as losses.one_hot",
 )
 add(
     "utils.draw_line",
@@ -1244,7 +1242,7 @@ add(
     g,
     None,
     [],
-    skip="kornia.morphology exposes only the 7 functions already covered in the first pass",
+    skip="kornia.morphology exposes only functions, no module classes",
 )
 add(
     "morphology.dilation[3d_kernel_variants]",
@@ -1270,6 +1268,96 @@ add(
     {"border_type": "constant", "border_value": 0.5},
 )
 add("morphology.gradient[batch]", g, K.morphology.gradient, [IMGB, torch.ones(3, 3)], tags=("batch>1",))
+
+# ------------------------------------------------------------------------------------------------ image
+# kornia.image is stable core, so its cases live here rather than in cases_models.py, which the ONNX conformance
+# test (tests/onnx/test_conformance.py) never imports.
+g = "image"
+
+
+def _mk_image(t: torch.Tensor, cs: ColorSpace = ColorSpace.RGB) -> Image:
+    layout = ImageLayout(ImageSize(t.shape[-2], t.shape[-1]), t.shape[-3], ChannelsOrder.CHANNELS_FIRST)
+    return Image(t, PixelFormat(cs, 32), layout)
+
+
+add(
+    "image.Image.to_gray",
+    g,
+    lambda t: _mk_image(t).to_gray().data,
+    [torch.rand(3, 16, 24)],
+    note="Image container (C,H,W) float32; RGB->gray",
+)
+add("image.Image.to_bgr", g, lambda t: _mk_image(t).to_bgr().data, [torch.rand(3, 16, 24)])
+add(
+    "image.Image.to_rgb[from bgr]",
+    g,
+    lambda t: _mk_image(t, ColorSpace.BGR).to_rgb().data,
+    [torch.rand(3, 16, 24)],
+)
+add("image.Image.float", g, lambda t: _mk_image(t).float().data, [torch.rand(3, 16, 24)], note="dtype no-op")
+add("image.Image.from_numpy/to_numpy/write/from_file", g, None, [], skip="numpy / file IO")
+add("image.ImageSize/ImageLayout/PixelFormat/ChannelsOrder", g, None, [], skip="metadata dataclasses / enums")
+add(
+    "image.image_to_tensor/tensor_to_image/ImageToTensor/image_list_to_tensor",
+    g,
+    None,
+    [],
+    skip="numpy <-> tensor conversion utilities (numpy input)",
+)
+add("image.image_to_string/print_image", g, None, [], skip="return/print strings")
+add("image.perform_keep_shape_image/video", g, None, [], skip="decorators")
+add(
+    "image.draw_line",
+    g,
+    K.image.draw_line,
+    [torch.zeros(3, 16, 24), torch.tensor([2, 3]), torch.tensor([20, 12]), torch.tensor([1.0, 0.5, 0.2])],
+    note="per-line pixels built on the device with nonzero; int(max) of the longest line reads a tensor value",
+)
+add(
+    "image.draw_point2d",
+    g,
+    K.image.draw_point2d,
+    [torch.zeros(3, 16, 24), torch.tensor([[2, 3], [10, 12], [20, 5]]), torch.tensor([1.0, 0.5, 0.2])],
+    note="`zip(*points)` iterates tensor rows in Python",
+)
+add(
+    "image.draw_rectangle",
+    g,
+    K.image.draw_rectangle,
+    [
+        torch.zeros(1, 3, 16, 24),
+        torch.tensor([[[2.0, 3.0, 12.0, 10.0], [5.0, 1.0, 20.0, 14.0]]]),
+        torch.tensor([1.0, 0.5, 0.2]),
+    ],
+    note="Python loop over batch and boxes with tensor-derived slicing",
+)
+add(
+    "image.draw_rectangle[fill]",
+    g,
+    K.image.draw_rectangle,
+    [torch.zeros(1, 3, 16, 24), torch.tensor([[[2.0, 3.0, 12.0, 10.0]]]), torch.tensor([1.0, 0.5, 0.2])],
+    {"fill": True},
+)
+add(
+    "image.draw_convex_polygon",
+    g,
+    K.image.draw_convex_polygon,
+    [
+        torch.zeros(1, 3, 16, 24),
+        torch.tensor([[[2.0, 2.0], [20.0, 4.0], [18.0, 14.0], [4.0, 12.0]]]),
+        torch.tensor([[1.0, 0.5, 0.2]]),
+    ],
+    note="polygon rasterisation via edge functions (vectorised)",
+)
+add(
+    "image.make_grid",
+    g,
+    K.image.make_grid,
+    [torch.rand(6, 3, 8, 12)],
+    {"n_row": 3, "padding": 2},
+    note="n_row, padding baked",
+)
+
 
 if __name__ == "__main__":
     run_cases(CASES, sys.argv[1], only=sys.argv[2:] or None)

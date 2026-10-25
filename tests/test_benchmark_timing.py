@@ -38,7 +38,8 @@ def _load_filter_flagship():
     root = Path(__file__).parents[1]
     script = root / "benchmarks/filters/flagship.py"
     spec = importlib.util.spec_from_file_location("filter_flagship", script)
-    assert spec and spec.loader
+    assert spec
+    assert spec.loader
     module = importlib.util.module_from_spec(spec)
     benchmark_dir = str(script.parent.parent)
     sys.path.insert(0, benchmark_dir)
@@ -63,8 +64,10 @@ def test_timing_preserves_configured_threads():
     try:
         torch.set_num_threads(2)
         median, spread = common.time_us(lambda: observed.append(torch.get_num_threads()), min_run_time=0.01)
-        assert median > 0 and spread >= 0
-        assert observed and set(observed) == {2}
+        assert median > 0
+        assert spread >= 0
+        assert observed
+        assert set(observed) == {2}
         assert torch.get_num_threads() == 2
     finally:
         torch.set_num_threads(previous)
@@ -348,3 +351,16 @@ def test_filter_benchmark_missing_pillow_filters():
     )
     assert len(ops) == 3
     assert all(row["PIL"] is None for row in ops.values())
+
+
+@pytest.mark.device_agnostic
+def test_setup_requests_rayon_threads(monkeypatch):
+    monkeypatch.setenv("RAYON_NUM_THREADS", "19")
+    monkeypatch.setattr(common, "warm_up_cpu", lambda: None)
+    previous = torch.get_num_threads()
+    try:
+        common.setup_run(argparse.Namespace(threads=2, device="cpu", dtype="float32"), opencv=False)
+        assert common.os.environ["RAYON_NUM_THREADS"] == "2"
+        assert common.run_metadata(torch.device("cpu"))["rayon_num_threads_requested"] == "2"
+    finally:
+        torch.set_num_threads(previous)

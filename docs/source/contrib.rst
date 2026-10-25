@@ -6,6 +6,8 @@ kornia.contrib
 
 .. currentmodule:: kornia.contrib
 
+.. _augmentation-audit:
+
 Augmentation Geometry Audit
 ---------------------------
 
@@ -71,13 +73,13 @@ Interpreting the report
 * Crop matrices can invert coordinates even after image content has been discarded.
   The report records this distinction and never evaluates image reconstruction.
   Cropping and downsampling emit possible content-loss warnings.
-* Partially applied ``RandomCrop`` mappings follow the returned image branch. A
-  crop skipped for the whole batch leaves images and labels unchanged, including
-  with ``padding`` or ``pad_if_needed`` (#4473). Manually supplied parameters that
-  apply the crop to only some rows can still return a transformed image with
-  untransformed labels on the skipped rows; the resulting round-trip error records
-  that inconsistency. Mixed shape-changing operations are reported as
-  ``unsupported`` when their cached matrices cannot certify every returned image row.
+* A ``RandomCrop`` skipped for the whole batch leaves images and labels unchanged,
+  including with ``padding`` or ``pad_if_needed`` (#4473). Manually supplied
+  parameters that apply a shape-changing operation to only some rows raise
+  ``ValueError``, as the ordinary forward call does, because the skipped rows
+  cannot keep their shape (#4497). With ``p=1.0, p_batch=1.0``, an overridden
+  ``batch_prob`` is not consulted: every image row is cropped and the labels move
+  with it (#5585). Pass ``p < 1`` to skip rows by hand.
 * Non-rigid and unknown operations are explicitly unsupported for matrix
   composition. A transformation-matrix identity fallback is not treated as proof
   of correspondence. Supported neighboring operations remain in the provenance.
@@ -245,8 +247,20 @@ Image Segmentation
 
 .. autofunction:: connected_components_union_find
 
+.. _labeling-method:
+
 Choosing a labeling method
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Both functions label 8-connected components: two foreground pixels (pixels equal
+to 1) that touch at an edge or a corner belong to one component. SciPy, OpenCV
+and scikit-image take any non-zero pixel as foreground, so the same partition is
+``scipy.ndimage.label(mask == 1, structure=np.ones((3, 3)))`` (SciPy's default
+structure is 4-connected), ``cv2.connectedComponents((mask == 1).astype(np.uint8),
+connectivity=8)`` (OpenCV's default connectivity) and
+``skimage.measure.label(mask == 1, connectivity=2)`` (scikit-image's default for
+2-D images). Label values differ between these libraries and between the two
+functions: compare foreground partitions, not label values.
 
 ``connected_components_union_find`` computes the exact 8-connected partition
 without an iteration budget. It accepts boolean masks and returns ``int64``
@@ -255,13 +269,12 @@ It is useful for segmentation masks containing long structures such as vessels,
 roads and text strokes. Its convergence checks synchronize the accelerator with
 the host, and the result is not differentiable.
 
-``connected_components`` retains its fixed-count pooling implementation and its
-existing output dtype and label convention. When using it, choose enough
-iterations for the largest component's graph diameter: the default 100 steps
-can leave a long component split into multiple labels. A small fixed budget may
-be faster than union-find for small or fragmented masks, but does not guarantee
-convergence. The two implementations produce different numerical label IDs;
-compare their foreground partitions instead of comparing label values directly.
+``connected_components`` retains its fixed-count pooling implementation; it
+returns ``int64`` labels like ``connected_components_union_find`` but keeps its
+own label convention. When using it, choose enough iterations for the largest
+component's graph diameter: the default 100 steps can leave a long or large
+component split into multiple labels. A small fixed budget may be faster than
+union-find for small or fragmented masks, but does not guarantee convergence.
 
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -290,6 +303,12 @@ Image Patches
 .. autoclass:: ExtractTensorPatches
 .. autoclass:: CombineTensorPatches
 
+Histogram Matching
+------------------
+
+.. autofunction:: histogram_matching
+.. autofunction:: interp
+
 Image Classification
 --------------------
 
@@ -313,9 +332,13 @@ Distance Transform
 ------------------
 
 .. autofunction:: distance_transform
-.. autofunction:: diamond_square
 
 .. autoclass:: DistanceTransform
+
+Plasma Fractal Noise
+--------------------
+
+.. autofunction:: diamond_square
 
 KMeans
 ------

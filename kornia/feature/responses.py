@@ -46,30 +46,41 @@ def harris_response(
 
     .. image:: _static/img/harris_response.png
 
-    Function does not do any normalization or nms. The response map is computed according the following formulation:
+    The function does no non-maxima suppression. The response map is computed according to the following
+    formulation:
 
     .. math::
-        R = max(0, det(M) - k \cdot trace(M)^2)
+        R = det(M) - k \cdot trace(M)^2
 
-    where:
+    where :math:`w` are the weights of a window :math:`W`:
 
     .. math::
-        M = \sum_{(x,y) \in W}
+        M = \sum_{(x,y) \in W} w(x, y)
         \begin{bmatrix}
             I^{2}_x & I_x I_y \\
             I_x I_y & I^{2}_y \\
         \end{bmatrix}
 
-    and :math:`k` is an empirically determined constant
-    :math:`k ∈ [ 0.04 , 0.06 ]`
+    and :math:`k` is an empirically determined constant, usually in :math:`[0.04, 0.06]`.
+
+    Convention:
+        - :math:`R` is signed and not clamped: positive at a corner, negative along an edge.
+        - :math:`I_x` and :math:`I_y` come from :func:`~kornia.filters.spatial_gradient` with ``mode=grads_mode``,
+          in intensity per pixel for both modes, and :math:`W` is a :math:`7 \times 7` Gaussian window of
+          :math:`\sigma = 1` whose weights sum to one. A linear ramp of gradient :math:`g` therefore gives
+          :math:`R = -k \|g\|^4` away from the border.
+        - Apart from ``sigmas``, the response depends on the image's intensity scale: multiplying the image by ``c``
+          multiplies the response by ``c ** 4``, and an offset does not change it, so a threshold tuned on images in
+          ``[0, 1]`` does not carry over to ``[0, 255]``.
+        - ``k`` is not validated.
 
     Args:
         input: input image with shape :math:`(B, C, H, W)`.
         k: the Harris detector free parameter.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
-          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
+        sigmas: per-image scales with shape :math:`(B)`. The response of image ``b`` is multiplied by
+          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid, as in
+          `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c>`_.
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.
@@ -132,26 +143,29 @@ def gftt_response(
 
     .. image:: _static/img/gftt_response.png
 
-    Function does not do any normalization or nms. The response map is computed according the following formulation:
+    The function does no non-maxima suppression. The response map is computed according to the following
+    formulation:
 
     .. math::
         R = min(eig(M))
 
-    where:
+    where :math:`M` is the windowed structure tensor of :func:`~kornia.feature.harris_response`, with the same
+    gradients and window.
 
-    .. math::
-        M = \sum_{(x,y) \in W}
-        \begin{bmatrix}
-            I^{2}_x & I_x I_y \\
-            I_x I_y & I^{2}_y \\
-        \end{bmatrix}
+    Convention:
+        - :math:`R` is not negative, up to roundoff. It is large at a corner and near zero along an edge, where the
+          Harris response is negative.
+        - Multiplying the image by ``c`` multiplies the response by ``c ** 2``, and an offset does not change it.
+        - ``sigmas`` multiplies the response by ``sigmas ** 4``, the same power used by
+          :func:`~kornia.feature.harris_response`. This is the function's scale-weighting convention, not a guarantee
+          of scale invariance. The integration window :math:`W` stays fixed as the image blur changes; the response's
+          decay with blur depends on the image structure, including the corner geometry.
 
     Args:
         input: input image with shape :math:`(B, C, H, W)`.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
-          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
+        sigmas: per-image scales with shape :math:`(B)`. The response of image ``b`` is multiplied by
+          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid.
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.
@@ -179,6 +193,12 @@ def gftt_response(
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
+    if sigmas is not None:
+        if not isinstance(sigmas, torch.Tensor):
+            raise TypeError(f"sigmas type is not a torch.Tensor. Got {type(sigmas)}")
+        if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
+            raise ValueError(f"Invalid sigmas shape, we expect B == input.size(0). Got: {sigmas.shape}")
+
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
@@ -187,13 +207,15 @@ def gftt_response(
     dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
-    det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
-    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m**2 - 4 * det_m).abs()))
-    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m**2 - 4 * det_m).abs()))
+    # trace^2 - 4 det as a sum of squares: it is never negative, and the sqrt below gets a zero gradient instead
+    # of 0 / 0 = nan where the structure tensor vanishes, which is every flat 9 x 9 patch of the image.
+    disc: torch.Tensor = (dx2 - dy2) ** 2 + 4.0 * dxy * dxy
+    positive = disc > 0
+    root: torch.Tensor = torch.where(positive, torch.where(positive, disc, torch.ones_like(disc)).sqrt(), 0.0)
 
-    scores: torch.Tensor = torch.min(e1, e2)
+    scores: torch.Tensor = 0.5 * (trace_m - root)  # the smaller eigenvalue
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
@@ -204,11 +226,12 @@ def gftt_response(
 def hessian_response(
     input: torch.Tensor, grads_mode: str = "sobel", sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Compute the absolute of determinant of the Hessian matrix.
+    r"""Compute the determinant of the Hessian matrix.
 
     .. image:: _static/img/hessian_response.png
 
-    Function does not do any normalization or nms. The response map is computed according the following formulation:
+    The function does no non-maxima suppression. The response map is computed according to the following
+    formulation:
 
     .. math::
         R = det(H)
@@ -216,18 +239,23 @@ def hessian_response(
     where:
 
     .. math::
-        M = \sum_{(x,y) \in W}
+        H =
         \begin{bmatrix}
             I_{xx} & I_{xy} \\
             I_{xy} & I_{yy} \\
         \end{bmatrix}
 
+    Convention:
+        - :math:`R = I_{xx} I_{yy} - I_{xy}^2` is signed and pointwise, without a window: positive at bright and dark
+          blobs alike, negative at a saddle. The second derivatives come from
+          :func:`~kornia.filters.spatial_gradient` with ``mode=grads_mode`` and ``order=2``.
+        - Multiplying the image by ``c`` multiplies the response by ``c ** 2``, and an offset does not change it.
+
     Args:
         input: input image with shape :math:`(B, C, H, W)`.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
-        sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
-          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
+        sigmas: per-image scales with shape :math:`(B)`. The response of image ``b`` is multiplied by
+          ``sigmas[b] ** 4``, so that non-maxima suppression can compare the levels of a scale pyramid.
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.
@@ -282,6 +310,11 @@ def hessian_response(
 def dog_response(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the Difference-of-Gaussian response.
 
+    Convention:
+        - Output level ``i`` is ``input[:, :, i + 1] - input[:, :, i]`` along the level axis ``D`` (dim 2), so ``D``
+          levels give ``D - 1``. For a stack blurred from fine to coarse, this is Lowe's
+          :math:`L(k\sigma) - L(\sigma)`: negative at a bright blob, positive at a dark one.
+
     Args:
         input: a given the gaussian 5d torch.Tensor :math:`(B, C, D, H, W)`.
 
@@ -298,6 +331,12 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
     r"""Compute the Difference-of-Gaussian response.
 
     .. image:: _static/img/dog_response_single.png
+
+    Convention:
+        - Returns the Gaussian blur of ``sigma2`` minus that of ``sigma1``, the order of
+          :func:`~kornia.feature.dog_response`; see its Convention block. Each kernel has the size
+          ``int(8 * sigma + 1)``, rounded up to an odd number. The order of ``sigma1`` and ``sigma2`` is not checked:
+          swapping them flips the sign.
 
     Args:
         input: a given the gaussian 4d torch.Tensor :math:`(B, C, H, W)`.
@@ -319,8 +358,9 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
 class BlobDoG(nn.Module):
     r"""nn.Module that calculates Difference-of-Gaussians blobs.
 
-    See
-    :func: `~kornia.feature.dog_response` for details.
+    Convention:
+        Returns :func:`~kornia.feature.dog_response` of the :math:`(B, C, D, H, W)` scale stack; see its Convention
+        block. ``sigmas`` is ignored.
     """
 
     def __init__(self) -> None:
@@ -333,7 +373,7 @@ class BlobDoG(nn.Module):
         """Compute Difference-of-Gaussians response maps.
 
         Args:
-            input: Input tensor of shape :math:`(B, C, H, W)`.
+            input: Input scale stack of shape :math:`(B, C, D, H, W)`.
             sigmas: Unused in this wrapper; kept for API compatibility.
 
         Returns:
@@ -347,7 +387,9 @@ class BlobDoGSingle(nn.Module):
 
     .. image:: _static/img/dog_response_single.png
 
-    See :func:`~kornia.feature.dog_response_single` for details.
+    Convention:
+        Returns :func:`~kornia.feature.dog_response_single` with the constructor's ``sigma1`` and ``sigma2``; see its
+        Convention block. ``sigmas`` is ignored.
     """
 
     def __init__(self, sigma1: float = 1.0, sigma2: float = 1.6) -> None:
@@ -377,7 +419,9 @@ class CornerHarris(nn.Module):
 
     .. image:: _static/img/harris_response.png
 
-    See :func:`~kornia.feature.harris_response` for details.
+    Convention:
+        Returns :func:`~kornia.feature.harris_response` with the constructor's ``k`` and ``grads_mode``; see its
+        Convention block. Unlike the function's, this ``k`` has no default.
     """
 
     k: torch.Tensor
@@ -398,8 +442,8 @@ class CornerHarris(nn.Module):
 
         Args:
             input: Input tensor of shape :math:`(B, C, H, W)`.
-            sigmas: Optional Gaussian smoothing values forwarded to
-                :func:`harris_response`.
+            sigmas: Optional per-image scales forwarded to :func:`harris_response`, which multiplies the
+                response by ``sigmas ** 4``.
 
         Returns:
             Harris response map tensor.
@@ -412,7 +456,8 @@ class CornerGFTT(nn.Module):
 
     .. image:: _static/img/gftt_response.png
 
-    See :func:`~kornia.feature.gftt_response` for details.
+    Convention:
+        Returns :func:`~kornia.feature.gftt_response` with the constructor's ``grads_mode``; see its Convention block.
     """
 
     def __init__(self, grads_mode: str = "sobel") -> None:
@@ -427,7 +472,8 @@ class CornerGFTT(nn.Module):
 
         Args:
             input: Input tensor of shape :math:`(B, C, H, W)`.
-            sigmas: Optional smoothing sigmas for multi-scale workflows.
+            sigmas: Optional per-image scales forwarded to :func:`gftt_response`, which multiplies the
+                response by ``sigmas ** 4``.
 
         Returns:
             GFTT response map tensor from :func:`gftt_response`.
@@ -440,7 +486,9 @@ class BlobHessian(nn.Module):
 
     .. image:: _static/img/hessian_response.png
 
-    See :func:`~kornia.feature.hessian_response` for details.
+    Convention:
+        Returns :func:`~kornia.feature.hessian_response` with the constructor's ``grads_mode``; see its Convention
+        block.
     """
 
     def __init__(self, grads_mode: str = "sobel") -> None:
@@ -455,8 +503,8 @@ class BlobHessian(nn.Module):
 
         Args:
             input: Input tensor of shape :math:`(B, C, H, W)`.
-            sigmas: Optional smoothing values passed to
-                :func:`hessian_response`.
+            sigmas: Optional per-image scales forwarded to :func:`hessian_response`, which multiplies the
+                response by ``sigmas ** 4``.
 
         Returns:
             Hessian response map tensor.

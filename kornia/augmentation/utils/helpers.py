@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import math
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -23,8 +22,10 @@ import torch
 import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
+# Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
+from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -58,16 +59,6 @@ def _pad_with_fill(
     return torch.where(inside.bool(), padded, values.view(1, channels, *([1] * (padded.ndim - 2))))
 
 
-def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int = 0) -> None:
-    if isinstance(data, (list, tuple)):
-        if depth == len(shape):
-            shape.append(len(data))
-        for value in data:
-            _flatten_constant(value, shape, leaves, depth + 1)
-    else:
-        leaves.append(data)
-
-
 def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     """Export ``boxes`` as one dense tensor whose trailing padding rows are exactly zero.
 
@@ -88,50 +79,32 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
 
 
-def _constant_tensor(
-    data: Union[float, List[Any], Tuple[Any, ...]],
-    *,
-    device: Union[str, torch.device, None] = None,
-    dtype: torch.dtype,
-) -> torch.Tensor:
-    """Construct small numeric constants inside the graph, without lifting tensor storage.
+def _frame_boxes(boxes: VideoBoxes) -> Boxes:
+    r"""View :class:`VideoBoxes` as the frame-level :class:`Boxes` of its :math:`(B \cdot T, N, 4, 2)` storage.
 
-    Inductor can reuse a lifted CPU tensor in a CUDA kernel without transferring it
-    (https://github.com/pytorch/pytorch/issues/196969). Scalar factories and stacks
-    avoid that path, including for constants returned alongside CUDA tensors. Indexed
-    scalar writes are unsafe too: tracing lifts their right-hand sides.
-
-    Eager execution, Dynamo and ``make_fx`` all run this same construction, which issues
-    no host-device copy. Each distinct Python scalar is filled once and a single stack
-    reuses it, so repeated coordinates such as box corners cost one kernel per value.
-
-    ``data`` contains Python scalars or rectangular nested lists/tuples, never tensors.
-    Other array-likes, such as NumPy arrays, keep ``torch.as_tensor`` semantics. Callers
-    choose dtype explicitly and perform coordinate arithmetic before calling this helper
-    when rounding before versus after casting matters.
+    The children of :class:`VideoSequential` run on the flattened frames, and their parameters (a mix's
+    ``permutation``, a gate) index frames. ``VideoBoxes`` indexes whole videos, so a child given one would select
+    videos with frame indices (#6173). The view shares the storage and the validity mask.
     """
-    if not isinstance(data, (list, tuple)):
-        if isinstance(data, (int, float, torch.SymInt, torch.SymFloat)):
-            return torch.full((), data, device=device, dtype=dtype)
-        return torch.as_tensor(data, device=device, dtype=dtype)
-    shape: List[int] = []
-    leaves: List[Any] = []
-    _flatten_constant(data, shape, leaves)
-    if not leaves:
-        return torch.empty(shape, device=device, dtype=dtype)
-    filled: Dict[Tuple[type, Any], torch.Tensor] = {}
-    values: List[torch.Tensor] = []
-    for leaf in leaves:
-        # Symbolic sizes stay unmerged because comparing them adds guards. The float key carries
-        # the sign because -0.0 == 0.0; NaN is filled per leaf because NaN != NaN.
-        if type(leaf) in (int, bool) or (type(leaf) is float and not math.isnan(leaf)):
-            key = (type(leaf), leaf, math.copysign(1.0, leaf))
-            if key not in filled:
-                filled[key] = torch.full((), leaf, device=device, dtype=dtype)
-            values.append(filled[key])
-        else:
-            values.append(torch.full((), leaf, device=device, dtype=dtype))
-    return torch.stack(values).view(shape)
+    frames = Boxes(boxes._data, False, mode=boxes._mode)
+    frames._N = boxes._N
+    frames._valid = boxes._valid
+    frames._is_batched = boxes._is_batched
+    return frames
+
+
+def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
+    """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
+
+    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
+    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
+    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    """
+    boxes = VideoBoxes(frames._data, False, mode=frames._mode)
+    boxes._valid = frames._valid
+    boxes._is_batched = frames._is_batched
+    boxes.temporal_channel_size = temporal_channel_size
+    return boxes
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
@@ -189,10 +162,7 @@ def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tens
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
-    if isinstance(input, tuple):
-        tensor_var = _transform_input(input[0])
-    else:
-        tensor_var = _transform_input(input)
+    tensor_var = _transform_input(input[0]) if isinstance(input, tuple) else _transform_input(input)
     return tensor_var.shape
 
 
@@ -201,10 +171,7 @@ def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Te
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
-    if isinstance(input, tuple):
-        tensor_var = _transform_input3d(input[0])
-    else:
-        tensor_var = _transform_input3d(input)
+    tensor_var = _transform_input3d(input[0]) if isinstance(input, tuple) else _transform_input3d(input)
     return tensor_var.shape
 
 
@@ -414,6 +381,17 @@ def _adapted_rsampling(
     return dist.rsample(shape)
 
 
+def _truncate_to_start(draw: torch.Tensor, extent: torch.Tensor) -> torch.Tensor:
+    r"""Turn a ``[0, 1)`` draw into an integer start in ``[0, extent)`` for a crop or patch.
+
+    The product and the floor are taken in the wider of the two dtypes and the result is cast to the dtype of
+    ``extent``. Casting the draw to a narrower ``extent`` dtype first rounds a draw close to 1 up to 1.0, which
+    puts the start one past the last valid position (#5052).
+    """
+    dtype = torch.promote_types(draw.dtype, extent.dtype)
+    return (draw.to(device=extent.device, dtype=dtype) * extent.to(dtype)).floor().to(extent.dtype)
+
+
 def _adapted_sampling(
     shape: Union[Tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
@@ -564,10 +542,10 @@ class MultiprocessWrapper:
 
 
 #: How small an image each padding mode can filter, given the kernel extent ``k`` along that axis.
-#: ``filter2d`` pads an even kernel asymmetrically -- ``(k - 1) // 2`` in front and ``k // 2``
-#: behind -- so the constraint is against the wider of the two, ``k // 2``, not against the radius.
-#: ``reflect`` cannot mirror a pad as wide as the axis and ``circular`` cannot wrap one wider than
-#: it; ``"valid"`` is the no-padding case, where the kernel itself must fit. ``constant`` and
+#: ``filter2d`` and ``filter3d`` pad an even kernel asymmetrically -- ``(k - 1) // 2`` in front and
+#: ``k // 2`` behind -- so the constraint is against the wider of the two, ``k // 2``, not against the
+#: radius. ``reflect`` cannot mirror a pad as wide as the axis and ``circular`` cannot wrap one wider
+#: than it; ``"valid"`` is the no-padding case, where the kernel itself must fit. ``constant`` and
 #: ``replicate`` invent their padding and run on a 1-pixel axis.
 _MIN_FILTERED_SIZE: Dict[str, Callable[[int], int]] = {
     "reflect": lambda extent: extent // 2 + 1,
@@ -575,28 +553,35 @@ _MIN_FILTERED_SIZE: Dict[str, Callable[[int], int]] = {
     "valid": lambda extent: extent,
 }
 
+#: Names of the trailing spatial axes, read from the right: a 2D filter uses the last two.
+_SPATIAL_AXIS_NAMES = ("depth", "height", "width")
+
 
 def _check_filter_min_size(
     name: str,
     input: torch.Tensor,
-    kernel_size: Union[int, Tuple[int, int], List[int]],
+    kernel_size: Union[int, Tuple[int, ...], List[int]],
     border_type: str = "reflect",
+    spatial_dims: int = 2,
 ) -> None:
     """Refuse an image the filter's padding cannot handle, naming the class and the shape.
 
     torch raises about "padding size" or "calculated padded input size" from two layers below,
-    which names neither the augmentation nor the image the caller passed.
+    which names neither the augmentation nor the image the caller passed. ``spatial_dims`` is the
+    number of trailing axes the kernel spans: 2 for an image, 3 for a volume.
     """
-    size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else tuple(kernel_size)
+    size = (kernel_size,) * spatial_dims if isinstance(kernel_size, int) else tuple(kernel_size)
     smallest = _MIN_FILTERED_SIZE.get(str(border_type).lower())
     if smallest is None:
         return
-    for axis, (extent, side) in enumerate(zip(size, input.shape[-2:])):
+    subject, unit = ("an image", "pixel") if spatial_dims == 2 else ("a volume", "voxel")
+    axes = _SPATIAL_AXIS_NAMES[-spatial_dims:]
+    for axis, extent, side in zip(axes, size, input.shape[-spatial_dims:]):
         minimum = smallest(int(extent))
         if side < minimum:
             raise ValueError(
-                f"{name} cannot filter an image this small: kernel_size="
+                f"{name} cannot filter {subject} this small: kernel_size="
                 f"{tuple(int(s) for s in size)} with border_type={border_type!r} needs at least "
-                f"{minimum} pixel(s) along {'height' if axis == 0 else 'width'}, but the input is "
+                f"{minimum} {unit}(s) along {axis}, but the input is "
                 f"{tuple(int(s) for s in input.shape)}."
             )

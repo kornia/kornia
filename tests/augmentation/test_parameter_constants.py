@@ -131,9 +131,7 @@ class TestAugmentationConstantTransfer(BaseTester):
             params = aug.forward_parameters(input.shape)
             return aug(input, params=params), params
 
-        # RandomCrop reads replayable padding from tensors; Crop3D validates crop sizes.
-        # These pre-existing graph breaks are separate from constant transfer safety.
-        compiled = torch_optimizer(apply, fullgraph=not isinstance(aug, (K.RandomCrop, K.RandomCrop3D)))
+        compiled = torch_optimizer(apply, fullgraph=True)
         for _ in range(2):
             actual, params = compiled(input)
             if device.type == "cuda":

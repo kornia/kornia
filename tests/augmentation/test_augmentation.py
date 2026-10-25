@@ -19,6 +19,7 @@ import copy
 import io
 import os
 import pickle
+import re
 import subprocess
 import sys
 from typing import Any, Dict, Optional, Tuple, Type
@@ -82,11 +83,12 @@ from kornia.augmentation import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.core._compat import torch_version
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.overwrite import default_with_one_parameter_changed
 
 
@@ -445,7 +447,7 @@ class TestRandomEqualizeAlternative(CommonTests):
         )
 
     def test_exception(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Input size must have a shape"):
             self._create_augmentation_from_params(p=1.0)(
                 torch.ones((1, 3, 4, 5) * 3, device=self.device, dtype=self.dtype)
             )
@@ -482,7 +484,6 @@ class TestCenterCropAlternative(CommonTests):
             params={"size": (2, 3), "align_corners": True},
         )
 
-    @pytest.mark.xfail(reason="size=(1,2) results in RuntimeError: solve_cpu: For batch 0: U(3,3) is zero, singular U.")
     def test_random_p_1(self):
         torch.manual_seed(42)
 
@@ -534,11 +535,11 @@ class TestCenterCropAlternative(CommonTests):
             self._create_augmentation_from_params(size=2, resample=True)
 
         # Bound check
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"size"):
             self._create_augmentation_from_params(size=-1)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"size"):
             self._create_augmentation_from_params(size=(-1, 2))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"size"):
             self._create_augmentation_from_params(size=(2, -1))
 
 
@@ -736,13 +737,13 @@ class TestRandomRotationAlternative(CommonTests):
             self._create_augmentation_from_params(degrees=(3, 3), resample=True)
 
         # Bound check
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=-361.0)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=(-361.0, 360.0))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=(-360.0, 361.0))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"degrees"):
             self._create_augmentation_from_params(degrees=(360.0, -360.0))
 
 
@@ -822,7 +823,7 @@ class TestRandomRotation90(CommonTests):
         # Wrong type
         with pytest.raises(TypeError):
             self._create_augmentation_from_params(times="")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"times out of bounds"):
             self._create_augmentation_from_params(times=(30, 60), align_corners=0)
 
 
@@ -895,9 +896,9 @@ class TestRandomGrayscaleAlternative(CommonTests):
     def test_exception(self):
         torch.manual_seed(42)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"channel"):
             self._create_augmentation_from_params(p=0.0)(torch.rand((1, 1, 4, 5), device=self.device, dtype=self.dtype))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"channel"):
             self._create_augmentation_from_params(p=1.0)(torch.rand((1, 4, 4, 5), device=self.device, dtype=self.dtype))
 
 
@@ -1341,7 +1342,7 @@ class TestColorJiggle(BaseTester):
         expected = op(image, params=params)
         params["order"] = torch.tensor([3, 2, 1, 0], device=device, dtype=torch.long)
         self.assert_close(op(image, params=params), expected)
-        # The fixed order dispatches through torch.cond, the sampled order through Python branches.
+        # Both fixed and sampled orders apply the same per-step transforms.
         params["order"] = torch.tensor([0, 1, 2, 3], device=device, dtype=torch.long)
         sampled = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0)
         assert torch.equal(sampled(image, params=params), expected)
@@ -1352,9 +1353,7 @@ class TestColorJiggle(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_fixed_order_keeps_distribution_validation(self):
-        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
-        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
-        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        # A fresh interpreter makes this guard independent of any earlier Dynamo entry in the test process.
         script = (
             "import torch\n"
             "from torch.distributions import Distribution\n"
@@ -1373,16 +1372,29 @@ class TestColorJiggle(BaseTester):
         )
         assert result.returncode == 0, result.stderr
 
-    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
-        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
-        # 3.13), so a fixed order must fall back to the Python dispatch there.
+    def test_fixed_order_dispatch_on_every_platform(self, device, dtype, monkeypatch):
+        # The torch.where dispatcher needs no Dynamo, so a fixed order runs it where Dynamo is unavailable
+        # (torch 2.5.1 on Python 3.13) too: one code path on every platform.
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
         params = op.forward_parameters(image.shape)
         expected = op(image, params=params)
         monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
-        fallback = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
-        assert torch.equal(fallback(image, params=params), expected)
+        without_dynamo = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert without_dynamo._cond_fn is not None
+        assert torch.equal(without_dynamo(image, params=params), expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("augmentation", [ColorJiggle, ColorJitter])
+    def test_fixed_order_eager_does_not_call_cond(self, augmentation, monkeypatch):
+        def fail(*args, **kwargs):
+            raise AssertionError("eager fixed-order dispatch must not call torch.cond")
+
+        monkeypatch.setattr(torch, "cond", fail)
+        image = torch.rand(2, 3, 8, 8, requires_grad=True)
+        output = augmentation(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(image)
+        output.sum().backward()
+        assert image.grad is not None
 
     def test_dynamo_fixed_order(self, device, dtype):
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype, requires_grad=True)
@@ -1404,10 +1416,7 @@ class TestColorJiggle(BaseTester):
     @pytest.mark.parametrize("layout", ["channels_last", "transposed"])
     def test_dynamo_fixed_order_noncontiguous(self, layout):
         image = torch.rand(2, 3, 8, 10)
-        if layout == "channels_last":
-            image = image.to(memory_format=torch.channels_last)
-        else:
-            image = image.transpose(-1, -2)
+        image = image.to(memory_format=torch.channels_last) if layout == "channels_last" else image.transpose(-1, -2)
         image.requires_grad_()
 
         op = ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
@@ -1751,6 +1760,20 @@ class TestColorJiggle(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.parametrize("order", [None, (3,)])
+    def test_float64_half_turn_uses_full_precision_pi_5127(self, device, order):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        hue = kornia.color.rgb_to_hsv(image)[:, 0]
+        # A float64 range gives float64 factors. The random order and a fixed `order` apply the hue step
+        # through separate functions (the per-step loop and the fixed-order branch table).
+        aug = ColorJiggle(hue=torch.tensor((0.5, 0.5), dtype=torch.float64), p=1.0, order=order)
+        shifted = kornia.color.rgb_to_hsv(aug(image))[:, 0]
+        error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
+        self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
@@ -1825,9 +1848,7 @@ class TestColorJitter(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_fixed_order_keeps_distribution_validation(self):
-        # The eager torch.cond dispatch enters Dynamo, whose one-time setup turns off
-        # torch.distributions argument validation process-wide. A fresh interpreter is needed because that
-        # setup runs once per process, so an earlier Dynamo entry in this one would hide the leak.
+        # A fresh interpreter makes this guard independent of any earlier Dynamo entry in the test process.
         script = (
             "import torch\n"
             "from torch.distributions import Distribution\n"
@@ -1846,16 +1867,17 @@ class TestColorJitter(BaseTester):
         )
         assert result.returncode == 0, result.stderr
 
-    def test_fixed_order_falls_back_without_cond(self, device, dtype, monkeypatch):
-        # torch.cond raises "requires dynamo support" where Dynamo is unavailable (torch 2.5.1 on Python
-        # 3.13), so a fixed order must fall back to the Python dispatch there.
+    def test_fixed_order_dispatch_on_every_platform(self, device, dtype, monkeypatch):
+        # The torch.where dispatcher needs no Dynamo, so a fixed order runs it where Dynamo is unavailable
+        # (torch 2.5.1 on Python 3.13) too: one code path on every platform.
         image = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
         params = op.forward_parameters(image.shape)
         expected = op(image, params=params)
         monkeypatch.setattr(torch._dynamo, "is_dynamo_supported", lambda: False)
-        fallback = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
-        assert torch.equal(fallback(image, params=params), expected)
+        without_dynamo = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(2, 3, 1, 0))
+        assert without_dynamo._cond_fn is not None
+        assert torch.equal(without_dynamo(image, params=params), expected)
 
     @pytest.mark.parametrize(
         ("step", "factors"),
@@ -1883,8 +1905,8 @@ class TestColorJitter(BaseTester):
         ],
     )
     def test_fixed_order_guards_match_sampled_order(self, device, dtype, step, factors):
-        # A fixed order on an RGB input dispatches through torch.cond, a sampled order through Python guards
-        # (#4813). Both must skip the same factors, and run a step on the whole batch when any factor in it is
+        # A fixed order on an RGB input uses tensor selection, a sampled order uses Python guards. Both must skip
+        # the same factors, and run a step on the whole batch when any factor in it is
         # not neutral: a skipped step returns the out-of-range pixels as they are, a step that runs clamps them,
         # and a hue step that runs zeroes the pixel whose largest channel is 0.
         pixels = torch.tensor([[-0.5, -0.5], [0.25, -0.2], [1.75, 0.0]], device=device, dtype=dtype)
@@ -2272,6 +2294,19 @@ class TestColorJitter(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        hue = kornia.color.rgb_to_hsv(image)[:, 0]
+        aug = ColorJitter(hue=(0.5, 0.5), p=1.0)
+        # ColorJitter draws its factors in the generator dtype, float32 unless set otherwise.
+        aug.set_rng_device_and_dtype(device, torch.float64)
+        shifted = kornia.color.rgb_to_hsv(aug(image))[:, 0]
+        error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
+        self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
@@ -2314,8 +2349,8 @@ class TestColorJitter(BaseTester):
         ids=["brightness", "contrast", "saturation", "hue"],
     )
     def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order, fixed):
-        # .compile() must replace what apply_transform executes (#4038): the torch.cond dispatcher for a fixed
-        # order on an RGB input, the four step helpers for a sampled order.
+        # .compile() must replace what apply_transform executes (#4038): the fixed-order dispatcher for RGB,
+        # or the four step helpers for a sampled order.
         compiled_graphs = []
 
         def backend(graph_module, _example_inputs):
@@ -2591,6 +2626,17 @@ class TestRandomHue(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
+
+    def test_float64_half_turn_uses_full_precision_pi_5127(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        image = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        hue = kornia.color.rgb_to_hsv(image)[:, 0]
+        shifted = kornia.color.rgb_to_hsv(RandomHue(hue=(0.5, 0.5), p=1.0)(image))[:, 0]
+        # Circular distance of the shift from pi; the float32 pi overshot it by 8.7e-8.
+        error = torch.remainder(shifted - hue, 2 * torch.pi) - torch.pi
+        self.assert_close(error, torch.zeros_like(error), rtol=0.0, atol=1e-12)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomHue(hue=(-0.5, 0.5), same_on_batch=True)
@@ -3051,6 +3097,15 @@ class TestRandomGamma(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_black_pixel_gradient_is_finite(self, device, dtype):
+        # gamma < 1 has an infinite derivative at black pixels; they get a zero gradient instead of NaN.
+        image = torch.tensor([[[[0.0, 0.25, 0.5]]]], device=device, dtype=dtype).repeat(2, 3, 1, 1).requires_grad_()
+        out = RandomGamma(gamma=(0.5, 0.5), p=1.0)(image)
+        out.sum().backward()
+        expected_grad = torch.tensor([0.0, 1.0, 0.5**0.5], device=device, dtype=dtype).expand_as(image)
+        self.assert_close(out, image.detach().sqrt())
+        self.assert_close(image.grad, expected_grad)
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
@@ -3071,7 +3126,7 @@ class TestRandomGrayscale(BaseTester):
         # custom per-band weights are honoured; a wrong length is rejected
         weights = torch.full((7,), 1.0 / 7, device=device, dtype=dtype)
         self.assert_close(RandomGrayscale(rgb_weights=weights, p=1.0)(x), expected)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match=r"rgb_weights needs one weight per channel"):
             RandomGrayscale(rgb_weights=torch.ones(4, device=device, dtype=dtype), p=1.0)(x)
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -3316,6 +3371,10 @@ class TestRandomGrayscale(BaseTester):
 
 
 class TestCenterCrop(BaseTester):
+    def test_invalid_size_type(self):
+        with pytest.raises(TypeError, match="Expected int or tuple\\[int, int\\]"):
+            CenterCrop([4, 6])
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
         input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)
@@ -3565,6 +3624,61 @@ class TestRandomRotation(BaseTester):
 
 
 class TestRandomCrop(BaseTester):
+    @pytest.mark.parametrize("exporting", [False, True])
+    @pytest.mark.parametrize(
+        ("input_size", "size", "expected_scale"),
+        [
+            ((329, 1209), (416, 416), (1.0, 416 / 329)),
+            ((1209, 329), (416, 416), (416 / 329, 1.0)),
+            ((329, 329), (416, 416), (416 / 329, 416 / 329)),
+            ((500, 500), (416, 416), (1.0, 1.0)),
+        ],
+    )
+    def test_slice_crop_transform_scales_each_oversized_axis_independently(
+        self, input_size, size, expected_scale, exporting, device, dtype, monkeypatch
+    ):
+        from kornia.augmentation._2d.geometric import crop as crop_module
+
+        image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
+        aug = RandomCrop(size, cropping_mode="slice", p=1.0)
+        params = aug.forward_parameters(image.shape)
+        monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
+
+        transform = aug.compute_transformation(image, params, aug.flags)
+
+        self.assert_close(
+            transform[0, :2, :2],
+            torch.diag(torch.tensor(expected_scale, device=device, dtype=dtype)),
+        )
+
+    @pytest.mark.parametrize("exporting", [False, True])
+    @pytest.mark.parametrize(
+        ("input_size", "size", "expected_scale"),
+        [
+            ((329, 1209), (416, 416), (1.0, 416 / 329)),
+            ((1209, 329), (416, 416), (416 / 329, 1.0)),
+            ((5, 6), (10, 9), (1.5, 2.0)),
+            ((500, 500), (416, 416), (1.0, 1.0)),
+        ],
+    )
+    def test_slice_crop_transform_stretches_on_the_half_pixel_grid(
+        self, input_size, size, expected_scale, exporting, device, dtype, monkeypatch
+    ):
+        """A stretched axis maps x to (x + 0.5) * scale - 0.5, as the slice resize does; a cropped one to x - x0."""
+        from kornia.augmentation._2d.geometric import crop as crop_module
+
+        image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
+        aug = RandomCrop(size, cropping_mode="slice", p=1.0)
+        params = aug.forward_parameters(image.shape)
+        monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
+
+        transform = aug.compute_transformation(image, params, aug.flags)
+
+        scale = torch.tensor(expected_scale, device=device, dtype=dtype)
+        expected = torch.diag_embed(torch.cat((scale, scale.new_ones(1))))
+        expected[:2, 2] = (scale - 1) / 2 - params["src"][0, 0].to(scale)
+        self.assert_close(transform[0], expected)
+
     def test_fill_accepts_one_value_per_channel(self, device, dtype):
         image = torch.zeros(1, 3, 2, 2, device=device, dtype=dtype)
         fill = (0.25, 0.5, 0.75)
@@ -3582,6 +3696,18 @@ class TestRandomCrop(BaseTester):
         image = torch.zeros(1, 3, 2, 2)
         with pytest.raises(ValueError, match="one value per channel"):
             RandomCrop((4, 4), padding=1, fill=(1.0, 0.0), p=1.0).precrop_padding(image)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        torch.manual_seed(0)
+        input = torch.rand(4, 3, 64, 64, device=device, dtype=dtype)
+        op = RandomCrop((32, 32), p=1.0)
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch_optimizer(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+        # Also compile the full forward so parameter generation is captured too.
+        torch._dynamo.reset()
+        assert torch_optimizer(RandomCrop((32, 32), p=1.0), fullgraph=True)(input).shape == input.shape[:2] + (32, 32)
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
@@ -4423,7 +4549,8 @@ class TestRandomChannelShuffle(BaseTester):
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.arange(36, device=device, dtype=dtype).reshape(2, 2, 3, 3) / 36
-        expected = torch.tensor(22.4588, device=device, dtype=dtype)
+        # Centre-anchored blending of the 2 x 2 tile LUTs, evaluated with the per-pixel reference.
+        expected = torch.tensor(102320 / (16 * 255), device=device, dtype=dtype)
         self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), expected)
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
@@ -4464,10 +4591,26 @@ class TestRandomClahe(BaseTester):
         self.assert_close(actual, expected)
         if slow_and_differentiable:
             weights = torch.rand_like(actual)
-            self.assert_close(
-                torch.autograd.grad(actual, input_data, weights)[0],
-                torch.autograd.grad(expected, input_data, weights)[0],
-            )
+            grad_actual = torch.autograd.grad(actual, input_data, weights)[0]
+            grad_expected = torch.autograd.grad(expected, input_data, weights)[0]
+            # The gradients reach a few hundred, so rounding leaves absolute noise above the float32 atol on
+            # entries near zero; compare relative to the largest entry.
+            scale = grad_expected.abs().max()
+            self.assert_close(grad_actual / scale, grad_expected / scale)
+
+    def test_clip_limit_on_the_input_device(self, device, dtype):
+        # The per-sample thresholds are computed in float64, on the CPU for an MPS clip tensor. A single
+        # clip.to("cpu", torch.float64) from MPS raised on torch 2.5.1 and returned zeros on torch 2.14, which
+        # clipped every tile histogram at 1. 16x16 tiles make a limit of 40 differ from that floor.
+        torch.manual_seed(0)
+        input_data = torch.rand(2, 1, 32, 32).pow(3).to(device=device, dtype=dtype)
+        aug = RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), p=1.0)
+        params = aug.forward_parameters(input_data.shape)
+        params["clip_limit_factor"] = torch.tensor([0.5, 40.0], device=device, dtype=dtype)
+        expected = torch.cat(
+            [kornia.enhance.equalize_clahe(input_data[i : i + 1], clip, (2, 2)) for i, clip in enumerate((0.5, 40.0))]
+        )
+        self.assert_close(aug(input_data, params=params), expected)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -4564,8 +4707,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         with pytest.raises(ValueError, match="amount must be a tuple or a float"):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
 
-    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
-    @pytest.mark.parametrize("channel_shape", [1, 1, 3, 3])
+    @pytest.mark.parametrize("batch_shape", [1, 3, 5])
+    @pytest.mark.parametrize("channel_shape", [1, 3])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
         input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
         transform = RandomSaltAndPepperNoise(p=1.0)
@@ -4680,19 +4823,19 @@ class TestRandomGaussianIllumination(BaseTester):
             [
                 [
                     [
-                        [0.726599991321564, 1.000000000000000, 0.726599991321564],
-                        [0.662100017070770, 0.912100017070770, 0.662100017070770],
-                        [0.500000000000000, 0.691100001335144, 0.500000000000000],
+                        [0.867512464523315, 0.999994516372681, 0.683359920978546],
+                        [0.789115190505981, 0.907470583915710, 0.624598741531372],
+                        [0.622879266738892, 0.711280286312103, 0.500000000000000],
                     ],
                     [
-                        [0.726599991321564, 1.000000000000000, 0.726599991321564],
-                        [0.662100017070770, 0.912100017070770, 0.662100017070770],
-                        [0.500000000000000, 0.691100001335144, 0.500000000000000],
+                        [0.867512464523315, 0.999994516372681, 0.683359920978546],
+                        [0.789115190505981, 0.907470583915710, 0.624598741531372],
+                        [0.622879266738892, 0.711280286312103, 0.500000000000000],
                     ],
                     [
-                        [0.726599991321564, 1.000000000000000, 0.726599991321564],
-                        [0.662100017070770, 0.912100017070770, 0.662100017070770],
-                        [0.500000000000000, 0.691100001335144, 0.500000000000000],
+                        [0.867512464523315, 0.999994516372681, 0.683359920978546],
+                        [0.789115190505981, 0.907470583915710, 0.624598741531372],
+                        [0.622879266738892, 0.711280286312103, 0.500000000000000],
                     ],
                 ]
             ],
@@ -5039,7 +5182,7 @@ class TestNormalize(BaseTester):
     def test_random_normalize_invalid_parameter_shape(mean, std):
         f = Normalize(mean=mean, std=std, p=1.0)
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"mean length and number of channels do not match"):
             f(inputs)
 
     def test_random_normalize(self, device, dtype):
@@ -5171,6 +5314,35 @@ class TestDenormalize(BaseTester):
 
 
 class TestRandomFisheye(BaseTester):
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradients(self, device, dtype, gamma_value):
+        center_x = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        center_y = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        gamma = torch.full((2,), gamma_value, device=device, dtype=dtype, requires_grad=True)
+        image = torch.arange(63, device=device, dtype=dtype).reshape(1, 1, 7, 9) / 63
+
+        output = RandomFisheye(center_x, center_y, gamma, p=1.0)(image)
+        gradients = torch.autograd.grad(output.sum(), (center_x, center_y, gamma))
+        assert torch.isfinite(output).all()
+        for gradient in gradients:
+            assert torch.isfinite(gradient).all()
+
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradcheck(self, device, gamma_value):
+        image = torch.arange(63, device=device, dtype=torch.float64).reshape(1, 1, 7, 9) / 63
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+
+        def apply(center_x, center_y, gamma):
+            params = {"center_x": center_x, "center_y": center_y, "gamma": gamma, "batch_prob": image.new_ones(1)}
+            return aug(image, params=params)
+
+        self.gradcheck(
+            apply,
+            (bounds[:1], bounds[:1], torch.tensor([gamma_value], device=device)),
+            nondet_tol=1e-5,
+        )
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         center_x = torch.tensor([-0.3, 0.3])
@@ -5199,6 +5371,24 @@ class TestRandomFisheye(BaseTester):
 
 
 class TestRandomElasticTransform(BaseTester):
+    def test_zero_padding_with_replayed_noise(self, device, dtype):
+        image = torch.ones(1, 1, 5, 5, device=device, dtype=dtype)
+        noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
+        noise[:, 0] = 1.0
+        params = {"noise": noise, "batch_prob": torch.ones(1, device=device, dtype=dtype)}
+        aug = RandomElasticTransform(
+            kernel_size=(1, 1),
+            sigma=(1.0, 1.0),
+            alpha=(0.8, 0.0),
+            resample="nearest",
+            padding_mode="zeros",
+            p=1.0,
+        )
+        expected = torch.ones_like(image)
+        expected[..., -2:] = 0.0
+        self.assert_close(aug(image, params=params), expected)
+        self.assert_close(aug(image, params=aug._params), expected)
+
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomElasticTransform(p=1.0)
@@ -5343,6 +5533,54 @@ class TestPadTo(BaseTester):
         assert out.shape == (1, 1, 4, 5)
         self.assert_close(aug.inverse(out), img)
 
+    def test_crop_if_exceeds_true_crops_larger_input(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=True)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+        self.assert_close(out, img[..., :4, :5])
+
+    def test_crop_if_exceeds_false_keeps_larger_input_unchanged(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 6)
+        self.assert_close(out, img)
+        self.assert_close(aug.inverse(out), img)
+
+    def test_crop_if_exceeds_false_mixed_dims(self, device, dtype):
+        # height (6) exceeds target (4); width (2) is below target (5)
+        img = torch.rand(1, 1, 6, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 5)
+        # the exceeding height dimension is left untouched, and the original
+        # content is preserved with zeros padded onto the short width dimension
+        self.assert_close(out[..., :2], img)
+        self.assert_close(out[..., 2:], torch.zeros(1, 1, 6, 3, device=device, dtype=dtype))
+        self.assert_close(aug.inverse(out), img)
+
+    def test_default_crops_larger_input(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        out = PadTo(size=(4, 5))(img)
+        assert out.shape == (1, 1, 4, 5)
+        self.assert_close(out, img[..., :4, :5])
+
+    def test_flags_without_crop_if_exceeds_keep_cropping(self, device, dtype):
+        # A PadTo pickled before ``crop_if_exceeds`` existed unpickles with no such key in ``flags``.
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        del aug.flags["crop_if_exceeds"]
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        self.assert_close(aug(img), img[..., :4, :5])
+
+    @pytest.mark.parametrize("crop_if_exceeds", [True, False])
+    def test_dynamo(self, device, dtype, torch_optimizer, crop_if_exceeds):
+        # The input is taller and narrower than the target: one call crops (or keeps) the height and pads the width.
+        img = torch.rand(2, 3, 6, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=crop_if_exceeds)
+        compiled = torch_optimizer(aug, fullgraph=True)
+        self.assert_close(compiled(img), aug(img))
+
 
 class TestResize:
     def test_smoke(self, device, dtype):
@@ -5360,6 +5598,25 @@ class TestResize:
         torch._dynamo.reset()
         compiled = torch.compile(aug, fullgraph=True)
         torch.testing.assert_close(aug(img), compiled(img), rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "make",
+        [lambda: Resize(8), lambda: LongestMaxSize(8), lambda: SmallestMaxSize(8)],
+        ids=["Resize", "LongestMaxSize", "SmallestMaxSize"],
+    )
+    def test_int_size_traces_in_one_graph_like_eager_5037(self, make, device, dtype):
+        # An int size takes its output size from the input shape under any capture, not only under export (#5037):
+        # the sampled ``output_size`` tensor is a host read, which a fullgraph trace cannot make.
+        from torch._dynamo.testing import CompileCounter
+
+        img = torch.rand(2, 3, 10, 16, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        aug = make()
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(aug, backend=counter, fullgraph=True)
+        torch.testing.assert_close(traced(img), aug(img), rtol=0, atol=0)
+        assert counter.frame_count == 1
 
 
 class TestSmallestMaxSize:
@@ -5990,9 +6247,8 @@ class TestRandomSnow(BaseTester):
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, snow_coef, brght_coef, input_data in exception_test_data:
-            with pytest.raises(Exception) as errinfo:
-                aug = RandomSnow(p=1.0, snow_coefficient=snow_coef, brightness=brght_coef)
-                aug(input_data)
+            with pytest.raises((BaseError, ValueError), match=re.escape(err_msg)) as errinfo:
+                RandomSnow(p=1.0, snow_coefficient=snow_coef, brightness=brght_coef)(input_data)
 
             assert err_msg in str(errinfo)
 
@@ -6013,10 +6269,10 @@ class TestRandomMedianBlur(BaseTester):
             [
                 [
                     [
-                        [0.0, 1.0, 1.0, 0.0],
                         [1.0, 1.0, 1.0, 1.0],
                         [1.0, 1.0, 1.0, 1.0],
-                        [0.0, 1.0, 1.0, 0.0],
+                        [1.0, 1.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0, 1.0],
                     ]
                 ]
             ],
@@ -6025,6 +6281,15 @@ class TestRandomMedianBlur(BaseTester):
         )
 
         self.assert_close(out, expected)
+
+    def test_exception(self):
+        with pytest.raises(BaseError, match=r"Kernel size must be an odd integer bigger than 0") as errinfo:
+            RandomMedianBlur((4, 4), p=1.0)
+        assert "Kernel size must be an odd integer" in str(errinfo.value)
+
+        with pytest.raises(BaseError, match=r"Kernel size must be an odd integer bigger than 0") as errinfo:
+            RandomMedianBlur((3, 4), p=1.0)
+        assert "Kernel size must be an odd integer" in str(errinfo.value)
 
 
 class TestRandomRain(BaseTester):
@@ -6107,9 +6372,10 @@ class TestRandomRain(BaseTester):
             n = int(params["number_of_drops_factor"][i])
             h, w = int(params["drop_height_factor"][i]), int(params["drop_width_factor"][i])
             size = max(h, abs(w))
-            x = torch.linspace(0, h, steps=size, dtype=torch.long).to(device)
-            y = torch.linspace(0, w, steps=size, dtype=torch.long).to(device)
-            last_dy, last_dx = (h, w) if size > 1 else (0, 0)
+            last_dy = h - 1
+            last_dx = w - 1 if w > 0 else w + 1 if w < 0 else 0
+            x = torch.linspace(0, last_dy, steps=size, dtype=torch.long).to(device)
+            y = torch.linspace(0, last_dx, steps=size, dtype=torch.long).to(device)
             rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
             coords = params["coordinates_factor"][i][:n]
             r0 = (coords[:, 0] * rows).long().clamp(max=rows - 1).to(device)
@@ -6133,9 +6399,8 @@ class TestRandomRain(BaseTester):
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
-            with pytest.raises(Exception) as errinfo:
-                aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)
-                aug(input_data)
+            with pytest.raises(BaseError, match=re.escape(err_msg)) as errinfo:
+                RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)(input_data)
 
             assert err_msg in str(errinfo)
 
@@ -6263,13 +6528,60 @@ class TestRandomJPEG(BaseTester):
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
 
 
+class TestRandomJPEGEmptyBatch(BaseTester):
+    # Not marked slow like TestRandomJPEG: an empty batch never reaches the codec, so these run on every CI leg.
+
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_empty_batch(self, p, same_on_batch, device, dtype):
+        # #4429: for an empty batch, no JPEG quality is drawn and there are no pixels to code, so the
+        # augmentation bypasses the codec entirely and keeps the input's shape, matching the other
+        # classes' empty-batch convention.
+        image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        output = RandomJPEG(p=p, same_on_batch=same_on_batch)(image)
+        assert output.shape == image.shape
+        assert output.dtype == dtype
+        output.sum().backward()
+        assert image.grad is not None
+        assert image.grad.shape == image.shape
+
+    @pytest.mark.parametrize(
+        ("params_batch", "batch", "error", "match"),
+        [
+            (0, 2, ShapeError, r"jpeg_quality needs one quality per image"),
+            (2, 0, ShapeError, r"jpeg_quality needs one quality per image"),
+        ],
+    )
+    def test_empty_batch_shortcut_needs_an_empty_batch(self, params_batch, batch, error, match, device, dtype):
+        # Replaying parameters drawn for another batch size still raises, now at the codec's batch-size check; a
+        # non-empty batch with no drawn quality must not come back uncoded.
+        aug = RandomJPEG(p=1.0)
+        params = aug.forward_parameters(torch.Size((params_batch, 3, 8, 10)))
+        with pytest.raises(error, match=match):
+            aug(torch.rand(batch, 3, 8, 10, device=device, dtype=dtype), params=params)
+
+    @pytest.mark.parametrize(
+        ("shape", "match"),
+        [
+            ((0, 1, 8, 10), r"expected 3"),
+            ((0, 3, 0, 10), r"it is empty"),
+            ((0, 3, 8, 0), r"it is empty"),
+        ],
+    )
+    def test_empty_batch_keeps_the_input_checks(self, shape, match, device, dtype):
+        # The codec checks for three channels (for (0, 1, 8, 10)) and for non-empty images
+        # (for (0, 3, 0, 10) and (0, 3, 8, 0)).
+        with pytest.raises(ValueError, match=match):
+            RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
+
+
 @pytest.mark.slow
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     @pytest.fixture(autouse=True)
     def _needs_diffusers(self):
-        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader prompt under --runslow.
+        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader's ImportError under --runslow.
         pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
 
     def test_batch_proc(self, device, dtype):

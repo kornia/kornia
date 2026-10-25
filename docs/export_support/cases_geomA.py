@@ -146,6 +146,10 @@ boxes_xyxy = torch.tensor([[[2.0, 3.0, 20.0, 25.0], [10.0, 5.0, 35.0, 30.0]]])  
 boxes_quad = Boxes.from_tensor(boxes_xyxy, mode="xyxy").data  # (1,2,4,2)
 boxes3d_xyzxyz = torch.tensor([[[1.0, 2.0, 1.0, 10.0, 12.0, 6.0], [3.0, 3.0, 2.0, 14.0, 14.0, 7.0]]])  # (1,2,6)
 boxes3d_hexa = Boxes3D.from_tensor(boxes3d_xyzxyz, mode="xyzxyz").data  # (1,2,8,3)
+# depths, heights and widths all distinct, for the shape cases: a graph that swapped two of them would not match
+boxes3d_hexa_shapes = Boxes3D.from_tensor(
+    torch.tensor([[[1.0, 2.0, 1.0, 10.0, 12.0, 6.0], [3.0, 3.0, 2.0, 14.0, 9.0, 9.0]]]), mode="xyzxyz"
+).data  # (1,2,8,3): (d, h, w) = (5, 10, 9) and (7, 6, 11)
 nms_boxes = torch.tensor([[10.0, 10.0, 20.0, 20.0], [15.0, 5.0, 15.0, 25.0], [100.0, 100.0, 150.0, 150.0]])
 nms_scores = torch.tensor([0.9, 0.8, 0.7])
 kpts = torch.tensor([[[5.0, 6.0], [20.0, 10.0], [30.0, 25.0]]])  # (1,3,2)
@@ -622,7 +626,7 @@ CASES += [
         note="size baked; input (N,8,3)",
     ),
     case("bbox.infer_bbox_shape", G, infer_bbox_shape, [boxes_quad[0]]),
-    case("bbox.infer_bbox_shape3d", G, infer_bbox_shape3d, [boxes3d_hexa[0]], tags=("3d",)),
+    case("bbox.infer_bbox_shape3d", G, infer_bbox_shape3d, [boxes3d_hexa_shapes[0]], tags=("3d",)),
     case("bbox.transform_bbox", G, transform_bbox, [homo33, boxes_xyxy], note="mode=xyxy default (B,N,4)"),
     case(
         "bbox.transform_bbox[xywh]",
@@ -798,7 +802,7 @@ CASES += [
         "boxes.Boxes3D.get_boxes_shape",
         G,
         lambda b: Boxes3D(b, mode="xyzxyz_plus").get_boxes_shape(),
-        [boxes3d_hexa],
+        [boxes3d_hexa_shapes],
         tags=("3d",),
     ),
     case(
@@ -937,11 +941,11 @@ CASES += [
     ),
     case("subpix.conv_soft_argmax3d", G, conv_soft_argmax3d, [heat3d], tags=("3d",)),
     case(
-        "subpix.conv_soft_argmax3d[normalized,bonus]",
+        "subpix.conv_soft_argmax3d[normalized]",
         G,
         conv_soft_argmax3d,
         [heat3d],
-        {"normalized_coordinates": True, "strict_maxima_bonus": 10.0},
+        {"normalized_coordinates": True},
         tags=("3d",),
     ),
     case("subpix.conv_quad_interp3d", G, conv_quad_interp3d, [heat3d], tags=("3d",)),
@@ -1105,13 +1109,6 @@ CASES += [
         [p3, q3, torch.tensor([0.0, 1.0, 5.0])],
     ),
     case(
-        "plane.Hyperplane.through[2d]",
-        G,
-        lambda a, b: (lambda pl: (pl.normal.data, pl.offset.data))(Hyperplane.through(a, b)),
-        [torch.tensor([[1.0, 2.0]]), torch.tensor([[3.0, 5.0]])],
-        note="KORNIA BUG: 2-D branch wraps a 2-vector into Vector3 -> always fails validation (plane.py:185)",
-    ),
-    case(
         "plane.Hyperplane.from_vector",
         G,
         lambda n, e: (lambda pl: (pl.normal.data, pl.offset.data))(Hyperplane.from_vector(Vector3(n), Vector3(e))),
@@ -1223,7 +1220,7 @@ CASES += [
         tags=("points",),
         note="3x3 -> Se2 path; points (N,2)",
     ),
-    case("pose.check_matrix_shape", G, None, [], skip="validation helper, returns None"),
+    case("pose._check_matrix_shape", G, None, [], skip="validation helper, returns None"),
     case(
         "pose.Quaternion/Se2/Se3/So2/So3",
         G,

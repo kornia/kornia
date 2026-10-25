@@ -32,7 +32,7 @@ class SigLip2ImagePreprocessor(nn.Module):
 
     This preprocessor applies the following steps:
     - Rescales pixel values from [0, 255] to [0, 1]
-    - Resizes images to the specified size (with bicubic interpolation and antialiasing)
+    - Resizes images to the specified size (with ``interpolation`` and antialiasing)
     - Normalizes with mean=[0.5, 0.5, 0.5] and std=[0.5, 0.5, 0.5] (converts [0, 1] to [-1, 1])
 
     Args:
@@ -40,6 +40,9 @@ class SigLip2ImagePreprocessor(nn.Module):
         mean: Normalization mean. Default: [0.5, 0.5, 0.5]
         std: Normalization std. Default: [0.5, 0.5, 0.5]
         rescale_factor: Rescaling factor. Default: 1/255
+        interpolation: Resize interpolation. The default ``"bilinear"`` is the resampling of the SigLIP 2 checkpoints
+            (``"resample": 2`` in their ``preprocessor_config.json``); pass ``"bicubic"`` for the SigLIP 1 checkpoint
+            ``google/siglip-base-patch16-224`` (``"resample": 3``).
 
     Example:
         >>> import torch
@@ -50,7 +53,9 @@ class SigLip2ImagePreprocessor(nn.Module):
         >>>
         >>> # Process image (assumes input in [0, 255] range)
         >>> image = torch.randint(0, 255, (3, 300, 400), dtype=torch.float32)
-        >>> processed = preprocessor(image)  # Shape: (3, 224, 224), range: [-1, 1]
+        >>> processed = preprocessor(image)  # range: [-1, 1]
+        >>> processed.shape
+        torch.Size([1, 3, 224, 224])
     """
 
     def __init__(
@@ -59,11 +64,12 @@ class SigLip2ImagePreprocessor(nn.Module):
         mean: list[float] | tuple[float, float, float] = (0.5, 0.5, 0.5),
         std: list[float] | tuple[float, float, float] = (0.5, 0.5, 0.5),
         rescale_factor: float = 1.0 / 255.0,
+        interpolation: str = "bilinear",
     ) -> None:
         super().__init__()
         self.image_size = image_size
-        self.mean = torch.tensor([mean]) if isinstance(mean, list | tuple) else mean
-        self.std = torch.tensor([std]) if isinstance(std, list | tuple) else std
+        self.mean = torch.tensor([mean]) if isinstance(mean, (list, tuple)) else mean
+        self.std = torch.tensor([std]) if isinstance(std, (list, tuple)) else std
         self.rescale_factor = rescale_factor
 
         # build preprocessing pipeline
@@ -74,7 +80,7 @@ class SigLip2ImagePreprocessor(nn.Module):
             preproc_list.append(Rescale(factor=rescale_factor))
 
         # resize (on [0, 1] range)
-        preproc_list.append(Resize(size=image_size, interpolation="bicubic", align_corners=False, antialias=True))
+        preproc_list.append(Resize(size=image_size, interpolation=interpolation, align_corners=False, antialias=True))
 
         # normalize (convert [0, 1] to [-1, 1])
         preproc_list.append(Normalize(mean=self.mean, std=self.std))
@@ -101,15 +107,19 @@ class SigLip2ImagePreprocessor(nn.Module):
         return self.preprocessor(images)
 
     @classmethod
-    def from_config(cls, image_size: int | tuple[int, int]) -> SigLip2ImagePreprocessor:
+    def from_config(
+        cls, image_size: int | tuple[int, int], interpolation: str = "bilinear"
+    ) -> SigLip2ImagePreprocessor:
         """Create preprocessor from image size configuration.
 
         Args:
             image_size: Image size (single int for square, or tuple for (height, width))
+            interpolation: Resize interpolation, ``"bilinear"`` for the SigLIP 2 checkpoints and ``"bicubic"`` for the
+                SigLIP 1 ``google/siglip-base-patch16-224`` (see the class docstring).
 
         Returns:
             Preprocessor instance
         """
         if isinstance(image_size, int):
             image_size = (image_size, image_size)
-        return cls(image_size=image_size)
+        return cls(image_size=image_size, interpolation=interpolation)
