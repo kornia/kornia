@@ -77,7 +77,10 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     if output_dtype in (torch.float16, torch.bfloat16):
         input, target = input.float(), target.float()
 
-    epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).sqrt()
+    sq_err: Tensor = (input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2
+    # sqrt has an infinite derivative at 0, so guard the backward pass to avoid NaN gradients at exact matches.
+    safe_sq_err = torch.where(sq_err > 0, sq_err, torch.ones_like(sq_err))
+    epe: Tensor = torch.where(sq_err > 0, safe_sq_err.sqrt(), torch.zeros_like(sq_err))
 
     if reduction == "mean":
         epe = epe.mean()

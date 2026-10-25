@@ -49,6 +49,27 @@ class TestAepe(BaseTester):
         actual = kornia.metrics.aepe(sample, sample, reduction="none")
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_gradient_finite_at_exact_match(self, device, dtype, reduction):
+        # Pixels where the prediction equals the target must not get NaN gradients:
+        # the endpoint error is a sqrt whose derivative is infinite at 0. See #6295.
+        pred = torch.tensor([[[1.0, 2.0], [3.0, 4.0]]], device=device, dtype=dtype, requires_grad=True)
+        target = torch.tensor([[[1.0, 2.0], [3.5, 4.0]]], device=device, dtype=dtype)
+        grad = torch.autograd.grad(kornia.metrics.aepe(pred, target, reduction=reduction).sum(), pred)[0]
+        assert torch.isfinite(grad).all()
+
+    def test_gradient_finite_with_masked_match(self, device, dtype):
+        # A loss restricted to valid pixels must stay finite even when a masked-out
+        # pixel matches its target exactly (NaN * 0 would otherwise poison it). See #6295.
+        pred = torch.zeros(1, 4, 4, 2, device=device, dtype=dtype, requires_grad=True)
+        target = torch.zeros(1, 4, 4, 2, device=device, dtype=dtype)
+        target[0, 0, 0] = 1.0
+        mask = torch.zeros(1, 4, 4, device=device, dtype=dtype)
+        mask[0, 0, 0] = 1.0
+        loss = (kornia.metrics.aepe(pred, target, reduction="none") * mask).sum()
+        grad = torch.autograd.grad(loss, pred)[0]
+        assert torch.isfinite(grad).all()
+
     def test_aepe_alias(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.zeros(4, 4, device=device, dtype=dtype)
