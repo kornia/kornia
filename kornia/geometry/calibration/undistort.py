@@ -30,9 +30,78 @@ from kornia.geometry.transform import remap
 from .distort import distort_points, tilt_projection
 
 
+def _distort_normalized(
+    x: torch.Tensor, y: torch.Tensor, dist: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    r2 = x * x + y * y
+    numerator = 1 + r2 * (dist[..., 0:1] + r2 * (dist[..., 1:2] + r2 * dist[..., 4:5]))
+    denominator = 1 + r2 * (dist[..., 5:6] + r2 * (dist[..., 6:7] + r2 * dist[..., 7:8]))
+    radial = numerator / denominator
+    xd = (
+        x * radial
+        + 2 * dist[..., 2:3] * x * y
+        + dist[..., 3:4] * (r2 + 2 * x * x)
+        + r2 * (dist[..., 8:9] + r2 * dist[..., 9:10])
+    )
+    yd = (
+        y * radial
+        + dist[..., 2:3] * (r2 + 2 * y * y)
+        + 2 * dist[..., 3:4] * x * y
+        + r2 * (dist[..., 10:11] + r2 * dist[..., 11:12])
+    )
+    return xd, yd, radial, numerator, denominator
+
+
+def _undistort_points_newton(
+    x: torch.Tensor, y: torch.Tensor, dist: torch.Tensor, num_iters: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    # Newton's method on the normalized Brown-Conrady forward map, with a
+    # fixed set of damping candidates so no tensor value controls a Python loop.
+    x0, y0 = x, y
+    for _ in range(num_iters):
+        xd, yd, radial, numerator, denominator = _distort_normalized(x, y, dist)
+        rx, ry = xd - x0, yd - y0
+        error = rx.square() + ry.square()
+        r2 = x * x + y * y
+        dn = dist[..., 0:1] + r2 * (2 * dist[..., 1:2] + 3 * r2 * dist[..., 4:5])
+        dd = dist[..., 5:6] + r2 * (2 * dist[..., 6:7] + 3 * r2 * dist[..., 7:8])
+        dr = (dn * denominator - numerator * dd) / denominator.square()
+        px = dist[..., 8:9] + 2 * r2 * dist[..., 9:10]
+        py = dist[..., 10:11] + 2 * r2 * dist[..., 11:12]
+        p1, p2 = dist[..., 2:3], dist[..., 3:4]
+        cross = 2 * x * y * dr + 2 * p1 * x + 2 * p2 * y
+        a = radial + 2 * x * x * dr + 2 * p1 * y + 6 * p2 * x + 2 * x * px
+        b = cross + 2 * y * px
+        c = cross + 2 * x * py
+        d = radial + 2 * y * y * dr + 6 * p1 * y + 2 * p2 * x + 2 * y * py
+        det = a * d - b * c
+        usable = torch.isfinite(det) & (det != 0)
+        divisor = torch.where(usable, det, torch.ones_like(det))
+        dx, dy = (d * rx - b * ry) / divisor, (a * ry - c * rx) / divisor
+        next_x, next_y = x, y
+        accepted = torch.zeros_like(usable)
+        for step in (1.0, 0.5, 0.25, 0.125):
+            candidate_x, candidate_y = x - step * dx, y - step * dy
+            candidate_xd, candidate_yd, _, _, _ = _distort_normalized(candidate_x, candidate_y, dist)
+            candidate_error = (candidate_xd - x0).square() + (candidate_yd - y0).square()
+            # Accept equality too: at an exact root the Newton update still
+            # carries derivatives with respect to the distortion coefficients.
+            take = usable & ~accepted & torch.isfinite(candidate_error) & (candidate_error <= error)
+            next_x = torch.where(take, candidate_x, next_x)
+            next_y = torch.where(take, candidate_y, next_y)
+            accepted = accepted | take
+        x, y = next_x, next_y
+    return x, y
+
+
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
 def undistort_points(
-    points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None, num_iters: int = 5
+    points: torch.Tensor,
+    K: torch.Tensor,
+    dist: torch.Tensor,
+    new_K: Optional[torch.Tensor] = None,
+    num_iters: int = 5,
+    method: str = "fixed_point",
 ) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
 
@@ -46,13 +115,13 @@ def undistort_points(
         - ``dist`` follows the layout of :func:`~kornia.geometry.calibration.distort_points`, the forward map
           this function inverts; ``K`` maps the incoming pixel onto the normalized plane and ``new_K`` maps the
           undistorted point back to pixels.
-        - the inverse is a fixed-point iteration of ``num_iters`` steps, so the round trip through
+        - by default the inverse is a fixed-point iteration of ``num_iters`` steps, so the round trip through
           :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy the iteration reaches;
           within its convergence region more steps improve it down to the dtype's rounding.
         - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
 
     .. warning::
-        The iteration has no convergence test and no valid-radius guard: outside the convergence region it can
+        The default iteration has no convergence test and no valid-radius guard: outside the convergence region it can
         enter a two-point cycle, so the answer depends on the parity of ``num_iters``.
         `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
 
@@ -69,6 +138,15 @@ def undistort_points(
             case both steps use the same camera; a different matrix rescales and shifts the **result**.
             Shape: :math:`(*, 3, 3)`. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
+        method: ``"fixed_point"`` (default) or ``"newton"``. Newton uses the analytic Jacobian of the
+            normalized distortion map and tries steps of 1, 1/2, 1/4 and 1/8 at each iteration, accepting
+            the first that does not increase the squared residual. A point stays unchanged if its Jacobian
+            is singular or no candidate is accepted. Both methods start from the untilted distorted point.
+            Newton can recover points where the fixed-point iteration is unstable, but may need more than
+            five iterations and is more expensive per iteration. Half-precision inputs use float32 arithmetic
+            for Newton inversion and are returned in the input dtype. Neither method guarantees convergence or
+            selects a physically valid inverse when the distortion map has multiple roots. The return type
+            is unchanged; use :func:`distort_points` to check the forward residual when needed.
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
@@ -87,6 +165,18 @@ def undistort_points(
     """
     KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
+
+    if method not in ("fixed_point", "newton"):
+        raise ValueError(f"Invalid undistortion method: {method}")
+
+    output_dtype = points.dtype
+    promote = method == "newton" and output_dtype in (torch.float16, torch.bfloat16)
+    if promote:
+        # Even the #4285 example overflows half precision in the squared residual
+        # and Jacobian solve, before Newton has a chance to reduce the error.
+        points, K, dist = points.float(), K.float(), dist.float()
+        if new_K is not None:
+            new_K = new_K.float()
 
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f"points shape is invalid. Got {points.shape}.")
@@ -126,7 +216,9 @@ def undistort_points(
 
     # Iteratively undistort points
     x0, y0 = x, y
-    for _ in range(num_iters):
+    if method == "newton":
+        x, y = _undistort_points_newton(x, y, dist, num_iters)
+    for _ in range(num_iters if method == "fixed_point" else 0):
         r2 = x * x + y * y
 
         inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2**3) / (
@@ -155,7 +247,8 @@ def undistort_points(
     new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
     x = new_fx * x + new_cx
     y = new_fy * y + new_cy
-    return torch.stack([x, y], -1)
+    result = torch.stack([x, y], -1)
+    return result.to(output_dtype) if promote else result
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287
