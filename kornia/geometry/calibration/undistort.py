@@ -150,6 +150,9 @@ def undistort_points(
             for Newton inversion and are returned in the input dtype. Neither method guarantees convergence or
             selects a physically valid inverse when the distortion map has multiple roots. The return type
             is unchanged; use :func:`distort_points` to check the forward residual when needed.
+            For Newton inversion, finite inputs can still overflow intermediate polynomial or Jacobian calculations.
+            Gradients can then be non-finite even when the returned points are finite; rejecting a candidate does not
+            prevent this. Higher precision can reduce overflow but does not eliminate it in general.
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
