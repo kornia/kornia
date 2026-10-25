@@ -1126,9 +1126,7 @@ class TestDepthWarperConventions(BaseTester):
             1,
             align_corners=False,
         )
-        warped.compute_projection_matrix(
-            PinholeCamera(intrinsics.clone(), _tx_plus_one(device, dtype), height, width)
-        )
+        warped.compute_projection_matrix(PinholeCamera(intrinsics.clone(), _tx_plus_one(device, dtype), height, width))
         patch = torch.full((1, 1, 4, 1), 7.0, device=device, dtype=dtype)
         self.assert_close(warped(depth_src, patch), torch.zeros_like(patch))
 
