@@ -21,6 +21,7 @@ import torch
 from torch import Size
 
 from kornia.geometry import transform_points
+from kornia.geometry._coordinate import _cast_to_floating_point
 
 __all__ = ["Keypoints", "Keypoints3D"]
 
@@ -39,7 +40,7 @@ class Keypoints:
         keypoints: tensor of :math:`(N, 2)` or :math:`(B, N, 2)` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
-            it to ``float32``.
+            it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
 
     Convention:
         - A point is ``(x, y)`` in pixel coordinates (:ref:`Coordinates and sizes <coordinate-conventions>`), the
@@ -71,7 +72,7 @@ class Keypoints:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {keypoints.dtype}")
 
-            keypoints = keypoints.float()
+            keypoints = _cast_to_floating_point(keypoints)
 
         if len(keypoints.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
@@ -345,7 +346,7 @@ class Keypoints3D:
         keypoints: tensor of :math:`(N, 3)` or :math:`(B, N, 3)` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
-            it to ``float32``.
+            it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
 
     Convention:
         - Known defects: list input, :meth:`pad`, :meth:`unpad`, :meth:`transform_keypoints`,
@@ -369,7 +370,7 @@ class Keypoints3D:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {keypoints.dtype}")
 
-            keypoints = keypoints.float()
+            keypoints = _cast_to_floating_point(keypoints)
 
         if len(keypoints.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on

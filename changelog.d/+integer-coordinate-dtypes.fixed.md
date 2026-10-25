@@ -1,0 +1,1 @@
+Integer coordinates passed to `Keypoints`, `Keypoints3D`, `Boxes`, `Boxes3D` and `VideoBoxes` are cast to `float32`, or to `float64` when that is the default dtype. `Boxes` used to cast them to the default dtype, which under a `float16` or `bfloat16` default moved coordinates above 2048 or 256; `Keypoints` used to cast to `float32` even under a `float64` default.
