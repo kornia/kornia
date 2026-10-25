@@ -506,8 +506,9 @@ class DepthWarper(nn.Module):
           Both cameras use only the top-left 3x3 block of their intrinsics, embedded in
           homogeneous 4x4 form; the stored fourth row and column are ignored.
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
-          ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
-          ``align_corners=True`` normalized coordinates of the **destination** image.
+          ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s normalized
+          coordinates of the **destination** image, in the convention of ``align_corners``: corner-aligned
+          for the default ``True`` and half a pixel inside the border for ``False``.
         - ``align_corners`` (default ``True``), ``mode`` and ``padding_mode`` are forwarded to ``grid_sample``.
           :func:`~kornia.geometry.depth.depth_warp` is the functional form and exposes ``align_corners`` only.
 
@@ -698,6 +699,14 @@ class DepthWarper(nn.Module):
 
         # normalize between -1 and 1 the coordinates
         pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)
+        if not self.align_corners:
+            # ``normalize_pixel_coordinates`` is corner-aligned (it maps the first and last pixel to -1 and 1),
+            # while ``grid_sample`` at ``align_corners=False`` expects the pixel centres at
+            # ``(2 * x + 1) / size - 1``. A corner-aligned coordinate ``c`` becomes ``c * (size - 1) / size``
+            # there, so rescale both axes or every sample lands up to half a pixel away from its pixel.
+            pixel_coords_src_norm = pixel_coords_src_norm * pixel_coords_src_norm.new_tensor(
+                [(self.width - 1.0) / self.width, (self.height - 1.0) / self.height]
+            )
         return pixel_coords_src_norm
 
     def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:

@@ -1065,6 +1065,29 @@ class TestDepthWarperConventions(BaseTester):
             assert shifted.shape == (1, channels, 4, 5)
             assert (shifted - patch).abs().max().item() > 0.5
 
+    def test_convention_align_corners_false_reproduces_the_input_for_an_identity_warp(self, device, dtype):
+        # kornia#6317: warp_grid normalized the projected pixels with the corner-aligned helper while forward
+        # hands the result to grid_sample(align_corners=self.align_corners). The two conventions disagree by
+        # half a pixel, so with align_corners=False an identity warp sampled the wrong pixel (or blended two
+        # of them) and did not return the destination patch. Both flags have to reproduce it, through the
+        # class and through the functional form.
+        identity = _eye4(device, dtype)
+        intrinsics = _k44_warp(device, dtype)
+        height = torch.tensor([4], device=device)
+        width = torch.tensor([5], device=device)
+        depth_src = torch.ones(1, 1, 4, 5, device=device, dtype=dtype)
+        image = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        for align_corners in (True, False):
+            pinhole_dst = PinholeCamera(intrinsics.clone(), identity.clone(), height, width)
+            pinhole_src = PinholeCamera(intrinsics.clone(), identity.clone(), height, width)
+            warper = DepthWarper(pinhole_dst, 4, 5, align_corners=align_corners)
+            warper.compute_projection_matrix(pinhole_src)
+            self.assert_close(warper(depth_src, image), image)
+            self.assert_close(
+                depth_warp(pinhole_dst, pinhole_src, depth_src, image, 4, 5, align_corners=align_corners),
+                image,
+            )
+
     def test_convention_warp_grid_requires_compute_projection_matrix_first(self, device, dtype):
         # DepthWarper is a two-step API: before compute_projection_matrix, warp_grid and forward raise ValueError
         # and compute_subpixel_step raises RuntimeError. Afterwards warp_grid returns the NORMALIZED (B, H, W, 2)
