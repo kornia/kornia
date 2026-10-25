@@ -133,13 +133,9 @@ def separable_dilation2d(
     else:
         raise TypeError("padding must be int, tuple of two ints, or None")
 
-    out_h = dilation1d(
-        input, kernel_size=kw, stride=1, padding=pad_w, mode="constant", value=-float("inf")
-    )
+    out_h = dilation1d(input, kernel_size=kw, stride=1, padding=pad_w, mode="constant", value=-float("inf"))
     out_trans = out_h.transpose(-2, -1)
-    out_v = dilation1d(
-        out_trans, kernel_size=kh, stride=1, padding=pad_h, mode="constant", value=-float("inf")
-    )
+    out_v = dilation1d(out_trans, kernel_size=kh, stride=1, padding=pad_h, mode="constant", value=-float("inf"))
     return out_v.transpose(-2, -1)
 
 
