@@ -147,8 +147,10 @@ def center_crop3d(
         - input: :math:`(B, C, D, H, W)`; ``size`` is ``(d, h, w)``
         - align_corners: ``True`` by default
         - offset: the crop starts at the integer voxel ``int(D / 2 - d / 2)`` (likewise for the height and width),
-          as in :class:`~kornia.augmentation.CenterCrop3D`, so the output is a sub-volume of the input. With an odd
-          margin the extra voxel is left at the back/bottom/right.
+          as in :class:`~kornia.augmentation.CenterCrop3D`, so with the default ``align_corners=True`` the output is a
+          sub-volume of the input. With an odd margin the extra voxel is left at the back/bottom/right.
+          ``align_corners=False`` resamples off the voxel grid even for an even margin (see
+          :func:`crop_and_resize3d`).
 
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).

@@ -322,21 +322,25 @@ class TestCenterCrop(BaseTester):
             kornia.geometry.transform.CenterCrop2D(size, cropping_mode="resample")(inp), expected, atol=1e-4, rtol=1e-4
         )
 
+    @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize(
         "size, top, left",
         [((3, 4), 0, 0), ((2, 2), 1, 1), ((1, 3), 1, 1), ((4, 2), 0, 1)],
     )
-    def test_convention_center_crop_odd_margin_returns_a_sub_image_6290(self, size, top, left, mode, device, dtype):
+    def test_convention_center_crop_odd_margin_returns_a_sub_image_6290(
+        self, size, top, left, mode, align_corners, device, dtype
+    ):
         # A 4x5 image with an odd margin on at least one axis. The crop starts at int(src / 2 - dst / 2), as in
         # CenterCrop2D, and leaves the extra pixel at the bottom/right. A fractional start resampled between
-        # pixels instead, so bilinear blended neighbours and nearest picked an arbitrary side.
+        # pixels instead, so bilinear blended neighbours and nearest picked an arbitrary side. In 2D both
+        # align_corners conventions resolve the pixel-coordinate box to the same pixel centres (#3904).
         if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
         inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5) ** 2
         expected = inp[..., top : top + size[0], left : left + size[1]]
 
-        out = kornia.geometry.transform.center_crop(inp, size, mode=mode)
+        out = kornia.geometry.transform.center_crop(inp, size, mode=mode, align_corners=align_corners)
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
         self.assert_close(out, kornia.geometry.transform.CenterCrop2D(size)(inp), atol=1e-4, rtol=1e-4)
 
