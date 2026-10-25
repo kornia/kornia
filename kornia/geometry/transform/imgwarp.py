@@ -1700,9 +1700,9 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         - returns the source→destination **pixel** homography :math:`(B, 4, 4)`
 
     Args:
-        src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 8, 3)`.
-        dst: coordinates of the corresponding quadrangle vertices in
-            the destination image with shape :math:`(B, 8, 3)`.
+        src: coordinates of the box corners in the source volume with shape :math:`(B, 8, 3)`.
+        dst: coordinates of the corresponding box corners in
+            the destination volume with shape :math:`(B, 8, 3)`.
 
     Returns:
         the perspective transformation with shape :math:`(B, 4, 4)`.
