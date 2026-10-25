@@ -255,6 +255,17 @@ class TestSpatialSoftmax2d(BaseTester):
         assert torch.isfinite(actual).all()
         self.assert_close(actual, reference)
 
+    @pytest.mark.parametrize("as_tensor", [False, True])
+    def test_float32_extreme_logits_with_large_temperature(self, device, as_tensor):
+        max_float = torch.finfo(torch.float32).max
+        input = torch.tensor([[[[-max_float, max_float]]]], device=device, dtype=torch.float32)
+        temperature = torch.tensor(max_float, device=device) if as_tensor else max_float
+
+        actual = kornia.geometry.subpix.spatial_softmax2d(input, temperature)
+        expected = torch.tensor([[[[0.1192, 0.8808]]]], device=device, dtype=torch.float32)
+
+        self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
     @pytest.mark.parametrize("temperature", [0.0, -1.0, float("nan"), "tensor", "nan_tensor"])
     def test_nonpositive_temperature_raises(self, device, dtype, temperature):
         input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
