@@ -107,14 +107,17 @@ class TestBbox2D(BaseTester):
         relabeled_rectangle = torch.tensor(
             [[[[0.0, 0.0], [3.0, 0.0], [0.0, 2.0], [3.0, 2.0]]]], device=device, dtype=dtype
         )
-        assert validate_bbox(relabeled_rectangle) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(relabeled_rectangle) is False
 
         trapezoid = torch.tensor([[[[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [3.0, 5.0]]]], device=device, dtype=dtype)
-        assert validate_bbox(trapezoid) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(trapezoid) is False
 
         # The edge vectors share their x component and differ only in y, so only the second comparison rejects it.
         tilted_bottom = torch.tensor([[[[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 1.0]]]], device=device, dtype=dtype)
-        assert validate_bbox(tilted_bottom) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(tilted_bottom) is False
 
     def test_convention_validate_bbox_accepts_noncontiguous_rank4_layout_4174(self, device, dtype):
         # kornia#4174: a rank-4 input whose leading dimensions cannot be merged by view returns a boolean.
@@ -145,13 +148,16 @@ class TestBbox2D(BaseTester):
             for non_finite in [float("nan"), float("inf"), float("-inf")]:
                 invalid_boxes = boxes.clone()
                 invalid_boxes[1].reshape(-1)[coordinate_index] = non_finite
-                assert validate_bbox(invalid_boxes) is False
+                with pytest.warns(FutureWarning, match="validate_bbox"):
+                    assert validate_bbox(invalid_boxes) is False
 
     def test_wart_validate_bbox_returns_false_where_validate_bbox3d_raises_4013(self, device, dtype):
         # Wart pin for kornia#4013: for the same invalid shape, the 2D validator
-        # returns False while the 3D validator raises.
+        # returns False while the 3D validator raises. The False result is deprecated and
+        # warns until a later release turns it into the AssertionError the 3D validator raises.
         invalid_shape = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        assert validate_bbox(invalid_shape) is False
+        with pytest.warns(FutureWarning, match="validate_bbox"):
+            assert validate_bbox(invalid_shape) is False
         with pytest.raises(AssertionError):
             validate_bbox3d(invalid_shape)
 
@@ -173,6 +179,25 @@ class TestBbox2D(BaseTester):
         )
         with pytest.raises(AssertionError):
             validate_bbox3d(non_cube)
+
+    def test_validate_bbox_warns_where_it_returns_false_4013(self, device, dtype):
+        # kornia#4013: every input for which validate_bbox returns False warns, pointing at the caller, and still
+        # returns False; a valid box warns nothing.
+        valid = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 2.0], [0.0, 2.0]]], device=device, dtype=dtype)
+        non_rectangle = valid.clone()
+        non_rectangle[0, 3, 1] = 3.0
+        nan_box = valid.clone()
+        nan_box[0, 2, 0] = float("nan")
+        wrong_shape = torch.rand(1, 3, 2, device=device, dtype=dtype)
+        for boxes in (non_rectangle, nan_box, wrong_shape):
+            with pytest.warns(FutureWarning, match="validate_bbox") as record:
+                assert validate_bbox(boxes) is False
+            assert [w.filename for w in record] == [__file__]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert validate_bbox(valid) is True
+            assert validate_bbox(valid[None]) is True
 
     def test_smoke(self, device, dtype):
         # Sample two points of the rectangle
@@ -234,9 +259,17 @@ class TestBbox2D(BaseTester):
         boxes_sheared = torch.tensor([[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(scripted_fn(boxes_sheared), validate_bbox(boxes_sheared))
 
-        # Test with invalid shape
+        # Test with invalid shape: the scripted function returns False without the eager deprecation warning
         boxes_wrong_shape = torch.rand(1, 3, 2, device=device, dtype=dtype)
-        self.assert_close(scripted_fn(boxes_wrong_shape), validate_bbox(boxes_wrong_shape))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert scripted_fn(boxes_wrong_shape) is False
+        boxes_non_rectangle = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert scripted_fn(boxes_non_rectangle) is False
 
     def test_convention_bbox_to_mask_takes_width_then_height_and_reads_two_vertices_4014(self, device, dtype):
         # Convention pin (kornia#4014 records the argument-order split with Boxes.to_mask):
@@ -539,9 +572,11 @@ class TestBbox3D(BaseTester):
             for non_finite in [float("nan"), float("inf"), float("-inf")]:
                 invalid_boxes = boxes.clone()
                 invalid_boxes[0].reshape(-1)[coordinate_index] = non_finite
-                assert validate_bbox3d(invalid_boxes) is False
+                with pytest.warns(FutureWarning, match="validate_bbox3d"):
+                    assert validate_bbox3d(invalid_boxes) is False
                 # the same holds for the (B, N, 8, 3) rank-4 layout
-                assert validate_bbox3d(invalid_boxes[None]) is False
+                with pytest.warns(FutureWarning, match="validate_bbox3d"):
+                    assert validate_bbox3d(invalid_boxes[None]) is False
 
     def test_convention_consumers_still_raise_on_non_finite_coordinates_4258(self, device, dtype):
         # validate_bbox3d's four internal callers use it for its raise and discard the return value, so each
@@ -565,6 +600,9 @@ class TestBbox3D(BaseTester):
         invalid = box.clone()
         invalid[0, 7, 1] = float("nan")
 
+        # The callers raise themselves, so validate_bbox3d's deprecation warning (kornia#4013) is not theirs to
+        # emit: a FutureWarning here would surface as an error instead of the AssertionError.
+        warnings.simplefilter("error", FutureWarning)
         with pytest.raises(AssertionError, match="finite"):
             infer_bbox_shape3d(invalid)
         with pytest.raises(AssertionError, match="finite"):
@@ -697,10 +735,11 @@ class TestBbox3D(BaseTester):
         )
 
     def test_wart_validate_bbox3d_checks_equal_edge_extents_not_cuboids_4013(self, device, dtype, monkeypatch):
-        # Wart pin for kornia#4013 (the 3D validator raises where the 2D one returns False): the
-        # check compares the inclusive extents of the four edges parallel to each axis, so a
-        # sheared parallelepiped and a zero-extent box pass, and only unequal edges raise. Under
-        # graph capture the extent check is skipped and the shape check alone returns True.
+        # Wart pin for kornia#4013 (the 3D validator raises where the 2D one returns False, and its one
+        # False result, a non-finite coordinate, warns that it will raise too): the check compares
+        # the inclusive extents of the four edges parallel to each axis, so a sheared parallelepiped
+        # and a zero-extent box pass, and only unequal edges raise. Under graph capture the extent
+        # check is skipped and the shape check alone returns True.
         cuboid = self._unit_cuboid(device, dtype)
         assert validate_bbox3d(cuboid) is True
         assert validate_bbox3d(cuboid[None]) is True
@@ -714,10 +753,17 @@ class TestBbox3D(BaseTester):
 
         unequal = cuboid.clone()
         unequal[0, 1, 0] = 5.0
-        with pytest.raises(AssertionError, match="widths"):
-            validate_bbox3d(unequal)
-        with pytest.raises(AssertionError, match="shape"):
-            validate_bbox3d(cuboid[0])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(AssertionError, match="widths"):
+                validate_bbox3d(unequal)
+            with pytest.raises(AssertionError, match="shape"):
+                validate_bbox3d(cuboid[0])
+        nan_box = cuboid.clone()
+        nan_box[0, 5, 2] = float("nan")
+        with pytest.warns(FutureWarning, match="validate_bbox3d") as record:
+            assert validate_bbox3d(nan_box) is False
+        assert [w.filename for w in record] == [__file__]
         monkeypatch.setattr(bbox_module, "is_compiling", lambda: True)
         assert validate_bbox3d(unequal) is True
         with pytest.raises(AssertionError, match="shape"):
