@@ -1208,7 +1208,8 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.mark.parametrize("clip_output", [False, True])
     def test_autocontrast_empty_batch_4429(self, probability, clip_output, device, dtype):
         data = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
-        augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
+        with pytest.warns(DeprecationWarning, match="clip_output"):
+            augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
         output = augmentation(data)
         replay = augmentation(data, params=augmentation._params)
         for actual in (output, replay):
