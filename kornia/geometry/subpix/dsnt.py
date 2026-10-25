@@ -98,7 +98,9 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
         x = torch.where(temperature >= 2, x / temperature, (x - x_max) / temperature)
         x = x - x.amax(dim=-1, keepdim=True).detach()
 
-    x_soft = F.softmax(x, dim=-1).to(input.dtype)
+    x_soft = F.softmax(x, dim=-1)
+    if input.is_floating_point():
+        x_soft = x_soft.to(input.dtype)
 
     return x_soft.view(batch_size, channels, height, width)
 
