@@ -641,9 +641,11 @@ class TestGeometricCropConventions(BaseTester):
         with pytest.raises(AssertionError, match="2 positive integers"):
             aug(torch.ones(1, 1, 1, 10))
 
-    def test_wart_pad_to_smaller_target_crops_and_inverse_is_noop_4410(self, device, dtype):
-        # #4410: negative right/bottom padding crops, and the identity matrix leaves inverse unable to restore it.
-        x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
+    def test_convention_pad_to_smaller_target_crops_and_inverse_regrows_4410(self, device, dtype):
+        # A target smaller than the input crops at the right/bottom. Every kept pixel keeps its coordinates, so the
+        # matrix is identity and keypoints and boxes are untouched. inverse restores the input shape and fills the
+        # discarded region with zeros, as the crop inverses do: the cropped pixels cannot come back.
+        x = torch.arange(1, 49, device=device, dtype=dtype).reshape(1, 1, 6, 8)
         crop = K.PadTo((4, 5), pad_value=9)
         seq = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"])
         points = x.new_tensor([[[7, 5]]])
@@ -652,8 +654,47 @@ class TestGeometricCropConventions(BaseTester):
         self.assert_close(out_points, points)
         self.assert_close(out_boxes, boxes)
         self.assert_close(output, x[..., :4, :5])
-        self.assert_close(crop.inverse(output), output)
         self.assert_close(crop.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
+
+        expected = torch.zeros_like(x)
+        expected[..., :4, :5] = x[..., :4, :5]
+        self.assert_close(crop.inverse(output), expected)
+        restored, restored_points, restored_boxes = seq.inverse(output, out_points, out_boxes)
+        self.assert_close(restored, expected)
+        self.assert_close(restored_points, points)
+        self.assert_close(restored_boxes, boxes)
+
+    @pytest.mark.parametrize("pad_mode", ["constant", "replicate", "reflect"])
+    def test_convention_pad_to_inverse_of_a_mixed_target_restores_the_shape_4410(self, pad_mode, device, dtype):
+        # Crop the height and pad the width. inverse removes the padding exactly and regrows the cropped rows with
+        # zeros whatever pad_mode is: replicate or reflect would invent rows from the pixels that were kept.
+        x = torch.arange(1, 49, device=device, dtype=dtype).reshape(1, 1, 6, 8)
+        pad = K.PadTo((4, 12), pad_mode=pad_mode)
+        output = pad(x)
+        assert output.shape == (1, 1, 4, 12)
+        expected = torch.zeros_like(x)
+        expected[..., :4, :] = x[..., :4, :]
+        self.assert_close(pad.inverse(output), expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("mask_dtype", [torch.bool, torch.int64, torch.float32])
+    def test_convention_pad_to_mask_inverse_regrows_with_zeros_4410(self, mask_dtype, device):
+        # Masks take the same path: a cropped mask inverts to the input shape, background in the regrown region.
+        image = torch.rand(2, 3, 6, 8, device=device)
+        mask = torch.ones(2, 1, 6, 8, device=device, dtype=mask_dtype)
+        seq = K.AugmentationSequential(K.PadTo((4, 10)), data_keys=["input", "mask"])
+        _, restored = seq.inverse(*seq(image, mask))
+        assert restored.shape == mask.shape
+        assert restored.dtype == mask_dtype
+        expected = torch.zeros_like(mask)
+        expected[..., :4, :] = 1
+        assert torch.equal(restored, expected)
+
+    def test_convention_pad_to_crop_if_exceeds_false_inverse_is_identity_4410(self, device, dtype):
+        # With crop_if_exceeds=False nothing was cropped, so inverse returns the input unchanged.
+        x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
+        pad = K.PadTo((4, 5), crop_if_exceeds=False)
+        self.assert_close(pad.inverse(pad(x)), x)
 
     def test_convention_pad_to_right_bottom_padding_round_trips(self, device, dtype):
         x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
