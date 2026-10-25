@@ -989,6 +989,23 @@ class TestCropByIndices(BaseTester):
         out = kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 4), shape_compensation="pad")
         self.assert_close(out, torch.zeros(1, 1, 3, 4, device=device, dtype=dtype))
 
+    def test_clipped_slice_of_the_requested_size_is_still_padded_6312(self, device, dtype):
+        # x = -1..2 is 4 wide; clipped to x = 0..2 it is 3 wide, the requested width, yet the pixels must keep their
+        # box positions: a zero for x = -1, then x = 0 and 1, with x = 2 trimmed. Both the identical-box path and the
+        # per-row path are checked.
+        inp = torch.arange(1.0, 13.0, device=device, dtype=dtype).view(1, 1, 2, 6)
+        box = self._box_6312(-1, 0, 2, 0, 1, device, torch.int64)
+        expected = torch.tensor([[[[0.0, 1.0, 2.0]]]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.crop_by_indices(inp, box, size=(1, 3), shape_compensation="pad")
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+
+        in_bounds = self._box_6312(0, 1, 2, 1, 1, device, torch.int64)
+        out = kornia.geometry.transform.crop_by_indices(
+            inp.repeat(2, 1, 1, 1), torch.cat([box, in_bounds]), size=(1, 3), shape_compensation="pad"
+        )
+        self.assert_close(out[:1], expected, atol=0.0, rtol=0.0)
+        self.assert_close(out[1:], inp[..., 1:2, 0:3], atol=0.0, rtol=0.0)
+
     def test_boxes_with_different_negative_starts_pad_per_row_6312(self, device, dtype):
         # Both starts clip to x = 0, so the boxes look alike once clipped; each row must keep its own left padding.
         inp = torch.arange(1.0, 31.0, device=device, dtype=dtype).view(1, 1, 5, 6).repeat(2, 1, 1, 1)
@@ -1060,3 +1077,18 @@ class TestSliceResizeFullgraphPathEager(BaseTester):
         )
         actual = _compiled_slice_resize(image, src, (13, 29), mode, align_corners)
         self.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+    @pytest.mark.parametrize("mode", ["bilinear", "bicubic", "nearest"])
+    def test_box_entirely_left_of_the_image_reads_its_own_rows_6312(self, mode):
+        # The eager path raises for the empty slice of a box with no pixel in the image; the gather cannot raise
+        # without a host sync. Its empty interval read the last pixel of the previous row; it must stay in the box's
+        # rows and read the image edge, as a box entirely past the right edge reads the last column.
+        from kornia.geometry.transform._crop import _compiled_slice_resize
+
+        image = torch.arange(1.0, 31.0, dtype=torch.float64).view(1, 1, 5, 6)
+        left = torch.tensor([[[-5, 2], [-2, 2], [-2, 3], [-5, 3]]])
+        right = torch.tensor([[[8, 2], [10, 2], [10, 3], [8, 3]]])
+        out_left = _compiled_slice_resize(image, left, (2, 4), mode, None)
+        out_right = _compiled_slice_resize(image, right, (2, 4), mode, None)
+        self.assert_close(out_left, image[..., 2:4, :1].expand(-1, -1, -1, 4))
+        self.assert_close(out_right, image[..., 2:4, -1:].expand(-1, -1, -1, 4))

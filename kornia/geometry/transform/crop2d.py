@@ -555,6 +555,8 @@ def crop_by_indices(
     top = [max(-v, 0) for v in y1l]
     x1l, x2l = [max(v, 0) for v in x1l], [max(v, 0) for v in x2l]
     y1l, y2l = [max(v, 0) for v in y1l], [max(v, 0) for v in y2l]
+    # With 'pad' a clipped box needs that padding even when its clipped slice happens to have the requested size.
+    shifted = [shape_compensation != "resize" and (left[i] > 0 or top[i] > 0) for i in range(B)]
 
     # ``B > 0``: an empty batch has no first box to compare against, and takes the general path below,
     # which returns an empty ``(0, C, *size)`` tensor (#4429).
@@ -568,7 +570,7 @@ def crop_by_indices(
         and top.count(top[0]) == B
     ):
         out = input_tensor[..., y1l[0] : y2l[0], x1l[0] : x2l[0]]
-        if size is not None and out.shape[-2:] != size:
+        if size is not None and (out.shape[-2:] != size or shifted[0]):
             if shape_compensation == "resize":
                 return resize(
                     out,
@@ -603,12 +605,17 @@ def crop_by_indices(
     # ``contiguous`` keeps the result in the default memory format, as the ``torch.empty`` below does,
     # when the input is channels-last. MPS keeps the per-row copies: on an M1 the ``cat`` of strided
     # views ran at 0.75-0.96x their speed without gradients (B = 4-64, 256² -> 128², #4987).
-    if B > 0 and input_tensor.device.type != "mps" and all(crop.shape[-2:] == size for crop in slices):
+    if (
+        B > 0
+        and input_tensor.device.type != "mps"
+        and not any(shifted)
+        and all(crop.shape[-2:] == size for crop in slices)
+    ):
         return torch.cat(slices).contiguous()
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype) if rows is None else None
     crops: list[torch.Tensor] = []
     for i, _out in enumerate(slices):
-        if _out.shape[-2:] != size:
+        if _out.shape[-2:] != size or shifted[i]:
             if shape_compensation == "resize":
                 _out = resize(
                     _out,

@@ -147,8 +147,10 @@ def _compiled_slice_resize(
     flat = work.reshape(batch, channels, height * width)
 
     def gather(x_index: torch.Tensor, y_index: torch.Tensor) -> torch.Tensor:
-        x_index = (x0 + x_index.clamp(min=0)).minimum(x1 - 1).long()
-        y_index = (y0 + y_index.clamp(min=0)).minimum(y1 - 1).long()
+        # ``clamp(min=0)``: a box entirely left of or above the image clips to an empty interval, whose ``x1 - 1`` is
+        # -1 and would read the previous row; it reads the image edge instead, as a box past the right edge does.
+        x_index = (x0 + x_index.clamp(min=0)).minimum(x1 - 1).clamp(min=0).long()
+        y_index = (y0 + y_index.clamp(min=0)).minimum(y1 - 1).clamp(min=0).long()
         indices = (y_index.unsqueeze(-1) * width + x_index.unsqueeze(-2)).reshape(batch, 1, -1)
         return flat.gather(2, indices.expand(-1, channels, -1)).reshape(batch, channels, *size)
 
