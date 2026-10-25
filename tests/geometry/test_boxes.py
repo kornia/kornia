@@ -922,7 +922,7 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data, original, atol=0.0, rtol=0.0)
 
     def test_wart_clamp_tuple_bounds_and_outside_box_behavior_4017(self, device, dtype):
-        # Wart pin for kornia#4017: tuple bounds are advertised but unsupported;
+        # Wart pin for kornia#4017: tuple bounds are no longer advertised and raise, as documented;
         # tensor bounds clamp every vertex, collapsing a wholly outside box.
         boxes = Boxes.from_tensor(
             torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype),
@@ -943,14 +943,19 @@ class TestBoxes2D(BaseTester):
             rtol=0.0,
         )
 
-    def test_wart_trim_and_fast_translate_are_unimplemented_4017(self, device, dtype):
-        # Wart pin for kornia#4017: both documented entry points raise instead
-        # of implementing their advertised operations.
+    def test_wart_trim_is_deprecated_and_fast_translate_is_unsupported_4017(self, device, dtype):
+        # Wart pin for kornia#4017: trim warns that it's deprecated and still raises,
+        # and "fast" is no longer advertised and raises.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
-        with pytest.raises(NotImplementedError, match=r"Boxes\.trim.*not implemented"):
-            boxes.trim()
-        with pytest.raises(NotImplementedError, match=r"fast.*not implemented.*warp"):
+        with pytest.raises(NotImplementedError, match=r"accepts `method='warp'`"):
             boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="fast")
+        with (
+            pytest.warns(DeprecationWarning, match=r"Boxes\.trim") as record,
+            pytest.raises(NotImplementedError, match=r"Boxes\.trim.*not implemented"),
+        ):
+            boxes.trim()
+        assert len(record) == 1
+        assert record[0].filename == __file__
 
     def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
         # transform_boxes leaves its input unchanged by default. Its in-place
@@ -991,9 +996,9 @@ class TestBoxes2D(BaseTester):
         assert translated is not boxes
 
     def test_translate_unknown_method_raises(self, device, dtype):
-        # The message names the accepted methods and repeats the rejected one, so a typo is visible.
+        # The message names the accepted method and repeats the rejected one, so a typo is visible.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
-        with pytest.raises(NotImplementedError, match=r"method='warp'.*method='fast'.*got method='wrap'"):
+        with pytest.raises(NotImplementedError, match=r"accepts `method='warp'`; got method='wrap'"):
             boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="wrap")
 
     def test_wart_filter_boxes_by_area_zeroes_small_boxes_4010(self, device, dtype):
