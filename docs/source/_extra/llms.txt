@@ -22,7 +22,8 @@ geometry, solvers, features and matching, edges, morphology, Lab/Bayer color, lo
 `(B, 3, 3)` matrices to `warp_perspective`); batched minimal solvers (`find_fundamental(..., method="7POINT")` returns
 every real solution, plus 8-point, 5-point essential, DLT homography and PnP) and an on-device `RANSAC`;
 differentiable geometry (depth ↔ 3D, `warp_frame_depth`, camera models with distortion, Lie groups); augmentation
-that moves images, masks, boxes and keypoints together and inverts; GPU local features and matchers (DISK, ALIKED,
+that moves images, masks, boxes and keypoints together and inverts (on CUDA with no avoidable host
+synchronization); GPU local features and matchers (DISK, ALIKED,
 XFeat, LoFTR, LightGlue, SIFT); nearly all operators compile with `torch.compile`, and over 1,000 of the 1,215 probed
 configurations export to ONNX. On batched GPU tensors the published 0.9.0 flagship benchmarks (RTX 4090, batch 32)
 show 10× to over 100×

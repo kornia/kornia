@@ -286,7 +286,7 @@ Kornia pays off where a hand-written version gets long or fragile, or where the 
 - **Differentiable geometry** — depth to 3D and back, camera models with lens distortion and Lie groups, with
   gradients through depth, pose and camera parameters.
 - **Annotated augmentation** — one sampled transform for images, masks, boxes and keypoints, in 2D and 3D, and its
-  inverse.
+  inverse; on CUDA, with no avoidable host synchronization.
 - **Local features on the GPU** — SIFT, HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue.
 - **Compiles and exports** — nearly all operators run under ``torch.compile``; see :doc:`get-started/export-support`.
 - **Fast on batched GPU tensors** — many filters, warps, matching steps and metrics run 10× to over 100× faster than

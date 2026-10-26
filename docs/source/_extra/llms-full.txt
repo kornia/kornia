@@ -23,7 +23,9 @@ Kornia pays off where a hand-written version gets long or fragile, or where the 
   `warp_frame_depth`, `remap`, camera models with Brown–Conrady and Kannala–Brandt distortion, and Lie groups (`So3`,
   `Se3`) keep gradients with respect to depth, pose and camera parameters.
 - **Annotated augmentation.** `AugmentationSequential` applies one sampled transform to images, masks, boxes and
-  keypoints together, in 2D and 3D, and can invert it.
+  keypoints together, in 2D and 3D, and can invert it. On CUDA, augmentations move their sampled parameters to the
+  GPU without blocking it, and a sync-guard test keeps every public augmentation free of avoidable host
+  synchronizations.
 - **Local features on the GPU.** SIFT and HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue, with
   mutual-nearest-neighbour and ratio-test matchers.
 - **Morphology** with arbitrary structuring elements on batched tensors.
