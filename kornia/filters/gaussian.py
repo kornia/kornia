@@ -21,7 +21,14 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
+from kornia.core._compat import torch_version_ge
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_SIZE,
+    KORNIA_CHECK_SHAPE,
+    are_checks_enabled,
+)
 from kornia.core.ops import _device_literal
 from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_autocast_enabled, is_compiling
 
@@ -31,6 +38,9 @@ from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, g
 # This build capability is immutable; querying it inside forward breaks Dynamo
 # full-graph capture. Cache it without changing any backend settings.
 _HAS_MKLDNN = torch.backends.mkldnn.is_available()
+
+# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
+_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
 
 
 def _gaussian_blur2d_cpu_eligible(input: torch.Tensor) -> bool:
@@ -112,7 +122,7 @@ def gaussian_blur2d(
         kernel_size: the size of the kernel. Can be an integer or tuple of two integers (height, width).
         sigma: the standard deviation of the kernel. Can be a tuple of two floats or a torch.Tensor
             with shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
-            Values must be positive.
+            Values must be positive; the note below says when that is checked.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``, case-insensitive. Default: ``'reflect'``.
@@ -124,9 +134,18 @@ def gaussian_blur2d(
     Raises:
         ~kornia.core.exceptions.TypeCheckError: if input is not a torch.Tensor.
         ~kornia.core.exceptions.ShapeError: if input is not 4D.
-        ~kornia.core.exceptions.BaseError: if sigma values are not positive.
+        ~kornia.core.exceptions.BaseError: if sigma values are not positive, for a tuple or a CPU tensor ``sigma``.
+        RuntimeError: at the next synchronization, if a ``sigma`` tensor on an accelerator has a value that is not
+            positive.
         ~kornia.core.exceptions.BaseError: if the ``sigma`` batch is neither 1 nor the input batch.
         ~kornia.core.exceptions.BaseError: if kernel_size is not a positive odd integer.
+
+    .. note::
+       A tuple or a CPU tensor ``sigma`` is checked on the host during the call. A ``sigma`` tensor on an
+       accelerator is checked there with ``torch._assert_async``, so the call does not wait for the device to read it
+       back: a value that is not positive raises ``RuntimeError`` at the next synchronization. On CUDA that error is
+       a device-side assert, after which the CUDA context cannot be used. MPS has the assert from torch 2.13; on an
+       older release ``sigma`` is read on the host instead. The check is skipped under ``torch.compile``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/gaussian_blur.html>`__.
@@ -177,7 +196,7 @@ def _gaussian_blur2d(
     separable: bool,
 ) -> torch.Tensor:
     """Construct and apply the kernels in the working dtype."""
-    # The positivity check below reads ``host_sigma``: the Python numbers, or ``sigma`` in the input dtype on the
+    # The positivity check below takes ``host_sigma``: the Python numbers, or ``sigma`` in the input dtype on the
     # device it came on, so that a CPU sigma, as the augmentations pass it, is checked without reading the GPU.
     host_sigma: tuple[float, float] | torch.Tensor
     if isinstance(sigma, tuple) and all(isinstance(s, (int, float)) for s in sigma):
@@ -186,8 +205,9 @@ def _gaussian_blur2d(
         # kernel. The values round from the same Python numbers either way.
         sigma = _device_literal([sigma], device=input.device, dtype=input.dtype)
     elif isinstance(sigma, tuple):
-        sigma = torch.tensor([sigma], device=input.device, dtype=input.dtype)
-        host_sigma = sigma
+        # Built on the host, so that it is checked there like the Python numbers.
+        host_sigma = torch.tensor([sigma], dtype=input.dtype)
+        sigma = _to_device_nonblocking(host_sigma, input.device)
     else:
         KORNIA_CHECK_IS_TENSOR(sigma)
         # Cast where it lives and then move: the blocking ``sigma.to(device, dtype)`` also casts on the host.
@@ -197,15 +217,21 @@ def _gaussian_blur2d(
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
     KORNIA_CHECK_SAME_SIZE(sigma, input, allow_one=True, msg="sigma must have a batch of 1 or the input batch.")
     # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
-    if not is_compiling():
+    # ``disable_checks()`` skips it as well, so that the device assert below never runs when checks are off.
+    if not is_compiling() and are_checks_enabled():
         # Only interpolate `sigma` into the message when the check actually fails: a plain
         # f-string here would format the whole `sigma` tensor (a costly tensor->str) on every
         # eager call even when it passes — which dominated the eager Gaussian-blur runtime.
         if not isinstance(host_sigma, torch.Tensor):
             # The same rounding to the input dtype as the device tensor, on the host.
             host_sigma = torch.tensor([host_sigma], dtype=input.dtype)
-        positive = bool((host_sigma > 0).all())
-        KORNIA_CHECK(positive, "sigma must be positive" if positive else f"sigma must be positive, got {sigma}")
+        if host_sigma.device.type == "cpu" or (host_sigma.device.type == "mps" and not _MPS_HAS_ASSERT_ASYNC):
+            positive = bool((host_sigma > 0).all())
+            KORNIA_CHECK(positive, "sigma must be positive" if positive else f"sigma must be positive, got {sigma}")
+        else:
+            # Reading a device sigma on the host would wait for every queued kernel (#6335), so check it where it
+            # lives: the error is raised at the next synchronization, and on CUDA it is a device-side assert.
+            torch._assert_async((host_sigma > 0).all(), "sigma must be positive")
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
