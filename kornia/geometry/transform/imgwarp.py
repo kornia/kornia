@@ -1111,7 +1111,6 @@ def remap(
     out_dtype = image.dtype
     if _runs_in_float32(image, map_xy):
         image, map_xy = image.float(), map_xy.float()
-
     # Normalize pixel coordinates according to align_corners.
     if not normalized_coordinates:
         if align_corners:
