@@ -27,7 +27,7 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
-from kornia.core._compat import torch_version_lt
+from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.core.mixin.image_module import _rebuild_container
@@ -1024,12 +1024,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 f"Integer mask labels must be exactly representable in {dtype}. "
                 "Use a float64 image where supported or remap labels to smaller integers."
             )
-            if mask.device.type == "mps" and torch_version_lt(2, 13, 0):
-                # Older MPS has no asynchronous assertion kernel. Do not skip a correctness check there.
-                if not bool(exact):
-                    raise RuntimeError(message)
-            else:
-                torch._assert_async(exact, message)
+            _check_async(exact, message)
         return converted
 
     @staticmethod

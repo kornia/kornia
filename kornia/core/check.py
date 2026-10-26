@@ -26,7 +26,9 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, TypeVar, Un
 import torch
 from torch import float16, float32, float64
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import (
+    AsyncCheckError,
     BaseError,
     DeviceError,
     ImageError,
@@ -51,6 +53,7 @@ __all__ = [
     "KORNIA_CHECK_SIZES",
     "KORNIA_CHECK_TYPE",
     "KORNIA_UNWRAP",
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",
@@ -84,6 +87,9 @@ def _should_enable_checks() -> bool:
 
 # Module-level flag - evaluated once at import time, but can be changed at runtime
 _KORNIA_CHECKS_ENABLED: bool = _should_enable_checks()
+
+# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
+_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
 
 if TYPE_CHECKING:
     # A check message is a string, or a function without arguments that builds it; see ``KORNIA_CHECK``.
@@ -285,6 +291,46 @@ def KORNIA_CHECK(condition: bool, msg: Optional[CheckMessage] = None, raises: bo
             raise BaseError(error_msg)
         return False
     return True
+
+
+def _check_async(condition: torch.Tensor, msg: str) -> None:
+    """Check a boolean tensor ``condition`` where it lives, without reading it back from an accelerator.
+
+    On CUDA, and on MPS from torch 2.13, the check is ``torch._assert_async``: the call returns at once, and a false
+    ``condition`` raises :exc:`RuntimeError` at the next synchronization. On CUDA that is a device-side assert, after
+    which the context cannot be used. Reading the condition on the host instead would wait for every queued kernel.
+
+    On the CPU, on MPS before torch 2.13, which has no assert kernel, and on any other device, the condition is read on
+    the host and a false one raises :exc:`~kornia.core.exceptions.AsyncCheckError` during the call. A meta tensor has
+    no value to check.
+
+    Under ``torch.compile`` and ``torch.export`` the check is ``torch._assert_async`` on every device that has the
+    kernel, so it stays in the graph and raises :exc:`RuntimeError`; Inductor keeps it from torch 2.9 and compiles it
+    to nothing before. On a device without the kernel nothing is checked there. ``torch.jit.trace`` runs the assert on
+    the traced values but drops it from the graph it records, and TorchScript drops it too, so a scripted call checks
+    a CPU condition on the host only. The check is skipped when checks are disabled with :func:`disable_checks`, and
+    under functorch transforms, since ``vmap`` has no batching rule for the assert.
+
+    Args:
+        condition: a boolean tensor with one element, usually ``(...).all()``.
+        msg: the message of the error. It is a string, since the device assert carries it unformatted.
+    """
+    on_host = condition.device.type == "cpu"
+    if not torch.jit.is_scripting():
+        if not _KORNIA_CHECKS_ENABLED or torch._C._are_functorch_transforms_active():
+            return
+        kind = condition.device.type
+        has_kernel = kind in ("cpu", "cuda", "meta") or (kind == "mps" and _MPS_HAS_ASSERT_ASYNC)
+        if torch.compiler.is_compiling() or torch.jit.is_tracing():
+            if has_kernel:
+                torch._assert_async(condition, msg)
+            return
+        on_host = not has_kernel or kind == "cpu"
+    if on_host:
+        if not bool(condition):
+            raise AsyncCheckError(msg)
+    else:
+        torch._assert_async(condition, msg)
 
 
 def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:

@@ -26,6 +26,7 @@ from kornia import enhance
 from kornia.constants import pi
 from kornia.core._compat import torch_version_ge
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import AsyncCheckError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -560,25 +561,46 @@ class TestAdjustContrast(BaseTester):
 
     def test_negative_factor_errors(self, device, dtype):
         if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+            pytest.skip("the value check raises during the call only on CPU; see test_mps_checks_the_factor")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="non-negative"):
             kornia.enhance.adjust_contrast(img, factor)
 
-    def test_mps_skips_value_check(self, device, dtype):
-        # aten::_assert_async has no MPS kernel; its CPU fallback forces a full device sync per
-        # call. On MPS the value check is skipped entirely (see the note in the adjust_contrast
-        # docstring), so even an invalid factor must go through without raising, and the output
-        # must stay on the device with the requested dtype.
+    def test_mps_checks_the_factor(self, device, dtype):
+        # The factor is checked on MPS as well: from torch 2.13 by the asynchronous assert, which raises at the next
+        # synchronization, and before, without that kernel, on the host during the call.
         if device.type != "mps":
-            pytest.skip("pins the MPS-only no-CPU-fallback behavior")
+            pytest.skip("pins the MPS behavior")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
-        out = kornia.enhance.adjust_contrast(img, factor)
-        assert out.shape == img.shape
-        assert out.device == img.device
-        assert out.dtype == img.dtype
+        if torch_version_ge(2, 13):
+            kornia.enhance.adjust_contrast(img, factor)
+            with pytest.raises(RuntimeError, match="non-negative"):
+                torch.mps.synchronize()
+        else:
+            with pytest.raises(AsyncCheckError, match="non-negative"):
+                kornia.enhance.adjust_contrast(img, factor)
+
+    def test_factor_check_is_skipped_when_checks_are_disabled(self, device, dtype):
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([-0.5], device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            out = kornia.enhance.adjust_contrast(img, factor, clip_output=False)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+        self.assert_close(out, img * -0.5)
+
+    def test_vmap_over_the_factor(self, device, dtype):
+        # vmap has no batching rule for the value assert, which is skipped under functorch transforms.
+        img = torch.rand(3, 4, 4, device=device, dtype=dtype)
+        factors = torch.tensor([0.5, 1.0, 1.5], device=device, dtype=dtype)
+        out = torch.vmap(lambda factor: kornia.enhance.adjust_contrast(img, factor))(factors)
+        expected = torch.stack([kornia.enhance.adjust_contrast(img, factor) for factor in factors])
+        self.assert_close(out, expected)
 
     def test_factor_one_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -1151,7 +1173,6 @@ class TestEqualize(BaseTester):
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
             _sync(compiled(x).device)
 
-    @pytest.mark.skip(reason="TorchScript cannot read the module-level _MPS_HAS_ASSERT_ASYNC flag")
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
         inp = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -1250,7 +1271,6 @@ class TestEqualize3D(BaseTester):
         inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.equalize3d, (inputs3d,), fast_mode=False)
 
-    @pytest.mark.skip(reason="TorchScript cannot read the module-level _MPS_HAS_ASSERT_ASYNC flag")
     def test_jit(self, device, dtype):
         batch_size, channels, depth, height, width = 1, 2, 1, 3, 3
         inp = torch.ones(batch_size, channels, depth, height, width, device=device, dtype=dtype)
