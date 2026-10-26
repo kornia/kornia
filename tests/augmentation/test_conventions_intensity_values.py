@@ -785,6 +785,57 @@ class TestIntensityColourConventions(BaseTester):
         assert int(drawn.min()) == bits
         assert int(drawn.max()) == 8
 
+    # RandomPosterize used to draw a continuous number on [lo, hi] and round it, which gave the endpoints half
+    # the probability of interior values (#6334). Whole-number ranges are now uniform over [lo, hi].
+    # The pin allows 15% around the uniform count, 8 sigma for 3000 draws per value.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("bits", [(0, 8), (1, 4), 3, (5, 7)])
+    def test_convention_random_posterize_bits_are_closed_and_uniform_6334(self, bits):
+        if isinstance(bits, int):
+            low, high = bits, 8
+        else:
+            low, high = bits
+        count = high - low + 1
+        torch.manual_seed(0)
+        drawn = K.RandomPosterize(bits=bits, p=1.0).forward_parameters((count * 3000, 1, 4, 4))["bits_factor"]
+
+        assert drawn.dtype == torch.int32
+        assert (int(drawn.min()), int(drawn.max())) == (low, high)
+        counts = torch.bincount((drawn - low).long(), minlength=count)
+        expected = drawn.numel() / count
+        assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), counts.tolist()
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_posterize_same_on_batch_shares_one_whole_number_6334(self):
+        torch.manual_seed(0)
+        drawn = K.RandomPosterize((0, 8), p=1.0, same_on_batch=True).forward_parameters((16, 1, 4, 4))["bits_factor"]
+
+        assert drawn.shape == (16,)
+        assert bool((drawn == drawn[0]).all())
+        assert drawn.dtype == torch.int32
+
+    # The excluded end point of the half-open sampler range is clamped back: for the largest draw
+    # ``u = 1 - 2 ** -24``, ``lo + u * (hi + 1 - lo)`` rounds up onto ``hi + 1`` in float32.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("bits", [(1, 1), (0, 0), (8, 8), (0, 8), (3, 5)])
+    def test_convention_random_posterize_largest_draw_stays_in_the_closed_range_6334(self, monkeypatch, bits):
+        largest = 1 - 2**-24
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.full_like(real_rand(*args, **kwargs), largest))
+        drawn = K.RandomPosterize(bits=bits, p=1.0).forward_parameters((4, 1, 4, 4))["bits_factor"]
+
+        high = bits[1] if isinstance(bits, tuple) else (8 if isinstance(bits, int) else int(bits))
+        assert drawn.tolist() == [high] * 4
+
+    # A range with a fractional bound is not a closed range of whole numbers, so it keeps the continuous draw
+    # and rounds half-to-even.
+    @pytest.mark.device_agnostic
+    def test_convention_random_posterize_fractional_range_6334(self):
+        torch.manual_seed(0)
+        drawn = K.RandomPosterize(bits=(1.5, 4.5), p=1.0).forward_parameters((6000, 1, 4, 4))["bits_factor"]
+        assert int(drawn.min()) >= 1
+        assert int(drawn.max()) <= 5
+
     # The factor blends linearly between the blurred image (0) and the input (1); above 1 it sharpens.
     # Snippet used to generate expected:
     #   torch.manual_seed(0); print((K.RandomSharpness((f, f), p=1.0)(x) - x).abs().max())

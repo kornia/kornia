@@ -35,8 +35,9 @@ class RandomPosterize(IntensityAugmentationBase2D):
     Args:
         p: probability of applying the transformation.
         bits: number of high bits to keep, in ``[0, 8]``, in which 0 gives a black image and 8 gives the
-            original. A non-integral argument is accepted; the drawn factor is rounded to an integer, half to
-            even, so ``2.5`` gives ``2`` and ``3.5`` gives ``4``.
+            original. A range of whole numbers is closed and uniform: every integer from the lower to the upper
+            bound is drawn with the same probability. A non-integral argument is accepted; the drawn factor is
+            rounded to an integer, half to even, so ``2.5`` gives ``2`` and ``3.5`` gives ``4``.
             If int x, bits will be generated from (x, 8) then convert to int.
             If tuple (x, y), bits will be generated from (x, y) then convert to int.
         same_on_batch: apply the same transformation across the batch.
