@@ -293,12 +293,19 @@ def KORNIA_CHECK(condition: bool, msg: Optional[CheckMessage] = None, raises: bo
     return True
 
 
-def _check_async(condition: torch.Tensor, msg: str) -> None:
+def _vmap_is_active() -> bool:
+    """Whether a ``torch.vmap`` level is on the functorch transform stack."""
+    stack = torch._C._functorch.get_interpreter_stack()
+    return stack is not None and any(level.key() == torch._C._functorch.TransformType.Vmap for level in stack)
+
+
+def _check_async(condition: torch.Tensor, msg: str, guard: bool = False) -> None:
     """Check a boolean tensor ``condition`` where it lives, without reading it back from an accelerator.
 
     On CUDA, and on MPS from torch 2.13, the check is ``torch._assert_async``: the call returns at once, and a false
-    ``condition`` raises :exc:`RuntimeError` at the next synchronization. On CUDA that is a device-side assert, after
-    which the context cannot be used. Reading the condition on the host instead would wait for every queued kernel.
+    ``condition`` raises :exc:`RuntimeError` by the next synchronization, possibly earlier: on CUDA often at the next
+    kernel launch, still inside the calling function. On CUDA it is a device-side assert, after which the context
+    cannot be used. Reading the condition on the host instead would wait for every queued kernel.
 
     On the CPU, on MPS before torch 2.13, which has no assert kernel, and on any other device, the condition is read on
     the host and a false one raises :exc:`~kornia.core.exceptions.AsyncCheckError` during the call. A meta tensor has
@@ -308,16 +315,23 @@ def _check_async(condition: torch.Tensor, msg: str) -> None:
     kernel, so it stays in the graph and raises :exc:`RuntimeError`; Inductor keeps it from torch 2.9 and compiles it
     to nothing before. On a device without the kernel nothing is checked there. ``torch.jit.trace`` runs the assert on
     the traced values but drops it from the graph it records, and TorchScript drops it too, so a scripted call checks
-    a CPU condition on the host only. The check is skipped when checks are disabled with :func:`disable_checks`, and
-    under functorch transforms, since ``vmap`` has no batching rule for the assert.
+    a CPU condition on the host only. The check is skipped when checks are disabled with :func:`disable_checks`, with
+    ``python -O`` or with ``KORNIA_CHECKS=0``, unless ``guard`` is set. It is also skipped under ``torch.vmap``, which
+    has no batching rule for the assert. Eager calls keep it under the other functorch transforms, such as
+    ``torch.func.grad``; a compiled call skips it under all of them, since Dynamo cannot inspect the transform stack.
 
     Args:
         condition: a boolean tensor with one element, usually ``(...).all()``.
         msg: the message of the error. It is a string, since the device assert carries it unformatted.
+        guard: run the check even when checks are disabled. Set it where the check keeps a later index in bounds: on
+            the CPU a compiled ``gather`` or ``scatter`` with an index out of range terminates the process.
     """
     on_host = condition.device.type == "cpu"
     if not torch.jit.is_scripting():
-        if not _KORNIA_CHECKS_ENABLED or torch._C._are_functorch_transforms_active():
+        if not (guard or _KORNIA_CHECKS_ENABLED):
+            return
+        # Dynamo cannot trace the stack walk, so a compiled call skips the check under every functorch transform.
+        if torch._C._are_functorch_transforms_active() and (torch.compiler.is_compiling() or _vmap_is_active()):
             return
         kind = condition.device.type
         has_kernel = kind in ("cpu", "cuda", "meta") or (kind == "mps" and _MPS_HAS_ASSERT_ASYNC)

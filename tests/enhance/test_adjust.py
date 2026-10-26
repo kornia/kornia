@@ -1148,6 +1148,21 @@ class TestEqualize(BaseTester):
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
             _sync(kornia.enhance.equalize(x).device)
 
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+        # The range check keeps the lookup in bounds, so it runs with checks disabled too (``python -O``,
+        # ``KORNIA_CHECKS=0``): a compiled CPU scatter with an index out of range terminates the process.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+                _sync(kornia.enhance.equalize(x).device)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the values that crashed, so a hair above 1 keeps working.
         x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 1.0001
@@ -1454,6 +1469,13 @@ class TestSolarize(BaseTester):
         img = torch.rand(2, 3, 4, 5, device=device)
         with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
             TestSolarize.f(img, 0.5, addition)
+
+    def test_float_additions_checked_on_the_host_under_any_default_device(self, device, dtype):
+        # The float is checked on the CPU whatever the default device: under a meta default the check used to have
+        # nothing to read, so an invalid float passed, and under a CUDA default it was a device-side assert.
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+        with torch.device("meta"), pytest.raises(AsyncCheckError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, 0.7)
 
     @pytest.mark.parametrize("addition", [0.5001, -0.5001])
     def test_float_additions_checked_before_rounding(self, device, dtype, addition):

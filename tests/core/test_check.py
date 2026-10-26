@@ -990,6 +990,42 @@ class TestCheckAsync(BaseTester):
         x = torch.rand(3, 4, device=device) + 0.5
         self.assert_close(torch.vmap(op)(x), x * 2)
 
+    def test_guard_runs_when_checks_are_disabled(self):
+        # A guard keeps a later index in bounds, which a compiled CPU gather or scatter could not survive.
+        disable_checks()
+        with pytest.raises(AsyncCheckError, match="index out of range"):
+            _check_async(torch.tensor(False), "index out of range", guard=True)
+
+    def test_runs_under_the_other_functorch_transforms(self):
+        # Only vmap lacks a batching rule for the assert: grad, jvp and functionalize keep the check in eager code.
+        def op(x: torch.Tensor) -> torch.Tensor:
+            _check_async((x > 0).all(), "x must be positive")
+            return (x * 2).sum()
+
+        invalid = -torch.ones(3)
+        with pytest.raises(AsyncCheckError, match="x must be positive"):
+            torch.func.grad(op)(invalid)
+        with pytest.raises(AsyncCheckError, match="x must be positive"):
+            torch.func.jvp(op, (invalid,), (torch.ones(3),))
+        with pytest.raises(AsyncCheckError, match="x must be positive"):
+            torch.func.functionalize(op)(invalid)
+
+    def test_dynamo_under_functorch_transforms(self, device, torch_optimizer, optimizer_backend):
+        # Dynamo cannot trace the walk of the transform stack, so a compiled vmap or grad skips the check instead of
+        # breaking the graph.
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript does not script functorch transforms")
+
+        def op(x: torch.Tensor) -> torch.Tensor:
+            _check_async((x > 0).all(), "x must be positive")
+            return (x * 2).sum()
+
+        x = torch.rand(2, 3, device=device) + 0.5
+        batched = torch_optimizer(torch.vmap(op), fullgraph=True)
+        self.assert_close(batched(x), (x * 2).sum(1))
+        gradient = torch_optimizer(torch.func.grad(op), fullgraph=True)
+        self.assert_close(gradient(x[0]), torch.full_like(x[0], 2.0))
+
     def test_jit_raises_on_the_host(self):
         def op(x: torch.Tensor) -> torch.Tensor:
             _check_async((x > 0).all(), "x must be positive")

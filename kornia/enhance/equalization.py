@@ -528,8 +528,8 @@ def equalize_clahe(
        or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert
        8-bit data with ``image.float() / 255`` first, as for :func:`kornia.enhance.equalize`. Values the lookup
        cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the range, at the same
-       point as for :func:`kornia.enhance.equalize`: during the call for a CPU image, and at the next
-       synchronization on CUDA and on MPS from torch ``2.13``.
+       point as for :func:`kornia.enhance.equalize`: during the call for a CPU image, and by the next
+       synchronization on CUDA and on MPS from torch ``2.13``, even when checks are disabled.
 
     """
     _check_floating_image(input, "equalize_clahe")
@@ -561,11 +561,13 @@ def _equalize_clahe(
     # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
     # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
     # device sync and fullgraph still compiles; on MPS before torch 2.13 it costs one host sync instead
-    # (see ``_lookup_value_check``). Inputs the lookup can index are unchanged.
+    # (see ``_check_async``). Inputs the lookup can index are unchanged. The check keeps the index in
+    # bounds, so it runs with checks disabled too: a compiled CPU gather out of range terminates the process.
     _check_async(
         ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
         "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
+        guard=True,
     )
 
     imgs: torch.Tensor = input  # B x C x H x W

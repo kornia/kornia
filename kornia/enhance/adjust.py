@@ -387,7 +387,7 @@ def adjust_gamma(
     .. note::
        The non-negativity check on ``gamma``/``gain`` reads a CPU value during the call and raises
        :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`. A tensor on CUDA, or on MPS
-       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` at the
+       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` by the
        next synchronization; on CUDA that is a device-side assert.
 
     Example:
@@ -521,7 +521,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     .. note::
        The non-negativity check on ``factor`` reads a CPU value during the call and raises
        :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`. A tensor on CUDA, or on MPS
-       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` at the
+       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` by the
        next synchronization; on CUDA that is a device-side assert.
 
     Example:
@@ -889,7 +889,7 @@ def solarize(
        The range check on ``additions`` reads a float or a CPU tensor during the call and raises
        :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`, whatever the device of the image.
        A tensor on CUDA, or on MPS from torch 2.13, is checked with ``torch._assert_async`` instead and raises
-       ``RuntimeError`` at the next synchronization; on CUDA that is a device-side assert.
+       ``RuntimeError`` by the next synchronization; on CUDA that is a device-side assert.
 
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -919,9 +919,9 @@ def solarize(
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 
         if isinstance(additions, float):
-            # Check the Python value on the host: rounded to float16/bfloat16, a value just past the bound
-            # passes.
-            in_range = torch.tensor(-0.5 <= additions <= 0.5)
+            # Check the Python value on the host, whatever the default device: rounded to float16/bfloat16, a
+            # value just past the bound passes.
+            in_range = torch.tensor(-0.5 <= additions <= 0.5, device="cpu")
             additions = torch.as_tensor(additions, device=input.device, dtype=input.dtype)
         else:
             in_range = ((additions <= 0.5) & (additions >= -0.5)).all()
@@ -1163,12 +1163,14 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``scaled.long()``,
     # which is out of bounds unless ``scaled`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
-    # on MPS before torch 2.13 it costs one host sync instead (see ``_lookup_value_check``). Inputs the
-    # lookup can index keep working exactly as before.
+    # on MPS before torch 2.13 it costs one host sync instead (see ``_check_async``). Inputs the
+    # lookup can index keep working exactly as before. The check keeps the index in bounds, so it runs
+    # with checks disabled too: a compiled CPU scatter with an index out of range terminates the process.
     _check_async(
         ((scaled > -1.0) & (scaled < 256.0)).all(),
         "equalize expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
+        guard=True,
     )
 
     # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
@@ -1231,10 +1233,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
        boolean image raises
        :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
        ``image.float() / 255`` first. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
-       raise a ``RuntimeError`` naming the range, during the call for a CPU image. On CUDA, and on MPS from
-       torch ``2.13``, the check is ``torch._assert_async`` and raises at the next synchronization; on an older
-       MPS release the condition is read on the host instead, one device sync per call, and is skipped there
-       under ``torch.compile``.
+       raise a ``RuntimeError`` naming the range, during the call for a CPU image, even when checks are
+       disabled, since the check keeps the lookup in bounds. On CUDA, and on MPS from torch ``2.13``, the check
+       is ``torch._assert_async`` and raises by the next synchronization; on an older MPS release the condition
+       is read on the host instead, one device sync per call, and is skipped there under ``torch.compile``.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
@@ -1271,9 +1273,10 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
        floating-point roundoff; just above that, whether it changes depends on the values. An integer or
        boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, as for :func:`equalize`. Values
        the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the
-       range, during the call for a CPU volume. On CUDA, and on MPS from torch ``2.13``, the check is
-       ``torch._assert_async`` and raises at the next synchronization; on an older MPS release the condition is
-       read on the host instead, one device sync per call, and is skipped there under ``torch.compile``.
+       range, during the call for a CPU volume, even when checks are disabled, as for :func:`equalize`. On CUDA,
+       and on MPS from torch ``2.13``, the check is ``torch._assert_async`` and raises by the next
+       synchronization; on an older MPS release the condition is read on the host instead, one device sync per
+       call, and is skipped there under ``torch.compile``.
 
     """
     _check_floating_image(input, "equalize3d")

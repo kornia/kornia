@@ -115,7 +115,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         Rows are independent samples: x has shape (B, D), bins is the shared
         one-dimensional center grid, and the result has shape (B, N_bins).
         histogram2d uses the same batch convention for a joint density. bandwidth must be
-        finite and positive; the check raises a ``RuntimeError`` during the call for a CPU bandwidth, and at
+        finite and positive; the check raises a ``RuntimeError`` during the call for a CPU bandwidth, and by
         the next synchronization for one on CUDA, or on MPS from torch 2.13, where it is ``torch._assert_async``.
         For float16 and bfloat16 samples and bins, the kernels are evaluated in float32 and the result
         is cast back to that dtype.

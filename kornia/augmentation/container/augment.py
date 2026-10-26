@@ -152,8 +152,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
-          in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
-          assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
+          in that working dtype raise ``RuntimeError`` instead of being rounded, unless checks are disabled
+          (:func:`~kornia.core.check.disable_checks`, ``python -O`` or ``KORNIA_CHECKS=0``). On accelerators an
+          asynchronous assertion may report by the next synchronization; MPS before torch 2.13 checks on the host.
         - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
           ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
           may differ. Each entry uses its sample's gate, transform parameters and matrix, including in

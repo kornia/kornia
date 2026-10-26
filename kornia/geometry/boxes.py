@@ -232,7 +232,7 @@ class Boxes:
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
         - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
           ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
-          ``torch._assert_async`` (at the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
+          ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
           ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary quadrilaterals of
           :meth:`transform_boxes` import unchanged.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is

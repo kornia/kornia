@@ -721,6 +721,8 @@ class TestGaussianBlur2d(BaseTester):
         with pytest.raises(Exception) as errinfo:
             gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
         assert "sigma must be positive" in str(errinfo.value)
+        # The host check names the value it read.
+        assert "got tensor([[-1.5" in str(errinfo.value)
 
     def test_sigma_zero_raises_exception(self, device, dtype):
         """Test that zero sigma raises an exception."""
