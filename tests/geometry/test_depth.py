@@ -1088,6 +1088,31 @@ class TestDepthWarperConventions(BaseTester):
                 image,
             )
 
+    def test_convention_align_corners_false_translates_by_exactly_one_pixel(self, device, dtype):
+        # The identity pin above and the singleton pin below cannot measure the size of the displacement. A +1
+        # x translation on a non-singleton image pins the integer shift exactly: with unit focal lengths the
+        # projected pixel moves by one whole column, so the warp has to return out[u] = image[u + 1] with the
+        # zero padding in the last column -- no blending, and no larger or smaller displacement. Both flags and
+        # both entry points have to land on that same array.
+        identity = _eye4(device, dtype)
+        intrinsics = _k44_warp(device, dtype)
+        height = torch.tensor([4], device=device)
+        width = torch.tensor([5], device=device)
+        depth_src = torch.ones(1, 1, 4, 5, device=device, dtype=dtype)
+        image = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        expected = torch.zeros_like(image)
+        expected[..., :-1] = image[..., 1:]
+        for align_corners in (True, False):
+            pinhole_dst = PinholeCamera(intrinsics.clone(), _tx_plus_one(device, dtype), height, width)
+            pinhole_src = PinholeCamera(intrinsics.clone(), identity.clone(), height, width)
+            warper = DepthWarper(pinhole_dst, 4, 5, align_corners=align_corners)
+            warper.compute_projection_matrix(pinhole_src)
+            self.assert_close(warper(depth_src, image), expected)
+            self.assert_close(
+                depth_warp(pinhole_dst, pinhole_src, depth_src, image, 4, 5, align_corners=align_corners),
+                expected,
+            )
+
     def test_convention_align_corners_false_keeps_out_of_bounds_x_on_a_singleton_axis(self, device, dtype):
         # A singleton axis is the one size whose align_corners=False rescale is not (size - 1) / size: that
         # factor is zero, and normalize_pixel_coordinates keeps the lone pixel at its pixel coordinate

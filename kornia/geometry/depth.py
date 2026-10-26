@@ -705,9 +705,9 @@ class DepthWarper(nn.Module):
             # ``(2 * x + 1) / size - 1``. A corner-aligned coordinate ``c`` becomes ``c * (size - 1) / size``
             # there, so rescale both axes or every sample lands up to half a pixel away from its pixel.
             # A singleton axis is the exception: ``normalize_pixel_coordinates`` keeps its lone pixel at its
-            # pixel coordinate (scale 1, offset 0), and ``grid_sample(align_corners=False)`` places that pixel
-            # at 0 while its scale is 2, so ``(size - 1) / size`` would collapse every coordinate onto the
-            # centre and sample the pixel where the padding is expected.
+            # pixel coordinate (scale 1, offset 0), and ``grid_sample(align_corners=False)`` places that
+            # pixel at 0 while its scale is 2, so ``(size - 1) / size`` would collapse every coordinate onto
+            # the centre and sample the lone pixel where the configured padding is expected.
             pixel_coords_src_norm = pixel_coords_src_norm * pixel_coords_src_norm.new_tensor(
                 [
                     2.0 if self.width == 1 else (self.width - 1.0) / self.width,
