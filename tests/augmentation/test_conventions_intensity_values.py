@@ -833,8 +833,19 @@ class TestIntensityColourConventions(BaseTester):
     # A range with a fractional bound is not a closed range of whole numbers, so it keeps the continuous draw
     # and rounds half-to-even.
     @pytest.mark.device_agnostic
-    def test_convention_random_posterize_fractional_range_6334(self):
+    def test_convention_random_posterize_fractional_range_6334(self, monkeypatch):
         """Check that fractional ranges preserve continuous draw with round half-to-even."""
+        # Force continuous draws that are half-to-even ties on range (1.5, 4.5) with span 3.0:
+        # 1.5 + (1/3) * 3.0 = 2.5 -> rounds to 2 (even)
+        # 1.5 + (2/3) * 3.0 = 3.5 -> rounds to 4 (even)
+        u = torch.tensor([1.0 / 3.0, 2.0 / 3.0])
+        monkeypatch.setattr(
+            torch, "rand", lambda *args, **kwargs: u.to(device=kwargs.get("device"), dtype=kwargs.get("dtype"))
+        )
+        drawn_controlled = K.RandomPosterize(bits=(1.5, 4.5), p=1.0).forward_parameters((2, 1, 4, 4))["bits_factor"]
+        assert drawn_controlled.tolist() == [2, 4]
+
+        monkeypatch.undo()
         torch.manual_seed(0)
         drawn = K.RandomPosterize(bits=(1.5, 4.5), p=1.0).forward_parameters((6000, 1, 4, 4))["bits_factor"]
         assert int(drawn.min()) >= 1
