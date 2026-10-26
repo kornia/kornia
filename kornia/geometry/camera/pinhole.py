@@ -93,7 +93,8 @@ class PinholeCamera:
                 "Passing (B, N, 4, 4) `intrinsics` or `extrinsics` to `PinholeCamera` is deprecated since kornia "
                 "0.9.1 and will raise a ValueError in a future release: `project` and `unproject` support only "
                 "(B, 4, 4). Flatten the cameras into the batch dimension, for example "
-                "`intrinsics.reshape(-1, 4, 4)`, and repeat `height` and `width` to match.",
+                "`intrinsics.reshape(-1, 4, 4)` and `extrinsics.reshape(-1, 4, 4)` (expanding a (B, 4, 4) "
+                "matrix across N first), and repeat `height` and `width` to match.",
                 DeprecationWarning,
                 stacklevel=2,
             )
