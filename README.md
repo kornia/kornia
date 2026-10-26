@@ -31,9 +31,45 @@ English | [简体中文](README_zh-CN.md)
 </p>
 </div>
 
-**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](), [auto-differentiation]() and [GPU acceleration](). Whether you're working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
+**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](https://kornia.readthedocs.io/en/latest/get-started/gpu-acceleration.html), [auto-differentiation](https://kornia.readthedocs.io/en/latest/get-started/differentiability.html) and [GPU acceleration](https://kornia.readthedocs.io/en/latest/get-started/gpu-acceleration.html). Whether you're working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
 
 > **📢 Direction**: Kornia is becoming the **reference implementation and executable specification** for differentiable computer vision and geometry in the PyTorch ecosystem — explicit conventions, conformance tests, and honest benchmarks over API growth. Read the [Roadmap](ROADMAP.md).
+
+## When to use Kornia
+
+Kornia pays off where a hand-written version gets long or fragile, or where the alternatives leave the GPU:
+
+- **Breadth.** 1,200+ public differentiable operators, most with no torchvision equivalent: camera models and
+  epipolar geometry, minimal solvers and RANSAC, feature detection, description and matching, edge detection,
+  morphology, Lab and Bayer color, image losses and metrics. torchvision overlaps mainly on resizing, cropping,
+  flipping, color jitter and blur.
+- **Per-sample parameters in one batched call.** `gaussian_blur2d(x, (9, 9), sigma)` takes a `(B, 2)` `sigma`;
+  `rotate` takes a `(B,)` angle, `warp_affine` / `warp_perspective` take `(B, 2, 3)` / `(B, 3, 3)` matrices and
+  `adjust_brightness` a `(B,)` factor. torchvision's functional ops apply one parameter per call.
+- **Batched minimal solvers and robust estimation.** `find_fundamental(x1, x2, method="7POINT")` solves `(B, 7, 2)`
+  samples and returns every real solution as `(B, 3, 3, 3)`; the 8-point, 5-point essential (`find_essential`), DLT
+  homography and PnP (`solve_pnp_dlt`) solvers are there too, and `RANSAC` (homography, fundamental and essential
+  models; `compile=True` on PyTorch ≥ 2.14) runs the whole loop on the device.
+- **Differentiable geometry.** Depth to 3D and back (`depth_to_3d_v2`, `unproject_points`, `project_points`),
+  `warp_frame_depth`, `remap`, camera models with Brown–Conrady and Kannala–Brandt distortion, and Lie groups (`So3`,
+  `Se3`) keep gradients with respect to depth, pose and camera parameters.
+- **Annotated augmentation.** `AugmentationSequential` applies one sampled transform to images, masks, boxes and
+  keypoints together, in 2D and 3D, and can invert it.
+- **Local features on the GPU.** SIFT and HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue, with
+  mutual-nearest-neighbour and ratio-test matchers.
+- **Morphology** with arbitrary structuring elements on batched tensors.
+- **Compiles and exports.** Nearly all operators run under `torch.compile` and match eager, and over 1,000 of the
+  1,215 probed configurations export to ONNX; the result for every operator is on the
+  [export support page](https://kornia.readthedocs.io/en/latest/get-started/export-support.html).
+- **Fast where it is designed to be: batched tensors on a GPU.** In the published 0.9.0 flagship benchmarks (RTX 4090,
+  batch 32), many filters, warps, feature-matching steps and image metrics run 10× to over 100× faster than
+  per-image OpenCV or scikit-image on the CPU. On the small overlap with torchvision on the same GPU, Kornia is
+  faster for hue adjustment, color jitter and Gaussian blur and slower for flips, crops and brightness; OpenCV wins
+  single-image `uint8` CPU work. Both wins and losses are published on the
+  [performance page](https://kornia.readthedocs.io/en/latest/get-started/performance.html).
+
+These operate on tensors on the input's device and keep autograd, with no NumPy round trip. For a single
+fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are just as good.
 
 ## Key Components
 1. **Differentiable Image Processing**<br>

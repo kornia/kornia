@@ -270,6 +270,32 @@ Prefer to learn by example? :doc:`Image matching <applications/image_matching>`,
 :doc:`visual prompting <applications/visual_prompting>` each walk through one task end to end — and
 :doc:`Conventions & pitfalls <get-started/conventions>` is the one page to read before writing code.
 
+When to use Kornia
+------------------
+
+.. rst-class:: kornia-section-lead
+
+Kornia pays off where a hand-written version gets long or fragile, or where the alternatives leave the GPU.
+
+- **Breadth** — |count-operators-floor|\ + operators, most with no torchvision equivalent: camera and epipolar
+  geometry, solvers, feature detection and matching, edges, morphology, Lab and Bayer color, losses and metrics.
+- **Per-sample parameters in one batched call** — a different blur ``sigma``, rotation angle, warp matrix or
+  brightness factor for every image, in one call; torchvision's functional ops apply one parameter per call.
+- **Batched minimal solvers and robust estimation** — 7- and 8-point fundamental, 5-point essential, DLT homography
+  and PnP solvers over whole batches of samples, and a ``RANSAC`` that runs the whole loop on the device.
+- **Differentiable geometry** — depth to 3D and back, camera models with lens distortion and Lie groups, with
+  gradients through depth, pose and camera parameters.
+- **Annotated augmentation** — one sampled transform for images, masks, boxes and keypoints, in 2D and 3D, and its
+  inverse.
+- **Local features on the GPU** — SIFT, HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue.
+- **Compiles and exports** — nearly all operators run under ``torch.compile``; see :doc:`get-started/export-support`.
+- **Fast on batched GPU tensors** — many filters, warps, matching steps and metrics run 10× to over 100× faster than
+  per-image CPU OpenCV or scikit-image; :doc:`get-started/performance` shows every win and loss, including the small
+  overlap with torchvision.
+
+For a single fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are
+just as good.
+
 .. raw:: html
 
    <div class="kornia-linkboard">

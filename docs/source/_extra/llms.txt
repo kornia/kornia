@@ -14,6 +14,23 @@ Conventions every code generator must know before writing Kornia code:
 
 For the full self-contained reference with runnable examples, fetch [llms-full.txt](https://kornia.readthedocs.io/en/latest/llms-full.txt).
 
+## When to use Kornia
+
+Kornia pays off where a hand-written version gets long or fragile, or where the alternatives leave the GPU:
+breadth (1,200+ public differentiable operators, most with no torchvision equivalent: camera and epipolar
+geometry, solvers, features and matching, edges, morphology, Lab/Bayer color, losses and metrics); per-sample parameters in one batched call (`gaussian_blur2d` with a `(B, 2)` `sigma`, a `(B,)` angle to `rotate`,
+`(B, 3, 3)` matrices to `warp_perspective`); batched minimal solvers (`find_fundamental(..., method="7POINT")` returns
+every real solution, plus 8-point, 5-point essential, DLT homography and PnP) and an on-device `RANSAC`;
+differentiable geometry (depth ↔ 3D, `warp_frame_depth`, camera models with distortion, Lie groups); augmentation
+that moves images, masks, boxes and keypoints together and inverts; GPU local features and matchers (DISK, ALIKED,
+XFeat, LoFTR, LightGlue, SIFT); nearly all operators compile with `torch.compile`, and over 1,000 of the 1,215 probed
+configurations export to ONNX. On batched GPU tensors the published 0.9.0 flagship benchmarks (RTX 4090, batch 32)
+show 10× to over 100×
+speedups over per-image CPU OpenCV or scikit-image for many filters, warps, matching steps and metrics; on the
+small overlap with torchvision, Kornia is faster for hue, color jitter and Gaussian blur and slower for flips, crops
+and brightness. For a single fixed-parameter operation, plain PyTorch or torchvision is just
+as good.
+
 ## Get started
 
 - [Introduction](https://kornia.readthedocs.io/en/latest/get-started/introduction.html): what Kornia is and the design principles behind it
