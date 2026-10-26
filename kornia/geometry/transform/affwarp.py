@@ -230,6 +230,7 @@ def affine3d(
         tensor: The image tensor to be warped in shapes of
             :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`.
         matrix: The affine transformation matrix with shape :math:`(B, 3, 4)`.
+            An unbatched tensor is broadcast across the matrix batch when ``B > 1``.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -254,6 +255,9 @@ def affine3d(
 
     # we enforce broadcasting since by default grid_sample it does not
     # give support for that
+    if tensor.shape[0] == 1 and matrix.shape[0] != 1:
+        tensor = tensor.expand(matrix.shape[0], tensor.shape[1], tensor.shape[2], tensor.shape[3], tensor.shape[4])
+
     matrix = matrix.expand(tensor.shape[0], -1, -1)
 
     # warp the input tensor

@@ -1303,6 +1303,29 @@ class TestAffine2d(BaseTester):
         assert out[0, 0, 0, 9] == 0.0
 
 
+class TestAffine3d(BaseTester):
+    @pytest.mark.parametrize("unbatched", [False, True])
+    def test_function_batch_broadcast(self, device, dtype, unbatched):
+        volume = torch.rand(2, 4, 5, 6, device=device, dtype=dtype)
+        if not unbatched:
+            volume = volume.unsqueeze(0)
+        matrix = torch.eye(3, 4, device=device, dtype=dtype).repeat(3, 1, 1)
+
+        reference_volume = volume.unsqueeze(0) if unbatched else volume
+        expected = kornia.geometry.transform.warp_affine3d(
+            reference_volume.expand(3, -1, -1, -1, -1), matrix, (4, 5, 6), flags="nearest"
+        )
+        actual = kornia.geometry.transform.affine3d(volume, matrix, mode="nearest")
+
+        self.assert_close(actual, expected)
+
+    def test_function_invalid_batch(self, device, dtype):
+        volume = torch.rand(2, 2, 4, 5, 6, device=device, dtype=dtype)
+        matrix = torch.eye(3, 4, device=device, dtype=dtype).repeat(3, 1, 1)
+        with pytest.raises(RuntimeError):
+            kornia.geometry.transform.affine3d(volume, matrix)
+
+
 class TestGetAffineMatrix(BaseTester):
     def test_smoke(self, device, dtype):
         H, W = 5, 5
