@@ -595,7 +595,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert any(len(set(row)) > 1 for row in rows)
 
     @pytest.mark.parametrize("augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix])
-    def test_wart_mixup_cutmix_and_patchmix_map_p_to_a_batch_gate_4425(self, augmentation_cls):
+    def test_convention_mixup_cutmix_and_patchmix_map_p_to_a_batch_gate_4425(self, augmentation_cls):
         # Their constructors map `p` to the mix base's batch-wide probability, unlike Jigsaw and Mosaic.
         rows = []
         for seed in range(8):
@@ -608,6 +608,21 @@ class TestConventionAugmentationBase2D(BaseTester):
             rows.append(params["batch_prob"].tolist())
         assert all(len(set(row)) == 1 for row in rows)
         assert {row[0] for row in rows} == {0.0, 1.0}
+
+    @pytest.mark.parametrize(
+        ("factory", "shape"),
+        [
+            (lambda: K.RandomAffine(30.0, p=1.0), (2, 3, 6, 8)),
+            (lambda: K.RandomRotation3D(30.0, p=1.0), (2, 1, 4, 6, 8)),
+        ],
+    )
+    def test_convention_p_batch_attribute_gates_any_augmentation_4425(self, factory, shape, device, dtype):
+        aug = factory()
+        aug.p_batch = 0.0
+        x = torch.rand(shape, device=device, dtype=dtype)
+        out = aug(x)
+        assert torch.equal(out, x)
+        assert not aug._params["batch_prob"].any()
 
     @pytest.mark.parametrize(
         "augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix, K.RandomJigsaw, K.RandomMosaic]
