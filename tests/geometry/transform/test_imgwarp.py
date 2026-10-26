@@ -916,6 +916,28 @@ class TestWarpPerspective(BaseTester):
 
 
 class TestRemap(BaseTester):
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_identity_reproduces_input(self, align_corners, device, dtype):
+        height, width = 4, 4
+        image = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, height, width)
+
+        pixel_grid = kornia.geometry.create_meshgrid(
+            height,
+            width,
+            normalized_coordinates=False,
+            device=device,
+            dtype=dtype,
+        )
+
+        actual = kornia.geometry.remap(
+            image,
+            pixel_grid[..., 0],
+            pixel_grid[..., 1],
+            align_corners=align_corners,
+        )
+
+        self.assert_close(actual, image)
+        
     def test_smoke(self, device, dtype):
         height, width = 3, 4
         input_org = torch.ones(1, 1, height, width, device=device, dtype=dtype)
