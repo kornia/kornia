@@ -56,6 +56,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         return f"bits={self.bits_factor}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        r"""Create uniform distribution samplers for the bits parameter on the target device."""
         bits = torch.as_tensor(self.bits_factor, device=device, dtype=dtype)
         if len(bits.size()) == 0:
             bits = bits.repeat(2)
@@ -63,7 +64,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         elif not (len(bits.size()) == 1 and bits.size(0) == 2):
             raise ValueError(f"'bits' shall be either a scalar or a length 2 torch.Tensor. Got {bits}.")
         _joint_range_check(bits, "bits", (0, 8))
-        self._whole_range = bool(bits.to(torch.float64).round().eq(bits).all())
+        self._whole_range = bool(bits.round().eq(bits).all())
         if self._whole_range:
             # The sampler covers ``[lo, hi + 1)`` and ``forward`` floors the draw, so every whole number from ``lo``
             # to ``hi`` owns a bucket of width one. Rounding a draw on ``[lo, hi]`` gave the two end points half of
@@ -73,6 +74,7 @@ class PosterizeGenerator(RandomGeneratorBase):
             self.bit_sampler = UniformDistribution(bits[0], bits[1], validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+        r"""Sample random bits factors for the given batch shape."""
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _ = _extract_device_dtype([self.bits_factor if isinstance(self.bits_factor, torch.Tensor) else None])

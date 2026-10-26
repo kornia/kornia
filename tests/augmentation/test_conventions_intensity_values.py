@@ -25,7 +25,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation._2d.intensity.base import _clamp_unit_range
-from kornia.augmentation.random_generator import RectangleEraseGenerator
+from kornia.augmentation.random_generator import PosterizeGenerator, RectangleEraseGenerator
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.enhance import (
     adjust_brightness,
@@ -791,6 +791,7 @@ class TestIntensityColourConventions(BaseTester):
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("bits", [(0, 8), (1, 4), 3, (5, 7)])
     def test_convention_random_posterize_bits_are_closed_and_uniform_6334(self, bits):
+        """Check that RandomPosterize draws whole numbers uniformly across closed range."""
         if isinstance(bits, int):
             low, high = bits, 8
         else:
@@ -807,6 +808,7 @@ class TestIntensityColourConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_random_posterize_same_on_batch_shares_one_whole_number_6334(self):
+        """Check that same_on_batch draws a single uniform whole number across the batch."""
         torch.manual_seed(0)
         drawn = K.RandomPosterize((0, 8), p=1.0, same_on_batch=True).forward_parameters((16, 1, 4, 4))["bits_factor"]
 
@@ -819,6 +821,7 @@ class TestIntensityColourConventions(BaseTester):
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("bits", [(1, 1), (0, 0), (8, 8), (0, 8), (3, 5)])
     def test_convention_random_posterize_largest_draw_stays_in_the_closed_range_6334(self, monkeypatch, bits):
+        """Check that upper bound draw is clamped within closed range."""
         largest = 1 - 2**-24
         real_rand = torch.rand
         monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.full_like(real_rand(*args, **kwargs), largest))
@@ -831,10 +834,23 @@ class TestIntensityColourConventions(BaseTester):
     # and rounds half-to-even.
     @pytest.mark.device_agnostic
     def test_convention_random_posterize_fractional_range_6334(self):
+        """Check that fractional ranges preserve continuous draw with round half-to-even."""
         torch.manual_seed(0)
         drawn = K.RandomPosterize(bits=(1.5, 4.5), p=1.0).forward_parameters((6000, 1, 4, 4))["bits_factor"]
         assert int(drawn.min()) >= 1
         assert int(drawn.max()) <= 5
+
+    def test_convention_random_posterize_generator_supports_mps_device_6334(self):
+        """Check that PosterizeGenerator avoids float64 conversion on MPS device."""
+        if not torch.backends.mps.is_available():
+            pytest.skip("MPS device not available")
+        generator = PosterizeGenerator(torch.tensor([0, 8], device="mps"))
+        params = generator(torch.Size([4]))
+        assert params["bits_factor"].device.type == "mps"
+
+        generator_tuple = PosterizeGenerator((0, 8))
+        generator_tuple.set_rng_device_and_dtype(device=torch.device("mps"), dtype=torch.float32)
+        assert generator_tuple.bit_sampler.low.device.type == "mps"
 
     # The factor blends linearly between the blurred image (0) and the input (1); above 1 it sharpens.
     # Snippet used to generate expected:
