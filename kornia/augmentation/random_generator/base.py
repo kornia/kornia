@@ -188,10 +188,7 @@ class DistributionWithMapper(Distribution):
         return out
 
     def __getattr__(self, attr: str) -> Any:
-        try:
-            return getattr(self, attr)
-        except AttributeError:
-            return getattr(self.dist, attr)
+        return getattr(object.__getattribute__(self, "dist"), attr)
 
 
 class UniformDistribution(MultiprocessWrapper, Uniform):
