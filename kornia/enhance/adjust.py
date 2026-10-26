@@ -75,6 +75,28 @@ def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
     torch._assert_async(cond, msg)
 
 
+def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
+    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no gradient is recorded.
+
+    The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
+    allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
+    the heap on every call. Only call it on a tensor no caller can see.
+
+    An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
+    promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
+    transform: vmap has a batching rule for ``clamp`` but not for ``clamp_``, whose fallback loops over the batch and
+    rejects an empty one. TorchScript cannot compile the function-transform query, so a scripted call keeps it too.
+    """
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if (
+            image.is_floating_point()
+            and not (torch.is_grad_enabled() and image.requires_grad)
+            and not torch._C._are_functorch_transforms_active()
+        ):
+            return image.clamp_(min=0.0, max=1.0)
+    return image.clamp(min=0.0, max=1.0)
+
+
 def _check_floating_image(image: torch.Tensor, op: str) -> None:
     """Reject an integer image in an op that expects floating-point values in ``[0, 1]``.
 
@@ -378,7 +400,8 @@ def adjust_gamma(
     r"""Perform gamma correction on an image.
 
     Convention:
-        Applies gain * input ** gamma elementwise, then clamps to [0, 1].
+        Applies gain * input ** gamma elementwise, then clamps to [0, 1]. For ``0 < gamma < 1`` the derivative of
+        ``input ** gamma`` at a black pixel (``input == 0``) is infinite; the gradient there is 0 instead.
 
     .. image:: _static/img/adjust_contrast.png
 
@@ -445,7 +468,15 @@ def adjust_gamma(
                 if input.dtype == torch.float32:
                     gamma = struct.unpack("f", struct.pack("f", gamma))[0]
                     gain = struct.unpack("f", struct.pack("f", gain))[0]
-                return (input.pow(gamma) * gain).clamp(0.0, 1.0)
+                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
+                    # As in the tensor path below.
+                    black = input == 0
+                    power = torch.where(
+                        black, torch.zeros_like(input), torch.where(black, torch.ones_like(input), input).pow(gamma)
+                    )
+                else:
+                    power = input.pow(gamma)
+                return (power * gain).clamp(0.0, 1.0)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
@@ -468,8 +499,18 @@ def adjust_gamma(
     gamma = _make_factor_broadcastable(gamma, input)
     gain = _make_factor_broadcastable(gain, input)
 
-    # Apply the gamma correction
-    x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
+    # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
+    # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
+    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
+    # masking only runs when autograd records a gradient for the input.
+    if torch.is_grad_enabled() and input.requires_grad:
+        black = (input == 0) & (gamma > 0) & (gamma < 1)
+        power = torch.where(
+            black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
+        )
+    else:
+        power = torch.pow(input, gamma)
+    x_adjust: torch.Tensor = gain * power
 
     # Truncate between pixel values
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
@@ -551,7 +592,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     # Truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -675,7 +716,7 @@ def adjust_brightness(
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 

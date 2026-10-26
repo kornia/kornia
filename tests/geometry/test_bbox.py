@@ -40,7 +40,7 @@ from kornia.geometry.bbox import (
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.transform.crop3d import crop_and_resize3d, crop_by_boxes3d
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestBbox2D(BaseTester):
@@ -718,10 +718,43 @@ class TestBbox3D(BaseTester):
             validate_bbox3d(unequal)
         with pytest.raises(AssertionError, match="shape"):
             validate_bbox3d(cuboid[0])
-        monkeypatch.setattr(bbox_module, "is_exporting", lambda: True)
+        monkeypatch.setattr(bbox_module, "is_compiling", lambda: True)
         assert validate_bbox3d(unequal) is True
         with pytest.raises(AssertionError, match="shape"):
             validate_bbox3d(cuboid[0])
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "op",
+        [lambda boxes: torch.stack(infer_bbox_shape3d(boxes)), lambda boxes: bbox_to_mask3d(boxes, (4, 5, 6))],
+        ids=["infer_bbox_shape3d", "bbox_to_mask3d"],
+    )
+    def test_value_checks_skipped_under_any_capture_5037(self, op, device, dtype):
+        # validate_bbox3d checks the edge extents on the host, which a fullgraph trace cannot do, so any capture skips
+        # the check, not only export (#5037). Eager still raises on unequal edges; a traced call does not.
+        from torch._dynamo.testing import CompileCounter
+
+        cuboid = self._unit_cuboid(device, dtype)
+        unequal = cuboid.clone()
+        unequal[0, 1, 0] = 5.0
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(op, backend=counter, fullgraph=True)
+        self.assert_close(traced(cuboid), op(cuboid), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        with pytest.raises(AssertionError, match="widths"):
+            op(unequal)
+        assert traced(unequal).shape == op(cuboid).shape
+
+    def test_validate_bbox3d_scripted_keeps_the_value_checks_5037(self, device, dtype):
+        # TorchScript cannot call is_compiling(); a scripted validate_bbox3d keeps the value checks, as eager does.
+        cuboid = self._unit_cuboid(device, dtype)
+        unequal = cuboid.clone()
+        unequal[0, 1, 0] = 5.0
+        scripted = torch.jit.script(validate_bbox3d)
+        assert scripted(cuboid) is True
+        with pytest.raises(torch.jit.Error, match="widths"):
+            scripted(unequal)
 
     def test_convention_infer_bbox_shape3d_returns_depth_height_width_inclusive_3934(self, device, dtype):
         # Convention pin (kornia#3934 tracks the inclusive arithmetic): the tuple order is
@@ -887,6 +920,17 @@ class TestNMS(BaseTester):
 
         actual = nms(boxes, scores, iou_threshold=0.3)
         self.assert_close(actual, torch.tensor([1, 0], device=device, dtype=torch.long), atol=0.0, rtol=0.0)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # A default torch.compile cannot capture the data-dependent loop in one graph and runs nms eagerly: the same
+        # indices, which keep the descending-score order.
+        boxes = torch.tensor(
+            [[10, 10, 20, 20], [15, 5, 15, 25], [100, 100, 150, 150], [100, 100, 150, 150]], device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.9, 0.8, 0.7, 0.95], device=device, dtype=dtype)
+        expected = torch.tensor([3, 0, 1], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+        self.assert_close(torch_optimizer(nms)(boxes, scores, 0.5), expected, atol=0, rtol=0)
 
     def test_empty(self, device):
         boxes = torch.empty((0, 4), device=device)

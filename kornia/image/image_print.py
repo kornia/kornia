@@ -398,15 +398,21 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
     KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
 
-    if image.dtype not in [torch.bfloat16, float16, float32, float64]:
-        image = image / 255.0
+    # An integer image is already on the 0-255 scale and converts to float32 exactly. Dividing it by 255 and
+    # multiplying back is not exact everywhere: CUDA divides by a scalar as a multiplication by its reciprocal, which
+    # moved 126 of the 256 uint8 values off their integer and could flip a pixel's nearest colour.
+    integer = image.dtype not in [torch.bfloat16, float16, float32, float64]
+    if integer:
+        image = image.to(float32)
 
     if image.shape[-1] > max_width:
         new_h = max(1, image.size(-2) * max_width // image.size(-1))
         image = kornia.geometry.resize(image, (new_h, max_width))
 
     # the 0-255 value, unrounded: a float pixel is matched at its own value (an integer input stays exact)
-    image = (image * 255).clamp(0, 255)
+    if not integer:
+        image = image * 255
+    image = image.clamp(0, 255)
 
     if image.shape[0] == 1:
         # a grey value is the same colour in each of the three terminal components

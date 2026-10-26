@@ -920,7 +920,8 @@ class TestScale(BaseTester):
     def test_isotropic_scale_factor_gradcheck(self, device):
         image = torch.arange(48, device=device, dtype=torch.float64).reshape(2, 1, 4, 6) / 48
         scale_factor = torch.tensor([0.8, 1.3], device=device, dtype=torch.float64)
-        self.gradcheck(kornia.geometry.transform.scale, (image, scale_factor))
+        # CUDA's grid_sample backward accumulates with atomics, so repeated backward passes differ by roundoff.
+        self.gradcheck(kornia.geometry.transform.scale, (image, scale_factor), nondet_tol=1e-8)
 
     def test_gradcheck(self, device):
         # test parameters

@@ -83,12 +83,12 @@ from kornia.augmentation import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.core._compat import torch_version
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.overwrite import default_with_one_parameter_changed
 
 
@@ -3097,6 +3097,15 @@ class TestRandomGamma(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_black_pixel_gradient_is_finite(self, device, dtype):
+        # gamma < 1 has an infinite derivative at black pixels; they get a zero gradient instead of NaN.
+        image = torch.tensor([[[[0.0, 0.25, 0.5]]]], device=device, dtype=dtype).repeat(2, 3, 1, 1).requires_grad_()
+        out = RandomGamma(gamma=(0.5, 0.5), p=1.0)(image)
+        out.sum().backward()
+        expected_grad = torch.tensor([0.0, 1.0, 0.5**0.5], device=device, dtype=dtype).expand_as(image)
+        self.assert_close(out, image.detach().sqrt())
+        self.assert_close(image.grad, expected_grad)
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
@@ -5305,6 +5314,35 @@ class TestDenormalize(BaseTester):
 
 
 class TestRandomFisheye(BaseTester):
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradients(self, device, dtype, gamma_value):
+        center_x = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        center_y = torch.zeros(2, device=device, dtype=dtype, requires_grad=True)
+        gamma = torch.full((2,), gamma_value, device=device, dtype=dtype, requires_grad=True)
+        image = torch.arange(63, device=device, dtype=dtype).reshape(1, 1, 7, 9) / 63
+
+        output = RandomFisheye(center_x, center_y, gamma, p=1.0)(image)
+        gradients = torch.autograd.grad(output.sum(), (center_x, center_y, gamma))
+        assert torch.isfinite(output).all()
+        for gradient in gradients:
+            assert torch.isfinite(gradient).all()
+
+    @pytest.mark.parametrize("gamma_value", [0.9, 1.0, 2.0])
+    def test_center_parameter_gradcheck(self, device, gamma_value):
+        image = torch.arange(63, device=device, dtype=torch.float64).reshape(1, 1, 7, 9) / 63
+        bounds = torch.zeros(2, device=device)
+        aug = RandomFisheye(bounds, bounds, torch.ones_like(bounds), p=1.0)
+
+        def apply(center_x, center_y, gamma):
+            params = {"center_x": center_x, "center_y": center_y, "gamma": gamma, "batch_prob": image.new_ones(1)}
+            return aug(image, params=params)
+
+        self.gradcheck(
+            apply,
+            (bounds[:1], bounds[:1], torch.tensor([gamma_value], device=device)),
+            nondet_tol=1e-5,
+        )
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         center_x = torch.tensor([-0.3, 0.3])
@@ -5560,6 +5598,25 @@ class TestResize:
         torch._dynamo.reset()
         compiled = torch.compile(aug, fullgraph=True)
         torch.testing.assert_close(aug(img), compiled(img), rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "make",
+        [lambda: Resize(8), lambda: LongestMaxSize(8), lambda: SmallestMaxSize(8)],
+        ids=["Resize", "LongestMaxSize", "SmallestMaxSize"],
+    )
+    def test_int_size_traces_in_one_graph_like_eager_5037(self, make, device, dtype):
+        # An int size takes its output size from the input shape under any capture, not only under export (#5037):
+        # the sampled ``output_size`` tensor is a host read, which a fullgraph trace cannot make.
+        from torch._dynamo.testing import CompileCounter
+
+        img = torch.rand(2, 3, 10, 16, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        aug = make()
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(aug, backend=counter, fullgraph=True)
+        torch.testing.assert_close(traced(img), aug(img), rtol=0, atol=0)
+        assert counter.frame_count == 1
 
 
 class TestSmallestMaxSize:
@@ -6477,8 +6534,9 @@ class TestRandomJPEGEmptyBatch(BaseTester):
     @pytest.mark.parametrize("p", [1.0, 0.5])
     @pytest.mark.parametrize("same_on_batch", [False, True])
     def test_empty_batch(self, p, same_on_batch, device, dtype):
-        # #4429: the differentiable JPEG codec rejects an empty batch, so the augmentation short-circuits it and
-        # keeps the shape like the other classes in the empty-batch convention.
+        # #4429: for an empty batch, no JPEG quality is drawn and there are no pixels to code, so the
+        # augmentation bypasses the codec entirely and keeps the input's shape, matching the other
+        # classes' empty-batch convention.
         image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
         output = RandomJPEG(p=p, same_on_batch=same_on_batch)(image)
         assert output.shape == image.shape
@@ -6489,21 +6547,31 @@ class TestRandomJPEGEmptyBatch(BaseTester):
 
     @pytest.mark.parametrize(
         ("params_batch", "batch", "error", "match"),
-        [(0, 2, RuntimeError, r"amin\(\)"), (2, 0, ValueError, r"Invalid input tensor, it is empty\.")],
+        [
+            (0, 2, ShapeError, r"jpeg_quality needs one quality per image"),
+            (2, 0, ShapeError, r"jpeg_quality needs one quality per image"),
+        ],
     )
     def test_empty_batch_shortcut_needs_an_empty_batch(self, params_batch, batch, error, match, device, dtype):
-        # Replaying parameters drawn for another batch size raises as it did before the empty-batch shortcut; a
+        # Replaying parameters drawn for another batch size still raises, now at the codec's batch-size check; a
         # non-empty batch with no drawn quality must not come back uncoded.
         aug = RandomJPEG(p=1.0)
         params = aug.forward_parameters(torch.Size((params_batch, 3, 8, 10)))
         with pytest.raises(error, match=match):
             aug(torch.rand(batch, 3, 8, 10, device=device, dtype=dtype), params=params)
 
-    @pytest.mark.parametrize("shape", [(0, 1, 8, 10), (0, 3, 0, 10), (0, 3, 8, 0)])
-    def test_empty_batch_keeps_the_input_checks(self, shape, device, dtype):
-        # The codec needs three channels and a non-empty image at every batch size, so these empty batches still
-        # raise as they did before the empty-batch shortcut.
-        with pytest.raises(ValueError, match=r"it is empty|expected 3"):
+    @pytest.mark.parametrize(
+        ("shape", "match"),
+        [
+            ((0, 1, 8, 10), r"expected 3"),
+            ((0, 3, 0, 10), r"it is empty"),
+            ((0, 3, 8, 0), r"it is empty"),
+        ],
+    )
+    def test_empty_batch_keeps_the_input_checks(self, shape, match, device, dtype):
+        # The codec checks for three channels (for (0, 1, 8, 10)) and for non-empty images
+        # (for (0, 3, 0, 10) and (0, 3, 8, 0)).
+        with pytest.raises(ValueError, match=match):
             RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
 
 

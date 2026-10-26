@@ -27,7 +27,7 @@ from torch import nn
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling, is_exporting
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling
 from kornia.enhance.adjust import _check_floating_image
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
@@ -175,8 +175,8 @@ def _patchify_8x8(input: torch.Tensor) -> torch.Tensor:
     """
     # Get input shape
     B, H, W = input.shape
-    # Patchify to shape [B, N, H // 8, W // 8]
-    output: torch.Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).reshape(B, -1, 8, 8)
+    # Patchify to shape [B, N, 8, 8] by first reshaping to [B, H // 8, 8, W // 8, 8] and then permuting and flattening.
+    output: torch.Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).flatten(1, 2)
     return output
 
 
@@ -641,10 +641,12 @@ def jpeg_codec_differentiable(
     # Check resulting shape of quantization tables
     KORNIA_CHECK_SHAPE(quantization_table_y, ["B", "8", "8"])
     KORNIA_CHECK_SHAPE(quantization_table_c, ["B", "8", "8"])
-    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip under export.
-    if not is_exporting():
+    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip it under any
+    # capture (torch.compile, torch.export).
+    if not is_compiling():
         KORNIA_CHECK(
-            (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
+            jpeg_quality.numel() == 0
+            or ((jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0)),
             lambda: (
                 "JPEG quality is out of range. Expected range is [0, 100], "
                 f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality."

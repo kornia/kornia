@@ -42,6 +42,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
           ``'none'`` returns the :math:`(*)` map. There is no valid mask: mask sparse ground truth on the ``'none'``
           map. An unknown ``reduction`` raises ``NotImplementedError``.
         - :func:`~kornia.metrics.aepe` and :func:`~kornia.metrics.average_endpoint_error` are the same function.
+        - Float16 and bfloat16 inputs are computed in float32 and the result is returned in their promoted dtype.
 
     Args:
         input: the input flow map with shape :math:`(*, 2)`.
@@ -71,6 +72,11 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
         input.shape == target.shape, f"input and target shapes must be the same. Got: {input.shape} and {target.shape}"
     )
 
+    output_dtype = torch.promote_types(input.dtype, target.dtype)
+    # The distance can be representable even when its squared components overflow or underflow in half precision.
+    if output_dtype in (torch.float16, torch.bfloat16):
+        input, target = input.float(), target.float()
+
     epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).sqrt()
 
     if reduction == "mean":
@@ -82,7 +88,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return epe
+    return epe.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else epe
 
 
 class AEPE(nn.Module):

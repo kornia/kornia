@@ -234,6 +234,9 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
                 Additional metadata to add to the ONNX model.
             kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
 
+        Returns:
+            The exported ONNX model.
+
         Raises:
             ValueError: With the pre- and post-processor, if the output is a list (or tuple) with one image per input
                 image and the exported batch is dynamic, from a ``dynamic_axes`` or ``dynamic_shapes`` argument or,

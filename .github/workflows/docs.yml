@@ -5,6 +5,9 @@ on:
       - 'docs/**'
       - '*.rst'
       - '.github/workflows/docs.yml'
+      # the support statement of the export-support page is rendered from the conformance promise and its manifests
+      - 'testing/conformance_promise.py'
+      - 'testing/known_failure_xfails/*_conformance_*.txt'
   workflow_call:
     inputs:
       python-version:

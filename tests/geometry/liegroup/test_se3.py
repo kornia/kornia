@@ -20,7 +20,7 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import DeviceError, TypeCheckError
+from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.pose import NamedPose
@@ -79,9 +79,18 @@ class TestSe3(BaseTester):
         se: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         assert se.r.q.shape[0] == batch_size
 
-    # TODO: implement me
     def test_exception(self, device, dtype):
-        pass
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 3, got 2"):
+            Se3(So3.identity(1, device, dtype), torch.zeros(1, 2, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 6, got 5"):
+            Se3.exp(torch.zeros(1, 5, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 4, got 3"):
+            Se3.from_matrix(torch.eye(3, device=device, dtype=dtype).repeat(1, 1, 1))
+
+        with pytest.raises(TypeError, match=r"Unsupported type"):
+            Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype)) * 4
 
     def test_gradcheck(self, device):
         v = torch.tensor([[1.0, 2.0, 3.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64)
