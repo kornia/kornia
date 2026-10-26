@@ -22,6 +22,7 @@ from typing import Optional
 
 import torch
 
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling
 
@@ -273,19 +274,26 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
     return depths, heights, widths
 
 
-def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
+def bbox_to_mask(
+    boxes: torch.Tensor,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    size: Optional[tuple[int, int]] = None,
+) -> torch.Tensor:
     """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Convention:
-        The size is ``(width, height)`` and the mask :math:`(B, height, width)`;
-        :meth:`kornia.geometry.boxes.Boxes.to_mask` takes ``(height, width)``. Only vertices 0 (top-left) and 2
+        The size is ``size=(height, width)``, as for :func:`bbox_to_mask3d` and
+        :meth:`~kornia.geometry.boxes.Boxes.to_mask`; the deprecated ``width, height`` arguments come in the
+        opposite order. The mask is :math:`(B, height, width)`. Only vertices 0 (top-left) and 2
         (bottom-right) are read. A pixel is covered when ``xmin <= x <= xmax`` and ``ymin <= y <= ymax`` on the
         unrounded values, i.e. inclusively: pass the ``'vertices_plus'`` export of
         :class:`~kornia.geometry.boxes.Boxes`. The mask has the input dtype and no gradient path.
         :math:`(B, N, 4, 2)` raises :class:`~kornia.core.exceptions.ShapeError`.
 
     .. warning::
-        The ``(width, height)`` order is `#4014 <https://github.com/kornia/kornia/issues/4014>`_. For fractional
+        The ``(width, height)`` form is deprecated in favour of ``size=(height, width)``:
+        `#4014 <https://github.com/kornia/kornia/issues/4014>`_. For fractional
         coordinates the raw comparison differs from the rounding of :meth:`~kornia.geometry.boxes.Boxes.to_mask`
         and the truncation of :func:`bbox_to_mask3d`: `#4015 <https://github.com/kornia/kornia/issues/4015>`_.
         The exclusive-export trap is `#4009 <https://github.com/kornia/kornia/issues/4009>`_.
@@ -294,14 +302,17 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
             of :math:`(B, 4, 2)`, where each box is defined in the following ``clockwise`` order: top-left, top-right,
             bottom-right and bottom-left. The coordinates must be in the x, y order.
-        width: width of the masked image.
-        height: height of the masked image.
+        width: deprecated since 0.9.1; pass ``size=(height, width)`` instead. Width of the masked image.
+        height: deprecated since 0.9.1; pass ``size=(height, width)`` instead. Height of the masked image.
+        size: (height, width) of the masked image.
 
     Returns:
         the output mask tensor, shape of :math:`(B, height, width)` and dtype of ``boxes``.
 
     Raises:
         ShapeError: if ``boxes`` does not have shape :math:`(B, 4, 2)`.
+        ValueError: if ``size`` is passed together with ``width`` or ``height``.
+        TypeError: if neither ``size`` nor both ``width`` and ``height`` are given.
 
     Note:
         It is currently non-differentiable.
@@ -319,7 +330,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         ...        [3., 2.],
         ...        [1., 2.],
         ...   ]])  # 1x4x2
-        >>> bbox_to_mask(boxes, 5, 5)
+        >>> bbox_to_mask(boxes, size=(5, 5))
         tensor([[[0., 0., 0., 0., 0.],
                  [0., 1., 1., 1., 0.],
                  [0., 1., 1., 1., 0.],
@@ -327,6 +338,26 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
 
     """
+    # `size` carries the canonical (height, width) order; `width`/`height` stay in place for one
+    # release cycle in the opposite order, which is exactly the trap #4014 records, so the
+    # deprecated form is resolved here and warned about once rather than silently transposing.
+    if size is not None:
+        if width is not None or height is not None:
+            raise ValueError("Pass either size=(height, width) or the deprecated width and height, not both.")
+        mask_height, mask_width = size
+    elif width is not None and height is not None:
+        if not torch.jit.is_scripting():
+            _emit_deprecation_warning(
+                "bbox_to_mask(boxes, width, height)",
+                "bbox_to_mask(boxes, size=(height, width))",
+                "0.9.1",
+                "The `width` and `height` arguments will be removed in a future release; note that `size` is "
+                "`(height, width)`, the order of `bbox_to_mask3d` and `Boxes.to_mask`.",
+            )
+        mask_height, mask_width = height, width
+    else:
+        raise TypeError("bbox_to_mask() missing required argument 'size' (height, width).")
+
     KORNIA_CHECK_SHAPE(boxes, ["B", "4", "2"])
 
     # NOTE: `validate_bbox`'s boolean result was previously computed here and discarded — it
@@ -342,8 +373,8 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     # promote to the wider of the two dtypes (float32 for float16/bfloat16/
     # float32 boxes, float64 for float64 boxes), so nothing downstream loses
     # precision; the returned mask still casts back to boxes.dtype as documented.
-    yy = torch.arange(height, device=boxes.device, dtype=torch.float32).view(height, 1)
-    xx = torch.arange(width, device=boxes.device, dtype=torch.float32).view(1, width)
+    yy = torch.arange(mask_height, device=boxes.device, dtype=torch.float32).view(mask_height, 1)
+    xx = torch.arange(mask_width, device=boxes.device, dtype=torch.float32).view(1, mask_width)
     x_min = boxes[:, 0, 0].view(-1, 1, 1)
     y_min = boxes[:, 0, 1].view(-1, 1, 1)
     x_max = boxes[:, 2, 0].view(-1, 1, 1)

@@ -1253,15 +1253,18 @@ class TestBoxes2D(BaseTester):
         assert transformed.data.shape == original.shape
 
     def test_wart_to_mask_and_bbox_to_mask_take_opposite_size_orders_4014(self, device, dtype):
-        # Wart pin for kornia#4014: Boxes.to_mask(height, width) and bbox_to_mask(boxes, width, height)
-        # are the same call, and both return (N, height, width) in the box dtype.
+        # Wart pin for kornia#4014: Boxes.to_mask(height, width) and bbox_to_mask(boxes, size=(height, width))
+        # are the same call, and both return (N, height, width) in the box dtype. The deprecated pair stays
+        # wrapped at the bottom, because the opposite order it implied is the wart that was reported.
         vertices = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         method = Boxes(vertices).to_mask(3, 5)
         assert method.shape == (1, 3, 5)
         assert method.dtype == dtype
-        self.assert_close(method, bbox_to_mask(vertices, 5, 3), atol=0.0, rtol=0.0)
+        self.assert_close(method, bbox_to_mask(vertices, size=(3, 5)), atol=0.0, rtol=0.0)
         assert Boxes(vertices).to_mask(5, 3).shape == (1, 5, 3)
         assert Boxes(vertices[None]).to_mask(3, 5).shape == (1, 1, 3, 5)
+        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)"):
+            self.assert_close(method, bbox_to_mask(vertices, 5, 3), atol=0.0, rtol=0.0)
 
     def test_wart_to_mask_rounds_the_exclusive_export_half_open_4015(self, device, dtype):
         # Wart pin for kornia#4015: the fractional box [1.4, 3.6] x [1.4, 2.6] exports as xyxy
@@ -1272,7 +1275,7 @@ class TestBoxes2D(BaseTester):
         expected = torch.zeros(1, 5, 6, device=device, dtype=dtype)
         expected[0, 1:4, 1:5] = 1.0
         self.assert_close(Boxes(boxes).to_mask(5, 6), expected, atol=0.0, rtol=0.0)
-        assert bbox_to_mask(boxes, 6, 5).sum().item() == 2.0
+        assert bbox_to_mask(boxes, size=(5, 6)).sum().item() == 2.0
 
         outside = torch.tensor([[[6.0, 6.0], [9.0, 6.0], [9.0, 9.0], [6.0, 9.0]]], device=device, dtype=dtype)
         assert Boxes(outside).to_mask(5, 5).sum().item() == 0.0
