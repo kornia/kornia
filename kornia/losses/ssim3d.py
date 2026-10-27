@@ -32,7 +32,7 @@ def ssim3d_loss(
     reduction: str = "mean",
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute a loss based on the SSIM measurement.
+    r"""Compute the DSSIM loss, clamp((1 - SSIM) / 2, 0, 1), between two (B, C, D, H, W) volumes.
 
     The loss is the structural dissimilarity (DSSIM) of each voxel, clamped to :math:`[0, 1]`:
 
@@ -86,7 +86,7 @@ def ssim3d_loss(
 
 
 class SSIM3DLoss(nn.Module):
-    r"""Create a criterion that computes a loss based on the SSIM measurement.
+    r"""Compute the DSSIM loss, clamp((1 - SSIM) / 2, 0, 1), between two (B, C, D, H, W) volumes.
 
     The loss is the structural dissimilarity (DSSIM) of each voxel, clamped to :math:`[0, 1]`:
 

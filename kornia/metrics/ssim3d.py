@@ -49,7 +49,7 @@ def ssim3d(
     eps: float = 1e-12,
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute the Structural Similarity (SSIM) index map between two images.
+    r"""Compute the per-voxel Structural Similarity (SSIM) map between two (B, C, D, H, W) volumes.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 

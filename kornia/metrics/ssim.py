@@ -110,7 +110,7 @@ def ssim(
     eps: float = 1e-12,
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute the Structural Similarity (SSIM) index map between two images.
+    r"""Compute the per-pixel Structural Similarity (SSIM) map between two (B, C, H, W) images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
