@@ -97,7 +97,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         ... ]
 
         >>> ada = AdaptiveDiscriminatorAugmentation(*aug_list)
-        >>> augmented = ada(original)
+        >>> augmented = ada(originals)
 
     This example demonstrates using custom augmentations with AdaptiveDiscriminatorAugmentation.
     """
