@@ -31,7 +31,7 @@ from kornia.geometry.bbox import bbox_to_mask
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import resize
 
-from testing.augmentation.utils import reproducibility_test
+from testing.augmentation.utils import oversized_random_crop_params, reproducibility_test
 from testing.base import BaseTester, assert_close, supports_bilinear_2d_grid_sample
 
 
@@ -961,7 +961,8 @@ class TestAugmentationSequential:
         ],
     )
     @pytest.mark.parametrize(
-        "augmentation", [K.RandomCrop((30, 30), padding=1, cropping_mode="resample", fill=0), K.Resize((30, 30))]
+        "augmentation",
+        [K.RandomCrop((30, 30), padding=1, pad_if_needed=True, cropping_mode="resample", fill=0), K.Resize((30, 30))],
     )
     def test_bbox(self, bbox, augmentation, device, dtype):
         img = torch.rand((3, 3, 10, 10), device=device, dtype=dtype)
@@ -3085,9 +3086,17 @@ class TestAugmentationSequentialReplay:
             image = torch.rand(2, 1, 16, 16, device=device, dtype=dtype)
             keypoints = torch.tensor([[[3.0, 5.0], [9.0, 12.0]]], device=device, dtype=dtype).expand(2, -1, -1)
             aug = K.AugmentationSequential(K.RandomCrop((20, 22), padding=1, p=1.0), data_keys=["input", "keypoints"])
-            _, expected = aug(image, keypoints)
-            params = aug._params
-            aug(torch.rand(3, 1, 15, 17, device=device, dtype=dtype), keypoints[:1].expand(3, -1, -1))
+
+            # A forward call rejects the oversized crop (#4414), so draw its parameters for replay.
+            def oversized_params(shape):
+                return [
+                    ParamItem(name, oversized_random_crop_params(crop, shape)) for name, crop in aug.named_children()
+                ]
+
+            params = oversized_params(image.shape)
+            _, expected = aug(image, keypoints, params=params)
+            other = torch.rand(3, 1, 15, 17, device=device, dtype=dtype)
+            aug(other, keypoints[:1].expand(3, -1, -1), params=oversized_params(other.shape))
             replayed = aug(keypoints, params=params, data_keys=["keypoints"])
             assert_close(replayed, expected)
 
