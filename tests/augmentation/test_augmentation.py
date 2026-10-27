@@ -89,6 +89,7 @@ from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
+from testing.augmentation.utils import oversized_random_crop_params
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.overwrite import default_with_one_parameter_changed
 
@@ -3642,7 +3643,8 @@ class TestRandomCrop(BaseTester):
 
         image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
         aug = RandomCrop(size, cropping_mode="slice", p=1.0)
-        params = aug.forward_parameters(image.shape)
+        # A forward call rejects an oversized crop (#4414); its replayed parameters still reach the scaling.
+        params = oversized_random_crop_params(aug, image.shape)
         monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
 
         transform = aug.compute_transformation(image, params, aug.flags)
@@ -3670,7 +3672,8 @@ class TestRandomCrop(BaseTester):
 
         image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
         aug = RandomCrop(size, cropping_mode="slice", p=1.0)
-        params = aug.forward_parameters(image.shape)
+        # A forward call rejects an oversized crop (#4414); its replayed parameters still reach the scaling.
+        params = oversized_random_crop_params(aug, image.shape)
         monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
 
         transform = aug.compute_transformation(image, params, aug.flags)
