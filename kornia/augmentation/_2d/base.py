@@ -58,7 +58,7 @@ _LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Ten
 
 
 class AugmentationBase2D(_AugmentationBase):
-    r"""AugmentationBase2D base class for customized augmentation implementations.
+    r"""Base class for custom 2D augmentations, applied per sample with probability ``p`` (default 0.5).
 
     AugmentationBase2D aims at offering a generic base class for a greater level of customization.
     If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
@@ -137,7 +137,7 @@ class AugmentationBase2D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
-    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+    r"""Base class for 2D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 

@@ -27,14 +27,14 @@ from kornia.filters import motion_blur
 
 
 class RandomMotionBlur(IntensityAugmentationBase2D):
-    r"""Perform motion blur on 2D images (4D torch.Tensor).
+    r"""Blur images with a random motion-blur kernel, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomMotionBlur.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
             If Tuple[int, int] or a two-element list, it will randomly generate one odd value from the closed

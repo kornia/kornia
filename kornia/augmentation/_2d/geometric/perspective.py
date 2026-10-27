@@ -27,7 +27,7 @@ from kornia.geometry.transform import get_perspective_transform, warp_perspectiv
 
 
 class RandomPerspective(GeometricAugmentationBase2D):
-    r"""Apply a random perspective transformation to an image torch.Tensor with a given probability.
+    r"""Warp images with a random perspective transformation, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomPerspective.png
 
@@ -36,7 +36,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
         resample: the interpolation method to use.
         same_on_batch: apply the same transformation across the batch. Default: False.
         align_corners: interpolation flag.
-        p: probability of the image being perspectively transformed.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
         sampling_method: ``'basic'`` | ``'area_preserving'``. Default: ``'basic'``

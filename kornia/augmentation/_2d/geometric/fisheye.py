@@ -28,7 +28,7 @@ from kornia.geometry.transform import remap
 
 
 class RandomFisheye(AugmentationBase2D):
-    r"""Add random camera radial distortion.
+    r"""Add a random radial (fisheye) distortion, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomFisheye.png
 
@@ -47,7 +47,7 @@ class RandomFisheye(AugmentationBase2D):
         center_y: Ranges to sample respect to y-coordinate center with shape (2,).
         gamma: Ranges to sample for the gamma values respect to optical center with shape (2,).
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 

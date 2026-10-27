@@ -28,11 +28,16 @@ from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
 class RandomAffine(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to a torch.Tensor image.
+    r"""Warp images by a random 2D affine transformation, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomAffine.png
 
     The transformation is computed so that the image center is kept invariant.
+
+    .. note::
+        Unlike torchvision's ``RandomAffine``, which transforms every image, this class transforms each sample with
+        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to transform every sample.
 
     Args:
         degrees: Range of degrees to select from.
@@ -57,7 +62,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             Can be a float, int, or a torch.Tensor of shape (C) or (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
