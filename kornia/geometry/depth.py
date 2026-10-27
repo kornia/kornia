@@ -81,7 +81,7 @@ def unproject_meshgrid(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Compute a 3d point per pixel given its depth value and the camera intrinsics.
+    """Compute the camera-frame ray through each pixel at depth 1, a (B, H, W, 3) grid to cache for depth_to_3d_v2.
 
     .. tip::
 
@@ -107,7 +107,8 @@ def unproject_meshgrid(
         dtype: dtype of the pixel grid; the output dtype follows promotion with ``camera_matrix``.
 
     Return:
-        tensor with a 3d point per pixel, with shape :math:`(B, H, W, 3)`.
+        the ray through each pixel, with ``z`` equal to 1 (or unit length with ``normalize_points=True``), with
+        shape :math:`(B, H, W, 3)`.
 
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
@@ -141,12 +142,13 @@ def depth_to_3d_v2(
 ) -> torch.Tensor:
     # NOTE: when this replaces the `depth_to_3d` behaviour, a deprecated function should be added here, instead
     # of just replace the other function.
-    """Compute a 3d point per pixel given its depth value and the camera intrinsics.
+    """Unproject a (*, H, W) depth map to camera-frame 3D points, returned channels-last as (*, H, W, 3).
 
     .. note::
 
-        This is an alternative implementation of :py:func:`kornia.geometry.depth.depth_to_3d`
-        that does not require the creation of a meshgrid.
+        This is an alternative implementation of :py:func:`kornia.geometry.depth.depth_to_3d` that can reuse a
+        grid from :py:func:`kornia.geometry.depth.unproject_meshgrid`, passed as ``xyz_grid``, instead of building
+        the meshgrid on every call.
 
     Convention:
         - ``depth`` is the camera-frame ``z`` of each pixel and the result the camera-frame point
@@ -203,12 +205,12 @@ def depth_to_3d_v2(
 
 
 def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
-    """Compute a 3d point per pixel given its depth value and the camera intrinsics.
+    """Unproject a (B, 1, H, W) depth map to camera-frame 3D points, returned channels-first as (B, 3, H, W).
 
     .. note::
 
-        :py:func:`kornia.geometry.depth.depth_to_3d_v2` computes the same points without building a meshgrid,
-        in the :math:`(B, H, W, 3)` layout.
+        :py:func:`kornia.geometry.depth.depth_to_3d_v2` computes the same points in the :math:`(B, H, W, 3)`
+        layout and can reuse a grid cached with :py:func:`kornia.geometry.depth.unproject_meshgrid`.
 
     Convention:
         - ``depth`` is the camera-frame ``z`` of each pixel and the result the camera-frame point

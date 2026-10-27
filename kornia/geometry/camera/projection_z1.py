@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""nn.Module for the projection of points in the canonical z=1 plane."""
+"""Functions for the perspective projection of points onto the canonical z=1 plane."""
 
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/perspective_camera.rs
 from __future__ import annotations
@@ -72,11 +72,11 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
 def unproject_points_z1(
     points_in_cam_canonical: torch.Tensor, extension: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Unproject one or more points from the canonical z=1 plane into the camera frame.
+    r"""Unproject points on the canonical z=1 plane into the camera frame by scaling them by a depth (default 1).
 
     .. math::
         \begin{bmatrix} x \\ y \\ z \end{bmatrix} =
-        \begin{bmatrix} u \\ v \end{bmatrix} \cdot w
+        \begin{bmatrix} u \\ v \\ 1 \end{bmatrix} \cdot w
 
     Convention:
         - ``extension`` is the camera-frame ``z`` of the unprojected point: the canonical point is multiplied
@@ -117,9 +117,7 @@ def unproject_points_z1(
 
 
 def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
-    r"""Compute the derivative of the x projection with respect to the x coordinate.
-
-    Returns point derivative of inverse depth point projection with respect to the x coordinate.
+    r"""Compute the 2x3 Jacobian of the z=1 perspective projection with respect to the camera-frame point (x, y, z).
 
     .. math::
         \frac{\partial \pi}{\partial x} =
@@ -143,8 +141,8 @@ def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
 
     Returns:
-        torch.Tensor representing the derivative of the x projection with respect to the x coordinate
-        with shape (..., 2, 3).
+        torch.Tensor representing the Jacobian of the projected point :math:`(u, v)` with respect to
+        :math:`(x, y, z)`, with shape (..., 2, 3).
 
     Example:
         >>> points = torch.tensor([1., 2., 3.])
