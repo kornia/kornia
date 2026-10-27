@@ -198,6 +198,22 @@ The rest of this guide contains practical and technical guidance so nobody has t
 4. Preview: `open docs/build/html/index.html`
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
 
+### Docstring style
+
+A docstring is how a reader, human or agent, decides which function to call, so it states the choice before the details. `kornia/geometry/depth.py` is the worked example.
+
+- **Title line**: one physical line, in task words, imperative, naming what sets the function apart from its siblings (2D or 3D, channels first or last, the criterion, one call or module form). Aim for about 80 characters; 120 is the hard limit. Keep reST-breaking markup out of it; ``literals`` are fine. It must be unique among public symbols (`tests/test_docstring_first_lines.py`); a class and the function it wraps may share one.
+- **Status words** come first when they apply: `Deprecated: use X.` for a deprecated object, `Alias of X.` for a true alias. Do not label a function "Legacy"; for a nearby better choice, write a neutral "for X, use Y" sentence in the contract paragraph.
+- **Contract paragraph** (2-5 sentences) starts from the call: ``points = depth_to_3d(depth, camera_matrix)`` takes ... and returns .... A callable module shows construction and invocation; a data class (`Boxes`, `PinholeCamera`) shows construction and its main method. Name the inputs and the output with shapes, frames and units, and end with "use X instead" when a nearby task is better served elsewhere.
+- **Existing blocks** stay: `.. note::`, `Convention:`, `Args:`, `Return:`/`Returns:`, `Raises:`, trimmed where the paragraph already says the same. In a long class docstring, put whatever decides correct use in the first paragraph.
+- **`See Also:`** goes after `Returns`/`Raises` and before `Example`. Write each entry as ``- :func:`name`: how it differs.``; the explanation after the colon is required. Spell targets as Sphinx registers them: short names for objects on the same docs page (``:func:`depth_to_3d_v2` ``), the documented path for the rest (``:func:`~kornia.geometry.camera.perspective.unproject_points` ``), never a shorter import alias, which renders as plain text without any warning. Do not link an object to itself or to a private name. Link true siblings both ways (v1 and v2, 2D and 3D); this is a review matter, no test checks it.
+- **Module docstrings** open with a title line, then the conventions the module's functions share, then "Which function to use", grouped by task with one line each. The catalog lists every name in `__all__` of the namespace users import from.
+- **Shapes** are written as ``(B, 1, H, W)`` literals. Keep `:math:` for formulas, not for a shape tuple.
+
+What the tests enforce for modules that have been converted (`tests/test_docstring_style.py`): a `See Also:` with explanations on each public function and class, with no self-links or private targets; every `:func:`, `:class:` and `:meth:` role resolves to a name Sphinx registers, built from `docs/source/*.rst`; no `:math:` role that holds only a shape tuple; a module catalog that names every export; and every `kornia` package assigned to in scope or excluded. Read the Docs builds with `fail_on_warning: true` (`readthedocs.yml`), so a Sphinx warning fails the docs check.
+
+A module joins these checks when its prefix is added to the lists in `testing/docstring_rollout.py` (`DOCSTRING_MODULES`, `CATALOG_NAMESPACES`, `SHAPE_CHECK_MODULES`, `SEE_ALSO_EXCEPTIONS`; the package inventory is `IN_SCOPE_PACKAGES` and `EXCLUDED_PACKAGES`). The helpers are in `testing/docstring_style.py`.
+
 ## Coding Standards
 
 - **Write small incremental changes:**
