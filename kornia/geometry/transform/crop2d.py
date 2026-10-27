@@ -167,6 +167,9 @@ def center_crop(
     Convention:
         - input: :math:`(B, C, H, W)` (strictly 4D — no unbatched ``(C, H, W)``/
           ``(H, W)`` input is accepted); ``size`` is ``(h, w)``
+        - offset: the crop starts at the integer pixel ``int(H / 2 - h / 2)`` (likewise for the width), as in
+          :class:`CenterCrop2D`, so the output is a sub-image of the input. With an odd margin the extra pixel is
+          left at the bottom/right; for a ``size`` larger than the input, the extra padding pixel goes there too.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -212,11 +215,12 @@ def center_crop(
     src_h_half: float = src_h / 2
     src_w_half: float = src_w / 2
 
-    start_x: float = src_w_half - dst_w_half
-    start_y: float = src_h_half - dst_h_half
+    # an integer start, as CenterCrop2D takes it: a fractional one would resample between pixels
+    start_x: int = int(src_w_half - dst_w_half)
+    start_y: int = int(src_h_half - dst_h_half)
 
-    end_x: float = start_x + dst_w - 1
-    end_y: float = start_y + dst_h - 1
+    end_x: int = start_x + dst_w - 1
+    end_y: int = start_y + dst_h - 1
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
