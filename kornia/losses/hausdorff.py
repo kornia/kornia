@@ -202,7 +202,8 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
     @staticmethod
     def max_pool(x: torch.Tensor) -> torch.Tensor:
-        # Global max over the spatial dims; equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
+        """Take the global maximum over the spatial dimensions, keeping them with size one."""
+        # Equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:
@@ -276,7 +277,8 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
 
     @staticmethod
     def max_pool(x: torch.Tensor) -> torch.Tensor:
-        # Global max over the volume dims; equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
+        """Take the global maximum over the volume dimensions, keeping them with size one."""
+        # Equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-3, -2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:
