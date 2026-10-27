@@ -15,6 +15,9 @@
 # limitations under the License.
 #
 
+import inspect
+import re
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -23,6 +26,7 @@ from torch import nn
 from kornia.core.exceptions import BaseError
 from kornia.models.sam import Sam, SamConfig
 from kornia.models.sam.architecture.prompt_encoder import PositionEmbeddingRandom, PromptEncoder
+from kornia.models.sam.architecture.transformer import TwoWayAttentionBlock, TwoWayTransformer
 
 from testing.base import BaseTester
 
@@ -266,3 +270,16 @@ class TestSam(BaseTester):
         self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
         after = [m.running_mean for m in encoder.modules() if isinstance(m, nn.BatchNorm2d)]
         assert all(torch.equal(a, b) for a, b in zip(after, running_means))
+
+
+@pytest.mark.parametrize("cls", [TwoWayTransformer, TwoWayAttentionBlock])
+def test_two_way_args_block_matches_the_constructor(cls):
+    # The class docstrings documented a nonexistent `attention_type` argument and an `nn.GELU` activation,
+    # while the constructors take `attention_downsample_rate` and default to `nn.ReLU`.
+    block = (inspect.getdoc(cls) or "").split("Args:\n", 1)[1]
+    signature = inspect.signature(cls.__init__).parameters
+    documented = re.findall(r"^\s{4}(\w+):", block, re.M)
+    activation = re.search(r"^\s{4}activation:.*Default: :class:`nn\.(\w+)`", block, re.M).group(1)
+
+    assert sorted(documented) == sorted(list(signature)[1:])
+    assert activation == signature["activation"].default.__name__
