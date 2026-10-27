@@ -97,6 +97,7 @@ class Resample(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def get(cls, value: TKEnum["Resample"]) -> "Resample":
+        """Return the Resample member matching a name, a value or a member."""
         return _get(cls, value)
 
 
@@ -110,6 +111,7 @@ class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def get(cls, value: TKEnum["BorderType"]) -> "BorderType":
+        """Return the BorderType member matching a name, a value or a member."""
         return _get(cls, value)
 
 
@@ -123,6 +125,7 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def get(cls, value: TKEnum["SamplePadding"]) -> "SamplePadding":
+        """Return the SamplePadding member matching a name, a value or a member."""
         return _get(cls, value)
 
 
@@ -137,6 +140,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def get(cls, value: Union[str, int, torch.dtype, torch.Tensor, "DType"]) -> "DType":
+        """Return the DType member matching a name, a value, a torch dtype, a tensor or a member."""
         if isinstance(value, torch.dtype):
             return _get_by_name(cls, str(value)[6:], value)
 
@@ -159,6 +163,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def to_torch(cls, value: TKEnum["DType"]) -> torch.dtype:
+        """Return the torch dtype matching a DType name, value or member."""
         data = cls.get(value=value)
 
         if data == DType.INT64:
@@ -181,6 +186,8 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
 # TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
 class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
+    """Kind of data an augmentation container transforms, one per entry of ``data_keys``."""
+
     IMAGE = 0
     INPUT = 0
     MASK = 1
@@ -193,4 +200,5 @@ class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def get(cls, value: TKEnum["DataKey"]) -> "DataKey":
+        """Return the DataKey member matching a name, a value or a member."""
         return _get(cls, value)

@@ -604,9 +604,11 @@ class PinholeCamerasList(PinholeCamera):
         return self
 
     def clone(self) -> "PinholeCamerasList":
+        """Return a copy of the list, with each camera cloned."""
         return PinholeCamerasList([self.get_pinhole(index).clone() for index in range(self.num_cameras)])
 
     def scale(self, scale_factor: torch.Tensor) -> "PinholeCamerasList":
+        """Scale the cameras by a vector factor along the batch dimension, returning a new list."""
         return self.clone().scale_(scale_factor)
 
     def scale_(self, scale_factor: Union[float, torch.Tensor]) -> "PinholeCamerasList":
