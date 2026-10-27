@@ -710,6 +710,10 @@ class TestDeterminantToPolynomial(BaseTester):
         assert A.grad is not None
         self.assert_close(A.grad, A.detach())
 
+    def test_non_contiguous_input(self, device, dtype):
+        A = torch.rand(2, 13, 3, device=device, dtype=dtype).mT
+        self.assert_close(solver.determinant_to_polynomial(A), solver.determinant_to_polynomial(A.contiguous()))
+
     def test_gradcheck(self, device):
         A = torch.rand(2, 3, 13, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.determinant_to_polynomial, (A,), fast_mode=True)
