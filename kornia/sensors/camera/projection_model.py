@@ -38,12 +38,12 @@ class Z1Projection:
 
         Convention:
             - ``points`` is in the **camera frame** and the result is on the normalized :math:`z = 1` plane,
-              not in pixels: the map is ``xy / z``, with no epsilon and no validation.
+              not in pixels: the map is ``xy / z`` with the divide skipped where ``abs(z) <= 1e-8``, the rule of
+              :func:`~kornia.geometry.camera.projection_z1.project_points_z1`; a ``nan`` ``z`` gives ``nan``.
 
         .. warning::
-            A point with :math:`z = 0` projects to an infinity (``nan`` for a zero numerator) instead of raising:
-            `#4267 <https://github.com/kornia/kornia/issues/4267>`_. A point behind the camera projects to a
-            finite coordinate and is not flagged: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
+            The skipped-divide result is a finite placeholder, and a point behind the camera projects to a
+            finite coordinate; neither is flagged: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
         Args:
             points: Vector3 representing the points to project.
@@ -60,9 +60,10 @@ class Z1Projection:
         """
         xy = points.data[..., :2]
         z = points.z
-        # For scalar z, xy is 1-D, so no unsqueeze is needed
-        uv = xy / z.unsqueeze(-1) if len(z.shape) else xy * 1 / z
-        return Vector2(uv)
+        if len(z.shape):
+            z = z.unsqueeze(-1)
+        # `~(abs <= eps)` rather than `abs > eps` so that a nan depth takes the divide and stays nan
+        return Vector2(xy / torch.where(~(torch.abs(z) <= 1e-8), z, torch.ones_like(z)))
 
     def unproject(self, points: Vector2, depth: torch.Tensor | float) -> Vector3:
         """Unproject one or more Vector2 from the canonical z=1 plane into the camera frame.

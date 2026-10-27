@@ -76,22 +76,23 @@ class TestProjection(BaseTester):
             expected,
         )
 
-    def test_wart_project_divides_by_z_with_no_guard_4267(self, device, dtype):
-        # Wart pin for #4267: Z1Projection.project divides xy / z with no guard, so a point on the camera plane
-        # gives inf (nan on a zero numerator) and a point behind the camera a finite pixel, where the geometry
-        # projections mask the divide. Delete when #4267 is repaired.
+    def test_convention_project_skips_the_divide_at_zero_depth_4267(self, device, dtype):
+        # #4267: Z1Projection.project follows project_points_z1. On the camera plane the divide is skipped and
+        # (x, y) comes back unchanged, a zero numerator included; a point behind the camera keeps the exact divide
+        # (validity is #4555); a nan depth stays nan; an unbatched point takes the same rule.
         projection = Z1Projection()
-        on_plane = projection.project(Vector3(torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype)))
-        assert torch.isinf(on_plane.data).all()
-        assert (on_plane.data > 0).all()
+        on_plane = projection.project(
+            Vector3(torch.tensor([[1.0, 2.0, 0.0], [0.0, 2.0, 0.0]], device=device, dtype=dtype))
+        )
+        self.assert_close(
+            on_plane.data, torch.tensor([[1.0, 2.0], [0.0, 2.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
         behind = projection.project(Vector3(torch.tensor([[1.0, 2.0, -4.0]], device=device, dtype=dtype)))
-        assert torch.isfinite(behind.data).all()
         self.assert_close(behind.data, torch.tensor([[-0.25, -0.5]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        # A zero numerator at z = 0 gives nan, which an isinf check misses.
-        zero_numerator = projection.project(Vector3(torch.tensor([[0.0, 2.0, 0.0]], device=device, dtype=dtype)))
-        assert torch.isnan(zero_numerator.data[..., 0]).all()
-        assert torch.isinf(zero_numerator.data[..., 1]).all()
-        assert (zero_numerator.data[..., 1] > 0).all()
+        nan_depth = projection.project(Vector3(torch.tensor([[1.0, 2.0, float("nan")]], device=device, dtype=dtype)))
+        assert torch.isnan(nan_depth.data).all()
+        unbatched = projection.project(Vector3(torch.tensor([1.0, 2.0, 0.0], device=device, dtype=dtype)))
+        self.assert_close(unbatched.data, torch.tensor([1.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
 
 class TestOrthographicProjection(BaseTester):

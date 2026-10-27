@@ -31,8 +31,8 @@ from kornia.core.utils import _autocast_disabled, _torch_grid_sample
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
-from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
-from .camera.pinhole import _embed_intrinsics
+from .camera import PinholeCamera, pixel2cam, project_points, unproject_points
+from .camera.pinhole import _embed_intrinsics, _project_camera_points
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
 
@@ -510,12 +510,9 @@ class DepthWarper(nn.Module):
           :func:`~kornia.geometry.depth.depth_warp` is the functional form and exposes ``align_corners`` only.
         - :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the opposite frame names:
           this class's ``src`` (the frame holding the depth) is that function's ``dst``, and ``patch_dst`` is its
-          ``image_src``. Both namings are kept.
-
-    .. warning::
-        The two warps agree to rounding for float32/float64 away from ``z = 0``, and split at ``z = 0``, where
-        ``cam2pixel`` sends every pixel with a nonzero projected numerator far outside the image:
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+          ``image_src``. Both namings are kept. The two agree to rounding for float32/float64, including where a
+          transformed point reaches ``abs(z) <= 1e-8``: both skip the divide there and apply ``K`` to the
+          undivided point, as :func:`~kornia.geometry.camera.perspective.project_points` does.
 
     Args:
         pinhole_dst: the pinhole model for the destination frame.
@@ -552,6 +549,7 @@ class DepthWarper(nn.Module):
         self._pinhole_dst: PinholeCamera = pinhole_dst
         self._pinhole_src: PinholeCamera | None = None
         self._dst_proj_src: torch.Tensor | None = None
+        self._dst_trans_src: torch.Tensor | None = None
 
         # Meshgrid only depends on (height, width), can be staticmethod cached
         self.grid: torch.Tensor = self._create_meshgrid(height, width)
@@ -605,6 +603,7 @@ class DepthWarper(nn.Module):
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
+        self._dst_trans_src = dst_trans_src
         return self
 
     def _compute_projection(self, x: float, y: float, invd: float) -> torch.Tensor:
@@ -669,7 +668,7 @@ class DepthWarper(nn.Module):
         camera.
         """
         # TODO: add type and value checkings
-        if self._dst_proj_src is None or self._pinhole_src is None:
+        if self._dst_proj_src is None or self._dst_trans_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
         if len(depth_src.shape) != 4:
@@ -688,10 +687,14 @@ class DepthWarper(nn.Module):
             depth_src, self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype), pixel_coords
         )  # BxHxWx3
 
-        # reproject the camera coordinates to the pixel
-        pixel_coords_src: torch.Tensor = cam2pixel(
-            cam_coords_src, self._dst_proj_src.to(device=device, dtype=dtype)
-        )  # (B*N)xHxWx2
+        # move the points into the destination camera frame and project them there, applying K after the
+        # masked divide so that this warp and warp_frame_depth agree where a point reaches z = 0
+        cam_coords_dst: torch.Tensor = transform_points(
+            self._dst_trans_src[:, None].to(device=device, dtype=dtype), cam_coords_src
+        )  # BxHxWx3
+        pixel_coords_src: torch.Tensor = _project_camera_points(
+            cam_coords_dst, self._pinhole_dst.intrinsics[:, None].to(device=device, dtype=dtype)
+        )  # BxHxWx2
 
         # normalize between -1 and 1 the coordinates
         pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)

@@ -34,6 +34,22 @@ def _embed_intrinsics(camera_matrix: torch.Tensor) -> torch.Tensor:
     return intrinsics
 
 
+def _project_camera_points(points_in_camera: torch.Tensor, intrinsics: torch.Tensor) -> torch.Tensor:
+    r"""Project camera-frame points with the masked perspective divide first and the intrinsics second.
+
+    Where ``abs(z) <= 1e-8`` the divide is skipped: ``z`` is replaced by ``1``, so the intrinsics map the undivided
+    ``(x, y)``, as :func:`~kornia.geometry.camera.perspective.project_points` does. Elsewhere the divide is exact.
+    ``~(abs(z) <= 1e-8)`` selects the divide, so a ``nan`` depth stays ``nan``. As in
+    :meth:`PinholeCamera.project`, only the top-left :math:`3 \times 3` block of the :math:`(*, 4, 4)` intrinsics
+    is applied.
+    """
+    z = points_in_camera[..., 2:3]
+    divide = ~(torch.abs(z) <= 1e-8)
+    safe_points = torch.cat([points_in_camera[..., :2], torch.where(divide, z, torch.ones_like(z))], dim=-1)
+    camera_matrix = _embed_intrinsics(intrinsics[..., :3, :3])
+    return convert_points_from_homogeneous(transform_points(camera_matrix, safe_points))
+
+
 class PinholeCamera:
     r"""Class that represents a Pinhole Camera model.
 
@@ -391,12 +407,14 @@ class PinholeCamera:
         Convention:
             - ``point_3d`` must be at least rank 2. An unbatched :math:`(3,)` point raises :class:`ValueError`.
               An empty point set returns an empty result.
-            - a point whose **camera-frame** ``z`` is 0 does not raise: ``K`` is applied first and the
-              perspective divide is then skipped, so the result is the undivided ``K (R X + t)``.
+            - where the **camera-frame** ``z`` satisfies ``abs(z) <= 1e-8`` the perspective divide is skipped and
+              ``K`` is then applied to the undivided ``(x, y)``, the same rule as
+              :func:`~kornia.geometry.camera.perspective.project_points`; elsewhere the divide is exact, and a
+              ``nan`` ``z`` gives ``nan``.
 
         .. warning::
-            This ``z = 0`` answer differs from :func:`~kornia.geometry.camera.perspective.project_points`, which
-            applies ``K`` after the skipped divide: `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+            The skipped-divide result is a finite placeholder, not a valid pixel. Neither it nor a point behind
+            the camera is flagged as invalid: `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
 
         Args:
             point_3d: torch.Tensor containing the 3d points to be projected
@@ -420,8 +438,7 @@ class PinholeCamera:
         """
         if len(point_3d.shape) < 2:
             raise ValueError(f"Input must be at least a 2D tensor. Got {point_3d.shape}")
-        P = self._projection_matrix()
-        return convert_points_from_homogeneous(transform_points(P, point_3d))
+        return _project_camera_points(transform_points(self.extrinsics, point_3d), self.intrinsics)
 
     def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor) -> torch.Tensor:
         r"""Unproject a 2d point in 3d.
@@ -459,11 +476,11 @@ class PinholeCamera:
     def _projection_matrix(self) -> torch.Tensor:
         r"""Return the 4x4 projection built from the intrinsics' top-left 3x3 block.
 
-        Both :meth:`project` and :meth:`unproject` go through this matrix, so they agree on
-        which intrinsics are usable: a 3x3 ``K`` zero-padded to 4x4 round-trips exactly like its
-        homogeneous embedding, instead of projecting while ``unproject`` raises on the singular
-        4x4 product. For a homogeneous embedding the result matches ``intrinsics @ extrinsics``
-        bit for bit on CPU, and to the dtype's rounding on MPS.
+        :meth:`unproject` inverts this matrix, and :meth:`project` applies the same two parts in turn (the
+        extrinsics, then the masked divide and the same 3x3 block), so they agree on which intrinsics are
+        usable: a 3x3 ``K`` zero-padded to 4x4 round-trips exactly like its homogeneous embedding, instead of
+        projecting while ``unproject`` raises on the singular 4x4 product. For a homogeneous embedding the result
+        matches ``intrinsics @ extrinsics`` bit for bit on CPU, and to the dtype's rounding on MPS.
         """
         K = self._intrinsics[..., :3, :3]
         E = self._extrinsics
@@ -672,18 +689,28 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         - ``dst_proj_src`` is a :math:`(B, 4, 4)` projection matrix (the
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera` layout, not a ``3x3`` ``K``), and the result is
           ``(u, v)`` pixel coordinates in the destination frame.
+        - the perspective divide is by the projected ``z`` and is skipped where ``abs(z) <= 1e-8``, as in
+          :func:`~kornia.geometry.camera.perspective.project_points`; elsewhere it is exact, with no epsilon
+          added, and a ``nan`` ``z`` gives ``nan``.
 
     .. warning::
-        The perspective division is ``x / (z + eps)`` rather than a guarded divide, so ``z = 0`` gives
-        ``x / eps``, huge for a nonzero ``x`` (``inf`` where ``eps`` underflows), and ``eps`` biases every small
-        depth:
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        ``dst_proj_src`` already contains ``K``, so where the divide is skipped the result is the undivided
+        projected point: the placeholder pixel at ``z = 0`` lacks the principal point that
+        :func:`~kornia.geometry.camera.perspective.project_points` adds after its skipped divide. A caller that
+        needs the exact rule applies the mask before ``K``, as :class:`~kornia.geometry.depth.DepthWarper` does.
+        The skipped-divide result is a finite placeholder, not a valid pixel:
+        `#4555 <https://github.com/kornia/kornia/issues/4555>`_.
+
+    .. deprecated:: 0.9.1
+        ``eps`` is ignored: it used to be added to the depth, and the divide is now skipped where
+        ``abs(z) <= 1e-8``. Passing a non-default value warns in eager mode; the parameter will be removed in a
+        future release.
 
     Args:
         cam_coords_src: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
         dst_proj_src: the projection matrix between the
           reference and the non reference camera frame. Shape must be Bx4x4.
-        eps: small value to avoid division by zero error.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Returns:
         torch.Tensor of shape BxHxWx2 with (u, v) pixel coordinates.
@@ -693,16 +720,15 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         raise ValueError(f"Input cam_coords_src has to be in the shape of BxHxWx3. Got {cam_coords_src.shape}")
     if not (len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_proj_src has to be in the shape of Bx4x4. Got {dst_proj_src.shape}")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-12:
+        warnings.warn(
+            "`eps` is deprecated since kornia 0.9.1 and ignored by `cam2pixel`: the divide is skipped where "
+            "abs(z) <= 1e-8, as in `project_points`. It will be removed in a future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     # apply projection matrix to points
     point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
-    x_coord: torch.Tensor = point_coords[..., 0]
-    y_coord: torch.Tensor = point_coords[..., 1]
-    z_coord: torch.Tensor = point_coords[..., 2]
-
-    # compute pixel coordinates
-    u_coord: torch.Tensor = x_coord / (z_coord + eps)
-    v_coord: torch.Tensor = y_coord / (z_coord + eps)
-
-    # torch.stack and return the coordinates, that's the actual flow
-    pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
-    return pixel_coords_dst  # BxHxWx2
+    # the masked divide of `convert_points_from_homogeneous`: skipped where abs(z) <= 1e-8, and selected with
+    # `~(abs(z) <= 1e-8)` so that a nan depth stays nan
+    return convert_points_from_homogeneous(point_coords)  # BxHxWx2

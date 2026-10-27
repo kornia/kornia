@@ -67,11 +67,11 @@ class TestProjectionZ1(BaseTester):
         self.assert_close(project_points_z1(points), expected)
 
     def test_project_points_z1_invalid(self, device, dtype):
-        # NOTE: this is a corner case where the depth is 0.0 and the point is at infinity
-        #      the projection is not defined and the function returns inf. The second point
-        #      is behind the camera which is not a valid point and the user should handle it.
+        # NOTE: corner cases with no valid projection. At depth 0.0 the divide is skipped and (x, y) comes back as
+        #      a finite placeholder (#4267). The second point is behind the camera, which is not a valid point
+        #      and the user should handle it (#4555).
         points = torch.tensor([[1.0, 2.0, 0.0], [4.0, 5.0, -1.0]], device=device, dtype=dtype)
-        expected = torch.tensor([[float("inf"), float("inf")], [-4.0, -5.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 2.0], [-4.0, -5.0]], device=device, dtype=dtype)
         self.assert_close(project_points_z1(points), expected)
 
     def test_unproject_points_z1(self, device, dtype):
@@ -198,27 +198,50 @@ class TestProjectionZ1(BaseTester):
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
 
-    def test_wart_project_points_z1_zero_depth_is_not_finite_4267(self, device, dtype):
-        # Wart pin for #4267: project_points_z1 divides by z with no guard, so z = 0 gives inf or nan in every
-        # component, where project_points masks the divide. Delete when #4267 is repaired.
+    @pytest.mark.parametrize("z", [0.0, 1e-9, -1e-9, 1e-8, -1e-8])
+    def test_convention_project_points_z1_skips_the_divide_at_small_depth_4267(self, device, dtype, z):
+        # The #4267 rule: where abs(z) <= 1e-8 the divide is skipped and (x, y) comes back unchanged, in every
+        # component (a zero numerator included), as project_points does with K = I. The Jacobian there is that of
+        # (x, y): [[1, 0, 0], [0, 1, 0]]. (In float16 these depths underflow to 0.)
         points = torch.tensor(
-            [[1.0, -2.0, 0.0], [-1.0, 2.0, 0.0], [0.0, 2.0, 0.0], [1.0, 0.0, 0.0]],
+            [[1.0, -2.0, z], [-1.0, 2.0, z], [0.0, 2.0, z], [1.0, 0.0, z]],
             device=device,
             dtype=dtype,
         )
-        assert not bool(torch.isfinite(project_points_z1(points)).any())
-
-    def test_wart_project_points_z1_differs_below_perspective_epsilon_4267(self, device, dtype):
-        # kornia#4267: project_points_z1 divides plainly ([[1e9, 2e9]]) while project_points skips the divide when
-        # abs(z) <= 1e-8 ([[1., 2.]]); the decided rule makes both skip it.
-        if dtype == torch.float16:
-            pytest.skip("1e-9 underflows to zero in float16")
-        points = torch.tensor([[1.0, 2.0, 1e-9]], device=device, dtype=dtype)
+        self.assert_close(project_points_z1(points), points[..., :2], atol=0.0, rtol=0.0)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
-        expected_z1 = torch.tensor([[1e9, 2e9]], device=device, dtype=dtype)
-        expected_perspective = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)
-        self.assert_close(project_points_z1(points), expected_z1)
-        self.assert_close(project_points(points, camera_matrix), expected_perspective)
+        self.assert_close(project_points(points, camera_matrix), points[..., :2], atol=0.0, rtol=0.0)
+        expected_jacobian = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(dx_project_points_z1(points), expected_jacobian.expand(4, 2, 3), atol=0.0, rtol=0.0)
+
+    def test_convention_project_points_z1_divides_exactly_elsewhere_4267(self, device, dtype):
+        # Outside the threshold the divide is exact (no epsilon enters it), behind the camera too, and a nan
+        # depth takes the divide, so the projection and its Jacobian stay nan.
+        if dtype == torch.float16:
+            pytest.skip("2e-8 underflows to zero in float16")
+        points = torch.tensor([[1.0, 2.0, 2e-8], [1.0, 2.0, -4.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0 / 2e-8, 2.0 / 2e-8], [-0.25, -0.5]], device=device, dtype=dtype)
+        self.assert_close(project_points_z1(points), expected)
+        nan_depth = torch.tensor([[1.0, 2.0, float("nan")]], device=device, dtype=dtype)
+        assert torch.isnan(project_points_z1(nan_depth)).all()
+        assert torch.isnan(dx_project_points_z1(nan_depth)[..., 2]).all()
+
+    @pytest.mark.parametrize("z", [0.0, 5e-9, -5e-9, 1.0, -4.0])
+    def test_convention_dx_project_points_z1_matches_autograd_on_both_branches_4267(self, device, dtype, z):
+        # On both sides of the masked divide the analytic Jacobian matches autograd through project_points_z1.
+        points = torch.tensor([1.0, 2.0, z], device=device, dtype=dtype)
+        numeric = torch.autograd.functional.jacobian(project_points_z1, points)
+        self.assert_close(dx_project_points_z1(points), numeric)
+
+    def test_gradcheck_project_points_z1_on_both_branches_4267(self, device):
+        # The skipped branch uses a safe-argument torch.where, so neither branch leaks inf or nan into the
+        # gradient. Finite differences of 1e-10 keep each z inside its branch.
+        points = torch.tensor(
+            [[1.0, 2.0, 0.0], [1.0, 2.0, 5e-9], [1.0, 2.0, -5e-9], [1.0, 2.0, 3e-8], [1.0, 2.0, 0.5]],
+            device=device,
+            dtype=torch.float64,
+        )
+        self.gradcheck(project_points_z1, (points,), eps=1e-10)
 
     def test_convention_dx_project_points_z1_matches_autograd(self, device, dtype):
         # The (..., 2, 3) Jacobian d(u, v) / d(x, y, z), rows indexed by the output; checked against autograd at

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -66,20 +67,30 @@ class TestProjectPoints(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
 
-    def test_wart_project_points_skips_the_divide_at_z_zero_4267(self, device, dtype):
-        # Wart pin for #4267: the masked |z| <= 1e-8 divide skips the divide and K is applied after it, so a point
-        # on the camera plane projects to (fx*x + cx, fy*y + cy) = (104, 203); a point behind the camera projects
-        # silently too. Delete when #4267 is repaired.
+    @pytest.mark.parametrize("z", [0.0, 1e-9, -1e-9, 1e-8, -1e-8])
+    def test_convention_project_points_skips_the_divide_at_small_depth_4267(self, device, dtype, z):
+        # The #4267 rule: where abs(z) <= 1e-8 the divide is skipped and K is applied to the undivided (x, y), so
+        # a point on the camera plane projects to the finite placeholder (fx*x + cx, fy*y + cy) = (104, 203).
+        # Whether that placeholder is a valid pixel is #4555. (In float16 these depths underflow to 0.)
         camera_matrix = torch.tensor(
             [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
-        singular = torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype)
-        out = kornia.geometry.camera.project_points(singular, camera_matrix)
+        point = torch.tensor([[1.0, 2.0, z]], device=device, dtype=dtype)
+        out = kornia.geometry.camera.project_points(point, camera_matrix)
         self.assert_close(out, torch.tensor([[104.0, 203.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        behind = kornia.geometry.camera.project_points(
-            torch.tensor([[1.0, 2.0, -4.0]], device=device, dtype=dtype), camera_matrix
+
+    def test_convention_project_points_divides_exactly_elsewhere_4267(self, device, dtype):
+        # Outside the threshold the divide is exact, a point behind the camera keeps that arithmetic (#4555), and
+        # a nan depth takes the divide, so it stays nan instead of becoming the finite placeholder.
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
-        self.assert_close(behind, torch.tensor([[-21.0, -47.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        points = torch.tensor([[1.0, 2.0, 4.0], [1.0, 2.0, -4.0]], device=device, dtype=dtype)
+        out = kornia.geometry.camera.project_points(points, camera_matrix)
+        expected = torch.tensor([[29.0, 53.0], [-21.0, -47.0]], device=device, dtype=dtype)
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+        nan_depth = torch.tensor([[1.0, 2.0, float("nan")]], device=device, dtype=dtype)
+        assert torch.isnan(kornia.geometry.camera.project_points(nan_depth, camera_matrix)).all()
 
     def test_convention_integer_pixel_centres_put_the_principal_point_at_w_minus_one_half(self, device, dtype):
         # Integer pixel centres: create_meshgrid enumerates (0, 0) .. (W - 1, H - 1), so a centred image has
