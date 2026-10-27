@@ -16,6 +16,7 @@
 #
 
 import math
+import warnings
 
 import pytest
 import torch
@@ -918,9 +919,10 @@ class TestPinholeCamera(BaseTester):
     def test_pinhole_camera_preserves_rank_four_constructor_support(self, device, dtype):
         intrinsics = _k44(device, dtype).unsqueeze(1).expand(1, 2, 4, 4).clone()
         extrinsics = _e44(device, dtype, tx=1.0).unsqueeze(1).expand(1, 2, 4, 4).clone()
-        camera = kornia.geometry.camera.PinholeCamera(
-            intrinsics, extrinsics, torch.tensor([6], device=device), torch.tensor([8], device=device)
-        )
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1"):
+            camera = kornia.geometry.camera.PinholeCamera(
+                intrinsics, extrinsics, torch.tensor([6], device=device), torch.tensor([8], device=device)
+            )
 
         assert camera.intrinsics.shape == (1, 2, 4, 4)
         assert camera.extrinsics.shape == (1, 2, 4, 4)
@@ -935,8 +937,10 @@ class TestPinholeCamera(BaseTester):
         assert camera.rotation_matrix.shape == (1, 2, 3, 3)
         assert camera.translation_vector.shape == (1, 2, 3, 1)
         assert camera.intrinsics_inverse().shape == (1, 2, 4, 4)
-        self.assert_close(camera.clone().intrinsics, intrinsics)
-        self.assert_close(camera.clone().extrinsics, extrinsics)
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1"):
+            cloned = camera.clone()
+        self.assert_close(cloned.intrinsics, intrinsics)
+        self.assert_close(cloned.extrinsics, extrinsics)
 
     def test_camera_list_preserves_rank_four_parameters(self, device, dtype):
         first = kornia.geometry.camera.PinholeCamera(
@@ -1038,6 +1042,63 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(inplace.height, expected_heights)
         self.assert_close(inplace.width, expected_widths)
         self.assert_close(inplace.extrinsics, cameras.extrinsics)
+
+    @staticmethod
+    def _rank4_cameras(device, dtype, intrinsics_rank=4, extrinsics_rank=4):
+        k = _k44(device, dtype)
+        e = _e44(device, dtype)
+        k = k[:, None].expand(1, 2, 4, 4) if intrinsics_rank == 4 else k
+        e = e[:, None].expand(1, 2, 4, 4) if extrinsics_rank == 4 else e
+        return k, e, torch.tensor([6], device=device), torch.tensor([8], device=device)
+
+    @pytest.mark.parametrize("intrinsics_rank,extrinsics_rank", [(4, 3), (3, 4), (4, 4)])
+    def test_rank4_parameters_are_deprecated_4266(self, intrinsics_rank, extrinsics_rank, device, dtype):
+        args = self._rank4_cameras(device, dtype, intrinsics_rank, extrinsics_rank)
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1") as record:
+            kornia.geometry.camera.PinholeCamera(*args)
+        assert len(record) == 1
+        assert record[0].filename == __file__
+
+    def test_rank3_parameters_do_not_warn_4266(self, device, dtype):
+        cam_args = (
+            _k44(device, dtype),
+            _e44(device, dtype),
+            torch.tensor([6], device=device),
+            torch.tensor([8], device=device),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            cam = kornia.geometry.camera.PinholeCamera(*cam_args)
+            cam.clone()
+            cam.scale(0.5)
+
+    def test_cameras_list_does_not_warn_4266(self, device, dtype):
+        cam = kornia.geometry.camera.PinholeCamera(
+            _k44(device, dtype), _e44(device, dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            PinholeCamerasList([cam, cam])
+
+    def test_rank4_values_are_unchanged_4266(self, device, dtype):
+        k, e, h, w = self._rank4_cameras(device, dtype)
+        with pytest.warns(DeprecationWarning, match="deprecated since kornia 0.9.1"):
+            cam = kornia.geometry.camera.PinholeCamera(k, e, h, w)
+        assert cam.fx.shape == (1, 2)
+        self.assert_close(cam.fx, torch.full((1, 2), 100.0, device=device, dtype=dtype))
+        with pytest.raises(RuntimeError):
+            cam.project(torch.ones(1, 5, 3, device=device, dtype=dtype))
+
+    def test_rank4_construction_does_not_warn_under_trace_4266(self, device, dtype):
+        k, e, h, w = self._rank4_cameras(device, dtype)
+
+        def build(k, e):
+            return kornia.geometry.camera.PinholeCamera(k, e, h, w).intrinsics
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            torch.jit.trace(build, (k, e), check_trace=False)
+        assert not [w for w in record if "deprecated since kornia" in str(w.message)]
 
     def test_project_and_unproject_reject_rank_one_points_4266(self, device, dtype):
         cam = kornia.geometry.camera.PinholeCamera(
