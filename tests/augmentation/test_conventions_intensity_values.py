@@ -1099,7 +1099,7 @@ class TestIntensityColourConventions(BaseTester):
     )
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
         if case in ("gamma_negative", "gain_negative") and device.type != "cpu":
-            pytest.skip("CPU only: on CUDA the value assert is a device-side assert; kornia skips it on MPS")
+            pytest.skip("CPU only: a device-side assert on CUDA, and raised at the next sync on MPS from torch 2.13")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),

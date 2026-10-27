@@ -1033,7 +1033,7 @@ class TestCheckAsync(BaseTester):
         # TorchScript cannot read whether MPS has the assert kernel (from torch 2.13), so a scripted call reads a
         # condition on any device but CUDA on the host, and raises during the call.
         if device.type == "cuda":
-            pytest.skip("a scripted CUDA check is torch._assert_async, a device-side assert")
+            pytest.skip("TorchScript drops torch._assert_async, so a scripted CUDA call is not checked")
 
         def op(x: torch.Tensor) -> torch.Tensor:
             _check_async((x > 0).all(), "x must be positive")

@@ -316,10 +316,11 @@ def _check_async(condition: torch.Tensor, msg: str, guard: bool = False) -> None
     to nothing before. On a device without the kernel nothing is checked there. ``torch.jit.trace`` runs the assert on
     the traced values but drops it from the graph it records, and TorchScript drops it too, so a scripted call checks
     on the host only. It does so on every device but CUDA, since TorchScript cannot read whether MPS has the kernel.
-    The check is skipped when checks are disabled with :func:`disable_checks`, with ``python -O`` or with
-    ``KORNIA_CHECKS=0``, unless ``guard`` is set. It is also skipped under ``torch.vmap``, which has no batching rule
-    for the assert. Eager calls keep it under the other functorch transforms, such as ``torch.func.grad``; a compiled
-    call skips it under all of them, unless ``guard`` is set, since Dynamo cannot inspect the transform stack.
+    A scripted CUDA call is not checked. The check is skipped when checks are disabled with :func:`disable_checks`,
+    with ``python -O`` or with ``KORNIA_CHECKS=0``, unless ``guard`` is set. It is also skipped under ``torch.vmap``,
+    which has no batching rule for the assert. Eager calls keep it under the other functorch transforms, such as
+    ``torch.func.grad``; a compiled call skips it under all of them, unless ``guard`` is set, since Dynamo cannot
+    inspect the transform stack.
 
     Args:
         condition: a boolean tensor with one element, usually ``(...).all()``.
