@@ -282,16 +282,19 @@ Kornia pays off where a hand-written version gets long or fragile, or where the 
 - **Per-sample parameters in one batched call** — a different blur ``sigma``, rotation angle, warp matrix or
   brightness factor for every image, in one call; torchvision's functional ops apply one parameter per call.
 - **Batched minimal solvers and robust estimation** — 7- and 8-point fundamental, 5-point essential, DLT homography
-  and PnP solvers over whole batches of samples, and a ``RANSAC`` that runs the whole loop on the device.
+  and PnP solvers over whole batches of samples, and a ``RANSAC`` that samples and scores on the device (the whole
+  estimation with ``compile=True``, PyTorch ≥ 2.14).
 - **Differentiable geometry** — depth to 3D and back, camera models with lens distortion and Lie groups, with
   gradients through depth, pose and camera parameters.
-- **Annotated augmentation** — one sampled transform for images, masks, boxes and keypoints, in 2D and 3D, and its
-  inverse; on CUDA, with no avoidable host synchronization.
+- **Annotated augmentation** — one sampled transform for images, masks, boxes and keypoints in 2D, and its inverse;
+  on CUDA, with no avoidable host synchronization.
 - **Local features on the GPU** — SIFT, HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue.
-- **Compiles and exports** — nearly all operators run under ``torch.compile``; see :doc:`get-started/export-support`.
-- **Fast on batched GPU tensors** — many filters, warps, matching steps and metrics run 10× to over 100× faster than
-  per-image CPU OpenCV or scikit-image; :doc:`get-started/performance` shows every win and loss, including the small
-  overlap with torchvision.
+- **Compiles and exports** — nearly all probed operator configurations run under ``torch.compile``; see
+  :doc:`get-started/export-support`.
+- **Fast on batched GPU tensors** — in the published 0.9.0 benchmarks (RTX 4090, batch 32), many filters, warps,
+  matching steps and metrics run about 10× to 70× faster in eager mode than per-image CPU OpenCV or scikit-image, and
+  more under ``torch.compile``. Results vary with hardware and workload; :doc:`get-started/performance` shows every
+  win and loss, including the small overlap with torchvision.
 
 For a single fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are
 just as good.
