@@ -1937,7 +1937,13 @@ def homography_warp(
     normalized_coordinates: bool = True,
     normalized_homography: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by normalized 2D homographies.
+    r"""Warp an image by a normalized destination→source homography (default ``normalized_homography=True``).
+
+    For a source→destination homography in pixel coordinates, such as :class:`~kornia.geometry.ransac.RANSAC` and
+    :func:`~kornia.geometry.homography.find_homography_dlt` return, use :func:`warp_perspective`. Passed here
+    unchanged, such a homography is read as a normalized destination→source one and usually samples outside the
+    source, so the output is all zeros. ``normalized_homography=False`` also accepts it and forwards it to
+    :func:`warp_perspective` with this function's ``align_corners=False`` default.
 
     See :class:`~kornia.geometry.transform.HomographyWarper` for details.
 
@@ -2052,7 +2058,11 @@ def homography_warp3d(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by 3D homographies.
+    r"""Warp a volume by a normalized destination→source 3D homography (default ``normalized_coordinates=True``).
+
+    For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d`: this function has no
+    ``normalized_homography`` switch, and ``normalized_coordinates=False`` still reads a destination→source
+    homography.
 
     Convention:
         - input: :math:`(N, C, D, H, W)`; ``dsize`` is the output size ``(d, h, w)``
