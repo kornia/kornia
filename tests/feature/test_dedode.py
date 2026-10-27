@@ -98,6 +98,8 @@ class TestNestedTensorBlock(BaseTester):
 class TestDinoVisionTransformer(BaseTester):
     def test_get_intermediate_layers_empty_batch_6266(self, device, dtype):
         """``reshape=True`` turns the token grid of an empty batch into an empty feature map."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         model = DinoVisionTransformer(img_size=56, patch_size=14, embed_dim=32, depth=2, num_heads=2)
         model = model.to(device, dtype).eval()
         (out,) = model.get_intermediate_layers(torch.rand(0, 3, 56, 56, device=device, dtype=dtype), reshape=True)

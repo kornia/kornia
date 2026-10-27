@@ -202,6 +202,8 @@ class TestEfficientViT:
     @pytest.mark.parametrize("model_name", ["b0", "l0"])
     def test_empty_batch_6266(self, device, dtype, model_name: str):
         """An empty batch goes through the linear attention and keeps every stage's channels and size."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         model = getattr(vit, f"efficientvit_backbone_{model_name}")().to(device, dtype).eval()
         feats = model(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
         ref = model(torch.rand(1, 3, 64, 64, device=device, dtype=dtype))

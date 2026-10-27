@@ -94,6 +94,8 @@ class TestTinyViT(BaseTester):
     @pytest.mark.parametrize("img_size", [128, 224])
     def test_empty_batch_6266(self, device, dtype, img_size):
         """An empty batch goes through the padded and the unpadded window attention."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         model = TinyViT(img_size=img_size).to(device=device, dtype=dtype).eval()
         out = model(torch.rand(0, 3, img_size, img_size, device=device, dtype=dtype))
         assert out.shape == (0, 1000)

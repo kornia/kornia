@@ -56,6 +56,8 @@ class TestVisionTransformer(BaseTester):
 
     def test_empty_batch_6266(self, device, dtype):
         """An empty batch keeps the token and embedding dimensions."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         vit = VisionTransformer(image_size=32, num_heads=2, embed_dim=64, depth=1).to(device, dtype)
         out = vit(torch.rand(0, 3, 32, 32, device=device, dtype=dtype))
         assert out.shape == (0, 5, 64)
