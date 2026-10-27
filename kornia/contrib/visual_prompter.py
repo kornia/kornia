@@ -101,6 +101,9 @@ class VisualPrompter:
         device: The desired device to use the model.
         dtype: The desired dtype to use the model.
 
+    Raises:
+        NotImplementedError: If ``config`` is neither a :class:`~kornia.models.sam.SamConfig` nor ``None``.
+
     Example:
         >>> # prompter = VisualPrompter() # Will load the vit h for default
         >>> # You can load a custom SAM type for modifying the config
@@ -123,6 +126,11 @@ class VisualPrompter:
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> None:
+        """Build the configured SAM model and its preprocessing transforms.
+
+        A missing config selects pretrained ViT-H. The model and normalization statistics use the requested
+        device and dtype; unsupported configuration types raise ``NotImplementedError``.
+        """
         super().__init__()
         if config is None:
             config = SamConfig(model_type="vit_h", pretrained=True)
@@ -137,7 +145,7 @@ class VisualPrompter:
                 torch.tensor([58.395, 57.12, 57.375], device=device, dtype=dtype) / 255
             )
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unsupported config type: {type(config).__name__}. Expected SamConfig or None.")
 
         self.model = self.model.to(device=device, dtype=dtype)
         self.transforms = AugmentationSequential(*transforms, same_on_batch=True)

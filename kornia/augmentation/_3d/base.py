@@ -48,7 +48,8 @@ class AugmentationBase3D(_AugmentationBase):
           only.
         - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
           values. Of the concrete 3D constructors only :class:`~kornia.augmentation.RandomTransplantation3D`
-          exposes ``p_batch`` (`#4425 <https://github.com/kornia/kornia/issues/4425>`_); :class:`CenterCrop3D` and
+          exposes ``p_batch`` in its constructor, though it can be set as an attribute on any 3D augmentation;
+          :class:`CenterCrop3D` and
           :class:`RandomCrop3D` instead map their own ``p`` onto the call-wide gate. Parameters use the common
           augmentation RNG and ``forward(x, params=...)`` replays a complete generated dictionary. See
           :doc:`/get-started/conventions` for the canonical sampling, seeding, and serialization contract.

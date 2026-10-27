@@ -90,8 +90,8 @@ class Vector3(TensorWrapper):
 
         Returns:
             New :class:`Vector3` of the same shape. The norm is floored at ``1e-12``, so a shorter vector is scaled
-            by ``1e12`` instead of normalized (`#3952 <https://github.com/kornia/kornia/issues/3952>`_). A zero
-            vector stays zero in every dtype.
+            by ``1e12`` instead of normalized, as in :func:`~kornia.geometry.conversions.normalize_quaternion`. A
+            zero vector stays zero in every dtype.
         """
         return Vector3(_normalize_last_dim(self.data, 1e-12))
 

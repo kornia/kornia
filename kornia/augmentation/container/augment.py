@@ -28,7 +28,7 @@ from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.augmentation.utils.random import _with_generator
 from kornia.constants import DataKey, Resample
-from kornia.core._compat import torch_version_lt
+from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.core.mixin.image_module import _rebuild_container
@@ -153,8 +153,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
-          in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
-          assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
+          in that working dtype raise ``RuntimeError`` instead of being rounded, unless checks are disabled
+          (:func:`~kornia.core.check.disable_checks`, ``python -O`` or ``KORNIA_CHECKS=0``). On accelerators an
+          asynchronous assertion may report by the next synchronization; MPS before torch 2.13 checks on the host.
         - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
           ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
           may differ. Each entry uses its sample's gate, transform parameters and matrix, including in
@@ -189,7 +190,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         :class:`~kornia.augmentation.RandomElasticTransform` warps the image **and** a ``mask`` key with it,
         but returns keypoints and boxes unchanged, and
         :class:`~kornia.augmentation.RandomThinPlateSpline` and :class:`~kornia.augmentation.RandomFisheye`
-        return keypoints and boxes unchanged and raise a bare ``NotImplementedError`` on a ``mask`` key.
+        return keypoints and boxes unchanged and raise ``NotImplementedError`` on a ``mask`` key,
+        with a message identifying the unsupported augmentation (including at ``p=0``).
         Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
     .. note::
@@ -1026,12 +1028,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 f"Integer mask labels must be exactly representable in {dtype}. "
                 "Use a float64 image where supported or remap labels to smaller integers."
             )
-            if mask.device.type == "mps" and torch_version_lt(2, 13, 0):
-                # Older MPS has no asynchronous assertion kernel. Do not skip a correctness check there.
-                if not bool(exact):
-                    raise RuntimeError(message)
-            else:
-                torch._assert_async(exact, message)
+            _check_async(exact, message)
         return converted
 
     @staticmethod

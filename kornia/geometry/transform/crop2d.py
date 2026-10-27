@@ -167,6 +167,9 @@ def center_crop(
     Convention:
         - input: :math:`(B, C, H, W)` (strictly 4D — no unbatched ``(C, H, W)``/
           ``(H, W)`` input is accepted); ``size`` is ``(h, w)``
+        - offset: the crop starts at the integer pixel ``int(H / 2 - h / 2)`` (likewise for the width), as in
+          :class:`CenterCrop2D`, so the output is a sub-image of the input. With an odd margin the extra pixel is
+          left at the bottom/right; for a ``size`` larger than the input, the extra padding pixel goes there too.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -212,11 +215,12 @@ def center_crop(
     src_h_half: float = src_h / 2
     src_w_half: float = src_w / 2
 
-    start_x: float = src_w_half - dst_w_half
-    start_y: float = src_h_half - dst_h_half
+    # an integer start, as CenterCrop2D takes it: a fractional one would resample between pixels
+    start_x: int = int(src_w_half - dst_w_half)
+    start_y: int = int(src_h_half - dst_h_half)
 
-    end_x: float = start_x + dst_w - 1
-    end_y: float = start_y + dst_h - 1
+    end_x: int = start_x + dst_w - 1
+    end_y: int = start_y + dst_h - 1
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
@@ -467,6 +471,9 @@ def crop_by_indices(
         - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
           slice does not match ``size``, whether or not ``src_box`` is identical across
           the batch — each row's output depends only on its own box.
+        - the part of a box outside the image is clipped on every side, a box that starts left of or above the
+          image included, and ``shape_compensation`` then applies. With ``'pad'`` the padding goes on the side
+          where the box overflowed, so every kept pixel stays at its position in the box.
 
     .. note::
         Under :func:`torch.compile` a non-empty batch with ``size`` given, ``'bilinear'``,
@@ -546,6 +553,14 @@ def crop_by_indices(
     # stacked tensor) instead of a ``unique`` per column plus a device-to-host ``int(...)`` inside
     # every loop iteration — the coordinates index Python-level slicing, so they must be host ints.
     x1l, x2l, y1l, y2l = torch.stack([x1, x2, y1, y2], dim=0).tolist()
+    # A negative index would wrap to the far edge, so the part of a box left of or above the image is clipped,
+    # like the part past the right or bottom edge, which the slice clips. ``'pad'`` pads it back on that side.
+    left = [max(-v, 0) for v in x1l]
+    top = [max(-v, 0) for v in y1l]
+    x1l, x2l = [max(v, 0) for v in x1l], [max(v, 0) for v in x2l]
+    y1l, y2l = [max(v, 0) for v in y1l], [max(v, 0) for v in y2l]
+    # With 'pad' a clipped box needs that padding even when its clipped slice happens to have the requested size.
+    shifted = [shape_compensation != "resize" and (left[i] > 0 or top[i] > 0) for i in range(B)]
 
     # ``B > 0``: an empty batch has no first box to compare against, and takes the general path below,
     # which returns an empty ``(0, C, *size)`` tensor (#4429).
@@ -555,9 +570,11 @@ def crop_by_indices(
         and x2l.count(x2l[0]) == B
         and y1l.count(y1l[0]) == B
         and y2l.count(y2l[0]) == B
+        and left.count(left[0]) == B
+        and top.count(top[0]) == B
     ):
         out = input_tensor[..., y1l[0] : y2l[0], x1l[0] : x2l[0]]
-        if size is not None and out.shape[-2:] != size:
+        if size is not None and (out.shape[-2:] != size or shifted[0]):
             if shape_compensation == "resize":
                 return resize(
                     out,
@@ -567,7 +584,7 @@ def crop_by_indices(
                     side="short",
                     antialias=antialias,
                 )
-            return F.pad(out, [0, size[1] - out.shape[-1], 0, size[0] - out.shape[-2]])
+            return _pad_to_size(out, size, left[0], top[0])
 
     if size is None:
         h, w = infer_bbox_shape(src)
@@ -592,12 +609,17 @@ def crop_by_indices(
     # ``contiguous`` keeps the result in the default memory format, as the ``torch.empty`` below does,
     # when the input is channels-last. MPS keeps the per-row copies: on an M1 the ``cat`` of strided
     # views ran at 0.75-0.96x their speed without gradients (B = 4-64, 256² -> 128², #4987).
-    if B > 0 and input_tensor.device.type != "mps" and all(crop.shape[-2:] == size for crop in slices):
+    if (
+        B > 0
+        and input_tensor.device.type != "mps"
+        and not any(shifted)
+        and all(crop.shape[-2:] == size for crop in slices)
+    ):
         return torch.cat(slices).contiguous()
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype) if rows is None else None
     crops: list[torch.Tensor] = []
     for i, _out in enumerate(slices):
-        if _out.shape[-2:] != size:
+        if _out.shape[-2:] != size or shifted[i]:
             if shape_compensation == "resize":
                 _out = resize(
                     _out,
@@ -608,7 +630,7 @@ def crop_by_indices(
                     antialias=antialias,
                 )
             else:
-                _out = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
+                _out = _pad_to_size(_out, size, left[i], top[i])
         if out is None:
             crops.append(_out)
         else:
@@ -616,6 +638,14 @@ def crop_by_indices(
     if out is None:
         return torch.cat(crops).contiguous()
     return out
+
+
+def _pad_to_size(crop: torch.Tensor, size: Tuple[int, int], left: int, top: int) -> torch.Tensor:
+    # ``left`` and ``top`` are the box columns and rows clipped before the image, so every kept pixel stays at its
+    # position in the box; the rest of ``size`` is padded (or, for a larger slice, trimmed) at the right and bottom.
+    # A box entirely outside the image clips more than ``size``: it is all padding, as past the right edge.
+    left, top = min(left, size[1]), min(top, size[0])
+    return F.pad(crop, [left, size[1] - crop.shape[-1] - left, top, size[0] - crop.shape[-2] - top])
 
 
 def _crop_by_indices_export(
@@ -745,6 +775,12 @@ class CenterCrop2D(nn.Module):
             )
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            if dst_h > src_h or dst_w > src_w:
+                # A size larger than the input: zero-pad around the image, as the resample mode does, then slice.
+                # The offsets are Python ints from the shapes, so this compiles with fullgraph=True.
+                left, top = max(-start_x, 0), max(-start_y, 0)
+                padded = F.pad(input, [left, max(end_x + 1 - src_w, 0), top, max(end_y + 1 - src_h, 0)])
+                return padded[..., start_y + top : end_y + 1 + top, start_x + left : end_x + 1 + left].contiguous()
             return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")

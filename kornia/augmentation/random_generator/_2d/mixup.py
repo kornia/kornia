@@ -80,12 +80,11 @@ class MixupGenerator(RandomGeneratorBase):
             batch_probs: torch.Tensor = _adapted_sampling(
                 (batch_size,), self.prob_sampler, same_on_batch, generator=self._generator
             )
+        # An index permutation: int64 whatever the sampling dtype (CUDA has no bfloat16 randperm, and float16 holds
+        # integers exactly only up to 2048). torch draws the same permutation for every dtype.
         mixup_pairs: torch.Tensor = torch.randperm(
-            batch_size,
-            device=self.device,
-            dtype=_dtype,
-            **_generator_kwargs(self._generator),
-        ).long()
+            batch_size, device=self.device, dtype=torch.long, **_generator_kwargs(self._generator)
+        )
         mixup_lambdas: torch.Tensor = _adapted_rsampling(
             (batch_size,), self.lambda_sampler, same_on_batch, generator=self._generator
         )

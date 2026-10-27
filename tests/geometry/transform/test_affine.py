@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import itertools
 import math
 
 import numpy as np
@@ -920,7 +921,8 @@ class TestScale(BaseTester):
     def test_isotropic_scale_factor_gradcheck(self, device):
         image = torch.arange(48, device=device, dtype=torch.float64).reshape(2, 1, 4, 6) / 48
         scale_factor = torch.tensor([0.8, 1.3], device=device, dtype=torch.float64)
-        self.gradcheck(kornia.geometry.transform.scale, (image, scale_factor))
+        # CUDA's grid_sample backward accumulates with atomics, so repeated backward passes differ by roundoff.
+        self.gradcheck(kornia.geometry.transform.scale, (image, scale_factor), nondet_tol=1e-8)
 
     def test_gradcheck(self, device):
         # test parameters
@@ -1354,6 +1356,22 @@ class TestGetShearMatrix(BaseTester):
         )
         assert out.device.type == center.device.type, "Output device must match center device"
         assert out.dtype == center.dtype, "Output dtype must match center dtype"
+
+    def test_get_shear_matrix3d_keeps_center_for_every_shear_subset(self, device, dtype):
+        # The translation used to come from the positive-tangent matrix while the returned linear part uses the
+        # negated tangents, so shears that meet in a product term moved the center (#6302). The center is asymmetric
+        # so that no coordinate can stand in for another.
+        names = ("sxy", "sxz", "syx", "syz", "szx", "szy")
+        values = (0.3, -0.25, 0.2, 0.15, -0.35, 0.1)
+        center = torch.tensor([[7.0, 23.0, 41.0]], device=device, dtype=dtype)
+        center_h = torch.tensor([7.0, 23.0, 41.0, 1.0], device=device, dtype=dtype)
+        # bfloat16 rounds near 41 in steps of 0.25, while the smallest displacement the bug caused here is 1.24 px.
+        tol = 0.5 if dtype in (torch.float16, torch.bfloat16) else None
+        for size in range(1, 7):
+            for subset in itertools.combinations(range(6), size):
+                shears = {names[i]: torch.tensor([values[i]], device=device, dtype=dtype) for i in subset}
+                out = kornia.geometry.transform.get_shear_matrix3d(center, **shears)
+                self.assert_close(out[0] @ center_h, center_h, rtol=tol and 0.0, atol=tol)
 
 
 class TestTransformModuleBuffers(BaseTester):

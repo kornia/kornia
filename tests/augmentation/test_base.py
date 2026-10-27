@@ -595,7 +595,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert any(len(set(row)) > 1 for row in rows)
 
     @pytest.mark.parametrize("augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix])
-    def test_wart_mixup_cutmix_and_patchmix_map_p_to_a_batch_gate_4425(self, augmentation_cls):
+    def test_convention_mixup_cutmix_and_patchmix_map_p_to_a_batch_gate_4425(self, augmentation_cls):
         # Their constructors map `p` to the mix base's batch-wide probability, unlike Jigsaw and Mosaic.
         rows = []
         for seed in range(8):
@@ -608,6 +608,21 @@ class TestConventionAugmentationBase2D(BaseTester):
             rows.append(params["batch_prob"].tolist())
         assert all(len(set(row)) == 1 for row in rows)
         assert {row[0] for row in rows} == {0.0, 1.0}
+
+    @pytest.mark.parametrize(
+        ("factory", "shape"),
+        [
+            (lambda: K.RandomAffine(30.0, p=1.0), (2, 3, 6, 8)),
+            (lambda: K.RandomRotation3D(30.0, p=1.0), (2, 1, 4, 6, 8)),
+        ],
+    )
+    def test_convention_p_batch_attribute_gates_any_augmentation_4425(self, factory, shape, device, dtype):
+        aug = factory()
+        aug.p_batch = 0.0
+        x = torch.rand(shape, device=device, dtype=dtype)
+        out = aug(x)
+        assert torch.equal(out, x)
+        assert not aug._params["batch_prob"].any()
 
     @pytest.mark.parametrize(
         "augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix, K.RandomJigsaw, K.RandomMosaic]
@@ -1205,7 +1220,8 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.mark.parametrize("clip_output", [False, True])
     def test_autocontrast_empty_batch_4429(self, probability, clip_output, device, dtype):
         data = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
-        augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
+        with pytest.warns(DeprecationWarning, match="clip_output"):
+            augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
         output = augmentation(data)
         replay = augmentation(data, params=augmentation._params)
         for actual in (output, replay):
@@ -1249,6 +1265,35 @@ class TestConventionAugmentationBase2D(BaseTester):
         # output geometry. Other empty-batch configurations remain tracked by the umbrella issue.
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
         assert augmentation()(empty).shape == shape
+
+    @pytest.mark.parametrize(
+        ("augmentation", "input_shape", "output_size"),
+        [
+            pytest.param(lambda p: K.RandomCrop((4, 6), p=p), (3, 6, 8), (4, 6), id="RandomCrop"),
+            pytest.param(lambda p: K.RandomCrop((4, 6), padding=1, p=p), (3, 6, 8), (4, 6), id="RandomCrop-padding"),
+            pytest.param(lambda p: K.CenterCrop((4, 6), p=p), (3, 6, 8), (4, 6), id="CenterCrop"),
+            pytest.param(lambda p: K.RandomResizedCrop((4, 4), p=p), (3, 6, 8), (4, 4), id="RandomResizedCrop"),
+            pytest.param(lambda p: K.Resize((4, 5), p=p), (3, 6, 8), (4, 5), id="Resize-tuple"),
+            pytest.param(lambda p: K.Resize(10, side="long", p=p), (3, 6, 8), (7, 10), id="Resize-int-long"),
+            pytest.param(lambda p: K.LongestMaxSize(16, p=p), (3, 6, 8), (12, 16), id="LongestMaxSize"),
+            pytest.param(lambda p: K.SmallestMaxSize(12, p=p), (3, 6, 8), (12, 16), id="SmallestMaxSize"),
+            pytest.param(lambda p: K.RandomCrop3D((4, 4, 4), p=p), (1, 6, 8, 10), (4, 4, 4), id="RandomCrop3D"),
+            pytest.param(lambda p: K.CenterCrop3D((4, 4, 4), p=p), (1, 6, 8, 10), (4, 4, 4), id="CenterCrop3D"),
+        ],
+    )
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    def test_zero_batch_takes_configured_size_under_any_gate_4429(
+        self, augmentation, input_shape, output_size, p, device, dtype
+    ):
+        # An empty batch has no sample for the gate to skip, so a shape-changing augmentation returns its configured
+        # output size whatever ``p`` is (#4429), as 0.8.3 did for the 2D crops. A non-empty batch the gate skips
+        # entirely still comes back at its input size.
+        channels = input_shape[0]
+        aug = augmentation(p)
+        empty = torch.rand(0, *input_shape, device=device, dtype=dtype)
+        assert aug(empty).shape == (0, channels, *output_size)
+        skipped = torch.rand(2, *input_shape, device=device, dtype=dtype)
+        assert augmentation(0.0)(skipped).shape == skipped.shape
 
 
 _AUGMENTATIONS = [K.RandomEqualize, K.RandomEqualize3D, K.RandomPosterize, K.RandomSharpness]

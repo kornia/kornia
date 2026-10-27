@@ -22,7 +22,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
-from kornia.augmentation.utils.random import _with_generator
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["ColorJiggleGenerator"]
@@ -85,7 +85,9 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         self.contrast_sampler = UniformDistribution(contrast[0], contrast[1], validate_args=False)
         self.hue_sampler = UniformDistribution(hue[0], hue[1], validate_args=False)
         self.saturation_sampler = UniformDistribution(saturation[0], saturation[1], validate_args=False)
-        self.randperm = partial(torch.randperm, device=device, dtype=dtype)
+        # The order is an index permutation: draw it as int64, whatever the sampling dtype. torch draws the same
+        # permutation for every dtype, and CUDA has no bfloat16 randperm.
+        self.randperm = partial(torch.randperm, device=device, dtype=torch.long)
 
     @_with_generator
     def forward(
@@ -109,5 +111,5 @@ class ColorJiggleGenerator(RandomGeneratorBase):
             "contrast_factor": contrast_factor.to(device=_device, dtype=_dtype),
             "hue_factor": hue_factor.to(device=_device, dtype=_dtype),
             "saturation_factor": saturation_factor.to(device=_device, dtype=_dtype),
-            "order": self.randperm(4, generator=self._generator).to(device=_device, dtype=_dtype).long(),
+            "order": self.randperm(4, **_generator_kwargs(self._generator)).to(device=_device),
         }

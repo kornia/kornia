@@ -100,8 +100,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     # The labels, the Jaccard weights and the sum over pixels are accumulated in the prediction dtype, or in float32
     # for a half-precision prediction, where pixel counts stay exact up to 2**24 pixels.
     accumulation_dtype = torch.promote_types(pred.dtype, torch.float32)
-    pred_flatten: Tensor = pred.reshape(pred.shape[0], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1).to(accumulation_dtype)
+    pred_flatten: Tensor = pred.flatten(start_dim=1)
+    target_flatten: Tensor = target.flatten(start_dim=1).to(accumulation_dtype)
 
     # get shapes
     B, N = pred_flatten.shape

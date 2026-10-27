@@ -84,10 +84,15 @@ class CutmixGenerator(RandomGeneratorBase):
         return f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        # torch draws Beta through Dirichlet, which has no CPU half-precision kernel: a generator moved to float16 by
+        # .to() raised on every draw. Draw in float32 for half precision, as the position samplers do (#4553). Build
+        # the concentration from the supplied beta directly in that dtype: a float16 round trip turns a large beta
+        # into inf and a small one into 0.
+        beta_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         if self.beta is None:
-            self._beta = torch.tensor(1.0, device=device, dtype=dtype)
+            self._beta = torch.tensor(1.0, device=device, dtype=beta_dtype)
         else:
-            self._beta = torch.as_tensor(self.beta, device=device, dtype=dtype)
+            self._beta = torch.as_tensor(self.beta, device=device, dtype=beta_dtype)
         if self.cut_size is None:
             self._cut_size = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
         else:

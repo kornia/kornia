@@ -533,10 +533,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
        Augmentations that change the spatial size provide `output_size` with shape (B, spatial_dims).
        `PadTo` and `RandomMosaic(output_size=...)` provide none, so their configured size is used; with
        `crop_if_exceeds=False`, `PadTo` keeps a dimension that is already larger.
-       Empty crops and resizes have no sampled
-       output-size rows, so their configured size is used only when the image forward path
-       always applies the transform. Other probability branches retain the current empty-gate
-       fallback tracked in #4429.
+       Empty crops and resizes have no sampled output-size rows, so their configured size is used,
+       whatever their probability: an empty gate takes the transformed branch, as the image
+       forward does (#4429).
 
     """
     data = param.data
@@ -587,10 +586,10 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Opti
         and isinstance(module, _AugmentationBase)
         and ("output_size" in data or isinstance(module, (K.RandomCrop, K.CenterCrop, K.RandomResizedCrop, K.Resize)))
     ):
-        # Match the image forward's unconditional path. An empty gate selects the original
-        # canvas in the other probability branches, including Resize's p_batch setting (#4429).
+        # Match the image forward: an empty gate takes the transformed branch under any probability,
+        # including Resize's p_batch setting (#4429).
         size = module.flags.get("size")
-        if module.p != 1.0 or module.p_batch != 1.0 or size is None:
+        if size is None:
             return batch_shape
         if isinstance(module, K.Resize) and isinstance(size, int):
             size = _side_to_image_size(size, batch_shape[-1] / batch_shape[-2], module.flags["side"])

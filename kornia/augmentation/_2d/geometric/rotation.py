@@ -148,7 +148,8 @@ class RandomRotation90(GeometricAugmentationBase2D):
     r"""Apply a random 90 * n degree rotation to a torch.Tensor image or a batch of torch.Tensor images.
 
     Args:
-        times: the range of n times 90 degree rotation needs to be applied.
+        times: the range of n times 90 degree rotation needs to be applied. A range of whole numbers is closed:
+          every whole number from the lower to the upper bound is drawn with the same probability.
         resample: Default: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
@@ -163,8 +164,10 @@ class RandomRotation90(GeometricAugmentationBase2D):
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
         - a positive rounded ``times`` rotates the displayed image counter-clockwise by ``times * 90`` degrees.
-        - ``times`` is sampled from a continuous uniform range and rounded, and a non-square image keeps its
-          ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
+        - a range of whole numbers for ``times`` is closed and uniform: ``times=(-1, 1)`` gives a clockwise quarter
+          turn, no turn and a counter-clockwise quarter turn with the same probability. A range with a fractional
+          bound is still drawn continuously and rounded.
+        - a non-square image keeps its ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively
@@ -207,7 +210,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator((times, "times", 0.0, (-3, 3)))
+        self._param_generator = rg.Rotation90Generator(times)
 
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
 

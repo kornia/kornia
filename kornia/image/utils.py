@@ -364,7 +364,8 @@ def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., to
           ``(C, H, W)`` input ``(1, C, H, W)``, and the leading dimensions of a longer input are flattened into ``B``.
           The output gets the input's leading dimensions back around ``f``'s own ``C``, ``H`` and ``W``, except that an
           ``(H, W)`` input gets ``f``'s first channel only; ``f`` must keep the batch size.
-        - An empty input raises ``ValueError`` before ``f`` is called.
+        - A zero channel, height or width raises ``ValueError`` before ``f`` is called. Zero leading dimensions, such
+          as an empty batch, are passed to ``f``, so an empty batch gives an empty output.
     """
 
     @wraps(f)
@@ -372,7 +373,7 @@ def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., to
         if not isinstance(input, torch.Tensor):
             raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
-        if input.shape.numel() == 0:
+        if 0 in input.shape[-3:]:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
@@ -399,6 +400,7 @@ def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., to
         See the Convention block of :func:`~kornia.image.perform_keep_shape_image`, with ``f`` receiving
         ``(B, C, D, H, W)``: a ``(D, H, W)`` input becomes ``(1, 1, D, H, W)`` and a ``(C, D, H, W)`` input
         ``(1, C, D, H, W)``.
+        A zero channel, depth, height or width raises ``ValueError``; an empty batch gives an empty output.
     """
 
     @wraps(f)
@@ -406,7 +408,7 @@ def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., to
         if not isinstance(input, torch.Tensor):
             raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
-        if input.numel() == 0:
+        if 0 in input.shape[-4:]:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape

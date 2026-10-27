@@ -117,7 +117,7 @@ class _HausdorffERLossBase(nn.Module):
             raise ValueError(f"Expect long type target value in range [0, {pred.size(1)}). Got {target.dtype}.")
         # The range check reads the data, which graph capture cannot do; skip it under any capture.
         # Neither Hausdorff loss scripts on main (its ``super().forward``), so no TorchScript guard is needed.
-        if not is_compiling() and not (target.max() < pred.size(1) and target.min() >= 0):
+        if not is_compiling() and target.numel() > 0 and not (target.max() < pred.size(1) and target.min() >= 0):
             raise ValueError(
                 f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
             )
@@ -202,7 +202,8 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
     @staticmethod
     def max_pool(x: torch.Tensor) -> torch.Tensor:
-        # Global max over the spatial dims; equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
+        """Take the global maximum over the spatial dimensions, keeping them with size one."""
+        # Equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:
@@ -276,7 +277,8 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
 
     @staticmethod
     def max_pool(x: torch.Tensor) -> torch.Tensor:
-        # Global max over the volume dims; equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
+        """Take the global maximum over the volume dimensions, keeping them with size one."""
+        # Equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-3, -2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:

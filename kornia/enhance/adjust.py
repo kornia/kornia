@@ -26,11 +26,11 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.core._compat import torch_version_ge
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
+    _check_async,
     are_checks_enabled,
 )
 from kornia.core.exceptions import TypeCheckError
@@ -39,40 +39,26 @@ from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonbl
 from kornia.image.utils import _to_bcdhw, _to_bchw
 
 
-def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
-    """Validate a tensor condition without graph breaks or hidden device syncs.
+def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
+    """Clamp a tensor this module just allocated into ``[0, 1]``, in place when no gradient is recorded.
 
-    ``torch._assert_async`` keeps the check fullgraph-compilable (a Python ``if tensor: raise``
-    would break the graph), but materializing ``cond`` on MPS would drain the queued stream on
-    every call, so kornia skips the check there by design. The skip is this device check, not a
-    missing kernel: torch 2.5.1 had no ``aten::_assert_async`` MPS kernel, torch 2.14 registers
-    one, and the check is skipped on MPS either way.
+    The values equal ``image.clamp(0, 1)``. Without a recorded gradient the clamp reuses the fresh buffer instead of
+    allocating another image-sized one: at batch 32 that third 25 MB temporary per call made glibc trim and re-fault
+    the heap on every call. Only call it on a tensor no caller can see.
+
+    An integer tensor, which reaches here only with checks disabled, keeps the out-of-place clamp: the float bounds
+    promote its result to the default float dtype, which an in-place clamp cannot do. So does a tensor under a function
+    transform: vmap has a batching rule for ``clamp`` but not for ``clamp_``, whose fallback loops over the batch and
+    rejects an empty one. TorchScript cannot compile the function-transform query, so a scripted call keeps it too.
     """
-    if cond.device.type == "mps":
-        return
-    torch._assert_async(cond, msg)
-
-
-# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
-_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
-
-
-def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
-    """Validate the input domain of a 256-entry lookup, including on MPS.
-
-    Same as :func:`_assert_async_value_check` on CPU and CUDA. On MPS that helper skips the check, and an
-    index the lookup cannot use then surfaces as torch's raw ``gather: index ... is out of bounds`` error,
-    which names neither the op nor the range it needs. From torch ``2.13`` the assert has an MPS kernel, so
-    the same asynchronous check runs there: no host read, and the named error is reported at the next
-    synchronization. Older releases have none, and the lookups guarded here consume the whole input anyway,
-    so the condition is read on the host instead: one stream sync per call. A host read would break a
-    ``torch.compile`` graph, so only that older fallback keeps the skip while compiling.
-    """
-    if cond.device.type == "mps" and not _MPS_HAS_ASSERT_ASYNC:
-        if not is_compiling() and not bool(cond):
-            raise RuntimeError(msg)
-        return
-    torch._assert_async(cond, msg)
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if (
+            image.is_floating_point()
+            and not (torch.is_grad_enabled() and image.requires_grad)
+            and not torch._C._are_functorch_transforms_active()
+        ):
+            return image.clamp_(min=0.0, max=1.0)
+    return image.clamp(min=0.0, max=1.0)
 
 
 def _check_floating_image(image: torch.Tensor, op: str) -> None:
@@ -378,7 +364,8 @@ def adjust_gamma(
     r"""Perform gamma correction on an image.
 
     Convention:
-        Applies gain * input ** gamma elementwise, then clamps to [0, 1].
+        Applies gain * input ** gamma elementwise, then clamps to [0, 1]. For ``0 < gamma < 1`` the derivative of
+        ``input ** gamma`` at a black pixel (``input == 0``) is infinite; the gradient there is 0 instead.
 
     .. image:: _static/img/adjust_contrast.png
 
@@ -398,8 +385,10 @@ def adjust_gamma(
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     .. note::
-       The non-negativity check on ``gamma``/``gain`` runs on CPU and CUDA (via ``torch._assert_async``).
-       kornia skips it on MPS by design, so invalid values do not raise there.
+       The non-negativity check on ``gamma``/``gain`` reads a CPU value during the call and raises
+       :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`. A tensor on CUDA, or on MPS
+       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` by the
+       next synchronization; on CUDA that is a device-side assert.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -445,7 +434,15 @@ def adjust_gamma(
                 if input.dtype == torch.float32:
                     gamma = struct.unpack("f", struct.pack("f", gamma))[0]
                     gain = struct.unpack("f", struct.pack("f", gain))[0]
-                return (input.pow(gamma) * gain).clamp(0.0, 1.0)
+                if torch.is_grad_enabled() and input.requires_grad and 0.0 < gamma < 1.0:
+                    # As in the tensor path below.
+                    black = input == 0
+                    power = torch.where(
+                        black, torch.zeros_like(input), torch.where(black, torch.ones_like(input), input).pow(gamma)
+                    )
+                else:
+                    power = input.pow(gamma)
+                return (power * gain).clamp(0.0, 1.0)
 
     if isinstance(gamma, float):
         gamma = torch.tensor([gamma], device=input.device, dtype=input.dtype)
@@ -456,11 +453,11 @@ def adjust_gamma(
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
 
-    _assert_async_value_check(
+    _check_async(
         (gamma >= 0.0).all(),
         "Gamma must be non-negative. Clamp it first: max(gamma, 0.0) for floats, gamma.clamp_min(0.0) for tensors.",
     )
-    _assert_async_value_check(
+    _check_async(
         (gain >= 0.0).all(),
         "Gain must be non-negative. Clamp it first: max(gain, 0.0) for floats, gain.clamp_min(0.0) for tensors.",
     )
@@ -468,8 +465,18 @@ def adjust_gamma(
     gamma = _make_factor_broadcastable(gamma, input)
     gain = _make_factor_broadcastable(gain, input)
 
-    # Apply the gamma correction
-    x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
+    # Apply the gamma correction. For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, which the clamp
+    # below turns into NaN (inf before torch 2.14). Black pixels then take the power of a safe base, keep their value
+    # 0 ** gamma = 0 and get a zero gradient; gamma = 0 keeps 0 ** 0 = 1. The values are the same either way, so the
+    # masking only runs when autograd records a gradient for the input.
+    if torch.is_grad_enabled() and input.requires_grad:
+        black = (input == 0) & (gamma > 0) & (gamma < 1)
+        power = torch.where(
+            black, torch.zeros_like(input), torch.pow(torch.where(black, torch.ones_like(input), input), gamma)
+        )
+    else:
+        power = torch.pow(input, gamma)
+    x_adjust: torch.Tensor = gain * power
 
     # Truncate between pixel values
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
@@ -512,8 +519,10 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     .. note::
-       The non-negativity check on ``factor`` runs on CPU and CUDA (via ``torch._assert_async``).
-       kornia skips it on MPS by design, so invalid values do not raise there.
+       The non-negativity check on ``factor`` reads a CPU value during the call and raises
+       :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`. A tensor on CUDA, or on MPS
+       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` by the
+       next synchronization; on CUDA that is a device-side assert.
 
     Example:
         >>> import torch
@@ -540,7 +549,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     factor = _make_factor_broadcastable(factor, image)
 
-    _assert_async_value_check(
+    _check_async(
         (factor >= 0).all(),
         "Contrast factor must be non-negative. Clamp it first: max(factor, 0.0) for floats, "
         "factor.clamp_min(0.0) for tensors.",
@@ -551,7 +560,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     # Truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -675,7 +684,7 @@ def adjust_brightness(
 
     # truncate between pixel values
     if clip_output:
-        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+        img_adjust = _clip_unit_fresh(img_adjust)
 
     return img_adjust
 
@@ -877,9 +886,10 @@ def solarize(
         The solarized images with shape :math:`(*, C, H, W)`.
 
     .. note::
-       The range check on ``additions`` runs via ``torch._assert_async`` on the device of ``additions``.
-       kornia skips it for an ``additions`` tensor on MPS, so invalid values do not raise there, but a
-       float, or a CPU tensor, is checked on the CPU and raises for an MPS image too.
+       The range check on ``additions`` reads a float or a CPU tensor during the call and raises
+       :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`, whatever the device of the image.
+       A tensor on CUDA, or on MPS from torch 2.13, is checked with ``torch._assert_async`` instead and raises
+       ``RuntimeError`` by the next synchronization; on CUDA that is a device-side assert.
 
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -909,14 +919,14 @@ def solarize(
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 
         if isinstance(additions, float):
-            # Check the Python value on the host: rounded to float16/bfloat16, a value just past the bound
-            # passes, and the check is skipped for a tensor on MPS.
-            in_range = torch.tensor(-0.5 <= additions <= 0.5)
+            # Check the Python value on the host, whatever the default device: rounded to float16/bfloat16, a
+            # value just past the bound passes.
+            in_range = torch.tensor(-0.5 <= additions <= 0.5, device="cpu")
             additions = torch.as_tensor(additions, device=input.device, dtype=input.dtype)
         else:
             in_range = ((additions <= 0.5) & (additions >= -0.5)).all()
 
-        _assert_async_value_check(
+        _check_async(
             in_range,
             "The addition must be in the closed range [-0.5, 0.5]. Clamp it first: min(max(additions, -0.5), 0.5) "
             "for floats, additions.clamp(-0.5, 0.5) for tensors.",
@@ -1153,12 +1163,14 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``scaled.long()``,
     # which is out of bounds unless ``scaled`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
-    # on MPS before torch 2.13 it costs one host sync instead (see ``_lookup_value_check``). Inputs the
-    # lookup can index keep working exactly as before.
-    _lookup_value_check(
+    # on MPS before torch 2.13 it costs one host sync instead (see ``_check_async``). Inputs the
+    # lookup can index keep working exactly as before. The check keeps the index in bounds, so it runs
+    # with checks disabled too: a compiled CPU scatter with an index out of range terminates the process.
+    _check_async(
         ((scaled > -1.0) & (scaled < 256.0)).all(),
         "equalize expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
+        guard=True,
     )
 
     # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
@@ -1221,9 +1233,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
        boolean image raises
        :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
        ``image.float() / 255`` first. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
-       raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel
-       from torch ``2.13``; on an older MPS release the condition is read on the host instead, one device sync
-       per call, and is skipped there under ``torch.compile``.
+       raise a ``RuntimeError`` naming the range, during the call for a CPU image, even when checks are
+       disabled, since the check keeps the lookup in bounds. On CUDA, and on MPS from torch ``2.13``, the check
+       is ``torch._assert_async`` and raises by the next synchronization; on an older MPS release the condition
+       is read on the host instead, one device sync per call, and is skipped there under ``torch.compile``.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
@@ -1260,9 +1273,10 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
        floating-point roundoff; just above that, whether it changes depends on the values. An integer or
        boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, as for :func:`equalize`. Values
        the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the
-       range. The check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older
-       MPS release the condition is read on the host instead, one device sync per call, and is skipped there
-       under ``torch.compile``.
+       range, during the call for a CPU volume, even when checks are disabled, as for :func:`equalize`. On CUDA,
+       and on MPS from torch ``2.13``, the check is ``torch._assert_async`` and raises by the next
+       synchronization; on an older MPS release the condition is read on the host instead, one device sync per
+       call, and is skipped there under ``torch.compile``.
 
     """
     _check_floating_image(input, "equalize3d")

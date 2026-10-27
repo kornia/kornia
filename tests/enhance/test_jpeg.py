@@ -283,6 +283,25 @@ class TestDiffJPEG(BaseTester):
         assert "expected 16 or 1, got 8" in str(errinfo.value)
         assert "jpeg_quality needs one quality per image" in str(errinfo.value)
 
+    def test_empty_batch(self, device, dtype):
+        # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+        x = torch.rand(0, 3, 16, 24, device=device, dtype=dtype)
+        no_quality = torch.zeros(0, device=device, dtype=dtype)
+        one_quality = torch.tensor([50.0], device=device, dtype=dtype)
+        out = kornia.enhance.jpeg_codec_differentiable(x, one_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        out = kornia.enhance.jpeg_codec_differentiable(x, no_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        module = kornia.enhance.JPEGCodecDifferentiable()
+        out = module(x, no_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        out = module(x, one_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+
     def test_cardinality(self, device, dtype) -> None:
         B, H, W = 1, 16, 16
         img = torch.zeros(B, 3, H, W, device=device, dtype=dtype)

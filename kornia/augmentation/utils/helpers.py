@@ -27,7 +27,7 @@ from kornia.augmentation.utils.random import _sample_distribution
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -79,6 +79,34 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     valid = torch.arange(num_boxes, device=out.device)[None] < real[:, None]
     valid = valid.reshape(valid.shape + (1,) * (out.dim() - 2))
     return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
+
+
+def _frame_boxes(boxes: VideoBoxes) -> Boxes:
+    r"""View :class:`VideoBoxes` as the frame-level :class:`Boxes` of its :math:`(B \cdot T, N, 4, 2)` storage.
+
+    The children of :class:`VideoSequential` run on the flattened frames, and their parameters (a mix's
+    ``permutation``, a gate) index frames. ``VideoBoxes`` indexes whole videos, so a child given one would select
+    videos with frame indices (#6173). The view shares the storage and the validity mask.
+    """
+    frames = Boxes(boxes._data, False, mode=boxes._mode)
+    frames._N = boxes._N
+    frames._valid = boxes._valid
+    frames._is_batched = boxes._is_batched
+    return frames
+
+
+def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
+    """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
+
+    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
+    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
+    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    """
+    boxes = VideoBoxes(frames._data, False, mode=frames._mode)
+    boxes._valid = frames._valid
+    boxes._is_batched = frames._is_batched
+    boxes.temporal_channel_size = temporal_channel_size
+    return boxes
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:

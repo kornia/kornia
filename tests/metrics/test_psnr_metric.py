@@ -177,3 +177,65 @@ class TestConventionsPsnr(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0.0, atol=0.0)
         assert torch.isfinite(kornia.metrics.psnr(a.to(dtype), b.to(dtype), 255.0))
+
+
+class TestPSNRHalfPrecision(BaseTester):
+    @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("range_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    def test_tensor_range_value_dtype_and_gradients(self, device, image_dtype, range_dtype, scalar_range):
+        """Square tensor data ranges in the compute dtype without losing their output dtype or gradients."""
+        if device.type == "mps" and range_dtype == torch.float64:
+            pytest.skip("MPS has no float64")
+        image = torch.tensor([32.0], device=device, dtype=image_dtype, requires_grad=True)
+        values = 512.0 if scalar_range else [512.0, 1024.0]
+        max_val = torch.tensor(values, device=device, dtype=range_dtype, requires_grad=True)
+        expected_dtype = torch.promote_types(image_dtype, range_dtype)
+        reference_range = max_val.detach().cpu().double()
+        reference = (20 * torch.log10(reference_range / 32)).to(device=device, dtype=expected_dtype)
+
+        actual = kornia.metrics.psnr(image, torch.zeros_like(image), max_val)
+        assert actual.shape == max_val.shape
+        assert actual.dtype == expected_dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, reference)
+        actual.sum().backward()
+        expected_range_grad = (20 / (math.log(10) * reference_range)).to(device=device, dtype=range_dtype)
+        self.assert_close(max_val.grad, expected_range_grad)
+        self.assert_close(image.grad, image.new_tensor([-20 * max_val.numel() / (math.log(10) * 32)]))
+
+    @pytest.mark.parametrize("residual,max_val", [(1e-4, 1.0), (1.0 / 512, 1.0), (300.0, 512.0)])
+    def test_representable_psnr(self, device, dtype, residual, max_val):
+        """Finite half-precision PSNR and its loss wrappers match the scalar reference."""
+        image = torch.tensor([residual], device=device, dtype=dtype)
+        target = torch.zeros_like(image)
+        delta = image.detach().cpu().double().item()
+        expected = image.new_tensor(20 * math.log10(max_val / abs(delta)))
+        actual = kornia.metrics.psnr(image, target, max_val)
+        assert actual.dtype == dtype
+        assert torch.isfinite(actual)
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.psnr_loss(image, target, max_val), -expected)
+        self.assert_close(kornia.losses.PSNRLoss(max_val)(image, target), -expected)
+
+    @pytest.mark.parametrize("residual,max_val", [(1.0 / 512, 1.0), (300.0, 512.0)])
+    def test_representable_gradient(self, device, dtype, residual, max_val):
+        """Image and target gradients match the analytic derivative for represented residuals."""
+        image = torch.tensor([residual], device=device, dtype=dtype, requires_grad=True)
+        target = torch.zeros_like(image, requires_grad=True)
+        result = kornia.metrics.psnr(image, target, max_val)
+        grad_image, grad_target = torch.autograd.grad(result, (image, target))
+        expected = image.new_tensor([-20 / (math.log(10) * image.detach().cpu().double().item())])
+        assert torch.isfinite(grad_image).all()
+        assert torch.isfinite(grad_target).all()
+        self.assert_close(grad_image, expected)
+        self.assert_close(grad_target, -expected)
+
+    def test_tensor_max_val_keeps_its_result_dtype(self, device, dtype):
+        """A float32 tensor range retains its contribution to the result dtype."""
+        # A float32 tensor max_val gave a float32 PSNR for every image dtype before half precision moved to float32.
+        image = torch.tensor([1.0 / 512], device=device, dtype=dtype)
+        max_val = torch.tensor([1.0, 255.0], device=device)
+        actual = kornia.metrics.psnr(image, torch.zeros_like(image), max_val)
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, max_val.new_tensor([20 * math.log10(512), 20 * math.log10(255 * 512)]))

@@ -6,7 +6,7 @@ kornia.geometry.keypoints
 
 Object-oriented API for keypoints: :class:`~kornia.geometry.keypoints.Keypoints` wraps a tensor of 2D ``(x, y)``
 points and transforms and pads it; :class:`~kornia.geometry.keypoints.Keypoints3D` validates and stores 3D
-``(x, y, z)`` points.
+``(x, y, z)`` points and transforms them.
 
 .. autoclass:: kornia.geometry.keypoints.Keypoints
    :members:

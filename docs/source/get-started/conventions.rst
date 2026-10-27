@@ -590,9 +590,11 @@ Randomness in augmentations
   order of ``ColorJiggle`` and ``ColorJitter`` is shared across the batch
   regardless. On ``AugmentationSequential``, ``same_on_batch=None`` keeps each
   child's setting, and ``True`` or ``False`` overwrites it.
-- Whether a constructor's ``p`` sets the per-sample or the whole-batch gate,
-  and whether it exposes ``p_batch``, depends on the concrete class
-  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). A sample the gate
+- Every augmentation honours ``p_batch`` as an attribute, and only
+  ``RandomHorizontalFlip``, ``RandomVerticalFlip``, ``RandomTransplantation``
+  and ``RandomTransplantation3D`` take it in the constructor; whether a
+  constructor's ``p`` sets the per-sample or the whole-batch gate depends on
+  the concrete class. A sample the gate
   skips comes back with its input values, its values cannot make the call
   raise, and where they are finite its gradient is the identity. Below ``p=1``
   the transform still runs on the whole batch before the gate selects; classes
@@ -719,7 +721,8 @@ float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and cla
 ``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
 uint8; a floating image keeps its dtype. :func:`~kornia.filters.guided_blur` returns the promoted dtype of its
 ``guidance`` and ``input``, an integer one counting as float32. The blur pools are network layers and expect a
-floating input; an integer image is outside their contract.
+floating input: they raise a :class:`~kornia.core.exceptions.TypeCheckError` (a ``TypeError``) for a non-floating
+input instead of promoting it.
 
 - :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
   **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
