@@ -113,7 +113,7 @@ def unproject_meshgrid(
         height: height of image.
         width: width of image.
         camera_matrix: tensor containing the camera intrinsics with shape ``(B, 3, 3)``.
-        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
+        normalize_points: whether to normalize the pointcloud. This must be set to ``True`` when the depth is
           represented as the Euclidean ray length from the camera position.
         device: device to place the result on.
         dtype: dtype of the pixel grid; the output dtype follows promotion with ``camera_matrix``.
@@ -162,12 +162,14 @@ def depth_to_3d_v2(
 
     ``points = depth_to_3d_v2(depth, camera_matrix)`` takes a ``(*, H, W)`` map of camera-frame depths and
     ``(B, 3, 3)`` pixel intrinsics, and returns the camera-frame point of every pixel as a ``(*, H, W, 3)``
-    tensor. The leading dimensions of ``depth`` broadcast with the camera batch, which lines up with the axis just
-    before ``H``: a ``(4, 4)`` depth works with any number of cameras, but a ``(B, T, H, W)`` depth with ``B``
-    cameras pairs camera ``t`` with ``depth[:, t]`` when ``T == B`` and raises otherwise. For one camera per
-    ``(B, T, H, W)`` batch element, pass ``xyz_grid=unproject_meshgrid(H, W, camera_matrix)[:, None]``; the same
-    grid also saves rebuilding the pixel rays for many frames of one camera. For a channels-first
-    ``(B, 3, H, W)`` result, use :func:`depth_to_3d`.
+    tensor. The ``(B, H, W, 3)`` rays of the ``B`` cameras broadcast against ``depth`` by torch's rules, so the
+    camera batch lines up with the axis of ``depth`` just before ``H``, not with its first axis: an ``(H, W)`` depth
+    gives one map per camera, a ``(B, H, W)`` depth pairs camera ``b`` with ``depth[b]``, and a ``(B, T, H, W)``
+    depth pairs camera ``t`` with ``depth[:, t]`` when ``T == B``. With ``T == 1`` it pairs every camera with every
+    map and returns ``(B, B, H, W, 3)``, so pass ``depth[:, 0]``; any other ``T`` raises, unless there is a single
+    camera, which then serves every map. For one camera per ``(B, T, H, W)`` batch element, pass
+    ``xyz_grid=unproject_meshgrid(H, W, camera_matrix)[:, None]``; the same grid also saves rebuilding the pixel
+    rays for many frames of one camera. For a channels-first ``(B, 3, H, W)`` result, use :func:`depth_to_3d`.
 
     Convention:
         - pixel ``(u, v)``, with ``u`` the column and ``v`` the row, maps to ``((u - cx) z / fx, (v - cy) z / fy, z)``.
@@ -184,7 +186,7 @@ def depth_to_3d_v2(
     Args:
         depth: image tensor containing a depth value per pixel with shape ``(*, H, W)``.
         camera_matrix: tensor containing the camera intrinsics with shape ``(B, 3, 3)``.
-        normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
+        normalize_points: whether to normalize the pointcloud. This must be set to ``True`` when the depth is
           represented as the Euclidean ray length from the camera position.
         xyz_grid: explicit xyz point values.
 
@@ -247,7 +249,7 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     Args:
         depth: image tensor containing a depth value per pixel with shape ``(B, 1, H, W)``.
         camera_matrix: tensor containing the camera intrinsics with shape ``(B, 3, 3)``.
-        normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
+        normalize_points: whether to normalize the pointcloud. This must be set to ``True`` when the depth is
           represented as the Euclidean ray length from the camera position.
 
     Return:
@@ -313,7 +315,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
         depth: image tensor containing a depth value per pixel with shape ``(B, 1, H, W)``, with
             :math:`H \geq 2` and :math:`W \geq 2`.
         camera_matrix: tensor containing the camera intrinsics with shape ``(B, 3, 3)``.
-        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
+        normalize_points: whether to normalize the pointcloud. This must be set to ``True`` when the depth is
             represented as the Euclidean ray length from the camera position.
 
     Return:
@@ -409,6 +411,7 @@ def depth_from_plane_equation(
 
     See Also:
         - :func:`~kornia.geometry.camera.perspective.unproject_points`: turn these pixels and depths into 3D points.
+        - :func:`depth_from_disparity`: a whole depth map from a rectified stereo disparity map, not from a plane.
 
     """
     KORNIA_CHECK_SHAPE(plane_normals, ["B", "3"])
@@ -559,7 +562,10 @@ class DepthWarper(nn.Module):
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
           ``align_corners=True`` normalized coordinates of the **destination** image.
-        - ``align_corners`` (default ``True``), ``mode`` and ``padding_mode`` are forwarded to ``grid_sample``.
+        - ``align_corners`` (default ``True``), ``mode`` and ``padding_mode`` are forwarded to ``grid_sample``,
+          but :meth:`warp_grid` normalizes for ``align_corners=True`` whatever the flag, so ``False`` misaligns
+          the warp and an identity warp no longer returns its input
+          (`#6317 <https://github.com/kornia/kornia/issues/6317>`_).
         - :func:`warp_frame_depth` names the frames the other way round: its ``dst`` (the frame holding the depth)
           is this class's ``src``, and its ``image_src`` is ``patch_dst``.
 
@@ -715,12 +721,12 @@ class DepthWarper(nn.Module):
         return torch.min(0.5 / dxdd)
 
     def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
-        """Compute a grid for warping a given the depth from the reference pinhole camera.
+        """Compute where each source pixel samples the destination image, given the depth in the source frame.
 
         See the Convention block on :class:`DepthWarper`.
 
-        The function `compute_projection_matrix` has to be called beforehand in order to have precomputed the relative
-        projection matrices encoding the relative pose and the intrinsics between the reference and a non reference
+        The method ``compute_projection_matrix`` has to be called beforehand in order to have precomputed the
+        projection matrix encoding the relative pose and the intrinsics between the source and the destination
         camera.
         """
         # TODO: add type and value checkings
@@ -753,16 +759,16 @@ class DepthWarper(nn.Module):
         return pixel_coords_src_norm
 
     def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:
-        """Warp a tensor from destination frame to reference given the depth in the reference frame.
+        """Warp a tensor from the destination frame to the source frame, given the depth in the source frame.
 
         See the Convention block on :class:`DepthWarper`.
 
         Args:
-            depth_src: the depth in the reference frame. The tensor must have a shape ``(B, 1, H, W)``.
+            depth_src: the depth in the source frame. The tensor must have a shape ``(B, 1, H, W)``.
             patch_dst: the patch in the destination frame. The tensor must have a shape ``(B, C, H, W)``.
 
         Return:
-            the warped patch from destination frame to reference.
+            the patch warped from the destination frame to the source frame.
 
         Shape:
             - Input: ``(B, 1, H, W)`` and ``(B, C, H, W)``.
@@ -777,7 +783,7 @@ class DepthWarper(nn.Module):
             >>> # create the depth warper, compute the projection matrix
             >>> warper = DepthWarper(pinhole_dst, 32, 32)
             >>> _ = warper.compute_projection_matrix(pinhole_src)
-            >>> # warp the destination frame to reference by depth
+            >>> # warp the destination frame to the source frame by depth
             >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
             >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
@@ -816,8 +822,10 @@ def depth_warp(
         patch_dst: the image in the destination frame, with shape ``(B, C, H, W)``.
         height: the height of the images, ``H``.
         width: the width of the images, ``W``.
-        align_corners: forwarded to ``grid_sample`` and to the normalization of the sampling grid; the default
-            ``True`` is what :class:`DepthWarper` uses.
+        align_corners: forwarded to ``grid_sample`` only; the sampling grid is always normalized for
+            ``align_corners=True``, so ``False`` misaligns the warp
+            (`#6317 <https://github.com/kornia/kornia/issues/6317>`_). The default ``True`` is what
+            :class:`DepthWarper` uses.
 
     Return:
         ``patch_dst`` resampled onto the source pixel grid, with shape ``(B, C, H, W)``.
@@ -832,7 +840,7 @@ def depth_warp(
         ... torch.tensor([32]), torch.tensor([32]))
         >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
         ... torch.tensor([32]), torch.tensor([32]))
-        >>> # warp the destination frame to reference by depth
+        >>> # warp the destination frame to the source frame by depth
         >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
         >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
         >>> image_src = depth_warp(pinhole_dst, pinhole_src, depth_src, image_dst, 32, 32)  # NxCxHxW
@@ -913,6 +921,7 @@ def depth_from_disparity(
         - :func:`depth_to_3d`, :func:`depth_to_3d_v2`: unproject the depth map to 3D points.
         - :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D`: disparity to 3D points in one
           step.
+        - :func:`depth_from_plane_equation`: the depth of given pixels on a known plane, ``(B, N)``, not a map.
 
     Example:
         >>> disparity = torch.rand(4, 1, 4, 4)
