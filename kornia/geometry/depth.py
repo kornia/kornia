@@ -81,7 +81,7 @@ def unproject_meshgrid(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Compute the camera-frame ray through each pixel at depth 1, a (B, H, W, 3) grid to cache for depth_to_3d_v2.
+    """Generate camera-frame rays through each pixel, with z = 1 by default, for caching in depth_to_3d_v2.
 
     .. tip::
 

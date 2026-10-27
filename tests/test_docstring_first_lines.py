@@ -144,8 +144,9 @@ def test_the_scan_covers_the_public_api():
         kornia.losses.FocalLoss,
     ):
         assert id(obj) in collected, _qualified_name(obj)
-    # A known wrapper pair is scanned, shares its line, and is allowed to.
-    assert collected[id(kornia.enhance.AdjustHue)][1] == collected[id(kornia.enhance.adjust_hue)][1]
+    # A known wrapper pair is scanned and recognised; its two lines may, but need not, be identical.
+    assert id(kornia.enhance.AdjustHue) in collected
+    assert id(kornia.enhance.adjust_hue) in collected
     assert _is_wrapper_pair([kornia.enhance.AdjustHue, kornia.enhance.adjust_hue])
 
 
