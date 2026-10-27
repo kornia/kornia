@@ -73,8 +73,8 @@ class PinholeCamera:
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` (the half-pixel rule),
         which disagrees with the integer pixel centres above:
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. With the :math:`(B, N, 4, 4)` storage the
-        validator admits, :meth:`project` raises on :math:`(B, N, 3)` points:
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. :math:`(B, N, 4, 4)` storage is
+        deprecated and will be rejected in a future release:
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The ``intrinsics`` form is not validated, but
         :meth:`project`, :meth:`unproject`, :meth:`intrinsics_inverse` and
         :class:`~kornia.geometry.depth.DepthWarper` read only the top-left :math:`3 \times 3` block, so a
@@ -82,9 +82,9 @@ class PinholeCamera:
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
-          containing the full 4x4 camera calibration matrix. The shared shape validator also accepts
-          :math:`(B, N, 4, 4)` for ``PinholeCamerasList``, while :meth:`project` requires
-          the documented :math:`(B, 4, 4)` layout.
+          containing the full 4x4 camera calibration matrix. Pass :math:`(B, 4, 4)`:
+          :math:`(B, N, 4, 4)` is deprecated, and :meth:`project` and :meth:`unproject` never supported it.
+          ``PinholeCamerasList`` still stores that layout internally.
         extrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 rotation-translation matrix, checked by the same predicate.
         height: torch.Tensor with shape :math:`(B)` containing the image height.
@@ -103,6 +103,17 @@ class PinholeCamera:
         self._check_valid([intrinsics, extrinsics, height, width])
         self._check_valid_params(intrinsics, "intrinsics")
         self._check_valid_params(extrinsics, "extrinsics")
+        is_rank4 = intrinsics.dim() == 4 or extrinsics.dim() == 4
+        if is_rank4 and not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling():
+            warnings.warn(
+                "Passing (B, N, 4, 4) `intrinsics` or `extrinsics` to `PinholeCamera` is deprecated since kornia "
+                "0.9.1 and will raise a ValueError in a future release: `project` and `unproject` support only "
+                "(B, 4, 4). Flatten the cameras into the batch dimension, for example "
+                "`intrinsics.reshape(-1, 4, 4)` and `extrinsics.reshape(-1, 4, 4)` (expanding a (B, 4, 4) "
+                "matrix across N first), and repeat `height` and `width` to match.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self._check_valid_shape(height, "height")
         self._check_valid_shape(width, "width")
         self._check_consistent_device([intrinsics, extrinsics, height, width])

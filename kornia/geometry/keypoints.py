@@ -20,7 +20,9 @@ from typing import List, Optional, Tuple, Union, cast
 import torch
 from torch import Size
 
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.geometry import transform_points
+from kornia.geometry._coordinate import _cast_to_floating_point
 
 __all__ = ["Keypoints", "Keypoints3D"]
 
@@ -39,7 +41,7 @@ class Keypoints:
         keypoints: tensor of :math:`(N, 2)` or :math:`(B, N, 2)` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
-            it to ``float32``.
+            it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
 
     Convention:
         - A point is ``(x, y)`` in pixel coordinates (:ref:`Coordinates and sizes <coordinate-conventions>`), the
@@ -56,9 +58,7 @@ class Keypoints:
 
     """
 
-    def __init__(
-        self, keypoints: Union[torch.torch.Tensor, List[torch.torch.Tensor]], raise_if_not_floating_point: bool = True
-    ) -> None:
+    def __init__(self, keypoints: torch.Tensor, raise_if_not_floating_point: bool = True) -> None:
         self._N: Optional[List[int]] = None
 
         if isinstance(keypoints, list):
@@ -71,7 +71,7 @@ class Keypoints:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {keypoints.dtype}")
 
-            keypoints = keypoints.float()
+            keypoints = _cast_to_floating_point(keypoints)
 
         if len(keypoints.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
@@ -345,18 +345,16 @@ class Keypoints3D:
         keypoints: tensor of :math:`(N, 3)` or :math:`(B, N, 3)` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
-            it to ``float32``.
+            it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
 
     Convention:
-        - Known defects: list input, :meth:`pad`, :meth:`unpad`, :meth:`transform_keypoints`,
-          :meth:`transform_keypoints_` and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
+        - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``;
+          :meth:`pad` and :meth:`unpad` are deprecated and also raise it
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
     """
 
-    def __init__(
-        self, keypoints: Union[torch.torch.Tensor, List[torch.torch.Tensor]], raise_if_not_floating_point: bool = True
-    ) -> None:
+    def __init__(self, keypoints: torch.Tensor, raise_if_not_floating_point: bool = True) -> None:
         self._N: Optional[List[int]] = None
 
         if isinstance(keypoints, list):
@@ -369,7 +367,7 @@ class Keypoints3D:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {keypoints.dtype}")
 
-            keypoints = keypoints.float()
+            keypoints = _cast_to_floating_point(keypoints)
 
         if len(keypoints.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
@@ -412,26 +410,52 @@ class Keypoints3D:
         return self._data
 
     def pad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
-        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_)."""
+        """Deprecated since 0.9.1 and never implemented: raises ``NotImplementedError``."""
+        _emit_deprecation_warning(
+            "Keypoints3D.pad",
+            None,
+            "0.9.1",
+            "It has never been implemented: the padding layout of 3D keypoints is not defined (kornia#5023).",
+        )
         raise NotImplementedError("`Keypoints3D.pad` is not implemented (kornia#5023).")
 
     def unpad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
-        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_)."""
+        """Deprecated since 0.9.1 and never implemented: raises ``NotImplementedError``."""
+        _emit_deprecation_warning(
+            "Keypoints3D.unpad",
+            None,
+            "0.9.1",
+            "It has never been implemented: the padding layout of 3D keypoints is not defined (kornia#5023).",
+        )
         raise NotImplementedError("`Keypoints3D.unpad` is not implemented (kornia#5023).")
 
     def transform_keypoints(self, M: torch.Tensor, inplace: bool = False) -> "Keypoints3D":
-        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
+        r"""Apply a transformation matrix to the 3D keypoints.
 
-        Use :func:`~kornia.geometry.linalg.transform_points` on :attr:`data` instead.
+        A point is mapped to :math:`M [x, y, z, 1]^\top` and converted back with
+        :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`.
+
+        Args:
+            M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
+            inplace: ``True`` rebinds this object to the transformed tensor and returns it, without writing into the
+                tensor it wrapped; ``False`` returns a new :class:`Keypoints3D`.
+
+        Returns:
+            The transformed keypoints.
+
         """
-        raise NotImplementedError(
-            "`Keypoints3D.transform_keypoints` is not implemented; use "
-            "`kornia.geometry.linalg.transform_points(M, keypoints.data)` with `M` of shape `(B, 4, 4)` matching "
-            "the batch of `data`, or `(1, 4, 4)` when `data` is `(N, 3)` (kornia#5023)."
-        )
+        if not 2 <= M.ndim <= 3 or M.shape[-2:] != (4, 4):
+            raise ValueError(f"The transformation matrix shape must be (4, 4) or (B, 4, 4). Got {M.shape}.")
+
+        transformed = transform_points(M, self._data)
+        if inplace:
+            self._data = transformed
+            return self
+
+        return Keypoints3D(transformed, False)
 
     def transform_keypoints_(self, M: torch.Tensor) -> "Keypoints3D":
-        """Not implemented: raises ``NotImplementedError`` (`#5023 <https://github.com/kornia/kornia/issues/5023>`_)."""
+        """Inplace version of :func:`Keypoints3D.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod

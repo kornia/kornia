@@ -85,7 +85,7 @@ class AugmentationBase2D(_AugmentationBase):
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
-          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. A sample the gate skips comes back
+          it can be set as an attribute on any augmentation. A sample the gate skips comes back
           with its input values, its values cannot make the call raise, and where they are finite its gradient
           is the identity; a class whose transform checks input values or has an unbounded derivative runs it
           on 0.5 for skipped samples. An augmentation that changes the sample shape still raises ``ValueError``

@@ -156,3 +156,16 @@ data formats.
 .. autoclass:: VideoSequential
 
    .. automethod:: forward
+
+
+Data keys
+---------
+
+.. currentmodule:: kornia.constants
+
+``data_keys`` of :class:`~kornia.augmentation.container.AugmentationSequential` accepts a :class:`DataKey` member or
+its name, for example ``DataKey.INPUT`` or ``"input"``.
+
+.. autoclass:: DataKey
+   :members:
+   :undoc-members:
