@@ -340,7 +340,7 @@ def bbox_to_mask(
     """
     # `size` carries the canonical (height, width) order; `width`/`height` stay in place for one
     # release cycle in the opposite order, which is exactly the trap #4014 records, so the
-    # deprecated form is resolved here and warned about once rather than silently transposing.
+    # deprecated form is resolved here, with a warning on every eager call, rather than silently transposing.
     if size is not None:
         if width is not None or height is not None:
             raise ValueError("Pass either size=(height, width) or the deprecated width and height, not both.")

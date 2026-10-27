@@ -287,9 +287,11 @@ class TestBbox2D(BaseTester):
     def test_bbox_to_mask_deprecated_forms_warn_and_agree_4014(self, device, dtype, form):
         boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         expected = bbox_to_mask(boxes, size=(3, 5))
-        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)"):
+        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)") as record:
             got = bbox_to_mask(boxes, 5, 3) if form == "positional" else bbox_to_mask(boxes, width=5, height=3)
         assert torch.equal(got, expected)
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record] == [__file__]
 
     def test_bbox_to_mask_rejects_both_forms_and_neither_4014(self, device, dtype):
         boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
