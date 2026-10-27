@@ -23,6 +23,7 @@ from functools import partial
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
@@ -85,7 +86,7 @@ class TestBoxes2D(BaseTester):
         # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
         # validate_boxes=True rejects non-finite coordinates.
         if device.type != "cpu":
-            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
             pytest.skip("the vertex check raises synchronously only on CPU")
         vertices = torch.tensor(
             [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
@@ -2345,6 +2346,18 @@ class TestVideoBoxes(BaseTester):
         video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
         self.assert_close(video_boxes.data, boxes.reshape(-1, 1, 4, 2), atol=0.0, rtol=0.0)
+
+    def test_vertex_check_is_skipped_when_checks_are_disabled(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        boxes[0, 0, 0, 0, 0] = float("nan")
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+        assert video_boxes.data.shape == boxes.reshape(-1, 1, 4, 2).shape
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
     def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):

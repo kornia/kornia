@@ -1363,9 +1363,9 @@ def get_shear_matrix3d(
 
     .. math::
         \begin{bmatrix}
-            1 & o & r & oy + rz \\
-            m & p & s & mx + py + sz -y \\
-            n & q & t & nx + qy + tz -z \\
+            1 & o & r & x - (x + oy + rz) \\
+            m & p & s & y - (mx + py + sz) \\
+            n & q & t & z - (nx + qy + tz) \\
             0 & 0 & 0 & 1  \\
         \end{bmatrix}
         Where:
@@ -1378,9 +1378,11 @@ def get_shear_matrix3d(
         s = S_{xy}S_{zx} + (S_{xy}S_{yx} + 1)S_{zy}
         t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
 
+    Here :math:`S_{ab} = -\tan(s_{ab})`, and :math:`(x, y, z)` is ``center``.
+
     Convention:
         - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
-          slice (``z = 0``)
+          slice (``z = 0``); it is a fixed point of the returned matrix for every combination of shears
         - returns :math:`(B, 4, 4)` affine matrix in pixel coordinates
 
     Args:
@@ -1428,20 +1430,16 @@ def get_shear_matrix3d(
     szx_tan = torch.tan(szx)
     szy_tan = torch.tan(szy)
 
-    # compute translation matrix
-    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
-        sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan
-    )
-
-    m03 = m01 * y + m02 * z
-    m13 = m10 * x + m11 * y + m12 * z - y
-    m23 = m20 * x + m21 * y + m22 * z - z
-
     # shear matrix is implemented with negative values
     sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan = -sxy_tan, -sxz_tan, -syx_tan, -syz_tan, -szx_tan, -szy_tan
     m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
         sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan
     )
+
+    # translation t = c - A c from the returned linear part A, so that the center is a fixed point
+    m03 = x - (m00 * x + m01 * y + m02 * z)
+    m13 = y - (m10 * x + m11 * y + m12 * z)
+    m23 = z - (m20 * x + m21 * y + m22 * z)
 
     shear_mat = torch.stack([m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23], -1).view(-1, 3, 4)
     return convert_affinematrix_to_homography3d(shear_mat)
@@ -1635,7 +1633,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
 
 
 def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
-    r"""Calculate a 3d perspective transform from four pairs of the corresponding points.
+    r"""Calculate a 3d perspective transform from five of eight pairs of corresponding box corners.
 
     The function calculates the matrix of a perspective transform so that:
 
@@ -1694,12 +1692,15 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
 
     Convention:
         - points: ``(x, y, z)``, pixel centers, origin at the top-left of the first depth slice; shape :math:`(B, 8, 3)`
+        - the 15 unknowns are solved exactly from points 0, 1, 2, 5 and 7, the corners ``000``, ``100``, ``110``,
+          ``101`` and ``011`` in :func:`~kornia.geometry.bbox.bbox_generator3d` order; points 3, 4 and 6 are not
+          used, so they map onto their ``dst`` only when all eight pairs are related by one homography
         - returns the source→destination **pixel** homography :math:`(B, 4, 4)`
 
     Args:
-        src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 8, 3)`.
-        dst: coordinates of the corresponding quadrangle vertices in
-            the destination image with shape :math:`(B, 8, 3)`.
+        src: coordinates of the box corners in the source volume with shape :math:`(B, 8, 3)`.
+        dst: coordinates of the corresponding box corners in
+            the destination volume with shape :math:`(B, 8, 3)`.
 
     Returns:
         the perspective transformation with shape :math:`(B, 4, 4)`.
@@ -1729,9 +1730,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
             f"with the same dtype (Got {src.dtype}, {dst.dtype})."
         )
 
-    # we build matrix A by using only 4 point correspondence. The linear
-    # system is solved with the least square method, so here
-    # we could even pass more correspondence
+    # we build the square matrix A from 5 point correspondences, 3 equations each, and solve it exactly
     p = []
 
     # 000, 100, 110, 101, 011

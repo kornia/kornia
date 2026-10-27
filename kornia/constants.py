@@ -20,7 +20,7 @@ from typing import Iterator, Type, TypeVar, Union
 
 import torch
 
-__all__ = ["BorderType", "DType", "Resample", "SamplePadding", "TKEnum", "pi"]
+__all__ = ["BorderType", "DType", "DataKey", "Resample", "SamplePadding", "TKEnum", "pi"]
 
 pi = torch.tensor(3.14159265358979323846)
 

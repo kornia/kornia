@@ -2725,6 +2725,24 @@ class TestEmptyBatchPerSampleKernel(BaseTester):
             assert value.grad is not None
             assert value.grad.shape == value.shape
 
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("kernel_batch", [0, 1])
+    def test_fft_conv_empty_batch_6266(self, padding, kernel_batch, device, dtype):
+        """fft_conv returns an empty batch like filter2d instead of raising an MKL FFT error (#6266)."""
+        _fft_guard("fft_conv", device, dtype)
+        image = torch.empty(0, 3, 9, 13, device=device, dtype=dtype, requires_grad=True)
+        kernel = torch.ones(kernel_batch, 3, 5, device=device, dtype=dtype, requires_grad=True)
+        output = fft_conv(image, kernel, "constant", True, padding)
+        expected = filter2d(image, kernel, "constant", True, padding)
+        assert output.shape == expected.shape
+        assert output.dtype == dtype
+        assert output.device == device
+        output.sum().backward()
+        for value in (image, kernel):
+            assert value.grad is not None
+            assert value.grad.shape == value.shape
+            self.assert_close(value.grad, torch.zeros_like(value.grad))
+
     @pytest.mark.parametrize(("op", "spatial"), [(filter2d, (9, 13)), (filter3d, (5, 9, 13))])
     @pytest.mark.parametrize(("batch", "kernel_batch"), [(0, 2), (2, 0)])
     def test_empty_kernel_batch_must_match_4429(self, op, spatial, batch, kernel_batch, device, dtype):
