@@ -1094,6 +1094,14 @@ class TestDepthWarperConventions(BaseTester):
         # projected pixel moves by one whole column, so the warp has to return out[u] = image[u + 1] with the
         # zero padding in the last column -- no blending, and no larger or smaller displacement. Both flags and
         # both entry points have to land on that same array.
+        if dtype == torch.float16:
+            pytest.skip(
+                "float16 cannot hold the boundary coordinate: under align_corners=False the last column's "
+                "normalized x is 1 + 1 / width = 1.2, which float16 rounds down to 1.1992, so that sample "
+                "lands a fraction of a pixel inside the image and blends in a slice of the last pixel instead "
+                "of pure padding. The shift itself is exact, and float32/float64 keep the coordinate. bfloat16 "
+                "rounds it up to 1.2031, i.e. just outside the image, so it still sees pure padding."
+            )
         identity = _eye4(device, dtype)
         intrinsics = _k44_warp(device, dtype)
         height = torch.tensor([4], device=device)
