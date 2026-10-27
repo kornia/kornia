@@ -59,7 +59,7 @@ def test_the_discovery_finds_the_known_classes():
 
 @pytest.mark.parametrize(("name", "default"), _CLASSES, ids=[name for name, _ in _CLASSES])
 def test_first_docstring_line_states_the_default_probability(name, default):
-    first_line = (inspect.getdoc(getattr(K, name)) or "").splitlines()[0]
+    first_line = next(iter((inspect.getdoc(getattr(K, name)) or "").splitlines()), "")
 
     assert f"probability ``p`` (default {default})" in first_line, (
         f"{name} defaults to p={default}; its first docstring line must say "

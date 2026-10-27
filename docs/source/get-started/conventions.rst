@@ -286,19 +286,25 @@ Transformation matrices and homographies
   **source→destination** homography in **pixel** coordinates.
 - :func:`kornia.geometry.transform.homography_warp` is different on every
   axis: it takes the **destination→source** homography, **normalized** to
-  ``[-1, 1]`` by default (``normalized_homography=True``), and defaults to
+  ``[-1, 1]`` by default (``normalized_coordinates=True``), and defaults to
   ``align_corners=False``. ``normalized_coordinates=False`` takes the same
-  destination→source homography in pixels.
+  destination→source homography in pixels, and
+  ``normalized_homography=False`` takes a pixel source→destination
+  homography instead and hands it to ``warp_perspective``.
   :func:`~kornia.geometry.transform.homography_warp3d` and
   :class:`~kornia.geometry.transform.HomographyWarper` read the homography the
-  same way. For a pixel source→destination homography, such as
-  :class:`~kornia.geometry.ransac.RANSAC` and
-  :func:`~kornia.geometry.homography.find_homography_dlt` return, use
-  :func:`~kornia.geometry.transform.warp_perspective`
-  (:func:`~kornia.geometry.transform.warp_perspective3d` in 3D); passed to
-  ``homography_warp`` unchanged, it usually samples outside the source and
-  the warp comes back as zeros. To keep ``homography_warp``, convert a pixel
-  source→destination homography by normalizing it FIRST with
+  same way but have no ``normalized_homography`` switch. For a pixel
+  source→destination homography, as :class:`~kornia.geometry.ransac.RANSAC`
+  and :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
+  :func:`~kornia.geometry.transform.warp_perspective`, or in 3D
+  :func:`~kornia.geometry.transform.warp_perspective3d` with
+  ``align_corners=True``, because its default ``align_corners=False``
+  resamples even an identity
+  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Passed to
+  ``homography_warp`` unchanged, such a homography usually samples outside
+  the source and the warp comes back mostly or entirely as zeros. To keep
+  ``homography_warp``, convert a pixel source→destination homography by
+  normalizing it FIRST with
   :func:`kornia.geometry.conversions.normalize_homography` (which expects
   the forward src→dst homography) and inverting AFTER — inverting first
   with unswapped sizes is silently wrong whenever the source and
@@ -484,18 +490,31 @@ See the :doc:`enhancement API </enhance>` for clipping, histogram ranges, and kn
 Augmentations
 -------------
 
-- Augmentations apply per sample with probability ``p``, and most default to
+- Most augmentations apply per sample with probability ``p`` and default to
   ``p=0.5``: ``RandomRotation(degrees=30.0)`` leaves about half the batch
-  unrotated. The crop and resize classes, ``Normalize``, ``ColorJiggle``,
-  ``ColorJitter``, ``RandomBrightness``, ``RandomContrast``, ``RandomGamma``,
-  ``RandomHue``, ``RandomSaturation`` and the MixUp/CutMix classes default to
-  ``p=1.0``, :class:`kornia.augmentation.RandomGrayscale` to ``0.1`` and
-  :class:`kornia.augmentation.RandomMosaic` to ``0.7``; the first docstring
-  line of every ``kornia.augmentation`` class with a default below ``1``
-  states it. torchvision's ``RandomRotation``, ``RandomAffine``,
-  ``ElasticTransform`` and ``GaussianBlur`` always apply: pass ``p=1.0`` for
-  that behaviour. ``same_on_batch=True`` draws one decision for the whole
-  batch (see *Randomness in augmentations* below).
+  unrotated. :class:`kornia.augmentation.RandomGrayscale` defaults to ``0.1``
+  and :class:`kornia.augmentation.RandomMosaic` to ``0.7``; every class
+  exported from ``kornia.augmentation`` with a default below ``1`` states it
+  on its first docstring line. These default to ``p=1.0``: ``CenterCrop``,
+  ``CenterCrop3D``, ``ColorJiggle``, ``ColorJitter``, ``Denormalize``,
+  ``LongestMaxSize``, ``Normalize``, ``PatchMix``, ``RandomAutoContrast``,
+  ``RandomBrightness``, ``RandomContrast``, ``RandomCrop``, ``RandomCrop3D``,
+  ``RandomCutMixV2``, ``RandomGamma``, ``RandomHue``, ``RandomJPEG``,
+  ``RandomMixUpV2``, ``RandomResizedCrop``, ``RandomSaturation``,
+  ``RandomSnow``, ``Resize`` and ``SmallestMaxSize``.
+- The crop, resize and mix classes (``RandomCrop``, ``CenterCrop``,
+  ``RandomResizedCrop``, ``Resize``, ``LongestMaxSize``, ``SmallestMaxSize``,
+  ``RandomCrop3D``, ``CenterCrop3D``, ``RandomMixUpV2``, ``RandomCutMixV2``,
+  ``PatchMix``) take their ``p`` as one draw for the whole batch;
+  ``Normalize``, ``Denormalize`` and
+  :class:`kornia.augmentation.RandomDissolving` share one draw across the
+  batch, and ``same_on_batch=True`` shares the draw for any class (see
+  *Randomness in augmentations* below).
+- torchvision's ``RandomRotation``, ``RandomAffine``, ``ElasticTransform``,
+  ``GaussianBlur``, ``GaussianNoise`` and ``RandomChannelPermutation`` always
+  apply: pass ``p=1.0`` for that behaviour. The reverse holds for
+  ``RandomAutoContrast``, which defaults to ``p=1.0`` while torchvision's
+  ``RandomAutocontrast`` defaults to ``p=0.5``.
 - Use one :class:`kornia.augmentation.container.AugmentationSequential` call
   for an image and its annotations. Geometric children that implement a data
   key's handler share their recorded parameters across the inputs; a transform
@@ -1338,7 +1357,8 @@ Quick self-review for generated code, most common first:
 7. Uint8 ``[0, 255]`` values where float ``[0, 1]`` is expected.
 8. Image and mask augmented through two separate augmentation calls.
 9. ``homography_warp`` fed a source→destination pixel homography — it wants
-   destination→source, normalized (or pass ``normalized_homography=False``).
+   destination→source, normalized; use ``warp_perspective`` (or pass
+   ``normalized_homography=False``).
 10. Mixing ``axis_angle_to_rotation_matrix`` (math convention; screen-
     clockwise for +z) with ``rotate`` (screen-counter-clockwise) without
     negating the angle.

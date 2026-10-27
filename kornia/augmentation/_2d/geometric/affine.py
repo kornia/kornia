@@ -28,7 +28,7 @@ from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
 class RandomAffine(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to images, applied per sample with probability ``p`` (default 0.5).
+    r"""Warp images by a random 2D affine transformation, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomAffine.png
 

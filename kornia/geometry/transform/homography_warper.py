@@ -75,10 +75,10 @@ class BaseWarper(nn.Module):
 
 
 class HomographyWarper(BaseWarper):
-    r"""Warp by a normalized destination→source homography (default ``normalized_coordinates=True``).
+    r"""Warp tensors by a normalized destination→source homography (default ``normalized_coordinates=True``).
 
-    For a source→destination homography in pixel coordinates, such as :class:`~kornia.geometry.ransac.RANSAC` and
-    :func:`~kornia.geometry.homography.find_homography_dlt` return, use
+    For a source→destination homography in pixel coordinates, as :class:`~kornia.geometry.ransac.RANSAC` and
+    :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
     :func:`~kornia.geometry.transform.warp_perspective`. This class has no ``normalized_homography`` switch:
     ``normalized_coordinates=False`` still reads a destination→source homography, in pixels.
 

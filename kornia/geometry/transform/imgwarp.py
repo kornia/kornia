@@ -1937,13 +1937,15 @@ def homography_warp(
     normalized_coordinates: bool = True,
     normalized_homography: bool = True,
 ) -> torch.Tensor:
-    r"""Warp an image by a normalized destination→source homography (default ``normalized_homography=True``).
+    r"""Warp an image by a destination→source homography in normalized ``[-1, 1]`` coordinates (the defaults).
 
-    For a source→destination homography in pixel coordinates, such as :class:`~kornia.geometry.ransac.RANSAC` and
-    :func:`~kornia.geometry.homography.find_homography_dlt` return, use :func:`warp_perspective`. Passed here
-    unchanged, such a homography is read as a normalized destination→source one and usually samples outside the
-    source, so the output is all zeros. ``normalized_homography=False`` also accepts it and forwards it to
-    :func:`warp_perspective` with this function's ``align_corners=False`` default.
+    For a source→destination homography in pixel coordinates, as :class:`~kornia.geometry.ransac.RANSAC` and
+    :func:`~kornia.geometry.homography.find_homography_dlt` return it, use :func:`warp_perspective`. Passed here
+    unchanged, such a homography is read as a normalized destination→source one, which typically samples outside
+    the source, so the output is mostly or entirely zeros (with the default ``padding_mode="zeros"``).
+    ``normalized_homography=False`` instead hands it to :func:`warp_perspective` with this function's
+    ``align_corners=False`` default, which for a pixel homography samples the same positions as
+    ``align_corners=True`` (see ``align_corners`` below).
 
     See :class:`~kornia.geometry.transform.HomographyWarper` for details.
 
@@ -2060,9 +2062,10 @@ def homography_warp3d(
 ) -> torch.Tensor:
     r"""Warp a volume by a normalized destination→source 3D homography (default ``normalized_coordinates=True``).
 
-    For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d`: this function has no
-    ``normalized_homography`` switch, and ``normalized_coordinates=False`` still reads a destination→source
-    homography.
+    For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d` with
+    ``align_corners=True``: at its default ``align_corners=False`` it resamples even an identity
+    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Alternatively pass the inverse of that homography
+    here with ``normalized_coordinates=False``. This function has no ``normalized_homography`` switch.
 
     Convention:
         - input: :math:`(N, C, D, H, W)`; ``dsize`` is the output size ``(d, h, w)``

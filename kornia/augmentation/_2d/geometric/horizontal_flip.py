@@ -30,8 +30,6 @@ from kornia.geometry.transform import hflip
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
     r"""Flip images horizontally, applied per sample with probability ``p`` (default 0.5).
 
-    The flip is applied with a given probability.
-
     .. image:: _static/img/RandomHorizontalFlip.png
 
     Input should be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.

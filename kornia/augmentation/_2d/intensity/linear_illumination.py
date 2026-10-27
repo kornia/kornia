@@ -26,7 +26,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomLinearIllumination(IntensityAugmentationBase2D):
-    r"""Add a linear brightness ramp from a random edge, applied per sample with probability ``p`` (default 0.5).
+    r"""Brighten or darken by a linear ramp from an edge, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomLinearIllumination.png
 
@@ -146,7 +146,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
-    r"""Add a linear brightness ramp from a random corner, applied per sample with probability ``p`` (default 0.5).
+    r"""Brighten or darken by a linear ramp from a corner, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
 

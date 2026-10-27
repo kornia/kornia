@@ -26,7 +26,7 @@ from kornia.enhance import sharpness
 
 
 class RandomSharpness(IntensityAugmentationBase2D):
-    r"""Blend in a random amount of a ``3 x 3`` smoothed copy, applied per sample with probability ``p`` (default 0.5).
+    r"""Blend each sample with a ``3 x 3`` smoothed copy by a random factor, with probability ``p`` (default 0.5).
 
     A drawn factor above ``1`` sharpens and a factor below ``1`` blurs; the default
     ``sharpness=0.5`` draws from ``[0, 0.5]`` and therefore only ever blurs.

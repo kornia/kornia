@@ -28,7 +28,7 @@ from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 
 
 class RandomAffine3D(GeometricAugmentationBase3D):
-    r"""Apply a random 3D affine transformation to volumes, applied per sample with probability ``p`` (default 0.5).
+    r"""Warp volumes by a random 3D affine transformation, applied per sample with probability ``p`` (default 0.5).
 
     The transformation is computed so that the center is kept invariant.
 

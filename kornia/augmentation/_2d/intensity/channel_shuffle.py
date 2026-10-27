@@ -29,6 +29,11 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomChannelShuffle.png
 
+    .. note::
+        Unlike torchvision's ``RandomChannelPermutation``, which permutes the channels of every image, this class
+        permutes the channels of each sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one
+        draw decides for the whole batch. Pass ``p=1.0`` to permute every sample.
+
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:

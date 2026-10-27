@@ -29,6 +29,11 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomGaussianNoise.png
 
+    .. note::
+        Unlike torchvision's ``GaussianNoise``, which adds noise to every image, this class adds noise to each sample
+        with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to add noise to every sample.
+
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:

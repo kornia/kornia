@@ -26,7 +26,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
-    r"""Drop random channels, filling them with ``fill_value``, applied per sample with probability ``p`` (default 0.5).
+    r"""Set random channels to ``fill_value`` (channel dropout) per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomChannelDropout.png
 

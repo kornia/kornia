@@ -35,9 +35,9 @@ class RandomShear(GeometricAugmentationBase2D):
     The transformation is computed so that the image center is kept invariant.
 
     .. note::
-        Unlike torchvision's ``RandomAffine(shear=...)``, which shears every image, this class shears each sample with
-        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
-        ``p=1.0`` to shear every sample.
+        Unlike torchvision's ``RandomAffine(degrees=0, shear=...)``, which shears every image, this class shears each
+        sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch.
+        Pass ``p=1.0`` to shear every sample.
 
     Args:
         shear: Range of degrees to select from.
