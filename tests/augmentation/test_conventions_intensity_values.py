@@ -26,7 +26,8 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation._2d.intensity.base import _clamp_unit_range
 from kornia.augmentation.random_generator import PosterizeGenerator, RectangleEraseGenerator
-from kornia.core.exceptions import BaseError, ShapeError
+from kornia.core._compat import torch_version_ge
+from kornia.core.exceptions import AsyncCheckError, BaseError, ShapeError
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
@@ -407,14 +408,20 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(out, raw.clamp(0.0, 1.0))
         assert float((out - raw).abs().max()) > unclamped_gap / 2
 
-    def test_convention_random_gamma_negative_exponent_is_unchecked_on_mps(self, device, dtype):
-        if device.type != "mps":
-            pytest.skip("MPS only: CPU rejects negative gamma; CUDA would invalidate the context with a device assert")
-        # kornia does not run the non-negativity check for an MPS image, so gamma=-1 is evaluated as
-        # clamp(gain / input, 0, 1).
+    def test_convention_random_gamma_negative_exponent_is_rejected(self, device, dtype):
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value check is a device-side assert that invalidates the context")
+        # The non-negativity check of adjust_gamma runs on every device. It reads a CPU value during the call, and so
+        # on MPS before torch 2.13, which has no assert kernel; from 2.13 the MPS assert raises at the next sync.
         image = torch.tensor([0.2, 0.5, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
-        out = K.RandomGamma((-1.0, -1.0), (0.1, 0.1), p=1.0)(image)
-        self.assert_close(out, image.new_tensor([0.5, 0.2, 0.125]).reshape_as(image))
+        augmentation = K.RandomGamma((-1.0, -1.0), (0.1, 0.1), p=1.0)
+        if device.type == "mps" and torch_version_ge(2, 13):
+            augmentation(image)
+            with pytest.raises(RuntimeError, match="Gamma must be non-negative"):
+                torch.mps.synchronize()
+        else:
+            with pytest.raises(AsyncCheckError, match="Gamma must be non-negative"):
+                augmentation(image)
 
     def test_convention_random_saturation_clamps_input_and_rgb_4430(self, device, dtype):
         pixels = [[-0.1, 0.5, 0.5], [1.5, 0.0, 0.0], [-0.1, -0.5, -0.9], [2.0, 1.0, 0.5]]
@@ -1170,7 +1177,7 @@ class TestIntensityColourConventions(BaseTester):
     )
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
         if case in ("gamma_negative", "gain_negative") and device.type != "cpu":
-            pytest.skip("CPU only: on CUDA the value assert is a device-side assert; kornia skips it on MPS")
+            pytest.skip("CPU only: a device-side assert on CUDA, and raised at the next sync on MPS from torch 2.13")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),

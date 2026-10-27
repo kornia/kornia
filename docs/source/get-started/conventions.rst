@@ -589,9 +589,11 @@ Randomness in augmentations
   order of ``ColorJiggle`` and ``ColorJitter`` is shared across the batch
   regardless. On ``AugmentationSequential``, ``same_on_batch=None`` keeps each
   child's setting, and ``True`` or ``False`` overwrites it.
-- Whether a constructor's ``p`` sets the per-sample or the whole-batch gate,
-  and whether it exposes ``p_batch``, depends on the concrete class
-  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). A sample the gate
+- Every augmentation honours ``p_batch`` as an attribute, and only
+  ``RandomHorizontalFlip``, ``RandomVerticalFlip``, ``RandomTransplantation``
+  and ``RandomTransplantation3D`` take it in the constructor; whether a
+  constructor's ``p`` sets the per-sample or the whole-batch gate depends on
+  the concrete class. A sample the gate
   skips comes back with its input values, its values cannot make the call
   raise, and where they are finite its gradient is the identity. Below ``p=1``
   the transform still runs on the whole batch before the gate selects; classes

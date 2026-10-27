@@ -1,0 +1,1 @@
+`kornia.core.exceptions.AsyncCheckError`, a `ValueCheckError` that is also a `RuntimeError`. A tensor value check that runs as `torch._assert_async` on an accelerator raises it on the host: for a CPU tensor, and on MPS before torch 2.13. `except RuntimeError` therefore handles that check on every device, and the `gaussian_blur2d` sigma check still raises a `BaseError` on the CPU.

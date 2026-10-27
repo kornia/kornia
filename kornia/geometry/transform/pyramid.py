@@ -27,7 +27,17 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.filters.gaussian import _gaussian_blur2d_cpu, _gaussian_blur2d_cpu_eligible
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "build_laplacian_pyramid", "build_pyramid", "pyrdown", "pyrup"]
+__all__ = [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "build_laplacian_pyramid",
+    "build_pyramid",
+    "find_next_powerof_two",
+    "is_powerof_two",
+    "pyrdown",
+    "pyrup",
+]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -556,11 +566,40 @@ def build_pyramid(
 
 
 def is_powerof_two(x: int) -> bool:
-    # check if number x is a power of two
+    r"""Check whether a number is a power of two.
+
+    Args:
+        x: the integer to check.
+
+    Returns:
+        ``True`` if ``x`` is a positive power of two, ``False`` otherwise (including for ``0``).
+
+    Example:
+        >>> is_powerof_two(64)
+        True
+        >>> is_powerof_two(100)
+        False
+
+    """
     return bool(x) and (not (x & (x - 1)))
 
 
 def find_next_powerof_two(x: int) -> int:
+    r"""Find the smallest power of two that is greater than or equal to a number.
+
+    Args:
+        x: a positive integer.
+
+    Returns:
+        the smallest power of two not below ``x``.
+
+    Example:
+        >>> find_next_powerof_two(100)
+        128
+        >>> find_next_powerof_two(64)
+        64
+
+    """
     return 1 << (x - 1).bit_length()
 
 

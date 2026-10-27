@@ -721,6 +721,8 @@ class TestGaussianBlur2d(BaseTester):
         with pytest.raises(Exception) as errinfo:
             gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
         assert "sigma must be positive" in str(errinfo.value)
+        # The host check names the value it read.
+        assert "got tensor([[-1.5" in str(errinfo.value)
 
     def test_sigma_zero_raises_exception(self, device, dtype):
         """Test that zero sigma raises an exception."""
@@ -779,6 +781,28 @@ class TestGaussianBlur2d(BaseTester):
             actual = gaussian_blur2d(sample, (5, 5), sigma)
         finally:
             torch.cuda.set_sync_debug_mode(previous)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_sigma_tuple_is_checked_on_the_host_under_any_default_device_6337(self, device, dtype):
+        # A tuple sigma is built on the CPU whatever the default device: under a meta default it used to land on meta,
+        # where the check had nothing to read and an invalid sigma passed; under a CUDA default it was a device assert.
+        sample = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        with torch.device("meta"), pytest.raises(BaseError, match="sigma must be positive"):
+            gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
+
+    def test_sigma_tuple_under_a_cuda_default_device_does_not_synchronize_6337(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        expected = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
+        torch.cuda.synchronize()
+        previous = torch.cuda.get_sync_debug_mode()
+        with torch.device(device):
+            torch.cuda.set_sync_debug_mode("error")
+            try:
+                actual = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
+            finally:
+                torch.cuda.set_sync_debug_mode(previous)
         self.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_kernel_size_even_raises_exception(self, device, dtype):

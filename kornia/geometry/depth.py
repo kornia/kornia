@@ -429,11 +429,9 @@ def warp_frame_depth(
           :func:`~kornia.geometry.camera.perspective.project_points`, whose conventions apply.
         - the sampling is bilinear ``grid_sample`` with a fixed ``align_corners=True`` and
           ``padding_mode="zeros"``; the output is :math:`(B, D, H, W)` with ``image_src``'s channels.
-
-    .. warning::
-        :class:`~kornia.geometry.depth.DepthWarper` performs the same warp under the **opposite** naming: this
-        function's ``dst`` (holding the depth) is that class's ``src``, and ``image_src`` is its ``patch_dst``:
-        `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
+        - :class:`~kornia.geometry.depth.DepthWarper` and :func:`~kornia.geometry.depth.depth_warp` perform the
+          same warp under the opposite frame names: this function's ``dst`` (the frame holding the depth) is
+          their ``src``, and ``image_src`` is their ``patch_dst``. Both namings are kept.
 
     Args:
         image_src: image tensor in the source frame with shape :math:`(B,D,H,W)`.
@@ -510,14 +508,13 @@ class DepthWarper(nn.Module):
           ``align_corners=True`` normalized coordinates of the **destination** image.
         - ``align_corners`` (default ``True``), ``mode`` and ``padding_mode`` are forwarded to ``grid_sample``.
           :func:`~kornia.geometry.depth.depth_warp` is the functional form and exposes ``align_corners`` only.
+        - :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the opposite frame names:
+          this class's ``src`` (the frame holding the depth) is that function's ``dst``, and ``patch_dst`` is its
+          ``image_src``. Both namings are kept.
 
     .. warning::
-        :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the **opposite** naming:
-        this class's ``src`` (holding the depth) is that function's ``dst``, and ``patch_dst`` is its
-        ``image_src``; reading "dst" as "dst" across the two gives the inverse warp:
-        `#4273 <https://github.com/kornia/kornia/issues/4273>`_. The two agree to rounding for float32/float64
-        away from ``z = 0``, and split at ``z = 0``, where ``cam2pixel`` sends every pixel with a nonzero
-        projected numerator far outside the image:
+        The two warps agree to rounding for float32/float64 away from ``z = 0``, and split at ``z = 0``, where
+        ``cam2pixel`` sends every pixel with a nonzero projected numerator far outside the image:
         `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
