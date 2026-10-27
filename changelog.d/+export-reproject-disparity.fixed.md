@@ -1,0 +1,1 @@
+Export `reproject_disparity_to_3D` from `kornia.geometry.camera`: it is now listed in `kornia.geometry.camera.__all__` and in `tests/api_surface.json`, making it importable as `from kornia.geometry.camera import reproject_disparity_to_3D` alongside `StereoCamera`.
