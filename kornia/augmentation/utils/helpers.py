@@ -158,7 +158,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-    r"""Infer input shape.
+    r"""Return the (B, C, H, W) shape of a 2D augmentation input, or of the image of an (input, transform) tuple.
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
@@ -167,7 +167,7 @@ def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tens
 
 
 def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-    r"""Infer input shape.
+    r"""Return the (B, C, D, H, W) shape of a 3D augmentation input, or of the volume of an (input, transform) tuple.
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
@@ -178,7 +178,7 @@ def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Te
 def _transform_input_by_shape(
     input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
 ) -> torch.Tensor:
-    """Reshape an input torch.Tensor to have the same dimensions as the reference_shape.
+    """Add the missing batch or channel dimension of an image tensor, e.g. a mask, to match a (B, C, H, W) reference.
 
     Arguments:
         input: torch.Tensor to be transformed
@@ -209,7 +209,7 @@ def _transform_input_by_shape(
 def _transform_input3d_by_shape(
     input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
 ) -> torch.Tensor:
-    """Reshape an input torch.Tensor to have the same dimensions as the reference_shape.
+    """Add the missing batch or channel dimension of a volume tensor, e.g. a mask, to match a (B, C, D, H, W) reference.
 
     Arguments:
         input: torch.Tensor to be transformed
@@ -290,7 +290,7 @@ def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List[torch.dtype]) -> None:
-    r"""Check if the dtype of the input torch.Tensor is in the range of accepted_dtypes.
+    r"""Raise TypeError unless the dtype of ``input`` is one of ``accepted_dtypes``.
 
     Args:
         input: torch.Tensor
@@ -328,7 +328,7 @@ def _transform_output_shape(
 
 
 def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
-    r"""Check if the dtype of the input torch.Tensor is in the range of accepted_dtypes.
+    r"""Raise TypeError unless ``shape`` has as many dimensions as one of ``required_shapes``, e.g. ``"BCHW"``.
 
     Args:
         shape: torch.Tensor shape
@@ -366,7 +366,7 @@ def _adapted_rsampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> torch.Tensor:
-    r"""Sample from a uniform reparameterized sampling function that accepts 'same_on_batch'.
+    r"""Draw a reparameterized sample of ``shape`` from ``dist``, one draw repeated over the batch if same_on_batch.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -397,7 +397,7 @@ def _adapted_sampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> torch.Tensor:
-    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
+    r"""Draw a sample of ``shape`` from ``dist`` without reparameterization, one draw for the batch if same_on_batch.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -416,7 +416,7 @@ def _adapted_uniform(
     high: Union[float, torch.Tensor],
     same_on_batch: bool = False,
 ) -> torch.Tensor:
-    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
+    r"""Draw a reparameterized sample of ``shape`` from Uniform(low, high), one draw for the batch if same_on_batch.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.

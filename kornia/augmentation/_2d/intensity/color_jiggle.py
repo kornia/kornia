@@ -120,7 +120,7 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
+    r"""Randomly adjust image brightness, contrast, saturation and hue with kornia's formulas (additive brightness).
 
     .. image:: _static/img/ColorJiggle.png
 
