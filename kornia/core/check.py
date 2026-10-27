@@ -315,24 +315,34 @@ def _check_async(condition: torch.Tensor, msg: str, guard: bool = False) -> None
     kernel, so it stays in the graph and raises :exc:`RuntimeError`; Inductor keeps it from torch 2.9 and compiles it
     to nothing before. On a device without the kernel nothing is checked there. ``torch.jit.trace`` runs the assert on
     the traced values but drops it from the graph it records, and TorchScript drops it too, so a scripted call checks
-    a CPU condition on the host only. The check is skipped when checks are disabled with :func:`disable_checks`, with
-    ``python -O`` or with ``KORNIA_CHECKS=0``, unless ``guard`` is set. It is also skipped under ``torch.vmap``, which
-    has no batching rule for the assert. Eager calls keep it under the other functorch transforms, such as
-    ``torch.func.grad``; a compiled call skips it under all of them, since Dynamo cannot inspect the transform stack.
+    on the host only. It does so on every device but CUDA, since TorchScript cannot read whether MPS has the kernel.
+    The check is skipped when checks are disabled with :func:`disable_checks`, with ``python -O`` or with
+    ``KORNIA_CHECKS=0``, unless ``guard`` is set. It is also skipped under ``torch.vmap``, which has no batching rule
+    for the assert. Eager calls keep it under the other functorch transforms, such as ``torch.func.grad``; a compiled
+    call skips it under all of them, unless ``guard`` is set, since Dynamo cannot inspect the transform stack.
 
     Args:
         condition: a boolean tensor with one element, usually ``(...).all()``.
         msg: the message of the error. It is a string, since the device assert carries it unformatted.
-        guard: run the check even when checks are disabled. Set it where the check keeps a later index in bounds: on
-            the CPU a compiled ``gather`` or ``scatter`` with an index out of range terminates the process.
+        guard: run the check even when checks are disabled, and under a compiled functorch transform. Set it where the
+            check keeps a later index in bounds: on the CPU a compiled ``gather`` or ``scatter`` with an index out of
+            range terminates the process. A compiled ``torch.vmap`` with ``fullgraph=True`` then fails to trace, as the
+            assert has no batching rule, so set it only in code that cannot run under ``vmap`` anyway, such as the
+            in-place histograms of the ``equalize`` lookups.
     """
-    on_host = condition.device.type == "cpu"
+    # TorchScript cannot read ``_MPS_HAS_ASSERT_ASYNC``, so a scripted call reads MPS and other devices on the host.
+    on_host = condition.device.type not in ("cuda", "meta")
     if not torch.jit.is_scripting():
         if not (guard or _KORNIA_CHECKS_ENABLED):
             return
-        # Dynamo cannot trace the stack walk, so a compiled call skips the check under every functorch transform.
-        if torch._C._are_functorch_transforms_active() and (torch.compiler.is_compiling() or _vmap_is_active()):
-            return
+        if torch._C._are_functorch_transforms_active():
+            if torch.compiler.is_compiling():
+                # Dynamo cannot trace the stack walk, so a compiled call skips the check under every functorch
+                # transform. A guard stays: it keeps an index in bounds, and the assert works under grad.
+                if not guard:
+                    return
+            elif _vmap_is_active():
+                return
         kind = condition.device.type
         has_kernel = kind in ("cpu", "cuda", "meta") or (kind == "mps" and _MPS_HAS_ASSERT_ASYNC)
         if torch.compiler.is_compiling() or torch.jit.is_tracing():

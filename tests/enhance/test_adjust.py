@@ -1188,6 +1188,22 @@ class TestEqualize(BaseTester):
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
             _sync(compiled(x).device)
 
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+        # The range check keeps the lookup in bounds, so a compiled torch.func.grad keeps it, although a compiled
+        # functorch transform skips the value checks that guard no index.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        if not torch_version_ge(2, 14):
+            pytest.skip("torch 2.9.1 and older end an error raised in a compiled torch.func.grad in an internal assert")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        torch._dynamo.reset()
+        gradient = torch.func.grad(lambda image: kornia.enhance.equalize(image).sum())
+        compiled = torch.compile(gradient, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
         inp = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)

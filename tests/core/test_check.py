@@ -959,7 +959,10 @@ class TestCheckAsync(BaseTester):
         result = subprocess.run(  # noqa: S603
             [sys.executable, "-c", script], capture_output=True, text=True, check=False, timeout=300
         )
-        assert result.stdout.split() == ["returned", "AcceleratorError"], result.stdout + result.stderr
+        # torch 2.5.1 has no AcceleratorError and raises a plain RuntimeError.
+        assert result.stdout.split() in (["returned", "AcceleratorError"], ["returned", "RuntimeError"]), (
+            result.stdout + result.stderr
+        )
         assert "x must be positive" in result.stderr
 
     def test_valid_on_cuda_does_not_synchronize(self, device):
@@ -1026,15 +1029,20 @@ class TestCheckAsync(BaseTester):
         gradient = torch_optimizer(torch.func.grad(op), fullgraph=True)
         self.assert_close(gradient(x[0]), torch.full_like(x[0], 2.0))
 
-    def test_jit_raises_on_the_host(self):
+    def test_jit_raises_on_the_host(self, device):
+        # TorchScript cannot read whether MPS has the assert kernel (from torch 2.13), so a scripted call reads a
+        # condition on any device but CUDA on the host, and raises during the call.
+        if device.type == "cuda":
+            pytest.skip("a scripted CUDA check is torch._assert_async, a device-side assert")
+
         def op(x: torch.Tensor) -> torch.Tensor:
             _check_async((x > 0).all(), "x must be positive")
             return x * 2
 
         scripted = torch.jit.script(op)
-        assert torch.equal(scripted(torch.ones(2)), torch.full((2,), 2.0))
+        assert torch.equal(scripted(torch.ones(2, device=device)), torch.full((2,), 2.0, device=device))
         with pytest.raises(torch.jit.Error, match="AsyncCheckError: x must be positive"):
-            scripted(-torch.ones(2))
+            scripted(-torch.ones(2, device=device))
 
     def test_dynamo(self, device, torch_optimizer, optimizer_backend):
         if optimizer_backend == "jit":
@@ -1053,3 +1061,22 @@ class TestCheckAsync(BaseTester):
             pytest.skip("Inductor compiles torch._assert_async to nothing before torch 2.9")
         with pytest.raises(RuntimeError, match="x must be positive"):
             compiled(-x)
+
+    def test_dynamo_guard_under_functorch_transforms(self, device, torch_optimizer, optimizer_backend):
+        # A guard keeps a later index in bounds, so a compiled grad keeps it, unlike the checks without one.
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript does not script functorch transforms")
+
+        def op(x: torch.Tensor) -> torch.Tensor:
+            _check_async((x > 0).all(), "x must be positive", guard=True)
+            return (x * 2).sum()
+
+        x = torch.full((3,), 0.5, device=device)
+        gradient = torch_optimizer(torch.func.grad(op), fullgraph=True)
+        self.assert_close(gradient(x), torch.full_like(x, 2.0))
+        if device.type != "cpu":
+            pytest.skip("an invalid value would fail on the device; the CPU kernel raises in the process")
+        if not torch_version_ge(2, 9):
+            pytest.skip("Inductor compiles torch._assert_async to nothing before torch 2.9")
+        with pytest.raises(RuntimeError, match="x must be positive"):
+            gradient(-x)
