@@ -23,6 +23,7 @@ import torch
 
 from kornia import enhance
 from kornia.core._compat import torch_version_ge
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
@@ -309,6 +310,22 @@ class TestEqualization(BaseTester):
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
             _sync(enhance.equalize_clahe(x).device)
 
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+        # The range check keeps the gather in bounds, so it runs with checks disabled too (``python -O``,
+        # ``KORNIA_CHECKS=0``): compiled on the CPU, the gather with an index out of range terminates the process.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+                _sync(enhance.equalize_clahe(x).device)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the domain the gather can index, so a hair above 1 keeps working.
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 1.0001
@@ -332,6 +349,22 @@ class TestEqualization(BaseTester):
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
         torch._dynamo.reset()
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+        # The range check keeps the gather in bounds, so a compiled torch.func.grad keeps it, although a compiled
+        # functorch transform skips the value checks that guard no index.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        if not torch_version_ge(2, 14):
+            pytest.skip("Dynamo in torch 2.9.1 and older cannot compile torch.func.grad over equalize_clahe")
+        x = torch.linspace(0, 2, 2 * 3 * 32 * 40, device=device, dtype=dtype).reshape(2, 3, 32, 40)
+        torch._dynamo.reset()
+        gradient = torch.func.grad(lambda image: enhance.equalize_clahe(image).sum())
+        compiled = torch.compile(gradient, fullgraph=True, backend="eager")
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
             _sync(compiled(x).device)
 

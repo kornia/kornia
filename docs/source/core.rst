@@ -77,7 +77,10 @@ the wrong shape. All of them derive from :exc:`BaseError`, so ``except BaseError
 catches any of them. Each subclass also derives from the built-in exception that
 matches its failure: :exc:`TypeCheckError` is also a :exc:`TypeError`, and
 :exc:`ShapeError`, :exc:`ValueCheckError`, :exc:`DeviceError` and
-:exc:`ImageError` are each also a :exc:`ValueError`. Many functions validate
+:exc:`ImageError` are each also a :exc:`ValueError`. :exc:`AsyncCheckError`,
+the host form of a check that an accelerator runs as ``torch._assert_async``, is
+a :exc:`ValueCheckError` and also a :exc:`RuntimeError`, the error torch raises
+for that check on the device. Many functions validate
 their inputs themselves and raise the built-in :exc:`ValueError` or
 :exc:`TypeError`, so ``except ValueError`` or ``except TypeError`` catches those
 and the matching kornia errors alike; ``except BaseError`` does not catch those
@@ -95,6 +98,9 @@ it.
     :show-inheritance:
 
 .. autoexception:: ValueCheckError
+    :show-inheritance:
+
+.. autoexception:: AsyncCheckError
     :show-inheritance:
 
 .. autoexception:: DeviceError

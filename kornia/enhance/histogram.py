@@ -20,9 +20,8 @@ from typing import Optional, Tuple
 
 import torch
 
+from kornia.core.check import _check_async
 from kornia.core.exceptions import ShapeError
-
-from .adjust import _assert_async_value_check
 
 
 def marginal_pdf(
@@ -62,7 +61,7 @@ def marginal_pdf(
 
     # Asynchronous like the other tensor-parameter checks in kornia.enhance: no host sync, and a compiled graph
     # keeps the check instead of skipping it.
-    _assert_async_value_check(torch.isfinite(sigma) & (sigma > 0), "Bandwidth must be finite and greater than zero.")
+    _check_async(torch.isfinite(sigma) & (sigma > 0), "Bandwidth must be finite and greater than zero.")
 
     residuals = values - bins.unsqueeze(0).unsqueeze(0)
     kernel_values = torch.exp(-0.5 * (residuals / sigma).pow(2))
@@ -116,8 +115,8 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         Rows are independent samples: x has shape (B, D), bins is the shared
         one-dimensional center grid, and the result has shape (B, N_bins).
         histogram2d uses the same batch convention for a joint density. bandwidth must be
-        finite and positive; the check runs on CPU and CUDA via ``torch._assert_async`` and
-        raises ``RuntimeError``. kornia skips it on MPS by design, so invalid values do not raise there.
+        finite and positive; the check raises a ``RuntimeError`` during the call for a CPU bandwidth, and by
+        the next synchronization for one on CUDA, or on MPS from torch 2.13, where it is ``torch._assert_async``.
         For float16 and bfloat16 samples and bins, the kernels are evaluated in float32 and the result
         is cast back to that dtype.
 
