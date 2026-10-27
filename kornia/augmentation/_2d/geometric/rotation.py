@@ -231,6 +231,13 @@ class RandomRotation90(GeometricAugmentationBase2D):
 
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
 
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        if "_allows_odd_turns" not in self.__dict__:
+            # A RandomRotation90 pickled before the non-square check existed has no cached answer.
+            low, high = self._param_generator.times.tolist()
+            self._allows_odd_turns = _range_allows_odd_turns(low, high)
+
     def validate_tensor(self, input: torch.Tensor) -> None:
         super().validate_tensor(input)
         height, width = input.shape[-2:]

@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import pickle
+
 import pytest
 import torch
 
@@ -415,6 +417,20 @@ class TestConventionGeometricMatrices(BaseTester):
         sequential = K.AugmentationSequential(K.RandomRotation90((1, 1), p=1.0), data_keys=["input", "mask"])
         with pytest.raises(ValueError, match="non-square"):
             sequential(torch.zeros(1, 1, 6, 8), torch.zeros(1, 1, 6, 8))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(1, 1), (2, 2)])
+    def test_convention_random_rotation90_unpickled_from_before_the_check_4409(self, times):
+        # A RandomRotation90 pickled before the check existed has no cached `_allows_odd_turns`; it still runs.
+        augmentation = K.RandomRotation90(times, p=1.0)
+        del augmentation._allows_odd_turns
+        restored = pickle.loads(pickle.dumps(augmentation))  # noqa: S301
+        assert restored(torch.rand(1, 1, 6, 6)).shape == (1, 1, 6, 6)
+        if times == (1, 1):
+            with pytest.raises(ValueError, match="non-square"):
+                restored(torch.zeros(1, 1, 6, 8))
+        else:
+            assert restored(torch.rand(1, 1, 6, 8)).shape == (1, 1, 6, 8)
 
     # The bounds are rounded the way `compute_transformation` rounds a draw, so the rule is about the whole numbers
     # a draw can become: `(0.2, 0.4)` only ever becomes 0, while `(0.5, 2.5)` can become 1.
