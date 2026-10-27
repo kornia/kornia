@@ -532,6 +532,12 @@ def fft_conv(
     input_padded = input_padded.contiguous()
     tmp_kernel = tmp_kernel.contiguous()
 
+    # The MKL FFT backend raises on an empty batch (pytorch/pytorch#174984), so there is nothing to transform: crop
+    # the empty input to the output size. The zero-weighted kernel sum keeps the kernel in the autograd graph, as
+    # filter2d does.
+    if input_padded.shape[0] == 0:
+        return input_padded[..., : padded_h - kh + 1, : padded_w - kw + 1] + tmp_kernel.sum() * 0
+
     # CPU FFT kernels do not support float16 or bfloat16.
     is_cpu_half = input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16)
     if is_cpu_half:
