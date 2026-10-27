@@ -70,15 +70,13 @@ def own_docstring(obj: object) -> str | None:
     A class does not inherit one from its base here, unlike with ``inspect.getdoc``.
     """
     doc = obj.__dict__.get("__doc__") if inspect.isclass(obj) else getattr(obj, "__doc__", None)
-    if not doc:
-        return None
-    return inspect.cleandoc(doc)
+    cleaned = inspect.cleandoc(doc) if doc else ""
+    return cleaned or None
 
 
 def _import_exported(module_name: str) -> object | None:
     """Import ``module_name`` quietly; ``None`` when it needs an optional package that is not installed."""
     with warnings.catch_warnings():
-        # ``getattr`` runs module-level ``__getattr__`` shims, which warn about deprecated names.
         warnings.simplefilter("ignore")
         try:
             return importlib.import_module(module_name)
@@ -101,7 +99,7 @@ def public_objects() -> dict[int, tuple[object, str]]:
 
     Covers every name in the ``__all__`` of a non-private kornia module that is a function or class defined in
     kornia and has a docstring of its own, deduplicated by object identity. Names starting with an underscore are
-    out of scope.
+    out of scope. The dict is cached and shared between callers, who must not mutate it.
     """
     collected: dict[int, tuple[object, str]] = {}
     for module_name in modules_declaring_all():
@@ -109,6 +107,7 @@ def public_objects() -> dict[int, tuple[object, str]]:
         if module is None:
             continue
         with warnings.catch_warnings():
+            # ``getattr`` runs module-level ``__getattr__`` shims, which warn about deprecated names.
             warnings.simplefilter("ignore")
             exported = [getattr(module, name, None) for name in module.__all__ if not name.startswith("_")]
         for obj in exported:
@@ -161,13 +160,18 @@ def docstring_roles(doc: str) -> list[tuple[str, str]]:
 _SEE_ALSO = re.compile(r"^(\s*)See Also:\s*$")
 
 
+_LEADING_ROLES = re.compile(r"(?::(?:py:)?(?:func|class|meth):`~?[^`]+`[\s,]*)+")
+
+
 def see_also_entries(doc: str) -> list[tuple[str, str]] | None:
     """Parse the ``See Also:`` section of ``doc`` into ``(target, explanation)`` pairs.
 
-    Returns ``None`` when there is no such section. Each ``- `` bullet gives one pair per role it contains; they
-    share the explanation, which is the text after the colon that follows the last role, joined across continuation
-    lines (``""`` when missing). The section ends at the next line with the header's indentation that ends with
-    ``:``, or at the end of the docstring.
+    Returns ``None`` when there is no such section, and ``[]`` when it has no bullets. Each ``- `` bullet gives one
+    pair per role in its leading role list (one or more roles separated by commas or whitespace); they share the
+    explanation, which is the text after the colon that follows that list, joined across continuation lines
+    (``""`` when missing). Roles inside the explanation are not targets. The section ends at the first non-blank
+    line indented at or below the ``See Also:`` header, or at the end of the docstring; text before the first
+    bullet is ignored.
     """
     lines = doc.splitlines()
     start = next((i for i, line in enumerate(lines) if _SEE_ALSO.match(line)), None)
@@ -179,7 +183,7 @@ def see_also_entries(doc: str) -> list[tuple[str, str]] | None:
         stripped = line.strip()
         if not stripped:
             continue
-        if len(line) - len(line.lstrip()) <= indent and stripped.endswith(":"):
+        if len(line) - len(line.lstrip()) <= indent:
             break
         if stripped.startswith("- "):
             bullets.append([stripped[2:].strip()])
@@ -188,12 +192,12 @@ def see_also_entries(doc: str) -> list[tuple[str, str]] | None:
     entries: list[tuple[str, str]] = []
     for parts in bullets:
         text = " ".join(parts)
-        matches = list(_XREF_ROLE.finditer(text))
-        if not matches:
+        leading = _LEADING_ROLES.match(text)
+        if leading is None:
             continue
-        tail = text[matches[-1].end() :].strip()
+        tail = text[leading.end() :].strip()
         explanation = tail[1:].strip() if tail.startswith(":") else ""
-        entries.extend((match.group(2), explanation) for match in matches)
+        entries.extend((match.group(2), explanation) for match in _XREF_ROLE.finditer(leading.group(0)))
     return entries
 
 
@@ -201,33 +205,38 @@ _DIRECTIVE_KINDS = "autofunction|autoclass|automethod|autoexception|automodule|a
 _DIRECTIVE = re.compile(rf"^(\s*)\.\. ({_DIRECTIVE_KINDS})::\s*(.*?)\s*$")
 
 
-def _import_dotted(name: str) -> object | None:
-    """Import the longest module prefix of ``name`` and walk the rest with ``getattr``; ``None`` on any failure."""
+def _import_dotted(name: str, as_module: bool = False) -> object | None:
+    """Resolve ``name`` the way autodoc does; ``None`` on any failure.
+
+    Imports the longest importable parent module and walks the rest with ``getattr``, so a function that shares its
+    name with a submodule (``kornia.filters.sobel``) is the function. The whole name is tried as a module first only
+    for ``as_module`` (``automodule``) and as a last fallback otherwise.
+    """
     parts = name.split(".")
+    ends = list(range(len(parts) - 1, 0, -1))
+    ends = [len(parts), *ends] if as_module else [*ends, len(parts)]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        for end in range(len(parts), 0, -1):
+        for end in ends:
             try:
                 obj: object = importlib.import_module(".".join(parts[:end]))
                 for attr in parts[end:]:
                     obj = getattr(obj, attr)
-            except Exception:  # noqa: BLE001 - an optional dependency may fail in any way
-                if end == 1:
-                    return None
+            except Exception:  # noqa: BLE001, S112 - an optional dependency may fail in any way
                 continue
             return obj
     return None
 
 
 def _public_methods(cls: type) -> dict[str, object]:
-    """Public methods and properties defined on ``cls`` itself, with static and class methods unwrapped."""
+    """Documented public methods and properties defined on ``cls`` itself, with static and class methods unwrapped."""
     methods: dict[str, object] = {}
     for name, value in vars(cls).items():
         if name.startswith("_"):
             continue
         if isinstance(value, (staticmethod, classmethod)):
             value = value.__func__
-        if inspect.isfunction(value) or isinstance(value, property):
+        if (inspect.isfunction(value) or isinstance(value, property)) and own_docstring(value):
             methods[name] = value
     return methods
 
@@ -250,13 +259,15 @@ def _module_members(module: object) -> dict[str, object]:
     return members
 
 
-def _has_members_option(lines: list[str], index: int, indent: int) -> bool:
+def _members_option(lines: list[str], index: int, indent: int) -> list[str] | None:
+    """Read ``:members:`` of the directive at ``index``: ``None`` when absent, ``[]`` for all, else the listed names."""
     for line in lines[index + 1 :]:
         if line.strip() and len(line) - len(line.lstrip()) <= indent:
-            return False
+            return None
         if line.strip().startswith(":members:"):
-            return True
-    return False
+            value = line.strip().removeprefix(":members:")
+            return [name.strip() for name in value.split(",") if name.strip()]
+    return None
 
 
 def _autosummary_names(lines: list[str], index: int, indent: int) -> list[str]:
@@ -273,6 +284,31 @@ def _autosummary_names(lines: list[str], index: int, indent: int) -> list[str]:
     return names
 
 
+def _add(registry: dict[str, object], full_name: str, as_module: bool = False) -> object | None:
+    obj = _import_dotted(full_name, as_module)
+    if obj is not None:
+        registry[full_name] = obj
+    return obj
+
+
+def _add_methods(registry: dict[str, object], cls_name: str, cls: object, listed: list[str]) -> None:
+    """Register the methods ``:members:`` documents: the listed names, or all documented public ones."""
+    if not inspect.isclass(cls):
+        return
+    if listed:
+        for name in listed:
+            _add(registry, f"{cls_name}.{name}")
+    else:
+        for name, method in _public_methods(cls).items():
+            registry[f"{cls_name}.{name}"] = method
+
+
+def _add_module_members(registry: dict[str, object], module_name: str, module: object, listed: list[str]) -> None:
+    for name in listed or list(_module_members(module)):
+        member = _add(registry, f"{module_name}.{name}")
+        _add_methods(registry, f"{module_name}.{name}", member, [])
+
+
 def sphinx_registry(docs_source: Path) -> dict[str, object]:
     """Map every full name that ``docs/source/*.rst`` registers to the imported object.
 
@@ -282,12 +318,6 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
     defined on the class and the public functions and classes of the module. Names that do not import are left out.
     """
     registry: dict[str, object] = {}
-
-    def add(full_name: str) -> object | None:
-        obj = _import_dotted(full_name)
-        if obj is not None:
-            registry[full_name] = obj
-        return obj
 
     for page in sorted(Path(docs_source).glob("*.rst")):
         lines = page.read_text(encoding="utf-8").splitlines()
@@ -304,21 +334,20 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
             qualified = argument if argument.startswith("kornia") or not current else f"{current}.{argument}"
             if kind == "automethod" and indent > 0 and enclosing_class:
                 qualified = f"{enclosing_class}.{argument}"
+            members = _members_option(lines, index, indent)
             if kind == "autosummary":
                 for name in _autosummary_names(lines, index, indent):
-                    add(name if name.startswith("kornia") or not current else f"{current}.{name}")
+                    _add(registry, name if name.startswith("kornia") or not current else f"{current}.{name}")
             elif kind == "automodule":
-                module = add(qualified)
-                if module is not None and _has_members_option(lines, index, indent):
-                    for name in _module_members(module):
-                        add(f"{qualified}.{name}")
+                module = _add(registry, qualified, as_module=True)
+                if module is not None and members is not None:
+                    _add_module_members(registry, qualified, module, members)
             else:
-                obj = add(qualified)
+                obj = _add(registry, qualified)
                 if kind == "autoclass":
                     enclosing_class = qualified
-                    if inspect.isclass(obj) and _has_members_option(lines, index, indent):
-                        for name, method in _public_methods(obj).items():
-                            registry[f"{qualified}.{name}"] = method
+                    if members is not None:
+                        _add_methods(registry, qualified, obj, members)
     return registry
 
 
@@ -365,14 +394,18 @@ def catalog_required(namespace: str, catalogued: Iterable[str]) -> bool:
     False when every object in its ``__all__`` is also exported, as the same object, by an ancestor namespace listed
     in ``catalogued``; true otherwise.
     """
+    catalogued = set(catalogued)
     module = importlib.import_module(namespace)
     parts = namespace.split(".")
     ancestors = [importlib.import_module(".".join(parts[:end])) for end in range(1, len(parts))]
-    ancestors = [ancestor for ancestor in ancestors if ancestor.__name__ in set(catalogued)]
-    for name in getattr(module, "__all__", []):
-        obj = getattr(module, name, None)
-        if not any(
-            name in getattr(ancestor, "__all__", []) and getattr(ancestor, name, None) is obj for ancestor in ancestors
-        ):
-            return True
+    ancestors = [ancestor for ancestor in ancestors if ancestor.__name__ in catalogued]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for name in getattr(module, "__all__", []):
+            obj = getattr(module, name, None)
+            if not any(
+                name in getattr(ancestor, "__all__", []) and getattr(ancestor, name, None) is obj
+                for ancestor in ancestors
+            ):
+                return True
     return False

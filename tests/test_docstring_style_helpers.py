@@ -17,8 +17,10 @@
 
 """Tests for the shared docstring-style helpers in ``testing/docstring_style.py``."""
 
+from functools import cache
 from pathlib import Path
 
+import kornia
 from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 
 from testing.docstring_style import (
@@ -37,6 +39,11 @@ from testing.docstring_style import (
 )
 
 DOCS = Path(__file__).resolve().parents[1] / "docs" / "source"
+
+
+@cache
+def _registry():
+    return sphinx_registry(DOCS)
 
 
 def test_shape_predicate():
@@ -76,12 +83,17 @@ def test_see_also_entries():
         ("depth_to_3d_v2", "the two halves of the warp."),
         ("kornia.geometry.camera.perspective.project_points", "the two halves of the warp."),
     ]
+    assert see_also_entries(
+        "Do.\n\nSee Also:\n    - :func:`depth_to_3d_v2`: like :func:`depth_to_3d` but channels last.\n"
+    ) == [("depth_to_3d_v2", "like :func:`depth_to_3d` but channels last.")]
+    assert see_also_entries("Do.\n\nSee Also:\n    Prose only.\n") == []
+    assert see_also_entries("Do.\n\nSee Also:\n    - :func:`a`: b.\n.. image:: foo.png\n") == [("a", "b.")]
     assert see_also_entries("Do.\n\nArgs:\n    x: y.\n") is None
     assert see_also_entries("Do.\n\nSee Also:\n    - :func:`a`\n") == [("a", "")]
 
 
 def test_registry_uses_documented_paths():
-    reg = sphinx_registry(DOCS)
+    reg = _registry()
     assert "kornia.geometry.camera.perspective.unproject_points" in reg
     assert "kornia.geometry.camera.unproject_points" not in reg
     assert "kornia.geometry.homography.find_homography_dlt" in reg  # automodule :members:
@@ -90,7 +102,7 @@ def test_registry_uses_documented_paths():
 
 
 def test_reference_resolution():
-    reg = sphinx_registry(DOCS)
+    reg = _registry()
     assert reference_resolves(depth_to_3d, "depth_to_3d_v2", reg)
     assert reference_resolves(depth_to_3d, "kornia.geometry.camera.perspective.unproject_points", reg)
     assert not reference_resolves(depth_to_3d, "kornia.geometry.camera.unproject_points", reg)
@@ -99,7 +111,7 @@ def test_reference_resolution():
 
 
 def test_resolve_reference_returns_the_target_object():
-    reg = sphinx_registry(DOCS)
+    reg = _registry()
     assert resolve_reference(depth_to_3d, "depth_to_3d_v2", reg) is depth_to_3d_v2
     assert resolve_reference(depth_to_3d, "depth_to_3d", reg) is depth_to_3d
     assert resolve_reference(depth_to_3d, "no_such_function", reg) is None
@@ -134,3 +146,31 @@ def test_own_docstring_and_public_objects():
     assert own_docstring(Child) is None
     assert id(depth_to_3d) in public_objects()
     assert public_objects()[id(depth_to_3d)][1] == "kornia.geometry.depth.depth_to_3d"
+
+
+def test_function_sharing_a_submodule_name_is_the_function():
+    reg = _registry()
+    assert reg["kornia.filters.sobel"] is kornia.filters.sobel
+    assert resolve_reference(kornia.filters.sobel, "sobel", reg) is kornia.filters.sobel
+
+
+def test_explicit_members_list_registers_only_the_listed_names():
+    reg = _registry()
+    assert "kornia.feature.SOLD2.match" not in reg
+    assert "kornia.feature.SOLD2.forward" in reg
+
+
+def test_automodule_members_register_class_methods():
+    reg = _registry()
+    assert "kornia.geometry.boxes.Boxes.to_tensor" in reg
+
+
+def test_nested_automethod_registers_under_its_class():
+    assert "kornia.geometry.camera.stereo.StereoCamera.__init__" in _registry()
+
+
+def test_own_docstring_ignores_whitespace_only():
+    def blank():
+        """ """
+
+    assert own_docstring(blank) is None
