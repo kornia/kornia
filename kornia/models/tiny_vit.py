@@ -347,7 +347,7 @@ class Attention(nn.Module):
         B, N, _ = x.shape
         x = self.norm(x)
         qkv = self.qkv(x)
-        qkv = qkv.view(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        qkv = qkv.unflatten(-1, (self.num_heads, -1)).permute(0, 2, 1, 3)
         q, k, v = qkv.split([self.key_dim, self.key_dim, self.d], dim=3)
 
         bias = self.attention_biases[:, self.attention_bias_idxs]
@@ -416,7 +416,7 @@ class TinyViTBlock(nn.Module):
 
         x = x.view(B, H, W, C)
         x, pad_hw = window_partition(x, self.window_size)  # (B * num_windows, window_size, window_size, C)
-        x = self.attn(x.flatten(1, 2))
+        x = self.attn(x.flatten(1, 2)).unflatten(1, (self.window_size, self.window_size))
         x = window_unpartition(x, self.window_size, pad_hw, (H, W))
         x = x.view(B, L, C)
 

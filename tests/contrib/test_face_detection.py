@@ -118,6 +118,19 @@ class TestFaceDetection(BaseTester):
         monkeypatch.setattr("kornia.models.yunet.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
         assert {m.training for m in YuNet("test", pretrained=True).modules()} == {False}
 
+    @pytest.mark.parametrize("phase", ["test", "train"])
+    def test_yunet_empty_batch_6266(self, device, dtype, phase):
+        model = YuNet(phase, pretrained=False).to(device, dtype).eval()
+        out = model(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
+        assert {k: v.shape for k, v in out.items()} == {"loc": (0, 235, 14), "conf": (0, 235, 2), "iou": (0, 235, 1)}
+
+    def test_empty_batch_6266(self, device, dtype, monkeypatch):
+        """An empty batch gives one detection tensor per image: none."""
+        state_dict = YuNet("test", pretrained=False).state_dict()
+        monkeypatch.setattr("kornia.models.yunet.model.load_state_dict_from_url", lambda *args, **kwargs: state_dict)
+        face_detector = kornia.contrib.FaceDetector().to(device, dtype)
+        assert face_detector(torch.rand(0, 3, 64, 64, device=device, dtype=dtype)) == []
+
     def test_exception(self, face_detector, device, dtype):
         img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)
 
