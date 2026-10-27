@@ -491,6 +491,14 @@ class TestMutualInformationValidation(BaseTester):
         with pytest.raises((BaseError, ValueError), match="shape"):
             module(signal)(other)
 
+    def test_signal_with_fewer_dims_reads_as_one_flat_signal(self, device, dtype, loss_fn, module, shape):
+        # The 2D and 3D losses flatten their last two or three dimensions; a 1-D signal is already flat.
+        signal = torch.linspace(0, 1, torch.Size(shape).numel(), device=device, dtype=dtype)
+        target = signal.flip(-1) ** 2
+        expected = loss_fn(signal.reshape(shape), target.reshape(shape))
+        self.assert_close(loss_fn(signal, target), expected, rtol=0, atol=0)
+        self.assert_close(module(target)(signal), expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("batch", [(0,), (0, 3), (3, 0)])
     def test_empty_batch(self, device, dtype, loss_fn, module, shape, batch):
         # An empty batch gives one loss per (zero) leading index, like any other batch shape.

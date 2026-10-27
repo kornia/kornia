@@ -511,7 +511,7 @@ class MILossFromRef2D(MILossFromRef):
             Tensor with shape :math:`(*, H * W)` suitable for histogram-based
             mutual-information computation.
         """
-        return tensor.flatten(-2)
+        return tensor.flatten(max(tensor.dim() - 2, 0))
 
     def forward(
         self,
@@ -599,7 +599,7 @@ class MILossFromRef3D(MILossFromRef):
         Returns:
             Tensor with shape :math:`(*, D * H * W)` for entropy estimation.
         """
-        return tensor.flatten(-3)
+        return tensor.flatten(max(tensor.dim() - 3, 0))
 
     def forward(
         self,
@@ -686,7 +686,7 @@ class NMILossFromRef2D(NMILossFromRef):
             Tensor with shape :math:`(*, H * W)` used by the normalized
             mutual-information base implementation.
         """
-        return tensor.flatten(-2)
+        return tensor.flatten(max(tensor.dim() - 2, 0))
 
     def forward(
         self,
@@ -773,7 +773,7 @@ class NMILossFromRef3D(NMILossFromRef):
             Tensor with shape :math:`(*, D * H * W)` used by the normalized
             mutual-information base implementation.
         """
-        return tensor.flatten(-3)
+        return tensor.flatten(max(tensor.dim() - 3, 0))
 
     def forward(
         self,
