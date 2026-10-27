@@ -18,7 +18,8 @@
 """Helpers shared by the tests that check kornia's docstring style.
 
 They find the public API, read the structure of a docstring (``See Also`` entries, cross-reference roles, shape
-tuples) and resolve a cross-reference the way Sphinx does, through the names that ``docs/source/*.rst`` register.
+tuples) and resolve a cross-reference the way Sphinx does, through the names that the ``.rst`` pages under
+``docs/source`` register and, for torch, Python and NumPy objects, the cached intersphinx inventories.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ import importlib
 import inspect
 import re
 import warnings
+import zlib
 from functools import cache
 from pathlib import Path
 from typing import Iterable
@@ -228,20 +230,49 @@ def _import_dotted(name: str, as_module: bool = False) -> object | None:
     return None
 
 
-def _public_methods(cls: type) -> dict[str, object]:
-    """Documented public methods and properties defined on ``cls`` itself, with static and class methods unwrapped."""
+def _autodoc_documents(owner: object, name: str, member: object, undoc_members: bool) -> bool:
+    """Whether autodoc's ``:members:`` documents ``member``, found as ``name`` on the class or module ``owner``.
+
+    Mirrors ``Documenter.filter_members`` with the default ``autodoc_inherit_docstrings = True``: a member is kept
+    with ``:undoc-members:`` or when it has a docstring, its own or, for a class member, the first one found under
+    the same name up the MRO, or else what ``inspect.getdoc`` finds (a class inherits its base's docstring there).
+    """
+    if undoc_members:
+        return True
+    doc = getattr(member, "__doc__", None)
+    if doc is None and inspect.isclass(owner):
+        for base in owner.__mro__:
+            inherited = getattr(base, name, None)
+            # ``None.__doc__`` is the docstring of ``NoneType`` from Python 3.13 on, so skip a missing name.
+            doc = None if inherited is None else getattr(inherited, "__doc__", None)
+            if doc is not None:
+                break
+    if doc is None:
+        doc = inspect.getdoc(member)
+    # autodoc drops a docstring that is only the one of the member's type, such as ``property.__doc__``.
+    return isinstance(doc, str) and bool(doc) and doc != getattr(type(member), "__doc__", None)
+
+
+def _public_methods(cls: type, undoc_members: bool) -> dict[str, object]:
+    """Public methods and properties defined on ``cls`` itself that ``autoclass :members:`` documents.
+
+    Static and class methods are unwrapped. Inherited members are left out, as autodoc does without
+    ``:inherited-members:``; an inherited docstring still documents a method that ``cls`` overrides.
+    """
     methods: dict[str, object] = {}
     for name, value in vars(cls).items():
         if name.startswith("_"):
             continue
         if isinstance(value, (staticmethod, classmethod)):
             value = value.__func__
-        if (inspect.isfunction(value) or isinstance(value, property)) and own_docstring(value):
+        if (inspect.isfunction(value) or isinstance(value, property)) and _autodoc_documents(
+            cls, name, value, undoc_members
+        ):
             methods[name] = value
     return methods
 
 
-def _module_members(module: object) -> dict[str, object]:
+def _module_members(module: object, undoc_members: bool) -> dict[str, object]:
     """What ``automodule :members:`` documents: ``__all__`` when declared, else the public names defined in it."""
     declared = getattr(module, "__all__", None)
     if declared is not None:
@@ -255,19 +286,28 @@ def _module_members(module: object) -> dict[str, object]:
             continue
         if declared is None and value.__module__ != module.__name__:
             continue
-        members[name] = value
+        if _autodoc_documents(module, name, value, undoc_members):
+            members[name] = value
     return members
 
 
-def _members_option(lines: list[str], index: int, indent: int) -> list[str] | None:
-    """Read ``:members:`` of the directive at ``index``: ``None`` when absent, ``[]`` for all, else the listed names."""
+def _directive_options(lines: list[str], index: int, indent: int) -> dict[str, str]:
+    """Read the option block of the directive at ``index``: the ``:name: value`` lines right below it."""
+    options: dict[str, str] = {}
     for line in lines[index + 1 :]:
-        if line.strip() and len(line) - len(line.lstrip()) <= indent:
-            return None
-        if line.strip().startswith(":members:"):
-            value = line.strip().removeprefix(":members:")
-            return [name.strip() for name in value.split(",") if name.strip()]
-    return None
+        stripped = line.strip()
+        if not stripped or len(line) - len(line.lstrip()) <= indent or not stripped.startswith(":"):
+            break
+        name, _, value = stripped[1:].partition(":")
+        options[name] = value.strip()
+    return options
+
+
+def _members_option(options: dict[str, str]) -> list[str] | None:
+    """Read ``:members:``: ``None`` when absent, ``[]`` for all, else the listed names."""
+    if "members" not in options:
+        return None
+    return [name.strip() for name in options["members"].split(",") if name.strip()]
 
 
 def _autosummary_names(lines: list[str], index: int, indent: int) -> list[str]:
@@ -291,35 +331,66 @@ def _add(registry: dict[str, object], full_name: str, as_module: bool = False) -
     return obj
 
 
-def _add_methods(registry: dict[str, object], cls_name: str, cls: object, listed: list[str]) -> None:
-    """Register the methods ``:members:`` documents: the listed names, or all documented public ones."""
+def _add_methods(
+    registry: dict[str, object], cls_name: str, cls: object, listed: list[str], undoc_members: bool
+) -> None:
+    """Register the methods ``:members:`` documents: the listed names, or the public ones defined on ``cls``.
+
+    Either way autodoc keeps only members with a docstring, unless the directive has ``:undoc-members:``.
+    """
     if not inspect.isclass(cls):
         return
     if listed:
         for name in listed:
-            _add(registry, f"{cls_name}.{name}")
+            member = _import_dotted(f"{cls_name}.{name}")
+            if member is not None and _autodoc_documents(cls, name, member, undoc_members):
+                registry[f"{cls_name}.{name}"] = member
     else:
-        for name, method in _public_methods(cls).items():
+        for name, method in _public_methods(cls, undoc_members).items():
             registry[f"{cls_name}.{name}"] = method
 
 
-def _add_module_members(registry: dict[str, object], module_name: str, module: object, listed: list[str]) -> None:
-    for name in listed or list(_module_members(module)):
-        member = _add(registry, f"{module_name}.{name}")
-        _add_methods(registry, f"{module_name}.{name}", member, [])
+def _add_module_members(
+    registry: dict[str, object], module_name: str, module: object, listed: list[str], undoc_members: bool
+) -> None:
+    if listed:
+        members = {name: getattr(module, name, None) for name in listed}
+        members = {
+            name: member
+            for name, member in members.items()
+            if member is not None and _autodoc_documents(module, name, member, undoc_members)
+        }
+    else:
+        members = _module_members(module, undoc_members)
+    for name, member in members.items():
+        registry[f"{module_name}.{name}"] = member
+        _add_methods(registry, f"{module_name}.{name}", member, [], undoc_members)
+
+
+# Directories of ``docs/source`` that Sphinx does not read pages from: ``conf.py``'s ``exclude_patterns``,
+# ``templates_path``, ``html_static_path`` and ``html_extra_path``.
+_NOT_PAGES = frozenset({"_build", ".ipynb_checkpoints", "_templates", "_static", "_extra"})
+
+
+def _rst_pages(docs_source: Path) -> list[Path]:
+    """Every ``.rst`` page under ``docs_source``, subdirectories included, except those Sphinx does not build."""
+    root = Path(docs_source)
+    return sorted(page for page in root.rglob("*.rst") if _NOT_PAGES.isdisjoint(page.relative_to(root).parts[:-1]))
 
 
 def sphinx_registry(docs_source: Path) -> dict[str, object]:
-    """Map every full name that ``docs/source/*.rst`` registers to the imported object.
+    """Map every full name that the ``.rst`` pages under ``docs_source`` register to the imported object.
 
     Reads ``autofunction``, ``autoclass``, ``automethod``, ``autoexception``, ``automodule`` and ``autosummary``
     entries, resolving relative names against the latest ``currentmodule`` or ``module`` and a nested ``automethod``
-    against the enclosing class. ``autoclass`` and ``automodule`` with ``:members:`` register the public methods
-    defined on the class and the public functions and classes of the module. Names that do not import are left out.
+    against the enclosing class. ``autoclass`` and ``automodule`` with ``:members:`` register the methods and
+    properties defined on the class and the functions and classes of the module that autodoc documents (public, with
+    a docstring or under ``:undoc-members:``). An ``autosummary`` registers its entries only with ``:toctree:``,
+    which generates their pages; without it, it only links to them. Names that do not import are left out.
     """
     registry: dict[str, object] = {}
 
-    for page in sorted(Path(docs_source).glob("*.rst")):
+    for page in _rst_pages(docs_source):
         lines = page.read_text(encoding="utf-8").splitlines()
         current = ""
         enclosing_class = ""
@@ -334,58 +405,112 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
             qualified = argument if argument.startswith("kornia") or not current else f"{current}.{argument}"
             if kind == "automethod" and indent > 0 and enclosing_class:
                 qualified = f"{enclosing_class}.{argument}"
-            members = _members_option(lines, index, indent)
+            options = _directive_options(lines, index, indent)
+            members = _members_option(options)
+            undoc_members = "undoc-members" in options
             if kind == "autosummary":
-                for name in _autosummary_names(lines, index, indent):
-                    _add(registry, name if name.startswith("kornia") or not current else f"{current}.{name}")
+                if "toctree" in options:
+                    for name in _autosummary_names(lines, index, indent):
+                        _add(registry, name if name.startswith("kornia") or not current else f"{current}.{name}")
             elif kind == "automodule":
                 module = _add(registry, qualified, as_module=True)
                 if module is not None and members is not None:
-                    _add_module_members(registry, qualified, module, members)
+                    _add_module_members(registry, qualified, module, members, undoc_members)
             else:
                 obj = _add(registry, qualified)
                 if kind == "autoclass":
                     enclosing_class = qualified
                     if members is not None:
-                        _add_methods(registry, qualified, obj, members)
+                        _add_methods(registry, qualified, obj, members, undoc_members)
     return registry
+
+
+_INVENTORY_LINE = re.compile(r"(.+?)\s+(\S+)\s+(-?\d+)\s+?(\S*)\s+(.*)")
+# The Python object types a ``:func:``, ``:class:`` or ``:meth:`` role can link through intersphinx.
+_LINKABLE_INVENTORY_TYPES = frozenset(
+    f"py:{kind}" for kind in ("function", "class", "exception", "method", "classmethod", "staticmethod")
+)
+
+
+def intersphinx_names(docs_source: Path) -> frozenset[str]:
+    """Return the Python object names of the cached intersphinx inventories in ``docs_source/_intersphinx``.
+
+    ``conf.py`` falls back to these ``python``, ``numpy`` and ``torch`` inventories when it cannot fetch the live
+    ones. Each file is a Sphinx inventory version 2: four header lines, then zlib-compressed
+    ``name domain:role priority uri dispname`` lines. Only functions, classes, exceptions and methods are kept, the
+    object types that ``:func:``, ``:class:`` and ``:meth:`` can link; the set does not say which role fits which.
+    """
+    names: set[str] = set()
+    for path in sorted((Path(docs_source) / "_intersphinx").glob("*.inv")):
+        with path.open("rb") as stream:
+            header = [stream.readline() for _ in range(4)]
+            if not header[0].startswith(b"# Sphinx inventory version 2") or b"zlib" not in header[3]:
+                raise ValueError(f"{path} is not a zlib-compressed Sphinx inventory version 2")
+            body = zlib.decompress(stream.read()).decode("utf-8")
+        for line in body.splitlines():
+            match = _INVENTORY_LINE.match(line.rstrip())
+            if match is not None and match.group(2) in _LINKABLE_INVENTORY_TYPES:
+                names.add(match.group(1))
+    return frozenset(names)
+
+
+def _reference_scopes(obj: object, registry: dict[str, object]) -> list[str]:
+    """The prefixes Sphinx tries a reference in the docstring of ``obj`` under: its module, then its class."""
+    scopes: list[str] = []
+    for name, registered in registry.items():
+        if registered is not obj:
+            continue
+        parent = name.rpartition(".")[0]
+        if inspect.isclass(obj):
+            scopes += [parent, name]
+        elif parent in registry and inspect.isclass(registry[parent]):
+            scopes += [parent.rpartition(".")[0], parent]
+        else:
+            scopes.append(parent)
+    return [scope for scope in scopes if scope]
+
+
+def is_documented(obj: object, registry: dict[str, object]) -> bool:
+    """Whether a docs page registers ``obj`` itself, so that short names in its docstring have a scope."""
+    return any(registered is obj for registered in registry.values())
 
 
 def resolve_reference(obj: object, target: str, registry: dict[str, object]) -> object | None:
     """Return the registered object that ``target``, written in the docstring of ``obj``, resolves to, or ``None``.
 
-    A dotted target must be a key of ``registry``. A bare one is tried in the page of ``obj`` (its registered name
-    without the last component) and, for a class, inside the class, as Sphinx resolves it. A method also finds the
-    functions of its module. Short import aliases are not registered, so they do not resolve.
+    As Sphinx does for a ``:func:``, ``:class:`` or ``:meth:`` role: a trailing ``()`` is dropped, then the target
+    is tried as written and under each scope of ``obj``, its module (the page it is registered on) and, for a class
+    or a method, the class, so ``to_tensor`` and ``Boxes.to_tensor`` both resolve inside the ``Boxes`` page. A short
+    import alias is not registered, so it does not resolve; neither does a short name in the docstring of an object
+    that no docs page registers. Only kornia objects resolve here; see ``intersphinx_names`` for the rest.
     """
-    scopes: list[str] = []
-    for name, registered in registry.items():
-        if registered is obj:
-            parent, _, _ = name.rpartition(".")
-            scopes.append(parent)
-            if inspect.isclass(obj):
-                scopes.append(name)
-            elif parent in registry and inspect.isclass(registry[parent]):
-                scopes.append(parent.rpartition(".")[0])
-    candidates = [target] if "." in target else [f"{scope}.{target}" for scope in scopes if scope]
+    target = target.removesuffix("()")
+    candidates = [target, *(f"{scope}.{target}" for scope in _reference_scopes(obj, registry))]
     for candidate in candidates:
         if candidate in registry:
             return registry[candidate]
     return None
 
 
-def reference_resolves(obj: object, target: str, registry: dict[str, object]) -> bool:
-    """Whether ``target`` resolves from the docstring of ``obj`` to a registered object (see ``resolve_reference``)."""
-    return resolve_reference(obj, target, registry) is not None
+def reference_resolves(
+    obj: object, target: str, registry: dict[str, object], external: frozenset[str] = frozenset()
+) -> bool:
+    """Whether ``target`` in the docstring of ``obj`` renders as a link.
+
+    True when it resolves to a registered kornia object (see ``resolve_reference``) or, without a trailing ``()``,
+    is one of the ``external`` names, such as ``intersphinx_names(docs_source)``.
+    """
+    return resolve_reference(obj, target, registry) is not None or target.removesuffix("()") in external
 
 
 def catalog_missing(doc: str, names: list[str]) -> list[str]:
-    """Return the ``names`` that ``doc`` does not mention as a whole token.
+    """Return the ``names`` that ``doc`` does not mention inside backticks.
 
-    A name is present only when no word character or dot comes before it and no word character comes after it, so
-    ``depth_to_3d_v2`` does not count as mentioning ``depth_to_3d``.
+    A name counts only as the whole target of a role, such as :func:`name` or :func:`~kornia.x.name`, or as a
+    double-backtick literal, such as ``name`` or ``name()``. The same word in plain prose (``normalize``,
+    ``threshold``) does not count, and ``depth_to_3d_v2`` does not count as mentioning ``depth_to_3d``.
     """
-    return [name for name in names if not re.search(rf"(?<![\w.]){re.escape(name)}(?!\w)", doc)]
+    return [name for name in names if not re.search(rf"`~?(?:[\w.]*\.)?{re.escape(name)}(?:\(\))?`", doc)]
 
 
 def catalog_required(namespace: str, catalogued: Iterable[str]) -> bool:

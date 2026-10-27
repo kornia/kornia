@@ -21,6 +21,8 @@ from functools import cache
 from pathlib import Path
 
 import kornia
+from kornia.augmentation.auto.operations.ops import AutoContrast
+from kornia.geometry.boxes import Boxes, Boxes3D
 from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 
 from testing.docstring_style import (
@@ -28,6 +30,8 @@ from testing.docstring_style import (
     catalog_required,
     covered,
     docstring_roles,
+    intersphinx_names,
+    is_documented,
     is_shape_tuple,
     math_shape_roles,
     own_docstring,
@@ -98,7 +102,6 @@ def test_registry_uses_documented_paths():
     assert "kornia.geometry.camera.unproject_points" not in reg
     assert "kornia.geometry.homography.find_homography_dlt" in reg  # automodule :members:
     assert "kornia.geometry.depth.DepthWarper.compute_projection_matrix" in reg  # autoclass :members:
-    assert "kornia.color.yuv_to_rgb" in reg  # autosummary
 
 
 def test_reference_resolution():
@@ -108,6 +111,11 @@ def test_reference_resolution():
     assert not reference_resolves(depth_to_3d, "kornia.geometry.camera.unproject_points", reg)
     assert not reference_resolves(depth_to_3d, "kornia.geometry.depth.no_such_function", reg)
     assert reference_resolves(DepthWarper, "compute_projection_matrix", reg)
+    # Sphinx drops a trailing ``()`` and tries a dotted target under the page's module too.
+    assert resolve_reference(depth_to_3d, "depth_to_3d_v2()", reg) is depth_to_3d_v2
+    assert resolve_reference(Boxes3D, "Boxes.to_tensor", reg) is Boxes.to_tensor
+    assert not reference_resolves(depth_to_3d, "kornia.geometry.camera.unproject_points()", reg)
+    assert not reference_resolves(Boxes3D, "geometry.boxes.Boxes.to_tensor", reg)
 
 
 def test_resolve_reference_returns_the_target_object():
@@ -118,14 +126,85 @@ def test_resolve_reference_returns_the_target_object():
     assert resolve_reference(depth_to_3d, "kornia.geometry.camera.unproject_points", reg) is None
 
 
+def test_intersphinx_names():
+    names = intersphinx_names(DOCS)
+    assert {"torch.nn.functional.grid_sample", "torch.Tensor", "os.PathLike", "ValueError"} <= names
+    assert "torch.nn.functional.no_such_function" not in names
+    assert "random" not in names  # a module: no :func:, :class: or :meth: role links it
+    reg = _registry()
+    assert resolve_reference(depth_to_3d, "torch.nn.functional.grid_sample", reg) is None
+    assert reference_resolves(depth_to_3d, "torch.nn.functional.grid_sample", reg, names)
+    assert not reference_resolves(depth_to_3d, "torch.nn.functional.no_such_function", reg, names)
+
+
+def test_short_names_need_a_documented_object():
+    reg = _registry()
+    assert is_documented(depth_to_3d, reg)
+    assert not is_documented(AutoContrast, reg)
+    # With no page, and so no scope, only a full name resolves from its docstring.
+    assert resolve_reference(AutoContrast, "kornia.geometry.depth.depth_to_3d", reg) is depth_to_3d
+    assert resolve_reference(AutoContrast, "depth_to_3d", reg) is None
+
+
+def _write_page(root: Path, relative: str, text: str) -> None:
+    page = root / relative
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(text, encoding="utf-8")
+
+
+def test_autosummary_registers_only_with_toctree(tmp_path):
+    _write_page(tmp_path, "links.rst", ".. currentmodule:: kornia.color\n\n.. autosummary::\n\n   yuv_to_rgb\n")
+    assert sphinx_registry(tmp_path) == {}
+    _write_page(
+        tmp_path,
+        "links.rst",
+        ".. currentmodule:: kornia.color\n\n.. autosummary::\n   :toctree: api\n\n   yuv_to_rgb\n",
+    )
+    assert sphinx_registry(tmp_path) == {"kornia.color.yuv_to_rgb": kornia.color.yuv_to_rgb}
+
+
+def test_registry_reads_pages_in_subdirectories(tmp_path):
+    _write_page(tmp_path, "models/page.rst", ".. autofunction:: kornia.color.yuv_to_rgb\n")
+    _write_page(tmp_path, "_build/page.rst", ".. autofunction:: kornia.color.rgb_to_yuv\n")
+    _write_page(tmp_path, "_templates/page.rst", ".. autofunction:: kornia.color.rgb_to_hsv\n")
+    assert sphinx_registry(tmp_path) == {"kornia.color.yuv_to_rgb": kornia.color.yuv_to_rgb}
+
+
+def test_members_follow_autodoc_docstring_rule(tmp_path):
+    """``:members:`` documents an inherited docstring; a method with none only under ``:undoc-members:``."""
+    page = ".. currentmodule:: kornia.augmentation\n\n.. autoclass:: {}\n   :members:\n{}"
+    intensity = "kornia.augmentation.IntensityAugmentationBase2D"
+    mix = "kornia.augmentation.MixAugmentationBaseV2"
+    assert own_docstring(kornia.augmentation.IntensityAugmentationBase2D.apply_transform_mask) is None
+    _write_page(tmp_path, "page.rst", page.format("IntensityAugmentationBase2D", ""))
+    assert f"{intensity}.apply_transform_mask" in sphinx_registry(tmp_path)
+    assert own_docstring(kornia.augmentation.MixAugmentationBaseV2.apply_non_transform) is None
+    _write_page(tmp_path, "page.rst", page.format("MixAugmentationBaseV2", ""))
+    assert f"{mix}.apply_non_transform" not in sphinx_registry(tmp_path)
+    _write_page(tmp_path, "page.rst", page.format("MixAugmentationBaseV2", "   :undoc-members:\n"))
+    assert f"{mix}.apply_non_transform" in sphinx_registry(tmp_path)
+
+
 def test_covered_prefix():
     assert covered("kornia.color.rgb", ["kornia.color"])
     assert not covered("kornia.colorx", ["kornia.color"])
 
 
 def test_catalog_missing():
-    assert catalog_missing("use depth_to_3d_v2 here", ["depth_to_3d", "depth_to_3d_v2"]) == ["depth_to_3d"]
+    names = ["depth_to_3d", "depth_to_3d_v2"]
+    assert catalog_missing("use :func:`depth_to_3d_v2` here", names) == ["depth_to_3d"]
+    assert catalog_missing("use ``depth_to_3d_v2()`` here", names) == ["depth_to_3d"]
     assert catalog_missing("- ``depth_to_3d``: points.", ["depth_to_3d"]) == []
+    assert catalog_missing("- ``depth_to_3d()``: points.", ["depth_to_3d"]) == []
+    assert catalog_missing("- :func:`~kornia.geometry.depth.depth_to_3d`: points.", ["depth_to_3d"]) == []
+    assert catalog_missing("- :func:`kornia.geometry.depth.depth_to_3d`: points.", ["depth_to_3d"]) == []
+    # A plain word is not a mention, and neither is a longer name that ends with it.
+    assert catalog_missing("Use the morphological opening and closing.", ["opening", "closing"]) == [
+        "opening",
+        "closing",
+    ]
+    assert catalog_missing("use depth_to_3d here", ["depth_to_3d"]) == ["depth_to_3d"]
+    assert catalog_missing(":func:`my_depth_to_3d`", ["depth_to_3d"]) == ["depth_to_3d"]
 
 
 def test_catalog_required():

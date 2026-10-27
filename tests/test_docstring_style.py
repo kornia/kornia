@@ -21,10 +21,11 @@
 an IDE or a coding agent relies on and what a refactor silently breaks:
 
 * every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs;
-* every ``:func:``, ``:class:`` and ``:meth:`` role resolves to a name that Sphinx registers from ``docs/source``, so
-  it renders as a link and not as plain text (a short import alias is importable but is not a target);
+* every ``:func:``, ``:class:`` and ``:meth:`` role resolves to a name that Sphinx registers from ``docs/source``,
+  or to a torch, Python or NumPy object in the cached intersphinx inventories, so it renders as a link and not as
+  plain text (a short import alias is importable but is not a target); See Also entries name kornia objects only;
 * the source writes a tensor shape as a literal such as ``(B, 1, H, W)``, not as ``:math:``;
-* the module docstring of a namespace names every export of its ``__all__``.
+* the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal.
 
 The test ids are qualified names, so a failure names the object to fix. Run with ``-s`` to see the progress table.
 """
@@ -52,10 +53,13 @@ from testing.docstring_style import (
     catalog_required,
     covered,
     docstring_roles,
+    intersphinx_names,
+    is_documented,
     math_shape_roles,
     modules_declaring_all,
     own_docstring,
     public_objects,
+    reference_resolves,
     resolve_reference,
     see_also_entries,
     sphinx_registry,
@@ -64,6 +68,7 @@ from testing.docstring_style import (
 KORNIA_ROOT = Path(kornia.__file__).resolve().parent
 DOCS = KORNIA_ROOT.parent / "docs" / "source"
 REGISTRY = sphinx_registry(DOCS)
+INTERSPHINX = intersphinx_names(DOCS)
 
 CONVERTED = sorted(
     ((qualified, obj) for obj, qualified in public_objects().values() if covered(obj.__module__, DOCSTRING_MODULES)),
@@ -87,7 +92,7 @@ SHAPE_CHECK_FILES = sorted(
 
 def _suggest(target: str) -> str:
     """Name the one registered full name that shares the last component of ``target``, if exactly one does."""
-    last = target.rpartition(".")[2]
+    last = target.removesuffix("()").rpartition(".")[2]
     matches = [name for name in REGISTRY if name.rpartition(".")[2] == last]
     return f" (registered as {matches[0]!r})" if len(matches) == 1 else ""
 
@@ -96,7 +101,17 @@ def test_rollout_selects_something() -> None:
     """The parametrized checks below are not vacuous: the rollout lists select objects and files."""
     assert CONVERTED, f"DOCSTRING_MODULES {DOCSTRING_MODULES} select no public object"
     assert SHAPE_CHECK_FILES, f"SHAPE_CHECK_MODULES {SHAPE_CHECK_MODULES} select no source file"
+    assert CATALOG_NAMESPACES, "CATALOG_NAMESPACES is empty, so no module catalog is checked"
     assert REGISTRY, f"sphinx_registry({DOCS}) registered nothing"
+    assert INTERSPHINX, f"intersphinx_names({DOCS}) found no inventory names"
+    for prefix in DOCSTRING_MODULES:
+        assert any(covered(obj.__module__, [prefix]) for _, obj in CONVERTED), (
+            f"DOCSTRING_MODULES entry {prefix!r} selects no public object with a docstring"
+        )
+    for prefix in SHAPE_CHECK_MODULES or ():
+        assert any(covered(_module_name(path), [prefix]) for path in SHAPE_CHECK_FILES), (
+            f"SHAPE_CHECK_MODULES entry {prefix!r} selects no source file"
+        )
 
 
 def test_every_package_is_assigned() -> None:
@@ -126,8 +141,9 @@ def test_rollout_lists_are_real() -> None:
     for entry in CATALOG_NAMESPACES:
         assert hasattr(importlib.import_module(entry), "__all__"), f"CATALOG_NAMESPACES entry {entry!r} has no __all__"
     converted = {qualified for qualified, _ in CONVERTED}
-    for key in SEE_ALSO_EXCEPTIONS:
+    for key, reason in SEE_ALSO_EXCEPTIONS.items():
         assert key in converted, f"SEE_ALSO_EXCEPTIONS key {key!r} is not a converted object"
+        assert reason.strip(), f"SEE_ALSO_EXCEPTIONS entry {key!r} needs a reason"
 
 
 @pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
@@ -145,8 +161,14 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
             problems.append(f"{target!r} has no explanation after the colon")
         if target.rpartition(".")[2].startswith("_"):
             problems.append(f"{target!r} is private")
-        if resolve_reference(obj, target, REGISTRY) is obj:
+        resolved = resolve_reference(obj, target, REGISTRY)
+        if resolved is obj:
             problems.append(f"{target!r} links the object to itself")
+        if resolved is None and target.removesuffix("()") in INTERSPHINX:
+            problems.append(
+                f"{target!r} is not a kornia object; See Also lists kornia objects, so mention torch and Python "
+                "functions in the contract paragraph instead"
+            )
     assert not problems, f"{qualified} See Also: " + "; ".join(problems)
 
 
@@ -155,12 +177,12 @@ def test_converted_object_references_resolve(qualified: str, obj: object) -> Non
     unresolved = [
         f"{target!r}{_suggest(target)}"
         for _, target in docstring_roles(own_docstring(obj))
-        if resolve_reference(obj, target, REGISTRY) is None
+        if not reference_resolves(obj, target, REGISTRY, INTERSPHINX)
     ]
-    assert not unresolved, (
-        f"{qualified} has references Sphinx cannot link (write the full name the docs register): "
-        + ", ".join(unresolved)
-    )
+    hint = "write the full name the docs register"
+    if not is_documented(obj, REGISTRY):
+        hint = f"{qualified} is not documented on any docs/source page, so short names have no scope; {hint}"
+    assert not unresolved, f"{qualified} has references Sphinx cannot link ({hint}): " + ", ".join(unresolved)
 
 
 @pytest.mark.parametrize(
@@ -194,7 +216,10 @@ def test_catalog_names_every_export(namespace: str) -> None:
     module = importlib.import_module(namespace)
     doc = inspect.getdoc(module) or ""
     missing = catalog_missing(doc, sorted(module.__all__))
-    assert missing == [], f"the module docstring of {namespace} does not mention {missing}; list every export"
+    assert missing == [], (
+        f"the module docstring of {namespace} does not mention {missing}; list every export as a role such as "
+        ":func:`name` or a literal such as ``name``"
+    )
     broken = []
     for _, target in docstring_roles(doc):
         try:
