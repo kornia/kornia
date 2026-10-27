@@ -70,6 +70,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         *,
         force_download: bool = False,
     ) -> None:
+        """Load the ONNX model, apply any version conversion and create the inference session."""
         self.op = self._load_op(op, cache_dir, force_download=force_download)
         if target_ir_version is not None or target_opset_version is not None:
             self.op = self._onnx_version_conversion(

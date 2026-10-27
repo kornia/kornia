@@ -46,6 +46,7 @@ class AverageMeter:
     count: int
 
     def __init__(self) -> None:
+        """Initialize the meter with all statistics reset to zero."""
         self.reset()
 
     def reset(self) -> None:

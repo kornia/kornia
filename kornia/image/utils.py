@@ -271,6 +271,7 @@ class ImageToTensor(nn.Module):
     """
 
     def __init__(self, keepdim: bool = False) -> None:
+        """Initialize the converter with the ``keepdim`` behavior."""
         super().__init__()
         self.keepdim = keepdim
 

@@ -40,6 +40,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the module, forwarding all arguments to :class:`torch.nn.Module`."""
         super().__init__(*args, **kwargs)
         self._disable_features: bool = False
         self._output_image = None
@@ -127,6 +128,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the container, forwarding all arguments to :class:`torch.nn.Sequential`."""
         super().__init__(*args, **kwargs)
         self._disable_features: bool = False
         self._output_image = None

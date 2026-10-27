@@ -86,6 +86,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         target_opset_version: Optional[int] = None,
         force_download: bool = False,
     ) -> None:
+        """Load the ONNX models, combine them into one graph and create the inference session."""
         self.operators = self._load_ops(*args, cache_dir=cache_dir, force_download=force_download)
         if auto_ir_version_conversion:
             self.operators = self._auto_version_conversion(

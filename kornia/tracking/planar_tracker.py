@@ -69,6 +69,7 @@ class HomographyTracker(nn.Module):
         ransac: Optional[nn.Module] = None,
         minimum_inliers_num: int = 30,
     ) -> None:
+        """Initialize the tracker with its matchers, RANSAC module and inlier threshold."""
         super().__init__()
         self.initial_matcher = initial_matcher or (
             LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher("smnn", 0.95))

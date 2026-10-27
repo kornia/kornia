@@ -301,7 +301,6 @@ ignore = [
   "D100",  # Allow Undocumented public module
   "D104",  # TODO: Undocumented public package
   "D105",  # Allow Undocumented magic method
-  "D107",  # TODO: Undocumented public init
 ]
 
 [tool.ruff.lint.flake8-import-conventions.aliases]
@@ -369,6 +368,16 @@ max-statements = 64  # Recommended: 50
   "S607",
 ]  # survey harness: subprocess workers, inline lambdas that build case inputs
 "kornia/__init__.py" = ["I001"]  # Allow unsorted imports
+# D107 is enforced in the packages whose `__init__` methods are documented. Remove a line below once its package is done.
+"kornia/augmentation/**" = ["D107"]
+"kornia/color/**" = ["D107"]
+"kornia/contrib/**" = ["D107"]
+"kornia/enhance/**" = ["D107"]
+"kornia/feature/**" = ["D107"]
+"kornia/filters/**" = ["D107"]
+"kornia/geometry/**" = ["D107"]
+"kornia/losses/**" = ["D107"]
+"kornia/models/**" = ["D107"]
 "kornia/feature/dedode/*" = [
   "C408",
   "F401",

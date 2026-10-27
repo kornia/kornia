@@ -230,6 +230,7 @@ class SSIM3D(nn.Module):
     """
 
     def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = "same") -> None:
+        """Initialize the module with the window size, dynamic range, epsilon and padding mode."""
         super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val

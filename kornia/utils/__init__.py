@@ -320,6 +320,7 @@ class ImageToTensor(_ImageToTensor):
     """
 
     def __init__(self, keepdim: bool = False) -> None:
+        """Warn that the class is deprecated, then initialize :class:`kornia.image.ImageToTensor`."""
         _warn("ImageToTensor", "kornia.image")
         super().__init__(keepdim)
 

@@ -131,6 +131,7 @@ class AEPE(nn.Module):
     """
 
     def __init__(self, reduction: str = "mean") -> None:
+        """Initialize the module with the ``reduction`` applied to the endpoint error."""
         super().__init__()
         self.reduction: str = reduction
 

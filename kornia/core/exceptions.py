@@ -58,6 +58,7 @@ class ShapeError(BaseError, ValueError):
         actual_shape: Optional[tuple[int, ...] | list[int]] = None,
         expected_shape: Optional[list[str] | tuple[int, ...]] = None,
     ):
+        """Initialize the error with a message and the actual and expected shapes."""
         super().__init__(message)
         self.actual_shape = actual_shape
         self.expected_shape = expected_shape
@@ -78,6 +79,7 @@ class TypeCheckError(BaseError, TypeError):
         actual_type: Optional[type | torch.dtype] = None,
         expected_type: Optional[type | tuple[type, ...] | torch.dtype] = None,
     ):
+        """Initialize the error with a message and the actual and expected types."""
         super().__init__(message)
         self.actual_type = actual_type
         self.expected_type = expected_type
@@ -98,6 +100,7 @@ class ValueCheckError(BaseError, ValueError):
         actual_value: Optional[Any] = None,
         expected_range: Optional[tuple[Any, Any]] = None,
     ):
+        """Initialize the error with a message, the actual value and the expected range."""
         super().__init__(message)
         self.actual_value = actual_value
         self.expected_range = expected_range
@@ -128,6 +131,7 @@ class DeviceError(BaseError, ValueError):
         actual_devices: Optional[list] = None,
         expected_device: Optional[Any] = None,
     ):
+        """Initialize the error with a message and the actual and expected devices."""
         super().__init__(message)
         self.actual_devices = actual_devices
         self.expected_device = expected_device
