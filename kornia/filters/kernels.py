@@ -943,7 +943,7 @@ def get_gaussian_kernel2d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Return Gaussian filter matrix coefficients.
+    r"""Return 2D Gaussian filter coefficients of shape (B, k_y, k_x), the outer product of two 1D kernels.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. ``kernel_size`` is
@@ -1007,7 +1007,7 @@ def get_gaussian_kernel3d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Return Gaussian filter matrix coefficients.
+    r"""Return 3D Gaussian filter coefficients of shape (B, k_z, k_y, k_x), the outer product of three 1D kernels.
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. ``kernel_size`` is

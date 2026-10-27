@@ -260,7 +260,7 @@ def warp_perspective(
     align_corners: bool = True,
     fill_value: Optional[torch.Tensor] = None,  # needed for jit
 ) -> torch.Tensor:
-    r"""Apply a perspective transformation to an image.
+    r"""Warp a 2D (B, C, H, W) image by a (B, 3, 3) source→destination homography in pixel coordinates.
 
     The function warp_perspective transforms the source image using
     the specified matrix:
@@ -598,7 +598,7 @@ def _fill_and_warp(
 
 
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    r"""Compute the grid to warp the coordinates grid by the homography/ies.
+    r"""Transform a 2D (x, y) coordinate grid by destination→source (N, 3, 3) homographies.
 
     Convention:
         - ``grid`` coordinates: ``(x, y)`` (last dim), shape :math:`(1, H, W, 2)` or :math:`(N, H, W, 2)`
@@ -684,7 +684,7 @@ def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, al
 
 
 def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    r"""Compute the grid to warp the coordinates grid by the homography/ies.
+    r"""Transform a 3D (x, y, z) coordinate grid by destination→source (N, 4, 4) homographies.
 
     Convention:
         - ``grid`` coordinates: ``(x, y, z)`` (last dim), shape :math:`(1, D, H, W, 3)` or
@@ -1860,9 +1860,9 @@ def warp_perspective3d(
     border_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    r"""Apply a perspective transformation to an image.
+    r"""Warp a 3D (B, C, D, H, W) volume by a (B, 4, 4) source→destination homography in voxel coordinates.
 
-    The function warp_perspective transforms the source image using
+    The function warp_perspective3d transforms the source volume using
     the specified matrix:
 
     .. math::
