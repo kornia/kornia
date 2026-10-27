@@ -40,6 +40,7 @@ def _documented_args(cls):
         K.RandomBrightness,
         K.RandomCutMixV2,
         K.RandomGaussianBlur,
+        K.RandomSnow,
         K.RandomThinPlateSpline,
     ],
 )
