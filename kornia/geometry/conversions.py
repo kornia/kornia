@@ -2350,8 +2350,8 @@ def normalize_homography3d(
           record
         - it inverts ``N_src`` with ``torch.linalg.inv`` (so ``cusolver`` on
           ``cuda``, and a ``float32`` upcast for ``float16``/``bfloat16``),
-          where the 2-D function uses a closed-form adjugate in the working
-          dtype; the 2-D and 3-D routes therefore need not agree bitwise
+          where the 2-D function uses a closed-form adjugate, with the same
+          ``float32`` upcast; the 2-D and 3-D routes therefore need not agree bitwise
         - the matrices are :math:`(B, 4, 4)` and act on ``(x, y, z, 1)`` column
           vectors, while both ``dsize`` arguments are
           ``(depth, height, width)`` triples
