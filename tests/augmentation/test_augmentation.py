@@ -83,7 +83,7 @@ from kornia.augmentation import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.core._compat import torch_version
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
@@ -6542,8 +6542,9 @@ class TestRandomJPEGEmptyBatch(BaseTester):
     @pytest.mark.parametrize("p", [1.0, 0.5])
     @pytest.mark.parametrize("same_on_batch", [False, True])
     def test_empty_batch(self, p, same_on_batch, device, dtype):
-        # #4429: the differentiable JPEG codec rejects an empty batch, so the augmentation short-circuits it and
-        # keeps the shape like the other classes in the empty-batch convention.
+        # #4429: for an empty batch, no JPEG quality is drawn and there are no pixels to code, so the
+        # augmentation bypasses the codec entirely and keeps the input's shape, matching the other
+        # classes' empty-batch convention.
         image = torch.rand(0, 3, 8, 10, device=device, dtype=dtype, requires_grad=True)
         output = RandomJPEG(p=p, same_on_batch=same_on_batch)(image)
         assert output.shape == image.shape
@@ -6554,21 +6555,31 @@ class TestRandomJPEGEmptyBatch(BaseTester):
 
     @pytest.mark.parametrize(
         ("params_batch", "batch", "error", "match"),
-        [(0, 2, RuntimeError, r"amin\(\)"), (2, 0, ValueError, r"Invalid input tensor, it is empty\.")],
+        [
+            (0, 2, ShapeError, r"jpeg_quality needs one quality per image"),
+            (2, 0, ShapeError, r"jpeg_quality needs one quality per image"),
+        ],
     )
     def test_empty_batch_shortcut_needs_an_empty_batch(self, params_batch, batch, error, match, device, dtype):
-        # Replaying parameters drawn for another batch size raises as it did before the empty-batch shortcut; a
+        # Replaying parameters drawn for another batch size still raises, now at the codec's batch-size check; a
         # non-empty batch with no drawn quality must not come back uncoded.
         aug = RandomJPEG(p=1.0)
         params = aug.forward_parameters(torch.Size((params_batch, 3, 8, 10)))
         with pytest.raises(error, match=match):
             aug(torch.rand(batch, 3, 8, 10, device=device, dtype=dtype), params=params)
 
-    @pytest.mark.parametrize("shape", [(0, 1, 8, 10), (0, 3, 0, 10), (0, 3, 8, 0)])
-    def test_empty_batch_keeps_the_input_checks(self, shape, device, dtype):
-        # The codec needs three channels and a non-empty image at every batch size, so these empty batches still
-        # raise as they did before the empty-batch shortcut.
-        with pytest.raises(ValueError, match=r"it is empty|expected 3"):
+    @pytest.mark.parametrize(
+        ("shape", "match"),
+        [
+            ((0, 1, 8, 10), r"expected 3"),
+            ((0, 3, 0, 10), r"it is empty"),
+            ((0, 3, 8, 0), r"it is empty"),
+        ],
+    )
+    def test_empty_batch_keeps_the_input_checks(self, shape, match, device, dtype):
+        # The codec checks for three channels (for (0, 1, 8, 10)) and for non-empty images
+        # (for (0, 3, 0, 10) and (0, 3, 8, 0)).
+        with pytest.raises(ValueError, match=match):
             RandomJPEG(p=1.0)(torch.rand(*shape, device=device, dtype=dtype))
 
 
