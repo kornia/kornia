@@ -34,7 +34,7 @@ def _classes_with_partial_default_p() -> list[tuple[str, float]]:
     found = []
     for name in K.__all__:
         obj = getattr(K, name)
-        if not inspect.isclass(obj) or "Base" in name:
+        if not inspect.isclass(obj):
             continue
         param = inspect.signature(obj.__init__).parameters.get("p")
         if param is None or not isinstance(param.default, (int, float)):
@@ -54,7 +54,8 @@ def test_the_discovery_finds_the_known_classes():
     assert found["RandomGrayscale"] == 0.1
     assert found["RandomMosaic"] == 0.7
     assert found["RandomAffine3D"] == 0.5
-    assert len(found) >= 49
+    assert found["AugmentationBase2D"] == 0.5
+    assert len(found) >= 57
 
 
 @pytest.mark.parametrize(("name", "default"), _CLASSES, ids=[name for name, _ in _CLASSES])
