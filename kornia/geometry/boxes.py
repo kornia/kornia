@@ -25,6 +25,7 @@ from torch import Size
 from kornia.core.check import _check_async
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_compiling, is_exporting
+from kornia.geometry._coordinate import _cast_to_floating_point
 from kornia.geometry.linalg import transform_points
 
 __all__ = ["Boxes", "Boxes3D", "VideoBoxes"]
@@ -60,7 +61,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
             :math:`(B, 4, 4)` for 3D hexahedron.
 
     """
-    M = M if M.is_floating_point() else M.to(torch.get_default_dtype())
+    M = _cast_to_floating_point(M)
 
     # Work with batch as kornia.transform_points only supports a batch of points.
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
@@ -128,7 +129,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
     else:
         raise ValueError(f"Unknown mode {mode}")
 
-    boxes = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
+    boxes = _cast_to_floating_point(boxes)
     boxes = boxes if batched else boxes.unsqueeze(0)
 
     # Value validation reads the data, which graph capture cannot do; skip it under export. The vertex modes check
@@ -212,7 +213,8 @@ class Boxes:
             See below for more details.
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a
             floating point tensor. True to raise an error when `boxes` isn't a floating point tensor, False
-            to cast to float.
+            to cast to ``float32``, or ``float64`` when that is the default dtype.
+            Floating-point input keeps its dtype.
         mode: Representation label reused as the default output mode by :meth:`to_tensor`. The constructor does not
             convert ``boxes``; use :meth:`from_tensor` to import another representation.
 
@@ -236,7 +238,8 @@ class Boxes:
           ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary quadrilaterals of
           :meth:`transform_boxes` import unchanged.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
-          checked by its first element's dtype); :meth:`from_tensor` casts integer input to the default dtype.
+          checked by its first element's dtype); :meth:`from_tensor` casts integer input to ``float32``,
+          or ``float64`` when that is the default dtype.
         - :meth:`merge` and :meth:`index_put` are non-mutating by default.
 
     .. warning::
@@ -277,7 +280,7 @@ class Boxes:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
 
-            boxes = boxes.to(torch.get_default_dtype())
+            boxes = _cast_to_floating_point(boxes)
 
         if len(boxes.shape) == 0:
             boxes = boxes.reshape((-1, 4))
@@ -672,7 +675,8 @@ class Boxes:
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or
                 :math:`(B, N, 4, 2)`, a nested numeric list with one of those shapes, or a list of
-                :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``.
+                :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``. Integer input is cast to ``float32``,
+                or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
             mode: The format in which the boxes are provided:
 
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent. With shape :math:`(N, 4)`,
@@ -1076,8 +1080,9 @@ class VideoBoxes(Boxes):
 
     Convention:
         - :meth:`from_tensor` stores :math:`(B, T, N, 4, 2)` input unchanged as :math:`(B \cdot T, N, 4, 2)`
-          ``'vertices_plus'`` data, with no mode or conversion; integer input is cast to the default dtype, and
-          another shape or a list raises ``ValueError``. ``validate_boxes=True`` rejects a non-finite coordinate as
+          ``'vertices_plus'`` data, with no mode or conversion; integer input is cast to ``float32``,
+          or ``float64`` when that is the default dtype. Another shape or a list raises ``ValueError``.
+          ``validate_boxes=True`` rejects a non-finite coordinate as
           :meth:`Boxes.from_tensor` does for ``'vertices_plus'``.
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
@@ -1105,7 +1110,8 @@ class VideoBoxes(Boxes):
             boxes: Box corners with shape :math:`(B, T, N, 4, 2)` in
                 ``vertices_plus`` order (top-left, top-right, bottom-right,
                 bottom-left), stored unchanged; integer input is cast to
-                ``torch.get_default_dtype()``. Lists of tensors are not supported yet.
+                ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
+                Lists of tensors are not supported yet.
             validate_boxes: Reject a non-finite coordinate with ``RuntimeError``
                 (``torch._assert_async``). There is no extent or shape
                 check, as for ``'vertices_plus'`` in
@@ -1209,7 +1215,8 @@ class Boxes3D:
     Args:
         boxes: 3D boxes, shape of :math:`(N,8,3)` or :math:`(B,N,8,3)`. See below for more details.
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
-            point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
+            point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to
+            ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
         mode: Representation label reported by :attr:`mode`. The constructor does not convert ``boxes`` and
             :meth:`to_tensor` does not consult the label; use :meth:`from_tensor` to import another representation.
 
@@ -1228,7 +1235,8 @@ class Boxes3D:
         - With ``validate_boxes=True``, :meth:`from_tensor` rejects a non-finite coordinate and extents that are
           not positive in the given mode (``xmax == xmin`` fails in ``'xyzxyz'``, passes in ``'xyzxyz_plus'``).
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``;
-          :meth:`from_tensor` casts integer input to the default dtype.
+          :meth:`from_tensor` casts integer input to ``float32``,
+          or ``float64`` when that is the default dtype.
         - :meth:`transform_boxes` returns a new object labelled ``'xyzxyz_plus'``; :meth:`transform_boxes_`
           rebinds the internal tensor of ``self`` and keeps the label.
 
@@ -1252,7 +1260,7 @@ class Boxes3D:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}.")
 
-            boxes = boxes.to(torch.get_default_dtype())
+            boxes = _cast_to_floating_point(boxes)
 
         if len(boxes.shape) == 0:
             boxes = boxes.reshape((-1, 6))
@@ -1315,7 +1323,7 @@ class Boxes3D:
 
         Args:
             boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`. Integer input is cast to
-                ``torch.get_default_dtype()``.
+                ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
             mode: The format in which the 3D boxes are provided, matched case-insensitively.
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
@@ -1361,7 +1369,7 @@ class Boxes3D:
 
         batched = boxes.ndim == 3
         boxes = boxes if batched else boxes.unsqueeze(0)
-        boxes = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
+        boxes = _cast_to_floating_point(boxes)
 
         xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
         mode = mode.lower()

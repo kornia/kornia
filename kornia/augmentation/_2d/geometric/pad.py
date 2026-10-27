@@ -51,12 +51,12 @@ class PadTo(GeometricAugmentationBase2D):
         See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
         This operation always runs and pads on the right and bottom, using ``pad_mode`` and ``pad_value``. With the
         default ``crop_if_exceeds=True``, a target smaller than the input crops that axis instead, so a target can pad
-        one axis while cropping the other (`#4410 <https://github.com/kornia/kornia/issues/4410>`_). With
-        ``crop_if_exceeds=False``, that axis passes through unchanged.
+        one axis while cropping the other. With ``crop_if_exceeds=False``, that axis passes through unchanged.
 
-        :meth:`inverse` slices to the prior input size. It exactly removes right/bottom padding, but after a crop it
-        returns the cropped result unchanged rather than restoring discarded pixels. The transformation matrix is
-        identity, so keypoints and boxes are neither moved nor clipped when cropping puts them outside the canvas.
+        :meth:`inverse` restores the prior input shape on every axis. It exactly removes right/bottom padding, and it
+        regrows a cropped axis at the right/bottom with zeros, as the crop augmentations' inverses do: the discarded
+        pixels cannot be recovered. The transformation matrix is identity, because every kept pixel keeps its
+        coordinates, so keypoints and boxes are neither moved nor clipped when cropping puts them outside the canvas.
 
     Examples:
         >>> import torch
@@ -73,6 +73,12 @@ class PadTo(GeometricAugmentationBase2D):
         >>> pad.inverse(out)
         tensor([[[[0., 0., 0.],
                   [0., 0., 0.],
+                  [0., 0., 0.]]]])
+
+        >>> crop = PadTo((2, 4))
+        >>> crop.inverse(crop(torch.ones(1, 1, 3, 3)))
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
                   [0., 0., 0.]]]])
 
         >>> img_large = torch.zeros(1, 1, 4, 4)
@@ -97,8 +103,8 @@ class PadTo(GeometricAugmentationBase2D):
             "crop_if_exceeds": crop_if_exceeds,
         }
 
-    # TODO: It is incorrect to return identity
-    # TODO: Having a resampled version with ``warp_affine``
+    # PadTo pads and crops only at the right and bottom, so every pixel it keeps stays at the same coordinates: the
+    # identity is the exact transformation for keypoints and boxes in both directions.
     def compute_transformation(self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(image)
 
@@ -125,4 +131,7 @@ class PadTo(GeometricAugmentationBase2D):
     ) -> Tensor:
         if size is None:
             raise RuntimeError("`size` has to be a tuple. Got None.")
-        return input[..., : size[0], : size[1]]
+        # Negative padding removes the right/bottom padding; positive padding regrows a cropped axis with zeros
+        # rather than ``pad_mode``, which would invent content from the pixels that were kept.
+        height, width = input.shape[-2:]
+        return torch.nn.functional.pad(input, [0, size[1] - width, 0, size[0] - height], mode="constant", value=0.0)

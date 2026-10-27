@@ -77,7 +77,14 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     if output_dtype in (torch.float16, torch.bfloat16):
         input, target = input.float(), target.float()
 
-    epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).sqrt()
+    sq_dist: Tensor = (input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2
+    # d sqrt(x)/dx is infinite at 0 and autograd multiplies it by the zero derivative of the squares, so an exact
+    # match would get a NaN gradient (and a mask cannot hide it: NaN * 0 is NaN). Differentiate the sqrt of a safe
+    # positive argument and select 0 at zero distance, the subgradient torch.linalg.vector_norm uses. The value is
+    # unchanged: it is sqrt(sq_dist) wherever sq_dist > 0 and 0 where it is 0.
+    is_match = sq_dist == 0
+    safe_sq_dist = torch.where(is_match, torch.ones_like(sq_dist), sq_dist)
+    epe: Tensor = torch.where(is_match, torch.zeros_like(sq_dist), safe_sq_dist.sqrt())
 
     if reduction == "mean":
         epe = epe.mean()
