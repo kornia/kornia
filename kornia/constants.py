@@ -186,6 +186,8 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
 # TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
 class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
+    """Kind of data an augmentation container transforms, one per entry of ``data_keys``."""
+
     IMAGE = 0
     INPUT = 0
     MASK = 1
@@ -198,4 +200,5 @@ class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def get(cls, value: TKEnum["DataKey"]) -> "DataKey":
+        """Return the DataKey member matching a name, a value or a member."""
         return _get(cls, value)
