@@ -373,7 +373,7 @@ class TestCenterCrop(BaseTester):
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
         inp = torch.arange(1.0, 21.0, device=device, dtype=dtype).view(1, 1, 4, 5)
-        out = torch_optimizer(kornia.geometry.transform.CenterCrop2D(size))(inp)
+        out = torch_optimizer(kornia.geometry.transform.CenterCrop2D(size), fullgraph=True)(inp)
         self.assert_close(out, kornia.geometry.transform.CenterCrop2D(size, cropping_mode="resample")(inp))
 
 

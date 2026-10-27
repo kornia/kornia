@@ -771,14 +771,12 @@ class CenterCrop2D(nn.Module):
             )
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            # A size larger than the input overflows the image: zero-pad around it, as the resample mode does. An
-            # in-bounds box never needs compensation, so it keeps the default, which compiles with fullgraph=True.
-            shape_compensation = "pad" if dst_h > src_h or dst_w > src_w else "resize"
-            return crop_by_indices(
-                input,
-                self.points_src.expand(batch_size, -1, -1).to(input),
-                self.flags["size"],
-                shape_compensation=shape_compensation,
-            )
+            if dst_h > src_h or dst_w > src_w:
+                # A size larger than the input: zero-pad around the image, as the resample mode does, then slice.
+                # The offsets are Python ints from the shapes, so this compiles with fullgraph=True.
+                left, top = max(-start_x, 0), max(-start_y, 0)
+                padded = F.pad(input, [left, max(end_x + 1 - src_w, 0), top, max(end_y + 1 - src_h, 0)])
+                return padded[..., start_y + top : end_y + 1 + top, start_x + left : end_x + 1 + left].contiguous()
+            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
