@@ -14,6 +14,25 @@ Conventions every code generator must know before writing Kornia code:
 
 For the full self-contained reference with runnable examples, fetch [llms-full.txt](https://kornia.readthedocs.io/en/latest/llms-full.txt).
 
+## When to use Kornia
+
+Kornia pays off where a hand-written version gets long or fragile, or where the alternatives leave the GPU:
+breadth (1,200+ public operators, most with no torchvision equivalent: camera and epipolar geometry, solvers,
+features and matching, edges, morphology, Lab/Bayer color, losses and metrics); per-sample parameters in one batched
+call (`gaussian_blur2d` with a `(B, 2)` `sigma`, a `(B,)` angle to `rotate`, `(B, 3, 3)` matrices to
+`warp_perspective`; from 0.9.1 a CUDA `sigma` is validated without a host sync); batched minimal solvers
+(`find_fundamental(..., method="7POINT")` returns all real solutions, zero-padded to three, plus 8-point, 5-point
+essential, DLT homography and PnP) and `RANSAC` (device-side sampling and scoring; whole estimation on the device with
+`compile=True`, PyTorch ≥ 2.14); differentiable geometry (depth ↔ 3D, `warp_frame_depth`, camera models with
+distortion, Lie groups); 2D augmentation that moves images, masks, boxes and keypoints together and inverts (on CUDA
+with no avoidable host synchronization); GPU local features and matchers (DISK, ALIKED, XFeat, LoFTR, LightGlue,
+SIFT); nearly all probed operator configurations compile with `torch.compile`, and over 1,000 export to ONNX. In the
+published 0.9.0 flagship benchmarks (RTX 4090, batch 32), many filters, warps, matching steps and metrics run about
+10× to 70× faster in eager mode than per-image CPU OpenCV or scikit-image, and several pass 100× under
+`torch.compile`; on the small overlap with torchvision, eager Kornia is slower and compiled Kornia wins hue, color
+jitter and Gaussian blur but not flips, crops or brightness. `RANSAC` and learned-feature extraction run without
+gradients. For a single fixed-parameter operation, plain PyTorch or torchvision is just as good.
+
 ## Get started
 
 - [Introduction](https://kornia.readthedocs.io/en/latest/get-started/introduction.html): what Kornia is and the design principles behind it
