@@ -187,7 +187,7 @@ def _finalize_laf(
 
 
 class LAFAffineShapeEstimator(nn.Module):
-    r"""Estimate the affine shape of (B, N, 2, 3) LAFs from the second-moment matrix of their image patches.
+    r"""Give (B, N, 2, 3) LAFs the affine shape estimated from the second-moment matrix of their patch gradients.
 
     It extracts a patch per LAF and runs :class:`~kornia.feature.PatchAffineShapeEstimator` on it to estimate the
     shape.
@@ -268,7 +268,7 @@ class LAFAffineShapeEstimator(nn.Module):
 
 
 class LAFAffNetShapeEstimator(nn.Module):
-    """Estimate the affine shape of (B, N, 2, 3) LAFs by running the AffNet CNN on their image patches.
+    """Give (B, N, 2, 3) LAFs the affine shape that the AffNet CNN estimates from their image patches.
 
     It extracts a patch per LAF and runs AffNet on it to estimate the shape. This is based on the original code from
     the paper "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability".

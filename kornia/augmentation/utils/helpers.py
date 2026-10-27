@@ -209,7 +209,7 @@ def _transform_input_by_shape(
 def _transform_input3d_by_shape(
     input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
 ) -> torch.Tensor:
-    """Add the missing batch or channel dimension of a volume tensor, e.g. a mask, to match a (B, C, D, H, W) reference.
+    """Unsqueeze a 3-dim tensor at dim 0, then a 4-dim one at dim 2 if its first size equals the reference batch size.
 
     Arguments:
         input: torch.Tensor to be transformed
@@ -238,7 +238,7 @@ def _transform_input3d_by_shape(
 
 
 def _transform_input(input: torch.Tensor) -> torch.Tensor:
-    r"""Reshape an input torch.Tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
+    r"""Unsqueeze an ``(H, W)`` or ``(C, H, W)`` image tensor to 4 dims, ``(B, C, H, W)``; a 4-dim input is kept.
 
     Args:
         input: torch.Tensor
@@ -263,7 +263,7 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
 
 
 def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
-    r"""Reshape an input torch.Tensor to be (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
+    r"""Unsqueeze a ``(D, H, W)`` or ``(C, D, H, W)`` volume to 5 dims, ``(B, C, D, H, W)``; a 5-dim input is kept.
 
     Args:
         input: torch.Tensor

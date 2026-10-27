@@ -188,7 +188,7 @@ def ssim3d(
 
 
 class SSIM3D(nn.Module):
-    r"""Create a module that computes the Structural Similarity (SSIM) index between two 3D images.
+    r"""Compute the per-voxel Structural Similarity (SSIM) map between two (B, C, D, H, W) volumes.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 

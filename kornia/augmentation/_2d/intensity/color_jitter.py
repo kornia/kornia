@@ -63,7 +63,7 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 
 
 class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
-    r"""Randomly adjust image brightness, contrast, saturation and hue with torchvision's ColorJitter formulas.
+    r"""Randomly scale brightness, blend contrast and saturation toward gray, and rotate hue, as torchvision does.
 
     The four steps are torchvision's formulas -- brightness multiplies the image by the factor, contrast blends it
     with its grayscale mean, saturation with its grayscale, and hue is torchvision's ``adjust_hue`` shift -- so this

@@ -430,9 +430,8 @@ def match_fginn(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Match desc1 to desc2 by a ratio test against the first geometrically inconsistent nearest neighbor (FGINN).
 
-    The ratio of the first to the second nearest neighbor distance must be <= th,
-    and the 2nd nearest neighbor must be geometrically inconsistent with the 1st one
-    (see :cite:`MODS2015` for more details)
+    The ratio test compares the nearest distance with that of the nearest candidate whose ``lafs2`` centre lies at
+    least ``spatial_th`` from the first one's; closer candidates are skipped (see :cite:`MODS2015` for more details).
 
     Convention:
         - See the Convention block on :func:`match_nn`. ``dists`` is a ratio: the nearest distance over the distance

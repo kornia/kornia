@@ -375,7 +375,7 @@ def symmetrical_epipolar_distance(
 
 
 def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return the one-sided distance from each pts2 to the epipolar line of its pts1 in the second image.
+    r"""Return the one-sided distance from each pts2 to its epipolar line ``Fm @ pts1`` in the second image.
 
     Convention:
         - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each
@@ -410,7 +410,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
 
 def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return the one-sided distance from each pts1 to the epipolar line of its pts2 in the first image.
+    r"""Return the one-sided distance from each pts1 to its epipolar line ``Fm.T @ pts2`` in the first image.
 
     Convention:
         - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each

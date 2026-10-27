@@ -142,7 +142,7 @@ def depth_to_3d_v2(
 ) -> torch.Tensor:
     # NOTE: when this replaces the `depth_to_3d` behaviour, a deprecated function should be added here, instead
     # of just replace the other function.
-    """Unproject a (*, H, W) depth map to camera-frame 3D points, returned channels-last as (*, H, W, 3).
+    """Unproject a ``(*, H, W)`` depth map to channels-last camera-frame 3D points, broadcast with the camera batch.
 
     .. note::
 

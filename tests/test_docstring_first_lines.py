@@ -23,12 +23,14 @@ neighbors in desc2 for each vector in desc1" -- that reader cannot tell which on
 names what sets its symbol apart from its siblings: the dimension, variant, criterion, input form or direction.
 
 The one exception is a class and the function it wraps, whose names match once underscores are removed and case is
-ignored (``AdjustHue`` / ``adjust_hue``, ``PyrDown`` / ``pyrdown``): they do the same thing and may say so in the
-same words.
+ignored (``AdjustHue`` / ``adjust_hue``, ``PyrDown`` / ``pyrdown``) and which live in the same top-level subpackage
+(``kornia.enhance``): they do the same thing and may say so in the same words. A cross-package pair such as
+``kornia.augmentation.Resize`` and ``kornia.geometry.transform.resize`` is not exempt.
 
 The scan covers every name in the ``__all__`` of a non-private kornia module that is a function or a class defined
 in kornia, deduplicated by object identity. Names that start with an underscore are out of scope, and so is a class
-without a docstring of its own, which inherits one from its base.
+without a docstring of its own, which inherits one from its base. Lines are compared exactly after casefolding and
+collapsing whitespace, so this catches copies, not near-duplicates: two lines that differ by a single word pass.
 """
 
 import ast
@@ -82,13 +84,23 @@ def _squash(name: str) -> str:
     return name.replace("_", "").casefold()
 
 
+def _subpackage(obj: object) -> str:
+    """Return the top-level kornia subpackage that defines ``obj``, such as ``kornia.enhance``."""
+    return ".".join(obj.__module__.split(".")[:2])
+
+
 def _is_wrapper_pair(objects: list) -> bool:
-    """Whether ``objects`` is one class and one function whose names match without underscores and case."""
+    """Whether ``objects`` is one class and one function of one subpackage whose names match without underscores."""
     if len(objects) != 2:
         return False
     classes = [obj for obj in objects if inspect.isclass(obj)]
     functions = [obj for obj in objects if inspect.isfunction(obj)]
-    return len(classes) == 1 and len(functions) == 1 and _squash(classes[0].__name__) == _squash(functions[0].__name__)
+    return (
+        len(classes) == 1
+        and len(functions) == 1
+        and _squash(classes[0].__name__) == _squash(functions[0].__name__)
+        and _subpackage(classes[0]) == _subpackage(functions[0])
+    )
 
 
 @cache
@@ -110,7 +122,8 @@ def _public_first_lines() -> dict[int, tuple[object, str]]:
         for _, obj in exported:
             if not (inspect.isclass(obj) or inspect.isfunction(obj)):
                 continue
-            if not (obj.__module__ or "").startswith("kornia"):
+            module_of_obj = obj.__module__ or ""
+            if not (module_of_obj == "kornia" or module_of_obj.startswith("kornia.")):
                 continue
             # ``inspect.getdoc`` would hand a class without a docstring its base class's one.
             doc = obj.__dict__.get("__doc__") if inspect.isclass(obj) else obj.__doc__
@@ -121,17 +134,18 @@ def _public_first_lines() -> dict[int, tuple[object, str]]:
 
 def test_the_scan_covers_the_public_api():
     # Guards against a vacuous pass: a discovery that silently stopped importing modules would find no duplicates.
-    collected = {_qualified_name(obj): line for obj, line in _public_first_lines().values()}
+    collected = _public_first_lines()
     assert len(collected) >= 800, len(collected)
-    for name in (
-        "kornia.augmentation._2d.intensity.color_jitter.ColorJitter",
-        "kornia.feature.matching.match_snn",
-        "kornia.geometry.subpix.nms.nms2d",
-        "kornia.losses.focal.FocalLoss",
+    # Looked up through public names and matched by identity, so moving a definition to another file keeps this.
+    for obj in (
+        kornia.augmentation.ColorJitter,
+        kornia.feature.match_snn,
+        kornia.geometry.subpix.nms2d,
+        kornia.losses.FocalLoss,
     ):
-        assert name in collected, name
+        assert id(obj) in collected, _qualified_name(obj)
     # A known wrapper pair is scanned, shares its line, and is allowed to.
-    assert collected["kornia.enhance.adjust.AdjustHue"] == collected["kornia.enhance.adjust.adjust_hue"]
+    assert collected[id(kornia.enhance.AdjustHue)][1] == collected[id(kornia.enhance.adjust_hue)][1]
     assert _is_wrapper_pair([kornia.enhance.AdjustHue, kornia.enhance.adjust_hue])
 
 
@@ -144,6 +158,8 @@ def test_the_wrapper_pair_rule():
     assert not _is_wrapper_pair([NonMaximaSuppression2d, nms2d])
     assert not _is_wrapper_pair([adjust_hue, adjust_hue_raw])
     assert not _is_wrapper_pair([kornia.enhance.AdjustHue, adjust_hue, adjust_hue_raw])
+    # Same name after squashing, but different subpackages.
+    assert not _is_wrapper_pair([kornia.augmentation.Resize, kornia.geometry.transform.resize])
 
 
 def test_first_docstring_lines_are_distinct():
@@ -162,5 +178,6 @@ def test_first_docstring_lines_are_distinct():
         f"{len(offending)} first docstring line(s) are shared by different public symbols, so help(), IDE hovers and "
         "the API tables cannot tell them apart. Give each symbol a first line that names what sets it apart from the "
         "others: dimension, variant, criterion, input form or direction. Only a class and the function it wraps, "
-        "whose names match without underscores (AdjustHue / adjust_hue), may share one.\n" + report
+        "defined in the same subpackage with names that match without underscores (AdjustHue / adjust_hue), may "
+        "share one.\n" + report
     )

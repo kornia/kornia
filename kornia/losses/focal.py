@@ -174,7 +174,7 @@ def focal_loss(
     weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Compute the multi-class focal loss of (B, C, *) logits against (B, *) class indices, using softmax.
+    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -339,7 +339,7 @@ def focal_loss(
 
 
 class FocalLoss(nn.Module):
-    r"""Compute the multi-class focal loss of (B, C, *) logits against (B, *) class indices, using softmax.
+    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -426,7 +426,7 @@ def binary_focal_loss_with_logits(
     weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Compute the binary focal loss of (B, C, *) logits against same-shape targets in [0, 1], using sigmoid.
+    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -550,7 +550,7 @@ def binary_focal_loss_with_logits(
 
 
 class BinaryFocalLossWithLogits(nn.Module):
-    r"""Compute the binary focal loss of (B, C, *) logits against same-shape targets in [0, 1], using sigmoid.
+    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
