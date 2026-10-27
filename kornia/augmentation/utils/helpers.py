@@ -211,6 +211,9 @@ def _transform_input3d_by_shape(
 ) -> torch.Tensor:
     """Unsqueeze a 3-dim tensor at dim 0, then a 4-dim one at dim 2 if its first size equals the reference batch size.
 
+    The dim-2 insertion puts the new axis after ``D`` rather than at ``C``, and a 3-dim input stays 4-dim; tracked
+    in `#6354 <https://github.com/kornia/kornia/issues/6354>`_.
+
     Arguments:
         input: torch.Tensor to be transformed
         reference_shape: shape used as reference
