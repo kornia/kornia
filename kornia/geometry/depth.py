@@ -100,8 +100,9 @@ def unproject_meshgrid(
 
     ``rays = unproject_meshgrid(H, W, camera_matrix)`` returns the camera-frame ray of each pixel as a
     ``(B, H, W, 3)`` tensor, scaled so that ``z`` is 1 by default (unit length with ``normalize_points=True``). It
-    takes no depth: multiply the rays by a ``(B, H, W)`` depth map, or pass them to :func:`depth_to_3d_v2` as
-    ``xyz_grid``, to get the 3D points of many frames from one camera without rebuilding the grid each time.
+    takes no depth: multiply the rays by ``depth[..., None]`` for a ``(B, H, W)`` depth map, or pass them to
+    :func:`depth_to_3d_v2` as ``xyz_grid``, to get the 3D points of many frames from one camera without rebuilding
+    the grid each time.
 
     Convention:
         - pixel centres are integers; see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
@@ -161,18 +162,21 @@ def depth_to_3d_v2(
 
     ``points = depth_to_3d_v2(depth, camera_matrix)`` takes a ``(*, H, W)`` map of camera-frame depths and
     ``(B, 3, 3)`` pixel intrinsics, and returns the camera-frame point of every pixel as a ``(*, H, W, 3)``
-    tensor. The leading dimensions of ``depth`` broadcast with the camera batch, so one camera can unproject a
-    whole stack of depth maps. For many frames from one camera, compute the rays once with
-    :func:`unproject_meshgrid` and pass them as ``xyz_grid``. For a channels-first ``(B, 3, H, W)`` result, use
-    :func:`depth_to_3d`.
+    tensor. The leading dimensions of ``depth`` broadcast with the camera batch, which lines up with the axis just
+    before ``H``: a ``(4, 4)`` depth works with any number of cameras, but a ``(B, T, H, W)`` depth with ``B``
+    cameras pairs camera ``t`` with ``depth[:, t]`` when ``T == B`` and raises otherwise. For one camera per
+    ``(B, T, H, W)`` batch element, pass ``xyz_grid=unproject_meshgrid(H, W, camera_matrix)[:, None]``; the same
+    grid also saves rebuilding the pixel rays for many frames of one camera. For a channels-first
+    ``(B, 3, H, W)`` result, use :func:`depth_to_3d`.
 
     Convention:
-        - the point of pixel ``(u, v)`` (column, row; integer pixel centres, see
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) is ``((u - cx) z / fx, (v - cy) z / fy, z)``.
-          It equals :func:`depth_to_3d` after ``permute(0, 2, 3, 1)``.
+        - pixel ``(u, v)``, with ``u`` the column and ``v`` the row, maps to ``((u - cx) z / fx, (v - cy) z / fy, z)``.
+          Pixel centres are integers, as in :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+          ``depth_to_3d_v2(depth[:, 0], K)`` equals ``depth_to_3d(depth, K).permute(0, 2, 3, 1)``.
         - without ``xyz_grid``, ``camera_matrix`` must be exactly ``(B, 3, 3)`` (another shape raises
           ``ShapeError``); with ``xyz_grid`` only its shape is checked.
-        - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
+        - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``. With ``xyz_grid`` it
+          is ignored: build the grid with the same ``normalize_points``.
         - without ``xyz_grid``, the pixel grid is built in ``promote_types(depth.dtype, camera_matrix.dtype)``
           when either input is floating (the default floating dtype when both are integer), so half-precision
           depth does not round the pixel indices below the intrinsics' precision.
@@ -194,7 +198,7 @@ def depth_to_3d_v2(
     See Also:
         - :func:`depth_to_3d`: the same points channels first, ``(B, 3, H, W)``.
         - :func:`unproject_meshgrid`: the per-pixel rays to pass as ``xyz_grid``.
-        - :func:`depth_to_normals`: per-pixel surface normals from the same inputs.
+        - :func:`depth_to_normals`: per-pixel surface normals, from a ``(B, 1, H, W)`` depth.
 
     Example:
         >>> depth = torch.rand(4, 4)
@@ -227,13 +231,13 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     ``points = depth_to_3d(depth, camera_matrix)`` takes a ``(B, 1, H, W)`` map of camera-frame depths and
     ``(B, 3, 3)`` pixel intrinsics, and returns the camera-frame point of every pixel as a ``(B, 3, H, W)``
     tensor. For a channels-last ``(*, H, W, 3)`` result, or to reuse the pixel rays across frames, use
-    :func:`depth_to_3d_v2`. To unproject selected pixels rather than a whole map, use
+    :func:`depth_to_3d_v2` on ``depth[:, 0]``. To unproject selected pixels rather than a whole map, use
     :func:`~kornia.geometry.camera.perspective.unproject_points`.
 
     Convention:
-        - the point of pixel ``(u, v)`` (column, row; integer pixel centres, see
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) is ``((u - cx) z / fx, (v - cy) z / fy, z)``.
-          It equals :func:`depth_to_3d_v2` after ``permute(0, 2, 3, 1)``.
+        - pixel ``(u, v)``, with ``u`` the column and ``v`` the row, maps to ``((u - cx) z / fx, (v - cy) z / fy, z)``.
+          Pixel centres are integers, as in :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+          ``depth_to_3d(depth, K).permute(0, 2, 3, 1)`` equals ``depth_to_3d_v2(depth[:, 0], K)``.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length instead of ``z``.
         - an integer ``depth`` is not rejected; the result takes the floating dtype of ``camera_matrix``.
           The pixel grid is built in ``promote_types(depth.dtype, camera_matrix.dtype)`` when either input is
@@ -377,14 +381,14 @@ def depth_from_plane_equation(
     r"""Compute the depth of given pixels that lie on a known plane.
 
     ``depth = depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)`` intersects the
-    camera ray of each of the :math:`N` pixels in ``points_uv`` ``(B, N, 2)`` with the camera-frame plane
+    camera ray of each pixel in ``points_uv`` of shape ``(B, N, 2)`` with the camera-frame plane
     :math:`n \cdot X = d` and returns the ``z`` of each intersection as a ``(B, N)`` tensor: a list of depths,
     not a depth map.
 
     Convention:
-        - the plane is in Hessian form, with the normal ``plane_normals`` ``(B, 3)`` and the offset
-          ``plane_offsets`` ``(B, 1)``: ``n = (0, 0, 1)`` with ``d = 2`` is the plane ``z = 2``, and every
-          pixel on it has depth 2.
+        - the plane is in Hessian form, with the normal ``plane_normals`` of shape ``(B, 3)`` and
+          the offset ``plane_offsets`` of shape ``(B, 1)``: ``n = (0, 0, 1)`` with ``d = 2`` is the plane ``z = 2``,
+          and every pixel on it has depth 2.
         - ``points_uv`` are **pixels** (integer centres; see
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`), normalized here with ``camera_matrix``.
         - a ray-plane dot product inside :math:`(-eps, eps)` is replaced by :math:`\pm` ``eps`` with its sign
@@ -455,15 +459,15 @@ def warp_frame_depth(
 
     ``image_dst = warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)`` shows the source image
     ``(B, D, H, W)`` as the destination camera sees it. Each destination pixel is unprojected with its depth
-    from ``depth_dst`` ``(B, 1, H, W)``, moved into the source frame by the ``(B, 4, 4)`` pose
-    ``src_trans_dst``, projected with the intrinsics ``camera_matrix`` ``(B, 3, 3)`` that both views share,
-    and sampled bilinearly. :class:`DepthWarper` and :func:`depth_warp` do the same warp from two
+    from ``depth_dst`` of shape ``(B, 1, H, W)``, moved into the source frame by the ``(B, 4, 4)`` pose
+    ``src_trans_dst``, projected with the ``(B, 3, 3)`` intrinsics ``camera_matrix`` that both views share, and
+    sampled bilinearly. :class:`DepthWarper` and :func:`depth_warp` do the same warp from two
     :class:`~kornia.geometry.camera.pinhole.PinholeCamera` models; for a planar scene,
     :func:`~kornia.geometry.transform.warp_perspective` with a homography needs no depth.
 
     Convention:
         - ``src_trans_dst`` maps destination-frame points into the source frame. With ``fx = fy = 1`` and a
-          unit depth, a :math:`+1` translation in ``x`` samples ``image_src`` one pixel to the right of each
+          unit depth, a translation of 1 along ``x`` samples ``image_src`` one pixel to the right of each
           destination pixel.
         - the unprojection is :func:`depth_to_3d_v2` and the reprojection
           :func:`~kornia.geometry.camera.perspective.project_points`, whose conventions apply.
@@ -530,26 +534,23 @@ def warp_frame_depth(
 class DepthWarper(nn.Module):
     r"""Render an image from another viewpoint by depth, given two PinholeCamera models (module form).
 
-    ``warper = DepthWarper(pinhole_dst, H, W)``, then ``warper.compute_projection_matrix(pinhole_src)`` and
-    ``image = warper(depth_src, patch_dst)``, samples the destination image ``patch_dst`` ``(B, C, H, W)`` at
-    the pixels where the source-frame depth ``depth_src`` projects, so the result shows ``patch_dst`` as the
-    source camera sees it. Calling the warper before :meth:`compute_projection_matrix` raises ``ValueError``.
+    Build ``warper = DepthWarper(pinhole_dst, H, W)``, call ``warper.compute_projection_matrix(pinhole_src)``,
+    then ``image = warper(depth_src, patch_dst)`` samples the destination image ``patch_dst`` of shape
+    ``(B, C, H, W)`` at the pixels where the source-frame depth ``depth_src`` projects, so the ``(B, C, H, W)``
+    result shows ``patch_dst`` as the source camera sees it. Calling the warper before
+    :meth:`compute_projection_matrix` raises ``ValueError``.
     :func:`depth_warp` is the one-call form; :func:`warp_frame_depth` takes a 4x4 pose and one intrinsics
     matrix instead of two cameras.
 
     .. math::
         P_{src}^{\{dst\}} = K_{dst} * T_{src}^{\{dst\}}
 
-        I_{src} = \\omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
+        I_{src} = \omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
 
     Convention:
-        - the depth lives in the **source** frame and the image in the **destination** frame:
-          :meth:`forward` takes ``(depth_src, patch_dst)``, samples ``patch_dst`` at the pixels the
-          source-frame depth projects to, and returns a ``(B, C, H, W)`` tensor carrying ``patch_dst``'s
-          channel count.
-        - this is a two-step API: :meth:`compute_projection_matrix` has to be called first. Until it has
-          been, :meth:`warp_grid` and :meth:`forward` raise ``ValueError`` and :meth:`compute_subpixel_step`
-          raises ``RuntimeError``.
+        - the depth lives in the **source** frame and the image in the **destination** frame.
+        - until :meth:`compute_projection_matrix` has been called, :meth:`warp_grid` raises ``ValueError`` and
+          :meth:`compute_subpixel_step` raises ``RuntimeError``.
         - :meth:`compute_projection_matrix` stores ``K_dst @ (E_dst @ inverse(E_src))``, the matrix above, from
           the constructor's ``pinhole_dst`` and that method's ``pinhole_src`` (both
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, world-to-camera extrinsics).
@@ -559,10 +560,8 @@ class DepthWarper(nn.Module):
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
           ``align_corners=True`` normalized coordinates of the **destination** image.
         - ``align_corners`` (default ``True``), ``mode`` and ``padding_mode`` are forwarded to ``grid_sample``.
-          :func:`~kornia.geometry.depth.depth_warp` is the functional form and exposes ``align_corners`` only.
-        - :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the opposite frame names:
-          this class's ``src`` (the frame holding the depth) is that function's ``dst``, and ``patch_dst`` is its
-          ``image_src``. Both namings are kept.
+        - :func:`warp_frame_depth` names the frames the other way round: its ``dst`` (the frame holding the depth)
+          is this class's ``src``, and its ``image_src`` is ``patch_dst``.
 
     .. warning::
         The two warps agree to rounding for float32/float64 away from ``z = 0``, and split at ``z = 0``, where
@@ -620,7 +619,7 @@ class DepthWarper(nn.Module):
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
         """Compute the projection matrix from the source to destination frame.
 
-        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+        See the Convention block on :class:`DepthWarper`.
         """
         # Inline type checks for faster fail-fast
         if type(self._pinhole_dst) is not PinholeCamera:
@@ -679,7 +678,7 @@ class DepthWarper(nn.Module):
     def compute_subpixel_step(self) -> torch.Tensor:
         """Compute the inverse depth step for sub pixel accurate sampling of the depth cost volume, per camera.
 
-        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+        See the Convention block on :class:`DepthWarper`.
 
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
@@ -718,7 +717,7 @@ class DepthWarper(nn.Module):
     def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
         """Compute a grid for warping a given the depth from the reference pinhole camera.
 
-        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+        See the Convention block on :class:`DepthWarper`.
 
         The function `compute_projection_matrix` has to be called beforehand in order to have precomputed the relative
         projection matrices encoding the relative pose and the intrinsics between the reference and a non reference
@@ -756,7 +755,7 @@ class DepthWarper(nn.Module):
     def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:
         """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
-        See the Convention block on :class:`~kornia.geometry.depth.DepthWarper`.
+        See the Convention block on :class:`DepthWarper`.
 
         Args:
             depth_src: the depth in the reference frame. The tensor must have a shape ``(B, 1, H, W)``.
@@ -805,10 +804,23 @@ def depth_warp(
     """Render an image from another viewpoint by depth, given two PinholeCamera models (one call).
 
     ``image = depth_warp(pinhole_dst, pinhole_src, depth_src, patch_dst, H, W)`` samples the destination image
-    ``patch_dst`` ``(B, C, H, W)`` at the pixels where the source-frame depth ``depth_src`` projects, so the
+    ``patch_dst`` of shape ``(B, C, H, W)`` at the pixels where the source-frame depth ``depth_src`` projects, so the
     result shows ``patch_dst`` as the source camera sees it. It is :class:`DepthWarper` in one call, with that
     class's default ``mode`` and ``padding_mode`` and the same output bit for bit; see its Convention block.
     :func:`warp_frame_depth` takes a 4x4 pose and one intrinsics matrix instead of two cameras.
+
+    Args:
+        pinhole_dst: the pinhole model for the destination frame, the one ``patch_dst`` is seen from.
+        pinhole_src: the pinhole model for the source frame, the one ``depth_src`` belongs to.
+        depth_src: the depth in the source frame, with shape ``(B, 1, H, W)``.
+        patch_dst: the image in the destination frame, with shape ``(B, C, H, W)``.
+        height: the height of the images, ``H``.
+        width: the width of the images, ``W``.
+        align_corners: forwarded to ``grid_sample`` and to the normalization of the sampling grid; the default
+            ``True`` is what :class:`DepthWarper` uses.
+
+    Return:
+        ``patch_dst`` resampled onto the source pixel grid, with shape ``(B, C, H, W)``.
 
     See Also:
         - :class:`DepthWarper`: the module form, with ``mode`` and ``padding_mode``.
@@ -862,8 +874,10 @@ def depth_from_disparity(
     ``depth = depth_from_disparity(disparity, baseline, focal)`` returns ``baseline * focal / disparity`` for every
     pixel of a ``(*, H, W)`` disparity map, with ``baseline`` the distance between the two camera centres and
     ``focal`` the focal length in pixels, so the depth comes out in the unit of ``baseline``. A zero disparity
-    gives a large finite depth, not ``inf``. To go from disparity straight to 3D points with a calibrated stereo
-    rig, use :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D`.
+    gives a large finite depth, not ``inf``, except in float16 (see below). To go from disparity straight to 3D
+    points with a calibrated stereo rig, use
+    :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D`, which takes a ``(B, H, W, 1)``
+    disparity.
 
     Convention:
         - the exact formula is ``baseline * focal / (disparity + 1e-8)``: a disparity of 2 with a baseline of
@@ -873,8 +887,8 @@ def depth_from_disparity(
         - a zero disparity (no stereo match, or a point at infinity) gives a finite far depth,
           ``baseline * focal / 1e-8`` (``5e9`` for baseline 0.5 and focal 100), not ``inf``. Such a point warps
           as a point at infinity, along the rotation-only homography, in
-          :func:`~kornia.geometry.depth.warp_frame_depth`, whereas an ``inf`` depth would turn into ``NaN`` in
-          :func:`~kornia.geometry.depth.depth_to_3d` wherever a ray component is zero. The far depth is a
+          :func:`warp_frame_depth`, whereas an ``inf`` depth would turn into ``NaN`` in
+          :func:`depth_to_3d` wherever a ray component is zero. The far depth is a
           placeholder, not a measurement: mask ``disparity > 0`` to tell matched pixels apart.
         - in float16 the ``1e-8`` rounds to ``0`` and the far depth would overflow anyway, so a zero disparity
           gives ``inf``. A float32 far depth turns back into ``inf`` wherever the warp casts it to float16, as a
