@@ -288,7 +288,16 @@ Transformation matrices and homographies
   axis: it takes the **destination→source** homography, **normalized** to
   ``[-1, 1]`` by default (``normalized_homography=True``), and defaults to
   ``align_corners=False``. ``normalized_coordinates=False`` takes the same
-  destination→source homography in pixels. Convert a pixel
+  destination→source homography in pixels.
+  :func:`~kornia.geometry.transform.homography_warp3d` and
+  :class:`~kornia.geometry.transform.HomographyWarper` read the homography the
+  same way. For a pixel source→destination homography, such as
+  :class:`~kornia.geometry.ransac.RANSAC` and
+  :func:`~kornia.geometry.homography.find_homography_dlt` return, use
+  :func:`~kornia.geometry.transform.warp_perspective`
+  (:func:`~kornia.geometry.transform.warp_perspective3d` in 3D); passed to
+  ``homography_warp`` unchanged, it usually samples outside the source and
+  the warp comes back as zeros. To keep ``homography_warp``, convert a pixel
   source→destination homography by normalizing it FIRST with
   :func:`kornia.geometry.conversions.normalize_homography` (which expects
   the forward src→dst homography) and inverting AFTER — inverting first
@@ -475,6 +484,18 @@ See the :doc:`enhancement API </enhance>` for clipping, histogram ranges, and kn
 Augmentations
 -------------
 
+- Augmentations apply per sample with probability ``p``, and most default to
+  ``p=0.5``: ``RandomRotation(degrees=30.0)`` leaves about half the batch
+  unrotated. The crop and resize classes, ``Normalize``, ``ColorJiggle``,
+  ``ColorJitter``, ``RandomBrightness``, ``RandomContrast``, ``RandomGamma``,
+  ``RandomHue``, ``RandomSaturation`` and the MixUp/CutMix classes default to
+  ``p=1.0``, :class:`kornia.augmentation.RandomGrayscale` to ``0.1`` and
+  :class:`kornia.augmentation.RandomMosaic` to ``0.7``; the first docstring
+  line of every ``kornia.augmentation`` class with a default below ``1``
+  states it. torchvision's ``RandomRotation``, ``RandomAffine``,
+  ``ElasticTransform`` and ``GaussianBlur`` always apply: pass ``p=1.0`` for
+  that behaviour. ``same_on_batch=True`` draws one decision for the whole
+  batch (see *Randomness in augmentations* below).
 - Use one :class:`kornia.augmentation.container.AugmentationSequential` call
   for an image and its annotations. Geometric children that implement a data
   key's handler share their recorded parameters across the inputs; a transform
