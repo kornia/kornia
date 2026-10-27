@@ -22,6 +22,7 @@ import pickle
 import re
 import subprocess
 import sys
+import warnings
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
 
@@ -88,6 +89,7 @@ from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
+from testing.augmentation.utils import oversized_random_crop_params
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.overwrite import default_with_one_parameter_changed
 
@@ -3641,7 +3643,8 @@ class TestRandomCrop(BaseTester):
 
         image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
         aug = RandomCrop(size, cropping_mode="slice", p=1.0)
-        params = aug.forward_parameters(image.shape)
+        # A forward call rejects an oversized crop (#4414); its replayed parameters still reach the scaling.
+        params = oversized_random_crop_params(aug, image.shape)
         monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
 
         transform = aug.compute_transformation(image, params, aug.flags)
@@ -3669,7 +3672,8 @@ class TestRandomCrop(BaseTester):
 
         image = torch.zeros(1, 1, *input_size, device=device, dtype=dtype)
         aug = RandomCrop(size, cropping_mode="slice", p=1.0)
-        params = aug.forward_parameters(image.shape)
+        # A forward call rejects an oversized crop (#4414); its replayed parameters still reach the scaling.
+        params = oversized_random_crop_params(aug, image.shape)
         monkeypatch.setattr(crop_module, "is_exporting", lambda: exporting)
 
         transform = aug.compute_transformation(image, params, aug.flags)
@@ -6127,18 +6131,55 @@ class TestRandomAutoContrast(BaseTester):
         out = aug(x_data)
         assert out.shape == x_data.shape
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        ("args", "kwargs", "clip_output"),
+        [((), {"clip_output": True}, True), ((), {"clip_output": False}, False), ((False,), {}, False)],
+    )
+    def test_clip_output_deprecated(self, args, kwargs, clip_output):
+        with pytest.warns(DeprecationWarning, match="clip_output") as record:
+            aug = kornia.augmentation.RandomAutoContrast(*args, **kwargs)
+        assert [w.filename for w in record if "clip_output" in str(w.message)] == [__file__]
+        assert aug.clip_output is clip_output
+
+    @pytest.mark.device_agnostic
+    def test_no_warning_without_clip_output(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            aug = kornia.augmentation.RandomAutoContrast(p=1.0)
+            kornia.augmentation.auto.operations.AutoContrast()
+            kornia.augmentation.auto.AutoAugment()
+        assert aug.clip_output is True
+
+    @pytest.mark.parametrize("clip_output", [None, True, False])
     @pytest.mark.parametrize(("scale", "shift"), [(1.0, 0.0), (2.0, 0.0), (1.0, -1.0), (0.0, 0.5)])
-    def test_clip_output_does_not_change_the_output(self, scale, shift, device, dtype):
-        # #4436: normalize_min_max already lands in [0, 1], so the documented clamp is a no-op, even for the
-        # out-of-range inputs a caller would reach for it to protect against. The constant image (scale 0)
-        # comes back as zeros either way.
+    def test_clip_output_does_not_change_the_output(self, clip_output, scale, shift, device, dtype):
         torch.manual_seed(0)
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype) * scale + shift
-        clipped = kornia.augmentation.RandomAutoContrast(clip_output=True, p=1.0)(x.clone())
-        unclipped = kornia.augmentation.RandomAutoContrast(clip_output=False, p=1.0)(x.clone())
-        self.assert_close(clipped, unclipped, rtol=0.0, atol=0.0)
-        assert unclipped.min().item() >= 0.0
-        assert unclipped.max().item() <= 1.0
+        if clip_output is None:
+            aug = kornia.augmentation.RandomAutoContrast(p=1.0)
+        else:
+            with pytest.warns(DeprecationWarning, match="clip_output"):
+                aug = kornia.augmentation.RandomAutoContrast(clip_output=clip_output, p=1.0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            actual = aug(x)
+        self.assert_close(actual, kornia.enhance.normalize_min_max(x), rtol=0.0, atol=0.0)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("clip_output", [None, True, False])
+    def test_quantized_input_gradient(self, clip_output):
+        # Repeated extrema with unequal weights expose the clamp's boundary gradient (#4436).
+        x = (torch.arange(16, dtype=torch.float64).repeat(2).reshape(1, 1, 4, 8) / 16).requires_grad_()
+        weights = torch.arange(32, dtype=torch.float64).reshape_as(x) / 32
+        if clip_output is None:
+            aug = kornia.augmentation.RandomAutoContrast(p=1.0)
+        else:
+            with pytest.warns(DeprecationWarning, match="clip_output"):
+                aug = kornia.augmentation.RandomAutoContrast(clip_output=clip_output, p=1.0)
+        actual = torch.autograd.grad((aug(x) * weights).sum(), x)[0]
+        expected = torch.autograd.grad((kornia.enhance.normalize_min_max(x) * weights).sum(), x)[0]
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):

@@ -25,6 +25,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 from kornia.filters import (
     GaussianBlur2d,
@@ -720,6 +721,8 @@ class TestGaussianBlur2d(BaseTester):
         with pytest.raises(Exception) as errinfo:
             gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
         assert "sigma must be positive" in str(errinfo.value)
+        # The host check names the value it read.
+        assert "got tensor([[-1.5" in str(errinfo.value)
 
     def test_sigma_zero_raises_exception(self, device, dtype):
         """Test that zero sigma raises an exception."""
@@ -728,13 +731,79 @@ class TestGaussianBlur2d(BaseTester):
             gaussian_blur2d(sample, (3, 3), (0.0, 1.5))
         assert "sigma must be positive" in str(errinfo.value)
 
-    def test_sigma_tensor_negative_raises_exception(self, device, dtype):
-        """Test that negative sigma tensor raises an exception."""
+    @pytest.mark.parametrize("as_tuple", [False, True])
+    def test_sigma_on_the_host_negative_raises_exception(self, as_tuple, device, dtype):
+        # A CPU sigma tensor, and a tuple of 0-d tensors, are checked on the host during the call on every device.
+        sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], dtype=dtype)
+        if as_tuple:
+            sigma = (sigma[0, 0], sigma[0, 1])
+        with pytest.raises(BaseError, match="sigma must be positive"):
+            gaussian_blur2d(sample, (3, 3), sigma)
+
+    def test_sigma_on_the_device_negative_raises_at_the_next_sync_6335(self, device, dtype):
+        # kornia#6335: reading a device sigma on the host waited for every queued kernel. torch._assert_async checks it
+        # on the device instead, so the call returns and the error surfaces at the next synchronization.
+        if device.type != "mps":
+            pytest.skip("pins MPS: a CPU sigma is read on the host, and on CUDA the assert poisons the context")
+        if not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so sigma is read on the host there")
         sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
         sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], device=device, dtype=dtype)
-        with pytest.raises(Exception) as errinfo:
-            gaussian_blur2d(sample, (3, 3), sigma)
-        assert "sigma must be positive" in str(errinfo.value)
+        gaussian_blur2d(sample, (3, 3), sigma)
+        with pytest.raises(RuntimeError, match="sigma must be positive"):
+            torch.mps.synchronize()
+
+    def test_sigma_check_is_skipped_when_checks_are_disabled_6335(self, device, dtype):
+        # disable_checks() skips the check for a device sigma too: no assert is left to fail at the next sync.
+        sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            out = gaussian_blur2d(sample, (3, 3), sigma)
+            # The kernel only uses sigma squared, so a negative sigma blurs like its absolute value.
+            self.assert_close(out, gaussian_blur2d(sample, (3, 3), sigma.abs()))
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
+    def test_sigma_on_the_device_does_not_synchronize_6335(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        sigma = torch.rand(2, 2, device=device, dtype=dtype) + 0.5
+        expected = gaussian_blur2d(sample, (5, 5), sigma.cpu())
+        torch.cuda.synchronize()
+        previous = torch.cuda.get_sync_debug_mode()
+        torch.cuda.set_sync_debug_mode("error")
+        try:
+            actual = gaussian_blur2d(sample, (5, 5), sigma)
+        finally:
+            torch.cuda.set_sync_debug_mode(previous)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_sigma_tuple_is_checked_on_the_host_under_any_default_device_6337(self, device, dtype):
+        # A tuple sigma is built on the CPU whatever the default device: under a meta default it used to land on meta,
+        # where the check had nothing to read and an invalid sigma passed; under a CUDA default it was a device assert.
+        sample = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        with torch.device("meta"), pytest.raises(BaseError, match="sigma must be positive"):
+            gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
+
+    def test_sigma_tuple_under_a_cuda_default_device_does_not_synchronize_6337(self, device, dtype):
+        if device.type != "cuda":
+            pytest.skip("CUDA host synchronizations need a CUDA device")
+        sample = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        expected = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
+        torch.cuda.synchronize()
+        previous = torch.cuda.get_sync_debug_mode()
+        with torch.device(device):
+            torch.cuda.set_sync_debug_mode("error")
+            try:
+                actual = gaussian_blur2d(sample, (5, 5), (1.5, 0.5))
+            finally:
+                torch.cuda.set_sync_debug_mode(previous)
+        self.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_kernel_size_even_raises_exception(self, device, dtype):
         """Test that even kernel size raises an exception."""

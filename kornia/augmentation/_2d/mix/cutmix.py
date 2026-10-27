@@ -80,8 +80,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           ``2 ** 24`` stay exact.
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
-        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`
-          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
+        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`:
+          ``_params["batch_prob"]`` is all ones or all zeros,
           and every row and mix of a selected batch receives a cut, though self-pairing or a zero-sized cut can
           leave a row unchanged. With ``same_on_batch=False`` each row and mix draws its own cut size and placement;
           ``same_on_batch=True`` shares each mix's cut size and placement across rows; each mix still draws its own
