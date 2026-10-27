@@ -75,3 +75,13 @@ class TestDistMapper(BaseTester):
         self.assert_close(restored.dist.loc, source.loc, rtol=0, atol=0)
         self.assert_close(restored.dist.scale, source.scale, rtol=0, atol=0)
         assert restored.batch_shape == source.batch_shape
+
+    def test_deepcopy_keeps_the_wrapper_when_the_distribution_defines_deepcopy(self):
+        class CopyingNormal(Normal):
+            def __deepcopy__(self, memo):
+                return CopyingNormal(self.loc.clone(), self.scale.clone())
+
+        copied = copy.deepcopy(DistributionWithMapper(CopyingNormal(0.0, 1.0), map_fn=nn.Sigmoid()))
+        assert isinstance(copied, DistributionWithMapper)
+        assert isinstance(copied.map_fn, nn.Sigmoid)
+        assert isinstance(copied.dist, CopyingNormal)
