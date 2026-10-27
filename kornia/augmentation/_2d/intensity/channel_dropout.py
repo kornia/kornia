@@ -26,7 +26,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
-    r"""Apply random channel dropout to a batch of images.
+    r"""Drop random channels, filling them with ``fill_value``, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomChannelDropout.png
 
@@ -36,7 +36,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_drop_channels: Number of channels to drop randomly. Default is 1.
         fill_value: Value to fill the dropped channels with. Default is 0.0.
         same_on_batch: Apply the same transformation across the batch. Defaults to False.
-        p: Probability of applying the transformation. Defaults to 0.5.
+        p: Probability of applying the transformation to each sample. Defaults to 0.5.
         keepdim: Whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``. Defaults to False.
 

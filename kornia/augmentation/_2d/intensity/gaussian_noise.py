@@ -25,7 +25,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomGaussianNoise(IntensityAugmentationBase2D):
-    r"""Add gaussian noise to a batch of multi-dimensional images.
+    r"""Add Gaussian noise to images, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomGaussianNoise.png
 
@@ -35,7 +35,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         mean: The mean of the gaussian distribution.
         std: The standard deviation of the gaussian distribution.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 

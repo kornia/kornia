@@ -25,7 +25,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
-    r"""Shuffle the channels of a batch of multi-dimensional images.
+    r"""Randomly permute the channels of images, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomChannelShuffle.png
 
@@ -33,7 +33,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 
     Args:
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 

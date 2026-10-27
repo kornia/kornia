@@ -28,7 +28,7 @@ from kornia.geometry.transform import hflip
 
 
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
-    r"""Apply a random horizontal flip to a torch.Tensor image or a batch of torch.Tensor images.
+    r"""Flip images horizontally, applied per sample with probability ``p`` (default 0.5).
 
     The flip is applied with a given probability.
 
@@ -41,7 +41,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        p: probability of the image being flipped.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
