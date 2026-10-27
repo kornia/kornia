@@ -948,30 +948,43 @@ class TestGetRotationMatrix3d(BaseTester):
 
 
 class TestPerspectiveTransform3D(BaseTester):
-    @pytest.mark.skip("Not working")
+    # Box corners in bbox_generator3d order: 000, 100, 110, 010, 001, 101, 111, 011.
+    _corners = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1))
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_get_perspective_transform3d(self, batch_size, device, dtype):
-        # generate input data
-        # d_max, h_max, w_max = 16, 64, 32  # height, width
-        # d = torch.ceil(d_max * torch.rand(batch_size, device=device, dtype=dtype))
-        # h = torch.ceil(h_max * torch.rand(batch_size, device=device, dtype=dtype))
-        # w = torch.ceil(w_max * torch.rand(batch_size, device=device, dtype=dtype))
+        # Eight random point pairs are in general not related by any 3D homography (15 degrees of freedom against
+        # 24 constraints), which is why this test used to fail. The destination points are the source corners
+        # mapped by known homographies instead, built in float64 and then cast.
+        torch.manual_seed(0)
+        sizes = torch.tensor([7.0, 5.0, 3.0], dtype=torch.float64) + torch.rand(batch_size, 1, 3, dtype=torch.float64)
+        offsets = torch.rand(batch_size, 1, 3, dtype=torch.float64)
+        points_src = torch.tensor(self._corners, dtype=torch.float64) * sizes + offsets
+        dst_homo_src = torch.eye(4, dtype=torch.float64) + 0.1 * torch.randn(batch_size, 4, 4, dtype=torch.float64)
+        dst_homo_src[:, 3, :3] *= 0.1
+        dst_homo_src = dst_homo_src / dst_homo_src[:, 3:, 3:]
+        points_dst = kornia.geometry.linalg.transform_points(dst_homo_src, points_src)
+        points_src = points_src.to(device, dtype)
+        points_dst = points_dst.to(device, dtype)
 
-        norm = torch.rand(batch_size, 8, 3, device=device, dtype=dtype)
-        points_src = torch.rand_like(norm, device=device, dtype=dtype)
-        points_dst = points_src + norm
+        out = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
 
-        # compute transform from source to target
-        dst_homo_src = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
-
-        # TODO: get_perspective_transform3d seems to be correct since it would result in the
-        # expected output for cropping volumes. Not sure what is going on here.
-        self.assert_close(
-            kornia.geometry.linalg.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4
-        )
+        self.assert_close(out, dst_homo_src.to(device, dtype), low_tolerance=True)
+        self.assert_close(kornia.geometry.linalg.transform_points(out, points_src), points_dst, low_tolerance=True)
 
         # compute gradient check
         self.gradcheck(kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), fast_mode=False)
+
+    def test_convention_uses_corners_0_1_2_5_7(self, device, dtype):
+        # The 15 unknowns are solved exactly from corners 0, 1, 2, 5 and 7 (000, 100, 110, 101, 011); the
+        # destinations of corners 3, 4 and 6 do not enter the solve.
+        points_src = torch.tensor(self._corners, device=device, dtype=dtype)[None] * 4
+        points_dst = points_src * 2 + 1
+        moved_dst = points_dst.clone()
+        moved_dst[:, [3, 4, 6]] += 5
+        expected = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
+        out = kornia.geometry.transform.get_perspective_transform3d(points_src, moved_dst)
+        self.assert_close(out, expected)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_get_perspective_transform3d_2(self, batch_size, device, dtype):

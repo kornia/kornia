@@ -66,6 +66,8 @@ when the check fails. Any other message that formats a tensor size or an ``int``
 
 .. autofunction:: KORNIA_CHECK_SIZES
 
+.. autofunction:: KORNIA_CHECK_IS_COLOR_OR_GRAY
+
 Exceptions
 ----------
 
