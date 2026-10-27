@@ -31,6 +31,7 @@ from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
 from kornia.augmentation._2d.intensity.invert import RandomInvert
 from kornia.augmentation._2d.mix.mixup import RandomMixUpV2
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
+from kornia.augmentation._3d.geometric.depthical_flip import RandomDepthicalFlip3D
 from kornia.augmentation._3d.geometric.horizontal_flip import RandomHorizontalFlip3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
@@ -346,6 +347,55 @@ class TestGeometricAugmentationBase3D:
             res = aug(x, params)
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class _RandomDepthicalFlip3DWithMask(RandomDepthicalFlip3D):
+    def apply_transform_mask(self, input, params, flags, transform=None):
+        return self.apply_transform(input, params, flags, transform)
+
+    def apply_non_transform_mask(self, input, params, flags, transform=None):
+        return input
+
+
+class TestTransformTensorByShape(BaseTester):
+    # Each case gives the output shape for match_channel=False and for True; None means the channel check raises.
+    @pytest.mark.parametrize("match_channel", [False, True])
+    @pytest.mark.parametrize(
+        "reference, input_shape, expected",
+        [
+            ((2, 3, 5, 6), (5, 6), ((1, 1, 5, 6), None)),
+            ((1, 3, 5, 6), (5, 6), ((1, 1, 5, 6), None)),
+            ((2, 3, 5, 6), (2, 5, 6), ((2, 1, 5, 6), None)),
+            ((2, 3, 5, 6), (3, 5, 6), ((1, 3, 5, 6), (1, 3, 5, 6))),
+            ((2, 3, 5, 6), (2, 3, 5, 6), ((2, 3, 5, 6), (2, 3, 5, 6))),
+            ((2, 3, 4, 5, 6), (4, 5, 6), ((1, 1, 4, 5, 6), None)),
+            ((1, 3, 4, 5, 6), (4, 5, 6), ((1, 1, 4, 5, 6), None)),
+            ((2, 3, 4, 5, 6), (2, 4, 5, 6), ((2, 1, 4, 5, 6), None)),
+            ((2, 3, 4, 5, 6), (3, 4, 5, 6), ((1, 3, 4, 5, 6), (1, 3, 4, 5, 6))),
+            ((2, 3, 4, 5, 6), (2, 3, 4, 5, 6), ((2, 3, 4, 5, 6), (2, 3, 4, 5, 6))),
+        ],
+    )
+    def test_shape_6354(self, device, dtype, reference, input_shape, expected, match_channel):
+        augmentation = RandomHorizontalFlip(p=1.0) if len(reference) == 4 else RandomHorizontalFlip3D(p=1.0)
+        input = torch.rand(input_shape, device=device, dtype=dtype)
+        shape = torch.tensor(reference, device=device)
+        expected = expected[match_channel]
+        if expected is None:
+            with pytest.raises(ValueError, match="C dimension"):
+                augmentation.transform_tensor(input, shape=shape, match_channel=match_channel)
+        else:
+            assert augmentation.transform_tensor(input, shape=shape, match_channel=match_channel).shape == expected
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    def test_3d_bdhw_mask_follows_the_volume_6354(self, device, dtype, keepdim):
+        volume = torch.arange(2 * 4 * 5 * 6, device=device).to(dtype).reshape(2, 1, 4, 5, 6)
+        augmentation = _RandomDepthicalFlip3DWithMask(p=1.0, keepdim=keepdim)
+        output_volume = augmentation(volume)
+        output_mask = augmentation.transform_masks(
+            volume[:, 0], augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+        )
+        expected = output_volume[:, 0] if keepdim else output_volume
+        self.assert_close(output_mask, expected, rtol=0, atol=0)
 
 
 class TestDeviceAgnosticAugmentationParameters(BaseTester):
