@@ -117,9 +117,10 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
             f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
         )
 
-    # flatten pred [B, C, -1] and target [B, -1] and to float
-    pred_flatten: Tensor = pred.reshape(pred.shape[0], pred.shape[1], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1)
+    # flatten pred to [B, C, H*W] and target to [B, H*W]; flatten keeps an empty batch, where reshape(B, -1) cannot
+    # infer the -1
+    pred_flatten: Tensor = pred.flatten(start_dim=2)
+    target_flatten: Tensor = target.flatten(start_dim=1)
 
     # get shapes
     _, C, N = pred_flatten.shape
