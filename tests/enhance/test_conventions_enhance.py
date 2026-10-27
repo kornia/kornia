@@ -221,7 +221,7 @@ class TestEnhanceConventions(BaseTester):
 
     def test_convention_histogram_zero_bandwidth_is_rejected_5315(self, device, dtype):
         if device.type != "cpu":
-            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
             pytest.skip("bandwidth check raises synchronously only on CPU")
         values = torch.tensor([[0.0, 1.0]], device=device, dtype=dtype)
         bins = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
