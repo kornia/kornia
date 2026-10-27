@@ -24,6 +24,7 @@ from typing import Any, Optional
 import torch
 
 __all__ = [
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",
@@ -38,7 +39,7 @@ class BaseError(Exception):
 
     A failed ``KORNIA_CHECK`` raises it directly; it is neither a :exc:`ValueError` nor a :exc:`TypeError`. Each
     subclass also derives from the one of those two built-ins that matches its failure, so the matching ``except``
-    clause catches the subclass as well.
+    clause catches the subclass as well. :exc:`AsyncCheckError` is also a :exc:`RuntimeError`.
     """
 
 
@@ -100,6 +101,16 @@ class ValueCheckError(BaseError, ValueError):
         super().__init__(message)
         self.actual_value = actual_value
         self.expected_range = expected_range
+
+
+class AsyncCheckError(ValueCheckError, RuntimeError):
+    """Raised on the host by a value check that an accelerator runs as ``torch._assert_async``.
+
+    On CUDA, and on MPS from torch 2.13, the same check is not read back on the host: torch raises a
+    :exc:`RuntimeError` by the next synchronization instead, and on CUDA that is a device-side assert after which the
+    context cannot be used. This class is also a :exc:`RuntimeError`, so ``except RuntimeError`` handles a failure on
+    every device, and a :exc:`ValueCheckError` for the callers that catch the host failure as a value check.
+    """
 
 
 class DeviceError(BaseError, ValueError):

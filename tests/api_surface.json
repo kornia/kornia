@@ -246,6 +246,7 @@
     "vec_like"
   ],
   "kornia.core.check": [
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",
@@ -272,6 +273,7 @@
     "enable_checks"
   ],
   "kornia.core.exceptions": [
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",

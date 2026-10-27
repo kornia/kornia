@@ -21,14 +21,14 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core._compat import torch_version_ge
 from kornia.core.check import (
-    KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SAME_SIZE,
     KORNIA_CHECK_SHAPE,
+    _check_async,
     are_checks_enabled,
 )
+from kornia.core.exceptions import AsyncCheckError
 from kornia.core.ops import _device_literal
 from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_autocast_enabled, is_compiling
 
@@ -38,9 +38,6 @@ from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, g
 # This build capability is immutable; querying it inside forward breaks Dynamo
 # full-graph capture. Cache it without changing any backend settings.
 _HAS_MKLDNN = torch.backends.mkldnn.is_available()
-
-# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
-_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
 
 
 def _gaussian_blur2d_cpu_eligible(input: torch.Tensor) -> bool:
@@ -134,8 +131,9 @@ def gaussian_blur2d(
     Raises:
         ~kornia.core.exceptions.TypeCheckError: if input is not a torch.Tensor.
         ~kornia.core.exceptions.ShapeError: if input is not 4D.
-        ~kornia.core.exceptions.BaseError: if sigma values are not positive, for a tuple or a CPU tensor ``sigma``.
-        RuntimeError: at the next synchronization, if a ``sigma`` tensor on an accelerator has a value that is not
+        ~kornia.core.exceptions.AsyncCheckError: if sigma values are not positive, for a tuple or a CPU tensor
+            ``sigma``. It is also a :exc:`RuntimeError`.
+        RuntimeError: by the next synchronization, if a ``sigma`` tensor on an accelerator has a value that is not
             positive.
         ~kornia.core.exceptions.BaseError: if the ``sigma`` batch is neither 1 nor the input batch.
         ~kornia.core.exceptions.BaseError: if kernel_size is not a positive odd integer.
@@ -143,9 +141,10 @@ def gaussian_blur2d(
     .. note::
        A tuple or a CPU tensor ``sigma`` is checked on the host during the call. A ``sigma`` tensor on an
        accelerator is checked there with ``torch._assert_async``, so the call does not wait for the device to read it
-       back: a value that is not positive raises ``RuntimeError`` at the next synchronization. On CUDA that error is
+       back: a value that is not positive raises ``RuntimeError`` by the next synchronization. On CUDA that error is
        a device-side assert, after which the CUDA context cannot be used. MPS has the assert from torch 2.13; on an
-       older release ``sigma`` is read on the host instead. The check is skipped under ``torch.compile``.
+       older release ``sigma`` is read on the host instead. The check is skipped under ``torch.compile`` and when
+       checks are disabled with :func:`~kornia.core.check.disable_checks`.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/gaussian_blur.html>`__.
@@ -205,8 +204,8 @@ def _gaussian_blur2d(
         # kernel. The values round from the same Python numbers either way.
         sigma = _device_literal([sigma], device=input.device, dtype=input.dtype)
     elif isinstance(sigma, tuple):
-        # Built on the host, so that it is checked there like the Python numbers.
-        host_sigma = torch.tensor([sigma], dtype=input.dtype)
+        # Built on the host, whatever the default device, so that it is checked there like the Python numbers.
+        host_sigma = torch.tensor([sigma], dtype=input.dtype, device="cpu")
         sigma = _to_device_nonblocking(host_sigma, input.device)
     else:
         KORNIA_CHECK_IS_TENSOR(sigma)
@@ -216,22 +215,19 @@ def _gaussian_blur2d(
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
     KORNIA_CHECK_SAME_SIZE(sigma, input, allow_one=True, msg="sigma must have a batch of 1 or the input batch.")
-    # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
-    # ``disable_checks()`` skips it as well, so that the device assert below never runs when checks are off.
+    # Skipped under compile: a sigma built on the host from Python numbers would become a device assert of the graph.
+    # ``are_checks_enabled()`` spares building the condition when checks are disabled; the helper would skip it anyway.
     if not is_compiling() and are_checks_enabled():
-        # Only interpolate `sigma` into the message when the check actually fails: a plain
-        # f-string here would format the whole `sigma` tensor (a costly tensor->str) on every
-        # eager call even when it passes — which dominated the eager Gaussian-blur runtime.
         if not isinstance(host_sigma, torch.Tensor):
-            # The same rounding to the input dtype as the device tensor, on the host.
-            host_sigma = torch.tensor([host_sigma], dtype=input.dtype)
-        if host_sigma.device.type == "cpu" or (host_sigma.device.type == "mps" and not _MPS_HAS_ASSERT_ASYNC):
-            positive = bool((host_sigma > 0).all())
-            KORNIA_CHECK(positive, "sigma must be positive" if positive else f"sigma must be positive, got {sigma}")
-        else:
-            # Reading a device sigma on the host would wait for every queued kernel (#6335), so check it where it
-            # lives: the error is raised at the next synchronization, and on CUDA it is a device-side assert.
-            torch._assert_async((host_sigma > 0).all(), "sigma must be positive")
+            # The same rounding to the input dtype as the device tensor, on the host whatever the default device.
+            host_sigma = torch.tensor([host_sigma], dtype=input.dtype, device="cpu")
+        # Read on the host for a tuple or a CPU tensor. A device sigma is checked where it lives (#6335): reading it
+        # would wait for every queued kernel, so a value that is not positive raises by the next synchronization.
+        try:
+            _check_async((host_sigma > 0).all(), "sigma must be positive")
+        except AsyncCheckError:
+            # Only the host read raises here, so the value is formatted on the host, and only when the check fails.
+            raise AsyncCheckError(f"sigma must be positive, got {host_sigma}") from None
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
