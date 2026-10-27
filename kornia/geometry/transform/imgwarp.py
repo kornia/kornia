@@ -1635,7 +1635,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
 
 
 def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
-    r"""Calculate a 3d perspective transform from four pairs of the corresponding points.
+    r"""Calculate a 3d perspective transform from five of eight pairs of corresponding box corners.
 
     The function calculates the matrix of a perspective transform so that:
 
@@ -1694,12 +1694,15 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
 
     Convention:
         - points: ``(x, y, z)``, pixel centers, origin at the top-left of the first depth slice; shape :math:`(B, 8, 3)`
+        - the 15 unknowns are solved exactly from points 0, 1, 2, 5 and 7, the corners ``000``, ``100``, ``110``,
+          ``101`` and ``011`` in :func:`~kornia.geometry.bbox.bbox_generator3d` order; points 3, 4 and 6 are not
+          used, so they map onto their ``dst`` only when all eight pairs are related by one homography
         - returns the source→destination **pixel** homography :math:`(B, 4, 4)`
 
     Args:
-        src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 8, 3)`.
-        dst: coordinates of the corresponding quadrangle vertices in
-            the destination image with shape :math:`(B, 8, 3)`.
+        src: coordinates of the box corners in the source volume with shape :math:`(B, 8, 3)`.
+        dst: coordinates of the corresponding box corners in
+            the destination volume with shape :math:`(B, 8, 3)`.
 
     Returns:
         the perspective transformation with shape :math:`(B, 4, 4)`.
@@ -1729,9 +1732,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
             f"with the same dtype (Got {src.dtype}, {dst.dtype})."
         )
 
-    # we build matrix A by using only 4 point correspondence. The linear
-    # system is solved with the least square method, so here
-    # we could even pass more correspondence
+    # we build the square matrix A from 5 point correspondences, 3 equations each, and solve it exactly
     p = []
 
     # 000, 100, 110, 101, 011
