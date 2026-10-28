@@ -56,6 +56,7 @@ from testing.docstring_style import (
     docstring_roles,
     intersphinx_names,
     is_documented,
+    is_private_target,
     math_shape_roles,
     modules_declaring_all,
     own_docstring,
@@ -158,9 +159,12 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
     )
     problems = []
     for target, explanation in entries:
+        if not target:
+            problems.append(f"{explanation!r} does not start with a role such as :func:`name`, so it is no link")
+            continue
         if not explanation:
             problems.append(f"{target!r} has no explanation after the colon")
-        if target.rpartition(".")[2].startswith("_"):
+        if is_private_target(target):
             problems.append(f"{target!r} is private")
         resolved = resolve_reference(obj, target, REGISTRY)
         if resolved is obj:

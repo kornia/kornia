@@ -20,6 +20,8 @@
 from functools import cache
 from pathlib import Path
 
+import pytest
+
 import kornia
 from kornia.augmentation.auto.operations.ops import AutoContrast
 from kornia.geometry.boxes import Boxes, Boxes3D
@@ -33,6 +35,7 @@ from testing.docstring_style import (
     docstring_roles,
     intersphinx_names,
     is_documented,
+    is_private_target,
     is_shape_tuple,
     math_shape_roles,
     own_docstring,
@@ -95,6 +98,12 @@ def test_see_also_entries():
     assert see_also_entries("Do.\n\nSee Also:\n    - :func:`a`: b.\n.. image:: foo.png\n") == [("a", "b.")]
     assert see_also_entries("Do.\n\nArgs:\n    x: y.\n") is None
     assert see_also_entries("Do.\n\nSee Also:\n    - :func:`a`\n") == [("a", "")]
+    # A bullet without a leading role renders without a link; it is an entry with an empty target, not skipped.
+    assert see_also_entries("Do.\n\nSee Also:\n    - :func:`a`: b.\n    - ``c``: d.\n    - kornia.e: f.\n") == [
+        ("a", "b."),
+        ("", "``c``: d."),
+        ("", "kornia.e: f."),
+    ]
 
 
 def test_registry_uses_documented_paths():
@@ -206,6 +215,10 @@ def test_catalog_missing():
     ]
     assert catalog_missing("use depth_to_3d here", ["depth_to_3d"]) == ["depth_to_3d"]
     assert catalog_missing(":func:`my_depth_to_3d`", ["depth_to_3d"]) == ["depth_to_3d"]
+    # Single backticks are the default role, which renders as italics, and :math: is no reference: neither counts.
+    assert catalog_missing("use `depth_to_3d` here", ["depth_to_3d"]) == ["depth_to_3d"]
+    assert catalog_missing("the :math:`depth_to_3d` term", ["depth_to_3d"]) == ["depth_to_3d"]
+    assert catalog_missing("use :py:func:`depth_to_3d` here", ["depth_to_3d"]) == []
 
 
 def test_catalog_unimportable():
@@ -287,6 +300,30 @@ def test_special_members_register_dunder_methods(tmp_path):
 
 def test_nested_automethod_registers_under_its_class():
     assert "kornia.geometry.camera.stereo.StereoCamera.__init__" in _registry()
+
+
+def test_registry_rejects_options_it_does_not_model(tmp_path):
+    """An option that changes what autodoc registers fails loudly instead of skewing the registry."""
+    for option in ("no-index", "exclude-members", "inherited-members", "private-members"):
+        _write_page(
+            tmp_path, "page.rst", f".. autoclass:: kornia.geometry.depth.DepthWarper\n   :members:\n   :{option}:\n"
+        )
+        with pytest.raises(ValueError, match=option):
+            sphinx_registry(tmp_path)
+
+
+def test_py_prefixed_currentmodule_sets_the_scope(tmp_path):
+    _write_page(tmp_path, "page.rst", ".. py:currentmodule:: kornia.color\n\n.. autofunction:: yuv_to_rgb\n")
+    assert sphinx_registry(tmp_path) == {"kornia.color.yuv_to_rgb": kornia.color.yuv_to_rgb}
+
+
+def test_private_target():
+    assert is_private_target("_helper")
+    assert is_private_target("kornia.geometry.depth._depth_grid_dtype")
+    assert is_private_target("kornia.x.Class.__mangled")
+    # A special method that ``:special-members:`` documents is public.
+    assert not is_private_target("kornia.geometry.pose.NamedPose.__mul__")
+    assert not is_private_target("depth_to_3d")
 
 
 def test_own_docstring_ignores_whitespace_only():

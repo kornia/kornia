@@ -171,9 +171,10 @@ def see_also_entries(doc: str) -> list[tuple[str, str]] | None:
     Returns ``None`` when there is no such section, and ``[]`` when it has no bullets. Each ``- `` bullet gives one
     pair per role in its leading role list (one or more roles separated by commas or whitespace); they share the
     explanation, which is the text after the colon that follows that list, joined across continuation lines
-    (``""`` when missing). Roles inside the explanation are not targets. The section ends at the first non-blank
-    line indented at or below the ``See Also:`` header, or at the end of the docstring; text before the first
-    bullet is ignored.
+    (``""`` when missing). Roles inside the explanation are not targets. A bullet without a leading role renders
+    without a link; it gives one pair ``("", text)`` with its whole text, so a caller can report it. The section
+    ends at the first non-blank line indented at or below the ``See Also:`` header, or at the end of the docstring;
+    text before the first bullet is ignored.
     """
     lines = doc.splitlines()
     start = next((i for i, line in enumerate(lines) if _SEE_ALSO.match(line)), None)
@@ -196,6 +197,7 @@ def see_also_entries(doc: str) -> list[tuple[str, str]] | None:
         text = " ".join(parts)
         leading = _LEADING_ROLES.match(text)
         if leading is None:
+            entries.append(("", text))
             continue
         tail = text[leading.end() :].strip()
         explanation = tail[1:].strip() if tail.startswith(":") else ""
@@ -203,8 +205,23 @@ def see_also_entries(doc: str) -> list[tuple[str, str]] | None:
     return entries
 
 
+def is_private_target(target: str) -> bool:
+    """Whether the last component of ``target`` is private: a leading underscore, unless it is a ``__name__``.
+
+    A special method such as ``__mul__`` is public, and ``:special-members:`` documents it.
+    """
+    name = target.removesuffix("()").rpartition(".")[2]
+    return name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
+
+
 _DIRECTIVE_KINDS = "autofunction|autoclass|automethod|autoexception|automodule|autosummary|currentmodule|module"
-_DIRECTIVE = re.compile(rf"^(\s*)\.\. ({_DIRECTIVE_KINDS})::\s*(.*?)\s*$")
+_DIRECTIVE = re.compile(rf"^(\s*)\.\. (?:py:)?({_DIRECTIVE_KINDS})::\s*(.*?)\s*$")
+# The directive options the registry models, and the ones that do not change which names autodoc registers. Any
+# other option, such as ``:no-index:``, ``:exclude-members:`` or ``:inherited-members:``, raises, so that a page that
+# adds one fails the tests instead of silently making the registry disagree with Sphinx.
+_KNOWN_OPTIONS = frozenset(
+    {"members", "undoc-members", "special-members", "toctree", "show-inheritance", "member-order", "nosignatures"}
+)
 
 
 def _import_dotted(name: str, as_module: bool = False) -> object | None:
@@ -400,7 +417,8 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
     properties defined on the class and the functions and classes of the module that autodoc documents (public, with
     a docstring or under ``:undoc-members:``), and the ``__name__`` methods that ``:special-members:`` selects. An
     ``autosummary`` registers its entries only with ``:toctree:``, which generates their pages; without it, it only
-    links to them. Names that do not import are left out.
+    links to them. Names that do not import are left out. A directive option outside the ones modelled here raises
+    ``ValueError``.
     """
     registry: dict[str, object] = {}
 
@@ -420,6 +438,12 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
             if kind == "automethod" and indent > 0 and enclosing_class:
                 qualified = f"{enclosing_class}.{argument}"
             options = _directive_options(lines, index, indent)
+            unknown = sorted(set(options) - _KNOWN_OPTIONS)
+            if unknown:
+                raise ValueError(
+                    f"{page}:{index + 1}: sphinx_registry does not model the {kind} option(s) {unknown}; "
+                    "teach it what autodoc registers with them"
+                )
             members = _members_option(options)
             special = _members_option(options, "special-members")
             # Like autodoc's ``merge_members_option``, a ``:special-members:`` list joins a ``:members:`` that does
@@ -498,7 +522,7 @@ def resolve_reference(obj: object, target: str, registry: dict[str, object]) -> 
     """Return the registered object that ``target``, written in the docstring of ``obj``, resolves to, or ``None``.
 
     As Sphinx does for a ``:func:``, ``:class:`` or ``:meth:`` role: a trailing ``()`` is dropped, then the target
-    is tried as written and under each scope of ``obj``, its module (the page it is registered on) and, for a class
+    is tried as written and under each scope of ``obj``, the module it is documented under and, for a class
     or a method, the class, so ``to_tensor`` and ``Boxes.to_tensor`` both resolve inside the ``Boxes`` page. A short
     import alias is not registered, so it does not resolve; neither does a short name in the docstring of an object
     that no docs page registers. Only kornia objects resolve here; see ``intersphinx_names`` for the rest.
@@ -522,14 +546,23 @@ def reference_resolves(
     return resolve_reference(obj, target, registry) is not None or target.removesuffix("()") in external
 
 
-def catalog_missing(doc: str, names: list[str]) -> list[str]:
-    """Return the ``names`` that ``doc`` does not mention inside backticks.
+_PY_ROLES = "func|class|meth|attr|data|const|exc|obj"
 
-    A name counts only as the whole target of a role, such as :func:`name` or :func:`~kornia.x.name`, or as a
-    double-backtick literal, such as ``name`` or ``name()``. The same word in plain prose (``normalize``,
-    ``threshold``) does not count, and ``depth_to_3d_v2`` does not count as mentioning ``depth_to_3d``.
+
+def catalog_missing(doc: str, names: list[str]) -> list[str]:
+    """Return the ``names`` that ``doc`` does not mention as a Python role target or a literal.
+
+    A name counts only as the whole target of a Python-domain role, such as :func:`name` or :func:`~kornia.x.name`,
+    or as a double-backtick literal, such as ``name`` or ``name()``. The same word in plain prose (``normalize``,
+    ``threshold``), in single backticks (the default role, which renders as italics) or in a ``:math:`` role does
+    not count, and ``depth_to_3d_v2`` does not count as mentioning ``depth_to_3d``.
     """
-    return [name for name in names if not re.search(rf"`~?(?:[\w.]*\.)?{re.escape(name)}(?:\(\))?`", doc)]
+
+    def mentioned(name: str) -> bool:
+        target = rf"(?:[\w.]*\.)?{re.escape(name)}(?:\(\))?"
+        return re.search(rf"``{target}``|:(?:py:)?(?:{_PY_ROLES}):`~?{target}`", doc) is not None
+
+    return [name for name in names if not mentioned(name)]
 
 
 def _import_role_target(module: object, target: str) -> object:
