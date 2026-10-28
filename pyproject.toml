@@ -341,7 +341,9 @@ max-returns = 13  # Recommended: 6
 max-statements = 64  # Recommended: 50
 
 [tool.ruff.lint.per-file-ignores]
-"!kornia/color/**" = ["D107"]  # Enforce constructor docstrings in color; other packages migrate separately.
+"!kornia/color/**" = [
+  "D107"
+]  # Enforce constructor docstrings in color; other packages migrate separately.
 "!kornia/**" = ["T201"]  # T201 applies to the library only
 "*/__init__.py" = ["F401", "F403"]  # Allow unused imports and star imports
 "benchmarks/*" = [
