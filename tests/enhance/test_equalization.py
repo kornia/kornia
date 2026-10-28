@@ -116,6 +116,49 @@ class TestEqualization(BaseTester):
         assert torch.isfinite(out).all()
         assert ((out >= 0) & (out <= 1)).all()
 
+    @staticmethod
+    def _slow_path_constants(monkeypatch, tiles):
+        # Read the centres and the bandwidth production hands to `histogram`, without restating them.
+        captured = {}
+        real_histogram = enhance.equalization.histogram
+
+        def spy(x, bins, bandwidth, *args, **kwargs):
+            captured["bins"] = bins.detach().clone()
+            captured["bandwidth"] = bandwidth.detach().clone()
+            return real_histogram(x, bins, bandwidth, *args, **kwargs)
+
+        monkeypatch.setattr(enhance.equalization, "histogram", spy)
+        enhance.equalization._compute_luts(tiles, clip=2.0, diff=True)
+        return captured
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+    def test_clahe_slow_constants_stay_float32_below_double_6366(self, device, dtype, monkeypatch):
+        tiles, _ = _compute_tiles(torch.zeros(1, 1, 8, 8, device=device, dtype=dtype), (2, 2), True)
+        constants = self._slow_path_constants(monkeypatch, tiles)
+        # A float16 `linspace` would round the centres before `histogram` upcasts its kernels.
+        assert constants["bins"].dtype == torch.float32
+        assert torch.equal(constants["bins"], torch.linspace(0, 1, 256, device=device))
+        assert constants["bandwidth"].dtype == torch.float32
+        assert torch.equal(constants["bandwidth"], torch.tensor(0.001, device=device))
+
+    def test_clahe_slow_centres_are_the_documented_levels_for_float64_6366(self, device, monkeypatch):
+        tiles, _ = _compute_tiles(torch.zeros(1, 1, 8, 8, device=device, dtype=torch.float64), (2, 2), True)
+        constants = self._slow_path_constants(monkeypatch, tiles)
+        levels = torch.arange(256, device=device, dtype=torch.float64) / 255
+        assert constants["bins"].dtype == torch.float64
+        assert (constants["bins"] - levels).abs().max().item() < 1e-15
+        assert constants["bandwidth"].dtype == torch.float64
+        assert constants["bandwidth"].item() == 0.001
+
+    def test_clahe_float64_slow_path_stays_double_in_and_out_6366(self, device):
+        img = torch.rand(1, 1, 16, 16, device=device, dtype=torch.float64, requires_grad=True)
+        out = enhance.equalize_clahe(img, 40.0, (2, 2), True)
+        assert out.dtype == torch.float64
+        out.sum().backward()
+        assert img.grad is not None
+        assert img.grad.dtype == torch.float64
+        assert torch.isfinite(img.grad).all()
+
     def test_smoke(self, device, dtype):
         C, H, W = 1, 10, 20
         img = torch.rand(C, H, W, device=device, dtype=dtype)

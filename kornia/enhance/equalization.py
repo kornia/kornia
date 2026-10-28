@@ -239,9 +239,13 @@ def _compute_luts(
         # In float16 the clipped total of a 256 x 256 tile overflows to inf, and bfloat16 rounds counts above 256.
         histos = _tiles_histc(tiles, num_bins)
     else:
-        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
+        # The soft histogram of a float64 image must not be built from float32 constants: half the arithmetic
+        # would then run on values that are not the levels k / 255. float32, float16 and bfloat16 promote to
+        # float32, so they keep the exact centres and bandwidth they use today.
+        centre_dtype: torch.dtype = torch.promote_types(tiles.dtype, torch.float32)
+        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device, dtype=centre_dtype)
         # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
-        histos = histogram(tiles, bins, torch.tensor(0.001))
+        histos = histogram(tiles, bins, torch.tensor(0.001, dtype=centre_dtype))
         histos *= pixels
 
     if isinstance(clip, torch.Tensor):
