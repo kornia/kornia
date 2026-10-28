@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.utils.random import _generator_kwargs
 from kornia.constants import Resample
 from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
@@ -104,9 +105,11 @@ class RandomElasticTransform(AugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, _, H, W = shape
         if self.same_on_batch:
-            noise = torch.rand(1, 2, H, W, device=self.device, dtype=self.dtype).expand(B, 2, H, W)
+            noise = torch.rand(
+                1, 2, H, W, device=self.device, dtype=self.dtype, **_generator_kwargs(self._generator)
+            ).expand(B, 2, H, W)
         else:
-            noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype)
+            noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype, **_generator_kwargs(self._generator))
         return {"noise": noise * 2 - 1}
 
     def apply_transform(

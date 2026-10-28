@@ -22,6 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _check_filter_min_size
+from kornia.augmentation.utils.random import _generator_kwargs
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur
 
@@ -133,7 +134,16 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(batch_shape)
-        params["idx"] = torch.zeros(1, dtype=torch.long) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
+        params["idx"] = (
+            torch.zeros(1, dtype=torch.long)
+            if batch_shape[0] == 0
+            else torch.randint(
+                batch_shape[0],
+                (1,),
+                device=self.device,
+                **_generator_kwargs(self._generator),
+            )
+        )
         return params
 
     def apply_transform(

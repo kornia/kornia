@@ -23,6 +23,7 @@ from torch.distributions import Uniform
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -80,7 +81,10 @@ class MosaicGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         input_sizes = (batch_shape[-2], batch_shape[-1])
         output_size = input_sizes if self.output_size is None else self.output_size
@@ -90,7 +94,14 @@ class MosaicGenerator(RandomGeneratorBase):
 
         perm_times = self.mosaic_grid[0] * self.mosaic_grid[1]
         # Generate mosiac order in one shot
-        rand_ids = torch.randperm(batch_size * (perm_times - 1), device=_device) % batch_size
+        rand_ids = (
+            torch.randperm(
+                batch_size * (perm_times - 1),
+                device=self.device,
+                **_generator_kwargs(self._generator),
+            ).to(_device)
+            % batch_size
+        )
         mosiac_ids = (
             torch.cat([torch.arange(0, batch_size, device=_device), rand_ids])
             .reshape(perm_times, batch_size)
@@ -98,7 +109,7 @@ class MosaicGenerator(RandomGeneratorBase):
         )
 
         start_corner_factor = _adapted_rsampling(
-            (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False
+            (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False, generator=self._generator
         ).to(device=_device, dtype=_dtype)
         # Slice-mode crops cast the start to long (``crop_by_indices``), so a fractional start would
         # translate boxes by a sub-pixel amount the image crop never applies. Floor the start here so

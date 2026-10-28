@@ -238,3 +238,58 @@ Serialization
   its magnitude mapping is picklable; the built-in mappings are.
 - :class:`AugmentationBase2D` covers the range buffers in ``state_dict()``, and
   :class:`RigidAffineAugmentationBase2D` what a lazily built matrix keeps.
+
+Explicit random streams
+-----------------------
+
+Built-in 2D/3D augmentations and image, video, patch and augmentation containers support a persistent
+stream via ``set_generator`` and a temporary stream via ``generator=`` on forward or parameter sampling.
+A container passes its stream to its built-in augmentation children, including random order selection.
+The call-local stream restores the previous child streams even if the call raises.
+
+.. code-block:: python
+
+   import torch
+   import kornia.augmentation as K
+
+   image = torch.linspace(0, 1, 128).reshape(2, 1, 8, 8)
+   generator = torch.Generator(device="cpu").manual_seed(123)
+   aug = K.RandomAffine(45.0).set_generator(generator)
+   augmented = aug(image)
+   # A different stream for this call only; the persistent stream is not consumed.
+   augmented = aug(image, generator=torch.Generator().manual_seed(456))
+   # Compile a deterministic application separately from eager parameter sampling.
+   params = aug.forward_parameters(image.shape, generator=generator)
+
+Generators must match the sampling device, normally CPU regardless of the image's device.
+``.to()`` does not move a generator. Its state is not included in ``state_dict``: persist it with
+``generator.get_state()`` and restore it with ``generator.set_state()``. PyTorch does not guarantee
+identical draws across devices or releases.
+
+With a stream bound, every built-in sampler draws on that stream's device. A few samplers build their
+bounds from host-side constants, so the ``None`` path keeps drawing them on CPU even under
+``set_rng_device_and_dtype("cuda")``; binding a CUDA stream moves those draws to CUDA, which keeps an
+explicit run identical to the equivalent globally seeded run. Generator-free results are therefore
+unchanged only for the default CPU sampling device.
+
+A DataLoader worker must receive its own appropriately seeded generator. The workers inherit a copy of the
+persistent stream, so without a fix each worker replays the same draws; copy the state to every worker and
+they all stay duplicated. Seed a fresh generator per worker from the worker's own seed:
+
+.. code-block:: python
+
+   def worker_init_fn(worker_id):
+       info = torch.utils.data.get_worker_info()
+       info.dataset.aug.set_generator(torch.Generator().manual_seed(info.seed))
+
+   loader = torch.utils.data.DataLoader(dataset, num_workers=2, worker_init_fn=worker_init_fn)
+
+``info.seed`` differs per worker, so each worker samples its own stream while the global RNG is left alone.
+
+This first implementation covers built-in parameter/noise samplers and the standard containers.
+Auto-augmentation policies, model presets and ``RandomDissolving`` reject explicit streams before sampling; their learned
+probability/model sampling requires separate work. Custom augmentations and arbitrary ``nn.Module`` children
+must explicitly use the supplied stream themselves; ``set_generator`` does not intercept arbitrary torch
+calls. Use eager parameter sampling with an explicit generator and replay recorded parameters when compiling
+or exporting a transform. As with their recorded call state, simultaneous calls to the same augmentation
+instance are not supported; independent instances with independent generators can run concurrently.

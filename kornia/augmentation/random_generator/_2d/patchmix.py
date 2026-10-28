@@ -22,6 +22,7 @@ from torch.distributions import Beta, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["PatchMixGenerator"]
@@ -83,7 +84,10 @@ class PatchMixGenerator(RandomGeneratorBase):
             torch.tensor(1.0, device=device, dtype=dtype),
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -104,12 +108,14 @@ class PatchMixGenerator(RandomGeneratorBase):
             # augmentation a no-op. `same_on_batch` shares the patch location below instead,
             # matching the convention that it does not equate batch-pairing indices.
             mix_pairs: torch.Tensor = (
-                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False)
+                _adapted_sampling((batch_size,), self.pair_sampler, same_on_batch=False, generator=self._generator)
                 .to(device=_device, dtype=_dtype)
                 .argsort(dim=0)
             )
             # Sample lam from beta distribution
-            lam = _adapted_sampling((batch_size,), self.beta_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+            lam = _adapted_sampling((batch_size,), self.beta_sampler, same_on_batch, generator=self._generator).to(
+                device=_device, dtype=_dtype
+            )
 
             # Sample patch coordinates
             # height - patch_size + 1
@@ -123,12 +129,18 @@ class PatchMixGenerator(RandomGeneratorBase):
             max_x = width - self.patch_size
 
             y = (
-                (_adapted_sampling((batch_size,), self.rand_sampler, same_on_batch) * (max_y + 1))
+                (
+                    _adapted_sampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator)
+                    * (max_y + 1)
+                )
                 .floor()
                 .to(torch.long)
             )
             x = (
-                (_adapted_sampling((batch_size,), self.rand_sampler, same_on_batch) * (max_x + 1))
+                (
+                    _adapted_sampling((batch_size,), self.rand_sampler, same_on_batch, generator=self._generator)
+                    * (max_x + 1)
+                )
                 .floor()
                 .to(torch.long)
             )

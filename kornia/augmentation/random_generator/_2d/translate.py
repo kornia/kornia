@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _range_bound,
 )
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["TranslateGenerator"]
@@ -85,7 +86,10 @@ class TranslateGenerator(RandomGeneratorBase):
                 _translate_y[..., 0], _translate_y[..., 1], validate_args=False
             )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -97,9 +101,9 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_x_sampler is not None:
             translate_x = (
-                _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch).to(
-                    device=_device, dtype=_dtype
-                )
+                _adapted_rsampling(
+                    (batch_size,), self.translate_x_sampler, same_on_batch, generator=self._generator
+                ).to(device=_device, dtype=_dtype)
                 * width
             )
         else:
@@ -107,9 +111,9 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_y_sampler is not None:
             translate_y = (
-                _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch).to(
-                    device=_device, dtype=_dtype
-                )
+                _adapted_rsampling(
+                    (batch_size,), self.translate_y_sampler, same_on_batch, generator=self._generator
+                ).to(device=_device, dtype=_dtype)
                 * height
             )
         else:

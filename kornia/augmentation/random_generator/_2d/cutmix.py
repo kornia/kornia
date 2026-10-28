@@ -29,6 +29,7 @@ from kornia.augmentation.utils import (
     _joint_range_check,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -118,7 +119,10 @@ class CutmixGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -136,18 +140,22 @@ class CutmixGenerator(RandomGeneratorBase):
 
         with torch.no_grad():
             batch_probs: torch.Tensor = _adapted_sampling(
-                (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
+                (batch_size * self.num_mix,), self.prob_sampler, same_on_batch, generator=self._generator
             )
             mix_pairs: torch.Tensor = (
-                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, False)
+                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, False, generator=self._generator)
                 .to(device=_device, dtype=_dtype)
                 .argsort(dim=1)
             )
 
         if same_on_batch:
-            cutmix_betas = _adapted_rsampling((self.num_mix,), self.beta_sampler, False).repeat_interleave(batch_size)
+            cutmix_betas = _adapted_rsampling(
+                (self.num_mix,), self.beta_sampler, False, generator=self._generator
+            ).repeat_interleave(batch_size)
         else:
-            cutmix_betas = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, False)
+            cutmix_betas = _adapted_rsampling(
+                (batch_size * self.num_mix,), self.beta_sampler, False, generator=self._generator
+            )
 
         # Note: torch.clamp does not accept torch.Tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
         # Argument 1 to "clamp" of "_TensorBase" has incompatible type "torch.Tensor"; expected "float"
@@ -161,11 +169,15 @@ class CutmixGenerator(RandomGeneratorBase):
         # Legal starts run 0 .. side - cut_side inclusive; the clamp only guards a u -> 1 float round-up.
         _gen_shape = (batch_size * self.num_mix,)
         if same_on_batch:
-            x_start = _adapted_rsampling((self.num_mix,), self.rand_sampler, False).repeat_interleave(batch_size)
-            y_start = _adapted_rsampling((self.num_mix,), self.rand_sampler, False).repeat_interleave(batch_size)
+            x_start = _adapted_rsampling(
+                (self.num_mix,), self.rand_sampler, False, generator=self._generator
+            ).repeat_interleave(batch_size)
+            y_start = _adapted_rsampling(
+                (self.num_mix,), self.rand_sampler, False, generator=self._generator
+            ).repeat_interleave(batch_size)
         else:
-            x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
-            y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False)
+            x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False, generator=self._generator)
+            y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, False, generator=self._generator)
         x_start = x_start.to(device=_device, dtype=_dtype) * (width - cut_width + 1)
         y_start = y_start.to(device=_device, dtype=_dtype) * (height - cut_height + 1)
         x_start = torch.minimum(x_start.floor(), width - cut_width)

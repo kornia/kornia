@@ -22,6 +22,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["ColorJiggleGenerator"]
@@ -88,18 +89,27 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         # permutation for every dtype, and CUDA has no bfloat16 randperm.
         self.randperm = partial(torch.randperm, device=device, dtype=torch.long)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])
-        brightness_factor = _adapted_rsampling((batch_size,), self.brightness_sampler, same_on_batch)
-        contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)
-        hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
-        saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
+        brightness_factor = _adapted_rsampling(
+            (batch_size,), self.brightness_sampler, same_on_batch, generator=self._generator
+        )
+        contrast_factor = _adapted_rsampling(
+            (batch_size,), self.contrast_sampler, same_on_batch, generator=self._generator
+        )
+        hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch, generator=self._generator)
+        saturation_factor = _adapted_rsampling(
+            (batch_size,), self.saturation_sampler, same_on_batch, generator=self._generator
+        )
         return {
             "brightness_factor": brightness_factor.to(device=_device, dtype=_dtype),
             "contrast_factor": contrast_factor.to(device=_device, dtype=_dtype),
             "hue_factor": hue_factor.to(device=_device, dtype=_dtype),
             "saturation_factor": saturation_factor.to(device=_device, dtype=_dtype),
-            "order": self.randperm(4).to(device=_device),
+            "order": self.randperm(4, **_generator_kwargs(self._generator)).to(device=_device),
         }

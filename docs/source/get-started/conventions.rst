@@ -599,12 +599,13 @@ Augmentations
 Randomness in augmentations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- Parameters are drawn from torch's global generator, on the CPU by default
-  whatever the image device, so ``torch.manual_seed`` reproduces a run for the
-  same configuration, inputs, device and dtype. There is no per-instance
-  ``generator=``: the standard 2D forward silently accepts and ignores unknown
-  keywords, ``generator=`` included, while mix forwards reject them
-  (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). Under a
+- Parameters use torch's global generator unless ``set_generator(g)`` binds an explicit stream or a forward/
+  parameter-sampling call supplies ``generator=g``. The explicit stream is passed to random draws without
+  swapping or reseeding global state. The default ``None`` path retains its seeded draw order. Sampling is
+  normally on CPU whatever the image device; the generator must match the sampling device. Constructors
+  retain their existing signatures. Other unknown keywords retain their previous override behavior
+  (`#4427 <https://github.com/kornia/kornia/issues/4427>`_). See :doc:`/augmentation.base` for the supported
+  surfaces and explicit-stream limitations. Under a
   :class:`torch.utils.data.DataLoader`, a ``worker_init_fn`` that reseeds
   every worker to the same value duplicates the augmentations across workers
   (see `Randomness in multi-process data loading

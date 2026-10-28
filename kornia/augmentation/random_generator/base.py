@@ -22,6 +22,7 @@ from torch import nn
 from torch.distributions import Distribution, Uniform
 
 from kornia.augmentation.utils.helpers import MultiprocessWrapper
+from kornia.augmentation.utils.random import _GeneratorMixin, _with_generator
 
 T = TypeVar("T")
 
@@ -35,7 +36,7 @@ class _PostInitInjectionMetaClass(type):
         return obj
 
 
-class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
+class RandomGeneratorBase(_GeneratorMixin, nn.Module, metaclass=_PostInitInjectionMetaClass):
     """Base class for generating random augmentation parameters."""
 
     device: Union[str, torch.device, None] = None
@@ -98,13 +99,17 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         """
         raise NotImplementedError
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         """Sample random augmentation parameters.
 
         Args:
             batch_shape: Target batch shape.
             same_on_batch: If ``True``, use one sample and broadcast it across the
                 batch dimension.
+            generator: Optional call-local stream; otherwise use the configured or global stream.
 
         Returns:
             Dictionary of tensors consumed by augmentation modules.

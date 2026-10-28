@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from functools import partial
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -32,6 +33,7 @@ def _generate_plasma(
     dtype: torch.dtype,
     channels: Optional[int] = None,
     same_on_batch: bool = False,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     if len(shape) == 4:
         batch_size, shape_channels, height, width = shape
@@ -45,7 +47,10 @@ def _generate_plasma(
     share_map = same_on_batch and batch_size > 1
     map_batch_size = 1 if share_map else batch_size
     map_roughness = roughness[:1] if share_map else roughness
-    plasma = diamond_square((map_batch_size, num_channels, height, width), map_roughness, device=device, dtype=dtype)
+    random_fn = torch.rand if generator is None else partial(torch.rand, generator=generator)
+    plasma = diamond_square(
+        (map_batch_size, num_channels, height, width), map_roughness, random_fn=random_fn, device=device, dtype=dtype
+    )
     return plasma.expand(batch_size, -1, -1, -1) if share_map else plasma
 
 
@@ -109,7 +114,9 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(shape)
         roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
-        params["plasma"] = _generate_plasma(shape, roughness, self.device, self.dtype, same_on_batch=self.same_on_batch)
+        params["plasma"] = _generate_plasma(
+            shape, roughness, self.device, self.dtype, same_on_batch=self.same_on_batch, generator=self._generator
+        )
         return params
 
     def apply_transform(
@@ -178,7 +185,9 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(shape)
         roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
-        params["plasma"] = _generate_plasma(shape, roughness, self.device, self.dtype, same_on_batch=self.same_on_batch)
+        params["plasma"] = _generate_plasma(
+            shape, roughness, self.device, self.dtype, same_on_batch=self.same_on_batch, generator=self._generator
+        )
         return params
 
     def apply_transform(
@@ -255,7 +264,13 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         params = super().generate_parameters(shape)
         roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
         params["plasma"] = _generate_plasma(
-            shape, roughness, self.device, self.dtype, channels=1, same_on_batch=self.same_on_batch
+            shape,
+            roughness,
+            self.device,
+            self.dtype,
+            channels=1,
+            same_on_batch=self.same_on_batch,
+            generator=self._generator,
         )
         return params
 

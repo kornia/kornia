@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils.random import _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["PosterizeGenerator"]
@@ -73,12 +74,15 @@ class PosterizeGenerator(RandomGeneratorBase):
         else:
             self.bit_sampler = UniformDistribution(bits[0], bits[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         r"""Sample random bits factors for the given batch shape."""
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _ = _extract_device_dtype([self.bits_factor if isinstance(self.bits_factor, torch.Tensor) else None])
-        bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch)
+        bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch, generator=self._generator)
         if getattr(self, "_whole_range", False):
             # The clamp removes the excluded end point: for the largest draw ``u = 1 - 2 ** -24``,
             # ``lo + u * (hi + 1 - lo)`` rounds up onto ``hi + 1`` for a range such as ``(1, 1)``,

@@ -22,6 +22,7 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils.random import _generator_kwargs, _with_generator
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["MixupGenerator"]
@@ -66,18 +67,27 @@ class MixupGenerator(RandomGeneratorBase):
         self.lambda_sampler = UniformDistribution(lambda_val[0], lambda_val[1], validate_args=False)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    @_with_generator
+    def forward(
+        self, batch_shape: Tuple[int, ...], same_on_batch: bool = False, *, generator: torch.Generator | None = None
+    ) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
 
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.lambda_val])
 
         with torch.no_grad():
-            batch_probs: torch.Tensor = _adapted_sampling((batch_size,), self.prob_sampler, same_on_batch)
+            batch_probs: torch.Tensor = _adapted_sampling(
+                (batch_size,), self.prob_sampler, same_on_batch, generator=self._generator
+            )
         # An index permutation: int64 whatever the sampling dtype (CUDA has no bfloat16 randperm, and float16 holds
         # integers exactly only up to 2048). torch draws the same permutation for every dtype.
-        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=torch.long)
-        mixup_lambdas: torch.Tensor = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
+        mixup_pairs: torch.Tensor = torch.randperm(
+            batch_size, device=self.device, dtype=torch.long, **_generator_kwargs(self._generator)
+        )
+        mixup_lambdas: torch.Tensor = _adapted_rsampling(
+            (batch_size,), self.lambda_sampler, same_on_batch, generator=self._generator
+        )
         mixup_lambdas = mixup_lambdas * batch_probs
 
         return {
