@@ -26,8 +26,8 @@ from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SAME_DEVICE,
-    KORNIA_CHECK_SAME_SIZE,
     KORNIA_CHECK_SHAPE,
+    KORNIA_CHECK_SIZES,
 )
 
 
@@ -69,11 +69,8 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
     KORNIA_CHECK_IS_TENSOR(target)
     KORNIA_CHECK_SAME_DEVICE(pred, target)
     KORNIA_CHECK_SHAPE(pred, ["B", "C"])
-    if target.ndim == 2:
-        KORNIA_CHECK_SHAPE(target, ["B", "1"])
-    else:
-        KORNIA_CHECK_SHAPE(target, ["B"])
-    KORNIA_CHECK_SAME_SIZE(pred, target, dim=0)
+    # one class index per sample; size-1 dimensions after the first, as in (B, 1), are read the same way
+    KORNIA_CHECK_SIZES(target, [pred.shape[0], *([1] * (target.ndim - 1))])
     KORNIA_CHECK(
         len(topk) > 0 and all(_is_positive_index(k) for k in topk),
         "topk must be a non-empty sequence of positive integers",

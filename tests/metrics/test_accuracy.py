@@ -103,13 +103,19 @@ class TestAccuracy:
         with pytest.raises(ShapeError):
             accuracy(logits, target)
 
-    @pytest.mark.parametrize("target_shape", [(2, 2), (2, 1, 1), ()])
+    @pytest.mark.parametrize("target_shape", [(2, 2), (1, 2), (2, 1, 2), ()])
     def test_invalid_target_shape(self, target_shape):
-        """Reject target tensors that are not (B,) or (B, 1)."""
+        """Reject target tensors that do not hold one class index per sample."""
         logits = torch.zeros(2, 3)
         target = torch.zeros(target_shape, dtype=torch.int64)
         with pytest.raises(ShapeError):
             accuracy(logits, target)
+
+    def test_target_with_more_size_one_dims(self):
+        """A (B, 1, 1) target is read like a (B,) one."""
+        logits = torch.tensor([[0.0, 3.0, 1.0, 2.0], [0.0, 1.0, 3.0, 2.0]])
+        target = torch.tensor([[[1]], [[3]]])
+        assert torch.equal(torch.stack(accuracy(logits, target, topk=(1, 2))), torch.tensor([50.0, 100.0]))
 
     def test_non_tensor_inputs(self):
         """Reject non-tensor pred and target inputs."""
