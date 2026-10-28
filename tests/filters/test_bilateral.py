@@ -777,8 +777,8 @@ class TestConventionsBilateralBlur(BaseTester):
         if not supports_reflect_padding(device, torch.float16):
             pytest.skip("reflect padding is not supported for float16 on this device/torch version")
         torch.manual_seed(0)
-        x = torch.rand(1, 3, 32, 40, device=device)
-        w = torch.rand(1, 3, 32, 40, device=device)
+        x = torch.rand(1, 3, 32, 40).to(device=device)
+        w = torch.rand(1, 3, 32, 40).to(device=device)
 
         def grads(dtype):
             leaves = [
