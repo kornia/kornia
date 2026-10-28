@@ -363,6 +363,20 @@ class TestRootMeanSquaredDisparityError(BaseTester):
             actual = kornia.metrics.root_mean_squared_disparity_error(input, target, reduction=reduction)
             assert is_expected(actual[0] if reduction == "none" else actual)
 
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+    def test_masked_non_finite_target_has_a_finite_gradient(self, bad, reduction, device, dtype):
+        # A ground truth that marks invalid pixels with NaN or inf is masked out with valid_mask. The value never
+        # saw those pixels, and the gradient must not either: the square's backward multiplied 0 by 2 * diff = NaN.
+        target = torch.tensor([[1.0, 2.0], [3.0, bad]], device=device, dtype=dtype)
+        mask = torch.isfinite(target)
+        pred = torch.tensor([[2.0, 2.0], [3.0, 7.0]], device=device, dtype=dtype, requires_grad=True)
+        actual = kornia.metrics.root_mean_squared_disparity_error(pred, target, mask, reduction=reduction)
+        (grad,) = torch.autograd.grad(actual.sum(), pred)
+        expected = torch.zeros_like(target)
+        expected[0, 0] = 1.0 / 3.0**0.5 if reduction == "mean" else 1.0
+        self.assert_close(grad, expected)
+
     def test_gradcheck(self, device):
         target = torch.rand(2, 3, 4, device=device, dtype=torch.float64)
         input = target + torch.rand(2, 3, 4, device=device, dtype=torch.float64) + 0.1
