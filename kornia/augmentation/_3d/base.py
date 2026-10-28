@@ -29,7 +29,7 @@ from kornia.geometry.keypoints import Keypoints3D
 
 
 class AugmentationBase3D(_AugmentationBase):
-    r"""AugmentationBase3D base class for customized augmentation implementations.
+    r"""Base class for custom 3D augmentations, applied per sample with probability ``p`` (default 0.5).
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -84,7 +84,7 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
-    r"""AugmentationBase3D base class for rigid/affine augmentation implementations.
+    r"""Base class for 3D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
     RigidAffineAugmentationBase3D enables routined transformation with given transformation matrices
     for different data types like masks, boxes, and keypoints.

@@ -28,7 +28,7 @@ from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 # NOTE: This NEEDS to be updated. It is out of the random generator controller.
 class RandomThinPlateSpline(AugmentationBase2D):
-    r"""Add random noise to the Thin Plate Spline algorithm.
+    r"""Warp images with a random thin plate spline, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomThinPlateSpline.png
 
@@ -50,7 +50,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         align_corners: Interpolation flag used by ``grid_sample``.
         padding_mode: Padding used by ``grid_sample``: 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     .. note::

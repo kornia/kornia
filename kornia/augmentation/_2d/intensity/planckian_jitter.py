@@ -92,7 +92,7 @@ def get_planckian_coeffs(mode: str) -> torch.Tensor:
 
 
 class RandomPlanckianJitter(IntensityAugmentationBase2D):
-    r"""Apply planckian jitter transformation to input torch.Tensor.
+    r"""Shift the illuminant color (Planckian jitter), applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomPlanckianJitter.png
 
@@ -110,7 +110,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
           The entries index the table like a Python sequence: one past the end raises at construction, and a
           negative one counts from the end.
         same_on_batch: apply the same transformation across the batch.
-        p: probability that the random erasing operation will be performed.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 

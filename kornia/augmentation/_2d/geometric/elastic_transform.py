@@ -27,9 +27,14 @@ from kornia.geometry.transform import elastic_transform2d
 
 
 class RandomElasticTransform(AugmentationBase2D):
-    r"""Add random elastic transformation to a torch.Tensor image.
+    r"""Warp images with a random elastic displacement field, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomElasticTransform.png
+
+    .. note::
+        Unlike torchvision's ``ElasticTransform``, which warps every image, this class warps each sample with
+        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to warp every sample.
 
     Convention:
         This is a dense backward sampling field with no ``transform_matrix`` or ``inverse``; spatial labels in
@@ -51,7 +56,7 @@ class RandomElasticTransform(AugmentationBase2D):
         resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
         padding_mode: The padding used by ``grid_sample``. Either 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 
