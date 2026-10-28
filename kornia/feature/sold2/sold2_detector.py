@@ -507,7 +507,13 @@ class LineSegmentDetectionModule:
         return line_map
 
     def detect_bilinear(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor) -> torch.Tensor:
-        """Detect by bilinear sampling."""
+        """Detect by bilinear sampling.
+
+        The reference SOLD2 implementation takes ``ceil`` as the second neighbour, so at an integer coordinate, where
+        ``floor`` and ``ceil`` coincide, both weights of that axis are 0 and the sample scores 0. kornia takes
+        ``floor + 1`` (clipped at the image border) instead: an integer sample keeps its pixel value, and the junction
+        refinement no longer moves horizontal and vertical segments off the pixels that support them.
+        """
         # Use the next pixel even at integer coordinates, where floor and ceil coincide.
         cand_h_floor = torch.floor(cand_h).to(torch.long)
         cand_h_ceil = (cand_h_floor + 1).clamp(max=heatmap.shape[0] - 1)
