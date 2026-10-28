@@ -1122,7 +1122,6 @@ def remap(
             map_y = (2.0 * map_xy[..., 1] + 1.0) / height - 1.0
             map_xy = torch.stack((map_x, map_y), dim=-1)
 
-
     # simulate broadcasting since grid_sample does not support it
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
 

@@ -1256,7 +1256,7 @@ class TestRemap(BaseTester):
         )
 
         self.assert_close(actual, image)
-        
+
     def test_smoke(self, device, dtype):
         height, width = 3, 4
         input_org = torch.ones(1, 1, height, width, device=device, dtype=dtype)
@@ -1276,9 +1276,7 @@ class TestRemap(BaseTester):
 
     def test_wart_remap_identity_pixel_map_resamples_at_default_4504(self, device, dtype):
         image = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
-        grid = kornia.geometry.create_meshgrid(
-            4, 4, normalized_coordinates=False, device=device, dtype=dtype
-        )
+        grid = kornia.geometry.create_meshgrid(4, 4, normalized_coordinates=False, device=device, dtype=dtype)
 
         actual = kornia.geometry.remap(image, grid[..., 0], grid[..., 1])
         self.assert_close(actual, image)
