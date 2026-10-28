@@ -21,9 +21,10 @@
 an IDE or a coding agent relies on and what a refactor silently breaks:
 
 * every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs;
-* every ``:func:``, ``:class:`` and ``:meth:`` role resolves to a name that Sphinx registers from ``docs/source``,
-  or to a torch, Python or NumPy object in the cached intersphinx inventories, so it renders as a link and not as
-  plain text (a short import alias is importable but is not a target); See Also entries name kornia objects only;
+* every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
+  ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
+  object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
+  text (a short import alias is importable but is not a target); See Also entries name kornia objects only;
 * the source writes a tensor shape as a literal such as ``(B, 1, H, W)``, not as ``:math:``;
 * the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal.
 
@@ -97,6 +98,12 @@ def _suggest(target: str) -> str:
     last = target.removesuffix("()").rpartition(".")[2]
     matches = [name for name in REGISTRY if name.rpartition(".")[2] == last]
     return f" (registered as {matches[0]!r})" if len(matches) == 1 else ""
+
+
+def _wrong_role(role: str, target: str) -> str:
+    """Name the intersphinx types of ``target`` when it is there under a type that ``role`` does not link."""
+    types = INTERSPHINX.get(target.removesuffix("()") if role in ("func", "meth") else target)
+    return f" (an intersphinx {', '.join(sorted(types))}, which :{role}: does not link)" if types else ""
 
 
 def test_rollout_selects_something() -> None:
@@ -180,9 +187,9 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
 @pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
 def test_converted_object_references_resolve(qualified: str, obj: object) -> None:
     unresolved = [
-        f"{target!r}{_suggest(target)}"
-        for _, target in docstring_roles(own_docstring(obj))
-        if not reference_resolves(obj, target, REGISTRY, INTERSPHINX)
+        f":{role}:`{target}`{_suggest(target)}{_wrong_role(role, target)}"
+        for role, target in docstring_roles(own_docstring(obj))
+        if not reference_resolves(obj, target, REGISTRY, INTERSPHINX, role)
     ]
     hint = "write the full name the docs register"
     if not is_documented(obj, REGISTRY):

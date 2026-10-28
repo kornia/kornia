@@ -17,6 +17,7 @@
 
 """Tests for the shared docstring-style helpers in ``testing/docstring_style.py``."""
 
+import inspect
 from functools import cache
 from pathlib import Path
 
@@ -77,6 +78,14 @@ def test_math_shape_roles():
 def test_docstring_roles():
     doc = "Use :func:`~kornia.a.b` or :py:class:`C`, :meth:`forward`; not :cite:`X` or :math:`y`."
     assert docstring_roles(doc) == [("func", "kornia.a.b"), ("class", "C"), ("meth", "forward")]
+    doc = "Read :attr:`data`, :py:exc:`ValueError`, :data:`sys.stdout`, :const:`LIMIT`, :obj:`x`; not :mod:`torch`."
+    assert docstring_roles(doc) == [
+        ("attr", "data"),
+        ("exc", "ValueError"),
+        ("data", "sys.stdout"),
+        ("const", "LIMIT"),
+        ("obj", "x"),
+    ]
 
 
 def test_see_also_entries():
@@ -104,6 +113,9 @@ def test_see_also_entries():
         ("", "``c``: d."),
         ("", "kornia.e: f."),
     ]
+    # Any Python-domain object role links, so it leads an entry; :mod: does not name an object.
+    doc = "Do.\n\nSee Also:\n    - :attr:`~kornia.x.Y.z`: an attribute.\n    - :exc:`E`: raised.\n    - :mod:`m`: no.\n"
+    assert see_also_entries(doc) == [("kornia.x.Y.z", "an attribute."), ("E", "raised."), ("", ":mod:`m`: no.")]
 
 
 def test_registry_uses_documented_paths():
@@ -138,13 +150,57 @@ def test_resolve_reference_returns_the_target_object():
 
 def test_intersphinx_names():
     names = intersphinx_names(DOCS)
-    assert {"torch.nn.functional.grid_sample", "torch.Tensor", "os.PathLike", "ValueError"} <= names
+    assert names["torch.nn.functional.grid_sample"] == {"function"}
+    assert names["torch.Tensor"] == {"class"}
+    assert names["ValueError"] == {"exception"}
+    assert names["random"] == {"module"}
     assert "torch.nn.functional.no_such_function" not in names
-    assert "random" not in names  # a module: no :func:, :class: or :meth: role links it
     reg = _registry()
     assert resolve_reference(depth_to_3d, "torch.nn.functional.grid_sample", reg) is None
     assert reference_resolves(depth_to_3d, "torch.nn.functional.grid_sample", reg, names)
     assert not reference_resolves(depth_to_3d, "torch.nn.functional.no_such_function", reg, names)
+
+
+def test_intersphinx_links_a_role_only_to_its_object_types():
+    """Intersphinx matches the role to the object type, unlike the local lookup (Sphinx ``objtypes_for_role``)."""
+    names, reg = intersphinx_names(DOCS), _registry()
+
+    cases = [
+        ("func", "torch.svd", True),
+        ("obj", "torch.svd", True),
+        ("meth", "torch.svd", False),
+        ("attr", "torch.svd", False),
+        ("meth", "torch.Tensor.add", True),
+        ("func", "torch.Tensor.add", False),
+        # Inventories from before Sphinx 2.1 store properties as methods, so intersphinx lets :attr: find a method.
+        ("attr", "torch.Tensor.add", True),
+        ("attr", "torch.Tensor.shape", True),
+        ("meth", "torch.Tensor.shape", False),
+        ("exc", "ValueError", True),
+        ("class", "ValueError", True),
+        ("func", "ValueError", False),
+        ("class", "torch.Tensor", True),
+        ("exc", "torch.Tensor", True),
+        ("data", "sys.stdout", True),
+        ("attr", "sys.stdout", False),
+        # :const: is in no object type's roles, so intersphinx never links it.
+        ("const", "sys.stdout", False),
+        ("const", "math.pi", False),
+        ("obj", "random", True),
+        ("func", "random", False),
+    ]
+    for role, target, expected in cases:
+        assert reference_resolves(depth_to_3d, target, reg, names, role) is expected, (role, target)
+
+
+def test_only_func_and_meth_drop_parentheses():
+    names, reg = intersphinx_names(DOCS), _registry()
+    assert resolve_reference(depth_to_3d, "depth_to_3d_v2()", reg, "func") is depth_to_3d_v2
+    assert resolve_reference(DepthWarper, "compute_projection_matrix()", reg, "meth") is not None
+    assert resolve_reference(depth_to_3d, "DepthWarper()", reg, "class") is None
+    assert resolve_reference(depth_to_3d, "DepthWarper", reg, "class") is DepthWarper
+    assert reference_resolves(depth_to_3d, "torch.svd()", reg, names, "func")
+    assert not reference_resolves(depth_to_3d, "torch.Tensor()", reg, names, "class")
 
 
 def test_short_names_need_a_documented_object():
@@ -193,6 +249,175 @@ def test_members_follow_autodoc_docstring_rule(tmp_path):
     assert f"{mix}.apply_non_transform" not in sphinx_registry(tmp_path)
     _write_page(tmp_path, "page.rst", page.format("MixAugmentationBaseV2", "   :undoc-members:\n"))
     assert f"{mix}.apply_non_transform" in sphinx_registry(tmp_path)
+
+
+def test_registry_registers_documented_data_attributes():
+    """Enum members and dataclass fields under ``:undoc-members:`` link, even when the value is ``None``."""
+    reg = _registry()
+    assert kornia.models.sam.SamConfig.checkpoint is None
+    for target in ("kornia.color.CFA.BG", "kornia.image.ImageSize.height", "kornia.models.sam.SamConfig.checkpoint"):
+        assert resolve_reference(depth_to_3d, target, reg) is not None, target
+        assert reference_resolves(depth_to_3d, target, reg, role="attr"), target
+
+
+_ATTRIBUTE_SOURCES = {
+    "docstyle_attrs.py": '''
+import enum
+from dataclasses import dataclass
+from typing import NamedTuple
+
+
+class Commented:
+    """A class."""
+
+    #: before
+    before = 1
+    after = 2  #: after
+    annotated: int
+    """string after"""
+    plain = 3
+    hashed = 4  # an ordinary comment
+
+    #: two lines
+    #: of comment
+    two = 5
+
+    #: separated by a blank line
+
+    separated = 6
+    multi = (
+        1,
+        2,
+    )  #: after a multi-line value
+    try:
+        in_try = 7  #: in try
+    except Exception:
+        in_except = 8  #: in except
+    _private = 9  #: private
+
+    def __init__(self):
+        self.instance = 10  #: instance
+        self.undocumented = 11
+        local = 12  #: a local
+
+        def nested():
+            self.nested = 13  #: in a nested function
+
+        self.after_nested = 15  #: after a nested function
+
+    def other(self):
+        self.elsewhere = 14  #: in another method
+
+
+class Undoc:
+    """Same kinds, under undoc-members."""
+
+    plain = 1
+    annotated_only: int
+    hashed = 2  # ordinary
+
+    def __init__(self):
+        self.instance = 3
+
+    @property
+    def prop(self):
+        return 1
+
+
+class Point(NamedTuple):
+    """A point."""
+
+    x: float
+    y: float
+
+
+class Color(enum.Enum):
+    """Colors."""
+
+    RED = 1
+    GREEN = 2  #: green
+
+
+@dataclass
+class Config:
+    """A config."""
+
+    size: int = 1
+    name: str | None = None
+''',
+    "docstyle_module.py": (
+        '"""Data with __all__."""\n\n#: documented\nLIMIT = 3\nOTHER = 4\n__all__ = ["LIMIT", "OTHER"]\n'
+    ),
+    "docstyle_noall.py": (
+        '"""Data without __all__."""\n\nfrom math import pi  #: imported here\n\n#: documented\nLIMIT = 3\nOTHER = 4\n'
+    ),
+    "docstyle_undoc.py": (
+        '"""Data with __all__, under undoc-members."""\n\n__all__ = ["BARE", "PLAIN", "COMMENTED"]\nBARE: int\n'
+        "PLAIN = 1\n#: doc\nCOMMENTED = 2\n"
+    ),
+}
+
+_ATTRIBUTE_PAGE = """
+.. autoclass:: docstyle_attrs.Commented
+   :members:
+
+.. autoclass:: docstyle_attrs.Undoc
+   :members:
+   :undoc-members:
+
+.. autoclass:: docstyle_attrs.Point
+   :members:
+
+.. autoclass:: docstyle_attrs.Color
+   :members:
+
+.. autoclass:: docstyle_attrs.Config
+   :members:
+   :undoc-members:
+
+.. automodule:: docstyle_module
+   :members:
+
+.. automodule:: docstyle_noall
+   :members:
+   :undoc-members:
+
+.. automodule:: docstyle_undoc
+   :members:
+   :undoc-members:
+"""
+
+
+def test_registry_matches_sphinx_on_documented_attributes(tmp_path, monkeypatch):
+    """The registry holds the names a Sphinx 8.2.3 build of the same page puts into ``objects.inv``.
+
+    The expected set is that build's inventory, modules left out. To regenerate it, write these sources and the page
+    (as ``index.rst``, with a ``conf.py`` that adds ``sphinx.ext.autodoc`` and puts the sources on ``sys.path``), run
+    ``uv run --no-project --with sphinx==8.2.3 python -m sphinx -b html src out``, then
+    ``python -m sphinx.ext.intersphinx out/objects.inv``.
+    """
+    for name, source in _ATTRIBUTE_SOURCES.items():
+        (tmp_path / name).write_text(source, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    _write_page(tmp_path / "docs", "index.rst", _ATTRIBUTE_PAGE)
+    registered = {name for name, obj in sphinx_registry(tmp_path / "docs").items() if not inspect.ismodule(obj)}
+    a = "docstyle_attrs"
+    assert registered == {
+        *(f"{a}.{name}" for name in ("Commented", "Undoc", "Point", "Color", "Config")),
+        *(f"{a}.Commented.{name}" for name in ("before", "after", "annotated", "two", "multi", "in_try")),
+        f"{a}.Commented.instance",
+        f"{a}.Commented.after_nested",
+        *(f"{a}.Undoc.{name}" for name in ("plain", "annotated_only", "hashed", "prop")),
+        f"{a}.Point.x",
+        f"{a}.Point.y",
+        f"{a}.Color.GREEN",
+        f"{a}.Config.size",
+        f"{a}.Config.name",
+        "docstyle_module.LIMIT",
+        "docstyle_noall.LIMIT",
+        "docstyle_undoc.BARE",
+        "docstyle_undoc.COMMENTED",
+    }
 
 
 def test_covered_prefix():
