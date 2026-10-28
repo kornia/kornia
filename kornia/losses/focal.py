@@ -390,6 +390,7 @@ class FocalLoss(nn.Module):
         weight: Optional[torch.Tensor] = None,
         ignore_index: Optional[int] = -100,
     ) -> None:
+        """Initialize multi-class focal loss with weighting, focusing, reduction and ignored-label settings."""
         super().__init__()
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
@@ -605,6 +606,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         weight: Optional[torch.Tensor] = None,
         ignore_index: Optional[int] = -100,
     ) -> None:
+        """Initialize binary focal loss with class and positive weights, focusing, reduction and ignored labels."""
         super().__init__()
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma

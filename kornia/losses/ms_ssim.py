@@ -118,6 +118,7 @@ class MS_SSIMLoss(nn.Module):
         compensation: float = 200.0,
         reduction: str = "mean",
     ) -> None:
+        """Build the Gaussian scale filters and configure the MS-SSIM and L1 loss terms."""
         super().__init__()
         self.DR: float = data_range
         self.C1: float = (K[0] * data_range) ** 2

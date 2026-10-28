@@ -135,6 +135,7 @@ class GemanMcclureLoss(nn.Module):
     """
 
     def __init__(self, reduction: str = "none") -> None:
+        """Initialize the Geman-McClure loss with the requested reduction."""
         super().__init__()
         self.reduction = reduction
 

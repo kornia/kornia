@@ -180,6 +180,7 @@ class TverskyLoss(nn.Module):
     """
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: Optional[int] = -100) -> None:
+        """Initialize Tversky loss with false-positive and false-negative penalties, epsilon and ignored labels."""
         super().__init__()
         self.alpha: float = alpha
         self.beta: float = beta

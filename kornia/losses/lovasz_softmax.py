@@ -209,6 +209,7 @@ class LovaszSoftmaxLoss(nn.Module):
     """
 
     def __init__(self, weight: Optional[Tensor] = None) -> None:
+        """Initialize the multi-class Lovasz-Softmax loss with optional class weights."""
         super().__init__()
         if isinstance(weight, nn.Parameter):
             self.weight = weight

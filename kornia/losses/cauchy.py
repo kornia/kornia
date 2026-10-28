@@ -134,6 +134,7 @@ class CauchyLoss(nn.Module):
     """
 
     def __init__(self, reduction: str = "none") -> None:
+        """Initialize the Cauchy loss with the requested reduction."""
         super().__init__()
         self.reduction = reduction
 

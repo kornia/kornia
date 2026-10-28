@@ -122,6 +122,7 @@ class SSIM3DLoss(nn.Module):
     def __init__(
         self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, reduction: str = "mean", padding: str = "same"
     ) -> None:
+        """Configure the window, image range, stability epsilon, reduction and padding for 3D DSSIM."""
         super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val

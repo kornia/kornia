@@ -139,6 +139,7 @@ class WelschLoss(nn.Module):
     """
 
     def __init__(self, reduction: str = "none") -> None:
+        """Initialize the Welsch loss with the requested reduction."""
         super().__init__()
         self.reduction = reduction
 

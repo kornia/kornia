@@ -84,6 +84,7 @@ class PSNRLoss(nn.Module):
     """
 
     def __init__(self, max_val: _PSNRMaxVal) -> None:
+        """Initialize the PSNR loss with the image data range."""
         super().__init__()
         self.max_val: _PSNRMaxVal = max_val
 
