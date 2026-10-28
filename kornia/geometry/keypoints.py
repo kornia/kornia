@@ -316,6 +316,28 @@ class VideoKeypoints(Keypoints):
         out.temporal_channel_size = temporal_channel_size
         return out
 
+    def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "VideoKeypoints":
+        r"""Select videos while preserving the temporal axis, as :meth:`VideoBoxes.__getitem__` does.
+
+        An integer or scalar tensor keeps a singleton video-batch dimension. Slices, integer tensors, and boolean
+        tensors follow the corresponding PyTorch indexing behavior on the video-batch axis.
+        """
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        selected = self._data.view(batch_size, self.temporal_channel_size, *self._data.shape[1:])[key]
+        if selected.ndim == self._data.ndim:
+            selected = selected.unsqueeze(0)
+        out = type(self)(selected.flatten(0, 1), False)
+        out.temporal_channel_size = self.temporal_channel_size
+        return out
+
+    def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "VideoKeypoints":
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
+        size = self.temporal_channel_size
+        # Explicit video counts: a clip with no points has 0 elements, so a -1 in the view would be ambiguous.
+        n, m = self._data.shape[0] // size, value.data.shape[0] // size
+        self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
+        return self
+
     def to_tensor(self) -> torch.torch.Tensor:
         out = super().to_tensor(as_padded_sequence=False)
         out = cast(torch.torch.Tensor, out)

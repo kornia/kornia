@@ -321,6 +321,35 @@ class TestVideoKeypoints(BaseTester):
         assert isinstance(out, VideoKeypoints)
         assert out.temporal_channel_size == T
 
+    @pytest.mark.parametrize(
+        "key, videos",
+        [(0, [0]), (-1, [2]), (slice(0, 2), [0, 1]), (slice(1, None), [1, 2]), ("index", [2, 0]), ("mask", [0, 2])],
+    )
+    def test_getitem_selects_videos_6375(self, key, videos, device, dtype):
+        # As VideoBoxes (#4249): indexing selects whole videos on the video-batch axis and keeps the temporal axis.
+        # The inherited Keypoints.__getitem__ indexed frames and dropped temporal_channel_size, so to_tensor() raised.
+        data = torch.arange(3 * 4 * 5 * 2, device=device, dtype=dtype).reshape(3, 4, 5, 2)
+        vkp = VideoKeypoints.from_tensor(data)
+        if key == "index":
+            key = torch.tensor([2, 0], device=device)
+        elif key == "mask":
+            key = torch.tensor([True, False, True], device=device)
+        out = vkp[key]
+        assert isinstance(out, VideoKeypoints)
+        assert out.temporal_channel_size == 4
+        self.assert_close(out.to_tensor(), data[videos])
+
+    def test_setitem_writes_videos_6375(self, device, dtype):
+        data = torch.zeros(3, 4, 5, 2, device=device, dtype=dtype)
+        vkp = VideoKeypoints.from_tensor(data)
+        value = VideoKeypoints.from_tensor(torch.ones(1, 4, 5, 2, device=device, dtype=dtype))
+        vkp[1] = value
+        expected = data.clone()
+        expected[1] = 1
+        self.assert_close(vkp.to_tensor(), expected)
+        vkp[torch.tensor([True, False, True], device=device)] = vkp[torch.tensor([1, 1], device=device)]
+        self.assert_close(vkp.to_tensor(), torch.ones_like(data))
+
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError):
             VideoKeypoints.from_tensor(torch.rand(5, 2, device=device, dtype=dtype))

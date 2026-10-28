@@ -26,7 +26,7 @@ from torch.distributions import Beta, Uniform
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.boxes import Boxes, VideoBoxes
-from kornia.geometry.keypoints import Keypoints
+from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
 
 def _pad_with_fill(
@@ -105,6 +105,25 @@ def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
     boxes._is_batched = frames._is_batched
     boxes.temporal_channel_size = temporal_channel_size
     return boxes
+
+
+def _frame_keypoints(keypoints: VideoKeypoints) -> Keypoints:
+    r"""View :class:`VideoKeypoints` as the frame-level :class:`Keypoints` of its :math:`(B \cdot T, N, 2)` storage.
+
+    As :func:`_frame_boxes` does for boxes: the children of :class:`VideoSequential` index frames, and
+    ``VideoKeypoints`` indexes whole videos. The view shares the storage.
+    """
+    frames = Keypoints(keypoints._data, False)
+    frames._is_batched = keypoints._is_batched
+    return frames
+
+
+def _video_keypoints(frames: Keypoints, temporal_channel_size: int) -> VideoKeypoints:
+    """Wrap frame-level :class:`Keypoints` back into :class:`VideoKeypoints` with ``temporal_channel_size`` frames."""
+    keypoints = VideoKeypoints(frames._data, False)
+    keypoints._is_batched = frames._is_batched
+    keypoints.temporal_channel_size = temporal_channel_size
+    return keypoints
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
