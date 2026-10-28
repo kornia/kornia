@@ -33,43 +33,12 @@ without a docstring of its own, which inherits one from its base. Lines are comp
 collapsing whitespace, so this catches copies, not near-duplicates: two lines that differ by a single word pass.
 """
 
-import ast
-import importlib
 import inspect
-import warnings
 from functools import cache
-from pathlib import Path
 
 import kornia
 
-_KORNIA_ROOT = Path(kornia.__file__).resolve().parent
-
-
-def _modules_declaring_all() -> list[str]:
-    """Name every non-private kornia module that assigns ``__all__``, found from source without importing it.
-
-    The same parse as ``_declared_inventory_modules`` in ``tests/test_api_surface.py``, over the whole package
-    rather than the inventory roots: the inventory leaves out ``kornia.feature``, whose matchers and LAF estimators
-    are among the symbols this test exists for.
-    """
-    found = []
-    for path in sorted(_KORNIA_ROOT.rglob("*.py")):
-        parts = list(path.relative_to(_KORNIA_ROOT).with_suffix("").parts)
-        if parts[-1] == "__init__":
-            parts.pop()
-        if any(part.startswith("_") for part in parts):
-            continue
-        tree = ast.parse(path.read_bytes(), filename=str(path))
-        if any(
-            (
-                isinstance(node, ast.Assign)
-                and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
-            )
-            or (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "__all__")
-            for node in tree.body
-        ):
-            found.append(".".join(["kornia", *parts]))
-    return found
+from testing.docstring_style import own_docstring, public_objects
 
 
 def _first_line(doc: str) -> str:
@@ -106,30 +75,7 @@ def _is_wrapper_pair(objects: list) -> bool:
 @cache
 def _public_first_lines() -> dict[int, tuple[object, str]]:
     """Map ``id(obj)`` to ``(obj, first docstring line)`` for every public kornia function and class."""
-    collected: dict[int, tuple[object, str]] = {}
-    for module_name in _modules_declaring_all():
-        with warnings.catch_warnings():
-            # ``getattr`` runs module-level ``__getattr__`` shims, which warn about deprecated names.
-            warnings.simplefilter("ignore")
-            try:
-                module = importlib.import_module(module_name)
-            except ModuleNotFoundError as error:
-                # A module that needs an optional package which is not installed is out of scope here.
-                if (error.name or "").partition(".")[0] == "kornia":
-                    raise
-                continue
-            exported = [(name, getattr(module, name, None)) for name in module.__all__ if not name.startswith("_")]
-        for _, obj in exported:
-            if not (inspect.isclass(obj) or inspect.isfunction(obj)):
-                continue
-            module_of_obj = obj.__module__ or ""
-            if not (module_of_obj == "kornia" or module_of_obj.startswith("kornia.")):
-                continue
-            # ``inspect.getdoc`` would hand a class without a docstring its base class's one.
-            doc = obj.__dict__.get("__doc__") if inspect.isclass(obj) else obj.__doc__
-            if doc:
-                collected[id(obj)] = (obj, _first_line(doc))
-    return collected
+    return {key: (obj, _first_line(own_docstring(obj))) for key, (obj, _) in public_objects().items()}
 
 
 def test_the_scan_covers_the_public_api():
