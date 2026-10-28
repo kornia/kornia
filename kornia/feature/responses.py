@@ -398,7 +398,7 @@ class BlobDoGSingle(nn.Module):
         self.sigma2 = sigma2
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})"
+        return f"{self.__class__.__name__}(sigma1={self.sigma1}, sigma2={self.sigma2})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Compute single-scale Difference-of-Gaussians response.

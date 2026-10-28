@@ -345,7 +345,7 @@ def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: 
             passed = True
             break
     if not passed:
-        raise TypeError(f"Expected input shape in {required_shape}. Got {shape}.")
+        raise TypeError(f"Expected input shape in {required_shapes}. Got {shape}.")
 
 
 def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) -> bool:
