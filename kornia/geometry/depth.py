@@ -561,11 +561,10 @@ class DepthWarper(nn.Module):
           homogeneous 4x4 form; the stored fourth row and column are ignored.
         - the ``grid`` attribute is the homogeneous integer-centre pixel grid (pixel ``(0, 0)`` is
           ``(0, 0, 1)``); :meth:`warp_grid` returns sampling positions in ``grid_sample``'s
-          ``align_corners=True`` normalized coordinates of the **destination** image.
+          normalized coordinates of the **destination** image following ``align_corners``.
         - ``align_corners`` (default ``True``), ``mode`` and ``padding_mode`` are forwarded to ``grid_sample``,
-          but :meth:`warp_grid` normalizes for ``align_corners=True`` whatever the flag, so ``False`` misaligns
-          the warp and an identity warp no longer returns its input
-          (`#6317 <https://github.com/kornia/kornia/issues/6317>`_).
+          and :meth:`warp_grid` normalizes coordinates using ``align_corners`` so an identity warp
+          reproduces its input under both conventions (`#6317 <https://github.com/kornia/kornia/issues/6317>`_).
         - :func:`warp_frame_depth` names the frames the other way round: its ``dst`` (the frame holding the depth)
           is this class's ``src``, and its ``image_src`` is ``patch_dst``.
 
@@ -755,7 +754,9 @@ class DepthWarper(nn.Module):
         )  # (B*N)xHxWx2
 
         # normalize between -1 and 1 the coordinates
-        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)
+        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(
+            pixel_coords_src, self.height, self.width, align_corners=self.align_corners
+        )
         return pixel_coords_src_norm
 
     def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:
@@ -822,10 +823,8 @@ def depth_warp(
         patch_dst: the image in the destination frame, with shape ``(B, C, H, W)``.
         height: the height of the images, ``H``.
         width: the width of the images, ``W``.
-        align_corners: forwarded to ``grid_sample`` only; the sampling grid is always normalized for
-            ``align_corners=True``, so ``False`` misaligns the warp
-            (`#6317 <https://github.com/kornia/kornia/issues/6317>`_). The default ``True`` is what
-            :class:`DepthWarper` uses.
+        align_corners: interpolation flag forwarded to :class:`DepthWarper` and ``grid_sample``
+            (default ``True``; `#6317 <https://github.com/kornia/kornia/issues/6317>`_).
 
     Return:
         ``patch_dst`` resampled onto the source pixel grid, with shape ``(B, C, H, W)``.

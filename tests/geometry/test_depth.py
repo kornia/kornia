@@ -964,6 +964,20 @@ class TestDepthWarperConventions(BaseTester):
         actual = DepthWarper(cam, 4, 5).compute_projection_matrix(cam)(depth, image)
         self.assert_close(actual, image, atol=max(1e-11, 8 * torch.finfo(dtype).eps), rtol=0.0)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_depth_warper_identity_align_corners_6317(self, device, dtype, align_corners):
+        intrinsics = _k44_warp(device, dtype)
+        cam = PinholeCamera(
+            intrinsics, _eye4(device, dtype), torch.tensor([4], device=device), torch.tensor([5], device=device)
+        )
+        image = torch.arange(20.0, device=device, dtype=dtype).reshape(1, 1, 4, 5) / 20
+        depth = torch.ones(1, 1, 4, 5, device=device, dtype=dtype)
+        warper = DepthWarper(cam, 4, 5, align_corners=align_corners).compute_projection_matrix(cam)
+        actual = warper(depth, image)
+        self.assert_close(actual, image, atol=max(1e-11, 8 * torch.finfo(dtype).eps), rtol=0.0)
+        direct = depth_warp(cam, cam, depth, image, 4, 5, align_corners=align_corners)
+        self.assert_close(direct, image, atol=max(1e-11, 8 * torch.finfo(dtype).eps), rtol=0.0)
+
     @staticmethod
     def _warper(device, dtype, dst_extrinsics, src_extrinsics):
         """Build a DepthWarper for a 4x5 image and run compute_projection_matrix on the source camera."""

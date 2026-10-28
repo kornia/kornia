@@ -1,0 +1,1 @@
+`remap` and `DepthWarper` now honor `align_corners` during coordinate normalization, allowing identity warps to reproduce inputs under `align_corners=False`. `normalize_pixel_coordinates` and `denormalize_pixel_coordinates` (2D and 3D) support `align_corners`.

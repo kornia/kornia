@@ -1252,14 +1252,14 @@ class TestRemap(BaseTester):
 
         self.assert_close(actual, image, atol=0.0, rtol=0.0)
 
-    def test_wart_remap_identity_pixel_map_resamples_at_default_4504(self, device, dtype):
-        # remap normalizes pixel maps with the align_corners=True mapping whatever flag it passes to
-        # grid_sample, so at the default (None, i.e. False) an identity map does not reproduce the
-        # input (#4504). Flips once the normalization follows align_corners.
+    def test_remap_identity_pixel_map_align_corners_4504(self, device, dtype):
+        # remap normalizes pixel maps with the matching align_corners convention (#4504),
+        # so an identity map reproduces the input under both align_corners=True and False (or default None).
         image = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
         grid = kornia.geometry.create_meshgrid(4, 4, normalized_coordinates=False, device=device, dtype=dtype)
         self.assert_close(kornia.geometry.remap(image, grid[..., 0], grid[..., 1], align_corners=True), image)
-        assert not torch.allclose(kornia.geometry.remap(image, grid[..., 0], grid[..., 1]), image, atol=1.0)
+        self.assert_close(kornia.geometry.remap(image, grid[..., 0], grid[..., 1], align_corners=False), image)
+        self.assert_close(kornia.geometry.remap(image, grid[..., 0], grid[..., 1]), image)
 
     @pytest.mark.parametrize("source_empty", [False, True])
     def test_empty_maps_return_autograd_connected_output(self, source_empty, device, dtype):

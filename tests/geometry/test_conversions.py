@@ -3204,6 +3204,28 @@ class TestDenormalizePixelCoordinates(BaseTester):
 
         self.assert_close(out, pts)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_normalize_denormalize_roundtrip_align_corners(self, device, dtype, align_corners):
+        pts = torch.tensor([[1.0, 2.0], [3.0, 0.0]], device=device, dtype=dtype)
+        norm = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 5, 7, align_corners=align_corners)
+        out = kornia.geometry.conversions.denormalize_pixel_coordinates(norm, 5, 7, align_corners=align_corners)
+        self.assert_close(out, pts)
+
+        pts3d = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
+        norm3d = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts3d, 3, 5, 7, align_corners=align_corners)
+        out3d = kornia.geometry.conversions.denormalize_pixel_coordinates3d(
+            norm3d, 3, 5, 7, align_corners=align_corners
+        )
+        self.assert_close(out3d, pts3d)
+
+    def test_align_corners_false_pixel_mapping(self, device, dtype):
+        pts = torch.tensor([[0.0, 0.0], [3.0, 1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[-0.75, -0.5], [0.75, 0.5]], device=device, dtype=dtype)
+        norm = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 2, 4, align_corners=False)
+        self.assert_close(norm, expected)
+        out = kornia.geometry.conversions.denormalize_pixel_coordinates(norm, 2, 4, align_corners=False)
+        self.assert_close(out, pts)
+
     def test_convention_3d_component_order_and_roundtrip(self, device, dtype):
         # Convention pin (denormalize_pixel_coordinates3d has no test class of its own): same
         # (d, x, y) order as the 3-D normalizer, so the normalized origin maps to the per-axis
