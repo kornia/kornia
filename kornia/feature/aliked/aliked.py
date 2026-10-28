@@ -1044,11 +1044,14 @@ class ALIKED(nn.Module):
         wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=torch.promote_types(img.dtype, torch.float32))
 
         if B == 0:
-            # torch.stack rejects an empty list, so build the empty batch directly.
+            # torch.stack rejects an empty list. Derive the empty outputs from the dense maps instead of allocating
+            # them, so they stay in the autograd graph, and sample the responses as DKD does, so they keep the
+            # dtype a non-empty batch gets (float32 under autocast).
+            responses = F.grid_sample(score_map, score_map.new_zeros(0, 1, 0, 2), mode="bilinear", align_corners=True)
             return (
-                wh.new_zeros(0, 0, 2, 3),
-                feature_map.new_zeros(0, 0, 1),
-                feature_map.new_zeros(0, 0, feature_map.shape[1]),
+                score_map.flatten()[:0].to(wh.dtype).view(0, 0, 2, 3),
+                responses.view(0, 0, 1),
+                feature_map.flatten()[:0].view(0, 0, feature_map.shape[1]),
             )
 
         lafs_list: list[torch.Tensor] = []

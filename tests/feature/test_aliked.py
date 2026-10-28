@@ -420,6 +420,17 @@ class TestALIKEDForwardLAF(BaseTester):
         assert descs.shape == (0, 0, ref[2].shape[-1])
         assert [t.dtype for t in (lafs, responses, descs)] == [t.dtype for t in ref]
         assert all(t.device == ref[0].device for t in (lafs, responses, descs))
+        # The empty outputs stay in the autograd graph, so a loss over an empty batch can still be backpropagated.
+        (lafs.sum() + responses.sum() + descs.sum()).backward()
+
+    @pytest.mark.parametrize("compute_affine", [True, False])
+    def test_empty_batch_autocast_6266(self, compute_affine):
+        """Under CPU bfloat16 autocast an empty batch gets the dtypes of a non-empty one (float32 responses)."""
+        aliked = ALIKED(model_name="aliked-t16").eval()
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            empty = aliked.forward_laf(torch.rand(0, 3, 64, 64), compute_affine=compute_affine)
+            ref = aliked.forward_laf(torch.rand(1, 3, 64, 64), compute_affine=compute_affine)
+        assert [t.dtype for t in empty] == [t.dtype for t in ref]
 
     def test_output_shapes(self, device, dtype):
         """Shapes should be (B, N, 2, 3), (B, N, 1), (B, N, D)."""
