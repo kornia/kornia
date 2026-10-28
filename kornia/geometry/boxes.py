@@ -252,7 +252,8 @@ class Boxes:
         stored inclusive vertices, ``(width - 1) * (height - 1)``:
         `#4010 <https://github.com/kornia/kornia/issues/4010>`_. :func:`~kornia.geometry.bbox.nms` is exclusive:
         `#4008 <https://github.com/kornia/kornia/issues/4008>`_. :meth:`to_mask` and
-        :func:`~kornia.geometry.bbox.bbox_to_mask` take opposite size orders:
+        :func:`~kornia.geometry.bbox.bbox_to_mask` agree on ``(height, width)`` once that function is called with
+        ``size``; its deprecated ``width, height`` form takes the opposite order:
         `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
         `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``'vertices'`` subtracts the inclusive offset at
         fixed vertex slots, so it deforms a quadrilateral that is not an axis-aligned rectangle in clockwise order:
@@ -830,8 +831,9 @@ class Boxes:
             ``RuntimeError``.
 
         .. warning::
-            :func:`~kornia.geometry.bbox.bbox_to_mask` takes ``(width, height)``
-            (`#4014 <https://github.com/kornia/kornia/issues/4014>`_) and does not round, so a fractional box can
+            :func:`~kornia.geometry.bbox.bbox_to_mask` takes ``(height, width)`` through its ``size`` argument,
+            like this method (`#4014 <https://github.com/kornia/kornia/issues/4014>`_); its deprecated
+            ``width, height`` form takes the opposite order. It also does not round, so a fractional box can
             fill a different area (`#4015 <https://github.com/kornia/kornia/issues/4015>`_).
 
         Args:
