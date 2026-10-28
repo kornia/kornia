@@ -41,8 +41,9 @@ def _check_disparity_inputs(
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(target)
     KORNIA_CHECK_SAME_SHAPE(input, target)
-    # A 0-d map on the CPU is a scalar that torch combines with a map on any device, so only maps are checked.
-    if input.ndim > 0:
+    # torch combines a 0-d CPU tensor with a tensor on any device, as a scalar, so a 0-d pair with one map on the CPU
+    # is not checked. Maps with dimensions, and 0-d maps on two other devices, must share a device.
+    if input.ndim > 0 or (input.device.type != "cpu" and target.device.type != "cpu"):
         KORNIA_CHECK_SAME_DEVICE(input, target)
     # The reductions below accumulate in float32 and cast back to the map dtype. For an integer
     # map that cast truncates, which would turn a ratio into 0 instead of raising, so reject

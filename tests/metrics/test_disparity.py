@@ -764,3 +764,15 @@ class TestDisparityDevices(BaseTester):
             self.assert_close(metric(target, sample), metric(target.to(device), sample), rtol=0, atol=0)
         out = _DISPARITY_METRICS[0](sample.to("meta"), target)
         assert out.device.type == "meta"
+
+    def test_scalar_maps_on_two_other_devices(self, device, dtype):
+        # Only a 0-d CPU tensor mixes with another device in torch, so 0-d maps on two other devices are rejected.
+        if device.type == "cpu":
+            pytest.skip("needs a device other than the CPU and meta")
+        sample = torch.tensor(7.0, device=device, dtype=dtype)
+        target = torch.tensor(3.0, device="meta", dtype=dtype)
+        for metric in _DISPARITY_METRICS:
+            with pytest.raises(DeviceError, match="Device mismatch"):
+                metric(sample, target)
+            with pytest.raises(DeviceError, match="Device mismatch"):
+                metric(target, sample)
