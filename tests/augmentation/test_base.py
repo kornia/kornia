@@ -347,6 +347,36 @@ class TestGeometricAugmentationBase3D:
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"
 
+    @pytest.mark.parametrize(
+        "ref_shape, input_shape, match_channel, expected",
+        [
+            ((2, 3, 4, 5, 6), (4, 5, 6), False, (1, 1, 4, 5, 6)),
+            ((2, 3, 4, 5, 6), (2, 4, 5, 6), False, (2, 1, 4, 5, 6)),
+            ((2, 3, 4, 5, 6), (3, 4, 5, 6), False, (1, 3, 4, 5, 6)),
+            ((2, 3, 4, 5, 6), (3, 4, 5, 6), True, (1, 3, 4, 5, 6)),
+            ((2, 3, 4, 5, 6), (2, 3, 4, 5, 6), True, (2, 3, 4, 5, 6)),
+            ((1, 3, 4, 5, 6), (4, 5, 6), False, (1, 1, 4, 5, 6)),
+        ],
+    )
+    def test_transform_tensor_by_shape_adds_the_missing_axis(
+        self, ref_shape, input_shape, match_channel, expected, device, dtype
+    ):
+        # The missing axis is the batch for a (D, H, W) volume and the channel for a (B, D, H, W) one.
+        aug = RandomHorizontalFlip3D(p=1.0)
+        reference = torch.tensor(ref_shape)
+        x = torch.rand(input_shape, device=device, dtype=dtype)
+        out = aug.transform_tensor(x, shape=reference, match_channel=match_channel)
+        assert out.shape == expected
+        assert torch.equal(out.reshape(x.shape), x)
+
+    @pytest.mark.parametrize("input_shape", [(4, 5, 6), (2, 4, 5, 6)])
+    def test_transform_tensor_by_shape_rejects_a_channel_mismatch(self, input_shape, device, dtype):
+        aug = RandomHorizontalFlip3D(p=1.0)
+        reference = torch.tensor((2, 3, 4, 5, 6))
+        x = torch.rand(input_shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="C dimension"):
+            aug.transform_tensor(x, shape=reference, match_channel=True)
+
 
 class TestDeviceAgnosticAugmentationParameters(BaseTester):
     """Augmentations keep RNG/params on CPU while accepting accelerator inputs.

@@ -1,0 +1,1 @@
+`transform_tensor(..., shape=..., match_channel=False)` on 3D augmentations adds the missing axis at the batch or channel position instead of after `D`, so a `(B, D, H, W)` input becomes `(B, 1, D, H, W)` and a `(D, H, W)` input becomes 5-dim.

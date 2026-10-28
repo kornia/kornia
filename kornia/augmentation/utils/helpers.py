@@ -209,12 +209,11 @@ def _transform_input_by_shape(
 def _transform_input3d_by_shape(
     input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
 ) -> torch.Tensor:
-    """Unsqueeze a 3-dim tensor at dim 0, then a 4-dim one at dim 2 if its first size equals the reference batch size.
+    """Add the missing batch or channel dimension of a volume tensor, e.g. a mask, to match a (B, C, D, H, W) reference.
 
-    A 3-dim ``(D, H, W)`` input first becomes ``(1, D, H, W)``. When the reference batch size is 1, the next branch
-    also inserts dimension 2, giving ``(1, D, 1, H, W)``; otherwise it stays 4-dim. A 4-dim ``(B, D, H, W)`` input
-    becomes ``(B, D, 1, H, W)``: the new axis lands after ``D`` rather than at ``C``. Tracked in
-    `#6354 <https://github.com/kornia/kornia/issues/6354>`_.
+    A 3-dim ``(D, H, W)`` input becomes ``(1, D, H, W)`` first. A 4-dim input then gets one axis: at dim 1 if its
+    first size equals the reference batch size (a ``(B, D, H, W)`` mask becomes ``(B, 1, D, H, W)``), otherwise at
+    dim 0 (a ``(C, D, H, W)`` volume becomes ``(1, C, D, H, W)``).
 
     Arguments:
         input: torch.Tensor to be transformed
@@ -228,10 +227,10 @@ def _transform_input3d_by_shape(
     if len(input.shape) == 3:
         input = input.unsqueeze(0)
 
-    if len(input.shape) == 4 and B == input.shape[-4]:
+    if len(input.shape) == 4:
         # If the first dim matches within the batch_size, add a `C` dim
         # Useful to handler Masks without `C` dimensions
-        input = input.unsqueeze(2)
+        input = input.unsqueeze(1) if B == input.shape[-4] else input.unsqueeze(0)
 
     if match_channel and C:
         if not input.shape[-4] == C:
