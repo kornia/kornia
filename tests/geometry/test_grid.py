@@ -442,21 +442,19 @@ def test_convention_create_meshgrid3d_reorder_for_grid_sample(device, dtype):
 
     generator = torch.Generator(device="cpu").manual_seed(0)
     volume = torch.rand(1, 1, 2, 3, 4, generator=generator).to(device, dtype)
-    grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype)
-    reordered = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=True)
-    as_is = torch.nn.functional.grid_sample(volume, grid, align_corners=True)
-    assert_close(reordered, volume)
-    assert (as_is - volume).abs().max() > 0.1
+    for align_corners in (True, False):
+        grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype, align_corners=align_corners)
+        reordered = torch.nn.functional.grid_sample(volume, grid[..., [1, 2, 0]], align_corners=align_corners)
+        as_is = torch.nn.functional.grid_sample(volume, grid, align_corners=align_corners)
+        assert_close(reordered, volume)
+        assert (as_is - volume).abs().max() > 0.1
 
     permuted = volume.permute(0, 1, 4, 2, 3).contiguous()  # (D, H, W) = (4, 2, 3)
     grid = kornia.geometry.create_meshgrid3d(4, 2, 3, device=device, dtype=dtype)
     assert_close(torch.nn.functional.grid_sample(permuted, grid[..., [1, 2, 0]], align_corners=True), permuted)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=TypeError, reason="#4503: create_meshgrid3d cannot produce an align_corners=False grid"
-)
-def test_wart_create_meshgrid3d_lacks_align_corners_false_4503(device, dtype):
+def test_create_meshgrid3d_align_corners_false_4503(device, dtype):
     # Correct half-pixel coordinates for (D, H, W) = (2, 3, 4), in Kornia's (d, x, y) order.
     grid = kornia.geometry.create_meshgrid3d(2, 3, 4, device=device, dtype=dtype, align_corners=False)
     assert_close(grid[0, 0, 0, 0], torch.tensor([-0.5, -0.75, -2 / 3], device=device, dtype=dtype))
