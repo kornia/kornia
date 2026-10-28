@@ -774,6 +774,8 @@ class TestConventionsBilateralBlur(BaseTester):
         """Single-step window sum preserves float16 gradient accuracy w.r.t. sigmas (#6284)."""
         if device.type == "mps":
             pytest.skip("MPS keeps two-step sum due to non-adjacent reduction speed")
+        if not supports_reflect_padding(device, torch.float16):
+            pytest.skip("reflect padding is not supported for float16 on this device/torch version")
         torch.manual_seed(0)
         x = torch.rand(1, 3, 32, 40, device=device)
         w = torch.rand(1, 3, 32, 40, device=device)
