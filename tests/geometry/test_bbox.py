@@ -988,8 +988,8 @@ class TestNMS(BaseTester):
 
     def test_zero_area_box_next_to_a_box(self, device, dtype):
         # A zero-width box inside a box with a positive area has IoU 0 with it, and a box with a positive area still
-        # suppresses its duplicate. The last box, a point, is then compared with the zero-width box: both are
-        # zero-area, so it was suppressed by 0 / 0.
+        # suppresses its duplicate. The last box, a point, is then compared with the zero-width box: their union is
+        # empty, so their IoU is 0 and the point is kept (before #6361 the 0 / 0 suppressed it).
         boxes = torch.tensor(
             [[0, 0, 20, 20], [10, 5, 10, 15], [0, 0, 20, 20], [40, 40, 40, 40]], device=device, dtype=dtype
         )
