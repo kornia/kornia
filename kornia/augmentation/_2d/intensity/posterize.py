@@ -26,14 +26,14 @@ from kornia.enhance import posterize
 
 
 class RandomPosterize(IntensityAugmentationBase2D):
-    r"""Posterize given torch.Tensor image or a batch of torch.Tensor images randomly.
+    r"""Posterize images to a random number of bits, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomPosterize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         bits: number of high bits to keep, in ``[0, 8]``, in which 0 gives a black image and 8 gives the
             original. A range of whole numbers is closed and uniform: every integer from the lower to the upper
             bound is drawn with the same probability. A non-integral argument is accepted; the drawn factor is

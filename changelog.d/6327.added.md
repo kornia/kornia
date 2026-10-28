@@ -1,0 +1,1 @@
+`Boxes.trim`, which was never implemented and always raised `NotImplementedError`, is deprecated and now also emits a `DeprecationWarning`; it will be removed in a future release. `Boxes.clamp` is annotated to take tensor bounds only, and `'fast'` is no longer listed as a `Boxes.translate` method; both paths always raised.

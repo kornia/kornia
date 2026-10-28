@@ -308,7 +308,7 @@ def hessian_response(
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Compute the Difference-of-Gaussian response.
+    r"""Compute the Difference-of-Gaussian response between adjacent levels of a (B, C, D, H, W) Gaussian scale stack.
 
     Convention:
         - Output level ``i`` is ``input[:, :, i + 1] - input[:, :, i]`` along the level axis ``D`` (dim 2), so ``D``
@@ -328,7 +328,7 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 
 
 def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float = 1.6) -> torch.Tensor:
-    r"""Compute the Difference-of-Gaussian response.
+    r"""Compute the Difference-of-Gaussian response of a (B, C, H, W) image, its sigma2 blur minus its sigma1 blur.
 
     .. image:: _static/img/dog_response_single.png
 
@@ -356,7 +356,7 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
 
 
 class BlobDoG(nn.Module):
-    r"""nn.Module that calculates Difference-of-Gaussians blobs.
+    r"""Compute Difference-of-Gaussian responses of a (B, C, D, H, W) scale stack; the module form of dog_response.
 
     Convention:
         Returns :func:`~kornia.feature.dog_response` of the :math:`(B, C, D, H, W)` scale stack; see its Convention
@@ -383,7 +383,7 @@ class BlobDoG(nn.Module):
 
 
 class BlobDoGSingle(nn.Module):
-    r"""nn.Module that calculates Difference-of-Gaussians blobs.
+    r"""Compute the Difference-of-Gaussian response of a (B, C, H, W) image; the module form of dog_response_single.
 
     .. image:: _static/img/dog_response_single.png
 

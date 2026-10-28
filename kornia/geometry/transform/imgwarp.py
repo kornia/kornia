@@ -260,7 +260,7 @@ def warp_perspective(
     align_corners: bool = True,
     fill_value: Optional[torch.Tensor] = None,  # needed for jit
 ) -> torch.Tensor:
-    r"""Apply a perspective transformation to an image.
+    r"""Warp a 2D (B, C, H, W) image by a (B, 3, 3) source→destination homography in pixel coordinates.
 
     The function warp_perspective transforms the source image using
     the specified matrix:
@@ -598,7 +598,7 @@ def _fill_and_warp(
 
 
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    r"""Compute the grid to warp the coordinates grid by the homography/ies.
+    r"""Transform a 2D (x, y) coordinate grid by destination→source (N, 3, 3) homographies.
 
     Convention:
         - ``grid`` coordinates: ``(x, y)`` (last dim), shape :math:`(1, H, W, 2)` or :math:`(N, H, W, 2)`
@@ -684,7 +684,7 @@ def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, al
 
 
 def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    r"""Compute the grid to warp the coordinates grid by the homography/ies.
+    r"""Transform a 3D (x, y, z) coordinate grid by destination→source (N, 4, 4) homographies.
 
     Convention:
         - ``grid`` coordinates: ``(x, y, z)`` (last dim), shape :math:`(1, D, H, W, 3)` or
@@ -1860,9 +1860,9 @@ def warp_perspective3d(
     border_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    r"""Apply a perspective transformation to an image.
+    r"""Warp a 3D (B, C, D, H, W) volume by a (B, 4, 4) source→destination homography in voxel coordinates.
 
-    The function warp_perspective transforms the source image using
+    The function warp_perspective3d transforms the source volume using
     the specified matrix:
 
     .. math::
@@ -1937,7 +1937,15 @@ def homography_warp(
     normalized_coordinates: bool = True,
     normalized_homography: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by normalized 2D homographies.
+    r"""Warp an image by a destination→source homography in normalized ``[-1, 1]`` coordinates (the defaults).
+
+    For a source→destination homography in pixel coordinates, as :class:`~kornia.geometry.ransac.RANSAC` and
+    :func:`~kornia.geometry.homography.find_homography_dlt` return it, use :func:`warp_perspective`. Passed here
+    unchanged, such a homography is read as a normalized destination→source one, which typically samples outside
+    the source, so the output is mostly or entirely zeros (with the default ``padding_mode="zeros"``).
+    ``normalized_homography=False`` instead hands it to :func:`warp_perspective` with this function's
+    ``align_corners=False`` default, which for a pixel homography samples the same positions as
+    ``align_corners=True`` (see ``align_corners`` below).
 
     See :class:`~kornia.geometry.transform.HomographyWarper` for details.
 
@@ -2052,7 +2060,12 @@ def homography_warp3d(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by 3D homographies.
+    r"""Warp a volume by a normalized destination→source 3D homography (default ``normalized_coordinates=True``).
+
+    For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d` with
+    ``align_corners=True``: at its default ``align_corners=False`` it resamples even an identity
+    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Alternatively pass the inverse of that homography
+    here with ``normalized_coordinates=False``. This function has no ``normalized_homography`` switch.
 
     Convention:
         - input: :math:`(N, C, D, H, W)`; ``dsize`` is the output size ``(d, h, w)``

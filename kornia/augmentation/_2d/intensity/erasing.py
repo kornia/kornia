@@ -26,7 +26,7 @@ from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
 class RandomErasing(IntensityAugmentationBase2D):
-    r"""Erase a random rectangle of a torch.Tensor image according to a probability p value.
+    r"""Erase a random rectangle of the image, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomErasing.png
 
@@ -43,7 +43,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         ratio: range of aspect ratio of erased area.
         value: the value to fill the erased area.
         same_on_batch: apply the same transformation across the batch.
-        p: probability that the random erasing operation will be performed.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
 

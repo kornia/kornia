@@ -73,15 +73,15 @@ class LoFTREncoderLayer(nn.Module):
         source_mask: [N, S] (optional)
 
         """
-        bs = x.size(0)
         query, key, value = x, source, source
 
         # multi-head attention
-        query = self.q_proj(query).view(bs, -1, self.nhead, self.dim)  # [N, L, (H, D)]
-        key = self.k_proj(key).view(bs, -1, self.nhead, self.dim)  # [N, S, (H, D)]
-        value = self.v_proj(value).view(bs, -1, self.nhead, self.dim)
+        # unflatten and flatten split and merge the heads without a -1, which an empty batch cannot infer
+        query = self.q_proj(query).unflatten(-1, (self.nhead, self.dim))  # [N, L, (H, D)]
+        key = self.k_proj(key).unflatten(-1, (self.nhead, self.dim))  # [N, S, (H, D)]
+        value = self.v_proj(value).unflatten(-1, (self.nhead, self.dim))
         message = self.attention(query, key, value, q_mask=x_mask, kv_mask=source_mask)  # [N, L, (H, D)]
-        message = self.merge(message.view(bs, -1, self.nhead * self.dim))  # [N, L, C]
+        message = self.merge(message.flatten(start_dim=-2))  # [N, L, C]
         message = self.norm1(message)
 
         # feed-forward network

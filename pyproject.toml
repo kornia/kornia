@@ -301,7 +301,7 @@ ignore = [
   "D100",  # Allow Undocumented public module
   "D104",  # TODO: Undocumented public package
   "D105",  # Allow Undocumented magic method
-  "D107",  # TODO: Undocumented public init
+  "D107",  # Allow Undocumented public init: the class docstring documents the constructor
 ]
 
 [tool.ruff.lint.flake8-import-conventions.aliases]
