@@ -78,6 +78,13 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         **kwargs: Additional keyword arguments passed to `AugmentationSequential`
 
 
+    .. note::
+        The default augmentation stack contains ``RandomRotation90(times=(0, 3))``, which raises ``ValueError`` on a
+        non-square image, so the default needs square images. A custom stack with a
+        :class:`~kornia.augmentation.RandomRotation90` that may turn an image by an odd number of quarter turns has the
+        same requirement. ADA checks the input against these modules on every call, before it selects samples, so a
+        non-square input raises on the first call.
+
     Examples:
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
         >>> original = torch.randn(2, 3, 16, 16)
@@ -241,6 +248,16 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         order = sorted(range(len(keys)), key=lambda i: dict_data_keys[i] != DataKey.INPUT)
         return [keys[i] for i in order]
 
+    def _validate_rotation90_inputs(self, inputs: _inputs_type, data_keys: Optional[_data_keys_type]) -> None:
+        rotations = [module for module in self.modules() if isinstance(module, RandomRotation90)]
+        if not rotations:
+            return
+        image = inputs[self._dict_keys(inputs, data_keys)[0]] if isinstance(inputs, dict) else inputs
+        if image.dim() != 4:
+            return
+        for rotation in rotations:
+            rotation.validate_tensor(image)
+
     def _get_inputs_metadata(
         self, inputs: _inputs_type, data_keys: _data_keys_type
     ) -> Tuple[int, Optional[Union[str, torch.device]]]:
@@ -309,6 +326,10 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         """
         if real_acc is not None:
             self.update(real_acc)
+
+        # ADA only calls its augmentations for the samples its probability selects, which at a small `p` can be many
+        # calls in. Check the input here, on every call, so a shape `RandomRotation90` rejects fails on the first one.
+        self._validate_rotation90_inputs(inputs, data_keys)
 
         if self.p == 0:
             return inputs

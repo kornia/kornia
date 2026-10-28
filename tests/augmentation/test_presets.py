@@ -19,7 +19,7 @@
 import pytest
 import torch
 
-from kornia.augmentation import RandomHorizontalFlip
+from kornia.augmentation import AugmentationSequential, RandomHorizontalFlip, RandomRotation90
 from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
 
 from testing.base import BaseTester
@@ -88,6 +88,28 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         assert len(transforms) == len(expected_transforms)
         for t, et in zip(transforms, expected_transforms):
             assert et == str(t.__class__.__name__)
+
+    @pytest.mark.parametrize("initial_p", [1e-5, 0.0, 0.5])
+    def test_default_stack_raises_on_a_non_square_image_at_the_first_call(self, device, dtype, initial_p):
+        ada = AdaptiveDiscriminatorAugmentation(initial_p=initial_p).to(device)
+        inputs = torch.rand(8, 3, 16, 24, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="RandomRotation90"):
+            ada(inputs)
+
+    def test_non_square_check_reaches_a_nested_and_a_dict_input(self, device, dtype):
+        nested = AugmentationSequential(RandomRotation90((1, 1), p=1.0))
+        ada = AdaptiveDiscriminatorAugmentation(nested, initial_p=1e-5, data_keys=["input"])
+        inputs = torch.rand(4, 3, 16, 24, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="RandomRotation90"):
+            ada(inputs)
+        with pytest.raises(ValueError, match="RandomRotation90"):
+            ada({"input": inputs})
+
+    @pytest.mark.parametrize("rotation", [RandomRotation90((2, 2), p=1.0), RandomHorizontalFlip(p=1.0)])
+    def test_non_square_image_is_fine_when_no_rotation_may_turn_oddly(self, device, dtype, rotation):
+        ada = AdaptiveDiscriminatorAugmentation(rotation, initial_p=0.5).to(device)
+        inputs = torch.rand(4, 3, 16, 24, device=device, dtype=dtype)
+        assert ada(inputs).shape == inputs.shape
 
     def test_transforms_behaviour(self, device, dtype):
         ada_preset = AdaptiveDiscriminatorAugmentation().to(device)
