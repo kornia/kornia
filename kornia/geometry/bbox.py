@@ -793,9 +793,9 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         inter = w * h
         union = areas[i] + areas[order[1:]] - inter
         # Two zero-area boxes have a zero union, and their IoU is 0 rather than 0 / 0: a NaN would compare as an
-        # overlap below and suppress a disjoint box. torchvision keeps such a box too.
-        nonzero = union > 0
-        ovr = torch.where(nonzero, inter / torch.where(nonzero, union, torch.ones_like(union)), 0.0)
+        # overlap below and suppress a disjoint box. torchvision keeps such a box too. The intersection is 0 whenever
+        # the union is not positive, so dividing it by 1 there gives 0, and a NaN coordinate still gives a NaN IoU.
+        ovr = inter / torch.where(union > 0, union, torch.ones_like(union))
 
         inds = torch.where(ovr <= iou_threshold)[0]
         order = order[inds + 1]
