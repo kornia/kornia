@@ -339,7 +339,9 @@ class DinoVisionTransformer(nn.Module):
         if reshape:
             B, _, w, h = x.shape
             outputs = [
-                out.reshape(B, w // self.patch_size, h // self.patch_size, -1).permute(0, 3, 1, 2).contiguous()
+                out.reshape(B, w // self.patch_size, h // self.patch_size, out.shape[-1])
+                .permute(0, 3, 1, 2)
+                .contiguous()
                 for out in outputs
             ]
         if return_class_token:

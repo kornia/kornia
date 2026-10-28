@@ -96,7 +96,7 @@ class MultiHeadAttention(nn.Module):
 
         # sum up over the third axis
         out = torch.einsum("bhal, bhlv -> bhav ", att, v)
-        out = out.permute(0, 2, 1, 3).contiguous().view(B, N, -1)
+        out = out.permute(0, 2, 1, 3).flatten(2)
         out = self.projection(out)
         return self.projection_drop(out)
 
@@ -183,13 +183,13 @@ class PatchEmbedding(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.backbone(x)
-        B, N, height, width = x.shape
+        B, _, height, width = x.shape
         if (height, width) != self.grid_size:
             raise ValueError(
                 f"The patch embedding gives a {height}x{width} token grid, but the position embeddings are built for "
                 f"the {self.grid_size[0]}x{self.grid_size[1]} grid of an image_size input."
             )
-        x = x.view(B, N, -1).permute(0, 2, 1)  # BxNxE
+        x = x.flatten(2).permute(0, 2, 1)  # BxNxE
         cls_tokens = self.cls_token.repeat(B, 1, 1)  # Bx1xE
         # prepend the cls token to the input
         x = torch.cat([cls_tokens, x], dim=1)  # Bx(N+1)xE
