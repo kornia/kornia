@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import io
 import warnings
 
 import pytest
@@ -108,6 +109,25 @@ class TestFaceDetection(BaseTester):
                 dynamic_axes=dynamic_axes,
             )
         assert model_path.is_file()
+
+    @pytest.mark.device_agnostic
+    def test_yunet_legacy_onnx_declares_dynamic_output_sizes(self):
+        """The TorchScript exporter declares each output's batch and anchor count dynamic, as the input sizes are."""
+        onnx = pytest.importorskip("onnx")
+        buffer = io.BytesIO()
+        torch.onnx.export(
+            YuNet("test", pretrained=False).eval(),
+            torch.rand(2, 3, 64, 64),
+            buffer,
+            input_names=["images"],
+            output_names=["loc", "conf", "iou"],
+            dynamic_axes={"images": {0: "B", 2: "H", 3: "W"}},
+            dynamo=False,
+        )
+        for output in onnx.load_from_string(buffer.getvalue()).graph.output:
+            batch, anchors, _ = output.type.tensor_type.shape.dim
+            assert batch.dim_param, output
+            assert anchors.dim_param, output
 
     @pytest.mark.device_agnostic
     def test_yunet_mode(self, monkeypatch):

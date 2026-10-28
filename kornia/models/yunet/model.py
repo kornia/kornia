@@ -158,7 +158,7 @@ class YuNet(nn.Module):
             head_list.append(x_tmp.permute(0, 2, 3, 1).contiguous())
 
         head_data = torch.cat([o.flatten(1) for o in head_list], 1)
-        head_data = head_data.unflatten(1, (-1, 17))
+        head_data = head_data.view(head_data.shape[0], head_data.shape[1] // 17, 17)
 
         loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
