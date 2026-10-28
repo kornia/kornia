@@ -25,6 +25,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
+from kornia.core.ops import _is_numpy_bool
 from kornia.core.utils import is_compiling
 
 
@@ -53,9 +54,12 @@ class _HausdorffERLossBase(nn.Module):
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
-        if not math.isfinite(alpha):
-            raise ValueError(f"alpha must be finite. Got {alpha}.")
-        if isinstance(k, bool):
+        # NaN and +inf weights make the loss NaN. -inf weights only the first erosion (the limit of the weights), and
+        # an alpha tensor of shape (B, 1, 1, 1) gives each sample its own exponent, so neither is rejected.
+        if not torch.as_tensor(alpha < math.inf).all():
+            raise ValueError(f"alpha must not be NaN or +inf. Got {alpha}.")
+        # operator.index reads a bool, a boolean tensor and, on NumPy 1.x, a NumPy bool as 0 or 1.
+        if isinstance(k, bool) or (isinstance(k, torch.Tensor) and k.dtype == torch.bool) or _is_numpy_bool(k):
             raise TypeError("k must be an integer. Got bool.")
         try:
             # NumPy integers and integer 0-d tensors are integers too.
