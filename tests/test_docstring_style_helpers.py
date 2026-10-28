@@ -201,24 +201,35 @@ def test_covered_prefix():
 
 
 def test_catalog_missing():
+    depth, enhance = kornia.geometry.depth, kornia.enhance
     names = ["depth_to_3d", "depth_to_3d_v2"]
-    assert catalog_missing("use :func:`depth_to_3d_v2` here", names) == ["depth_to_3d"]
-    assert catalog_missing("use ``depth_to_3d_v2()`` here", names) == ["depth_to_3d"]
-    assert catalog_missing("- ``depth_to_3d``: points.", ["depth_to_3d"]) == []
-    assert catalog_missing("- ``depth_to_3d()``: points.", ["depth_to_3d"]) == []
-    assert catalog_missing("- :func:`~kornia.geometry.depth.depth_to_3d`: points.", ["depth_to_3d"]) == []
-    assert catalog_missing("- :func:`kornia.geometry.depth.depth_to_3d`: points.", ["depth_to_3d"]) == []
+    assert catalog_missing("use :func:`depth_to_3d_v2` here", names, depth) == ["depth_to_3d"]
+    assert catalog_missing("use ``depth_to_3d_v2()`` here", names, depth) == ["depth_to_3d"]
+    assert catalog_missing("- ``depth_to_3d``: points.", ["depth_to_3d"], depth) == []
+    assert catalog_missing("- ``depth_to_3d()``: points.", ["depth_to_3d"], depth) == []
+    assert catalog_missing("- :func:`~kornia.geometry.depth.depth_to_3d`: points.", ["depth_to_3d"], depth) == []
+    assert catalog_missing("- :func:`kornia.geometry.depth.depth_to_3d`: points.", ["depth_to_3d"], depth) == []
     # A plain word is not a mention, and neither is a longer name that ends with it.
-    assert catalog_missing("Use the morphological opening and closing.", ["opening", "closing"]) == [
+    assert catalog_missing("Use the morphological opening and closing.", ["opening", "closing"], kornia.morphology) == [
         "opening",
         "closing",
     ]
-    assert catalog_missing("use depth_to_3d here", ["depth_to_3d"]) == ["depth_to_3d"]
-    assert catalog_missing(":func:`my_depth_to_3d`", ["depth_to_3d"]) == ["depth_to_3d"]
+    assert catalog_missing("use depth_to_3d here", ["depth_to_3d"], depth) == ["depth_to_3d"]
+    assert catalog_missing(":func:`my_depth_to_3d`", ["depth_to_3d"], depth) == ["depth_to_3d"]
     # Single backticks are the default role, which renders as italics, and :math: is no reference: neither counts.
-    assert catalog_missing("use `depth_to_3d` here", ["depth_to_3d"]) == ["depth_to_3d"]
-    assert catalog_missing("the :math:`depth_to_3d` term", ["depth_to_3d"]) == ["depth_to_3d"]
-    assert catalog_missing("use :py:func:`depth_to_3d` here", ["depth_to_3d"]) == []
+    assert catalog_missing("use `depth_to_3d` here", ["depth_to_3d"], depth) == ["depth_to_3d"]
+    assert catalog_missing("the :math:`depth_to_3d` term", ["depth_to_3d"], depth) == ["depth_to_3d"]
+    assert catalog_missing("use :py:func:`depth_to_3d` here", ["depth_to_3d"], depth) == []
+    # A qualified target counts only as the exported object: torch's normalize is not kornia.enhance.normalize, which
+    # is reached through the package or its defining module even though a submodule shares its name.
+    for other in (":func:`torch.nn.functional.normalize`", "``torch.nn.functional.normalize``"):
+        assert catalog_missing(f"for L2, use {other}", ["normalize"], enhance) == ["normalize"]
+    for same in (
+        ":func:`~kornia.enhance.normalize`",
+        "``kornia.enhance.normalize``",
+        ":func:`kornia.enhance.normalize.normalize`",
+    ):
+        assert catalog_missing(f"use {same}", ["normalize"], enhance) == []
 
 
 def test_catalog_unimportable():

@@ -204,10 +204,10 @@ def test_no_math_shape_roles(path: Path) -> None:
 def test_catalog_names_every_export(namespace: str) -> None:
     module = importlib.import_module(namespace)
     doc = inspect.getdoc(module) or ""
-    missing = catalog_missing(doc, sorted(module.__all__))
+    missing = catalog_missing(doc, sorted(module.__all__), module)
     assert missing == [], (
         f"the module docstring of {namespace} does not mention {missing}; list every export as a role such as "
-        ":func:`name` or a literal such as ``name``"
+        ":func:`name` or a literal such as ``name``, and spell a qualified name as a path to that export"
     )
     broken = catalog_unimportable(module, doc)
     assert not broken, f"the module docstring of {namespace} has references that do not import: {broken}"

@@ -549,18 +549,25 @@ def reference_resolves(
 _PY_ROLES = "func|class|meth|attr|data|const|exc|obj"
 
 
-def catalog_missing(doc: str, names: list[str]) -> list[str]:
-    """Return the ``names`` that ``doc`` does not mention as a Python role target or a literal.
+def catalog_missing(doc: str, names: list[str], namespace: object) -> list[str]:
+    """Return the ``names`` exported by ``namespace`` that ``doc`` mentions in no Python role or literal.
 
     A name counts only as the whole target of a Python-domain role, such as :func:`name` or :func:`~kornia.x.name`,
-    or as a double-backtick literal, such as ``name`` or ``name()``. The same word in plain prose (``normalize``,
-    ``threshold``), in single backticks (the default role, which renders as italics) or in a ``:math:`` role does
-    not count, and ``depth_to_3d_v2`` does not count as mentioning ``depth_to_3d``.
+    or as a double-backtick literal, such as ``name`` or ``name()``. A qualified target counts only when it imports
+    as the object ``namespace`` exports under that name, so ``torch.nn.functional.normalize`` does not mention
+    ``kornia.enhance.normalize``. The same word in plain prose (``normalize``, ``threshold``), in single backticks
+    (the default role, which renders as italics) or in a ``:math:`` role does not count, and ``depth_to_3d_v2`` does
+    not count as mentioning ``depth_to_3d``.
     """
 
     def mentioned(name: str) -> bool:
-        target = rf"(?:[\w.]*\.)?{re.escape(name)}(?:\(\))?"
-        return re.search(rf"``{target}``|:(?:py:)?(?:{_PY_ROLES}):`~?{target}`", doc) is not None
+        target = rf"((?:[\w.]*\.)?{re.escape(name)})(?:\(\))?"
+        exported = getattr(namespace, name, None)
+        for match in re.finditer(rf"``{target}``|:(?:py:)?(?:{_PY_ROLES}):`~?{target}`", doc):
+            written = match.group(1) or match.group(2)
+            if written == name or (exported is not None and _import_dotted(written) is exported):
+                return True
+        return False
 
     return [name for name in names if not mentioned(name)]
 
