@@ -350,6 +350,16 @@ class TestRootMeanSquaredDisparityError(BaseTester):
         (grad,) = torch.autograd.grad(kornia.metrics.root_mean_squared_disparity_error(pred, target, mask), pred)
         self.assert_close(grad, torch.zeros_like(grad))
 
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_non_finite_error_propagates(self, reduction, device, dtype):
+        # The exact-match guard selects only a zero squared error: a NaN or inf error still reaches the output.
+        target = torch.zeros(4, device=device, dtype=dtype)
+        for bad, is_expected in ((float("nan"), torch.isnan), (float("inf"), torch.isinf)):
+            input = target.clone()
+            input[0] = bad
+            actual = kornia.metrics.root_mean_squared_disparity_error(input, target, reduction=reduction)
+            assert is_expected(actual[0] if reduction == "none" else actual)
+
     def test_gradcheck(self, device):
         target = torch.rand(2, 3, 4, device=device, dtype=torch.float64)
         input = target + torch.rand(2, 3, 4, device=device, dtype=torch.float64) + 0.1
