@@ -359,6 +359,21 @@ class TestTverskyLoss(BaseTester):
         expected = op(logits, labels, *params)
         self.assert_close(actual, expected)
 
+    def test_dynamo_float_weights_change_between_calls(self, device, dtype, torch_optimizer):
+        """The weight check keeps the graph whole when float weights change between calls and are traced as symbols."""
+        from torch._dynamo.testing import CompileCounter
+
+        logits = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 4), device=device)
+        counter = CompileCounter()
+        op_optimized = torch_optimizer(kornia.losses.tversky_loss, backend=counter, fullgraph=True, dynamic=True)
+        for params in ((0.5, 0.5, 1e-8), (0.3, 0.7, 1e-6), (0.7, 0.2, 1e-5)):
+            self.assert_close(
+                op_optimized(logits, labels, *params), kornia.losses.tversky_loss(logits, labels, *params)
+            )
+        if not torch._dynamo.config.specialize_float:
+            assert counter.frame_count == 1
+
     def test_module(self, device, dtype):
         num_classes = 3
         params = (0.3, 0.7, 0.25, -100)

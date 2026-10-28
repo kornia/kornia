@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-import math
+import sys
 from typing import Optional
 
 import torch
@@ -30,12 +30,17 @@ from kornia.losses.one_hot import one_hot
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
+# A module constant: torch.compile on torch 2.5 cannot read sys.float_info inside a traced function.
+_FLOAT_MAX: float = sys.float_info.max
+
 
 def _check_parameters(alpha: float, beta: float, eps: float) -> None:
     # Only Python numbers are checked: a tensor weight (a 0-d device tensor, or one weight per class) worked before,
-    # and reading its value here would cost a host sync on every call and break a fullgraph compile.
+    # and reading its value here would cost a host sync on every call and break a fullgraph compile. Comparisons, not
+    # math.isfinite: torch.compile traces a float that changes between calls symbolically, and math.isfinite on it
+    # breaks the graph. NaN fails both comparisons; a bound of `< math.inf` would be dropped from the compiled guards.
     for name, value in (("alpha", alpha), ("beta", beta), ("eps", eps)):
-        if isinstance(value, (int, float)) and not (value >= 0.0 and math.isfinite(value)):
+        if isinstance(value, (int, float)) and not (0.0 <= value <= _FLOAT_MAX):
             raise ValueError(f"{name} must be non-negative and finite. Got: {value}")
 
 
