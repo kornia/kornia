@@ -28,6 +28,7 @@ from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 from testing.docstring_style import (
     catalog_missing,
     catalog_required,
+    catalog_unimportable,
     covered,
     docstring_roles,
     intersphinx_names,
@@ -207,6 +208,19 @@ def test_catalog_missing():
     assert catalog_missing(":func:`my_depth_to_3d`", ["depth_to_3d"]) == ["depth_to_3d"]
 
 
+def test_catalog_unimportable():
+    depth = kornia.geometry.depth
+    doc = (
+        ":func:`depth_to_3d`, :func:`depth_to_3d()`, :func:`~kornia.geometry.depth.depth_to_3d_v2()` and "
+        ":class:`kornia.geometry.depth.DepthWarper`"
+    )
+    assert catalog_unimportable(depth, doc) == []
+    assert catalog_unimportable(depth, ":func:`depth_to_4d()` and :func:`kornia.geometry.depth.nope`") == [
+        "depth_to_4d()",
+        "kornia.geometry.depth.nope",
+    ]
+
+
 def test_catalog_required():
     assert catalog_required("kornia.geometry.depth", [])
     # kornia.enhance re-exports everything kornia.enhance.normalize declares, as the same objects.
@@ -242,6 +256,33 @@ def test_explicit_members_list_registers_only_the_listed_names():
 def test_automodule_members_register_class_methods():
     reg = _registry()
     assert "kornia.geometry.boxes.Boxes.to_tensor" in reg
+
+
+def test_special_members_register_dunder_methods(tmp_path):
+    """``:special-members:`` alone selects every documented ``__name__`` method, a list only the listed ones."""
+    reg = _registry()
+    assert reg["kornia.geometry.quaternion.Quaternion.__init__"] is kornia.geometry.quaternion.Quaternion.__init__
+    assert "kornia.geometry.quaternion.Quaternion.__add__" in reg
+    # No docstring, and none to inherit: a one-page Sphinx 8.2.3 build leaves it out too.
+    assert "kornia.geometry.quaternion.Quaternion.__mul__" not in reg
+    assert "kornia.geometry.pose.NamedPose.__mul__" in reg  # :special-members: __init__, __mul__
+    assert "kornia.geometry.pose.NamedPose.__repr__" not in reg
+    quaternion = "kornia.geometry.quaternion.Quaternion"
+    page = ".. currentmodule:: kornia.geometry.quaternion\n\n.. autoclass:: Quaternion\n{}"
+    _write_page(tmp_path, "page.rst", page.format("   :members:\n"))
+    assert f"{quaternion}.__init__" not in sphinx_registry(tmp_path)
+    # Without :members:, all special members document nothing; a list documents the listed names.
+    _write_page(tmp_path, "page.rst", page.format("   :special-members:\n"))
+    assert sphinx_registry(tmp_path) == {quaternion: kornia.geometry.quaternion.Quaternion}
+    _write_page(tmp_path, "page.rst", page.format("   :special-members: __add__\n"))
+    assert set(sphinx_registry(tmp_path)) == {quaternion, f"{quaternion}.__add__"}
+    _write_page(tmp_path, "page.rst", page.format("   :members: w\n   :special-members: __add__\n"))
+    assert set(sphinx_registry(tmp_path)) == {quaternion, f"{quaternion}.w", f"{quaternion}.__add__"}
+    # A module's special members apply to its classes.
+    _write_page(
+        tmp_path, "page.rst", ".. automodule:: kornia.geometry.quaternion\n   :members:\n   :special-members:\n"
+    )
+    assert f"{quaternion}.__add__" in sphinx_registry(tmp_path)
 
 
 def test_nested_automethod_registers_under_its_class():

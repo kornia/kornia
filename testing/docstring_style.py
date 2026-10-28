@@ -253,15 +253,17 @@ def _autodoc_documents(owner: object, name: str, member: object, undoc_members: 
     return isinstance(doc, str) and bool(doc) and doc != getattr(type(member), "__doc__", None)
 
 
-def _public_methods(cls: type, undoc_members: bool) -> dict[str, object]:
+def _public_methods(cls: type, undoc_members: bool, special: list[str] | None = None) -> dict[str, object]:
     """Public methods and properties defined on ``cls`` itself that ``autoclass :members:`` documents.
 
     Static and class methods are unwrapped. Inherited members are left out, as autodoc does without
-    ``:inherited-members:``; an inherited docstring still documents a method that ``cls`` overrides.
+    ``:inherited-members:``; an inherited docstring still documents a method that ``cls`` overrides. ``special`` is
+    the ``:special-members:`` option: ``None`` keeps out every ``__name__``, ``[]`` admits all, a list the listed.
     """
     methods: dict[str, object] = {}
     for name, value in vars(cls).items():
-        if name.startswith("_"):
+        is_special = name.startswith("__") and name.endswith("__") and name != "__doc__"
+        if name.startswith("_") and not (is_special and special is not None and (not special or name in special)):
             continue
         if isinstance(value, (staticmethod, classmethod)):
             value = value.__func__
@@ -303,11 +305,11 @@ def _directive_options(lines: list[str], index: int, indent: int) -> dict[str, s
     return options
 
 
-def _members_option(options: dict[str, str]) -> list[str] | None:
-    """Read ``:members:``: ``None`` when absent, ``[]`` for all, else the listed names."""
-    if "members" not in options:
+def _members_option(options: dict[str, str], option: str = "members") -> list[str] | None:
+    """Read ``:members:`` or another member option: ``None`` when absent, ``[]`` for all, else the listed names."""
+    if option not in options:
         return None
-    return [name.strip() for name in options["members"].split(",") if name.strip()]
+    return [name.strip() for name in options[option].split(",") if name.strip()]
 
 
 def _autosummary_names(lines: list[str], index: int, indent: int) -> list[str]:
@@ -332,11 +334,17 @@ def _add(registry: dict[str, object], full_name: str, as_module: bool = False) -
 
 
 def _add_methods(
-    registry: dict[str, object], cls_name: str, cls: object, listed: list[str], undoc_members: bool
+    registry: dict[str, object],
+    cls_name: str,
+    cls: object,
+    listed: list[str],
+    undoc_members: bool,
+    special: list[str] | None = None,
 ) -> None:
     """Register the methods ``:members:`` documents: the listed names, or the public ones defined on ``cls``.
 
-    Either way autodoc keeps only members with a docstring, unless the directive has ``:undoc-members:``.
+    Either way autodoc keeps only members with a docstring, unless the directive has ``:undoc-members:``. With all
+    members, ``special`` (``:special-members:``) selects the ``__name__`` methods as well.
     """
     if not inspect.isclass(cls):
         return
@@ -346,12 +354,17 @@ def _add_methods(
             if member is not None and _autodoc_documents(cls, name, member, undoc_members):
                 registry[f"{cls_name}.{name}"] = member
     else:
-        for name, method in _public_methods(cls, undoc_members).items():
+        for name, method in _public_methods(cls, undoc_members, special).items():
             registry[f"{cls_name}.{name}"] = method
 
 
 def _add_module_members(
-    registry: dict[str, object], module_name: str, module: object, listed: list[str], undoc_members: bool
+    registry: dict[str, object],
+    module_name: str,
+    module: object,
+    listed: list[str],
+    undoc_members: bool,
+    special: list[str] | None = None,
 ) -> None:
     if listed:
         members = {name: getattr(module, name, None) for name in listed}
@@ -364,7 +377,7 @@ def _add_module_members(
         members = _module_members(module, undoc_members)
     for name, member in members.items():
         registry[f"{module_name}.{name}"] = member
-        _add_methods(registry, f"{module_name}.{name}", member, [], undoc_members)
+        _add_methods(registry, f"{module_name}.{name}", member, [], undoc_members, special)
 
 
 # Directories of ``docs/source`` that Sphinx does not read pages from: ``conf.py``'s ``exclude_patterns``,
@@ -385,8 +398,9 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
     entries, resolving relative names against the latest ``currentmodule`` or ``module`` and a nested ``automethod``
     against the enclosing class. ``autoclass`` and ``automodule`` with ``:members:`` register the methods and
     properties defined on the class and the functions and classes of the module that autodoc documents (public, with
-    a docstring or under ``:undoc-members:``). An ``autosummary`` registers its entries only with ``:toctree:``,
-    which generates their pages; without it, it only links to them. Names that do not import are left out.
+    a docstring or under ``:undoc-members:``), and the ``__name__`` methods that ``:special-members:`` selects. An
+    ``autosummary`` registers its entries only with ``:toctree:``, which generates their pages; without it, it only
+    links to them. Names that do not import are left out.
     """
     registry: dict[str, object] = {}
 
@@ -407,6 +421,11 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
                 qualified = f"{enclosing_class}.{argument}"
             options = _directive_options(lines, index, indent)
             members = _members_option(options)
+            special = _members_option(options, "special-members")
+            # Like autodoc's ``merge_members_option``, a ``:special-members:`` list joins a ``:members:`` that does
+            # not already document all members, and stands in for an absent one.
+            if special and members != []:
+                members = [*(members or []), *(name for name in special if name not in (members or []))]
             undoc_members = "undoc-members" in options
             if kind == "autosummary":
                 if "toctree" in options:
@@ -415,13 +434,13 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
             elif kind == "automodule":
                 module = _add(registry, qualified, as_module=True)
                 if module is not None and members is not None:
-                    _add_module_members(registry, qualified, module, members, undoc_members)
+                    _add_module_members(registry, qualified, module, members, undoc_members, special)
             else:
                 obj = _add(registry, qualified)
                 if kind == "autoclass":
                     enclosing_class = qualified
                     if members is not None:
-                        _add_methods(registry, qualified, obj, members, undoc_members)
+                        _add_methods(registry, qualified, obj, members, undoc_members, special)
     return registry
 
 
@@ -511,6 +530,41 @@ def catalog_missing(doc: str, names: list[str]) -> list[str]:
     ``threshold``) does not count, and ``depth_to_3d_v2`` does not count as mentioning ``depth_to_3d``.
     """
     return [name for name in names if not re.search(rf"`~?(?:[\w.]*\.)?{re.escape(name)}(?:\(\))?`", doc)]
+
+
+def _import_role_target(module: object, target: str) -> object:
+    """Import a role target: longest importable dotted prefix, then ``getattr``; a bare name is read off ``module``.
+
+    A trailing ``()`` is dropped first, as Sphinx drops it from a role target such as ``name()``.
+    """
+    target = target.removesuffix("()")
+    if "." not in target:
+        return getattr(module, target)
+    parts = target.split(".")
+    for end in range(len(parts), 0, -1):
+        try:
+            obj: object = importlib.import_module(".".join(parts[:end]))
+        except ImportError:
+            continue
+        for attr in parts[end:]:
+            obj = getattr(obj, attr)
+        return obj
+    raise ImportError(target)
+
+
+def catalog_unimportable(module: object, doc: str) -> list[str]:
+    """Return the role targets in the module catalog ``doc`` of ``module`` that do not import.
+
+    Reads ``:func:``, ``:class:`` and ``:meth:`` roles. A bare target is looked up on ``module``, a dotted one from
+    the longest importable module prefix.
+    """
+    broken = []
+    for _, target in docstring_roles(doc):
+        try:
+            _import_role_target(module, target)
+        except (ImportError, AttributeError):
+            broken.append(target)
+    return broken
 
 
 def catalog_required(namespace: str, catalogued: Iterable[str]) -> bool:

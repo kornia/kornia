@@ -51,6 +51,7 @@ from testing.docstring_rollout import (
 from testing.docstring_style import (
     catalog_missing,
     catalog_required,
+    catalog_unimportable,
     covered,
     docstring_roles,
     intersphinx_names,
@@ -195,22 +196,6 @@ def test_no_math_shape_roles(path: Path) -> None:
     )
 
 
-def _import_role_target(module: object, target: str) -> object:
-    """Import a role target: longest importable dotted prefix, then ``getattr``; a bare name is read off ``module``."""
-    if "." not in target:
-        return getattr(module, target)
-    parts = target.split(".")
-    for end in range(len(parts), 0, -1):
-        try:
-            obj: object = importlib.import_module(".".join(parts[:end]))
-        except ImportError:
-            continue
-        for attr in parts[end:]:
-            obj = getattr(obj, attr)
-        return obj
-    raise ImportError(target)
-
-
 @pytest.mark.parametrize("namespace", CATALOG_NAMESPACES)
 def test_catalog_names_every_export(namespace: str) -> None:
     module = importlib.import_module(namespace)
@@ -220,12 +205,7 @@ def test_catalog_names_every_export(namespace: str) -> None:
         f"the module docstring of {namespace} does not mention {missing}; list every export as a role such as "
         ":func:`name` or a literal such as ``name``"
     )
-    broken = []
-    for _, target in docstring_roles(doc):
-        try:
-            _import_role_target(module, target)
-        except (ImportError, AttributeError):
-            broken.append(target)
+    broken = catalog_unimportable(module, doc)
     assert not broken, f"the module docstring of {namespace} has references that do not import: {broken}"
 
 
