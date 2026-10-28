@@ -198,3 +198,14 @@ def test_mask_decoder_legacy_onnx_declares_a_dynamic_prompt_batch():
     )
     masks = onnx.load_from_string(buffer.getvalue()).graph.output[0]
     assert masks.type.tensor_type.shape.dim[0].dim_param
+    # The graph also runs at other prompt batches and matches eager there.
+    ort = pytest.importorskip("onnxruntime")
+    session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+    for batch in (1, 3):
+        sparse, dense = torch.rand(batch, 2, 32), torch.rand(batch, 32, 8, 8)
+        with torch.no_grad():
+            expected = decoder(*image, sparse, dense, True)
+        names = ["image_embeddings", "image_pe", "sparse", "dense"]
+        actual = session.run(None, {name: t.numpy() for name, t in zip(names, (*image, sparse, dense))})
+        for got, want in zip(actual, expected):
+            torch.testing.assert_close(torch.from_numpy(got), want, rtol=1e-4, atol=1e-5)

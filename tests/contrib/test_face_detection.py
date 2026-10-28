@@ -114,9 +114,11 @@ class TestFaceDetection(BaseTester):
     def test_yunet_legacy_onnx_declares_dynamic_output_sizes(self):
         """The TorchScript exporter declares each output's batch and anchor count dynamic, as the input sizes are."""
         onnx = pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        model = YuNet("test", pretrained=False).eval()
         buffer = io.BytesIO()
         torch.onnx.export(
-            YuNet("test", pretrained=False).eval(),
+            model,
             torch.rand(2, 3, 64, 64),
             buffer,
             input_names=["images"],
@@ -128,6 +130,13 @@ class TestFaceDetection(BaseTester):
             batch, anchors, _ = output.type.tensor_type.shape.dim
             assert batch.dim_param, output
             assert anchors.dim_param, output
+        # The graph also runs at another batch and a non-square size, and matches eager there.
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        images = torch.rand(1, 3, 96, 80)
+        with torch.no_grad():
+            expected = model(images)
+        for name, actual in zip(["loc", "conf", "iou"], session.run(None, {"images": images.numpy()})):
+            torch.testing.assert_close(torch.from_numpy(actual), expected[name], rtol=1e-4, atol=1e-5)
 
     @pytest.mark.device_agnostic
     def test_yunet_mode(self, monkeypatch):
