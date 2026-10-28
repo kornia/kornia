@@ -29,9 +29,14 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute
 
 
 class RandomRotation(GeometricAugmentationBase2D):
-    r"""Apply a random rotation to a torch.Tensor image or a batch of torch.Tensor images given an amount of degrees.
+    r"""Rotate images by a random angle in degrees, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomRotation.png
+
+    .. note::
+        Unlike torchvision's ``RandomRotation``, which rotates every image, this class rotates each sample with
+        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to rotate every sample.
 
     Args:
         degrees: range of degrees to select from. If degrees is a number the
@@ -39,7 +44,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         resample: Default: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -145,7 +150,7 @@ class RandomRotation(GeometricAugmentationBase2D):
 
 
 class RandomRotation90(GeometricAugmentationBase2D):
-    r"""Apply a random 90 * n degree rotation to a torch.Tensor image or a batch of torch.Tensor images.
+    r"""Rotate images by a random multiple of 90 degrees, applied per sample with probability ``p`` (default 0.5).
 
     Args:
         times: the range of n times 90 degree rotation needs to be applied. A range of whole numbers is closed:
@@ -153,7 +158,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         resample: Default: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 

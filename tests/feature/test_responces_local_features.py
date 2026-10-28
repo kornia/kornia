@@ -465,6 +465,10 @@ class TestBlobDoGSingle(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.dog_response_single, (img), nondet_tol=1e-4)
 
+    def test_repr(self):
+        assert repr(kornia.feature.BlobDoGSingle()) == "BlobDoGSingle(sigma1=1.0, sigma2=1.6)"
+        assert repr(kornia.feature.BlobDoGSingle(1.2, 2.0)) == "BlobDoGSingle(sigma1=1.2, sigma2=2.0)"
+
 
 def _conv_grid(height: int, width: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Return the float64 CPU ``(y, x)`` pixel-centre grids of a ``height x width`` image."""

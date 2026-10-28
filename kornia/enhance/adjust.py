@@ -111,7 +111,7 @@ def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> tor
 
 
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image.
+    r"""Scale the saturation channel of an HSV image by a factor and clamp it to [0, 1].
 
     Convention:
         Expects HSV, not RGB. The saturation channel is multiplied by factor
@@ -143,7 +143,7 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
 
 
 def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image by blending the image with its grayscaled version.
+    r"""Adjust the saturation of an RGB image by blending it with its grayscale version, as PIL and torchvision do.
 
     Convention:
         factor=0 selects grayscale and factor=1 preserves RGB input; grayscale
@@ -203,7 +203,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
 
 
 def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image.
+    r"""Adjust the saturation of an RGB image by scaling its HSV saturation channel.
 
     Convention:
         Expects RGB in [0, 1] with channel dimension -3. factor=1 preserves the image;
@@ -275,7 +275,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
 
 
 def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust hue of an image.
+    r"""Shift the hue channel of an HSV image by an angle in radians, wrapping it into [0, 2π).
 
     Convention:
         Expects HSV. factor is an angle in radians added to the hue, and the sum is wrapped into
@@ -312,7 +312,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
 
 def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust hue of an image.
+    r"""Shift the hue of an RGB image by an angle in radians.
 
     Convention:
         Expects RGB in [0, 1] with channel dimension -3. factor is a hue angle
@@ -485,7 +485,7 @@ def adjust_gamma(
 
 
 def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], clip_output: bool = True) -> torch.Tensor:
-    r"""Adjust the contrast of an image torch.Tensor.
+    r"""Adjust the contrast of an image by multiplying its values by a factor.
 
     Convention:
         Contrast is a direct multiplicative scale of RGB values; factor=1
@@ -566,7 +566,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
 
 def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust the contrast of an image torch.Tensor by subtracting the mean over channels.
+    r"""Adjust the contrast of an image by blending it with its mean gray level, as PIL and torchvision do.
 
     .. note::
         this is just a convenience function to have compatibility with Pil. For exact
@@ -575,9 +575,8 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
         factor: Contrast adjust factor per element
-            in the batch. 0 generates a completely black image, 1 does not modify
-            the input image while any other non-negative number modify the
-            brightness by this factor.
+            in the batch. 0 gives a uniform image at the mean gray level, 1 does not modify
+            the input image and a larger factor increases the contrast.
 
     Return:
         Adjusted image in the shape of :math:`(*, H, W)`.
@@ -1323,7 +1322,7 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
 
 
 class AdjustSaturation(nn.Module):
-    r"""Adjust color saturation of an image.
+    r"""Adjust the saturation of an RGB image by scaling its HSV saturation channel.
 
     Convention:
         See :func:`adjust_saturation` for the RGB input and factor policy.
@@ -1381,7 +1380,7 @@ class AdjustSaturation(nn.Module):
 
 
 class AdjustSaturationWithGraySubtraction(nn.Module):
-    r"""Adjust color saturation of an image.
+    r"""Adjust the saturation of an RGB image by blending it with its grayscale version, as PIL and torchvision do.
 
     Convention:
         See :func:`adjust_saturation_with_gray_subtraction` for blending.
@@ -1445,7 +1444,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
 
 
 class AdjustHue(nn.Module):
-    r"""Adjust hue of an image.
+    r"""Shift the hue of an RGB image by an angle in radians.
 
     Convention:
         See :func:`adjust_hue` for RGB input and radians convention.
@@ -1559,7 +1558,7 @@ class AdjustGamma(nn.Module):
 
 
 class AdjustContrast(nn.Module):
-    r"""Adjust Contrast of an image.
+    r"""Adjust the contrast of an image by multiplying its values by a factor.
 
     Convention:
         See :func:`adjust_contrast` for the multiplicative scale; this module always clips to [0, 1].
@@ -1608,7 +1607,7 @@ class AdjustContrast(nn.Module):
 
 
 class AdjustContrastWithMeanSubtraction(nn.Module):
-    r"""Adjust Contrast of an image.
+    r"""Adjust the contrast of an image by blending it with its mean gray level, as PIL and torchvision do.
 
     Convention:
         See :func:`adjust_contrast_with_mean_subtraction` for its mean blend.
@@ -1620,9 +1619,8 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
     Args:
         contrast_factor: Contrast adjust factor per element
           in the batch by subtracting its mean grayscaled version.
-          0 generates a completely black image, 1 does not modify
-          the input image while any other non-negative number modify the
-          brightness by this factor.
+          0 gives a uniform image at the mean gray level, 1 does not modify
+          the input image and a larger factor increases the contrast.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
