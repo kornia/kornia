@@ -726,8 +726,8 @@ class DepthWarper(nn.Module):
         See the Convention block on :class:`DepthWarper`.
 
         The method ``compute_projection_matrix`` has to be called beforehand in order to have precomputed the
-        projection matrix encoding the relative pose and the intrinsics between the source and the destination
-        camera.
+        projection matrix, which moves a source-frame point into the destination camera frame and applies the
+        destination intrinsics.
         """
         # TODO: add type and value checkings
         if self._dst_proj_src is None or self._pinhole_src is None:
