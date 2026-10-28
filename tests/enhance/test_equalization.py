@@ -691,7 +691,7 @@ class TestEqualization(BaseTester):
             expected = enhance.equalize_clahe(x, slow_and_differentiable=True)
         finally:
             torch.set_default_dtype(previous)
-        assert torch.equal(out, expected)
+        self.assert_close(out, expected, rtol=0, atol=0)
 
     def test_clahe_odd_tiles_gradcheck_5812(self, device):
         torch.manual_seed(4)
