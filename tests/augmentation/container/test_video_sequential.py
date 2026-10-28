@@ -600,8 +600,33 @@ class TestVideoSequential:
             partial |= bool(applied.any()) and not bool(applied.all())
             # The gate is per frame: a skipped frame's points are unchanged and an applied frame's points move.
             moved = (out_points - points).abs().flatten(0, 1).amax((-1, -2)) > tol
-            assert torch.equal(moved, applied.to(moved.device))  # the gate is drawn on the CPU
+            assert_close(moved, applied.to(moved.device))  # the gate is drawn on the CPU
             _, restored = aug.inverse(out_video, out_points)
             assert out_points.shape == points.shape
             assert_close(restored, points, atol=tol, rtol=0.0)
         assert partial
+
+    def test_video_keypoints_object_input_6375(self, device, dtype):
+        # A VideoKeypoints object goes through a VideoSequential pipeline and comes back as VideoKeypoints, equal to
+        # the output for the same points as a (B, T, N, 2) tensor. It used to raise a TypeError in is_floating_point.
+        # Plain Keypoints carry no frame count, so they are rejected with a message that says so.
+        from kornia.geometry.keypoints import Keypoints, VideoKeypoints
+
+        aug = K.AugmentationSequential(
+            K.VideoSequential(K.RandomAffine(30.0, p=0.5), K.RandomHorizontalFlip(p=0.5)),
+            data_keys=["input", "keypoints"],
+        )
+        video = torch.rand(3, 4, 3, 16, 16, device=device, dtype=dtype)
+        points = torch.rand(3, 4, 5, 2, device=device, dtype=dtype) * 15
+        torch.manual_seed(0)
+        out_video, dense = aug(video, points)
+        torch.manual_seed(0)
+        _, wrapped = aug(video, VideoKeypoints.from_tensor(points.clone()))
+        assert isinstance(wrapped, VideoKeypoints)
+        assert_close(wrapped.to_tensor(), dense)
+        _, restored = aug.inverse(out_video, wrapped)
+        assert isinstance(restored, VideoKeypoints)
+        assert_close(restored.to_tensor(), aug.inverse(out_video, dense)[1])
+
+        with pytest.raises(TypeError, match="VideoKeypoints or a"):
+            aug(video, Keypoints(points.flatten(0, 1)))
