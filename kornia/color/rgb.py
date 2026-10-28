@@ -512,6 +512,7 @@ class RgbToRgba(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
+        """Store the alpha value to append when converting RGB images to RGBA."""
         super().__init__()
         if isinstance(alpha_val, torch.Tensor) and not isinstance(alpha_val, nn.Parameter):
             self.register_buffer("alpha_val", alpha_val, persistent=False)
@@ -563,6 +564,7 @@ class BgrToRgba(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
+        """Store the alpha value to append when converting BGR images to RGBA."""
         super().__init__()
         if isinstance(alpha_val, torch.Tensor) and not isinstance(alpha_val, nn.Parameter):
             self.register_buffer("alpha_val", alpha_val, persistent=False)

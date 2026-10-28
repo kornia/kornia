@@ -172,6 +172,7 @@ class RgbToHsv(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def __init__(self, eps: float = 1e-8) -> None:
+        """Set the numerical stability constant used by the RGB-to-HSV conversion."""
         super().__init__()
         self.eps = eps
 

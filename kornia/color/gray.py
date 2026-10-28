@@ -223,6 +223,7 @@ class RgbToGrayscale(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def __init__(self, rgb_weights: Optional[torch.Tensor] = None) -> None:
+        """Store custom RGB weights, or let the functional conversion select its defaults."""
         super().__init__()
         # None stays None: rgb_to_grayscale then picks the weights for the image dtype. Float32 defaults stored here
         # were cast to the image, so a uint8 image got the weights [0, 0, 0] and came back all zeros, and a float64

@@ -330,6 +330,7 @@ class RawToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def __init__(self, cfa: CFA) -> None:
+        """Select the Bayer CFA pattern for demosaicing raw images to RGB."""
         super().__init__()
         self.cfa = cfa
 
@@ -372,6 +373,7 @@ class RgbToRaw(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def __init__(self, cfa: CFA) -> None:
+        """Select the Bayer CFA pattern for sampling RGB images into raw mosaics."""
         super().__init__()
         self.cfa = cfa
 
@@ -409,6 +411,7 @@ class RawToRgb2x2Downscaled(nn.Module):
     """
 
     def __init__(self, cfa: CFA) -> None:
+        """Select the Bayer CFA pattern for converting raw images to half-resolution RGB."""
         super().__init__()
         self.cfa = cfa
 

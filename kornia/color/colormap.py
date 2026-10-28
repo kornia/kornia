@@ -138,6 +138,7 @@ class ColorMap:
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> None:
+        """Build an interpolated RGB palette from a named or custom base colormap."""
         super().__init__()
         self._dtype = dtype
         self._device = device
@@ -310,6 +311,7 @@ class ApplyColorMap(nn.Module):
         self,
         colormap: ColorMap,
     ) -> None:
+        """Register the supplied colormap's colors as the palette for this module."""
         super().__init__()
         self.colormap = colormap
         self.register_buffer("colors", colormap.colors)
