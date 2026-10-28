@@ -333,13 +333,16 @@ class TestRootMeanSquaredDisparityError(BaseTester):
         target = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
         input = target.clone()
         input[1, 1] = 5.0
-        for pred in (input, target.clone()):
+        # The differing pixel's error is 1: its gradient is 1 per pixel and under 'sum', and (1 / 4) / 0.5 = 0.5
+        # under 'mean', where the RMSE over the 4 pixels is 0.5.
+        differing = torch.zeros_like(target)
+        differing[1, 1] = 0.5 if reduction == "mean" else 1.0
+        for pred, expected in ((input, differing), (target.clone(), torch.zeros_like(target))):
             pred = pred.clone().requires_grad_(True)
             (grad,) = torch.autograd.grad(
                 kornia.metrics.root_mean_squared_disparity_error(pred, target, reduction=reduction).sum(), pred
             )
-            assert torch.isfinite(grad).all()
-            self.assert_close(grad[0], torch.zeros_like(grad[0]))
+            self.assert_close(grad, expected)
 
         # A mask does not hide the NaN of the matched valid pixels: they must be finite too.
         mask = torch.ones_like(target, dtype=torch.bool)
