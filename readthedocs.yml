@@ -15,12 +15,12 @@ sphinx:
   configuration: docs/source/conf.py
   fail_on_warning: true
 
-# Optional but recommended, declare the Python requirements required
-# to build your documentation
-# See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
+# Install kornia and its docs extra from uv.lock (`uv sync --extra docs`), the versions that `pixi run build-docs`
+# and the docs workflow use, so that `fail_on_warning` above checks pinned versions rather than the newest release
+# of Sphinx or an extension. Update the docs dependencies by relocking.
 python:
   install:
-    - method: pip
-      path: .
-      extra_requirements:
+    - method: uv
+      command: sync
+      extras:
         - docs
