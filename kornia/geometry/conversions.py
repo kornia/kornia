@@ -1481,9 +1481,6 @@ def normalize_pixel_coordinates(
         tensor([[1.0408, 1.0202]])
 
     """
-    if isinstance(eps, bool):
-        align_corners = eps
-        eps = 1e-8
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
@@ -1578,9 +1575,6 @@ def denormalize_pixel_coordinates(
         tensor([[0., 0.]])
 
     """
-    if isinstance(eps, bool):
-        align_corners = eps
-        eps = 1e-8
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
@@ -1672,9 +1666,6 @@ def normalize_pixel_coordinates3d(
         the normalized pixel coordinates.
 
     """
-    if isinstance(eps, bool):
-        align_corners = eps
-        eps = 1e-8
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
@@ -1777,9 +1768,6 @@ def denormalize_pixel_coordinates3d(
         the denormalized pixel coordinates.
 
     """
-    if isinstance(eps, bool):
-        align_corners = eps
-        eps = 1e-8
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):

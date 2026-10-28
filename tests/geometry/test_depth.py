@@ -977,6 +977,21 @@ class TestDepthWarperConventions(BaseTester):
         self.assert_close(actual, image, atol=max(1e-11, 8 * torch.finfo(dtype).eps), rtol=0.0)
         direct = depth_warp(cam, cam, depth, image, 4, 5, align_corners=align_corners)
         self.assert_close(direct, image, atol=max(1e-11, 8 * torch.finfo(dtype).eps), rtol=0.0)
+        y, x = torch.meshgrid(
+            torch.arange(4, device=device, dtype=dtype),
+            torch.arange(5, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        if align_corners:
+            expected_grid = torch.stack((2 * x / 4 - 1, 2 * y / 3 - 1), dim=-1)
+        else:
+            expected_grid = torch.stack(((2 * x + 1) / 5 - 1, (2 * y + 1) / 4 - 1), dim=-1)
+        self.assert_close(
+            warper.warp_grid(depth),
+            expected_grid.unsqueeze(0),
+            atol=max(1e-11, 8 * torch.finfo(dtype).eps),
+            rtol=0.0,
+        )
 
     @staticmethod
     def _warper(device, dtype, dst_extrinsics, src_extrinsics):
