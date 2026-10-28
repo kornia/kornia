@@ -598,6 +598,9 @@ class TestVideoSequential:
             out_video, out_points = aug(video, points)
             applied = aug._params[0].data[0].data["batch_prob"] > 0.5
             partial |= bool(applied.any()) and not bool(applied.all())
+            # The gate is per frame: a skipped frame's points are unchanged and an applied frame's points move.
+            moved = (out_points - points).abs().flatten(0, 1).amax((-1, -2)) > tol
+            assert torch.equal(moved, applied)
             _, restored = aug.inverse(out_video, out_points)
             assert out_points.shape == points.shape
             assert_close(restored, points, atol=tol, rtol=0.0)

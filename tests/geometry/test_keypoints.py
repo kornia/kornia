@@ -340,15 +340,19 @@ class TestVideoKeypoints(BaseTester):
         self.assert_close(out.to_tensor(), data[videos])
 
     def test_setitem_writes_videos_6375(self, device, dtype):
+        # from_tensor shares the storage of a contiguous tensor, so build the expected values before writing.
         data = torch.zeros(3, 4, 5, 2, device=device, dtype=dtype)
-        vkp = VideoKeypoints.from_tensor(data)
-        value = VideoKeypoints.from_tensor(torch.ones(1, 4, 5, 2, device=device, dtype=dtype))
-        vkp[1] = value
         expected = data.clone()
         expected[1] = 1
+        vkp = VideoKeypoints.from_tensor(data.clone())
+        vkp[1] = VideoKeypoints.from_tensor(torch.ones(1, 4, 5, 2, device=device, dtype=dtype))
         self.assert_close(vkp.to_tensor(), expected)
         vkp[torch.tensor([True, False, True], device=device)] = vkp[torch.tensor([1, 1], device=device)]
         self.assert_close(vkp.to_tensor(), torch.ones_like(data))
+
+        # A value with another number of frames per video is rejected rather than regrouped.
+        with pytest.raises(ValueError, match="4 frames"):
+            vkp[0] = VideoKeypoints.from_tensor(torch.ones(2, 2, 5, 2, device=device, dtype=dtype))
 
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError):
