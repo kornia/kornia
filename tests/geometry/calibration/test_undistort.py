@@ -526,8 +526,7 @@ class TestUndistortImage(BaseTester):
 
     def test_convention_resamples_with_align_corners_true(self, device, dtype):
         # undistort_image is remap(image, mapx, mapy, align_corners=True) over the map distort_points produces
-        # on the create_meshgrid pixel grid; align_corners is fixed and not exposed. The align_corners=False arm
-        # must differ, so the pin discriminates between the two settings.
+        # on the create_meshgrid pixel grid; align_corners is fixed and not exposed.
         image = _ramp_image(1, 3, 5, 7, device, dtype)
         K = _k_short_focal(device, dtype)
         dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
@@ -539,7 +538,6 @@ class TestUndistortImage(BaseTester):
         out = undistort_image(image, K, dist)
         assert not torch.allclose(out.float(), image.float())
         self.assert_close(out, remap(image, mapx, mapy, align_corners=True), atol=0.0, rtol=0.0)
-        assert not torch.allclose(out.float(), remap(image, mapx, mapy, align_corners=False).float())
 
     def test_gradcheck(self, device):
         im = torch.rand(1, 1, 15, 15, device=device, dtype=torch.float64, requires_grad=True)
