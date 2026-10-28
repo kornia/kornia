@@ -1043,6 +1043,14 @@ class ALIKED(nn.Module):
         B, _, H, W = img.shape
         wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=torch.promote_types(img.dtype, torch.float32))
 
+        if B == 0:
+            # torch.stack rejects an empty list, so build the empty batch directly.
+            return (
+                wh.new_zeros(0, 0, 2, 3),
+                feature_map.new_zeros(0, 0, 1),
+                feature_map.new_zeros(0, 0, feature_map.shape[1]),
+            )
+
         lafs_list: list[torch.Tensor] = []
         for i in range(B):
             kps_px = wh * (keypoints[i] + 1) / 2.0  # (N, 2)
@@ -1056,7 +1064,7 @@ class ALIKED(nn.Module):
             lafs_list.append(laf_i)
 
         # Pad to the maximum number of keypoints in the batch.
-        n_max = max(laf.shape[0] for laf in lafs_list) if lafs_list else 0
+        n_max = max(laf.shape[0] for laf in lafs_list)
 
         def _pad(t: torch.Tensor, n: int, fill: float = 0.0) -> torch.Tensor:
             pad_n = n - t.shape[0]

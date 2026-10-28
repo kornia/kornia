@@ -405,6 +405,22 @@ class TestALIKEDForwardLAF(BaseTester):
         assert responses.ndim == 3  # (B, N, 1)
         assert descs.ndim == 3  # (B, N, D)
 
+    @pytest.mark.parametrize("compute_affine", [True, False])
+    @pytest.mark.parametrize("with_mask", [False, True])
+    def test_empty_batch_6266(self, compute_affine, with_mask, device, dtype):
+        """An empty batch gives empty LAFs, responses and descriptors with the dtypes of a non-empty batch."""
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
+        mask = torch.ones(0, 1, 64, 64, device=device, dtype=dtype) if with_mask else None
+        lafs, responses, descs = aliked.forward_laf(
+            torch.rand(0, 3, 64, 64, device=device, dtype=dtype), mask=mask, compute_affine=compute_affine
+        )
+        ref = aliked.forward_laf(torch.rand(1, 3, 64, 64, device=device, dtype=dtype), compute_affine=compute_affine)
+        assert lafs.shape == (0, 0, 2, 3)
+        assert responses.shape == (0, 0, 1)
+        assert descs.shape == (0, 0, ref[2].shape[-1])
+        assert [t.dtype for t in (lafs, responses, descs)] == [t.dtype for t in ref]
+        assert all(t.device == ref[0].device for t in (lafs, responses, descs))
+
     def test_output_shapes(self, device, dtype):
         """Shapes should be (B, N, 2, 3), (B, N, 1), (B, N, D)."""
         B, H, W = 2, 64, 64
