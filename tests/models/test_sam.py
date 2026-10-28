@@ -15,6 +15,9 @@
 # limitations under the License.
 #
 
+import inspect
+import re
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -22,7 +25,10 @@ from torch import nn
 
 from kornia.core.exceptions import BaseError
 from kornia.models.sam import Sam, SamConfig
+from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
+from kornia.models.sam.architecture.mask_decoder import MaskDecoder
 from kornia.models.sam.architecture.prompt_encoder import PositionEmbeddingRandom, PromptEncoder
+from kornia.models.sam.architecture.transformer import TwoWayAttentionBlock, TwoWayTransformer
 
 from testing.base import BaseTester
 
@@ -152,6 +158,36 @@ class TestSam(BaseTester):
         # 89.7M. The whole model is not bounded: ``_build_sam`` always attaches the full mask decoder.
         assert sum(p.numel() for p in encoder.parameters()) < 1e6
 
+    @pytest.mark.parametrize("window_size", [0, 2, 3], ids=["global", "windowed", "padded-windows"])
+    def test_image_encoder_empty_batch_6266(self, device, window_size):
+        """An empty batch goes through windowed, padded-window and global attention with relative positions."""
+        encoder = ImageEncoderViT(
+            img_size=64,
+            patch_size=16,
+            embed_dim=32,
+            depth=2,
+            num_heads=2,
+            out_chans=16,
+            window_size=window_size,
+            global_attn_indexes=(1,),
+            use_rel_pos=True,
+        ).to(device)
+        assert encoder(torch.rand(0, 3, 64, 64, device=device)).shape == (0, 16, 4, 4)
+
+    def test_mask_decoder_no_prompts_6266(self, device):
+        """An image with no prompts gives no masks and no quality scores."""
+        transformer = TwoWayTransformer(depth=1, embedding_dim=32, mlp_dim=64, num_heads=2)
+        decoder = MaskDecoder(transformer_dim=32, transformer=transformer).to(device)
+        masks, iou_pred = decoder(
+            image_embeddings=torch.rand(1, 32, 8, 8, device=device),
+            image_pe=torch.rand(1, 32, 8, 8, device=device),
+            sparse_prompt_embeddings=torch.rand(0, 2, 32, device=device),
+            dense_prompt_embeddings=torch.rand(0, 32, 8, 8, device=device),
+            multimask_output=True,
+        )
+        assert masks.shape == (0, 3, 32, 32)
+        assert iou_pred.shape == (0, 3)
+
     @pytest.mark.device_agnostic
     def test_pretrained_needs_a_model_type(self):
         config = SamConfig(
@@ -266,3 +302,16 @@ class TestSam(BaseTester):
         self.assert_close(alone, batched, rtol=1e-4, atol=1e-4)
         after = [m.running_mean for m in encoder.modules() if isinstance(m, nn.BatchNorm2d)]
         assert all(torch.equal(a, b) for a, b in zip(after, running_means))
+
+
+@pytest.mark.parametrize("cls", [TwoWayTransformer, TwoWayAttentionBlock])
+def test_two_way_args_block_matches_the_constructor(cls):
+    # The class docstrings documented a nonexistent `attention_type` argument and an `nn.GELU` activation,
+    # while the constructors take `attention_downsample_rate` and default to `nn.ReLU`.
+    block = (inspect.getdoc(cls) or "").split("Args:\n", 1)[1]
+    signature = inspect.signature(cls.__init__).parameters
+    documented = re.findall(r"^\s{4}(\w+):", block, re.M)
+    activation = re.search(r"^\s{4}activation:.*Default: :class:`nn\.(\w+)`", block, re.M).group(1)
+
+    assert sorted(documented) == sorted(list(signature)[1:])
+    assert activation == signature["activation"].default.__name__

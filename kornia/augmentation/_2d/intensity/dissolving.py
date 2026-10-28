@@ -25,7 +25,7 @@ from kornia.filters import StableDiffusionDissolving
 
 
 class RandomDissolving(IntensityAugmentationBase2D):
-    r"""Perform dissolving transformation using StableDiffusion models.
+    r"""Dissolve images with a Stable Diffusion model, applied to the whole batch with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -47,7 +47,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
           - SD XL example image pending — see `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation, drawn once for the whole batch.
         version: the version of the stable diffusion model. Options: ``"1.4"``, ``"1.5"``, ``"xl"``.
         step_range: the step range of the diffusion model steps. Higher the step, stronger
                     the dissolving effects.

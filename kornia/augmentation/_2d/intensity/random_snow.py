@@ -37,7 +37,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         brightness: A tuple of floats (lower and upper bound) of ``1`` or greater that controls the
         brightness of the snow.
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
-        p: Probability of applying the transformation. Default: 0.5.
+        p: Probability of applying the transformation. Default: 1.0.
         keepdim: Keep the output torch.Tensor with the same shape as input. Default: False.
 
     Shape:

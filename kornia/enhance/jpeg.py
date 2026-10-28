@@ -27,9 +27,9 @@ from torch import nn
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling, is_exporting
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling
 from kornia.enhance.adjust import _check_floating_image
-from kornia.geometry.transform.affwarp import rescale
+from kornia.filters import gaussian_blur2d
 from kornia.image.utils import perform_keep_shape_image
 
 _DCT8_CACHE: dict[
@@ -175,8 +175,8 @@ def _patchify_8x8(input: torch.Tensor) -> torch.Tensor:
     """
     # Get input shape
     B, H, W = input.shape
-    # Patchify to shape [B, N, H // 8, W // 8]
-    output: torch.Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).reshape(B, -1, 8, 8)
+    # Patchify to shape [B, N, 8, 8] by first reshaping to [B, H // 8, 8, W // 8, 8] and then permuting and flattening.
+    output: torch.Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).flatten(1, 2)
     return output
 
 
@@ -354,20 +354,22 @@ def _chroma_subsampling(input_ycbcr: torch.Tensor) -> tuple[torch.Tensor, torch.
     output_y: torch.Tensor = input_ycbcr[:, 0]
     output_cb: torch.Tensor = input_ycbcr[:, 1]
     output_cr: torch.Tensor = input_ycbcr[:, 2]
-    # Perform average pooling of Cb and Cr channels
-    output_cb = rescale(
-        output_cb[:, None],
-        factor=0.5,
-        interpolation="bilinear",
+    # Halve Cb and Cr. The codec pads the image to a multiple of 16, so the factor is exactly 2: ``rescale`` with
+    # ``antialias=True`` smooths with a 3 x 3 Gaussian of sigma 0.5 and then interpolates to ``(H // 2, W // 2)``.
+    # Both steps are spelled out here because ``rescale`` takes the output size from float arithmetic and the
+    # antialias kernel from the size ratio, which freezes the traced size of an exported graph (ONNX, torch.export).
+    h_half, w_half = input_ycbcr.shape[-2] // 2, input_ycbcr.shape[-1] // 2
+    output_cb = F.interpolate(
+        gaussian_blur2d(output_cb[:, None], (3, 3), (0.5, 0.5)),
+        size=(h_half, w_half),
+        mode="bilinear",
         align_corners=False,
-        antialias=True,
     )
-    output_cr = rescale(
-        output_cr[:, None],
-        factor=0.5,
-        interpolation="bilinear",
+    output_cr = F.interpolate(
+        gaussian_blur2d(output_cr[:, None], (3, 3), (0.5, 0.5)),
+        size=(h_half, w_half),
+        mode="bilinear",
         align_corners=False,
-        antialias=True,
     )
     return output_y, output_cb[:, 0], output_cr[:, 0]
 
@@ -382,15 +384,24 @@ def _chroma_upsampling(input_c: torch.Tensor) -> torch.Tensor:
         output_c (torch.Tensor): Upsampled C(b or r) component of the shape :math:`(B, H * 2, W * 2)`.
 
     """
-    # Upsample component
-    output_c: torch.Tensor = rescale(
+    # Upsample component. The size is explicit: ``rescale`` computes it with float arithmetic, which freezes the
+    # traced size of an exported graph.
+    output_c: torch.Tensor = F.interpolate(
         input_c[:, None],
-        factor=2.0,
-        interpolation="bilinear",
+        size=(input_c.shape[-2] * 2, input_c.shape[-1] * 2),
+        mode="bilinear",
         align_corners=False,
-        antialias=False,
     )
     return output_c[:, 0]
+
+
+def _split_cb_cr(input_cb_cr: torch.Tensor, n_patches: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Split the concatenated Cb and Cr patches of the shape :math:`(B, 2N, 8, 8)` into two :math:`(B, N, 8, 8)`.
+
+    This is ``chunk(2, dim=1)`` with the half size passed in: ``chunk`` exports as a ``SplitToSequence`` with a
+    symbolic size, which the ONNX optimizer cannot fold when the image size is dynamic.
+    """
+    return input_cb_cr[:, :n_patches], input_cb_cr[:, n_patches:]
 
 
 def _jpeg_encode(
@@ -432,11 +443,14 @@ def _jpeg_encode(
         jpeg_quality,
         quantization_table_y,
     )
-    cb_encoded, cr_encoded = _quantize(
-        dct_cb_cr,
-        jpeg_quality,
-        quantization_table_c,
-    ).chunk(2, dim=1)
+    cb_encoded, cr_encoded = _split_cb_cr(
+        _quantize(
+            dct_cb_cr,
+            jpeg_quality,
+            quantization_table_c,
+        ),
+        input_cb.shape[1],
+    )
     return y_encoded, cb_encoded, cr_encoded
 
 
@@ -479,7 +493,7 @@ def _jpeg_decode(
     )
     # Perform inverse DCT
     idct_y: torch.Tensor = _idct_8x8(input_y)
-    idct_cb, idct_cr = _idct_8x8(input_cb_cr).chunk(2, dim=1)
+    idct_cb, idct_cr = _split_cb_cr(_idct_8x8(input_cb_cr), input_cb.shape[1])
     # Reverse patching
     image_y: torch.Tensor = _unpatchify_8x8(idct_y, H, W)
     image_cb: torch.Tensor = _unpatchify_8x8(idct_cb, H // 2, W // 2)
@@ -508,9 +522,10 @@ def _perform_padding(image: torch.Tensor) -> tuple[torch.Tensor, int, int]:
     """
     # Get spatial dimensions of the image
     H, W = image.shape[-2:]
-    # Compute horizontal and vertical padding
-    h_pad: int = math.ceil(H / 16) * 16 - H
-    w_pad: int = math.ceil(W / 16) * 16 - W
+    # Compute horizontal and vertical padding. This is integer arithmetic on the shape, not ``math.ceil(H / 16)``:
+    # an exporter records it, where a float ``ceil`` would fix the pads to the traced size.
+    h_pad: int = (H + 15) // 16 * 16 - H
+    w_pad: int = (W + 15) // 16 * 16 - W
     # Perform padding (we follow JPEG and F.pad only the bottom and right side of the image)
     image_padded: torch.Tensor = F.pad(image, (0, w_pad, 0, h_pad), "replicate")
     return image_padded, h_pad, w_pad
@@ -641,17 +656,20 @@ def jpeg_codec_differentiable(
     # Check resulting shape of quantization tables
     KORNIA_CHECK_SHAPE(quantization_table_y, ["B", "8", "8"])
     KORNIA_CHECK_SHAPE(quantization_table_c, ["B", "8", "8"])
-    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip under export.
-    if not is_exporting():
+    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip it under any
+    # capture (torch.compile, torch.export).
+    if not is_compiling():
         KORNIA_CHECK(
-            (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
+            jpeg_quality.numel() == 0
+            or ((jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0)),
             lambda: (
                 "JPEG quality is out of range. Expected range is [0, 100], "
                 f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality."
             ),
         )
     # Pad the image to a shape dividable by 16
-    input, h_pad, w_pad = _perform_padding(input)
+    H_in, W_in = input.shape[-2:]
+    input, _, _ = _perform_padding(input)
     # Get height and shape
     H, W = input.shape[-2:]
     # Check matching batch dimensions
@@ -699,7 +717,7 @@ def jpeg_codec_differentiable(
         # Clip coded image
         image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
-    return image_rgb_jpeg[..., : H - h_pad, : W - w_pad].to(out_dtype)
+    return image_rgb_jpeg[..., :H_in, :W_in].to(out_dtype)
 
 
 def _get_dct8_basis_scale(

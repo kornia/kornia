@@ -47,7 +47,16 @@ jobs:
           conformance=$(python3 .github/scripts/conformance_packages.py compile <<< "$changed")
           echo "compile-conformance=$conformance" >> "$GITHUB_OUTPUT"
           echo "torch.compile conformance selection: '${conformance}'"
-          if grep -Eqv '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' <<< "$changed"; then
+          # The export survey, its snapshot, the support-statement generator and the stability page live under docs/,
+          # but tests/test_generate_export_support.py in the ordinary test suite checks them against the promise (#5819).
+          promise_docs='^(docs/export_support/|docs/generate_export_support\.py$|'
+          promise_docs+='docs/source/_data/export_support\.json$|docs/source/get-started/stability\.rst$)'
+          promise_status=0
+          grep -Eq "$promise_docs" <<< "$changed" || promise_status=$?
+          if [[ "$promise_status" -gt 1 ]]; then
+            exit "$promise_status"
+          fi
+          if [[ "$promise_status" -eq 0 ]] || grep -Eqv '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' <<< "$changed"; then
             echo "run-tests=true" >> "$GITHUB_OUTPUT"
           else
             # Must stay the first command here: it captures the `if` condition's

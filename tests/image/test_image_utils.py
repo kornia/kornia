@@ -207,6 +207,38 @@ def test_perform_keep_shape_video_non_contiguous(device, dtype):
     assert_close(result, expected)
 
 
+@pytest.mark.parametrize("shape", [(0, 3, 16, 24), (2, 0, 3, 16, 24), (0, 2, 3, 16, 24)])
+def test_perform_keep_shape_image_empty_batch(device, dtype, shape):
+    # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+    op = kornia.image.perform_keep_shape_image(lambda x: x * 2)
+    assert op(torch.rand(*shape, device=device, dtype=dtype)).shape == shape
+
+
+@pytest.mark.parametrize(
+    "shape", [(2, 0, 16, 24), (2, 3, 0, 24), (2, 3, 16, 0), (16, 0), (0, 16, 24), (2, 2, 0, 16, 24)]
+)
+def test_perform_keep_shape_image_rejects_a_zero_image_size(device, dtype, shape):
+    # A zero channel, height or width raises `ValueError` before `f` is called.
+    op = kornia.image.perform_keep_shape_image(lambda x: x * 2)
+    with pytest.raises(ValueError, match="it is empty"):  # should raise ValueError before calling the function
+        op(torch.rand(*shape, device=device, dtype=dtype))
+
+
+@pytest.mark.parametrize("shape", [(0, 3, 4, 16, 24), (2, 0, 3, 4, 16, 24)])
+def test_perform_keep_shape_video_empty_batch(device, dtype, shape):
+    # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+    op = kornia.image.perform_keep_shape_video(lambda x: x * 2)
+    assert op(torch.rand(*shape, device=device, dtype=dtype)).shape == shape
+
+
+@pytest.mark.parametrize("shape", [(2, 0, 4, 16, 24), (2, 3, 0, 16, 24), (2, 3, 4, 0, 24), (2, 3, 4, 16, 0)])
+def test_perform_keep_shape_video_rejects_a_zero_image_size(device, dtype, shape):
+    # A zero channel, depth, height or width raises `ValueError` before `f` is called.
+    op = kornia.image.perform_keep_shape_video(lambda x: x * 2)
+    with pytest.raises(ValueError, match="it is empty"):  # should raise ValueError before calling the function
+        op(torch.rand(*shape, device=device, dtype=dtype))
+
+
 class TestMakeGrid(BaseTester):
     @pytest.mark.parametrize(
         "batch_size,n_row,rows,columns",

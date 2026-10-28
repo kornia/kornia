@@ -799,7 +799,7 @@ def _empty_patches(img: torch.Tensor, laf: torch.Tensor, B: int, N: int, PS: int
 def extract_patches_simple(
     img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
 ) -> torch.Tensor:
-    """Extract patches defined by LAFs from image torch.Tensor.
+    """Extract (B, N, CH, PS, PS) patches defined by LAFs from the full-resolution image only, without anti-aliasing.
 
     Convention:
         See the Convention block on :func:`~kornia.feature.extract_patches_from_pyramid`. This function samples the
@@ -853,7 +853,7 @@ def extract_patches_simple(
 def extract_patches_from_pyramid(
     img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
 ) -> torch.Tensor:
-    """Extract patches defined by LAFs from image torch.Tensor.
+    """Extract (B, N, CH, PS, PS) patches defined by LAFs, each sampled from the pyramid level that matches its scale.
 
     Patches are extracted from the appropriate pyramid level.
 

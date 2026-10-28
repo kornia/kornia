@@ -100,10 +100,12 @@ jobs:
           CHANGED_FILES=$(git diff --name-only "$PREV_SHA" HEAD)
 
           # Skip only if every changed file is documentation. The export survey, its snapshot and the stability page
-          # live under docs/ but define what the ONNX and compile conformance jobs check (#5819).
+          # live under docs/ but define what the ONNX and compile conformance jobs check (#5819), and the
+          # support-statement generator renders the promise that tests/test_generate_export_support.py checks.
           SHOULD_SKIP="true"
           for file in $CHANGED_FILES; do
             if [[ "$file" =~ ^docs/export_support/ ]] || \
+               [[ "$file" == "docs/generate_export_support.py" ]] || \
                [[ "$file" == "docs/source/_data/export_support.json" ]] || \
                [[ "$file" == "docs/source/get-started/stability.rst" ]]; then
               SHOULD_SKIP="false"

@@ -286,10 +286,10 @@ class OriNet(nn.Module):
 
 
 class LAFOrienter(nn.Module):
-    """Module, which extracts patches using input images and local affine frames (LAFs).
+    """Estimate the orientation of (B, N, 2, 3) LAFs from their image patches and rotate the LAFs by it.
 
-    Then runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
-    :class:`~kornia.feature.OriNet` on patches and then rotates the LAFs by the estimated angles
+    It extracts a patch per LAF, runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
+    :class:`~kornia.feature.OriNet` on it and rotates the LAF by the estimated angle.
 
     Convention:
         - Each LAF's patch (:func:`~kornia.feature.extract_patches_from_pyramid`) gives an angle, measured in the

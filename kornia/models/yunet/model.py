@@ -157,16 +157,12 @@ class YuNet(nn.Module):
             x_tmp = h(detection_sources[i])
             head_list.append(x_tmp.permute(0, 2, 3, 1).contiguous())
 
-        head_data = torch.cat([o.view(o.size(0), -1) for o in head_list], 1)
-        head_data = head_data.view(head_data.size(0), -1, 17)
+        head_data = torch.cat([o.flatten(1) for o in head_list], 1)
+        head_data = head_data.view(head_data.shape[0], head_data.shape[1] // 17, 17)
 
         loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
         if self.phase == "test":
             conf_data = torch.softmax(conf_data, dim=-1)
-        else:
-            loc_data = loc_data.view(loc_data.size(0), -1, 14)
-            conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes)
-            iou_data = iou_data.view(iou_data.size(0), -1, 1)
 
         return {"loc": loc_data, "conf": conf_data, "iou": iou_data}

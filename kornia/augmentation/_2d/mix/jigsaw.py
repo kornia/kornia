@@ -28,7 +28,7 @@ __all__ = ["RandomJigsaw"]
 
 
 class RandomJigsaw(MixAugmentationBaseV2):
-    r"""RandomJigsaw augmentation.
+    r"""Shuffle the tiles of each image like a jigsaw puzzle, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomJigsaw.png
 
