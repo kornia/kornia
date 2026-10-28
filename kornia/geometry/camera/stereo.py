@@ -23,6 +23,8 @@ from kornia.core.utils import is_compiling
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.grid import create_meshgrid
 
+__all__ = ["StereoCamera", "StereoException", "reproject_disparity_to_3D"]
+
 
 class StereoException(Exception):
     """Handle errors related to stereo camera calibration and rectification."""
@@ -77,12 +79,6 @@ class StereoCamera:
         ``W = 0``; the divide is then skipped and a finite placeholder, behind the camera on a real rig, is
         returned. Request ``return_mask=True`` from :meth:`reproject_disparity_to_3D` to identify numerical
         reconstruction failures without changing those coordinates or their gradients.
-
-    .. warning::
-        The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
-        :doc:`/geometry.camera.stereo` but is in no ``__all__``, so it is not reachable as
-        ``kornia.geometry.reproject_disparity_to_3D``. Tracked as
-        `#4275 <https://github.com/kornia/kornia/issues/4275>`_.
 
     Args:
         rectified_left_camera: The rectified left camera projection matrix of shape :math:`(B, 3, 4)`.
