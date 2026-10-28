@@ -118,7 +118,10 @@ class TestAccuracy:
         with pytest.raises(TypeCheckError):
             accuracy(torch.tensor([[0.0, 1.0]]), [1])  # type: ignore[arg-type]
 
-    @pytest.mark.parametrize("invalid_topk", [(), (0,), (-1,), (1, 0), (1.5,), (True,)])
+    @pytest.mark.parametrize(
+        "invalid_topk",
+        [(), (0,), (-1,), (1, 0), (1.5,), (True,), (2, True), (torch.tensor(True),), (2, torch.tensor(True))],
+    )
     def test_invalid_topk(self, invalid_topk):
         """Reject empty, non-positive, or non-integer topk sequences."""
         logits = torch.tensor([[0.0, 1.0]])

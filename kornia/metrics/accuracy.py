@@ -33,7 +33,7 @@ from kornia.core.check import (
 
 def _is_positive_index(k: Any) -> bool:
     """Return whether ``k`` is a positive integer; NumPy integers and 0-d integer tensors count, bools do not."""
-    if isinstance(k, bool):
+    if isinstance(k, bool) or (isinstance(k, torch.Tensor) and k.dtype == torch.bool):
         return False
     try:
         return operator.index(k) > 0
