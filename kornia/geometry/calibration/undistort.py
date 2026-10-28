@@ -97,6 +97,69 @@ def _undistort_points_newton(
     return x, y
 
 
+def _undistort_points_fixed_point_trace(
+    x: torch.Tensor, y: torch.Tensor, dist: torch.Tensor, num_iters: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    x0, y0 = x, y
+    previous_x, previous_y = x, y
+    two_back_x, two_back_y = x, y
+    failed = torch.zeros_like(x, dtype=torch.bool)
+    for _ in range(num_iters):
+        r2 = x * x + y * y
+        inverse_radial = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2**3) / (
+            1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2**3
+        )
+        delta_x = (
+            2 * dist[..., 2:3] * x * y
+            + dist[..., 3:4] * (r2 + 2 * x * x)
+            + dist[..., 8:9] * r2
+            + dist[..., 9:10] * r2 * r2
+        )
+        delta_y = (
+            dist[..., 2:3] * (r2 + 2 * y * y)
+            + 2 * dist[..., 3:4] * x * y
+            + dist[..., 10:11] * r2
+            + dist[..., 11:12] * r2 * r2
+        )
+        two_back_x, two_back_y = previous_x, previous_y
+        previous_x, previous_y = x, y
+        x, y = (x0 - delta_x) * inverse_radial, (y0 - delta_y) * inverse_radial
+        failed = failed | ~torch.isfinite(x) | ~torch.isfinite(y)
+
+    xd, yd, _, _, _, valid = _distort_normalized(x, y, dist)
+    # Ignore rounding cycles near a root; switching solvers there could select another root.
+    tolerance = 1.4901161193847656e-8 if x.dtype == torch.float64 else 0.00034526698300124393
+    residual = torch.maximum((xd - x0).abs(), (yd - y0).abs())
+    cycle = (x == two_back_x) & (y == two_back_y) & ((x != previous_x) | (y != previous_y))
+    unresolved = ~valid | (residual > tolerance * (1 + torch.maximum(x0.abs(), y0.abs())))
+    return x, y, failed | (cycle & unresolved)
+
+
+def _undistort_points_newton_fallback(
+    x: torch.Tensor, y: torch.Tensor, dist: torch.Tensor, num_iters: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if num_iters == 0:
+        return x, y
+
+    # A small residual at a Newton root cannot establish fixed-point branch compatibility.
+    # Switch only after observing a failed fixed-point trajectory, not slow convergence.
+    _, _, failed = _undistort_points_fixed_point_trace(x.detach(), y.detach(), dist.detach(), 2 * num_iters)
+    # Mask before evaluating either unused branch, including its backward pass.
+    fixed_x, fixed_y, _ = _undistort_points_fixed_point_trace(
+        torch.where(failed, torch.zeros_like(x), x),
+        torch.where(failed, torch.zeros_like(y), y),
+        dist,
+        num_iters,
+    )
+    newton_x, newton_y = _undistort_points_newton(
+        torch.where(failed, x, torch.zeros_like(x)),
+        torch.where(failed, y, torch.zeros_like(y)),
+        dist,
+        num_iters,
+    )
+    return torch.where(failed, newton_x, fixed_x), torch.where(failed, newton_y, fixed_y)
+
+
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
 def undistort_points(
     points: torch.Tensor,
@@ -104,7 +167,7 @@ def undistort_points(
     dist: torch.Tensor,
     new_K: Optional[torch.Tensor] = None,
     num_iters: int = 5,
-    method: str = "fixed_point",
+    solver: str = "fixed_point",
 ) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
 
@@ -141,18 +204,20 @@ def undistort_points(
             case both steps use the same camera; a different matrix rescales and shifts the **result**.
             Shape: :math:`(*, 3, 3)`. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
-        method: ``"fixed_point"`` (default) or ``"newton"``. Newton uses the analytic Jacobian of the
-            normalized distortion map and tries steps of 1, 1/2, 1/4 and 1/8 at each iteration, accepting
-            the first that does not increase the squared residual. A point stays unchanged if its Jacobian
-            is singular or no candidate is accepted. Both methods start from the untilted distorted point.
-            Newton can recover points where the fixed-point iteration is unstable, but may need more than
-            five iterations and is more expensive per iteration. Half-precision inputs use float32 arithmetic
-            for Newton inversion and are returned in the input dtype. Neither method guarantees convergence or
-            selects a physically valid inverse when the distortion map has multiple roots. The return type
-            is unchanged; use :func:`distort_points` to check the forward residual when needed.
-            For Newton inversion, finite inputs can still overflow intermediate polynomial or Jacobian calculations.
-            Gradients can then be non-finite even when the returned points are finite; rejecting a candidate does not
-            prevent this. Higher precision can reduce overflow but does not eliminate it in general.
+        solver: ``"fixed_point"`` (default) or ``"newton"``. The Newton option first checks a separate
+            fixed-point trajectory for twice ``num_iters`` steps. If it produces nonfinite coordinates or
+            ends in an exact two-point cycle with a forward residual greater than the square root of machine
+            epsilon times the coordinate scale, Newton is used for that point. Otherwise the result is the
+            original fixed-point iteration after ``num_iters`` steps, preserving its root even when it
+            converges slowly. This is a fallback, not an acceleration of convergent fixed-point iterations.
+            Newton uses the analytic Jacobian and tries steps of 1, 1/2, 1/4 and 1/8, accepting the first
+            that does not increase the squared residual. A point stays unchanged if its Jacobian is singular
+            or no candidate is accepted. Both trajectories start from the untilted distorted point. All loop
+            counts are fixed, but the extra trajectory check and Newton iterations cost more than the default.
+            Half-precision inputs use float32 arithmetic for this option and return in the input dtype.
+            Neither option guarantees convergence or a physically valid inverse when the map has multiple
+            roots. Other nonconvergent trajectories, including longer cycles, may go undetected; use
+            :func:`distort_points` to check the forward residual when needed.
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
@@ -172,11 +237,11 @@ def undistort_points(
     KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
 
-    if method not in ("fixed_point", "newton"):
-        raise ValueError(f"Invalid undistortion method: {method}")
+    if solver not in ("fixed_point", "newton"):
+        raise ValueError(f"Invalid undistortion solver: {solver}. Choose 'fixed_point' or 'newton'.")
 
     output_dtype = points.dtype
-    promote = method == "newton" and output_dtype in (torch.float16, torch.bfloat16)
+    promote = solver == "newton" and output_dtype in (torch.float16, torch.bfloat16)
     if promote:
         # Even the #4285 example overflows half precision in the squared residual
         # and Jacobian solve, before Newton has a chance to reduce the error.
@@ -222,9 +287,9 @@ def undistort_points(
 
     # Iteratively undistort points
     x0, y0 = x, y
-    if method == "newton":
-        x, y = _undistort_points_newton(x, y, dist, num_iters)
-    for _ in range(num_iters if method == "fixed_point" else 0):
+    if solver == "newton":
+        x, y = _undistort_points_newton_fallback(x, y, dist, num_iters)
+    for _ in range(num_iters if solver == "fixed_point" else 0):
         r2 = x * x + y * y
 
         inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2**3) / (

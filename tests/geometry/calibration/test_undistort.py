@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from kornia.geometry.calibration.distort import distort_points
-from kornia.geometry.calibration.undistort import undistort_image, undistort_points
+from kornia.geometry.calibration.undistort import _undistort_points_newton, undistort_image, undistort_points
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.transform import remap
 
@@ -392,6 +392,40 @@ class TestUndistortPoints(BaseTester):
 
 
 class TestUndistortPointsNewton(BaseTester):
+    @staticmethod
+    def _newton_update(points: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
+        dtype = points.dtype
+        if dtype in (torch.float16, torch.bfloat16):
+            points, dist = points.float(), dist.float()
+        dist = torch.nn.functional.pad(dist, (0, 14 - dist.shape[-1]))
+        x, y = _undistort_points_newton(points[..., 0], points[..., 1], dist, 1)
+        return torch.stack((x, y), -1).to(dtype)
+
+    @pytest.mark.parametrize("num_coeffs", [12, 14])
+    def test_one_step_jacobian(self, device, dtype, num_coeffs):
+        reference_dtype = torch.float32 if device.type == "mps" else torch.float64
+        points = torch.tensor([0.7, -0.4], device=device, dtype=reference_dtype)
+        K = torch.eye(3, device=device, dtype=reference_dtype)
+        dist = torch.tensor(
+            [0.1, 0.02, 0.03, -0.025, 0.003, 0.01, -0.005, 0.001, 0.015, -0.01, -0.02, 0.005, 0.0, 0.0],
+            device=device,
+            dtype=reference_dtype,
+        )[:num_coeffs]
+
+        # Compare one update: convergence alone can hide errors in the analytic Jacobian.
+        def forward(q: torch.Tensor) -> torch.Tensor:
+            return distort_points(q[None], K, dist)[0]
+
+        jacobian = torch.autograd.functional.jacobian(forward, points)
+        expected = points - torch.linalg.solve(jacobian, forward(points) - points)
+        assert (forward(expected) - points).square().sum() < (forward(points) - points).square().sum()
+        actual = self._newton_update(points[None].to(dtype), dist.to(dtype))
+        if dtype in (torch.float32, torch.float64):
+            tolerance = 16 * torch.finfo(dtype).eps
+            self.assert_close(actual, expected[None].to(dtype), rtol=tolerance, atol=tolerance)
+        else:
+            self.assert_close(actual, expected[None].to(dtype))
+
     @pytest.mark.parametrize("num_coeffs", [4, 5, 8, 12, 14])
     def test_round_trip(self, device, dtype, num_coeffs):
         points = torch.tensor([[0.0, 0.0], [0.3, -0.7], [-0.6, 0.2]], device=device, dtype=dtype)
@@ -402,7 +436,7 @@ class TestUndistortPointsNewton(BaseTester):
             dtype=dtype,
         )[:num_coeffs]
         distorted = distort_points(points, K, dist)
-        actual = undistort_points(distorted, K, dist, num_iters=8, method="newton")
+        actual = undistort_points(distorted, K, dist, num_iters=8, solver="newton")
         self.assert_close(actual, points)
         fixed_point = undistort_points(distorted, K, dist, num_iters=30)
         self.assert_close(actual, fixed_point)
@@ -414,9 +448,60 @@ class TestUndistortPointsNewton(BaseTester):
         distorted = distort_points(points, K, dist)
         fixed_point = undistort_points(distorted, K, dist, num_iters=20)
         assert not torch.allclose(fixed_point, points, atol=100, rtol=0)
-        actual = undistort_points(distorted, K, dist, num_iters=12, method="newton")
+        actual = undistort_points(distorted, K, dist, num_iters=12, solver="newton")
         self.assert_close(actual, points)
         self.assert_close(distort_points(actual, K, dist), distorted)
+
+    def test_fixed_point_root(self, device, dtype):
+        K = torch.tensor([[500.0, 0.0, 640.0], [0.0, 500.0, 360.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        points = torch.tensor([[1265.0, 360.0]], device=device, dtype=dtype)
+        dist = torch.tensor([0.25, 0.0, 0.0, 0.0, -0.025], device=device, dtype=dtype)
+        observed = distort_points(points, K, dist)
+        actual = undistort_points(observed, K, dist, num_iters=12, solver="newton")
+        fixed_point = undistort_points(observed, K, dist, num_iters=12)
+        self.assert_close(actual, points)
+        if dtype in (torch.float32, torch.float64):
+            self.assert_close(actual, fixed_point, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("num_iters", [12, 64])
+    def test_slow_fixed_point_root(self, device, dtype, num_iters):
+        K = torch.eye(3, device=device, dtype=dtype)
+        points = torch.tensor([[1.784, 0.0]], device=device, dtype=dtype)
+        dist = torch.tensor([0.08, 0.07, 0.0, 0.0, -0.03], device=device, dtype=dtype)
+        # A fixed-point warm-up followed by Newton can still reach the other root at 1.77966.
+        actual = undistort_points(points, K, dist, num_iters=num_iters, solver="newton")
+        fixed_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        expected = undistort_points(
+            points.to(fixed_dtype), K.to(fixed_dtype), dist.to(fixed_dtype), num_iters=num_iters
+        )
+        self.assert_close(actual, expected.to(dtype), rtol=0, atol=0)
+
+    def test_rational_fixed_point_root(self, device, dtype):
+        K = torch.eye(3, device=device, dtype=dtype)
+        points = torch.tensor([[-1.235, -0.95]], device=device, dtype=dtype)
+        dist = torch.tensor(
+            [
+                0.19291844964027405,
+                -0.09552448242902756,
+                -0.0008921074913814664,
+                -0.016919760033488274,
+                0.0040589189156889915,
+                0.001999486703425646,
+                -0.009607222862541676,
+                0.005118906497955322,
+                -0.004685257561504841,
+                0.0033723521046340466,
+                -0.008876542560756207,
+                0.0029865694232285023,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # Positive Jacobian determinants and locally stable roots do not identify the default branch.
+        actual = undistort_points(points, K, dist, num_iters=64, solver="newton")
+        fixed_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        expected = undistort_points(points.to(fixed_dtype), K.to(fixed_dtype), dist.to(fixed_dtype), num_iters=64)
+        self.assert_close(actual, expected.to(dtype), rtol=0, atol=0)
 
     @pytest.mark.parametrize("num_points", [0, 1, 5])
     def test_batch_and_new_camera(self, device, dtype, num_points):
@@ -430,7 +515,7 @@ class TestUndistortPointsNewton(BaseTester):
         new_K[0, 0], new_K[1, 1] = 10, 20
         new_K[0, 2], new_K[1, 2] = 3, 4
         distorted = distort_points(points, K, dist)
-        actual = undistort_points(distorted, K, dist, new_K, num_iters=8, method="newton")
+        actual = undistort_points(distorted, K, dist, new_K, num_iters=8, solver="newton")
         expected = points * points.new_tensor([10, 20]) + points.new_tensor([3, 4])
         assert actual.shape == points.shape
         assert actual.dtype == dtype
@@ -453,7 +538,7 @@ class TestUndistortPointsNewton(BaseTester):
         if zero_distortion:
             dist.zero_()
         self.gradcheck(
-            lambda p, c: undistort_points(p, K, c, num_iters=8, method="newton"),
+            lambda p, c: undistort_points(p, K, c, num_iters=8, solver="newton"),
             (points, dist),
             requires_grad=(True, True),
         )
@@ -463,7 +548,7 @@ class TestUndistortPointsNewton(BaseTester):
         points = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
         # The forward radial factor is zero at r=1, so the 2-D Jacobian is singular.
         dist = torch.tensor([-1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
-        actual = undistort_points(points, K, dist, method="newton")
+        actual = undistort_points(points, K, dist, solver="newton")
         self.assert_close(actual, points)
 
     @pytest.mark.parametrize("num_iters", [1, 5])
@@ -471,7 +556,7 @@ class TestUndistortPointsNewton(BaseTester):
         K = torch.eye(3, device=device, dtype=dtype)
         points = torch.tensor([[1.0, 0.0], [0.1, 0.2]], device=device, dtype=dtype, requires_grad=True)
         dist = torch.tensor([0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
-        actual = undistort_points(points, K, dist, num_iters=num_iters, method="newton")
+        actual = undistort_points(points, K, dist, num_iters=num_iters, solver="newton")
         self.assert_close(actual[0], points[0])
         # A point at the rational pole must not contaminate the shared coefficient gradient.
         point_grad, dist_grad = torch.autograd.grad(actual[1].sum(), (points, dist))
@@ -481,52 +566,42 @@ class TestUndistortPointsNewton(BaseTester):
 
         valid_points = points[1:].detach().requires_grad_()
         valid_dist = dist.detach().requires_grad_()
-        expected = undistort_points(valid_points, K, valid_dist, num_iters=num_iters, method="newton")
+        expected = undistort_points(valid_points, K, valid_dist, num_iters=num_iters, solver="newton")
         expected_point_grad, expected_dist_grad = torch.autograd.grad(expected.sum(), (valid_points, valid_dist))
         self.assert_close(actual[1:], expected)
         self.assert_close(point_grad[1:], expected_point_grad)
         self.assert_close(dist_grad, expected_dist_grad)
 
     def test_rejected_pole_candidate_gradient(self, device, dtype):
-        K = torch.eye(3, device=device, dtype=dtype)
         points = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype, requires_grad=True)
         dist = torch.tensor([-19.0, 0.0, 0.0, 6.0, 0.0, -1.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
         # The full step reaches the pole at x=1; the quarter step is accepted.
-        actual = undistort_points(points, K, dist, num_iters=1, method="newton")
+        actual = self._newton_update(points, dist)
         self.assert_close(actual, points.new_tensor([[0.625, 0.0]]))
         point_grad, dist_grad = torch.autograd.grad(actual.sum(), (points, dist))
         assert torch.isfinite(point_grad).all()
         assert torch.isfinite(dist_grad).all()
 
     def test_damped_step(self, device, dtype):
-        K = torch.eye(3, device=device, dtype=dtype)
         points = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         dist = torch.tensor([-1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         # Full and half steps increase the residual; the quarter step decreases it.
-        actual = undistort_points(points, K, dist, num_iters=1, method="newton")
+        actual = self._newton_update(points, dist)
         self.assert_close(actual, points.new_tensor([[0.625, 0.0]]))
 
     def test_jit(self, device, dtype):
         points = torch.tensor([[16.5, 0.0]], device=device, dtype=dtype)
         K = torch.eye(3, device=device, dtype=dtype)
         dist = torch.tensor([0.5, 0.0, 0.0, 0.0], device=device, dtype=dtype)
-        actual = torch.jit.script(undistort_points)(points, K, dist, num_iters=12, method="newton")
+        actual = torch.jit.script(undistort_points)(points, K, dist, num_iters=12, solver="newton")
         self.assert_close(actual, points.new_tensor([[3.0, 0.0]]))
 
-    def test_invalid_method(self, device, dtype):
+    def test_invalid_solver(self, device, dtype):
         points = torch.zeros(1, 2, device=device, dtype=dtype)
         K = torch.eye(3, device=device, dtype=dtype)
         dist = torch.zeros(4, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match="Invalid undistortion method"):
-            undistort_points(points, K, dist, method="other")
-
-    def test_default_unchanged(self, device, dtype):
-        points = torch.tensor([[0.3, -0.5]], device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype)
-        dist = torch.tensor([0.1, 0.01, 0.003, -0.002], device=device, dtype=dtype)
-        self.assert_close(
-            undistort_points(points, K, dist), undistort_points(points, K, dist, method="fixed_point"), rtol=0, atol=0
-        )
+        with pytest.raises(ValueError, match="Choose 'fixed_point' or 'newton'"):
+            undistort_points(points, K, dist, solver="other")
 
     @pytest.mark.parametrize("num_coeffs", [4, 14])
     def test_dynamo(self, device, dtype, torch_optimizer, num_coeffs):
@@ -535,8 +610,16 @@ class TestUndistortPointsNewton(BaseTester):
         dist = torch.zeros(num_coeffs, device=device, dtype=dtype)
         dist[0] = 0.5
         op = torch_optimizer(undistort_points, fullgraph=True)
-        actual = op(points, K, dist, num_iters=12, method="newton")
-        self.assert_close(actual, undistort_points(points, K, dist, num_iters=12, method="newton"))
+        actual = op(points, K, dist, num_iters=12, solver="newton")
+        self.assert_close(actual, undistort_points(points, K, dist, num_iters=12, solver="newton"))
+
+    def test_dynamo_fixed_point_root(self, device, dtype, torch_optimizer):
+        K = torch.eye(3, device=device, dtype=dtype)
+        points = torch.tensor([[[1.6190719604492188, 0.0]], [[1.784, 0.0]]], device=device, dtype=dtype)
+        dist = torch.tensor([[0.25, 0.0, 0.0, 0.0, -0.025], [0.08, 0.07, 0.0, 0.0, -0.03]], device=device, dtype=dtype)
+        op = torch_optimizer(undistort_points, fullgraph=True)
+        actual = op(points, K, dist, num_iters=12, solver="newton")
+        self.assert_close(actual, undistort_points(points, K, dist, num_iters=12))
 
 
 class TestUndistortImage(BaseTester):
