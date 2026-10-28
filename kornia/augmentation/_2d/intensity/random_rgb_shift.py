@@ -33,7 +33,7 @@ def _shift_bounds(limit: Union[torch.Tensor, float, Tuple[float, float], List[fl
 
 
 class RandomRGBShift(IntensityAugmentationBase2D):
-    """Randomly shift each channel of an image.
+    """Shift each RGB channel by a random offset, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -43,7 +43,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         g_shift_limit: shift range for the green channel, in the same form as ``r_shift_limit``.
         b_shift_limit: shift range for the blue channel, in the same form as ``r_shift_limit``.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 

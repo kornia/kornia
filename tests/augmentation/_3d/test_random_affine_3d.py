@@ -50,3 +50,13 @@ class TestRandomAffine3D(BaseTester):
 
         self.assert_close(f(tensor), expected)
         self.assert_close(f.transform_matrix, expected_transform)
+
+    def test_shear_only_keeps_center(self, device, dtype):
+        # A shear-only transform must not translate: the matrix maps its own center to itself (#6302).
+        torch.manual_seed(0)
+        aug = RandomAffine3D(degrees=0.0, shears=20.0, p=1.0)
+        aug(torch.rand(8, 1, 9, 17, 33, device=device, dtype=dtype))
+        center = aug._params["center"].to(device=device, dtype=dtype)
+        matrix = aug.transform_matrix
+        moved = (matrix[:, :3, :3] @ center[..., None])[..., 0] + matrix[:, :3, 3]
+        self.assert_close(moved, center)

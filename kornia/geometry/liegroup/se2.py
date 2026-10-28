@@ -95,8 +95,8 @@ class Se2(nn.Module):
           ``adjoint()`` is :math:`[[R, (t_y, -t_x)^\top], [0, 1]]`.
         - ``from_matrix`` ignores the bottom row. In eager execution, it checks approximately that the rotation block
           has the form :math:`[[a, -b], [b, a]]`, a rotation scaled by :math:`\sqrt{a^2 + b^2}`, and keeps the scale
-          as a non-unit ``z`` that ``log`` drops; it rejects a reflection. Graph export omits the value check and
-          interprets the block as ``z = m00 + i m10``.
+          as a non-unit ``z`` that ``log`` drops; it rejects a reflection. Graph capture (``torch.compile``,
+          ``torch.export``) omits the value check and interprets the block as ``z = m00 + i m10``.
         - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector2``
           passed to the constructor is unwrapped. ``g * p`` returns a ``Vector2`` only when ``p`` is one.
         - ``hat`` returns the se(2) generator :math:`[[0, -\theta, v_x], [\theta, 0, v_y], [0, 0, 0]]` and ``vee``

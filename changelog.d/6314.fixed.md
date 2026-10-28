@@ -1,0 +1,1 @@
+`kornia.augmentation.PadTo.inverse` now restores the input shape on every axis. It used to return the cropped tensor unchanged when the target was smaller than the input, so a pipeline's `inverse` did not get back to the input size. A cropped axis is now regrown at the right/bottom with zeros, as the crop augmentations' inverses do; padding is still removed exactly.

@@ -23,8 +23,6 @@ from typing import Any, Callable, Optional, Tuple, cast
 
 import torch
 
-from kornia.core.utils import is_compiling
-
 
 def torch_version() -> str:
     """Parse the PyTorch version string and remove build metadata.
@@ -142,7 +140,9 @@ def _emit_deprecation_warning(
     ``warnings.warn``, so warning there would break ``fullgraph=True`` for any code that calls a deprecated name.
     Eager calls still warn on every call.
     """
-    if is_compiling():
+    # ``torch.compiler.is_compiling`` rather than ``kornia.core.utils.is_compiling``: kornia.core.check imports this
+    # module, and kornia.core.utils imports kornia.core.check. Every supported torch has the public helper.
+    if torch.compiler.is_compiling():
         return
     beginning = f"Since kornia {version} the " if version is not None else ""
     extra_reason = extra_reason.strip() if extra_reason else ""

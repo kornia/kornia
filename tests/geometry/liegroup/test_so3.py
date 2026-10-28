@@ -21,6 +21,7 @@ import pytest
 import torch
 from torch import nn
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.liegroup.so3 import _so3_small_angle_coefficients
@@ -42,13 +43,29 @@ class TestSo3(BaseTester):
         assert isinstance(s, So3)
         self.assert_close(s.q.data, q.data)
 
-    # TODO: implement me
-    def test_cardinality(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_cardinality(self, device, dtype, batch_size):
+        so: So3 = So3.random(batch_size, device, dtype)
+        assert so.q.shape[0] == batch_size
 
-    # TODO: implement me
     def test_exception(self, device, dtype):
-        pass
+        with pytest.raises(ValueError, match=r"Quaternion input must have last dimension == 4"):
+            So3(Quaternion(torch.zeros(1, 3, device=device, dtype=dtype)))
+
+        with pytest.raises(TypeCheckError, match=r"Type mismatch: expected Quaternion"):
+            So3(torch.zeros(1, 4, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 3, got 2"):
+            So3.exp(torch.zeros(1, 2, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 4, got 3"):
+            So3.from_wxyz(torch.zeros(1, 3, device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match=r"Input size must be a \(\*, 3, 3\) tensor"):
+            So3.from_matrix(torch.zeros(3, device=device, dtype=dtype))
+
+        with pytest.raises(TypeError, match=r"Not So3 or torch.Tensor type"):
+            So3.identity(1, device, dtype) * [1.0, 2.0, 3.0]
 
     def test_gradcheck(self, device):
         v = torch.tensor([[0.3, -0.4, 0.5]], device=device, dtype=torch.float64)

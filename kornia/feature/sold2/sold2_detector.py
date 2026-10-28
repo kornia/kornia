@@ -507,19 +507,27 @@ class LineSegmentDetectionModule:
         return line_map
 
     def detect_bilinear(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor) -> torch.Tensor:
-        """Detect by bilinear sampling."""
-        # Get the floor and ceiling locations
+        """Detect by bilinear sampling.
+
+        The reference SOLD2 implementation takes ``ceil`` as the second neighbour, so at an integer coordinate, where
+        ``floor`` and ``ceil`` coincide, both weights of that axis are 0 and the sample scores 0. kornia takes
+        ``floor + 1`` (clipped at the image border) instead: an integer sample keeps its pixel value, and the junction
+        refinement no longer moves horizontal and vertical segments off the pixels that support them.
+        """
+        # Use the next pixel even at integer coordinates, where floor and ceil coincide.
         cand_h_floor = torch.floor(cand_h).to(torch.long)
-        cand_h_ceil = torch.ceil(cand_h).to(torch.long)
+        cand_h_ceil = (cand_h_floor + 1).clamp(max=heatmap.shape[0] - 1)
         cand_w_floor = torch.floor(cand_w).to(torch.long)
-        cand_w_ceil = torch.ceil(cand_w).to(torch.long)
+        cand_w_ceil = (cand_w_floor + 1).clamp(max=heatmap.shape[1] - 1)
+        h_weight = cand_h - cand_h_floor
+        w_weight = cand_w - cand_w_floor
 
         # Perform the bilinear sampling
         return (
-            heatmap[cand_h_floor, cand_w_floor] * (cand_h_ceil - cand_h) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_floor, cand_w_ceil] * (cand_h_ceil - cand_h) * (cand_w - cand_w_floor)
-            + heatmap[cand_h_ceil, cand_w_floor] * (cand_h - cand_h_floor) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_ceil, cand_w_ceil] * (cand_h - cand_h_floor) * (cand_w - cand_w_floor)
+            heatmap[cand_h_floor, cand_w_floor] * (1 - h_weight) * (1 - w_weight)
+            + heatmap[cand_h_floor, cand_w_ceil] * (1 - h_weight) * w_weight
+            + heatmap[cand_h_ceil, cand_w_floor] * h_weight * (1 - w_weight)
+            + heatmap[cand_h_ceil, cand_w_ceil] * h_weight * w_weight
         )
 
     def detect_local_max(

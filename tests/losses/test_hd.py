@@ -45,6 +45,35 @@ class TestHausdorffLoss(BaseTester):
 
         loss(logits, labels)
 
+    @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+    @pytest.mark.parametrize(
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (4, 4)), (kornia.losses.HausdorffERLoss3D, (3, 4, 4))]
+    )
+    def test_empty_batch(self, hd, shape, reduction, device, dtype):
+        pred = torch.empty(0, 2, *shape, device=device, dtype=dtype)
+        target = torch.empty(0, 1, *shape, device=device, dtype=torch.long)
+
+        actual = hd(reduction=reduction)(pred, target)
+
+        if reduction == "none":
+            assert actual.shape == (2, 0, 1, *shape)
+        elif reduction == "sum":
+            self.assert_close(actual, torch.tensor(0.0, device=device, dtype=dtype))
+        else:
+            assert actual.ndim == 0
+            assert torch.isnan(actual)
+
+    @pytest.mark.parametrize(
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (4, 4)), (kornia.losses.HausdorffERLoss3D, (3, 4, 4))]
+    )
+    @pytest.mark.parametrize("label", [-1, 2])
+    def test_nonempty_target_out_of_range(self, hd, shape, label, device, dtype):
+        pred = torch.rand(1, 2, *shape, device=device, dtype=dtype)
+        target = torch.full((1, 1, *shape), label, device=device, dtype=torch.long)
+
+        with pytest.raises(ValueError, match="Expect long type target value in range"):
+            hd()(pred, target)
+
     def test_exception_2d(self):
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss()((torch.rand(1, 2, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
