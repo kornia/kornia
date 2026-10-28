@@ -508,18 +508,20 @@ class LineSegmentDetectionModule:
 
     def detect_bilinear(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor) -> torch.Tensor:
         """Detect by bilinear sampling."""
-        # Get the floor and ceiling locations
+        # Use the next pixel even at integer coordinates, where floor and ceil coincide.
         cand_h_floor = torch.floor(cand_h).to(torch.long)
-        cand_h_ceil = torch.ceil(cand_h).to(torch.long)
+        cand_h_ceil = (cand_h_floor + 1).clamp(max=heatmap.shape[0] - 1)
         cand_w_floor = torch.floor(cand_w).to(torch.long)
-        cand_w_ceil = torch.ceil(cand_w).to(torch.long)
+        cand_w_ceil = (cand_w_floor + 1).clamp(max=heatmap.shape[1] - 1)
+        h_weight = cand_h - cand_h_floor
+        w_weight = cand_w - cand_w_floor
 
         # Perform the bilinear sampling
         return (
-            heatmap[cand_h_floor, cand_w_floor] * (cand_h_ceil - cand_h) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_floor, cand_w_ceil] * (cand_h_ceil - cand_h) * (cand_w - cand_w_floor)
-            + heatmap[cand_h_ceil, cand_w_floor] * (cand_h - cand_h_floor) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_ceil, cand_w_ceil] * (cand_h - cand_h_floor) * (cand_w - cand_w_floor)
+            heatmap[cand_h_floor, cand_w_floor] * (1 - h_weight) * (1 - w_weight)
+            + heatmap[cand_h_floor, cand_w_ceil] * (1 - h_weight) * w_weight
+            + heatmap[cand_h_ceil, cand_w_floor] * h_weight * (1 - w_weight)
+            + heatmap[cand_h_ceil, cand_w_ceil] * h_weight * w_weight
         )
 
     def detect_local_max(
