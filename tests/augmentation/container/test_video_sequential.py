@@ -316,6 +316,140 @@ class TestVideoSequential:
         assert_close(out, aug(video.reshape(-1, 3, 8, 8), params=params).reshape(video.shape))
 
     @staticmethod
+    def _tagged_boxes(batch_size, frame_num, device, dtype):
+        """One box per frame, shifted by its video and frame, so a box names the frame it came from."""
+        box = torch.tensor([[1.0, 1.0], [4.0, 1.0], [4.0, 4.0], [1.0, 4.0]], device=device, dtype=dtype)
+        shift = torch.stack(
+            torch.meshgrid(
+                torch.arange(batch_size, device=device, dtype=dtype),
+                torch.arange(frame_num, device=device, dtype=dtype),
+                indexing="ij",
+            ),
+            dim=-1,
+        )
+        return (box + 0.5 * shift[:, :, None]).unsqueeze(2).contiguous()  # (B, T, 1, 4, 2)
+
+    @staticmethod
+    def _dense_boxes(boxes):
+        from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
+
+        return _boxes_to_padded_tensor(boxes, "vertices_plus")
+
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    def test_mosaic_boxes_same_on_frame_follow_each_frame_6173(self, p, device, dtype):
+        # Frame t of the boxes is the mosaic of frame t of every video with the video-level parameters, as for the
+        # images. VideoBoxes indexes whole videos, so the mosaic's frame permutation raised IndexError (#6173).
+        batch_size, frame_num = 3, 2
+        mosaic = K.RandomMosaic(p=p)
+        aug = K.AugmentationSequential(K.VideoSequential(mosaic, same_on_frame=True), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            out, out_boxes = aug(video, boxes)
+            torch.manual_seed(seed)
+            params = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))
+            applied = params["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            for frame in range(frame_num):
+                assert_close(out[:, frame], mosaic(video[:, frame], params=params))
+                frame_boxes = kornia.geometry.boxes.Boxes.from_tensor(boxes[:, frame], mode="vertices_plus")
+                expected = self._dense_boxes(mosaic.transform_boxes(frame_boxes, params, mosaic.flags))
+                assert out_boxes.shape == (batch_size, frame_num, *expected.shape[1:])
+                assert_close(out_boxes[:, frame], expected)
+        assert partial == (p < 1.0)
+
+    @pytest.mark.parametrize("p", [1.0, 0.5])
+    def test_mosaic_boxes_not_same_on_frame_match_flattened_frames_6173(self, p, device, dtype):
+        # With same_on_frame=False the mosaic runs on the B * T frames; the boxes follow the same frames (#6173).
+        batch_size, frame_num = 2, 3
+        mosaic = K.RandomMosaic(p=p)
+        aug = K.AugmentationSequential(K.VideoSequential(mosaic, same_on_frame=False), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        frames = video.reshape(-1, 3, 8, 8)
+        frame_boxes = kornia.geometry.boxes.Boxes.from_tensor(boxes.flatten(0, 1), mode="vertices_plus")
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            out, out_boxes = aug(video, boxes)
+            torch.manual_seed(seed)
+            params = mosaic.forward_parameters(torch.Size((batch_size * frame_num, 3, 8, 8)))
+            applied = params["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            assert_close(out, mosaic(frames, params=params).reshape(video.shape))
+            expected = self._dense_boxes(mosaic.transform_boxes(frame_boxes.clone(), params, mosaic.flags))
+            assert_close(out_boxes, expected.reshape(batch_size, frame_num, *expected.shape[1:]))
+        assert partial == (p < 1.0)
+
+    def test_mosaic_video_boxes_object_input_exports_padded_6173(self, device, dtype):
+        # A VideoBoxes input comes back as VideoBoxes. After a partial gate its frames hold 4 or 1 boxes, and
+        # to_tensor() returns them as one padded (B, T, N, 4, 2) tensor, equal to the dense tensor input's output.
+        from kornia.geometry.boxes import VideoBoxes
+
+        batch_size, frame_num = 3, 2
+        mosaic = K.RandomMosaic(p=0.5)
+        aug = K.AugmentationSequential(K.VideoSequential(mosaic, same_on_frame=True), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            _, dense = aug(video, boxes)
+            torch.manual_seed(seed)
+            _, wrapped = aug(video, VideoBoxes.from_tensor(boxes))
+            torch.manual_seed(seed)
+            applied = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))["batch_prob"] > 0.5
+            partial |= bool(applied.any()) and not bool(applied.all())
+            assert isinstance(wrapped, VideoBoxes)
+            exported = wrapped.to_tensor()
+            assert exported.shape == dense.shape
+            assert_close(exported, dense)
+            assert wrapped.to_tensor("xyxy").shape == (*dense.shape[:3], 4)
+        assert partial
+
+    @pytest.mark.parametrize("then_flip", [False, True])
+    def test_mosaic_video_boxes_padding_exports_as_zero_6173(self, then_flip, device, dtype):
+        # A video a partial gate skips keeps its one box per frame, followed by padding rows up to the mosaic box
+        # count. A stored zero row exports as [0, 0, 1, 1] in the exclusive modes and a later flip moves it (to
+        # [7, 0, 8, 1] on 8-pixel frames), so the padding has to export as zero in every mode and after indexing,
+        # while the real rows export as their stored coordinates do.
+        from kornia.geometry.boxes import Boxes, VideoBoxes
+
+        batch_size, frame_num = 3, 2
+        mosaic = K.RandomMosaic(p=0.5)
+        children = [mosaic] + ([K.RandomHorizontalFlip(p=1.0)] if then_flip else [])
+        aug = K.AugmentationSequential(K.VideoSequential(*children, same_on_frame=True), data_keys=["input", "bbox"])
+        video = torch.rand(batch_size, frame_num, 3, 8, 8, device=device, dtype=dtype)
+        boxes = self._tagged_boxes(batch_size, frame_num, device, dtype)
+        partial = False
+        for seed in range(6):
+            torch.manual_seed(seed)
+            _, dense = aug(video, boxes)
+            torch.manual_seed(seed)
+            _, wrapped = aug(video, VideoBoxes.from_tensor(boxes))
+            torch.manual_seed(seed)
+            applied = mosaic.forward_parameters(torch.Size((batch_size, 3, 8, 8)))["batch_prob"] > 0.5
+            if bool(applied.all()):
+                continue
+            partial |= bool(applied.any())
+            num_boxes = wrapped.data.shape[1]
+            # In a skipped video, the rows after each frame's own box are padding.
+            padding = ~applied.to(device)[:, None, None] & (torch.arange(num_boxes, device=device) >= boxes.shape[2])
+            padding = padding.expand(batch_size, frame_num, num_boxes)
+            assert_close(wrapped.to_tensor(), dense)
+            for mode in ("xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"):
+                exported = wrapped.to_tensor(mode)
+                assert (exported[padding] == 0).all(), mode
+                frames = Boxes(wrapped.data, False).to_tensor(mode).reshape(exported.shape)
+                assert_close(exported[~padding], frames[~padding])
+                # Indexing whole videos keeps each frame's padding.
+                assert_close(wrapped[1:].to_tensor(mode), exported[1:])
+                assert_close(wrapped[0].to_tensor(mode), exported[:1])
+        assert partial
+
+    @staticmethod
     def _tagged_video(batch_size, frame_num, data_format, device, dtype):
         """Build a video whose pixel value is ``10 * (video + 1) + frame``.
 

@@ -165,16 +165,17 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     boxes_1 = _promote_integer_boxes(boxes_1)
     boxes_2 = _promote_integer_boxes(boxes_2)
 
+    output_dtype = torch.promote_types(boxes_1.dtype, boxes_2.dtype)
+    # Compute half-precision boxes in float32 from the start: the corners (x + w) round in their dtype, which can erase
+    # a small width at a large position, and image-sized areas overflow float16.
+    if boxes_1.dtype in (torch.float16, torch.bfloat16):
+        boxes_1 = boxes_1.float()
+    if boxes_2.dtype in (torch.float16, torch.bfloat16):
+        boxes_2 = boxes_2.float()
+
     # Convert boxes to xyxy format
     boxes_1_xyxy = _convert_boxes_to_xyxy(boxes_1, box_format)
     boxes_2_xyxy = _convert_boxes_to_xyxy(boxes_2, box_format)
-
-    output_dtype = torch.promote_types(boxes_1_xyxy.dtype, boxes_2_xyxy.dtype)
-    # Ordinary image-sized areas overflow float16; compute the ratio before rounding back.
-    if boxes_1_xyxy.dtype in (torch.float16, torch.bfloat16):
-        boxes_1_xyxy = boxes_1_xyxy.float()
-    if boxes_2_xyxy.dtype in (torch.float16, torch.bfloat16):
-        boxes_2_xyxy = boxes_2_xyxy.float()
 
     # Validate boxes are in proper xyxy format. The checks read the data, which graph capture cannot do;
     # skip them under any capture. TorchScript cannot call is_compiling(), and a scripted call keeps the checks.

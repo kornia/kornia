@@ -28,10 +28,10 @@ from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
 class RandomPerspective3D(GeometricAugmentationBase3D):
-    r"""Apply random perspective transformation to 3D volumes (5D torch.Tensor).
+    r"""Warp 3D volumes with a random perspective transform, applied per sample with probability ``p`` (default 0.5).
 
     Args:
-        p: probability of the image being perspectively transformed.
+        p: probability of applying the transformation to each sample.
         distortion_scale: it controls the degree of distortion and ranges from 0 to 1.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.

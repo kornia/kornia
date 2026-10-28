@@ -1,0 +1,1 @@
+`Keypoints3D.transform_keypoints` and `transform_keypoints_` are implemented and apply a `(4, 4)` or `(B, 4, 4)` matrix like their 2D counterparts. `Keypoints3D.pad` and `unpad`, which were never implemented and always raised `NotImplementedError`, are deprecated, now also emit a `DeprecationWarning`, and will be removed in a future release.

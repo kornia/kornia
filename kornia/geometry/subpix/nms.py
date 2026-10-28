@@ -101,7 +101,7 @@ def _neighbourhood_max3d(x: torch.Tensor, kd: int, ky: int, kx: int) -> torch.Te
 
 
 class NonMaximaSuppression2d(nn.Module):
-    r"""Apply non maxima suppression to filter.
+    r"""Keep only the strict local maxima of a (B, C, H, W) map in a 2D window; the module form of nms2d.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
@@ -291,7 +291,7 @@ class NonMaximaSuppression2d(nn.Module):
 
 
 class NonMaximaSuppression3d(nn.Module):
-    r"""Apply non maxima suppression to filter.
+    r"""Keep only the strict local maxima of a (B, C, D, H, W) volume in a 3D window; the module form of nms3d.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
@@ -387,7 +387,7 @@ class NonMaximaSuppression3d(nn.Module):
 
 
 def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Apply non maxima suppression to filter.
+    r"""Keep only the strict local maxima of a (B, C, H, W) map in a 2D ``kernel_size`` window, zeroing the rest.
 
     Convention:
         - Only strict maxima survive: a position must be greater than every other value in its ``kernel_size``
@@ -404,7 +404,7 @@ def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = F
 
 
 def nms3d(input: torch.Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Apply non maxima suppression to filter.
+    r"""Keep only the strict local maxima of a (B, C, D, H, W) volume in a 3D ``kernel_size`` window, zeroing the rest.
 
     Convention:
         - See the convention block of :func:`nms2d`, applied over depth, height and width.

@@ -5,6 +5,9 @@ on:
       - 'docs/**'
       - '*.rst'
       - '.github/workflows/docs.yml'
+      # the support statement of the export-support page is rendered from the conformance promise and its manifests
+      - 'testing/conformance_promise.py'
+      - 'testing/known_failure_xfails/*_conformance_*.txt'
   workflow_call:
     inputs:
       python-version:
@@ -85,6 +88,13 @@ jobs:
 
       - name: Install docs dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install-docs
+
+      - name: Check docstring references against the docs pages
+        # These tests read every page under docs/source and the cached intersphinx inventories, but the PR test
+        # workflow skips a change that touches only docs/, so a page edit that breaks them is caught here.
+        run: >-
+          pixi run -e ${{ steps.pixi-env.outputs.name }}
+          uv run pytest tests/test_docstring_style.py tests/test_docstring_style_helpers.py
 
       - name: Run doctest
         # Empty on direct pull_request events (the `inputs` context is empty there and

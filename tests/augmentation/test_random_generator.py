@@ -1569,7 +1569,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         torch.manual_seed(9)
         batch_size = 8
         res = PosterizeGenerator(bits=torch.tensor([0, 8], device=device, dtype=dtype))(torch.Size([batch_size]))
-        expected = {"bits_factor": torch.tensor([5, 2, 4, 6, 7, 7, 2, 8], device=device, dtype=torch.int32)}
+        expected = {"bits_factor": torch.tensor([5, 2, 4, 6, 8, 8, 2, 8], device=device, dtype=torch.int32)}
         assert res.keys() == expected.keys()
         assert_close(res["bits_factor"], expected["bits_factor"], rtol=1e-4, atol=1e-4)
 
@@ -2023,8 +2023,6 @@ class TestHalfPrecisionPositionSamplers:
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_starts_stay_in_range(self, make_generator, batch_shape, device, half_dtype):
         generator = make_generator()
-        if isinstance(generator, PatchMixGenerator) and device.type == "cpu":
-            pytest.skip("The PatchMix Beta sampler is not implemented for CPU half precision.")
         generator.set_rng_device_and_dtype(device, half_dtype)
         torch.manual_seed(0)
         params = generator(batch_shape)
@@ -2063,6 +2061,81 @@ class TestHalfPrecisionPositionSamplers:
         generator.rand_sampler = torch.distributions.Uniform(draw, draw, validate_args=False)
         src = generator(torch.Size([2, 1, *([8] * ndim)]), same_on_batch)["src"]
         assert src[:, 0].tolist() == [[4.0] * ndim] * 2
+
+
+class TestIndexPermutationsInHalfPrecision:
+    # The ColorJiggle order and the MixUp pairs are index permutations, drawn as int64 whatever the sampling dtype.
+    # CUDA has no bfloat16 randperm, so a generator moved to bfloat16 -- directly, or by a container's or a model's
+    # .to() -- raised there; the CPU legs pin the dtype and the permutation. torch draws the same permutation for
+    # every dtype, so full-precision draws are unchanged.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_color_jiggle_order_is_an_int64_permutation(self, device, half_dtype):
+        generator = ColorJiggleGenerator(0.1, 0.1, 0.1, 0.1)
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        order = generator(torch.Size([2, 3, 4, 4]))["order"]
+        assert order.dtype == torch.int64
+        assert sorted(order.tolist()) == [0, 1, 2, 3]
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_mixup_pairs_are_an_int64_permutation(self, device, half_dtype):
+        generator = MixupGenerator(p=1.0)
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        pairs = generator(torch.Size([5, 3, 4, 4]))["mixup_pairs"]
+        assert pairs.dtype == torch.int64
+        assert sorted(pairs.tolist()) == [0, 1, 2, 3, 4]
+
+    def test_full_precision_orders_are_unchanged(self):
+        # Recorded on CPU float32 with the generator's former float32 randperm: the int64 draw is the same.
+        generator = ColorJiggleGenerator(0.1, 0.1, 0.1, 0.1)
+        torch.manual_seed(0)
+        orders = [generator(torch.Size([2, 3, 4, 4]))["order"].tolist() for _ in range(5)]
+        assert orders == [[1, 0, 3, 2], [1, 3, 0, 2], [1, 0, 3, 2], [3, 2, 0, 1], [1, 2, 3, 0]]
+
+
+class TestBetaSamplersInHalfPrecision:
+    # torch draws Beta through Dirichlet, which has no CPU half-precision kernel, so a CutMix or PatchMix generator
+    # moved to float16 or bfloat16 -- set_rng_device_and_dtype, or .to() on the augmentation or on a module holding it
+    # -- raised "dirichlet not implemented for 'Half'" on every draw. The Beta sampler now draws in float32 for half
+    # precision, as the position samplers do (#4553).
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize(
+        "make_generator,batch_shape",
+        [
+            (lambda: CutmixGenerator(p=1.0), torch.Size([4, 3, 16, 16])),
+            (lambda: PatchMixGenerator(patch_size=4), torch.Size([4, 3, 16, 16])),
+        ],
+        ids=["CutmixGenerator", "PatchMixGenerator"],
+    )
+    def test_beta_draws_in_half_precision(self, device, half_dtype, make_generator, batch_shape):
+        generator = make_generator()
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        assert generator.beta_sampler.concentration1.dtype == torch.float32
+        torch.manual_seed(0)
+        params = generator(batch_shape)
+        for value in params.values():
+            if value.is_floating_point():
+                assert torch.isfinite(value).all()
+
+    # 1e5 overflows float16 and 1e-8 underflows it. A float16 round trip turned the first into an inf concentration,
+    # whose draws are all ~0 (a full-image cut instead of a lambda near 0.5), and the second into 0, which Beta rejects.
+    @pytest.mark.parametrize("beta", [1e5, 1e-8])
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_cutmix_beta_outside_half_range_keeps_its_value(self, device, half_dtype, beta):
+        generator = CutmixGenerator(beta=beta, p=1.0)
+        generator.set_rng_device_and_dtype(device, half_dtype)
+        expected = torch.tensor(beta, device=device, dtype=torch.float32)
+        assert torch.equal(generator.beta_sampler.concentration1, expected)
+        assert torch.equal(generator.beta_sampler.concentration0, expected)
+        if beta > 1:
+            torch.manual_seed(0)
+            draws = generator.beta_sampler.sample((64,))
+            assert ((draws - 0.5).abs() < 0.02).all()
+
+    @pytest.mark.parametrize("dtype_", [torch.float32, torch.float64])
+    def test_beta_sampler_follows_full_precision(self, dtype_):
+        generator = CutmixGenerator(p=1.0)
+        generator.set_rng_device_and_dtype(torch.device("cpu"), dtype_)
+        assert generator.beta_sampler.concentration1.dtype == dtype_
 
 
 class TestTruncateToStart:

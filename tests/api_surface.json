@@ -227,6 +227,15 @@
     "yuv422_to_rgb",
     "yuv_to_rgb"
   ],
+  "kornia.constants": [
+    "BorderType",
+    "DType",
+    "DataKey",
+    "Resample",
+    "SamplePadding",
+    "TKEnum",
+    "pi"
+  ],
   "kornia.core": [
     "ImageModule",
     "ImageModuleMixIn",
@@ -246,12 +255,14 @@
     "vec_like"
   ],
   "kornia.core.check": [
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",
     "KORNIA_CHECK",
     "KORNIA_CHECK_DM_DESC",
     "KORNIA_CHECK_IS_COLOR",
+    "KORNIA_CHECK_IS_COLOR_OR_GRAY",
     "KORNIA_CHECK_IS_GRAY",
     "KORNIA_CHECK_IS_IMAGE",
     "KORNIA_CHECK_IS_LIST_OF_TENSOR",
@@ -259,6 +270,7 @@
     "KORNIA_CHECK_LAF",
     "KORNIA_CHECK_SAME_DEVICE",
     "KORNIA_CHECK_SAME_DEVICES",
+    "KORNIA_CHECK_SAME_SHAPE",
     "KORNIA_CHECK_SAME_SIZE",
     "KORNIA_CHECK_SHAPE",
     "KORNIA_CHECK_SIZES",
@@ -272,6 +284,7 @@
     "enable_checks"
   ],
   "kornia.core.exceptions": [
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",
@@ -571,6 +584,7 @@
     "find_homography_dlt_iterated",
     "find_homography_lines_dlt",
     "find_homography_lines_dlt_iterated",
+    "find_next_powerof_two",
     "fit_line",
     "fit_plane",
     "flips",
@@ -602,6 +616,7 @@
     "intrinsics_like",
     "inverse_transformation",
     "invert_affine_transform",
+    "is_powerof_two",
     "iterative_quad_interp3d",
     "keypoints",
     "left_to_right_epipolar_distance",
@@ -663,6 +678,7 @@
     "relative_transformation",
     "remap",
     "render_gaussian2d",
+    "reproject_disparity_to_3D",
     "rescale",
     "resize",
     "resize_to_be_divisible",
@@ -762,11 +778,17 @@
     "project_points",
     "project_points_orthographic",
     "project_points_z1",
+    "reproject_disparity_to_3D",
     "undistort_points_affine",
     "undistort_points_kannala_brandt",
     "unproject_points",
     "unproject_points_orthographic",
     "unproject_points_z1"
+  ],
+  "kornia.geometry.camera.stereo": [
+    "StereoCamera",
+    "StereoException",
+    "reproject_disparity_to_3D"
   ],
   "kornia.geometry.conversions": [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -1044,6 +1066,8 @@
     "ScalePyramid",
     "build_laplacian_pyramid",
     "build_pyramid",
+    "find_next_powerof_two",
+    "is_powerof_two",
     "pyrdown",
     "pyrup"
   ],

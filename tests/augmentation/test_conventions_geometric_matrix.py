@@ -263,14 +263,85 @@ class TestConventionGeometricMatrices(BaseTester):
         assert rotation[0, 0].argmax().item() == 2 * 7 + 1
         assert affine[0, 0].argmax().item() == 4 * 7 + 5
 
-    def test_wart_random_rotation90_continuously_samples_then_rounds_4409(self, device, dtype):
+    # Rounding a continuous draw on `[lo, hi]` gave the two end points half the weight of the others, so
+    # `times=(-1, 1)` drew 0 about twice as often as -1 or 1 (25% / 50% / 25%). The draw is now floored on
+    # `[lo, hi + 1)`, so every whole number of a closed range has the same probability.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0)
+    #   drawn = K.RandomRotation90((-1, 1), p=1.0).forward_parameters((9000, 1, 4, 4))["times"]
+    #   print(torch.unique(drawn, return_counts=True))
+    # The pin allows 15% around the uniform count, 8 sigma for 3000 draws per value, and what it has to separate
+    # is a factor of two, not a few percent.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(-1, 1), (0, 2), (0, 3), (-3, 3)])
+    def test_convention_random_rotation90_times_are_closed_and_uniform_4409(self, times):
+        low, high = times
+        count = high - low + 1
+        torch.manual_seed(0)
+        drawn = K.RandomRotation90(times, p=1.0).forward_parameters((count * 3000, 1, 4, 4))["times"]
+
+        assert torch.equal(drawn, drawn.round())
+        assert (int(drawn.min()), int(drawn.max())) == (low, high)
+        counts = torch.bincount((drawn - low).long(), minlength=count)
+        expected = drawn.numel() / count
+        assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), counts.tolist()
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_same_on_batch_shares_one_whole_number_4409(self):
+        torch.manual_seed(0)
+        drawn = K.RandomRotation90((-3, 3), p=1.0, same_on_batch=True).forward_parameters((16, 1, 4, 4))["times"]
+
+        assert drawn.shape == (16,)
+        assert bool((drawn == drawn[0]).all())
+        assert float(drawn[0]) == float(drawn[0].round())
+
+    # The excluded end point of the half-open sampler range is clamped back, not drawn: for the largest value
+    # `torch.rand` can return, `lo + u * (hi + 1 - lo)` rounds up onto `hi + 1` in float32 for these ranges
+    # (`1 + (1 - 2 ** -24) * 1` is exactly `2.0`), which `floor` would keep -- about one draw in 2**24, and
+    # `times=(1, 1)` would turn a quarter turn into a half turn.
+    # Snippet used to generate expected: the same ranges, with `torch.rand` patched to return `1 - 2 ** -24`.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("times", [(1, 1), (-3, -3), (-2, -2), (1, 2)])
+    def test_convention_random_rotation90_largest_draw_stays_in_the_closed_range_4409(self, monkeypatch, times):
+        largest = 1 - 2**-24
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.full_like(real_rand(*args, **kwargs), largest))
+        drawn = K.RandomRotation90(times, p=1.0).forward_parameters((4, 1, 4, 4))["times"]
+
+        assert drawn.tolist() == [float(times[1])] * 4
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "times,error,match",
+        [
+            ((2, 1), ValueError, r"times\[0\] should be smaller than times\[1\]"),
+            ((-4, 4), ValueError, "times out of bounds"),
+            ((float("nan"), 1), ValueError, "must be finite"),
+            ((1, 2, 3), TypeError, "length 2"),
+        ],
+    )
+    def test_convention_random_rotation90_times_range_validation_is_unchanged_4409(self, times, error, match):
+        with pytest.raises(error, match=match):
+            K.RandomRotation90(times, p=1.0)
+
+    # A range with a fractional bound is not a closed range of whole numbers, so it keeps the continuous draw
+    # that is rounded when the matrix is built, and an integer tensor range draws its upper bound too.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rotation90_fractional_and_tensor_ranges_4409(self):
+        torch.manual_seed(0)
+        fractional = K.RandomRotation90((0.5, 2.5), p=1.0).forward_parameters((6000, 1, 4, 4))["times"]
+        assert float(fractional.min()) >= 0.5
+        assert float(fractional.max()) <= 2.5
+        assert not torch.equal(fractional, fractional.round())
+
+        tensor_range = K.RandomRotation90(torch.tensor([0, 2]), p=1.0).forward_parameters((6000, 1, 4, 4))["times"]
+        assert tensor_range.dtype == torch.int64
+        assert set(tensor_range.tolist()) == {0, 1, 2}
+
+    def test_convention_random_rotation90_rounds_supplied_times_4409(self, device, dtype):
+        # `times` passed through `params`, for instance saved by an earlier release that drew them continuously,
+        # is still rounded to a whole number of quarter turns.
         augmentation = K.RandomRotation90((0, 1), p=1.0)
-        torch.manual_seed(1)
-        params = augmentation.forward_parameters((64, 1, 5, 7))
-
-        assert ((params["times"] >= 0) & (params["times"] <= 1)).all()
-        assert not torch.equal(params["times"], params["times"].round())
-
         x = torch.zeros(2, 1, 7, 7, device=device, dtype=dtype)
         x[..., 1, 4] = 1
         params = augmentation.forward_parameters(x.shape)

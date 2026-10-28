@@ -19,7 +19,7 @@ from typing import Tuple
 
 import torch
 
-from kornia.geometry.bbox import infer_bbox_shape3d, validate_bbox3d
+from kornia.geometry.bbox import _validate_bbox3d, infer_bbox_shape3d
 
 from .imgwarp import get_perspective_transform3d, warp_affine3d
 
@@ -146,6 +146,11 @@ def center_crop3d(
     Convention:
         - input: :math:`(B, C, D, H, W)`; ``size`` is ``(d, h, w)``
         - align_corners: ``True`` by default
+        - offset: the crop starts at the integer voxel ``int(D / 2 - d / 2)`` (likewise for the height and width),
+          as in :class:`~kornia.augmentation.CenterCrop3D`, so with the default ``align_corners=True`` the output is a
+          sub-volume of the input. With an odd margin the extra voxel is left at the back/bottom/right.
+          ``align_corners=False`` resamples off the voxel grid even for an even margin (see
+          :func:`crop_and_resize3d`).
 
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).
@@ -208,9 +213,10 @@ def center_crop3d(
     src_h_half = src_h / 2
     src_w_half = src_w / 2
 
-    start_x = src_w_half - dst_w_half
-    start_y = src_h_half - dst_h_half
-    start_z = src_d_half - dst_d_half
+    # an integer start, as CenterCrop3D takes it: a fractional one would resample between voxels
+    start_x = int(src_w_half - dst_w_half)
+    start_y = int(src_h_half - dst_h_half)
+    start_z = int(src_d_half - dst_d_half)
 
     end_x = start_x + dst_w - 1
     end_y = start_y + dst_h - 1
@@ -369,7 +375,7 @@ def _crop_by_boxes3d_to_size(
     # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
     # ``validate_bbox3d`` raises for every failure it detects except a non-finite coordinate, which is a
     # ``False`` predicate result; these call sites rely on the raise, so they convert that ``False``.
-    if not (validate_bbox3d(src_box) and validate_bbox3d(dst_box)):
+    if not (_validate_bbox3d(src_box) and _validate_bbox3d(dst_box)):
         raise AssertionError("Boxes must have finite coordinates, got non-finite values.")
 
     if len(tensor.shape) != 5:

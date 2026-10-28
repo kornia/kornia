@@ -623,6 +623,8 @@ def export_removals(base_ref: str, paths: list[str]) -> dict[str, set[str]]:
 
 @dataclass
 class FileReport:
+    """What one file removed from its ``__all__``, and whether that should fail the check."""
+
     path: str
     removed_from_all: set[str]
     removed_undocumented: set[str]
