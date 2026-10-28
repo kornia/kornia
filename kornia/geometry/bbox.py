@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Optional
 
 import torch
@@ -41,6 +42,17 @@ __all__ = [
     "validate_bbox3d",
 ]
 
+_VALIDATE_BBOX_FALSE_MESSAGE = (
+    "`validate_bbox` returned False for an invalid box. Returning False is deprecated since kornia 0.9.1: a "
+    "future release raises AssertionError instead, as `validate_bbox3d` does. To work with both, treat an "
+    "AssertionError like a False result (kornia#4013)."
+)
+_VALIDATE_BBOX3D_FALSE_MESSAGE = (
+    "`validate_bbox3d` returned False for a non-finite coordinate. Returning False is deprecated since kornia "
+    "0.9.1: a future release raises AssertionError, as it already does for every other invalid box. To work with "
+    "both, treat an AssertionError like a False result (kornia#4013)."
+)
+
 
 def validate_bbox(boxes: torch.Tensor) -> bool:
     """Validate whether a 2D box has matching top and bottom edge vectors.
@@ -52,8 +64,8 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
         angles, positive area and direction are not checked, so any parallelogram in cyclic vertex order passes.
 
     .. warning::
-        :func:`validate_bbox3d` raises ``AssertionError`` where this function returns ``False``:
-        `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
+        Returning ``False`` is deprecated; a future release raises ``AssertionError``
+        (`#4013 <https://github.com/kornia/kornia/issues/4013>`_).
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -63,9 +75,8 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
-        return False
-
-    if not torch.isfinite(boxes).all():
+        if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling():
+            warnings.warn(_VALIDATE_BBOX_FALSE_MESSAGE, FutureWarning, stacklevel=2)
         return False
 
     if len(boxes.shape) == 4:
@@ -79,15 +90,21 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     width_t, width_b = x_tr - x_tl + 1, x_br - x_bl + 1
     height_t, height_b = y_tr - y_tl + 1, y_br - y_bl + 1
 
-    # Replace torch.allclose with exportable operations
-    width_diff = torch.abs(width_t - width_b)
-    height_diff = torch.abs(height_t - height_b)
-
-    # Check if differences are within tolerance (1e-4)
-    if torch.any(width_diff > 1e-4):
+    # Non-finite, width mismatch, height mismatch, read back in one host sync. Every failure returns False, so
+    # the order in which the flags are read does not change the result.
+    flags = torch.stack(
+        [
+            ~torch.isfinite(boxes).all(),
+            (torch.abs(width_t - width_b) > 1e-4).any(),
+            (torch.abs(height_t - height_b) > 1e-4).any(),
+        ]
+    ).cpu()
+    if bool(flags.any()):
+        if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling():
+            warnings.warn(_VALIDATE_BBOX_FALSE_MESSAGE, FutureWarning, stacklevel=2)
         return False
 
-    return not torch.any(height_diff > 1e-4)
+    return True
 
 
 def validate_bbox3d(boxes: torch.Tensor) -> bool:
@@ -101,8 +118,8 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
         checked.
 
     .. warning::
-        :func:`validate_bbox` returns ``False`` where this function raises:
-        `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
+        Returning ``False`` is deprecated; a future release raises ``AssertionError``
+        (`#4013 <https://github.com/kornia/kornia/issues/4013>`_).
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -115,6 +132,16 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
         returning ``False``.
 
     """
+    if _validate_bbox3d(boxes):
+        return True
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling():
+        warnings.warn(_VALIDATE_BBOX3D_FALSE_MESSAGE, FutureWarning, stacklevel=2)
+    return False
+
+
+def _validate_bbox3d(boxes: torch.Tensor) -> bool:
+    # ``validate_bbox3d`` without its deprecation warning, for kornia's own callers, which turn a ``False``
+    # result into an ``AssertionError`` themselves.
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
         raise AssertionError(f"Box shape must be (B, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
@@ -126,26 +153,31 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     if not torch.jit.is_scripting() and is_compiling():
         return True
 
-    # Non-finite coordinates are rejected as a predicate result rather than through the ``allclose``
-    # comparisons below, which see ``nan != nan`` and raise a "different widths" AssertionError that
-    # names the wrong defect.
-    if not torch.isfinite(boxes).all():
-        return False
-
-    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
-    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
-    widths = left - right + 1
-    if not torch.allclose(widths.permute(1, 0), widths[:, 0]):
-        raise AssertionError(f"Boxes must have be cube, while get different widths {widths}.")
-
-    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
-    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
-    heights = bot - upper + 1
-    if not torch.allclose(heights.permute(1, 0), heights[:, 0]):
-        raise AssertionError(f"Boxes must have be cube, while get different heights {heights}.")
-
+    # Vertices (1, 2, 5, 6) - (0, 3, 4, 7) along x and (2, 3, 6, 7) - (0, 1, 4, 5) along y, by slicing, so a
+    # call does not copy an index tensor from the host.
+    x, y = boxes[..., 0], boxes[..., 1]
+    widths = torch.cat([x[:, 1:3] - x[:, 0:4:3], x[:, 5:7] - x[:, 4:8:3]], 1) + 1
+    heights = torch.cat([y[:, 2:4] - y[:, 0:2], y[:, 6:8] - y[:, 4:6]], 1) + 1
     depths = boxes[:, 4:, 2] - boxes[:, :4, 2] + 1
-    if not torch.allclose(depths.permute(1, 0), depths[:, 0]):
+
+    # Non-finite coordinates are rejected as a predicate result rather than through the extent comparisons,
+    # which see ``nan != nan`` and would raise a "different widths" AssertionError that names the wrong defect.
+    # All four flags reach the host in one sync; ``isclose`` keeps the ``allclose`` default tolerances.
+    flags = torch.stack(
+        [
+            ~torch.isfinite(boxes).all(),
+            ~torch.isclose(widths.permute(1, 0), widths[:, 0]).all(),
+            ~torch.isclose(heights.permute(1, 0), heights[:, 0]).all(),
+            ~torch.isclose(depths.permute(1, 0), depths[:, 0]).all(),
+        ]
+    ).cpu()
+    if bool(flags[0]):
+        return False
+    if bool(flags[1]):
+        raise AssertionError(f"Boxes must have be cube, while get different widths {widths}.")
+    if bool(flags[2]):
+        raise AssertionError(f"Boxes must have be cube, while get different heights {heights}.")
+    if bool(flags[3]):
         raise AssertionError(f"Boxes must have be cube, while get different depths {depths}.")
 
     return True
@@ -259,7 +291,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
     KORNIA_CHECK_SHAPE(boxes, ["N", "8", "3"])
     # ``validate_bbox3d`` raises for every failure it detects except a non-finite coordinate, which is a
     # ``False`` predicate result; this call site relies on the raise, so it converts that ``False`` itself.
-    if not validate_bbox3d(boxes):
+    if not _validate_bbox3d(boxes):
         raise AssertionError("Boxes must have finite coordinates, got non-finite values.")
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
@@ -454,7 +486,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     # Same as infer_bbox_shape3d: boxes[:, 4, 2] below reads dim 1 as the vertex
     # axis, which a rank-4 (B, N, 8, 3) input silently is not.
     KORNIA_CHECK_SHAPE(boxes, ["B", "8", "3"])
-    if not validate_bbox3d(boxes):
+    if not _validate_bbox3d(boxes):
         raise AssertionError("Boxes must have finite coordinates, got non-finite values.")
     D0, D1, D2 = size  # get depth, height, width
 

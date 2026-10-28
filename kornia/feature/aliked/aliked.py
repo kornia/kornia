@@ -284,21 +284,21 @@ class DKD(nn.Module):
 
         if self.top_k > 0:
             # at most top_k of the maxima: a non-maximum scores -inf here and is dropped, not used to fill up to top_k
-            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).reshape(b, -1)
+            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).flatten(start_dim=1)
             topk = torch.topk(candidate_scores, min(self.top_k, h * w))
             indices_keypoints = [topk.indices[i][topk.values[i] > float("-inf")] for i in range(b)]
         else:
             # the per-image mean score: the threshold when scores_th <= 0, and the fallback of an image whose maxima
             # are all at or below scores_th, decided for each image alone
-            mean = scores_nograd.reshape(b, -1).mean(dim=1).reshape(b, 1, 1, 1)
+            mean = scores_nograd.flatten(start_dim=1).mean(dim=1).reshape(b, 1, 1, 1)
             masks = is_max & (scores_nograd > mean)
             if self.scores_th > 0:
                 above = is_max & (scores_nograd > self.scores_th)
-                masks = torch.where(above.reshape(b, -1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
-            masks = masks.reshape(b, -1)
+                masks = torch.where(above.flatten(start_dim=1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
+            masks = masks.flatten(start_dim=1)
 
             indices_keypoints = []
-            scores_view = scores_nograd.reshape(b, -1)
+            scores_view = scores_nograd.flatten(start_dim=1)
             for mask, scores in zip(masks, scores_view):
                 indices = mask.nonzero()[:, 0]
                 if len(indices) > self.n_limit:

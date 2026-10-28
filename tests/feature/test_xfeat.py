@@ -38,6 +38,14 @@ from testing.base import (
 
 
 class TestXFeatModel(BaseTester):
+    def test_empty_batch_6266(self, device, dtype):
+        """An empty batch keeps every non-batch dimension of the three maps."""
+        model = XFeatModel().to(device, dtype).eval()
+        feats, keypoints, heatmap = model(torch.rand(0, 1, 64, 64, device=device, dtype=dtype))
+        assert feats.shape == (0, 64, 8, 8)
+        assert keypoints.shape == (0, 65, 8, 8)
+        assert heatmap.shape == (0, 1, 8, 8)
+
     def test_smoke(self, device, dtype):
         model = XFeatModel().to(device, dtype)
         x = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
@@ -149,6 +157,17 @@ class TestInterpolateSparse2d(BaseTester):
 
 
 class TestXFeat(BaseTester):
+    def test_empty_batch_6266(self, device, dtype):
+        """An empty batch gives no per-image results, an empty dense batch and no match lists."""
+        model = XFeat().to(device).eval()
+        x = torch.rand(0, 3, 64, 64, device=device)
+        assert model.detectAndCompute(x, top_k=50) == []
+        dense = model.detectAndComputeDense(x, top_k=50)
+        assert dense["keypoints"].shape == (0, 50, 2)
+        assert dense["descriptors"].shape == (0, 50, 64)
+        assert dense["scales"].shape == (0, 50)
+        assert model.match_xfeat_star(x, x, top_k=50) == []
+
     def test_smoke(self, device, dtype):
         model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)

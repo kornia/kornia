@@ -22,6 +22,7 @@ from typing import Any, Optional, Tuple, cast
 import torch
 from torch import Size
 
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import _check_async
 from kornia.core.ops import eye_like
 from kornia.core.utils import is_compiling, is_exporting
@@ -256,8 +257,7 @@ class Boxes:
         `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
         `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``'vertices'`` subtracts the inclusive offset at
         fixed vertex slots, so it deforms a quadrilateral that is not an axis-aligned rectangle in clockwise order:
-        `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim``, ``translate(method='fast')`` and
-        tuple-bound ``clamp`` are unimplemented:
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim`` was never implemented and is deprecated:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
     """
@@ -527,8 +527,8 @@ class Boxes:
 
     def clamp(
         self,
-        topleft: Optional[torch.Tensor | tuple[int, int]] = None,
-        botright: Optional[torch.Tensor | tuple[int, int]] = None,
+        topleft: Optional[torch.Tensor] = None,
+        botright: Optional[torch.Tensor] = None,
         inplace: bool = False,
     ) -> Boxes:
         """Clamp every box vertex inside per-image coordinate limits.
@@ -541,10 +541,10 @@ class Boxes:
             outside the bounds collapses onto the boundary instead of being removed.
 
         Args:
-            topleft: Tensor of shape :math:`(B, 2)` containing the minimum
+            topleft: Required tensor of shape :math:`(B, 2)` containing the minimum
                 ``x`` and ``y`` coordinate allowed for each batch item. A single
                 row broadcasts across the batch.
-            botright: Tensor of shape :math:`(B, 2)` containing the maximum
+            botright: Required tensor of shape :math:`(B, 2)` containing the maximum
                 ``x`` and ``y`` coordinate allowed for each batch item. A single
                 row broadcasts across the batch.
             inplace: If ``True``, clamp this object in place. Otherwise, return
@@ -585,7 +585,7 @@ class Boxes:
         return obj
 
     def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> Boxes:
-        """Raise because trimming padded boxes is not implemented.
+        """Deprecated since 0.9.1 and never implemented: raises ``NotImplementedError``.
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
@@ -597,6 +597,9 @@ class Boxes:
             NotImplementedError: Always.
 
         """
+        _emit_deprecation_warning(
+            "Boxes.trim", None, "0.9.1", "It has never been implemented and raises NotImplementedError (kornia#4017)."
+        )
         raise NotImplementedError("`Boxes.trim` is not implemented.")
 
     def filter_boxes_by_area(
@@ -969,27 +972,20 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         ``size`` supplies one ``(x, y)`` translation per batch item. Only the
-        ``"warp"`` method is implemented; ``"fast"`` raises
+        ``"warp"`` method is supported; any other method raises
         :class:`NotImplementedError`.
 
         Args:
             size: translate size for x, y direction, shape of :math:`(B, 2)`.
-            method: "warp" or "fast".
+            method: only "warp" is supported.
             inplace: do transform in-place and return self.
 
         Returns:
             The transformed boxes.
 
         """
-        if method == "fast":
-            raise NotImplementedError(
-                "`Boxes.translate(method='fast')` is not implemented; use `method='warp'` instead."
-            )
         if method != "warp":
-            raise NotImplementedError(
-                "`Boxes.translate` accepts `method='warp'` or `method='fast'` (not implemented); "
-                f"got method={method!r}."
-            )
+            raise NotImplementedError(f"`Boxes.translate` accepts `method='warp'`; got method={method!r}.")
 
         M: torch.Tensor = eye_like(3, size)
         M[:, :2, 2] = size

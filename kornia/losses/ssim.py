@@ -32,7 +32,7 @@ def ssim_loss(
     reduction: str = "mean",
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute a loss based on the SSIM measurement.
+    r"""Compute the DSSIM loss, clamp((1 - SSIM) / 2, 0, 1), between two (B, C, H, W) images.
 
     The loss, or the Structural dissimilarity (DSSIM) is described as:
 
@@ -89,7 +89,7 @@ def ssim_loss(
 
 
 class SSIMLoss(nn.Module):
-    r"""Create a criterion that computes a loss based on the SSIM measurement.
+    r"""Compute the DSSIM loss, clamp((1 - SSIM) / 2, 0, 1), between two (B, C, H, W) images.
 
     The loss, or the Structural dissimilarity (DSSIM) is described as:
 

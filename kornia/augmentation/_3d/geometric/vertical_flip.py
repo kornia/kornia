@@ -25,12 +25,12 @@ from kornia.core.ops import _device_literal
 
 
 class RandomVerticalFlip3D(GeometricAugmentationBase3D):
-    r"""Apply random vertical flip to 3D volumes (5D tensor).
+    r"""Flip 3D volumes vertically, applied per sample with probability ``p`` (default 0.5).
 
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
 
     Args:
-        p: probability of the image being flipped.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.

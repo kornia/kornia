@@ -1805,7 +1805,7 @@ def normalize_homography(
     dsize_dst: tuple[int, int],
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Normalize a given homography in pixels to [-1, 1].
+    r"""Express a 2D source→destination pixel homography (B, 3, 3) in [-1, 1] coordinates, corner-aligned by default.
 
     Convention:
         - the input maps **source pixels to destination pixels** and the output
@@ -1916,7 +1916,7 @@ def normal_transform_pixel(
     dtype: Optional[torch.dtype] = None,
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
+    r"""Compute the (1, 3, 3) matrix that maps 2D pixel coordinates (x, y) to [-1, 1], corner-aligned by default.
 
     Convention:
         - the result is a **single** matrix of shape :math:`(1, 3, 3)` — never
@@ -2105,7 +2105,7 @@ def normal_transform_pixel3d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
+    r"""Compute the (1, 4, 4) matrix that maps 3D voxel coordinates (x, y, z) to [-1, 1], always corner-aligned.
 
     Convention:
         - the 3-D counterpart of
@@ -2334,7 +2334,7 @@ def denormalize_homography(
 def normalize_homography3d(
     dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
 ) -> torch.Tensor:
-    r"""Normalize a given homography in pixels to [-1, 1].
+    r"""Express a 3D source→destination voxel homography (B, 4, 4) in [-1, 1] coordinates, always corner-aligned.
 
     Convention:
         - the 3-D counterpart of
@@ -2350,8 +2350,8 @@ def normalize_homography3d(
           record
         - it inverts ``N_src`` with ``torch.linalg.inv`` (so ``cusolver`` on
           ``cuda``, and a ``float32`` upcast for ``float16``/``bfloat16``),
-          where the 2-D function uses a closed-form adjugate in the working
-          dtype; the 2-D and 3-D routes therefore need not agree bitwise
+          where the 2-D function uses a closed-form adjugate, with the same
+          ``float32`` upcast; the 2-D and 3-D routes therefore need not agree bitwise
         - the matrices are :math:`(B, 4, 4)` and act on ``(x, y, z, 1)`` column
           vectors, while both ``dsize`` arguments are
           ``(depth, height, width)`` triples
@@ -2703,7 +2703,7 @@ def _integer_safe_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torch.Tensor:
-    r"""Convert a camera-to-world pose from the graphics frame (e.g. OpenGL) to the vision frame (e.g. OpenCV).
+    r"""Convert a (B, 4, 4) camera-to-world matrix from the graphics (OpenGL) frame to the vision (OpenCV) frame.
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards].
@@ -2774,7 +2774,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
 
 
 def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert a camera-to-world pose from the graphics frame (e.g. OpenGL) to the vision frame (e.g. OpenCV).
+    r"""Convert a camera-to-world pose given as (R, t) from the graphics (OpenGL) frame to the vision (OpenCV) frame.
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards].
@@ -2822,7 +2822,7 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
 
 
 def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.Tensor:
-    r"""Convert a camera-to-world pose from the vision frame (e.g. OpenCV) to the graphics frame (e.g. OpenGL).
+    r"""Convert a (B, 4, 4) camera-to-world matrix from the vision (OpenCV) frame to the graphics (OpenGL) frame.
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards].
@@ -2867,7 +2867,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
 
 
 def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert a camera-to-world pose from the vision frame (e.g. OpenCV) to the graphics frame (e.g. OpenGL).
+    r"""Convert a camera-to-world pose given as (R, t) from the vision (OpenCV) frame to the graphics (OpenGL) frame.
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards].

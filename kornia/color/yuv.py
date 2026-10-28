@@ -168,7 +168,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an YUV image to RGB.
+    r"""Convert a full-resolution YUV (4:4:4) image of shape ``(*, 3, H, W)`` to RGB.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -223,7 +223,7 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
-    r"""Convert an YUV420 image to RGB.
+    r"""Convert YUV 4:2:0 to RGB from separate luma and half-resolution chroma tensors.
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
@@ -278,7 +278,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
 
 def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
-    r"""Convert an YUV422 image to RGB.
+    r"""Convert YUV 4:2:2 to RGB from separate luma and half-width chroma tensors.
 
     Input width must be evenly divisible by 2; height may be odd.
 
@@ -477,7 +477,7 @@ class RgbToYuv422(nn.Module):
 
 
 class YuvToRgb(nn.Module):
-    r"""Convert an image from YUV to RGB.
+    r"""Convert a full-resolution YUV (4:4:4) image of shape ``(*, 3, H, W)`` to RGB.
 
     See the Convention block on :func:`yuv_to_rgb`.
 
@@ -524,7 +524,7 @@ class YuvToRgb(nn.Module):
 
 
 class Yuv420ToRgb(nn.Module):
-    r"""Convert an image from YUV to RGB.
+    r"""Convert YUV 4:2:0 to RGB from separate luma and half-resolution chroma tensors.
 
     See the Convention block on :func:`yuv420_to_rgb`.
 
@@ -573,7 +573,7 @@ class Yuv420ToRgb(nn.Module):
 
 
 class Yuv422ToRgb(nn.Module):
-    r"""Convert an image from YUV to RGB.
+    r"""Convert YUV 4:2:2 to RGB from separate luma and half-width chroma tensors.
 
     See the Convention block on :func:`yuv422_to_rgb`.
 

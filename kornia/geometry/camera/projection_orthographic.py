@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""nn.Module containing functions for orthographic projection."""
+"""Functions for orthographic projection."""
 
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/ortho_camera.rs
 import torch
@@ -24,11 +24,11 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tensor:
-    r"""Project points from the camera frame into the canonical z=1 plane through orthographic projection.
+    r"""Project camera-frame points orthographically onto the image plane by dropping z: (x, y, z) -> (x, y).
 
     .. math::
         \begin{bmatrix} u \\ v \end{bmatrix} =
-        \begin{bmatrix} x \\ y \\ z \end{bmatrix}
+        \begin{bmatrix} x \\ y \end{bmatrix}
 
 
     Args:
@@ -48,7 +48,7 @@ def project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tensor:
 
 
 def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: torch.Tensor) -> torch.Tensor:
-    r"""Unproject one or more points from the canonical z=1 plane into the camera frame.
+    r"""Unproject orthographic image-plane points into the camera frame by appending a z value: (u, v) -> (u, v, z).
 
     .. math::
         \begin{bmatrix} x \\ y \\ z \end{bmatrix} =
@@ -81,7 +81,7 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
 
 
 def dx_project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tensor:
-    r"""Compute the derivative of the x projection with respect to the x coordinate.
+    r"""Compute the derivative of the orthographic x projection with respect to x, which is always 1.
 
     .. math::
         \frac{\partial u}{\partial x} = 1
