@@ -219,7 +219,14 @@ def root_mean_squared_disparity_error(
     out_dtype = torch.promote_types(input.dtype, target.dtype)
     acc_dtype = torch.promote_types(out_dtype, torch.float32)
     error = (input.to(acc_dtype) - target.to(acc_dtype)) ** 2
-    return _reduce_disparity_error(error, mask, reduction).sqrt().to(out_dtype)
+    squared = _reduce_disparity_error(error, mask, reduction)
+    # d sqrt(x)/dx is infinite at 0 and autograd multiplies it by the zero derivative of the square, so an exact match
+    # would get a NaN gradient (and a mask cannot hide it: NaN * 0 is NaN). Differentiate the sqrt of a safe positive
+    # argument and select 0 at zero error, the subgradient aepe and torch.linalg.vector_norm use. The value is
+    # unchanged, and an empty mask still gives NaN under 'mean'.
+    is_zero = squared == 0
+    safe = torch.where(is_zero, torch.ones_like(squared), squared)
+    return torch.where(is_zero, torch.zeros_like(squared), safe.sqrt()).to(out_dtype)
 
 
 def mean_bad_pixel_error(

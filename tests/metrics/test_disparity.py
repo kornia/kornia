@@ -326,6 +326,35 @@ class TestRootMeanSquaredDisparityError(BaseTester):
         actual_none = kornia.metrics.root_mean_squared_disparity_error(input, target, reduction="none")
         self.assert_close(actual_none, torch.full((64,), 300.0, device=device, dtype=dtype))
 
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_exact_match_has_a_finite_gradient(self, reduction, device, dtype):
+        # The square root of a zero squared error has an infinite derivative, so an exact match used to get a NaN
+        # gradient. It now gets 0, the subgradient aepe uses; a differing pixel keeps its gradient.
+        target = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        input = target.clone()
+        input[1, 1] = 5.0
+        for pred in (input, target.clone()):
+            pred = pred.clone().requires_grad_(True)
+            (grad,) = torch.autograd.grad(
+                kornia.metrics.root_mean_squared_disparity_error(pred, target, reduction=reduction).sum(), pred
+            )
+            assert torch.isfinite(grad).all()
+            self.assert_close(grad[0], torch.zeros_like(grad[0]))
+
+        # A mask does not hide the NaN of the matched valid pixels: they must be finite too.
+        mask = torch.ones_like(target, dtype=torch.bool)
+        mask[1, 1] = False
+        pred = target.clone()
+        pred[1, 1] = 9.0
+        pred.requires_grad_(True)
+        (grad,) = torch.autograd.grad(kornia.metrics.root_mean_squared_disparity_error(pred, target, mask), pred)
+        self.assert_close(grad, torch.zeros_like(grad))
+
+    def test_gradcheck(self, device):
+        target = torch.rand(2, 3, 4, device=device, dtype=torch.float64)
+        input = target + torch.rand(2, 3, 4, device=device, dtype=torch.float64) + 0.1
+        self.gradcheck(kornia.metrics.root_mean_squared_disparity_error, (input, target))
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         input, target, mask = _dynamo_inputs(device, dtype)
         op = kornia.metrics.root_mean_squared_disparity_error
