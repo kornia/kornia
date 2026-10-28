@@ -491,6 +491,40 @@ class TestMutualInformationValidation(BaseTester):
         with pytest.raises((BaseError, ValueError), match="shape"):
             module(signal)(other)
 
+    def test_signal_with_fewer_dims_reads_as_one_flat_signal(self, device, dtype, loss_fn, module, shape):
+        # The 2D and 3D losses flatten their last two or three dimensions; a 1-D signal is already flat.
+        signal = torch.linspace(0, 1, torch.Size(shape).numel(), device=device, dtype=dtype)
+        target = signal.flip(-1) ** 2
+        expected = loss_fn(signal.reshape(shape), target.reshape(shape))
+        self.assert_close(loss_fn(signal, target), expected, rtol=0, atol=0)
+        self.assert_close(module(target)(signal), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("batch", [(0,), (0, 3), (3, 0)])
+    def test_empty_batch(self, device, dtype, loss_fn, module, shape, batch):
+        # An empty batch gives one loss per (zero) leading index, like any other batch shape.
+        signal = torch.rand((*batch, *shape), device=device, dtype=dtype, requires_grad=True)
+        target = torch.rand((*batch, *shape), device=device, dtype=dtype)
+        mask = torch.ones(shape, device=device, dtype=torch.bool)
+        loss = loss_fn(signal, target)
+        assert loss.shape == batch
+        assert loss.dtype == dtype
+        masked_loss = loss_fn(signal, target, mask, mask)
+        assert masked_loss.shape == batch
+        assert module(target)(signal).shape == batch
+        assert module(target, mask)(signal, mask).shape == batch
+        loss.sum().backward()
+        assert signal.grad.shape == signal.shape
+        signal.grad = None
+        masked_loss.sum().backward()
+        assert signal.grad.shape == signal.shape
+
+    def test_empty_signal(self, device, dtype, loss_fn, module, shape):
+        signal = torch.rand((2, *shape[:-1], 0), device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="signals must have at least one sample"):
+            loss_fn(signal, signal)
+        with pytest.raises(BaseError, match="signals must have at least one sample"):
+            module(signal)
+
     @pytest.mark.parametrize("kind", ["input_empty", "target_empty", "disjoint"])
     def test_empty_mask_intersection(self, device, dtype, loss_fn, module, shape, kind):
         signal = torch.arange(torch.Size(shape).numel(), device=device, dtype=dtype).reshape(shape)

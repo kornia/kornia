@@ -22,7 +22,7 @@ import torch
 
 import kornia
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 class TestDiffJPEG(BaseTester):
@@ -282,6 +282,25 @@ class TestDiffJPEG(BaseTester):
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "expected 16 or 1, got 8" in str(errinfo.value)
         assert "jpeg_quality needs one quality per image" in str(errinfo.value)
+
+    def test_empty_batch(self, device, dtype):
+        # An empty batch reaches the function and comes back empty, with the same shape (#6266).
+        x = torch.rand(0, 3, 16, 24, device=device, dtype=dtype)
+        no_quality = torch.zeros(0, device=device, dtype=dtype)
+        one_quality = torch.tensor([50.0], device=device, dtype=dtype)
+        out = kornia.enhance.jpeg_codec_differentiable(x, one_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        out = kornia.enhance.jpeg_codec_differentiable(x, no_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        module = kornia.enhance.JPEGCodecDifferentiable()
+        out = module(x, no_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
+        out = module(x, one_quality)
+        assert out.shape == (0, 3, 16, 24)
+        assert out.dtype == dtype
 
     def test_cardinality(self, device, dtype) -> None:
         B, H, W = 1, 16, 16
@@ -1247,6 +1266,27 @@ class TestDiffJPEG(BaseTester):
         img_jpeg = diff_jpeg_module(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_quality_check_skipped_under_any_capture_5037(self, device, dtype) -> None:
+        # The [0, 100] check reads the quality on the host, which a fullgraph trace cannot do, so any capture skips
+        # it, not only export (#5037). Eager still raises on an out-of-range quality; a traced call does not.
+        from torch._dynamo.testing import CompileCounter
+
+        from kornia.core.exceptions import BaseError
+
+        codec = kornia.enhance.JPEGCodecDifferentiable()
+        img = torch.rand(2, 3, 16, 16, generator=torch.Generator().manual_seed(0)).to(device, dtype)
+        quality = torch.tensor([30.0, 90.0], device=device, dtype=dtype)
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(codec, backend=counter, fullgraph=True)
+        self.assert_close(traced(img, quality), codec(img, quality), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        out_of_range = torch.tensor([30.0, 150.0], device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="JPEG quality is out of range"):
+            codec(img, out_of_range)
+        assert traced(img, out_of_range).shape == img.shape
 
     def test_module_float64_tables_on_cpu(self, device, dtype) -> None:
         # The tables may stay float64 on the CPU while the image lives on a device without float64 (MPS): the codec

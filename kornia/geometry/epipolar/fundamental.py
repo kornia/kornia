@@ -660,13 +660,16 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
     # project points and retrieve lines components
     points_h = torch.transpose(points_h, dim0=-2, dim1=-1)
-    a, b, c = torch.chunk(F_mat @ points_h, dim=-2, chunks=3)
+    lines = F_mat @ points_h  # *x3xN
+    a, b, _ = torch.chunk(lines, dim=-2, chunks=3)
 
     # compute normal and compose equation line
     nu: torch.Tensor = a * a + b * b
     nu = torch.where(nu > 0.0, 1.0 / torch.sqrt(nu), torch.ones_like(nu))
 
-    line = torch.cat([a * nu, b * nu, c * nu], dim=-2)  # *x3xN
+    # The same values as concatenating ``a * nu``, ``b * nu`` and ``c * nu``, without the concatenation that
+    # TorchScript's CUDA fuser compiles into a group returning an int32 tensor for N = 0 after non-empty calls.
+    line = lines * nu  # *x3xN
     return torch.transpose(line, dim0=-2, dim1=-1)  # *xNx3
 
 

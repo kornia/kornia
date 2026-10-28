@@ -277,11 +277,12 @@ class Attention(nn.Module):
             Tensor with shape :math:`(B, H, W, C)` after attention, optional
             decomposed relative positional bias, and output projection.
         """
-        B, H, W, _ = x.shape
+        _, H, W, C = x.shape
+        head_dim = C // self.num_heads
         # qkv with shape (3, B, nHead, H * W, C)
-        qkv = self.qkv(x).reshape(B, H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(-1, H * W, 3, self.num_heads, head_dim).permute(2, 0, 3, 1, 4)
         # q, k, v with shape (B * nHead, H * W, C)
-        q, k, v = qkv.reshape(3, B * self.num_heads, H * W, -1).unbind(0)
+        q, k, v = qkv.reshape(3, -1, H * W, head_dim).unbind(0)
 
         attn = (q * self.scale) @ k.transpose(-2, -1)
 
@@ -289,7 +290,7 @@ class Attention(nn.Module):
             attn = add_decomposed_rel_pos(attn, q, self.rel_pos_h, self.rel_pos_w, (H, W), (H, W))
 
         attn = attn.softmax(dim=-1)
-        x = (attn @ v).view(B, self.num_heads, H, W, -1).permute(0, 2, 3, 1, 4).reshape(B, H, W, -1)
+        x = (attn @ v).view(-1, self.num_heads, H, W, head_dim).permute(0, 2, 3, 1, 4).reshape(-1, H, W, C)
         return self.proj(x)
 
 

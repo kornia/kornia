@@ -18,10 +18,10 @@
 import pytest
 import torch
 
-from kornia.geometry.camera import StereoCamera
-from kornia.geometry.camera.stereo import StereoException, reproject_disparity_to_3D
+from kornia.geometry.camera import StereoCamera, reproject_disparity_to_3D
+from kornia.geometry.camera.stereo import StereoException
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 @pytest.fixture(params=[1, 2, 4])
@@ -524,6 +524,33 @@ class TestStereoCamera(BaseTester):
         disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
         assert self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity).abs().max().item() > 0.1
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize("entrypoint", ["Q", "reproject_disparity_to_3D"])
+    def test_rig_checks_skipped_under_any_capture_5037(self, entrypoint, device, dtype):
+        # The constructor checks the intrinsics and the baseline on the host, which a fullgraph trace cannot do, so
+        # any capture skips the checks, not only export (#5037). Eager still raises on a zero baseline; a traced call
+        # does not.
+        from torch._dynamo.testing import CompileCounter
+
+        rig = self._asymmetric_stereo(device, dtype)
+        left, right = rig.rectified_left_camera, rig.rectified_right_camera
+        disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
+
+        def op(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+            cam = StereoCamera(left, right)
+            return cam.Q if entrypoint == "Q" else cam.reproject_disparity_to_3D(disparity)
+
+        counter = CompileCounter()
+        torch._dynamo.reset()
+        traced = torch.compile(op, backend=counter, fullgraph=True)
+        self.assert_close(traced(left, right), op(left, right), atol=0.0, rtol=0.0)
+        assert counter.frame_count == 1
+        no_baseline = right.clone()
+        no_baseline[..., 0, 3] = 0.0
+        with pytest.raises(StereoException, match="non-zero stereo baseline"):
+            op(left, no_baseline)
+        assert traced(left, no_baseline).shape == op(left, right).shape
+
     def test_convention_stereo_rejects_a_four_by_four_pair_4270(self, device, dtype):
         cam = self._asymmetric_stereo(device, dtype)
         bottom = torch.tensor([[[0.0, 0.0, 0.0, 1.0]]], device=device, dtype=dtype)
@@ -535,3 +562,10 @@ class TestStereoCamera(BaseTester):
         assert cam.Q.shape == (1, 4, 4)
         with pytest.raises(StereoException, match="to have 3 dimensions"):
             StereoCamera(cam.rectified_left_camera[0], cam.rectified_right_camera[0])
+
+    def test_reproject_disparity_to_3d_exported_from_camera(self):
+        from kornia.geometry import camera
+
+        assert hasattr(camera, "reproject_disparity_to_3D")
+        assert "reproject_disparity_to_3D" in camera.__all__
+        assert camera.reproject_disparity_to_3D is reproject_disparity_to_3D

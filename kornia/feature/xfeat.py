@@ -194,7 +194,7 @@ class XFeatModel(nn.Module):
         """Unfold spatial dims by window size ``ws`` and concatenate into channels."""
         B, C, H, W = x.shape
         x = x.unfold(2, ws, ws).unfold(3, ws, ws).reshape(B, C, H // ws, W // ws, ws**2)
-        return x.permute(0, 1, 4, 2, 3).reshape(B, -1, H // ws, W // ws)
+        return x.permute(0, 1, 4, 2, 3).flatten(start_dim=1, end_dim=2)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Run the XFeat backbone.
@@ -413,7 +413,7 @@ class XFeat(nn.Module):
         B = x.shape[0]
         pos = nms2d(x, (kernel_size, kernel_size), mask_only=True) & (x > threshold)
         pos_batched = [k.nonzero()[..., 1:].flip(-1) for k in pos]
-        pad_val = max(len(p) for p in pos_batched)
+        pad_val = max((len(p) for p in pos_batched), default=0)  # an empty batch pads to no keypoints
         pos_out = torch.full((B, pad_val, 2), -1, dtype=torch.long, device=x.device)
         for b in range(B):
             pos_out[b, : len(pos_batched[b])] = pos_batched[b]
@@ -498,8 +498,8 @@ class XFeat(nn.Module):
         if top_k is None:
             top_k = _H1 * _W1
         xy1 = (self._create_xy(_H1, _W1, M1.device) * 8).expand(B, -1, -1)
-        M1 = M1.permute(0, 2, 3, 1).reshape(B, -1, C)
-        H1 = H1.permute(0, 2, 3, 1).reshape(B, -1)
+        M1 = M1.permute(0, 2, 3, 1).flatten(start_dim=1, end_dim=2)
+        H1 = H1.permute(0, 2, 3, 1).flatten(start_dim=1)
         if top_k < 1:
             return torch.zeros(B, 0, 2, device=M1.device), M1.new_zeros(B, 0, C)
         _, top_k_idx = torch.topk(H1, k=min(H1.shape[1], top_k), dim=-1)
@@ -697,7 +697,8 @@ class XFeat(nn.Module):
             top_k: number of top features to use.
 
         Returns:
-            If ``B > 1``: list of :math:`(N, 4)` tensors with ``(x1, y1, x2, y2)`` matches.
+            If ``B != 1``: list of :math:`(N, 4)` tensors with ``(x1, y1, x2, y2)`` matches, one per pair; an empty
+            batch gives an empty list.
             If ``B == 1``: tuple of :math:`(N, 2)` matched keypoint tensors.
         """
         if top_k is None:
@@ -707,6 +708,6 @@ class XFeat(nn.Module):
         idxs_list = self._batch_match(out1["descriptors"], out2["descriptors"])
         B = im_set1.shape[0]
         matches = [self._refine_matches(out1, out2, matches=idxs_list, batch_idx=b) for b in range(B)]
-        if B > 1:
+        if B != 1:
             return matches
         return matches[0][:, :2], matches[0][:, 2:]

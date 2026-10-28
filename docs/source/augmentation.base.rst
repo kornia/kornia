@@ -208,10 +208,12 @@ Some Further Notes
 
 Probabilities
 ^^^^^^^^^^^^^
-:class:`AugmentationBase2D` states the ``p`` / ``p_batch`` model. A concrete constructor can map its public ``p``
-to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual samples
-(`#4425 <https://github.com/kornia/kornia/issues/4425>`_). When ``0 < p_batch < 1``, the base draws the batch
-Bernoulli before the per-sample gate; endpoints skip that draw, and ``p=1.0, p_batch=0.0`` selects no sample.
+:class:`AugmentationBase2D` states the ``p`` / ``p_batch`` model. Every augmentation honours ``p_batch``, and it can
+be set as an attribute (``aug.p_batch = 0.5``). Only `RandomHorizontalFlip`, `RandomVerticalFlip`,
+`RandomTransplantation` and `RandomTransplantation3D` also take it in the constructor. A concrete constructor can map
+its public ``p`` to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual samples. When
+``0 < p_batch < 1``, the base draws the batch Bernoulli before the per-sample gate; endpoints skip that draw, and
+``p=1.0, p_batch=0.0`` selects no sample.
 
 With static ``p=1.0, p_batch=1.0`` every sample is transformed: a ``batch_prob`` put into ``params`` is not consulted
 by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs alike

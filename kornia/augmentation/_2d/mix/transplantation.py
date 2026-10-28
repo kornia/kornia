@@ -31,7 +31,7 @@ __all__ = ["RandomTransplantation"]
 
 
 class RandomTransplantation(MixAugmentationBaseV2):
-    r"""RandomTransplantation augmentation.
+    r"""Paste a labelled region from the previous batch image, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomTransplantation.png
 
@@ -52,8 +52,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
           parts of the image are annotated and the non-annotated regions (with a specific label index) should be
           excluded from the augmentation. If no label is left in a donor image, that acceptor receives nothing
           while the rest of the batch is transplanted as usual.
-        p: probability for applying an augmentation to an image. This parameter controls how many images in a batch
-          receive a transplant.
+        p: probability of applying the transformation to each sample. This parameter controls how many images in a
+          batch receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.Tensor.

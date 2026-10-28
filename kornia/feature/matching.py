@@ -100,7 +100,7 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 def match_nn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Find nearest neighbors in desc2 for each vector in desc1.
+    r"""Match each descriptor in desc1 to its nearest neighbor in desc2, with no filtering.
 
     Convention:
         - Every ``match_*`` function returns ``(dists, idxs)``, one row per match. ``idxs`` is an int64
@@ -157,7 +157,7 @@ def match_nn(
 def match_mnn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find mutual nearest neighbors in desc2 for each vector in desc1.
+    """Match the descriptors of desc1 and desc2 that are each other's nearest neighbors (mutual nearest neighbors).
 
     Convention:
         See the Convention block on :func:`match_nn`. A pair is kept only when each of the two descriptors is the
@@ -199,9 +199,9 @@ def match_mnn(
 def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find nearest neighbors in desc2 for each vector in desc1.
+    """Match each descriptor in desc1 to its nearest neighbor in desc2 if it passes Lowe's second-nearest ratio test.
 
-    The method satisfies first to second nearest neighbor distance <= th.
+    The ratio of the first to the second nearest neighbor distance must be <= th.
 
     Convention:
         See the Convention block on :func:`match_nn`; ``dists`` is the ratio of the nearest to the second-nearest
@@ -241,9 +241,9 @@ def match_snn(
 def match_smnn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.95, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find mutual nearest neighbors in desc2 for each vector in desc1.
+    """Match mutual nearest neighbors of desc1 and desc2 that also pass the second-nearest ratio test both ways.
 
-    the method satisfies first to second nearest neighbor distance <= th.
+    The ratio of the first to the second nearest neighbor distance must be <= th in both directions.
 
     Convention:
         - See the Convention block on :func:`match_nn`. A pair is kept when the two descriptors are mutual nearest
@@ -428,11 +428,10 @@ def match_fginn(
     mutual: bool = False,
     dm: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Find nearest neighbors in desc2 for each vector in desc1.
+    """Match desc1 to desc2 by a ratio test against the first geometrically inconsistent nearest neighbor (FGINN).
 
-    The method satisfies first to second nearest neighbor distance <= th,
-    and assures 2nd nearest neighbor is geometrically inconsistent with the 1st one
-    (see :cite:`MODS2015` for more details)
+    The ratio test compares the nearest distance with that of the nearest candidate whose ``lafs2`` centre lies at
+    least ``spatial_th`` from the first one's; closer candidates are skipped (see :cite:`MODS2015` for more details).
 
     Convention:
         - See the Convention block on :func:`match_nn`. ``dists`` is a ratio: the nearest distance over the distance

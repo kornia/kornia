@@ -135,6 +135,14 @@ class TestKimiVLModel(BaseTester):
         expected_patches = 16
         assert output.shape == (batch_size, expected_patches, config.projector_config.output_dim)
 
+    def test_empty_batch_6266(self, device, dtype, config):
+        """An empty batch goes through the rotary position embedding of every attention layer."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        model = KimiVLModel(config).to(device, dtype)
+        output = model(torch.randn(0, 3, 32, 32, device=device, dtype=dtype))
+        assert output.shape == (0, 16, config.projector_config.output_dim)
+
     def test_variable_resolution(self, device, dtype, model, config):
         batch_size = 1
         # 48x48 image -> 12x12 patches -> 6x6 after shuffle -> 36 patches

@@ -28,6 +28,7 @@ from kornia.feature.adalam.ransac import (
     ransac,
     stable_sort_residuals,
 )
+from kornia.feature.adalam.utils import draw_first_k_couples
 
 from testing.base import BaseTester
 
@@ -217,3 +218,21 @@ class TestAdalamExact(BaseTester):
         )
         self.assert_close(result[1], torch.arange(29, device=device))
         self.assert_close(result[2], dims)
+
+
+class TestDrawFirstKCouples(BaseTester):
+    @pytest.mark.parametrize("k", [1, 2, 3, 4, 10, 100, 128, 129])
+    def test_couples_are_the_first_k_distinct_pairs(self, k, device):
+        # The k couples are the pairs (i, j), j < i, in row order. The residual row after the complete ones used
+        # its length as its first index, so it repeated couples already drawn: 8 of the default 128.
+        couples = draw_first_k_couples(k, torch.tensor([1000], device=device), device)
+        expected = [(i, j) for i in range(1, k + 2) for j in range(i)][:k]
+        assert couples.shape == (k, 2, 1)
+        assert [tuple(c) for c in couples[:, :, 0].tolist()] == expected
+
+    def test_couples_wrap_per_region(self, device):
+        # Each region's couples are reduced modulo its own number of samples, so a region smaller than the couples
+        # need wraps: here (3, 0) becomes (0, 0), a rank-deficient pair that the minimal fit marks as NaN.
+        couples = draw_first_k_couples(4, torch.tensor([1000, 3], device=device), device)
+        self.assert_close(couples[:, :, 0], torch.tensor([[1, 0], [2, 0], [2, 1], [3, 0]], device=device))
+        self.assert_close(couples[:, :, 1], torch.tensor([[1, 0], [2, 0], [2, 1], [0, 0]], device=device))
