@@ -600,7 +600,7 @@ class TestVideoSequential:
             partial |= bool(applied.any()) and not bool(applied.all())
             # The gate is per frame: a skipped frame's points are unchanged and an applied frame's points move.
             moved = (out_points - points).abs().flatten(0, 1).amax((-1, -2)) > tol
-            assert torch.equal(moved, applied)
+            assert torch.equal(moved, applied.to(moved.device))  # the gate is drawn on the CPU
             _, restored = aug.inverse(out_video, out_points)
             assert out_points.shape == points.shape
             assert_close(restored, points, atol=tol, rtol=0.0)
