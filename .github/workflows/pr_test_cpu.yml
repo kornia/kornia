@@ -120,7 +120,7 @@ jobs:
       #   - ubuntu 3.12 / torch 2.9.1 (float32): the first release on which `torch.onnx.export`,
       #     and with it `to_onnx`, defaults to the dynamo exporter. Its torch.export specializes
       #     differently from 2.14's: a DexiNed export ran only at the traced batch size (#6066).
-      #   - ubuntu 3.11 / torch 2.14.0 (float32, float64): the oldest Python on the newest torch,
+      #   - ubuntu 3.11 / torch 2.15.0 (float32, float64): the oldest Python on the newest torch,
       #     so every Python and torch pin still gets a full-suite run in both dtypes on Linux.
       #   - windows-latest float64: Windows-only failures (path handling, the eager RNG audit)
       #     showed up on every Windows leg, and this one caught all of them.
@@ -145,19 +145,19 @@ jobs:
           - os: ubuntu-latest
             pytorch-dtype: "float32"
             python-version: "3.11"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
           - os: ubuntu-latest
             pytorch-dtype: "float64"
             python-version: "3.11"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
           - os: windows-latest
             pytorch-dtype: "float64"
             python-version: "3.13"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
           - os: macos-latest
             pytorch-dtype: "float32"
             python-version: "3.13"
-            pytorch-version: "2.14.0"
+            pytorch-version: "2.15.0"
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -181,7 +181,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
       # A whole leg takes ~6m, so no single test comes near these limits. A native float16 kernel
@@ -208,7 +208,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: float32
       optimizer: inductor
       pytest-extra: 'tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry tests/losses tests/morphology tests/models tests/core tests/utils -k "dynamo or compile"'
@@ -246,7 +246,7 @@ jobs:
     with:
       os: macos-15
       python-version: '["3.13"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: float32
       device: mps
       pytest-extra: --xfail-known-failures
@@ -259,7 +259,7 @@ jobs:
   # ONNX conformance (#5819): every promised operator of the packages this PR can affect must export with the dynamo
   # exporter and match eager in onnxruntime, and a legacy export that succeeds must not give wrong values. The
   # `changes` job maps the changed paths to the packages they belong to plus every package that imports them
-  # (.github/scripts/conformance_packages.py); the whole set runs on main twice a day on torch 2.9.1 and 2.14.0
+  # (.github/scripts/conformance_packages.py); the whole set runs on main twice a day on torch 2.9.1 and 2.15.0
   # (scheduled_test_cpu.yml). No promised operator needs pretrained weights, so the job does not wait for `pre-tests`
   # and also runs when only the survey or its snapshot under docs/ changed.
   onnx-conformance:
@@ -269,7 +269,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/onnx/test_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
@@ -286,7 +286,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/test_inductor_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run

@@ -917,6 +917,11 @@ def test_upstream_probe_floor_is_consistent_across_jobs() -> None:
     }
 
     assert len(set(floors.values())) == 1, floors
+    root = Path(project_conftest.__file__).parent
+    blocking = (root / ".github" / "workflows" / "pr_test_cpu.yml").read_text(encoding="utf-8")
+    pinned = re.findall(r'pytorch-version: "(\d+\.\d+\.\d+)"', blocking)
+    latest = max(pinned, key=lambda version: tuple(map(int, version.split("."))))
+    assert set(floors.values()) == {latest}, floors
 
 
 def test_upstream_probe_record_jobs_match_the_blocking_python() -> None:

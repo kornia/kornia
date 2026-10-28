@@ -96,11 +96,11 @@ pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=all
 pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=geometry,color
 ```
 
-The run takes minutes, so it is opt-in. Pull requests run it on torch 2.14.0 for the packages their changes reach
+The run takes minutes, so it is opt-in. Pull requests run it on torch 2.15.0 for the packages their changes reach
 (`.github/scripts/conformance_packages.py onnx`: a changed module selects its stable-core package and every
 stable-core package with a module that imports it, directly or not; `kornia/core`, `kornia/utils`, `kornia/onnx`, the
 survey and its snapshot, the stability page, the test and its support, and the dependency pins select `all`); the
-scheduled run on `main` checks `all` on torch 2.9.1 and 2.14.0. No promised case needs pretrained weights, and the test
+scheduled run on `main` checks `all` on torch 2.9.1 and 2.15.0. No promised case needs pretrained weights, and the test
 never downloads.
 
 Known failures are strict xfails in `testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt`, one
@@ -135,9 +135,9 @@ pixi run test-module tests/test_inductor_conformance.py --compile-conformance=co
 
 It has its own option and does not read `KORNIA_TEST_OPTIMIZER`, and its tests are named after inductor because the
 root `conftest.py` drops tests whose name contains `compile` or `dynamo` when that variable is unset. Inductor needs a
-C++ compiler; onnx and onnxruntime are not needed. Pull requests run it on torch 2.14.0 for the packages
+C++ compiler; onnx and onnxruntime are not needed. Pull requests run it on torch 2.15.0 for the packages
 `.github/scripts/conformance_packages.py compile` selects (the same mapping as the ONNX job, with this test file and
-its manifests in place of the ONNX ones); the scheduled run on `main` checks `all` on torch 2.9.1 and 2.14.0. Both
+its manifests in place of the ONNX ones); the scheduled run on `main` checks `all` on torch 2.9.1 and 2.15.0. Both
 conformance jobs run with `--timeout=600`.
 
 ---
