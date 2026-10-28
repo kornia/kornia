@@ -957,6 +957,35 @@ class TestNMS(BaseTester):
         expected = torch.tensor([0], device=device, dtype=torch.long)
         self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
 
+    @pytest.mark.parametrize(
+        "boxes",
+        [
+            [[10, 10, 10, 20], [100, 100, 100, 200]],  # zero width, far apart
+            [[10, 10, 20, 10], [10, 100, 20, 100]],  # zero height, far apart
+            [[10, 10, 10, 10], [50, 50, 50, 50]],  # two points
+            [[10, 10, 10, 20], [10, 10, 10, 20]],  # identical zero-width boxes
+        ],
+    )
+    def test_zero_area_boxes_have_zero_iou(self, boxes, device, dtype):
+        # The intersection and the union of two zero-area boxes are both 0. Their IoU is 0, as in torchvision, not
+        # 0 / 0 = NaN, which compared as an overlap and suppressed the lower-scored box.
+        boxes = torch.tensor(boxes, device=device, dtype=dtype)
+        scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+        self.assert_close(nms(boxes.to(torch.int32), scores, 0.5), expected, atol=0, rtol=0)
+
+    def test_zero_area_box_next_to_a_box(self, device, dtype):
+        # A zero-width box inside a box with a positive area has IoU 0 with it, and a box with a positive area still
+        # suppresses its duplicate. The last box, a point, is then compared with the zero-width box: both are
+        # zero-area, so it was suppressed by 0 / 0.
+        boxes = torch.tensor(
+            [[0, 0, 20, 20], [10, 5, 10, 15], [0, 0, 20, 20], [40, 40, 40, 40]], device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.875, 0.75, 0.625, 0.5], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1, 3], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, 0.5), expected, atol=0, rtol=0)
+
     def test_convention_nms_uses_exclusive_xyxy_iou_4008(self, device, dtype):
         # The boxes overlap by 1 / 4 under exclusive xyxy arithmetic. At 0.3, NMS
         # keeps both; inclusive corner arithmetic would compute 4 / 9 and suppress

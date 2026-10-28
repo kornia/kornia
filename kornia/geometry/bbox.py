@@ -740,6 +740,10 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         the size of the output depend on the box values. ``fullgraph=True`` raises, and a default ``torch.compile``
         runs it eagerly, so it is outside the :ref:`torch.compile promise <export-support-promise>`.
 
+    Note:
+        Two boxes whose union is empty, such as two zero-width boxes, have an IoU of ``0``, so neither suppresses the
+        other, as in ``torchvision.ops.nms``.
+
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other
         :mod:`kornia.geometry.bbox` operations and is documented in
@@ -787,7 +791,11 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         w = torch.clamp(xx2 - xx1, min=0.0)
         h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        union = areas[i] + areas[order[1:]] - inter
+        # Two zero-area boxes have a zero union, and their IoU is 0 rather than 0 / 0: a NaN would compare as an
+        # overlap below and suppress a disjoint box. torchvision keeps such a box too.
+        nonzero = union > 0
+        ovr = torch.where(nonzero, inter / torch.where(nonzero, union, torch.ones_like(union)), 0.0)
 
         inds = torch.where(ovr <= iou_threshold)[0]
         order = order[inds + 1]
