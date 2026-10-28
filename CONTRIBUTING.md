@@ -16,6 +16,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 ## Practical guidelines
 
 - Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
+- You do not need to ask before working on an issue that is not reserved. Say on the issue that you are taking it, then open a pull request, as a draft if you still have questions. If a claim has no pull request after two weeks, anyone may take the issue; say so on the issue when you do.
 - Some issues say they are reserved for a maintainer implementation, and some already have an open pull request. Please comment on the issue or on that pull request instead of opening another one.
 - Open an issue with a reproducer before fixing a numerical edge case that realistic inputs do not reach, such as half-precision overflow at magnitudes far beyond image or coordinate ranges, or a matrix scaled by `1e15`. Each such fix costs a full review across dtypes and devices and adds a promotion path to maintain, so we decide first whether it is worth that cost. One issue can list several cases. Wrong results on realistic inputs are welcome directly as pull requests.
 - Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
@@ -196,6 +197,31 @@ The rest of this guide contains practical and technical guidance so nobody has t
 3. Build docs: `pixi run -e default build-docs`
 4. Preview: `open docs/build/html/index.html`
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
+
+### Docstring style
+
+A docstring is how a reader, human or agent, decides which function to call, so it states the choice before the details. `kornia/geometry/depth.py` is the worked example. Docstrings are reST: write literals with double backticks, as in ``` ``(B, 1, H, W)`` ```, and keep single backticks for roles such as `` :func:`name` ``.
+
+- **Title line**: one physical line, in task words, imperative, naming what sets the function apart from its siblings (2D or 3D, channels first or last, the criterion, one call or module form). Aim for about 80 characters; 120 is the hard limit. Avoid markup that breaks reST, such as a bare `*`. No two unrelated public symbols may share one (`tests/test_docstring_first_lines.py`); a class and the function it wraps may.
+- **Status words** come first when they apply: `Deprecated: use X.` or `Alias of X.`. Do not label a function "Legacy"; for a nearby better choice, write a neutral "for X, use Y" in the contract paragraph.
+- **Contract paragraph** (2-5 sentences) starts from the call: ``` ``points = depth_to_3d(depth, camera_matrix)`` ``` takes ... and returns .... A callable module shows construction and invocation; a data class (`Boxes`, `PinholeCamera`) shows construction and its main method. Name inputs and output with shapes, frames and units, and end with "use X instead" when a nearby task is better served elsewhere.
+- **Existing blocks** stay: `.. note::`, `Convention:`, `Args:`, `Return:`/`Returns:`, `Raises:`, trimmed where the paragraph already says the same. In a long class docstring, put whatever decides correct use in the first paragraph.
+- **`See Also:`** goes after `Returns`/`Raises` and before `Example`.
+  - Write each entry as `` - :func:`name`: how it differs. ``; the explanation is required.
+  - Spell targets as Sphinx registers them: a short name for an object documented under the same module, the documented path (`~kornia.geometry.camera.perspective.unproject_points`) for the rest. A shorter import alias renders as plain text, with no warning.
+  - List kornia objects only, with no self-links or private names; mention torch and Python functions in the contract paragraph instead. Link true siblings both ways (v1 and v2, 2D and 3D); reviewers check that, no test does.
+- **Module docstrings** open with a title line, then the conventions the module's functions share, then "Which function to use", grouped by task, one line each, naming every entry of the `__all__` of the namespace users import from as a role (`` :func:`name` ``) or a literal (``` ``name`` ```). A namespace without `__all__` (`kornia.geometry`, `kornia.geometry.transform`) catalogs its subpackages and main entry points instead; a defining file without `__all__` gets no catalog.
+- **Shapes** are literals such as ``` ``(B, 1, H, W)`` ```. Keep `:math:` for formulas.
+
+What `tests/test_docstring_style.py` checks:
+
+- every package of `kornia` is assigned to in scope or excluded (global);
+- each public function and class of a converted module has a `See Also:` whose entries carry an explanation and name a kornia object, with no self-link or private target; an exception needs a non-empty reason;
+- every Python-domain object role (`:func:`, `:class:`, `:meth:`, `:attr:`, `:data:`, `:const:`, `:exc:`, `:obj:`) in a converted object's docstring resolves as Sphinx resolves it. It must name either an object registered by the `.rst` pages under `docs/source`, or a torch, Python or NumPy object in the cached intersphinx inventories (`docs/source/_intersphinx`). Registered objects include the data attributes autodoc documents: enum members and dataclass fields under `:undoc-members:`, and variables with a `#:` comment or a docstring. An intersphinx object must be of a type the role links to: a function for `:func:`, a method for `:meth:`, an attribute or property for `:attr:`, and nothing for `:const:`. Only `:func:` and `:meth:` drop a trailing `()`. Roles in a catalog module docstring must import;
+- no source file of a shape-checked module writes a shape tuple as `:math:`, comments included;
+- a catalog namespace's module docstring names every export of its `__all__` inside a role or a double-backtick literal, where a qualified name must be a path to that export (`torch.nn.functional.normalize` does not catalog `kornia.enhance.normalize`); the same word in plain prose or in single backticks does not count.
+
+Read the Docs builds with `fail_on_warning: true` (`readthedocs.yml`) and the docs dependencies pinned in `uv.lock`, the same versions as `pixi run build-docs`, so a Sphinx warning fails the docs check. A module joins these checks when it is added to the lists in `testing/docstring_rollout.py`: `DOCSTRING_MODULES` (defining-module prefixes: `See Also:` and references), `CATALOG_NAMESPACES` (namespaces whose `__all__` the module docstring must name) and `SHAPE_CHECK_MODULES` (source-file prefixes, or `None` for all of `kornia/`). An object that needs no `See Also:` goes into `SEE_ALSO_EXCEPTIONS` with a reason. The package inventory is `IN_SCOPE_PACKAGES` and `EXCLUDED_PACKAGES`. The helpers are in `testing/docstring_style.py`; its `sphinx_registry` raises on an autodoc option it does not model, so a docs page that adds one (`:no-index:`, `:exclude-members:`, `:inherited-members:`) needs the registry taught first.
 
 ## Coding Standards
 
@@ -399,8 +425,8 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ### Working with AI
 
-- AI tools are welcome. Read their output, check it in the same way you would check your own work, and tell us briefly how they helped.
-- Useful details include what the tool did, what you changed afterward, and what you checked yourself. We do not need a percentage or an authorship category.
+- AI tools are welcome. Read their output, check it in the same way you would check your own work, and state in the pull request which part was done by a human, if any, and which by AI.
+- Useful details include whether you diagnosed the problem, designed the approach, edited the diff, or checked the result yourself, or whether an agent did the whole task from a prompt. We do not need a percentage.
 
 ### Communication
 
@@ -410,7 +436,7 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 
 ## Pull Request
 
-Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
+Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and state which part was done by a human, if any, and which by AI. The description goes in the pull request itself; do not commit it to the repository as a file such as `PR.md`.
 
 For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
 

@@ -693,12 +693,45 @@ class TestDeterminantToPolynomial(BaseTester):
         poly = solver.determinant_to_polynomial(A)
         assert poly.shape == (1, 11)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 8])
+    @pytest.mark.parametrize("batch_size", [0, 1, 2, 8])
     def test_shape(self, batch_size, device, dtype):
         B: int = batch_size
         A = torch.rand(B, 3, 13, device=device, dtype=dtype)
         poly = solver.determinant_to_polynomial(A)
         assert poly.shape == (B, 11)
+        assert poly.device == A.device
+        assert poly.dtype == A.dtype
+
+    def test_empty_batch_backward_6266(self, device, dtype):
+        """Empty coefficients retain their autograd connection to the input."""
+        A = torch.empty(0, 3, 13, device=device, dtype=dtype, requires_grad=True)
+        poly = solver.determinant_to_polynomial(A)
+        poly.sum().backward()
+        assert A.grad is not None
+        self.assert_close(A.grad, A.detach())
+
+    def test_non_contiguous_input(self, device, dtype):
+        A = torch.rand(2, 13, 3, device=device, dtype=dtype).mT
+        self.assert_close(solver.determinant_to_polynomial(A), solver.determinant_to_polynomial(A.contiguous()))
+
+    def test_gradcheck(self, device):
+        A = torch.rand(2, 3, 13, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(solver.determinant_to_polynomial, (A,), fast_mode=True)
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    def test_dynamo_fullgraph_6266(self, batch_size, device, dtype, torch_optimizer, optimizer_backend):
+        """Both batch sizes compile, and empty coefficients retain their autograd connection."""
+        if optimizer_backend == "jit":
+            pytest.skip("This regression exercises torch.compile(fullgraph=True).")
+        A = torch.rand(batch_size, 3, 13, device=device, dtype=dtype, requires_grad=batch_size == 0)
+        expected = solver.determinant_to_polynomial(A)
+        actual = torch_optimizer(solver.determinant_to_polynomial, fullgraph=True)(A)
+        assert actual.shape == (batch_size, 11)
+        self.assert_close(actual, expected)
+        if batch_size == 0:
+            actual.sum().backward()
+            assert A.grad is not None
+            self.assert_close(A.grad, A.detach())
 
     @pytest.mark.parametrize(
         "A_in, expected_poly_coeffs",

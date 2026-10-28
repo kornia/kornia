@@ -1,0 +1,1 @@
+The default `TrivialAugment` policy now posterizes to 4 to 8 bits, the same as `RandAugment` and `AutoAugment`. It used to draw from 0 to 4 bits, so one posterize draw in 8 returned an entirely black image, about 1% of all outputs. A policy passed explicitly is unchanged.

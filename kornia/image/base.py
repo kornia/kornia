@@ -22,7 +22,7 @@ from enum import Enum
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_SHAPE, CheckMessage
+from kornia.core.check import KORNIA_CHECK_SIZES, CheckMessage
 
 
 @dataclass(frozen=True)
@@ -139,6 +139,9 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
 ) -> bool:
     """Check tensor shape matches the expected ImageLayout.
 
+    The sizes are compared as numbers, so an int, float or one-element tensor size is checked the same way, and a
+    symbolic size under ``torch.compile`` is related to the tensor's size without being turned into a string.
+
     Args:
         x: tensor to validate.
         layout: expected image layout.
@@ -149,16 +152,19 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
         True if shape matches, False otherwise (when raises=False).
 
     """
+    # Not KORNIA_CHECK_SHAPE: it takes strings and skips every entry that is not all digits, a rule meant for names
+    # such as "H", so a tensor or float size would never be compared, and str() of a symbolic size under
+    # torch.compile cannot be traced.
     if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
-        shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
+        sizes = [layout.channels, layout.image_size.height, layout.image_size.width]
     elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-        shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
+        sizes = [layout.image_size.height, layout.image_size.width, layout.channels]
     else:
         if raises:
             raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
         return False
 
-    return KORNIA_CHECK_SHAPE(x, shape, msg, raises)
+    return KORNIA_CHECK_SIZES(x, sizes, msg, raises)
 
 
 # TODO: define CompressedImage

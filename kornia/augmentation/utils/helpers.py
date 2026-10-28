@@ -25,7 +25,7 @@ from torch.distributions import Beta, Uniform
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes
+from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -79,6 +79,34 @@ def _boxes_to_padded_tensor(boxes: Boxes, mode: str) -> torch.Tensor:
     return torch.where(valid, out, torch.zeros((), device=out.device, dtype=out.dtype))
 
 
+def _frame_boxes(boxes: VideoBoxes) -> Boxes:
+    r"""View :class:`VideoBoxes` as the frame-level :class:`Boxes` of its :math:`(B \cdot T, N, 4, 2)` storage.
+
+    The children of :class:`VideoSequential` run on the flattened frames, and their parameters (a mix's
+    ``permutation``, a gate) index frames. ``VideoBoxes`` indexes whole videos, so a child given one would select
+    videos with frame indices (#6173). The view shares the storage and the validity mask.
+    """
+    frames = Boxes(boxes._data, False, mode=boxes._mode)
+    frames._N = boxes._N
+    frames._valid = boxes._valid
+    frames._is_batched = boxes._is_batched
+    return frames
+
+
+def _video_boxes(frames: Boxes, temporal_channel_size: int) -> VideoBoxes:
+    """Wrap frame-level :class:`Boxes` back into :class:`VideoBoxes` with ``temporal_channel_size`` frames.
+
+    A ``VideoBoxes`` is a dense container, so the per-frame padding counts ``_N`` are not carried over. Padding a
+    child adds, such as the rows a partial ``RandomMosaic`` gate pads a skipped frame with, is marked invalid
+    instead; every export zeroes invalid rows and every indexed read or write carries them.
+    """
+    boxes = VideoBoxes(frames._data, False, mode=frames._mode)
+    boxes._valid = frames._valid
+    boxes._is_batched = frames._is_batched
+    boxes.temporal_channel_size = temporal_channel_size
+    return boxes
+
+
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
     r"""Validate the 2D input of the wrapped function.
 
@@ -130,7 +158,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-    r"""Infer input shape.
+    r"""Return the (B, C, H, W) shape of a 2D augmentation input, or of the image of an (input, transform) tuple.
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
@@ -139,7 +167,7 @@ def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tens
 
 
 def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-    r"""Infer input shape.
+    r"""Return the (B, C, D, H, W) shape of a 3D augmentation input, or of the volume of an (input, transform) tuple.
 
     Input may be either (torch.Tensor,) or (torch.Tensor, transform_matrix)
     """
@@ -150,7 +178,7 @@ def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Te
 def _transform_input_by_shape(
     input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
 ) -> torch.Tensor:
-    """Reshape an input torch.Tensor to have the same dimensions as the reference_shape.
+    """Add the missing batch or channel dimension of an image tensor, e.g. a mask, to match a (B, C, H, W) reference.
 
     Arguments:
         input: torch.Tensor to be transformed
@@ -181,7 +209,11 @@ def _transform_input_by_shape(
 def _transform_input3d_by_shape(
     input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
 ) -> torch.Tensor:
-    """Reshape an input torch.Tensor to have the same dimensions as the reference_shape.
+    """Add the missing batch or channel dimension of a volume tensor, e.g. a mask, to match a (B, C, D, H, W) reference.
+
+    A ``(D, H, W)`` input becomes ``(1, 1, D, H, W)``. A 4-dim input whose first size equals the reference batch size
+    is read as ``(B, D, H, W)`` and becomes ``(B, 1, D, H, W)``; any other 4-dim input is read as ``(C, D, H, W)`` and
+    becomes ``(1, C, D, H, W)``.
 
     Arguments:
         input: torch.Tensor to be transformed
@@ -195,10 +227,10 @@ def _transform_input3d_by_shape(
     if len(input.shape) == 3:
         input = input.unsqueeze(0)
 
-    if len(input.shape) == 4 and B == input.shape[-4]:
+    if len(input.shape) == 4:
         # If the first dim matches within the batch_size, add a `C` dim
         # Useful to handler Masks without `C` dimensions
-        input = input.unsqueeze(2)
+        input = input.unsqueeze(1) if B == input.shape[-4] else input.unsqueeze(0)
 
     if match_channel and C:
         if not input.shape[-4] == C:
@@ -210,7 +242,7 @@ def _transform_input3d_by_shape(
 
 
 def _transform_input(input: torch.Tensor) -> torch.Tensor:
-    r"""Reshape an input torch.Tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
+    r"""Unsqueeze an ``(H, W)`` or ``(C, H, W)`` image tensor to 4 dims, ``(B, C, H, W)``; a 4-dim input is kept.
 
     Args:
         input: torch.Tensor
@@ -235,7 +267,7 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
 
 
 def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
-    r"""Reshape an input torch.Tensor to be (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
+    r"""Unsqueeze a ``(D, H, W)`` or ``(C, D, H, W)`` volume to 5 dims, ``(B, C, D, H, W)``; a 5-dim input is kept.
 
     Args:
         input: torch.Tensor
@@ -262,7 +294,7 @@ def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List[torch.dtype]) -> None:
-    r"""Check if the dtype of the input torch.Tensor is in the range of accepted_dtypes.
+    r"""Raise TypeError unless the dtype of ``input`` is one of ``accepted_dtypes``.
 
     Args:
         input: torch.Tensor
@@ -300,7 +332,7 @@ def _transform_output_shape(
 
 
 def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
-    r"""Check if the dtype of the input torch.Tensor is in the range of accepted_dtypes.
+    r"""Raise TypeError unless ``shape`` has as many dimensions as one of ``required_shapes``, e.g. ``"BCHW"``.
 
     Args:
         shape: torch.Tensor shape
@@ -312,7 +344,7 @@ def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: 
             passed = True
             break
     if not passed:
-        raise TypeError(f"Expected input shape in {required_shape}. Got {shape}.")
+        raise TypeError(f"Expected input shape in {required_shapes}. Got {shape}.")
 
 
 def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) -> bool:
@@ -338,7 +370,7 @@ def _adapted_rsampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> torch.Tensor:
-    r"""Sample from a uniform reparameterized sampling function that accepts 'same_on_batch'.
+    r"""Draw a reparameterized sample of ``shape`` from ``dist``, one draw repeated over the batch if same_on_batch.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -369,7 +401,7 @@ def _adapted_sampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> torch.Tensor:
-    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
+    r"""Draw a sample of ``shape`` from ``dist`` without reparameterization, one draw for the batch if same_on_batch.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -388,7 +420,7 @@ def _adapted_uniform(
     high: Union[float, torch.Tensor],
     same_on_batch: bool = False,
 ) -> torch.Tensor:
-    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
+    r"""Draw a reparameterized sample of ``shape`` from Uniform(low, high), one draw for the batch if same_on_batch.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.

@@ -319,6 +319,20 @@ class TestLoFTR(BaseTester):
         for k, v in out.items():
             self.assert_close(v, out_jit[k])
 
+    def test_empty_batch_6266(self, device, dtype):
+        """An empty batch flattens the coarse maps without a -1 to infer and returns no matches."""
+        loftr = _loftr_matching_every_cell(device, dtype)
+        out = loftr(
+            {
+                "image0": torch.rand(0, 1, 64, 64, device=device, dtype=dtype),
+                "image1": torch.rand(0, 1, 64, 64, device=device, dtype=dtype),
+            }
+        )
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
+        assert out["confidence"].shape == (0,)
+        assert out["batch_indexes"].shape == (0,)
+
 
 class TestLoFTRConfigIsPerInstance(BaseTester):
     """Building a LoFTR must not write into ``default_cfg`` or into a caller-passed config."""
@@ -715,6 +729,16 @@ class TestCoarseMatching(BaseTester):
         assert torch.equal(out["mkpts0_c"], expected)  # products of small integers and 1.3671875: exact in float32
 
 
+def _autocast_softmax_dtype(device: torch.device) -> torch.dtype:
+    """The dtype ``F.softmax`` returns for a float16 input under float16 autocast on ``device``.
+
+    The coarse confidence is a product of softmaxes, so its dtype follows the device's autocast policy: CPU autocast
+    keeps float16, while CUDA autocast runs softmax in float32 (it is on CUDA's float32 list) and returns float32.
+    """
+    with torch.autocast(device.type, dtype=torch.float16):
+        return F.softmax(torch.zeros(1, device=device, dtype=torch.float16), 0).dtype
+
+
 class TestCoarseMatchingSelection(BaseTester):
     """The row max / column max selection and the dual softmax against their reference formulations."""
 
@@ -853,7 +877,7 @@ class TestCoarseMatchingSelection(BaseTester):
         data = {"hw0_c": (256, 256), "hw1_c": (1, 1), "stride_c": 8}
         with torch.autocast(device.type, dtype=torch.float16):
             cm(feat0, feat1, data)
-        expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=torch.float16)
+        expected = torch.full((1, 65536, 1), 1 / 65536, device=device, dtype=_autocast_softmax_dtype(device))
         self.assert_close(data["conf_matrix"], expected, rtol=0.0, atol=0.0)
 
     def test_temperature_scaling_autocast(self, device):
@@ -865,7 +889,8 @@ class TestCoarseMatchingSelection(BaseTester):
         data = {"hw0_c": (1, 1), "hw1_c": (1, 1), "stride_c": 8}
         with torch.autocast(device.type, dtype=torch.float16):
             cm(feat0, feat1, data)
-        self.assert_close(data["conf_matrix"], torch.ones(1, 1, 1, device=device, dtype=torch.float16))
+        expected = torch.ones(1, 1, 1, device=device, dtype=_autocast_softmax_dtype(device))
+        self.assert_close(data["conf_matrix"], expected)
         for grad in torch.autograd.grad(data["conf_matrix"].sum(), (feat0, feat1)):
             self.assert_close(grad, torch.zeros_like(grad), rtol=0.0, atol=0.0)
 

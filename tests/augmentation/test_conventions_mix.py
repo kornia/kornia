@@ -570,7 +570,7 @@ class TestMixConventions(BaseTester):
             expected_lambda = 1 - width * height / 64
             self.assert_close(mixed[mix, :, 2], expected_lambda.expand(4))
             # each mix pastes its own cut from the original image, a later mix over an earlier one
-            cut = bbox_to_mask(crops[mix], 8, 8).bool().unsqueeze(1)
+            cut = bbox_to_mask(crops[mix], size=(8, 8)).bool().unsqueeze(1)
             expected_image = torch.where(cut, image[pairs[mix]], expected_image)
         self.assert_close(output, expected_image, rtol=0, atol=0)
 

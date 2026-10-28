@@ -19,9 +19,11 @@ from typing import Any, Literal, overload
 
 import torch
 
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.grid import create_meshgrid
+
+__all__ = ["StereoCamera", "StereoException", "reproject_disparity_to_3D"]
 
 
 class StereoException(Exception):
@@ -59,7 +61,7 @@ class StereoCamera:
         - the baseline is read back as the attribute :attr:`tx` ``= -P_right[0, 3] / fx``, which must be
           strictly **positive** for every rig in the batch: a zero baseline and swapped cameras both raise. A
           non-finite ``P_right[0, 3]`` is not screened, and these checks and the equal-intrinsics check are
-          skipped under ``torch.export``.
+          skipped under graph capture (``torch.compile``, ``torch.export``).
           The :doc:`/geometry.camera.stereo` page's symbol ``tx`` is the negation of this attribute; :attr:`Q`
           is the page's matrix evaluated at the page's ``tx``.
         - ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``; with the divide by ``W = -fy * disparity``
@@ -72,17 +74,11 @@ class StereoCamera:
 
     .. warning::
         A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
-        case, so it is zero on every rig the constructor accepts outside ``torch.export``:
+        case, so it is zero on every rig the constructor accepts outside graph capture:
         `#4270 <https://github.com/kornia/kornia/issues/4270>`_. A zero disparity (a point at infinity) makes
         ``W = 0``; the divide is then skipped and a finite placeholder, behind the camera on a real rig, is
         returned. Request ``return_mask=True`` from :meth:`reproject_disparity_to_3D` to identify numerical
         reconstruction failures without changing those coordinates or their gradients.
-
-    .. warning::
-        The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
-        :doc:`/geometry.camera.stereo` but is in no ``__all__``, so it is not reachable as
-        ``kornia.geometry.reproject_disparity_to_3D``. Tracked as
-        `#4275 <https://github.com/kornia/kornia/issues/4275>`_.
 
     Args:
         rectified_left_camera: The rectified left camera projection matrix of shape :math:`(B, 3, 4)`.
@@ -158,8 +154,9 @@ class StereoCamera:
             )
 
         # Ensure all intrinsics parameters (fx, fy, cx, cy) are the same in both cameras.
-        # The check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and not torch.all(
+        # The check reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
+        # torch.export).
+        if not is_compiling() and not torch.all(
             torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])
         ):
             raise StereoException(
@@ -174,9 +171,10 @@ class StereoCamera:
         # ``any``, so one bad rig cannot hide behind good ones, and an empty batch stays vacuously valid. Neither
         # comparison screens non-finite input: ``nan`` fails both of them and ``-inf`` is negative, so both are
         # still accepted, exactly as they were before these checks were tightened.
-        # The check reads the data, which graph capture cannot do; skip it under export.
+        # The check reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
+        # torch.export).
         tx_fx = rectified_right_camera[..., 0, 3]
-        if not is_exporting():
+        if not is_compiling():
             if torch.any(tx_fx == 0):
                 raise StereoException(
                     "Expected a non-zero stereo baseline, but :math:`T_x * f_x` is 0 for at least one camera pair, "

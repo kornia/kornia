@@ -24,8 +24,10 @@ import pytest
 import torch
 
 import kornia.augmentation as K
-from kornia.augmentation.random_generator import RectangleEraseGenerator
-from kornia.core.exceptions import BaseError, ShapeError
+from kornia.augmentation._2d.intensity.base import _clamp_unit_range
+from kornia.augmentation.random_generator import PosterizeGenerator, RectangleEraseGenerator
+from kornia.core._compat import torch_version_ge
+from kornia.core.exceptions import AsyncCheckError, BaseError, ShapeError
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
@@ -406,14 +408,20 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(out, raw.clamp(0.0, 1.0))
         assert float((out - raw).abs().max()) > unclamped_gap / 2
 
-    def test_convention_random_gamma_negative_exponent_is_unchecked_on_mps(self, device, dtype):
-        if device.type != "mps":
-            pytest.skip("MPS only: CPU rejects negative gamma; CUDA would invalidate the context with a device assert")
-        # kornia does not run the non-negativity check for an MPS image, so gamma=-1 is evaluated as
-        # clamp(gain / input, 0, 1).
+    def test_convention_random_gamma_negative_exponent_is_rejected(self, device, dtype):
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value check is a device-side assert that invalidates the context")
+        # The non-negativity check of adjust_gamma runs on every device. It reads a CPU value during the call, and so
+        # on MPS before torch 2.13, which has no assert kernel; from 2.13 the MPS assert raises at the next sync.
         image = torch.tensor([0.2, 0.5, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
-        out = K.RandomGamma((-1.0, -1.0), (0.1, 0.1), p=1.0)(image)
-        self.assert_close(out, image.new_tensor([0.5, 0.2, 0.125]).reshape_as(image))
+        augmentation = K.RandomGamma((-1.0, -1.0), (0.1, 0.1), p=1.0)
+        if device.type == "mps" and torch_version_ge(2, 13):
+            augmentation(image)
+            with pytest.raises(RuntimeError, match="Gamma must be non-negative"):
+                torch.mps.synchronize()
+        else:
+            with pytest.raises(AsyncCheckError, match="Gamma must be non-negative"):
+                augmentation(image)
 
     def test_convention_random_saturation_clamps_input_and_rgb_4430(self, device, dtype):
         pixels = [[-0.1, 0.5, 0.5], [1.5, 0.0, 0.0], [-0.1, -0.5, -0.9], [2.0, 1.0, 0.5]]
@@ -784,6 +792,84 @@ class TestIntensityColourConventions(BaseTester):
         assert int(drawn.min()) == bits
         assert int(drawn.max()) == 8
 
+    # RandomPosterize used to draw a continuous number on [lo, hi] and round it, which gave the endpoints half
+    # the probability of interior values (#6334). Whole-number ranges are now uniform over [lo, hi].
+    # The pin allows 15% around the uniform count, 8 sigma for 3000 draws per value.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("bits", [(0, 8), (1, 4), 3, (5, 7)])
+    def test_convention_random_posterize_bits_are_closed_and_uniform_6334(self, bits):
+        """Check that RandomPosterize draws whole numbers uniformly across closed range."""
+        if isinstance(bits, int):
+            low, high = bits, 8
+        else:
+            low, high = bits
+        count = high - low + 1
+        torch.manual_seed(0)
+        drawn = K.RandomPosterize(bits=bits, p=1.0).forward_parameters((count * 3000, 1, 4, 4))["bits_factor"]
+
+        assert drawn.dtype == torch.int32
+        assert (int(drawn.min()), int(drawn.max())) == (low, high)
+        counts = torch.bincount((drawn - low).long(), minlength=count)
+        expected = drawn.numel() / count
+        assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), counts.tolist()
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_posterize_same_on_batch_shares_one_whole_number_6334(self):
+        """Check that same_on_batch draws a single uniform whole number across the batch."""
+        torch.manual_seed(0)
+        drawn = K.RandomPosterize((0, 8), p=1.0, same_on_batch=True).forward_parameters((16, 1, 4, 4))["bits_factor"]
+
+        assert drawn.shape == (16,)
+        assert bool((drawn == drawn[0]).all())
+        assert drawn.dtype == torch.int32
+
+    # The excluded end point of the half-open sampler range is clamped back: for the largest draw
+    # ``u = 1 - 2 ** -24``, ``lo + u * (hi + 1 - lo)`` rounds up onto ``hi + 1`` in float32.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("bits", [(1, 1), (0, 0), (8, 8), (0, 8), (3, 5)])
+    def test_convention_random_posterize_largest_draw_stays_in_the_closed_range_6334(self, monkeypatch, bits):
+        """Check that upper bound draw is clamped within closed range."""
+        largest = 1 - 2**-24
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.full_like(real_rand(*args, **kwargs), largest))
+        drawn = K.RandomPosterize(bits=bits, p=1.0).forward_parameters((4, 1, 4, 4))["bits_factor"]
+
+        high = bits[1] if isinstance(bits, tuple) else (8 if isinstance(bits, int) else int(bits))
+        assert drawn.tolist() == [high] * 4
+
+    # A range with a fractional bound is not a closed range of whole numbers, so it keeps the continuous draw
+    # and rounds half-to-even.
+    @pytest.mark.device_agnostic
+    def test_convention_random_posterize_fractional_range_6334(self, monkeypatch):
+        """Check that fractional ranges preserve continuous draw with round half-to-even."""
+        # Force continuous draws that are half-to-even ties on range (1.5, 4.5) with span 3.0:
+        # 1.5 + (1/3) * 3.0 = 2.5 -> rounds to 2 (even)
+        # 1.5 + (2/3) * 3.0 = 3.5 -> rounds to 4 (even)
+        u = torch.tensor([1.0 / 3.0, 2.0 / 3.0])
+        monkeypatch.setattr(
+            torch, "rand", lambda *args, **kwargs: u.to(device=kwargs.get("device"), dtype=kwargs.get("dtype"))
+        )
+        drawn_controlled = K.RandomPosterize(bits=(1.5, 4.5), p=1.0).forward_parameters((2, 1, 4, 4))["bits_factor"]
+        assert drawn_controlled.tolist() == [2, 4]
+
+        monkeypatch.undo()
+        torch.manual_seed(0)
+        drawn = K.RandomPosterize(bits=(1.5, 4.5), p=1.0).forward_parameters((6000, 1, 4, 4))["bits_factor"]
+        assert int(drawn.min()) >= 1
+        assert int(drawn.max()) <= 5
+
+    def test_convention_random_posterize_generator_supports_mps_device_6334(self):
+        """Check that PosterizeGenerator avoids float64 conversion on MPS device."""
+        if not torch.backends.mps.is_available():
+            pytest.skip("MPS device not available")
+        generator = PosterizeGenerator(torch.tensor([0, 8], device="mps"))
+        params = generator(torch.Size([4]))
+        assert params["bits_factor"].device.type == "mps"
+
+        generator_tuple = PosterizeGenerator((0, 8))
+        generator_tuple.set_rng_device_and_dtype(device=torch.device("mps"), dtype=torch.float32)
+        assert generator_tuple.bit_sampler.low.device.type == "mps"
+
     # The factor blends linearly between the blurred image (0) and the input (1); above 1 it sharpens.
     # Snippet used to generate expected:
     #   torch.manual_seed(0); print((K.RandomSharpness((f, f), p=1.0)(x) - x).abs().max())
@@ -1091,7 +1177,7 @@ class TestIntensityColourConventions(BaseTester):
     )
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
         if case in ("gamma_negative", "gain_negative") and device.type != "cpu":
-            pytest.skip("CPU only: on CUDA the value assert is a device-side assert; kornia skips it on MPS")
+            pytest.skip("CPU only: a device-side assert on CUDA, and raised at the next sync on MPS from torch 2.13")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),
@@ -1459,6 +1545,37 @@ class TestIntensityColourConventions(BaseTester):
 
 
 class TestIntensityInputClamping(BaseTester):
+    @pytest.mark.parametrize("forward_mode", ["jvp", "dual"])
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_input_clamp_preserves_forward_tangents(self, device, dtype, forward_mode, grad_enabled, requires_grad):
+        image = torch.tensor([-0.5, -0.0, 0.0, 0.25, 1.0, 1.5], device=device, dtype=dtype)
+        image.requires_grad_(requires_grad)
+        tangent = torch.tensor([2.0, 3.0, 4.0, 5.0, 6.0, 7.0], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 3.0, 4.0, 5.0, 6.0, 0.0], device=device, dtype=dtype)
+        # no_grad disables reverse-mode recording, but forward AD must still pass the tangent at both bounds.
+        with torch.set_grad_enabled(grad_enabled):
+            if forward_mode == "jvp":
+                values, actual = torch.func.jvp(_clamp_unit_range, (image,), (tangent,))
+            else:
+                with torch.autograd.forward_ad.dual_level():
+                    dual = torch.autograd.forward_ad.make_dual(image, tangent)
+                    values, actual = torch.autograd.forward_ad.unpack_dual(_clamp_unit_range(dual))
+        self.assert_close(values, image.clamp(0.0, 1.0))
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("grad_enabled", [False, True])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_input_clamp_matches_clamp_on_zeros_nan_and_inf(self, device, dtype, grad_enabled, requires_grad):
+        image = torch.tensor([-0.0, 0.0, float("nan"), -float("inf"), float("inf")], device=device, dtype=dtype)
+        image.requires_grad_(requires_grad)
+        with torch.set_grad_enabled(grad_enabled):
+            actual = _clamp_unit_range(image)
+        assert torch.equal(torch.isnan(actual), torch.isnan(image))
+        finite = ~torch.isnan(image)
+        # The sign of a zero is not pinned: clamp gives +0.0 for -0.0 on MPS and under Inductor, -0.0 in eager CPU/CUDA.
+        self.assert_close(actual[finite], image.clamp(0.0, 1.0)[finite])
+
     @pytest.mark.parametrize("name", ["ColorJiggle", "RandomGamma", "RandomPosterize"])
     def test_bicubic_overshoot_is_clamped_before_intensity(self, device, dtype, name):
         torch.manual_seed(0)
@@ -1507,6 +1624,30 @@ class TestIntensityInputClamping(BaseTester):
         self.assert_close(out, image.detach())
         out.sum().backward()
         self.assert_close(image.grad, torch.ones_like(image))
+
+    # Without a recorded gradient the input clamp is a single torch.clamp; with one it selects the input where the
+    # clamp left it unchanged. Both must return the same values, and the recorded gradient is 1 inside [0, 1]
+    # and 0 outside.
+    @pytest.mark.parametrize(
+        "factory",
+        [lambda: K.RandomBrightness(brightness=(1.0, 1.0), p=1.0), lambda: K.ColorJiggle(0.0, 0.0, 0.0, 0.0, p=1.0)],
+        ids=["RandomBrightness", "ColorJiggle"],
+    )
+    def test_unit_range_input_clamp_matches_with_and_without_a_gradient(self, device, dtype, factory):
+        values = torch.tensor([-0.5, -0.0, 0.0, 0.25, 0.75, 1.0, 1.5, 2.0], device=device, dtype=dtype)
+        image = values.reshape(1, 1, 2, 4).expand(1, 3, 2, 4).contiguous()
+        expected = image.clamp(0.0, 1.0)
+        with torch.no_grad():
+            assert torch.equal(factory()(image), expected)
+        assert torch.equal(factory()(image), expected)
+        leaf = image.clone().requires_grad_()
+        out = factory()(leaf)
+        assert torch.equal(out.detach(), expected)
+        out.sum().backward()
+        interior = (image > 0.0) & (image < 1.0)
+        outside = (image < 0.0) | (image > 1.0)
+        assert torch.equal(leaf.grad[interior], torch.ones_like(leaf.grad[interior]))
+        assert torch.equal(leaf.grad[outside], torch.zeros_like(leaf.grad[outside]))
 
     @pytest.mark.parametrize("gamma", [0.5, 1.5])
     def test_gamma_gradient_outside_range_is_zero(self, device, dtype, gamma):

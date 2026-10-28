@@ -42,6 +42,8 @@ Image 2D transforms
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
 .. autofunction:: build_laplacian_pyramid
+.. autofunction:: is_powerof_two
+.. autofunction:: find_next_powerof_two
 
 Image 3D transforms
 -------------------

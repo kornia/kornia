@@ -58,7 +58,7 @@ _LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Ten
 
 
 class AugmentationBase2D(_AugmentationBase):
-    r"""AugmentationBase2D base class for customized augmentation implementations.
+    r"""Base class for custom 2D augmentations, applied per sample with probability ``p`` (default 0.5).
 
     AugmentationBase2D aims at offering a generic base class for a greater level of customization.
     If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
@@ -85,7 +85,7 @@ class AugmentationBase2D(_AugmentationBase):
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
-          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. A sample the gate skips comes back
+          it can be set as an attribute on any augmentation. A sample the gate skips comes back
           with its input values, its values cannot make the call raise, and where they are finite its gradient
           is the identity; a class whose transform checks input values or has an unbounded derivative runs it
           on 0.5 for skipped samples. An augmentation that changes the sample shape still raises ``ValueError``
@@ -137,7 +137,7 @@ class AugmentationBase2D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
-    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+    r"""Base class for 2D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
