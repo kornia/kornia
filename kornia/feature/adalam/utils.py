@@ -158,7 +158,9 @@ def draw_first_k_couples(k: int, rdims: torch.Tensor, dv: torch.device) -> torch
     The couples are ``(1, 0), (2, 0), (2, 1), (3, 0), ...``: the ``k`` distinct pairs ``(i, j)`` with ``j < i`` in
     that order, so the residual couples after the complete rows continue with ``(n + 1, 0), (n + 1, 1), ...``. The
     reference AdaLAM implementation used the residual count as that first index, which repeated couples already
-    drawn (8 of the default 128) instead of trying new ones.
+    drawn (8 of the default 128) instead of trying new ones. Each region then takes the indices modulo its number of
+    samples in ``rdims``, so the couples stay distinct only in a region with enough samples for ``k`` distinct
+    couples, at least 17 for ``k = 128``; in a smaller region they wrap, and can repeat or pair a sample with itself.
     """
     max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
     residual_search = int(k - max_exhaustive_search * (max_exhaustive_search + 1) / 2)
