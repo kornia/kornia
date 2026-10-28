@@ -311,8 +311,12 @@ def _bilateral_blur(
     # to the system on every free, faults fewer pages back in per call.
     kernel = space_kernel * (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, Ky, W, Kx)
     del color_distance_sq
-    # Over Kx, then over Ky.
-    return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
+    # Over Kx, then over Ky on MPS, where reducing two non-adjacent axes is significantly slower.
+    # Other devices reduce both window axes in one step to avoid intermediate half-precision rounding
+    # and preserve gradient accuracy with respect to tensor sigmas (#6284).
+    if input.device.type == "mps":
+        return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
+    return (unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))
 
 
 def bilateral_blur(

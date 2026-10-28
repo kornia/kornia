@@ -1,0 +1,1 @@
+`bilateral_blur` now reduces window axes in a single sum on non-MPS devices, avoiding intermediate half-precision rounding and restoring float16/bfloat16 gradient accuracy with respect to `sigma_color` and `sigma_space`.

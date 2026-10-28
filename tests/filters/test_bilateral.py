@@ -769,3 +769,28 @@ class TestConventionsBilateralBlur(BaseTester):
                 bilateral_blur(image, 3, sigma_color, (1.0, 1.0))
             with pytest.raises(BaseError):
                 joint_bilateral_blur(image, image, 3, sigma_color, (1.0, 1.0))
+
+    def test_half_precision_sigma_gradient_accuracy_6284(self, device):
+        """Single-step window sum preserves float16 gradient accuracy w.r.t. sigmas (#6284)."""
+        if device.type == "mps":
+            pytest.skip("MPS keeps two-step sum due to non-adjacent reduction speed")
+        torch.manual_seed(0)
+        x = torch.rand(1, 3, 32, 40, device=device)
+        w = torch.rand(1, 3, 32, 40, device=device)
+
+        def grads(dtype):
+            leaves = [
+                x.to(dtype).clone().requires_grad_(),
+                torch.tensor([0.1], device=device, dtype=dtype, requires_grad=True),
+                torch.tensor([[1.5, 1.5]], device=device, dtype=dtype, requires_grad=True),
+            ]
+            out = bilateral_blur(leaves[0], (5, 5), leaves[1], leaves[2])
+            (out.float() * w).sum().backward()
+            return [t.grad.float() for t in leaves]
+
+        ref = grads(torch.float32)
+        half_grads = grads(torch.float16)
+        rel_color = ((half_grads[1] - ref[1]).abs().max() / ref[1].abs().max()).item()
+        rel_space = ((half_grads[2] - ref[2]).abs().max() / ref[2].abs().max()).item()
+        assert rel_color < 0.03
+        assert rel_space < 0.03
