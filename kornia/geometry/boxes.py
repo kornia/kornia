@@ -1155,8 +1155,16 @@ class VideoBoxes(Boxes):
         return out
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> VideoBoxes:
-        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`.
+
+        A :class:`VideoBoxes` value must have the same ``temporal_channel_size``: otherwise its frames would be
+        regrouped into videos of another length. A plain :class:`Boxes` value is read as frames of this length.
+        """
         size = self.temporal_channel_size
+        if isinstance(value, VideoBoxes) and value.temporal_channel_size != size:
+            raise ValueError(
+                f"Cannot assign videos of {value.temporal_channel_size} frames to videos of {size} frames."
+            )
         # Explicit video counts: a clip with no boxes has 0 elements, so a -1 in the view would be ambiguous.
         n, m = self._data.shape[0] // size, value.data.shape[0] // size
         self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
