@@ -782,7 +782,7 @@ def resize_to_be_divisible(
         align_corners (Optional[bool], optional):
             whether to align the corners of the input and output. Defaults to None.
         side (str, optional): Deprecated and ignored. Both sides are rounded independently to a multiple of
-            ``divisible_factor``. Values other than ``"short"`` emit a :class:`DeprecationWarning`.
+            ``divisible_factor``. In eager mode, values other than ``"short"`` emit a :class:`DeprecationWarning`.
             This argument will be removed in a future release.
         antialias (bool, optional):
             If True, then image will be filtered with Gaussian before downscaling. Defaults to False.
@@ -791,13 +791,14 @@ def resize_to_be_divisible(
         torch.Tensor: The resized tensor.
 
     """
-    if side != "short":
-        warnings.warn(
-            "The `side` argument of `resize_to_be_divisible` is deprecated, has no effect, and will be removed "
-            "in a future release. Both sides are rounded to a multiple of `divisible_factor`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript needs a standalone guard.
+        if side != "short" and not torch.compiler.is_compiling():
+            warnings.warn(
+                "The `side` argument of `resize_to_be_divisible` is deprecated, has no effect, and will be removed "
+                "in a future release. Both sides are rounded to a multiple of `divisible_factor`.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
     if input.ndim < 2:
