@@ -907,9 +907,8 @@ class TestQuaternionToAngleAxis(BaseTester):
         # bit-identical in 500/500 random float64 quaternions, seeded torch.Generator(7), for both
         # factors -- a non-power-of-two factor such as 3 is invariant to rounding only, 82/500).
         # quaternion_exp_to_log does not normalise and is invariant to a positive scale (for ||u|| >= eps), for the
-        # same reason:
-        # atan2(||u||, w) and u / ||u|| do not depend on the scale (q = (1, 2, 3, 4) scaled by 3, 1e-3 or
-        # 1e3 stays within 2.2e-16 of the unscaled log in float64).
+        # same reason: atan2(||u||, w) and u / ||u|| do not depend on the scale (q = (1, 2, 3, 4) scaled by 3, 1e-3
+        # or 1e3 stays within 2.2e-16 of the unscaled log in float64).
         quaternion = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
 
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)

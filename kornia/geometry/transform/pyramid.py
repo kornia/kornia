@@ -145,7 +145,7 @@ class PyrUp(nn.Module):
     r"""Upsample images to twice their size and blur them with the 5x5 pyramid kernel (module form).
 
     Build ``up = PyrUp()``, optionally with ``border_type`` and ``align_corners``, then ``out = up(input)`` resizes
-    ``(B, C, H, W)`` images to ``(B, C, 2 H, 2 W)`` and blurs them, as :func:`pyrup` does. For the step down, use
+    ``(B, C, H, W)`` images to ``(B, C, H * 2, W * 2)`` and blurs them, as :func:`pyrup` does. For the step down, use
     :class:`PyrDown`.
 
     Convention:
@@ -242,7 +242,7 @@ class ScalePyramid(nn.Module):
 
     Shape:
         - Input: ``(B, C, H, W)``
-        - Output 1st: ``[(B, C, L, H, W), (B, C, L, H // 2, W // 2), ...]``, starting from ``(B, C, L, 2 H, 2 W)``
+        - Output 1st: ``[(B, C, L, H, W), (B, C, L, H // 2, W // 2), ...]``, starting from ``(B, C, L, H * 2, W * 2)``
           with ``double_image=True``
         - Output 2nd: ``[(B, L), (B, L), (B, L), ...]``
         - Output 3rd: ``[(B, L), (B, L), (B, L), ...]``
@@ -543,7 +543,7 @@ def pyrdown(
 def pyrup(input: torch.Tensor, border_type: str = "reflect", align_corners: bool = False) -> torch.Tensor:
     r"""Upsample images to twice their size and blur them with the 5x5 pyramid kernel, one pyramid level up.
 
-    ``out = pyrup(input)`` takes images ``(B, C, H, W)``, resizes them bilinearly to ``(B, C, 2 H, 2 W)`` and then
+    ``out = pyrup(input)`` takes images ``(B, C, H, W)``, resizes them bilinearly to ``(B, C, H * 2, W * 2)`` and then
     blurs them with the 5x5 binomial kernel; it has no ``factor``. With ``pyrdown`` it builds the levels of
     :func:`build_laplacian_pyramid`. For the step down, use :func:`pyrdown`; to change the size without blurring,
     :func:`~kornia.geometry.transform.resize`.

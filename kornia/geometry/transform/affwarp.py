@@ -337,8 +337,7 @@ def rotate(
     image centre ``((W - 1) / 2, (H - 1) / 2)``), and returns them at their size; the uncovered corners are padded
     by ``padding_mode``, except along a one-pixel axis, which the default ``align_corners=True`` repeats
     (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For a stored angle, use :class:`Rotate`; for volumes,
-    :func:`rotate3d`; for the matrix, to
-    compose or reuse it, :func:`get_rotation_matrix2d`.
+    :func:`rotate3d`; for the matrix, to compose or reuse it, :func:`get_rotation_matrix2d`.
 
     .. image:: _static/img/rotate.png
 
@@ -597,8 +596,7 @@ def scale(
     pixels, by default the image centre), and returns them at their size: a factor above 1 zooms in and crops, one
     below 1 shrinks the content and pads the border, except along a one-pixel axis, which the default
     ``align_corners=True`` repeats (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). To change the image
-    size instead, use :func:`rescale` or
-    :func:`resize`; for a stored factor, :class:`Scale`.
+    size instead, use :func:`rescale` or :func:`resize`; for a stored factor, :class:`Scale`.
 
     .. image:: _static/img/scale.png
 

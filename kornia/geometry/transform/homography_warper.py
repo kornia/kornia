@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Warp images by homographies in module form, with a sampling grid computed once and reused.
+"""Warp images by homographies in module form, optionally reusing a precomputed sampling grid.
 
 A warper reads ``src_homo_dst`` as the destination→source homography; :class:`HomographyWarper` takes it in
 normalized :math:`[-1, 1]` coordinates by default, as :func:`~kornia.geometry.transform.homography_warp` does.
@@ -110,9 +110,8 @@ class HomographyWarper(BaseWarper):
     coordinates and returns ``(N, C, height, width)``, as :func:`homography_warp` with ``dsize=(height, width)`` does.
     To reuse one homography, call ``warper.precompute_warp_grid(src_homo_dst)`` once and then ``warper(patch_src)``; a
     homography passed to the call takes precedence over the cached grid, and a call with neither raises
-    ``RuntimeError``. For a
-    source→destination homography in pixel coordinates, as :class:`~kornia.geometry.ransac.RANSAC` and
-    :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
+    ``RuntimeError``. For a source→destination homography in pixel coordinates, as
+    :class:`~kornia.geometry.ransac.RANSAC` and :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
     :func:`~kornia.geometry.transform.warp_perspective`. This class has no ``normalized_homography`` switch:
     ``normalized_coordinates=False`` still reads a destination→source homography, in pixels.
 

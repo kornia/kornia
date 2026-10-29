@@ -325,8 +325,7 @@ def crop_by_boxes(
     onto ``dst_box`` and returns the ``(B, C, h, w)`` window at destination pixels ``(0, 0)``..``(w - 1, h - 1)``, where
     ``(h, w)`` is the inclusive size of ``dst_box``. Every ``dst_box`` in the batch must have that same size, since the
     output is one tensor, and a ``dst_box`` that does not start at ``(0, 0)`` shifts the crop by its offset, partly out
-    of the window. The
-    size is read from the ``dst_box`` values on the host: when it is known, pass it as ``size`` to
+    of the window. The size is read from the ``dst_box`` values on the host: when it is known, pass it as ``size`` to
     :func:`crop_and_resize`, which builds the destination box itself. For volumes, use :func:`crop_by_boxes3d`.
 
     Convention:

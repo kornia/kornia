@@ -821,9 +821,9 @@ def find_homography_dlt_iterated(
     weights ``(B, N)`` and returns the homography ``(B, 3, 3)`` that maps ``points1`` to ``points2``, as
     :func:`find_homography_dlt` does, after ``n_iter`` weighted DLT solves: each solve after the first re-weights the
     correspondences by a Gaussian of their symmetric transfer error under the previous estimate, of standard
-    deviation ``soft_inl_th`` pixels. A correspondence three ``soft_inl_th`` away keeps a weight of ``exp(-4.5)``,
-    about 0.01, so the iterations suppress a few outliers when the first solve is close; for many outliers use
-    :class:`~kornia.geometry.ransac.RANSAC`, which refines its homography with this function under
+    deviation ``soft_inl_th`` pixels. A correspondence whose symmetric error is ``e = 3 * soft_inl_th`` keeps a
+    weight of ``exp(-4.5)``, about 0.01, so the iterations suppress a few outliers when the first solve is close; for
+    many outliers use :class:`~kornia.geometry.ransac.RANSAC`, which refines its homography with this function under
     ``local_optimization="dlt"``.
 
     Convention:
