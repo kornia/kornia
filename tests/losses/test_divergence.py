@@ -29,17 +29,27 @@ from testing.base import BaseTester
 class TestDivergenceLoss(BaseTester):
     @pytest.mark.parametrize("amp_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("identical", [False, True])
-    def test_kl_cpu_autocast(self, amp_dtype, identical):
+    @pytest.mark.parametrize(
+        "device_type",
+        [
+            "cpu",
+            pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")),
+        ],
+    )
+    def test_kl_autocast(self, amp_dtype, identical, device_type):
         """Evaluate half heatmap logarithms at the precision used by autocast KL divergence."""
+        if device_type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            pytest.skip("CUDA bfloat16 autocast unavailable")
         generator = torch.Generator().manual_seed(0)
-        target = torch.randn(1, 2, 49, generator=generator).softmax(-1).reshape(1, 2, 7, 7).to(amp_dtype)
+        target = torch.randn(1, 2, 49, generator=generator).softmax(-1).reshape(1, 2, 7, 7)
+        target = target.to(device=device_type, dtype=amp_dtype)
         pred = target.clone() if identical else target.roll(1, -1)
         pred = pred.detach().requires_grad_()
         target = target.detach().requires_grad_()
         pred_ref = pred.detach().double().requires_grad_()
         target_ref = target.detach().double().requires_grad_()
         expected = (target_ref * (target_ref.log() - pred_ref.log())).sum((-2, -1)).mean()
-        with torch.autocast("cpu", dtype=amp_dtype):
+        with torch.autocast(device_type, dtype=amp_dtype):
             actual = kornia.losses.kl_div_loss_2d(pred, target)
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected.float(), rtol=1e-6, atol=1e-6)
@@ -47,6 +57,14 @@ class TestDivergenceLoss(BaseTester):
         references = torch.autograd.grad(expected, (pred_ref, target_ref))
         for gradient, reference in zip(gradients, references):
             self.assert_close(gradient, reference.to(amp_dtype))
+
+    @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
+    def test_jit(self, loss, device, dtype):
+        """Keep both public divergence losses scriptable, including their empty-cell handling."""
+        pred = torch.tensor([0.0, 0.5, 0.25, 0.25], device=device, dtype=dtype).view(1, 1, 2, 2)
+        target = torch.tensor([0.0, 0.25, 0.75, 0.0], device=device, dtype=dtype).view(1, 1, 2, 2)
+        scripted = torch.jit.script(loss)
+        self.assert_close(scripted(pred, target), loss(pred, target))
 
     def test_js_div_loss_2d_small_probability(self, device, dtype):
         # The mixture must not round a positive half-precision probability down to zero.

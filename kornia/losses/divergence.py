@@ -37,13 +37,18 @@ def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     p = p.masked_fill(empty, 1.0)
     q = q.masked_fill(empty, 1.0)
     # Autocast promotes kl_div, but its input logarithm would already have rounded in half precision.
-    if (
-        q.dtype in (torch.float16, torch.bfloat16)
-        and q.device.type in ("cpu", "cuda")
-        and torch.is_autocast_enabled(q.device.type)
-    ):
-        q = q.float()
-    unsummed_kl = F.kl_div(q.log(), p, reduction="none")
+    if torch.jit.is_scripting():
+        # Keep the original scripted graph; its autocast state queries have no device argument.
+        log_q = q.log()
+    else:
+        if (
+            q.dtype in (torch.float16, torch.bfloat16)
+            and q.device.type in ("cpu", "cuda")
+            and torch.is_autocast_enabled(q.device.type)
+        ):
+            q = q.float()
+        log_q = q.log()
+    unsummed_kl = F.kl_div(log_q, p, reduction="none")
 
     return unsummed_kl.sum(-1).view(batch, chans)
 
@@ -126,7 +131,7 @@ def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
         - Both inputs must have the same shape. Unsupported reductions, including torch's ``'batchmean'``, raise
           ``NotImplementedError``. A zero in ``target`` with a finite nonnegative ``pred`` contributes zero to the
           value and gradients, including when both entries are zero.
-        - In CPU/CUDA autocast, the logarithm of a float16/bfloat16 prediction is evaluated in float32 before
+        - In eager CPU/CUDA autocast, the logarithm of a float16/bfloat16 prediction is evaluated in float32 before
           ``F.kl_div``, whose autocast promotion otherwise happens too late to avoid rounding that logarithm.
 
     Args:
