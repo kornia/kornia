@@ -239,7 +239,25 @@ class DKD(nn.Module):
         self.unfold = nn.Unfold(kernel_size=self.kernel_size, padding=self.radius)
         x = torch.linspace(-self.radius, self.radius, self.kernel_size)
         hw_grid = torch.stack(torch.meshgrid([x, x], indexing="ij")).view(2, -1).t()[:, [1, 0]]
-        self.register_buffer("hw_grid", hw_grid)
+        # derived from ``radius``, so not part of the state dict: the pretrained checkpoints do not carry it
+        self.register_buffer("hw_grid", hw_grid, persistent=False)
+
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        # A state dict that carries ``hw_grid`` still loads strictly; the grid is rebuilt from ``radius``.
+        # ``load_state_dict`` passes a copy, so the caller's dict keeps the key.
+        state_dict.pop(prefix + "hw_grid", None)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def forward(
         self,
@@ -1112,6 +1130,6 @@ class ALIKED(nn.Module):
         ).to(device)
         urls = [t.format(model_name) for t in _CHECKPOINT_URLS]
         state_dict = load_state_dict_from_url(urls, map_location=device)
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict)
         model.eval()
         return model

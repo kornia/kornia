@@ -1063,3 +1063,30 @@ class TestALIKEDModes(BaseTester):
             feat, score = aliked.extract_dense_map(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
         assert feat.shape[0] == 1
         assert score.shape == (1, 1, 16, 16)
+
+
+class TestALIKEDStateDict(BaseTester):
+    """``dkd.hw_grid`` is rebuilt from ``nms_radius`` and not saved, so the pretrained checkpoints load strictly."""
+
+    def test_hw_grid_is_not_saved_but_follows_the_module(self, device, dtype):
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype)
+        assert "dkd.hw_grid" not in aliked.state_dict()
+        assert aliked.dkd.hw_grid.device == device
+        assert aliked.dkd.hw_grid.dtype == dtype
+
+    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, dtype, monkeypatch):
+        weights = ALIKED(model_name="aliked-t16").state_dict()
+        weights["desc_head.sf.weight"] = weights.pop("desc_head.sf_conv.weight")
+        monkeypatch.setattr("kornia.feature.aliked.aliked.load_state_dict_from_url", lambda urls, **kwargs: weights)
+        with pytest.raises(RuntimeError, match=r"Missing key.*desc_head\.sf_conv\.weight"):
+            ALIKED.from_pretrained("aliked-t16", device=device)
+
+    def test_state_dict_with_hw_grid_loads(self, device, dtype, monkeypatch):
+        saved = ALIKED(model_name="aliked-t16")
+        weights = {**saved.state_dict(), "dkd.hw_grid": saved.dkd.hw_grid.clone()}
+        aliked = ALIKED(model_name="aliked-t16")
+        aliked.load_state_dict(weights)
+        assert "dkd.hw_grid" in weights  # the caller's dict is left as it was
+        assert all(torch.equal(v, weights[k]) for k, v in aliked.state_dict().items())
+        monkeypatch.setattr("kornia.feature.aliked.aliked.load_state_dict_from_url", lambda urls, **kwargs: weights)
+        ALIKED.from_pretrained("aliked-t16", device=device)
