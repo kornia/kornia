@@ -377,6 +377,58 @@ class TestGetPerspectiveTransform(BaseTester):
         points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst))
 
+    # The first pair's homography is [[0, 0, 3], [0, 3, 0], [3, 0, 0]] / 8: it sends the source origin to infinity, so
+    # its bottom-right entry is zero. The second pair is an ordinary homography, scaled to M[2, 2] = 1 as before.
+    _zero_h22_src = [[[1.0, 0.0], [2.0, 0.0], [2.0, 2.0], [1.0, 2.0]], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]
+    _zero_h22_dst = [[[1.0, 0.0], [0.5, 0.0], [0.5, 1.0], [1.0, 2.0]], [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 2.0]]]
+
+    def test_zero_bottom_right_entry_6435(self, device, dtype):
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        expected = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(dst_trans_src[0], expected)
+        self.assert_close(dst_trans_src[1, 2, 2], torch.tensor(1.0, device=device, dtype=dtype))
+        self.assert_close(kornia.geometry.transform_points(dst_trans_src, points_src), points_dst)
+
+    @pytest.mark.parametrize("shift", [2**-16, 2**-20])
+    def test_near_zero_bottom_right_entry_fits_the_dtype_6435(self, device, dtype, shift):
+        # Moving one destination point of the zero-entry pair by `shift` makes M[2, 2] tiny but not zero. Its
+        # M[2, 2] = 1 form has entries of about 1 / shift, beyond float16's 65504, so float16 falls back to a largest
+        # entry of 1; every dtype returns a finite matrix that maps the points.
+        points_src = torch.tensor(self._zero_h22_src[:1], device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst[:1], device=device, dtype=dtype)
+        points_dst[0, 0, 1] = shift
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
+    def test_zero_bottom_right_entry_grad_6435(self, device, dtype):
+        # Scaling jumps from the largest entry to M[2, 2] as soon as M[2, 2] leaves zero, so the gradient is one-sided
+        # and gradcheck does not apply here; it must be finite, where dividing by zero made it NaN.
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype, requires_grad=True)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype, requires_grad=True)
+
+        kornia.geometry.get_perspective_transform(points_src, points_dst).sum().backward()
+
+        assert points_src.grad.isfinite().all()
+        assert points_dst.grad.isfinite().all()
+
+    def test_zero_bottom_right_entry_jit_6435(self, device, dtype):
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+
+        op = kornia.geometry.get_perspective_transform
+        op_script = torch.jit.script(op)
+
+        self.assert_close(op_script(points_src, points_dst), op(points_src, points_dst))
+
 
 class TestRotationMatrix2d(BaseTester):
     @pytest.mark.parametrize("argument", ["center", "angle", "scale"])
