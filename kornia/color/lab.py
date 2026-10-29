@@ -47,10 +47,10 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
         it to linear RGB. Output channels are L*, a*, b* using D65 / 2° reference white.
 
     Args:
-        image: RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to Lab with shape ``(*, 3, H, W)``.
 
     Returns:
-        Lab version of the image with shape :math:`(*, 3, H, W)`.
+        Lab version of the image with shape ``(*, 3, H, W)``.
         The L channel values are in the range 0..100. a and b are in the range -128..127.
 
     Example:
@@ -114,11 +114,11 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         false to skip the final [0, 1] clamp of the sRGB output.
 
     Args:
-        image: Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: Lab image to be converted to RGB with shape ``(*, 3, H, W)``.
         clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`, in :math:`[0, 1]` when ``clip`` is True.
+        RGB version of the image with shape ``(*, 3, H, W)``, in :math:`[0, 1]` when ``clip`` is True.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -191,8 +191,8 @@ class RgbToLab(nn.Module):
         Lab version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -215,12 +215,12 @@ class RgbToLab(nn.Module):
         """Convert an RGB tensor to Lab.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Lab tensor with shape :math:`(*, 3, H, W)`.
+            Lab tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_lab(image)
 
@@ -234,8 +234,8 @@ class LabToRgb(nn.Module):
         RGB version of the image, clipped to :math:`[0, 1]` unless ``clip`` is False.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -258,12 +258,12 @@ class LabToRgb(nn.Module):
         """Convert a Lab tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to Lab channels, and ``H``/``W`` are height and width.
             clip: If ``True``, clamp output values to :math:`[0, 1]`.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return lab_to_rgb(image, clip)

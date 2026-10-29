@@ -164,11 +164,11 @@ def affine(
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
         defaults and sampling rules.
 
-        - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
+        - ``matrix`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``
 
     Args:
         tensor: The image tensor to be warped in shapes of
-            :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+            ``(C, H, W)`` or ``(B, C, H, W)``.
         matrix: The 2x3 affine transformation matrix.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -223,13 +223,13 @@ def affine3d(
     r"""Apply an affine transformation to the 3d volume.
 
     Convention:
-        - ``matrix`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
+        - ``matrix`` is the source→destination **pixel** affine matrix ``(B, 3, 4)``
         - align_corners: ``False`` by default (the 2D :func:`affine` defaults to ``True``)
 
     Args:
         tensor: The image tensor to be warped in shapes of
-            :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`.
-        matrix: The affine transformation matrix with shape :math:`(B, 3, 4)`.
+            ``(C, D, H, W)`` or ``(B, C, D, H, W)``.
+        matrix: The affine transformation matrix with shape ``(B, 3, 4)``.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -290,7 +290,7 @@ def rotate(
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        tensor: The image tensor to be warped in shapes of ``(C, H, W)`` or ``(B, C, H, W)``.
         angle: The angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
@@ -383,7 +383,7 @@ def rotate3d(
         - align_corners: ``False`` by default (the 2D :func:`rotate` defaults to ``True``)
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`.
+        tensor: The image tensor to be warped in shapes of ``(C, D, H, W)`` or ``(B, C, D, H, W)``.
         yaw: The ``rx`` component of the axis-angle vector. The tensor
           must have a shape of (B), where B is batch size.
         pitch: The ``ry`` component of the axis-angle vector. The tensor
@@ -453,7 +453,7 @@ def translate(
         - ``translation`` is ``(dx, dy)`` in pixels
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        tensor: The image tensor to be warped in shapes of ``(B, C, H, W)``.
         translation: tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains dx dy.
@@ -506,7 +506,7 @@ def scale(
         - ``center`` is ``(x, y)`` in pixels, origin at top-left; defaults to the tensor center
 
     Args:
-        tensor: The image tensor to be warped in shapes of :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        tensor: The image tensor to be warped in shapes of ``(C, H, W)`` or ``(B, C, H, W)``.
         scale_factor: The scale factor apply. The tensor
           must have a shape of (B) or (B, 2), where B is batch size.
           If (B), isotropic scaling will perform.
@@ -577,7 +577,7 @@ def shear(
           :class:`Shear`, which default to ``True``)
 
     Args:
-        tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
+        tensor: The image tensor to be skewed with shape of ``(B, C, H, W)``.
         shear: tensor containing raw shear factors
           in the x and y direction about pixel (0, 0). The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
@@ -643,13 +643,13 @@ def resize(
         conventions. When resizing camera images, see
         :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
 
-        - input: :math:`(*, H, W)`; ``size`` is ``(h, w)``
+        - input: ``(*, H, W)``; ``size`` is ``(h, w)``
         - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
           note :func:`warp_perspective`/:func:`rotate` default ``True``)
         - ``side`` resizing preserves aspect ratio using the named side
 
     Args:
-        input: The image tensor to be skewed with shape of :math:`(..., H, W)`.
+        input: The image tensor to be skewed with shape of ``(..., H, W)``.
             `...` means there can be any number of dimensions.
         size: Desired output size. If size is a sequence like (h, w),
             output size will be matched to this. If size is an int, smaller edge of the image will
@@ -822,7 +822,7 @@ def rescale(
           when ``factor`` is not a power of two (``0.7`` at a side of 90 gives 63, eager 62)
 
     Args:
-        input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
+        input: The image tensor to be scale with shape of ``(B, C, H, W)``.
         factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
             float, the value is used for both height and width (an ``int`` raises ``TypeError``).
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'nearest-exact'`` | ``'bilinear'`` |
@@ -923,7 +923,7 @@ class Resize(nn.Module):
         """Resize the spatial dimensions of an image or feature tensor.
 
         Args:
-            input: Tensor with image-like layout :math:`(*, C, H, W)`, where
+            input: Tensor with image-like layout ``(*, C, H, W)``, where
                 ``*`` represents optional leading batch dimensions,
                 :math:`C` is channels, :math:`H` is height, and :math:`W` is
                 width.
@@ -1045,12 +1045,12 @@ class Affine(nn.Module):
         passed to :func:`affine` for sampling.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`H` is height, and :math:`W` is width.
 
         Returns:
-            Affine-warped tensor with shape :math:`(B, C, H, W)`. Values
+            Affine-warped tensor with shape ``(B, C, H, W)``. Values
             sampled outside the input image are handled by ``self.padding_mode``.
         """
         if self.shear is None:
@@ -1113,7 +1113,7 @@ class Rescale(nn.Module):
         """Resize spatial dimensions by the stored scale factor.
 
         Args:
-            input: Tensor with shape :math:`(*, C, H, W)`, where ``*`` is any
+            input: Tensor with shape ``(*, C, H, W)``, where ``*`` is any
                 leading batch shape, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
@@ -1178,12 +1178,12 @@ class Rotate(nn.Module):
         """Rotate an image batch around the configured center.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
         Returns:
-            Rotated tensor with shape :math:`(B, C, H, W)`. The image extent is
+            Rotated tensor with shape ``(B, C, H, W)``. The image extent is
             kept fixed; newly exposed pixels are filled according to
             ``self.padding_mode``.
         """
@@ -1235,12 +1235,12 @@ class Translate(nn.Module):
         """Shift an image batch by the stored pixel translation.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
         Returns:
-            Translated tensor with shape :math:`(B, C, H, W)`. Translation is
+            Translated tensor with shape ``(B, C, H, W)``. Translation is
             measured in pixels along the x and y image axes.
         """
         return translate(input, self.translation, self.mode, self.padding_mode, self.align_corners)
@@ -1297,7 +1297,7 @@ class Scale(nn.Module):
         """Scale an image batch around the configured center point.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
@@ -1351,12 +1351,12 @@ class Shear(nn.Module):
         """Skew an image batch with the configured x/y shear factors.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
         Returns:
-            Sheared tensor with shape :math:`(B, C, H, W)`. The output image
+            Sheared tensor with shape ``(B, C, H, W)``. The output image
             size is unchanged; pixels outside the sampled area use the
             configured padding mode.
         """

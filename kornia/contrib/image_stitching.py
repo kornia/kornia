@@ -31,7 +31,7 @@ class ImageStitcher(nn.Module):
     """Stitch images with overlapping fields of view.
 
     Convention:
-        - The images are RGB, :math:`(B, 3, H, W)`, all of one height, ordered left to right. ``matcher`` is a
+        - The images are RGB, ``(B, 3, H, W)``, all of one height, ordered left to right. ``matcher`` is a
           :class:`~kornia.feature.LoFTR` or a :class:`~kornia.feature.LocalFeatureMatcher`, which gets grayscale
           copies; any other matcher raises ``NotImplementedError``.
         - The panorama is in the first image's pixel frame and has its height: content that maps left of its first
@@ -83,8 +83,8 @@ class ImageStitcher(nn.Module):
         """Estimate homography by the matched keypoints.
 
         Args:
-            keypoints1: matched keypoint set from an image, shaped as :math:`(N, 2)`.
-            keypoints2: matched keypoint set from the other image, shaped as :math:`(N, 2)`.
+            keypoints1: matched keypoint set from an image, shaped as ``(N, 2)``.
+            keypoints2: matched keypoint set from the other image, shaped as ``(N, 2)``.
 
         """
         if self.estimator == "vanilla":
@@ -201,9 +201,9 @@ class ImageStitcher(nn.Module):
         """Stitch two images into a shared panorama frame.
 
         Args:
-            images_left: Reference image tensor, shaped :math:`(B, C, H, W_l)`.
+            images_left: Reference image tensor, shaped ``(B, C, H, W_l)``.
             images_right: Image tensor to be warped onto the reference frame,
-                shaped :math:`(B, C, H, W_r)`.
+                shaped ``(B, C, H, W_r)``.
             mask_left: Optional validity mask for ``images_left`` with the same
                 shape as ``images_left``.
             mask_right: Optional validity mask for ``images_right`` with the same
@@ -258,7 +258,7 @@ class ImageStitcher(nn.Module):
         Args:
             *imgs: Ordered image tensors from left to right. Each tensor is expected
                 to share a common height and overlap with the next image.
-                Each tensor is RGB, :math:`(B, 3, H, W)`.
+                Each tensor is RGB, ``(B, 3, H, W)``.
 
         Returns:
             A single panorama tensor obtained by stitching all provided images

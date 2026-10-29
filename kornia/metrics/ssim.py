@@ -110,7 +110,7 @@ def ssim(
     eps: float = 1e-12,
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Compute the Structural Similarity (SSIM) index map between two images.
+    r"""Compute the per-pixel Structural Similarity (SSIM) map between two (B, C, H, W) images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
@@ -131,7 +131,7 @@ def ssim(
         - The window is a sampled Gaussian with :math:`\sigma = 1.5` whatever ``window_size``, which sets only the
           number of taps and must be odd.
         - ``padding='same'`` pads with ``'reflect'``, the torch mode that :ref:`Filtering <filtering-conventions>` maps
-          onto OpenCV and scipy, and keeps :math:`(H, W)`; ``'valid'`` drops ``window_size // 2`` pixels on every side
+          onto OpenCV and scipy, and keeps ``(H, W)``; ``'valid'`` drops ``window_size // 2`` pixels on every side
           and equals the ``'same'`` map cropped. Sizes are not checked: ``'same'`` needs ``H`` and ``W`` larger than
           ``window_size // 2``.
         - ``max_val`` is the data range :math:`L`, a Python ``float``: :math:`c_1 = (0.01 L)^2` and
@@ -147,8 +147,8 @@ def ssim(
         - ``padding`` accepts ``'same'`` and ``'valid'`` case-insensitively; unsupported values raise ``BaseError``.
 
     Args:
-        img1: the first input image with shape :math:`(B, C, H, W)`.
-        img2: the second input image with shape :math:`(B, C, H, W)`.
+        img1: the first input image with shape ``(B, C, H, W)``.
+        img2: the second input image with shape ``(B, C, H, W)``.
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
@@ -156,7 +156,7 @@ def ssim(
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
-       The ssim index map with shape :math:`(B, C, H, W)`, or :math:`(B, C, H - 2p, W - 2p)` with
+       The ssim index map with shape ``(B, C, H, W)``, or :math:`(B, C, H - 2p, W - 2p)` with
        ``p = window_size // 2`` under ``padding='valid'``.
 
     Note:
@@ -273,7 +273,7 @@ def ssim(
 
 
 class SSIM(nn.Module):
-    r"""Create a module that computes the Structural Similarity (SSIM) index between two images.
+    r"""Compute the per-pixel Structural Similarity (SSIM) map between two (B, C, H, W) images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
@@ -301,9 +301,9 @@ class SSIM(nn.Module):
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`.
-        - Target :math:`(B, C, H, W)`.
-        - Output: :math:`(B, C, H, W)`, or :math:`(B, C, H - 2p, W - 2p)` with ``p = window_size // 2`` under
+        - Input: ``(B, C, H, W)``.
+        - Target ``(B, C, H, W)``.
+        - Output: ``(B, C, H, W)``, or :math:`(B, C, H - 2p, W - 2p)` with ``p = window_size // 2`` under
           ``padding='valid'``.
 
     Examples:
@@ -325,11 +325,11 @@ class SSIM(nn.Module):
         """Compute a 2D SSIM map between two image batches.
 
         Args:
-            img1: First image tensor with shape :math:`(B, C, H, W)`.
+            img1: First image tensor with shape ``(B, C, H, W)``.
             img2: Second image tensor with the same shape as ``img1``.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)`, cropped under ``padding='valid'``, containing local structural
+            Tensor with shape ``(B, C, H, W)``, cropped under ``padding='valid'``, containing local structural
             similarity values for each channel and spatial location.
         """
         return ssim(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

@@ -153,7 +153,7 @@ class DeDoDe(nn.Module):
         """Detect and describe keypoints in the input images.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+            images: A torch.Tensor of shape ``(B, 3, H, W)`` containing the RGB input images in the range
                 :math:`[0, 1]`.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
@@ -163,12 +163,12 @@ class DeDoDe(nn.Module):
                 keypoints are never reported in it.
 
         Returns:
-            keypoints: A torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
+            keypoints: A torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints in the image range,
                 unlike `.detect()` function.
 
-            scores: A torch.Tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
+            scores: A torch.Tensor of shape ``(B, N)`` containing the scores of the detected keypoints.
 
-            descriptions: A torch.Tensor of shape :math:`(B, N, DIM)` containing the descriptions
+            descriptions: A torch.Tensor of shape ``(B, N, DIM)`` containing the descriptions
                 of the detected keypoints. DIM is 256 for both B and G.
 
         """
@@ -201,7 +201,7 @@ class DeDoDe(nn.Module):
             detector is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+            images: A torch.Tensor of shape ``(B, 3, H, W)`` containing the RGB input images in the range
                 :math:`[0, 1]`.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
@@ -213,9 +213,9 @@ class DeDoDe(nn.Module):
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
         Returns:
-            keypoints: A torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints,
+            keypoints: A torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints,
             normalized to the range :math:`[-1, 1]`.
-            scores: A torch.Tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
+            scores: A torch.Tensor of shape ``(B, N)`` containing the scores of the detected keypoints.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
@@ -250,9 +250,9 @@ class DeDoDe(nn.Module):
             descriptor is only used at inference time and its statistics must be frozen.
 
         Args:
-            images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the RGB input images in the range
+            images: A torch.Tensor of shape ``(B, 3, H, W)`` containing the RGB input images in the range
                 :math:`[0, 1]`.
-            keypoints: An optional torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
+            keypoints: An optional torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
                 ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
@@ -263,9 +263,9 @@ class DeDoDe(nn.Module):
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
         Returns:
-            descriptions: A torch.Tensor of shape :math:`(B, N, DIM)` containing the descriptions
+            descriptions: A torch.Tensor of shape ``(B, N, DIM)`` containing the descriptions
                 of the detected keypoints.
-                If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
+                If the dense descriptors are requested, the shape is ``(B, DIM, H, W)``.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])

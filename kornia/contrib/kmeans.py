@@ -99,7 +99,7 @@ class KMeans:
         """Return the current cluster centers.
 
         Returns:
-            A tensor with shape :math:`(C, D)`:
+            A tensor with shape ``(C, D)``:
             - ``C`` is the number of clusters.
             - ``D`` is the feature dimension of each sample.
 
@@ -121,7 +121,7 @@ class KMeans:
         """Return cluster labels assigned during the most recent ``fit`` call.
 
         Returns:
-            A 1D tensor with shape :math:`(N,)`, where ``N`` is the number of
+            A 1D tensor with shape ``(N,)``, where ``N`` is the number of
             samples given to :meth:`fit`. Each value is the cluster index
             nearest to the corresponding sample in the final centers, matching
             :meth:`predict` on the training data even when fitting stops early.

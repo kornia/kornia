@@ -63,7 +63,7 @@ def _det3(
 
 
 def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
-    r"""Return the null vector of a rank-3 matrix of shape :math:`(*, 3, 4)`.
+    r"""Return the null vector of a rank-3 matrix of shape ``(*, 3, 4)``.
 
     The null vector :math:`\mathbf{v} \in \mathbb{R}^4` satisfies
     :math:`A\,\mathbf{v} = \mathbf{0}`.  For a matrix of rank 3 this solution
@@ -96,10 +96,10 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
         rank-deficient inputs (rank < 3) the result is the zero vector.
 
     Args:
-        A: matrix of shape :math:`(*, 3, 4)`.
+        A: matrix of shape ``(*, 3, 4)``.
 
     Returns:
-        Null vector of shape :math:`(*, 4)`.
+        Null vector of shape ``(*, 4)``.
 
     Raises:
         TypeCheckError: if ``A`` is not a :class:`torch.Tensor`.

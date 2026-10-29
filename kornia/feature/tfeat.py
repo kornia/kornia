@@ -58,8 +58,8 @@ class TFeat(nn.Module):
         torch.Tensor: TFeat descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
@@ -91,10 +91,10 @@ class TFeat(nn.Module):
         """Compute TFeat descriptors for grayscale 32x32 patches.
 
         Args:
-            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+            input: Input tensor with shape ``(B, 1, 32, 32)``.
 
         Returns:
-            Descriptor tensor with shape :math:`(B, 128)`.
+            Descriptor tensor with shape ``(B, 128)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)

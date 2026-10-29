@@ -78,7 +78,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.13"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       torch-channel: stable
       pytorch-dtype: float32
       cache-path: weights/
@@ -93,7 +93,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.13"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       torch-channel: stable
       pytorch-dtype: float64
       cache-path: weights/
@@ -108,7 +108,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       torch-channel: stable
       pytorch-dtype: float16
       known-failure-profile: cpu-float16
@@ -125,7 +125,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       torch-channel: stable
       pytorch-dtype: bfloat16
       known-failure-profile: cpu-bfloat16
@@ -142,7 +142,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.14"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       torch-channel: stable
       pytorch-dtype: float32
       cache-path: weights/

@@ -678,6 +678,7 @@
     "relative_transformation",
     "remap",
     "render_gaussian2d",
+    "reproject_disparity_to_3D",
     "rescale",
     "resize",
     "resize_to_be_divisible",
@@ -777,11 +778,17 @@
     "project_points",
     "project_points_orthographic",
     "project_points_z1",
+    "reproject_disparity_to_3D",
     "undistort_points_affine",
     "undistort_points_kannala_brandt",
     "unproject_points",
     "unproject_points_orthographic",
     "unproject_points_z1"
+  ],
+  "kornia.geometry.camera.stereo": [
+    "StereoCamera",
+    "StereoException",
+    "reproject_disparity_to_3D"
   ],
   "kornia.geometry.conversions": [
     "ARKitQTVecs_to_ColmapQTVecs",

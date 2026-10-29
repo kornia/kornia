@@ -88,21 +88,21 @@ def match_adalam(
           normalized coordinates, so inverse confidence stays finite even for an exact fit.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-        lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-        lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
+        lafs1: LAFs of a shape ``(1, B1, 2, 3)``.
+        lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
         config: dict with AdaLAM config
         dm: torch.Tensor containing the non-negative distances (not squared) from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`. Smaller is better.
+          to each descriptor in desc2, shape of ``(B1, B2)``. Smaller is better.
         hw1: size of the first image, ``(H, W)`` or ``(W, H)``.
         hw2: size of the second image, ``(H, W)`` or ``(W, H)``.
 
 
     Return:
-        - Inverse local RANSAC confidence of each match, float32, shape of :math:`(B3, 1)`; see the Convention
+        - Inverse local RANSAC confidence of each match, float32, shape of ``(B3, 1)``; see the Convention
           block.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
 
     """

@@ -167,10 +167,10 @@ def _patchify_8x8(input: torch.Tensor) -> torch.Tensor:
     """Extract non-overlapping 8 x 8 patches from the given input image.
 
     Args:
-        input (torch.Tensor): Input image of the shape :math:`(B, H, W)`.
+        input (torch.Tensor): Input image of the shape ``(B, H, W)``.
 
     Returns:
-        output (torch.Tensor): Image patchify of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): Image patchify of the shape ``(B, N, 8, 8)``.
 
     """
     # Get input shape
@@ -184,12 +184,12 @@ def _unpatchify_8x8(input: torch.Tensor, H: int, W: int) -> torch.Tensor:
     """Reverse non-overlapping 8 x 8 patching.
 
     Args:
-        input (torch.Tensor): Input image of the shape :math:`(B, N, 8, 8)`.
+        input (torch.Tensor): Input image of the shape ``(B, N, 8, 8)``.
         H: height of resulting torch.Tensor.
         W: width of resulting torch.Tensor.
 
     Returns:
-        output (torch.Tensor): Image patchify of the shape :math:`(B, H, W)`.
+        output (torch.Tensor): Image patchify of the shape ``(B, H, W)``.
 
     """
     # Get input shape
@@ -203,10 +203,10 @@ def _dct_8x8(input: torch.Tensor) -> torch.Tensor:
     """Perform an 8 x 8 discrete cosine transform.
 
     Args:
-        input (torch.Tensor): Patched input torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        input (torch.Tensor): Patched input torch.tensor of the shape ``(B, N, 8, 8)``.
 
     Returns:
-        output (torch.Tensor): DCT output torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): DCT output torch.tensor of the shape ``(B, N, 8, 8)``.
 
     """
     # Get dtype and device
@@ -222,10 +222,10 @@ def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
     """Perform an 8 x 8 inverse discrete cosine transform.
 
     Args:
-        input (torch.Tensor): Patched input torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        input (torch.Tensor): Patched input torch.tensor of the shape ``(B, N, 8, 8)``.
 
     Returns:
-        output (torch.Tensor): IDCT output torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): IDCT output torch.tensor of the shape ``(B, N, 8, 8)``.
 
     """
     dtype = input.dtype
@@ -290,12 +290,12 @@ def _quantize(
     """Perform quantization.
 
     Args:
-        input (torch.Tensor): Input torch.tensor of the shape :math:`(B, N, 8, 8)`.
-        jpeg_quality (torch.Tensor): Compression strength to be applied, shape is :math:`(B)`.
-        quantization_table (torch.Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
+        input (torch.Tensor): Input torch.tensor of the shape ``(B, N, 8, 8)``.
+        jpeg_quality (torch.Tensor): Compression strength to be applied, shape is ``(B)``.
+        quantization_table (torch.Tensor): Quantization table of the shape ``(1, 8, 8)`` or ``(B, 8, 8)``.
 
     Returns:
-        output (torch.Tensor): Quantized output torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): Quantized output torch.tensor of the shape ``(B, N, 8, 8)``.
 
     """
     # Scale quantization table
@@ -319,12 +319,12 @@ def _dequantize(
     """Perform dequantization.
 
     Args:
-        input (torch.Tensor): Input torch.tensor of the shape :math:`(B, N, 8, 8)`.
-        jpeg_quality (torch.Tensor): Compression strength to be applied, shape is :math:`(B)`.
-        quantization_table (torch.Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
+        input (torch.Tensor): Input torch.tensor of the shape ``(B, N, 8, 8)``.
+        jpeg_quality (torch.Tensor): Compression strength to be applied, shape is ``(B)``.
+        quantization_table (torch.Tensor): Quantization table of the shape ``(1, 8, 8)`` or ``(B, 8, 8)``.
 
     Returns:
-        output (torch.Tensor): Quantized output torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): Quantized output torch.tensor of the shape ``(B, N, 8, 8)``.
 
     """
     # Scale quantization table
@@ -342,12 +342,12 @@ def _chroma_subsampling(input_ycbcr: torch.Tensor) -> tuple[torch.Tensor, torch.
     """Implement chroma subsampling.
 
     Args:
-        input_ycbcr (torch.Tensor): YCbCr input torch.tensor of the shape :math:`(B, 3, H, W)`.
+        input_ycbcr (torch.Tensor): YCbCr input torch.tensor of the shape ``(B, 3, H, W)``.
 
     Returns:
-        output_y (torch.Tensor): Y component (not-subsampled), shape is :math:`(B, H, W)`.
-        output_cb (torch.Tensor): Cb component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
-        output_cr (torch.Tensor): Cr component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
+        output_y (torch.Tensor): Y component (not-subsampled), shape is ``(B, H, W)``.
+        output_cb (torch.Tensor): Cb component (subsampled), shape is ``(B, H // 2, W // 2)``.
+        output_cr (torch.Tensor): Cr component (subsampled), shape is ``(B, H // 2, W // 2)``.
 
     """
     # Get components
@@ -378,10 +378,10 @@ def _chroma_upsampling(input_c: torch.Tensor) -> torch.Tensor:
     """Perform chroma upsampling.
 
     Args:
-        input_c (torch.Tensor): Cb or Cr component to be upsampled of the shape :math:`(B, H, W)`.
+        input_c (torch.Tensor): Cb or Cr component to be upsampled of the shape ``(B, H, W)``.
 
     Returns:
-        output_c (torch.Tensor): Upsampled C(b or r) component of the shape :math:`(B, H * 2, W * 2)`.
+        output_c (torch.Tensor): Upsampled C(b or r) component of the shape ``(B, H * 2, W * 2)``.
 
     """
     # Upsample component. The size is explicit: ``rescale`` computes it with float arithmetic, which freezes the
@@ -396,7 +396,7 @@ def _chroma_upsampling(input_c: torch.Tensor) -> torch.Tensor:
 
 
 def _split_cb_cr(input_cb_cr: torch.Tensor, n_patches: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """Split the concatenated Cb and Cr patches of the shape :math:`(B, 2N, 8, 8)` into two :math:`(B, N, 8, 8)`.
+    """Split the concatenated Cb and Cr patches of the shape :math:`(B, 2N, 8, 8)` into two ``(B, N, 8, 8)``.
 
     This is ``chunk(2, dim=1)`` with the half size passed in: ``chunk`` exports as a ``SplitToSequence`` with a
     symbolic size, which the ONNX optimizer cannot fold when the image size is dynamic.
@@ -413,15 +413,15 @@ def _jpeg_encode(
     """Perform JPEG encoding.
 
     Args:
-        image_rgb (torch.Tensor): RGB input images of the shape :math:`(B, 3, H, W)`.
-        jpeg_quality (torch.Tensor): Compression strength of the shape :math:`(B)`.
+        image_rgb (torch.Tensor): RGB input images of the shape ``(B, 3, H, W)``.
+        jpeg_quality (torch.Tensor): Compression strength of the shape ``(B)``.
         quantization_table_y (torch.Tensor): Quantization table for Y channel.
         quantization_table_c (torch.Tensor): Quantization table for C channels.
 
     Returns:
-        y_encoded (torch.Tensor): Encoded Y component of the shape :math:`(B, N, 8, 8)`.
-        cb_encoded (torch.Tensor): Encoded Cb component of the shape :math:`(B, N, 8, 8)`.
-        cr_encoded (torch.Tensor): Encoded Cr component of the shape :math:`(B, N, 8, 8)`.
+        y_encoded (torch.Tensor): Encoded Y component of the shape ``(B, N, 8, 8)``.
+        cb_encoded (torch.Tensor): Encoded Cb component of the shape ``(B, N, 8, 8)``.
+        cr_encoded (torch.Tensor): Encoded Cr component of the shape ``(B, N, 8, 8)``.
 
     """
     # Convert RGB image to YCbCr.
@@ -467,17 +467,17 @@ def _jpeg_decode(
     """Perform JPEG decoding.
 
     Args:
-        input_y (torch.Tensor): Compressed Y component of the shape :math:`(B, N, 8, 8)`.
-        input_cb (torch.Tensor): Compressed Cb component of the shape :math:`(B, N, 8, 8)`.
-        input_cr (torch.Tensor): Compressed Cr component of the shape :math:`(B, N, 8, 8)`.
-        jpeg_quality (torch.Tensor): Compression strength of the shape :math:`(B)`.
+        input_y (torch.Tensor): Compressed Y component of the shape ``(B, N, 8, 8)``.
+        input_cb (torch.Tensor): Compressed Cb component of the shape ``(B, N, 8, 8)``.
+        input_cr (torch.Tensor): Compressed Cr component of the shape ``(B, N, 8, 8)``.
+        jpeg_quality (torch.Tensor): Compression strength of the shape ``(B)``.
         H (int): Original image height.
         W (int): Original image width.
         quantization_table_y (torch.Tensor): Quantization table for Y channel.
         quantization_table_c (torch.Tensor): Quantization table for C channels.
 
     Returns:
-        rgb_decoded (torch.Tensor): Decompressed RGB image of the shape :math:`(B, 3, H, W)`.
+        rgb_decoded (torch.Tensor): Decompressed RGB image of the shape ``(B, 3, H, W)``.
 
     """
     # Dequantize inputs
@@ -512,7 +512,7 @@ def _perform_padding(image: torch.Tensor) -> tuple[torch.Tensor, int, int]:
     """Pad a given image to be dividable by 16.
 
     Args:
-        image: Image of the shape :math:`(*, 3, H, W)`.
+        image: Image of the shape ``(*, 3, H, W)``.
 
     Returns:
         image_padded: Padded image of the shape :math:`(*, 3, H_{new}, W_{new})`.
@@ -590,13 +590,13 @@ def jpeg_codec_differentiable(
           quantization table.
 
     Shape:
-        - input: :math:`(*, 3, H, W)`.
-        - jpeg_quality: :math:`(1)` or :math:`(B)` (if used batch dim. needs to match w/ input).
-        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ input).
-        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ input).
+        - input: ``(*, 3, H, W)``.
+        - jpeg_quality: ``(1)`` or ``(B)`` (if used batch dim. needs to match w/ input).
+        - quantization_table_y: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ input).
+        - quantization_table_c: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ input).
 
     Return:
-        JPEG coded image of the shape :math:`(B, 3, H, W)`
+        JPEG coded image of the shape ``(B, 3, H, W)``
 
     Example:
         To perform JPEG coding with the standard quantization tables just provide a JPEG quality
@@ -794,10 +794,10 @@ class JPEGCodecDifferentiable(nn.Module):
           quantization table.
 
     Shape:
-        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
-        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
-        - image_rgb: :math:`(*, 3, H, W)`.
-        - jpeg_quality: :math:`(1)` or :math:`(B)` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_y: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_c: ``(8, 8)`` or ``(B, 8, 8)`` (if used batch dim. needs to match w/ image_rgb).
+        - image_rgb: ``(*, 3, H, W)``.
+        - jpeg_quality: ``(1)`` or ``(B)`` (if used batch dim. needs to match w/ image_rgb).
 
     Example:
         You can use the differentiable JPEG module with standard quantization tables by
@@ -861,7 +861,7 @@ class JPEGCodecDifferentiable(nn.Module):
         the codec computes in before encoding/decoding.
 
         Args:
-            image_rgb: Input RGB tensor with shape :math:`(*, 3, H, W)`.
+            image_rgb: Input RGB tensor with shape ``(*, 3, H, W)``.
             jpeg_quality: JPEG quality factor with shape (1,) or (N,), N being the number of images.
 
         Returns:

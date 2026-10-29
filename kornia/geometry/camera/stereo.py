@@ -23,6 +23,8 @@ from kornia.core.utils import is_compiling
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.grid import create_meshgrid
 
+__all__ = ["StereoCamera", "StereoException", "reproject_disparity_to_3D"]
+
 
 class StereoException(Exception):
     """Handle errors related to stereo camera calibration and rectification."""
@@ -53,7 +55,7 @@ class StereoCamera:
 
     Convention:
         - the two arguments are the **rectified projection matrices** of the left and the right camera, each of
-          shape :math:`(B, 3, 4)`: ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the left camera, and
+          shape ``(B, 3, 4)``: ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the left camera, and
           the same matrix with ``-tx * fx`` in the last column for the right one. The constructor requires the
           two to be equal outside that last column.
         - the baseline is read back as the attribute :attr:`tx` ``= -P_right[0, 3] / fx``, which must be
@@ -65,8 +67,8 @@ class StereoCamera:
         - ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``; with the divide by ``W = -fy * disparity``
           the result is ``X = (u - cx) Z / fx``, ``Y = (v - cy) Z / fy``, ``Z = fx * tx / disparity``.
         - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``.
-        - a disparity map is channels-**last**, :math:`(B, H, W, 1)` (a :math:`(B, 1, H, W)` map is rejected),
-          and the point cloud is :math:`(B, H, W, 3)`.
+        - a disparity map is channels-**last**, ``(B, H, W, 1)`` (a ``(B, 1, H, W)`` map is rejected),
+          and the point cloud is ``(B, H, W, 3)``.
         - pixel centres are integers; see the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
@@ -78,15 +80,9 @@ class StereoCamera:
         returned. Request ``return_mask=True`` from :meth:`reproject_disparity_to_3D` to identify numerical
         reconstruction failures without changing those coordinates or their gradients.
 
-    .. warning::
-        The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
-        :doc:`/geometry.camera.stereo` but is in no ``__all__``, so it is not reachable as
-        ``kornia.geometry.reproject_disparity_to_3D``. Tracked as
-        `#4275 <https://github.com/kornia/kornia/issues/4275>`_.
-
     Args:
-        rectified_left_camera: The rectified left camera projection matrix of shape :math:`(B, 3, 4)`.
-        rectified_right_camera: The rectified right camera projection matrix of shape :math:`(B, 3, 4)`.
+        rectified_left_camera: The rectified left camera projection matrix of shape ``(B, 3, 4)``.
+        rectified_right_camera: The rectified right camera projection matrix of shape ``(B, 3, 4)``.
     """
 
     def __init__(self, rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor) -> None:
@@ -94,9 +90,9 @@ class StereoCamera:
 
         Args:
             rectified_left_camera: The rectified left camera projection matrix
-              of shape :math:`(B, 3, 4)`
+              of shape ``(B, 3, 4)``
             rectified_right_camera: The rectified right camera projection matrix
-              of shape :math:`(B, 3, 4)`
+              of shape ``(B, 3, 4)``
 
         """
         self._check_stereo_camera(rectified_left_camera, rectified_right_camera)
@@ -114,9 +110,9 @@ class StereoCamera:
 
         Args:
             rectified_left_camera: The rectified left camera projection matrix
-              of shape :math:`(B, 3, 4)`
+              of shape ``(B, 3, 4)``
             rectified_right_camera: The rectified right camera projection matrix
-              of shape :math:`(B, 3, 4)`
+              of shape ``(B, 3, 4)``
 
         """
         # Ensure correct shapes
@@ -205,7 +201,7 @@ class StereoCamera:
         camera are assumed to be equal.
 
         Returns:
-            torch.Tensor of shape :math:`(B)`
+            torch.Tensor of shape ``(B)``
 
         """
         return self.rectified_left_camera[..., 0, 0]
@@ -218,7 +214,7 @@ class StereoCamera:
         camera are assumed to be equal.
 
         Returns:
-            torch.Tensor of shape :math:`(B)`
+            torch.Tensor of shape ``(B)``
 
         """
         return self.rectified_left_camera[..., 1, 1]
@@ -228,7 +224,7 @@ class StereoCamera:
         r"""Return the x-coordinate of the principal point for the left camera.
 
         Returns:
-            torch.Tensor of shape :math:`(B)`
+            torch.Tensor of shape ``(B)``
 
         """
         return self.rectified_left_camera[..., 0, 2]
@@ -238,7 +234,7 @@ class StereoCamera:
         r"""Return the x-coordinate of the principal point for the right camera.
 
         Returns:
-            torch.Tensor of shape :math:`(B)`
+            torch.Tensor of shape ``(B)``
 
         """
         return self.rectified_right_camera[..., 0, 2]
@@ -251,7 +247,7 @@ class StereoCamera:
         is assumed to be equal for the left and right camera.
 
         Returns:
-            torch.Tensor of shape :math:`(B)`
+            torch.Tensor of shape ``(B)``
 
         """
         return self.rectified_left_camera[..., 1, 2]
@@ -261,7 +257,7 @@ class StereoCamera:
         r"""The horizontal baseline between the two cameras.
 
         Returns:
-            torch.Tensor of shape :math:`(B)`
+            torch.Tensor of shape ``(B)``
 
         """
         return -self.rectified_right_camera[..., 0, 3] / self.fx
@@ -275,7 +271,7 @@ class StereoCamera:
         lengths in the x and y direction.
 
         Return:
-            The Q matrix of shape :math:`(B, 4, 4)`.
+            The Q matrix of shape ``(B, 4, 4)``.
 
         """
         return self._Q_matrix
@@ -284,7 +280,7 @@ class StereoCamera:
         r"""Initialize the Q matrix of the horizontal stereo setup. See the Q property.
 
         Returns:
-            The Q matrix of shape :math:`(B, 4, 4)`.
+            The Q matrix of shape ``(B, 4, 4)``.
 
         """
         Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
@@ -321,14 +317,14 @@ class StereoCamera:
         See the Convention block on :class:`~kornia.geometry.camera.stereo.StereoCamera`.
 
         Args:
-            disparity_tensor: Disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
+            disparity_tensor: Disparity torch.Tensor of shape ``(B, H, W, 1)``.
             return_mask: If True, also return numerical reconstruction validity with
-                shape :math:`(B, H, W, 1)`. This only adds diagnostics; it does not fill
+                shape ``(B, H, W, 1)``. This only adds diagnostics; it does not fill
                 invalid points or change their gradients. See the module-level
                 :func:`reproject_disparity_to_3D` for the mask's complete contract.
 
         Returns:
-            The 3D point cloud of shape :math:`(B, H, W, 3)`, in the left rectified
+            The 3D point cloud of shape ``(B, H, W, 3)``, in the left rectified
             camera frame, or ``(points, valid)`` when ``return_mask=True``.
 
         """
@@ -339,7 +335,7 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
     r"""Ensure correct user provided correct disparity torch.Tensor.
 
     Args:
-        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
+        disparity_tensor: The disparity torch.Tensor of shape ``(B, H, W, 1)``.
 
     """
     if not isinstance(disparity_tensor, torch.Tensor):
@@ -368,7 +364,7 @@ def _check_Q_matrix(Q_matrix: torch.Tensor) -> None:
     r"""Ensure Q matrix is of correct form.
 
     Args:
-        Q_matrix: The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
+        Q_matrix: The Q matrix for reprojecting disparity to a point cloud of shape ``(B, 4, 4)``
 
     """
     if not isinstance(Q_matrix, torch.Tensor):
@@ -413,13 +409,13 @@ def reproject_disparity_to_3D(
     See the Convention block on :class:`~kornia.geometry.camera.stereo.StereoCamera`.
 
     Args:
-        disparity_tensor: Disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
-        Q_matrix: torch.Tensor of Q matrices of shape :math:`(B, 4, 4)` or :math:`(1, 4, 4)`.
+        disparity_tensor: Disparity torch.Tensor of shape ``(B, H, W, 1)``.
+        Q_matrix: torch.Tensor of Q matrices of shape ``(B, 4, 4)`` or ``(1, 4, 4)``.
         return_mask: If True, also return a boolean numerical reconstruction mask of
-            shape :math:`(B, H, W, 1)`, on the input device. Defaults to False.
+            shape ``(B, H, W, 1)``, on the input device. Defaults to False.
 
     Returns:
-        The 3D point cloud of shape :math:`(B, H, W, 3)`, or ``(points, valid)`` when
+        The 3D point cloud of shape ``(B, H, W, 3)``, or ``(points, valid)`` when
         ``return_mask=True``. Points retain the disparity dtype in either mode.
 
     Raises:

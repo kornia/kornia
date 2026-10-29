@@ -265,7 +265,7 @@ class ScaleSpaceDetector(nn.Module):
             With a built-in ``subpix_module`` both signs are refined in one stacked call, which
             roughly doubles the peak memory of the refinement step: the response volume and its
             three coordinate maps are materialised for ``2B`` images at once.
-        scale_space_response: if True, ``resp_module`` gets each whole octave :math:`(B, C, L, H, W)` with its
+        scale_space_response: if True, ``resp_module`` gets each whole octave ``(B, C, L, H, W)`` with its
             sigmas :math:`(B \cdot L)` and returns a :math:`(B, 1, L', H, W)` scale-space response, as
             :class:`~kornia.feature.BlobDoG` does. If False (the default), it gets the octave's levels
             ``0 .. n_levels + 1`` as :math:`(B \cdot L, C, H, W)` images, :math:`L = n_{levels} + 2`, with their sigmas
@@ -772,8 +772,8 @@ class MultiResolutionDetector(nn.Module):
         - Detections are maxima of the response above ``score_threshold``. For a signed response whose minima are
           features as well, such as a difference of Gaussians, pass its magnitude, as
           :class:`~kornia.feature.SIFTFeature` does.
-        - A detection is an integer pixel :math:`(u, v)` of a pyramid level of size :math:`(H_l, W_l)`, without a
-          sub-pixel step. It is reported at :math:`(u W / W_l, v H / H_l)` of the :math:`(H, W)` input, in the frame
+        - A detection is an integer pixel :math:`(u, v)` of a pyramid level of size ``(H_l, W_l)``, without a
+          sub-pixel step. It is reported at :math:`(u W / W_l, v H / H_l)` of the ``(H, W)`` input, in the frame
           of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`),
           and not at the level pixel's centre :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`; the Key.Net
           reference maps it the same way.
@@ -882,7 +882,7 @@ class MultiResolutionDetector(nn.Module):
             num_kp: Number of keypoints requested from this pyramid level.
             factor: Per-axis factor ``(W / W_l, H / H_l)`` from the current pyramid level to the original image:
                 level pixel :math:`(u, v)` is reported at ``(u * factor[0], v * factor[1])``.
-            mask: Optional mask with shape :math:`(1, 1, H, W)` at the *original* image resolution, saying where a
+            mask: Optional mask with shape ``(1, 1, H, W)`` at the *original* image resolution, saying where a
                 detection may be. It is resampled onto this level conservatively and applied to the non-maxima
                 suppression output, so a zero region drops every maximum within one level pixel of it and a
                 floating-point weight scales the score. Keyword-only.

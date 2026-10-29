@@ -58,7 +58,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
           space of an exact five-point sample unchanged; for larger sets they can affect the least-squares fit.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
+        the computed essential matrix with shape ``(B, 10, 3, 3)``.
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
@@ -469,12 +469,12 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
           :math:`x_2^\top E x_1 = 0` order of :func:`find_essential`; it keeps the scale of ``F_mat``.
 
     Args:
-        F_mat: The fundamental matrix with shape of :math:`(*, 3, 3)`.
-        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
+        F_mat: The fundamental matrix with shape of ``(*, 3, 3)``.
+        K1: The camera matrix from first camera with shape ``(*, 3, 3)``.
+        K2: The camera matrix from second camera with shape ``(*, 3, 3)``.
 
     Returns:
-        The essential matrix with shape :math:`(*, 3, 3)`.
+        The essential matrix with shape ``(*, 3, 3)``.
 
     """
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
@@ -497,11 +497,11 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
         - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
-        E_mat: The matrices to project with shape :math:`(*, 3, 3)`.
+        E_mat: The matrices to project with shape ``(*, 3, 3)``.
 
     Returns:
         The closest matrices (in Frobenius norm) satisfying the essential-matrix constraint,
-        with shape :math:`(*, 3, 3)`.
+        with shape ``(*, 3, 3)``.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -539,7 +539,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
           float32 rotations.
 
     Args:
-       E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+       E_mat: The essential matrix in the form of ``(*, 3, 3)``.
 
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector,
@@ -595,7 +595,7 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
         - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
-       E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+       E_mat: The essential matrix in the form of ``(*, 3, 3)``.
 
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector, with
@@ -674,13 +674,13 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
           :math:`\|E\|_F = \sqrt{2} \|t\|`.
 
     Args:
-        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape ``(*, 3, 3)``.
+        t1: The first camera translation vector with shape ``(*, 3, 1)``.
+        R2: The second camera rotation matrix with shape ``(*, 3, 3)``.
+        t2: The second camera translation vector with shape ``(*, 3, 1)``.
 
     Returns:
-        The Essential matrix with the shape :math:`(*, 3, 3)`.
+        The Essential matrix with the shape ``(*, 3, 3)``.
 
     """
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
@@ -709,7 +709,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         - A caller's autocast region does not change the result, as for :func:`decompose_essential_matrix`.
 
     Args:
-        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+        E_mat: The essential matrix in the form of ``(*, 3, 3)``.
 
     Returns:
         The rotation and translation containing the four possible combination for the retrieved motion.
@@ -754,16 +754,16 @@ def motion_from_essential_choose_solution(
           ``E_mat``.
 
     Args:
-        E_mat: The essential matrix in the form of :math:`(B, 3, 3)`, or :math:`(3, 3)` with every other input
+        E_mat: The essential matrix in the form of ``(B, 3, 3)``, or ``(3, 3)`` with every other input
             unbatched too.
-        K1: The camera matrix from first camera with shape :math:`(B, 3, 3)`.
-        K2: The camera matrix from second camera with shape :math:`(B, 3, 3)`.
-        x1: The set of points in the first image with shape :math:`(B, N, 2)`.
-        x2: The set of points in the second image with shape :math:`(B, N, 2)`.
+        K1: The camera matrix from first camera with shape ``(B, 3, 3)``.
+        K2: The camera matrix from second camera with shape ``(B, 3, 3)``.
+        x1: The set of points in the first image with shape ``(B, N, 2)``.
+        x2: The set of points in the second image with shape ``(B, N, 2)``.
         mask: A boolean mask which can be used to exclude some points from choosing
           the best solution. This is useful for using this function with sets of points of
           different cardinality (for instance after filtering with RANSAC) while keeping batch
-          semantics. Mask is of shape :math:`(B, N)`.
+          semantics. Mask is of shape ``(B, N)``.
 
     Returns:
         The rotation, translation, 3d triangulated points, and the number of points
@@ -870,10 +870,10 @@ def relative_camera_motion(
           :math:`E_2` returns :math:`E_1^{-1} E_2`.
 
     Args:
-        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape ``(*, 3, 3)``.
+        t1: The first camera translation vector with shape ``(*, 3, 1)``.
+        R2: The second camera rotation matrix with shape ``(*, 3, 3)``.
+        t2: The second camera translation vector with shape ``(*, 3, 1)``.
 
     Returns:
         A tuple with the relative rotation matrix and
@@ -914,12 +914,12 @@ def find_essential(
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Accepted with a shape of :math:`(B, N)` and ignored for compatibility, including for :math:`N > 5`.
+         weights: Accepted with a shape of ``(B, N)`` and ignored for compatibility, including for :math:`N > 5`.
            Positive weights leave the null space of an exact five-point sample unchanged; for larger sets they can
            affect the least-squares fit.
 
     Returns:
-         the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
+         the computed essential matrices with shape ``(B, 10, 3, 3)``.
          To choose the best one out of 10, try to check the one with the lowest Sampson distance, ignoring the
          ``NaN`` slots.
 

@@ -90,10 +90,10 @@ class PatchAffineShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            patch: :math:`(B, 1, H, W)`
+            patch: ``(B, 1, H, W)``
 
         Returns:
-            torch.Tensor: ellipse_shape :math:`(B, 1, 3)`
+            torch.Tensor: ellipse_shape ``(B, 1, 3)``
 
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
@@ -187,9 +187,10 @@ def _finalize_laf(
 
 
 class LAFAffineShapeEstimator(nn.Module):
-    r"""Module, which extracts patches using input images and local affine frames (LAFs).
+    r"""Adapt local affine frames using the second-moment matrices of their image-patch gradients.
 
-    Then runs :class:`~kornia.feature.PatchAffineShapeEstimator` on patches to estimate LAFs shape.
+    It extracts a patch per LAF and runs :class:`~kornia.feature.PatchAffineShapeEstimator` on it to estimate the
+    shape.
 
     Convention:
         - Each patch is sampled through the upright form of its LAF (:func:`~kornia.feature.make_upright`), so the
@@ -230,11 +231,11 @@ class LAFAffineShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
-            img: :math:`(B, 1, H, W)`
+            laf: ``(B, N, 2, 3)``
+            img: ``(B, 1, H, W)``
 
         Returns:
-            LAF_out: :math:`(B, N, 2, 3)`
+            LAF_out: ``(B, N, 2, 3)``
 
         """
         KORNIA_CHECK_LAF(laf)
@@ -267,10 +268,10 @@ class LAFAffineShapeEstimator(nn.Module):
 
 
 class LAFAffNetShapeEstimator(nn.Module):
-    """Module, which extracts patches using input images and local affine frames (LAFs).
+    """Adapt local affine frames using affine shapes estimated by the AffNet CNN.
 
-    Then runs AffNet on patches to estimate LAFs shape. This is based on the original code from paper
-    "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability"".
+    It extracts a patch per LAF and runs AffNet on it to estimate the shape. This is based on the original code from
+    the paper "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability".
     See :cite:`AffNet2018` for more details.
 
     Convention:
@@ -333,11 +334,11 @@ class LAFAffNetShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
-            img: :math:`(B, 1, H, W)`
+            laf: ``(B, N, 2, 3)``
+            img: ``(B, 1, H, W)``
 
         Returns:
-            LAF_out: :math:`(B, N, 2, 3)`
+            LAF_out: ``(B, N, 2, 3)``
 
         """
         KORNIA_CHECK_LAF(laf)

@@ -69,8 +69,8 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Output empty tensors.
 
     Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+            - Descriptor distance of matching descriptors, shape of ``(0, 1)``.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(0, 2)``.
 
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)

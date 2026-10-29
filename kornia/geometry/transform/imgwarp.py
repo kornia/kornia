@@ -260,7 +260,7 @@ def warp_perspective(
     align_corners: bool = True,
     fill_value: Optional[torch.Tensor] = None,  # needed for jit
 ) -> torch.Tensor:
-    r"""Apply a perspective transformation to an image.
+    r"""Warp a 2D (B, C, H, W) image by a (B, 3, 3) source→destination homography in pixel coordinates.
 
     The function warp_perspective transforms the source image using
     the specified matrix:
@@ -275,8 +275,8 @@ def warp_perspective(
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for transform direction, pixel centres,
         normalized coordinates and ``align_corners`` sampling rules.
 
-        - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
-        - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
+        - input: ``(B, C, H, W)``; ``dsize`` is ``(h, w)``
+        - ``M`` is the source→destination **pixel** homography ``(B, 3, 3)``
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
         - a nonzero scalar multiple of ``M`` describes the same warp; uniformly small or large
           nonzero entries are rescaled toward unit magnitude before the coordinate change and inversion
@@ -284,15 +284,15 @@ def warp_perspective(
           negative output dimensions raise ``ValueError``
 
     Args:
-        src: input image with shape :math:`(B, C, H, W)`.
-        M: transformation matrix with shape :math:`(B, 3, 3)`.
+        src: input image with shape ``(B, C, H, W)``.
+        M: transformation matrix with shape ``(B, 3, 3)``.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
-            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+        fill_value: torch.Tensor of shape ``(C)`` or ``(1)`` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample ``(B, C, 1, 1)``
             fill. Defaults to zeros.
 
     Returns:
@@ -408,21 +408,21 @@ def warp_affine(
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for transform direction, pixel centres,
         normalized coordinates and ``align_corners`` sampling rules.
 
-        - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
-        - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
+        - input: ``(B, C, H, W)``; ``dsize`` is ``(h, w)``
+        - ``M`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
 
     Args:
-        src: input torch.Tensor of shape :math:`(B, C, H, W)`.
-        M: affine transformation of shape :math:`(B, 2, 3)`.
+        src: input torch.Tensor of shape ``(B, C, H, W)``.
+        M: affine transformation of shape ``(B, 2, 3)``.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners : mode for grid_generation.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
-            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample :math:`(B, C, 1, 1)`
+        fill_value: torch.Tensor of shape ``(C)`` or ``(1)`` that fills the padding area, or any shape that
+            broadcasts to the output :math:`(B, C, h, w)` without changing it, such as a per-sample ``(B, C, 1, 1)``
             fill.
 
     Returns:
@@ -545,18 +545,18 @@ def _fill_and_warp(
     r"""Warp a mask of torch.ones, then multiply with fill_value and add to default warp.
 
     Args:
-        src: input torch.Tensor of shape :math:`(B, C, H, W)`.
+        src: input torch.Tensor of shape ``(B, C, H, W)``.
         grid: grid torch.Tensor from `transform_points`.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         align_corners: interpolation flag.
-        fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area, or any shape that
-            broadcasts to the output :math:`(B, C, H, W)` without changing it, such as :math:`(B, C, 1, 1)`.
+        fill_value: torch.Tensor of shape ``(C)`` or ``(1)`` that fills the padding area, or any shape that
+            broadcasts to the output ``(B, C, H, W)`` without changing it, such as ``(B, C, 1, 1)``.
         out_shape: the output shape ``fill_value`` is checked against, when ``src`` and ``grid`` stand in for an
             empty destination; the fill is then reduced to one value. Defaults to the shape sampled from ``src``
             and ``grid``.
 
     Returns:
-        the warped and filled torch.Tensor with shape :math:`(B, C, H, W)`.
+        the warped and filled torch.Tensor with shape ``(B, C, H, W)``.
     """
     stand_in = out_shape is not None
     if out_shape is None:
@@ -598,13 +598,13 @@ def _fill_and_warp(
 
 
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    r"""Compute the grid to warp the coordinates grid by the homography/ies.
+    r"""Transform a 2D (x, y) coordinate grid by destination→source (N, 3, 3) homographies.
 
     Convention:
-        - ``grid`` coordinates: ``(x, y)`` (last dim), shape :math:`(1, H, W, 2)` or :math:`(N, H, W, 2)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(1, 3, 3)`,
-          :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
-        - only the :math:`(1, H, W, 2)` grid broadcasts over homography batches; a batched grid
+        - ``grid`` coordinates: ``(x, y)`` (last dim), shape ``(1, H, W, 2)`` or ``(N, H, W, 2)``
+        - ``src_homo_dst`` is the destination→source homography ``(1, 3, 3)``,
+          ``(N, 3, 3)`` or ``(N, 1, 3, 3)``
+        - only the ``(1, H, W, 2)`` grid broadcasts over homography batches; a batched grid
           requires a matching batch of :math:`N` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
           homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
@@ -614,14 +614,14 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           infinity
 
     Args:
-        grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`, or :math:`(N, H, W, 2)` with a
+        grid: Unwrapped grid of the shape ``(1, H, W, 2)``, or ``(N, H, W, 2)`` with a
           matching batch of :math:`N` homographies.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
-          has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
+          has to be ``(1, 3, 3)``, ``(N, 3, 3)`` or ``(N, 1, 3, 3)``.
 
     Returns:
-        the transformed grid of shape :math:`(N, H, W, 2)`.
+        the transformed grid of shape ``(N, H, W, 2)``.
 
     """
     batch_size: int = src_homo_dst.size(0)
@@ -684,14 +684,14 @@ def _normalize_warped_pixel_grid(grid: torch.Tensor, height: int, width: int, al
 
 
 def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    r"""Compute the grid to warp the coordinates grid by the homography/ies.
+    r"""Transform a 3D (x, y, z) coordinate grid by destination→source (N, 4, 4) homographies.
 
     Convention:
-        - ``grid`` coordinates: ``(x, y, z)`` (last dim), shape :math:`(1, D, H, W, 3)` or
-          :math:`(N, D, H, W, 3)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(1, 4, 4)`,
-          :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
-        - only the :math:`(1, D, H, W, 3)` grid broadcasts over homography batches; a batched
+        - ``grid`` coordinates: ``(x, y, z)`` (last dim), shape ``(1, D, H, W, 3)`` or
+          ``(N, D, H, W, 3)``
+        - ``src_homo_dst`` is the destination→source homography ``(1, 4, 4)``,
+          ``(N, 4, 4)`` or ``(N, 1, 4, 4)``
+        - only the ``(1, D, H, W, 3)`` grid broadcasts over homography batches; a batched
           grid requires a matching batch of :math:`N` homographies
         - ``src_homo_dst`` is divided by a detached scale toward unit magnitude before the
           homogeneous division, as in :func:`warp_perspective`, so a nonzero scalar multiple of it
@@ -701,14 +701,14 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           infinity
 
     Args:
-        grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`, or :math:`(N, D, H, W, 3)`
+        grid: Unwrapped grid of the shape ``(1, D, H, W, 3)``, or ``(N, D, H, W, 3)``
           with a matching batch of :math:`N` homographies.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
-          has to be :math:`(1, 4, 4)`, :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`.
+          has to be ``(1, 4, 4)``, ``(N, 4, 4)`` or ``(N, 1, 4, 4)``.
 
     Returns:
-        the transformed grid of shape :math:`(N, D, H, W, 3)`.
+        the transformed grid of shape ``(N, D, H, W, 3)``.
 
     """
     batch_size: int = src_homo_dst.size(0)
@@ -732,7 +732,7 @@ def _warp_pixel_grid3d(src_homo_dst: torch.Tensor, depth: int, height: int, widt
     The 3-D counterpart of :func:`_warp_pixel_grid`: the grid is built and warped in :func:`_pixel_grid_work_dtype`,
     whatever the default dtype, with the projective gauge and homogeneous division of :func:`warp_grid3d`, as a sum of
     elementwise column products that a caller's autocast region leaves alone, scripted or not. The result is
-    :math:`(N, D, H, W, 3)` in the ``(x, y, z)`` order the homography and ``grid_sample`` read.
+    ``(N, D, H, W, 3)`` in the ``(x, y, z)`` order the homography and ``grid_sample`` read.
     """
     work_dtype = _pixel_grid_work_dtype(src_homo_dst)
     grid = create_meshgrid3d(
@@ -875,18 +875,18 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         \end{bmatrix}
 
     Convention:
-        - points: ``(x, y)``, pixel centers, origin at top-left; shape :math:`(B, 4, 2)`
-        - returns the source→destination **pixel** homography :math:`(B, 3, 3)` that
+        - points: ``(x, y)``, pixel centers, origin at top-left; shape ``(B, 4, 2)``
+        - returns the source→destination **pixel** homography ``(B, 3, 3)`` that
           :func:`warp_perspective` takes
         - a caller's autocast region does not change the result, outside TorchScript
 
     Args:
-        points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
+        points_src: coordinates of quadrangle vertices in the source image with shape ``(B, 4, 2)``.
         points_dst: coordinates of the corresponding quadrangle vertices in
-            the destination image with shape :math:`(B, 4, 2)`.
+            the destination image with shape ``(B, 4, 2)``.
 
     Returns:
-        the perspective transformation with shape :math:`(B, 3, 3)`.
+        the perspective transformation with shape ``(B, 3, 3)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective`.
@@ -940,17 +940,17 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
-        - returns :math:`(B, 2, 3)` affine matrix in pixel coordinates
+        - returns ``(B, 2, 3)`` affine matrix in pixel coordinates
 
     Args:
-        center: center of the rotation in the source image with shape :math:`(B, 2)`.
+        center: center of the rotation in the source image with shape ``(B, 2)``.
         angle: rotation angle in degrees. Positive values mean
             counter-clockwise rotation (the coordinate origin is assumed to
-            be the top-left corner) with shape :math:`(B)`.
-        scale: scale factor for x, y scaling with shape :math:`(B, 2)`.
+            be the top-left corner) with shape ``(B)``.
+        scale: scale factor for x, y scaling with shape ``(B, 2)``.
 
     Returns:
-        the affine matrix of 2D rotation with shape :math:`(B, 2, 3)`.
+        the affine matrix of 2D rotation with shape ``(B, 2, 3)``.
 
     Raises:
         TypeError: If any input is not a tensor.
@@ -1038,7 +1038,7 @@ def remap(
         \text{dst}(x, y) = \text{src}(map_x(x, y), map_y(x, y))
 
     Convention:
-        - input: :math:`(B, C, H, W)`; ``map_x``/``map_y`` are :math:`(B, H, W)` pixel coordinates
+        - input: ``(B, C, H, W)``; ``map_x``/``map_y`` are ``(B, H, W)`` pixel coordinates
           unless ``normalized_coordinates=True``
         - align_corners: ``None`` by default, resolved to ``False`` internally
         - pixel maps are normalized with the ``align_corners=True`` convention whatever flag
@@ -1137,15 +1137,15 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     The result is also a 2x3 matrix of the same type as M.
 
     Convention:
-        - ``matrix`` is a :math:`(B, 2, 3)` affine transform in any coordinate convention
+        - ``matrix`` is a ``(B, 2, 3)`` affine transform in any coordinate convention
           (pixel or normalized) — pure matrix inversion; the result stays in the input's convention
 
     Args:
         matrix: original affine transform. The torch.Tensor must be
-          in the shape of :math:`(B, 2, 3)`.
+          in the shape of ``(B, 2, 3)``.
 
     Return:
-        the reverse affine transform with shape :math:`(B, 2, 3)`.
+        the reverse affine transform with shape ``(B, 2, 3)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`.
@@ -1179,18 +1179,18 @@ def get_affine_matrix2d(
           before delegating to :func:`get_rotation_matrix2d`, whose convention is CCW-positive
         - ``sx`` and ``sy`` are angles in radians, using :func:`get_shear_matrix2d`'s
           negative-tangent, x-then-y shear about ``center``, applied before rotation, scale and translation
-        - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
+        - returns ``(B, 3, 3)`` affine matrix in pixel coordinates
 
     Args:
-        translations: torch.Tensor containing the translation vector with shape :math:`(B, 2)`.
-        center: torch.Tensor containing the center vector with shape :math:`(B, 2)`.
-        scale: torch.Tensor containing the scale factor with shape :math:`(B, 2)`.
-        angle: torch.Tensor of angles in degrees :math:`(B)`.
-        sx: torch.Tensor containing the shear angle in radians in the x-direction with shape :math:`(B)`.
-        sy: torch.Tensor containing the shear angle in radians in the y-direction with shape :math:`(B)`.
+        translations: torch.Tensor containing the translation vector with shape ``(B, 2)``.
+        center: torch.Tensor containing the center vector with shape ``(B, 2)``.
+        scale: torch.Tensor containing the scale factor with shape ``(B, 2)``.
+        angle: torch.Tensor of angles in degrees ``(B)``.
+        sx: torch.Tensor containing the shear angle in radians in the x-direction with shape ``(B)``.
+        sy: torch.Tensor containing the shear angle in radians in the y-direction with shape ``(B)``.
 
     Returns:
-        the affine transformation matrix :math:`(B, 3, 3)`.
+        the affine transformation matrix ``(B, 3, 3)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
@@ -1213,13 +1213,13 @@ def get_translation_matrix2d(translations: torch.Tensor) -> torch.Tensor:
     r"""Compose translation matrix from the components.
 
     Convention:
-        - ``translations`` is ``(dx, dy)`` in pixels; returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
+        - ``translations`` is ``(dx, dy)`` in pixels; returns ``(B, 3, 3)`` affine matrix in pixel coordinates
 
     Args:
-        translations: torch.Tensor containing the translation vector with shape :math:`(B, 2)`.
+        translations: torch.Tensor containing the translation vector with shape ``(B, 2)``.
 
     Returns:
-        the affine transformation matrix :math:`(B, 3, 3)`.
+        the affine transformation matrix ``(B, 3, 3)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
@@ -1252,7 +1252,7 @@ def get_shear_matrix2d(
         - ``sx`` and ``sy`` are angles in radians; about ``center = (cx, cy)``, the forward mapping is
           ``x_out = x - tan(sx) * (y - cy)``, then ``y_out = y - tan(sy) * (x_out - cx)``.
           Pixel x increases rightward and y downward. This differs from :func:`shear`'s raw factors.
-        - returns :math:`(B, 3, 3)` affine matrix in pixel coordinates
+        - returns ``(B, 3, 3)`` affine matrix in pixel coordinates
 
     Args:
         center: shearing center coordinates of (x, y).
@@ -1260,7 +1260,7 @@ def get_shear_matrix2d(
         sy: shearing angle along y axis in radians
 
     Returns:
-        params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
+        params to be passed to the affine transformation with shape ``(B, 3, 3)``.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1313,24 +1313,24 @@ def get_affine_matrix3d(
         - ``angles`` are negated before delegating to :func:`get_projective_transform`, whose own
           rotation convention follows the right-hand rule (see
           :func:`kornia.geometry.conversions.axis_angle_to_rotation_matrix`)
-        - returns :math:`(B, 4, 4)` affine matrix in pixel coordinates
+        - returns ``(B, 4, 4)`` affine matrix in pixel coordinates
 
     Args:
-        translations: torch.Tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
-        center: torch.Tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
-        scale: torch.Tensor containing the scale factor with shape :math:`(B)`.
+        translations: torch.Tensor containing the translation vector (dx,dy,dz) with shape ``(B, 3)``.
+        center: torch.Tensor containing the center vector (x,y,z) with shape ``(B, 3)``.
+        scale: torch.Tensor containing the scale factor with shape ``(B)``.
         angles: axis angle vector containing the rotation angles in degrees in the form
-            of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
+            of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
-        sxy: torch.Tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
-        sxz: torch.Tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
-        syx: torch.Tensor containing the shear factor in the yx-direction with shape :math:`(B)`.
-        syz: torch.Tensor containing the shear factor in the yz-direction with shape :math:`(B)`.
-        szx: torch.Tensor containing the shear factor in the zx-direction with shape :math:`(B)`.
-        szy: torch.Tensor containing the shear factor in the zy-direction with shape :math:`(B)`.
+        sxy: torch.Tensor containing the shear factor in the xy-direction with shape ``(B)``.
+        sxz: torch.Tensor containing the shear factor in the xz-direction with shape ``(B)``.
+        syx: torch.Tensor containing the shear factor in the yx-direction with shape ``(B)``.
+        syz: torch.Tensor containing the shear factor in the yz-direction with shape ``(B)``.
+        szx: torch.Tensor containing the shear factor in the zx-direction with shape ``(B)``.
+        szy: torch.Tensor containing the shear factor in the zy-direction with shape ``(B)``.
 
     Returns:
-        the 3d affine transformation matrix :math:`(B, 4, 4)`.
+        the 3d affine transformation matrix ``(B, 4, 4)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective3d`.
@@ -1383,7 +1383,7 @@ def get_shear_matrix3d(
     Convention:
         - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
           slice (``z = 0``); it is a fixed point of the returned matrix for every combination of shears
-        - returns :math:`(B, 4, 4)` affine matrix in pixel coordinates
+        - returns ``(B, 4, 4)`` affine matrix in pixel coordinates
 
     Args:
         center: shearing center coordinates of (x, y, z).
@@ -1477,8 +1477,8 @@ def warp_affine3d(
         This API signature it is experimental and might suffer some changes in the future.
 
     Convention:
-        - input: :math:`(B, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
-        - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
+        - input: ``(B, C, D, H, W)``; ``dsize`` is ``(d, h, w)``
+        - ``M`` is the source→destination **pixel** affine matrix ``(B, 3, 4)``
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
         - an empty batch returns shape :math:`(0, C, d, h, w)` with gradients connected to both inputs
@@ -1488,8 +1488,8 @@ def warp_affine3d(
         - a nonempty batch requires positive source spatial dimensions for a nonempty output
 
     Args:
-        src : input torch.Tensor of shape :math:`(B, C, D, H, W)`.
-        M: projective transformation matrix of shape :math:`(B, 3, 4)`.
+        src : input torch.Tensor of shape ``(B, C, D, H, W)``.
+        M: projective transformation matrix of shape ``(B, 3, 4)``.
         dsize: size of the output image (depth, height, width).
         flags: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -1550,14 +1550,14 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
     Concatenates the batch of rotations and translations such that :math:`P = [R | t]`.
 
     Convention:
-        - returns the concatenation :math:`[R | t]` with shape :math:`(*, 3, 4)`
+        - returns the concatenation :math:`[R | t]` with shape ``(*, 3, 4)``
 
     Args:
-       rmat: the rotation matrix with shape :math:`(*, 3, 3)`.
-       tvec: the translation vector with shape :math:`(*, 3, 1)`.
+       rmat: the rotation matrix with shape ``(*, 3, 3)``.
+       tvec: the translation vector with shape ``(*, 3, 1)``.
 
     Returns:
-       the projection matrix with shape :math:`(*, 3, 4)`.
+       the projection matrix with shape ``(*, 3, 4)``.
 
     """
     if not (len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3)):
@@ -1582,17 +1582,17 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         - rotation follows the right-hand rule (see
           :func:`kornia.geometry.conversions.axis_angle_to_rotation_matrix`); a positive rotation
           about +z is **clockwise on screen** (y-down image axes) — opposite of :func:`get_rotation_matrix2d`
-        - returns the projection matrix :math:`(B, 3, 4)` in pixel coordinates
+        - returns the projection matrix ``(B, 3, 4)`` in pixel coordinates
 
     Args:
-        center: center of the rotation (x,y,z) in the source with shape :math:`(B, 3)`.
+        center: center of the rotation (x,y,z) in the source with shape ``(B, 3)``.
         angles: axis angle vector containing the rotation angles in degrees in the form
-            of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
+            of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
-        scales: scale factor for x-y-z-directions with shape :math:`(B, 3)`.
+        scales: scale factor for x-y-z-directions with shape ``(B, 3)``.
 
     Returns:
-        the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
+        the projection matrix of 3D rotation with shape ``(B, 3, 4)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine3d`.
@@ -1691,19 +1691,19 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         \end{pmatrix}
 
     Convention:
-        - points: ``(x, y, z)``, pixel centers, origin at the top-left of the first depth slice; shape :math:`(B, 8, 3)`
+        - points: ``(x, y, z)``, pixel centers, origin at the top-left of the first depth slice; shape ``(B, 8, 3)``
         - the 15 unknowns are solved exactly from points 0, 1, 2, 5 and 7, the corners ``000``, ``100``, ``110``,
           ``101`` and ``011`` in :func:`~kornia.geometry.bbox.bbox_generator3d` order; points 3, 4 and 6 are not
           used, so they map onto their ``dst`` only when all eight pairs are related by one homography
-        - returns the source→destination **pixel** homography :math:`(B, 4, 4)`
+        - returns the source→destination **pixel** homography ``(B, 4, 4)``
 
     Args:
-        src: coordinates of the box corners in the source volume with shape :math:`(B, 8, 3)`.
+        src: coordinates of the box corners in the source volume with shape ``(B, 8, 3)``.
         dst: coordinates of the corresponding box corners in
-            the destination volume with shape :math:`(B, 8, 3)`.
+            the destination volume with shape ``(B, 8, 3)``.
 
     Returns:
-        the perspective transformation with shape :math:`(B, 4, 4)`.
+        the perspective transformation with shape ``(B, 4, 4)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective3d`.
@@ -1860,9 +1860,9 @@ def warp_perspective3d(
     border_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
-    r"""Apply a perspective transformation to an image.
+    r"""Warp a 3D (B, C, D, H, W) volume by a (B, 4, 4) source→destination homography in voxel coordinates.
 
-    The function warp_perspective transforms the source image using
+    The function warp_perspective3d transforms the source volume using
     the specified matrix:
 
     .. math::
@@ -1871,8 +1871,8 @@ def warp_perspective3d(
     where :math:`\pi` divides by the fourth (homogeneous) coordinate.
 
     Convention:
-        - input: :math:`(B, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
-        - ``M`` is the source→destination **pixel** homography :math:`(B, 4, 4)`
+        - input: ``(B, C, D, H, W)``; ``dsize`` is ``(d, h, w)``
+        - ``M`` is the source→destination **pixel** homography ``(B, 4, 4)``
         - align_corners: ``False`` by default (differs from the 2D :func:`warp_perspective`,
           whose default is ``True``)
         - border_mode: ``'zeros'`` by default
@@ -1880,8 +1880,8 @@ def warp_perspective3d(
           negative output dimensions raise ``ValueError``
 
     Args:
-        src: input image with shape :math:`(B, C, D, H, W)`.
-        M: transformation matrix with shape :math:`(B, 4, 4)`.
+        src: input image with shape ``(B, C, D, H, W)``.
+        M: transformation matrix with shape ``(B, 4, 4)``.
         dsize: size of the output image (depth, height, width).
         flags: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -1937,7 +1937,15 @@ def homography_warp(
     normalized_coordinates: bool = True,
     normalized_homography: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by normalized 2D homographies.
+    r"""Warp an image by a destination→source homography in normalized ``[-1, 1]`` coordinates (the defaults).
+
+    For a source→destination homography in pixel coordinates, as :class:`~kornia.geometry.ransac.RANSAC` and
+    :func:`~kornia.geometry.homography.find_homography_dlt` return it, use :func:`warp_perspective`. Passed here
+    unchanged, such a homography is read as a normalized destination→source one, which typically samples outside
+    the source, so the output is mostly or entirely zeros (with the default ``padding_mode="zeros"``).
+    ``normalized_homography=False`` instead hands it to :func:`warp_perspective` with this function's
+    ``align_corners=False`` default, which for a pixel homography samples the same positions as
+    ``align_corners=True`` (see ``align_corners`` below).
 
     See :class:`~kornia.geometry.transform.HomographyWarper` for details.
 
@@ -1945,8 +1953,8 @@ def homography_warp(
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
         coordinates and ``align_corners`` sampling rules.
 
-        - input: :math:`(N, C, H, W)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)` when
+        - input: ``(N, C, H, W)``
+        - ``src_homo_dst`` is the destination→source homography ``(N, 3, 3)`` when
           ``normalized_homography=True`` (default), in normalized :math:`[-1, 1]` coordinates by default
           (``normalized_coordinates=True``). With ``normalized_coordinates=False`` it is in **pixel**
           coordinates, pixel centres at integers: it maps the pixel ``(x, y)`` of the ``dsize`` output to the
@@ -1962,8 +1970,8 @@ def homography_warp(
         - negative output dimensions raise ``ValueError``
 
     Args:
-        patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, H, W)`.
-        src_homo_dst: The homography or torch.stack of homographies of shape :math:`(N, 3, 3)` —
+        patch_src: The image or torch.Tensor to warp. Should be from source of shape ``(N, C, H, W)``.
+        src_homo_dst: The homography or torch.stack of homographies of shape ``(N, 3, 3)`` —
             destination to source when ``normalized_homography=True`` (default), source to
             destination (pixel) when ``normalized_homography=False``.
         dsize: output size ``(h, w)``.
@@ -2052,11 +2060,16 @@ def homography_warp3d(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patches or tensors by 3D homographies.
+    r"""Warp a volume by a normalized destination→source 3D homography (default ``normalized_coordinates=True``).
+
+    For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d` with
+    ``align_corners=True``: at its default ``align_corners=False`` it resamples even an identity
+    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Alternatively pass the inverse of that homography
+    here with ``normalized_coordinates=False``. This function has no ``normalized_homography`` switch.
 
     Convention:
-        - input: :math:`(N, C, D, H, W)`; ``dsize`` is the output size ``(d, h, w)``
-        - ``src_homo_dst`` is the destination→source homography :math:`(N, 4, 4)`, in normalized
+        - input: ``(N, C, D, H, W)``; ``dsize`` is the output size ``(d, h, w)``
+        - ``src_homo_dst`` is the destination→source homography ``(N, 4, 4)``, in normalized
           :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), and acts on
           ``(x, y, z, 1)`` column vectors: ``x`` indexes ``W``, ``y`` indexes ``H``, ``z`` indexes
           ``D``. That is the order :func:`torch.nn.functional.grid_sample` reads a 5-D grid in, and
@@ -2079,9 +2092,9 @@ def homography_warp3d(
         - negative output dimensions raise ``ValueError``
 
     Args:
-        patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
+        patch_src: The image or torch.Tensor to warp. Should be from source of shape ``(N, C, D, H, W)``.
         src_homo_dst: The homography or torch.stack of homographies from destination to source of shape
-          :math:`(N, 4, 4)`.
+          ``(N, 4, 4)``.
         dsize: output size ``(d, h, w)``.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.

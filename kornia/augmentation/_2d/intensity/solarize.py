@@ -25,14 +25,14 @@ from kornia.enhance import solarize
 
 
 class RandomSolarize(IntensityAugmentationBase2D):
-    r"""Solarize given torch.Tensor image or a batch of torch.Tensor images randomly.
+    r"""Solarize images at a random threshold and addition, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomSolarize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         thresholds:
             If float x, threshold will be generated from (0.5 - x, 0.5 + x).
             If tuple (x, y), threshold will be generated from (x, y).
@@ -44,8 +44,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
