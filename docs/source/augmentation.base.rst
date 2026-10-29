@@ -52,10 +52,11 @@ Kornia augmentations generally follow a `sample-apply` routine.
   `RigidAffineAugmentationBase2D` subclasses, recomputing it from replayed ``params`` that the child did not last
   apply to an image or that were edited since. An in-place edit made inside ``torch.inference_mode`` is not seen,
   because inference tensors have no version counter; replace the value instead.
-  `RandomElasticTransform`, `RandomThinPlateSpline` and `RandomFisheye` have no matrix, so a pipeline that
-  contains one refuses keypoint and box data keys. The container does not call the box and keypoint handlers of a
-  custom child that subclasses `AugmentationBase2D` directly, so those keys come back unchanged; subclass
-  `GeometricAugmentationBase2D` to move them (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+  `RandomElasticTransform`, `RandomThinPlateSpline` and `RandomFisheye` have no matrix, so a forward call through
+  a pipeline that contains one refuses keypoint and box data keys. The container does not call the box and
+  keypoint handlers of a custom child that subclasses `AugmentationBase2D` directly, so those keys come back
+  unchanged; subclass `GeometricAugmentationBase2D` to move them
+  (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes
 ---------------------------

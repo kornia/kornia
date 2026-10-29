@@ -4,9 +4,9 @@
 .. currentmodule:: kornia.augmentation
 
 Spatial transformations and erasing operations. Matrix, inverse and annotation support depend on the class
-and configuration. The non-rigid `RandomElasticTransform`, `RandomThinPlateSpline` and `RandomFisheye` refuse
-boxes and keypoints, which they cannot move with the image
-(`#4420 <https://github.com/kornia/kornia/issues/4420>`_). `RandomErasing` changes image
+and configuration. The non-rigid `RandomElasticTransform`, `RandomThinPlateSpline` and `RandomFisheye` cannot
+move boxes and keypoints with the image, so a forward call with either raises; ``.inverse()`` leaves these steps
+applied (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). `RandomErasing` changes image
 and mask values without moving coordinates. See
 :class:`~kornia.augmentation.AugmentationSequential` for the supported data-key paths and their limitations.
 
