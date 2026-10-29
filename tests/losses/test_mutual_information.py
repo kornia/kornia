@@ -1089,11 +1089,12 @@ class TestConventionsMutualInformation(BaseTester):
     @pytest.mark.parametrize("chunk_size", [1, 5, 13, 20])
     def test_chunked_joint_histogram_gradients(self, chunk_size, device, dtype):
         """Chunked contraction preserves gradients for both histogram inputs."""
-        vals_1 = torch.rand(2, 4, 13, device=device, dtype=dtype, requires_grad=True)
-        vals_2 = torch.rand(2, 6, 13, device=device, dtype=dtype, requires_grad=True)
+        generator = torch.Generator().manual_seed(9)
+        vals_1 = torch.rand(2, 4, 13, generator=generator, dtype=dtype).to(device=device).requires_grad_()
+        vals_2 = torch.rand(2, 6, 13, generator=generator, dtype=dtype).to(device=device).requires_grad_()
         expected = vals_1 @ vals_2.transpose(-1, -2)
         actual = _chunked_joint_histogram_matmul(vals_1, vals_2, chunk_size)
-        weights = torch.rand_like(actual)
+        weights = torch.rand(actual.shape, generator=generator, dtype=dtype).to(device=device)
 
         expected_grads = torch.autograd.grad(expected, (vals_1, vals_2), weights)
         actual_grads = torch.autograd.grad(actual, (vals_1, vals_2), weights)
