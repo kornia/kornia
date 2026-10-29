@@ -213,10 +213,13 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    squared_radius = x**2 + y**2
-    safe_squared_radius = torch.where(squared_radius > eps, squared_radius, torch.ones_like(squared_radius))
-    safe_rho = torch.sqrt(safe_squared_radius)
-    rho = torch.sqrt(squared_radius).detach() + safe_rho - safe_rho.detach()
+    # The square sum only classifies points against eps. The radius comes from hypot, which neither overflows
+    # nor underflows while the radius itself is representable. Inside the eps neighbourhood the gradient is 0:
+    # hypot is differentiated at the safe point (1, 0) there, and the value is taken from a detached copy.
+    outside = x**2 + y**2 > eps
+    safe_x = torch.where(outside, x, torch.ones_like(x))
+    safe_y = torch.where(outside, y, torch.zeros_like(y))
+    rho = torch.where(outside, torch.hypot(safe_x, safe_y), torch.hypot(x, y).detach())
     phi = torch.atan2(y, x)
     return rho, phi
 

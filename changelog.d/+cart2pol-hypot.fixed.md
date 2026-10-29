@@ -1,0 +1,1 @@
+`cart2pol` now computes `rho` with `torch.hypot`, so it no longer returns `nan` when `x ** 2 + y ** 2` overflows (a float16 radius of about 256 or more) or loses the radius when the square sum underflows. The zero gradient inside the `eps` neighbourhood of the origin is unchanged.
