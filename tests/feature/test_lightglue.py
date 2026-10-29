@@ -323,7 +323,7 @@ class TestCrossBlock(BaseTester):
                 t.unflatten(-1, (4, -1)).transpose(1, 2)
                 for t in (block.to_qk(x0), block.to_qk(x1), block.to_v(x0), block.to_v(x1))
             )
-            sim = qk0 @ qk1.transpose(-2, -1) / 4.0  # head dimension 16
+            sim = qk0 @ qk1.transpose(-2, -1) * qk0.shape[-1] ** -0.5
             if mask is not None:
                 sim = sim.masked_fill(~mask, -float("inf"))
             m0 = (sim.softmax(-1) @ v1).nan_to_num()

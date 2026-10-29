@@ -186,7 +186,8 @@ class SelfBlock(nn.Module):
     Args:
         embed_dim: The dimension of the feature embeddings.
         num_heads: The number of attention heads.
-        flash: Whether to use FlashAttention. Default: False.
+        flash: Whether to run the attention of CUDA tensors in float16, where PyTorch can select its FlashAttention
+            kernel (see :class:`Attention`). Default: False.
         bias: Whether to include bias in the linear layers. Default: True.
     """
 
@@ -240,7 +241,8 @@ class CrossBlock(nn.Module):
     Args:
         embed_dim: The dimension of the feature embeddings.
         num_heads: The number of attention heads.
-        flash: Whether to use FlashAttention. Default: False.
+        flash: Whether to run the attention of CUDA tensors in float16, where PyTorch can select its FlashAttention
+            kernel (see :class:`Attention`). Default: False.
         bias: Whether to include bias in the linear layers. Default: True.
     """
 
