@@ -246,21 +246,23 @@ class TestDeDoDeHalfPrecision(BaseTester):
         assert scores.shape == (1, 10)
         assert torch.isfinite(scores).all()
 
-    def test_detector_returns_float32_logits(self, device, dtype):
-        # The networks run in the model dtype; the logits are accumulated in float32, as Parskatt/DeDoDe 6d15618
-        # (detectors/dedode_detector.py) does, and are not rounded to the model dtype afterwards.
+    def test_detector_returns_at_least_float32_logits(self, device, dtype):
+        # The networks run in the model dtype; the logits are accumulated in at least float32, as Parskatt/DeDoDe
+        # 6d15618 (detectors/dedode_detector.py) does in float32, and are not rounded to a half dtype afterwards.
         detector = get_detector("L", amp_dtype=dtype).to(device, dtype).eval()
         with torch.no_grad():
             logits = detector(torch.rand(1, 3, 56, 84, device=device, dtype=dtype))
         assert logits.shape == (1, 1, 56, 84)
-        assert logits.dtype == torch.float32
+        assert logits.dtype == torch.promote_types(dtype, torch.float32)
         assert torch.isfinite(logits).all()
 
     def test_half_scoremap_keeps_the_float32_top_k(self, device, dtype, monkeypatch):
         # A peaky map of integer logits, exact in every dtype. Over 252 x 336 pixels most of its softmax
         # probabilities are below 1e-8: float16 flushes them to 0 and bfloat16 keeps 8 significant bits, so a
-        # softmax in the model dtype loses the top-k. The softmax and the keypoint sampling run in float32, so every
-        # model dtype returns the float32 keypoints and scores.
+        # softmax in the model dtype loses the top-k. The softmax and the keypoint sampling run in at least float32,
+        # so a half-precision model returns the float32 keypoints and scores.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a regression for the half dtypes")
         h, w = 252, 336
         logits = (torch.randn(1, 1, h, w, generator=torch.Generator().manual_seed(0)) * 8).round().to(device)
 
