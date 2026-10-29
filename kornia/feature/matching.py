@@ -53,14 +53,18 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     distance between nearby descriptors, and ``torch.cdist`` has no float16 kernel on
     CPU. Distances are returned in the input dtype.
     """
-    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
-    if not torch.jit.is_scripting():  # noqa: SIM102
-        # Autocast casts a mixed pair to a common dtype. Outside it, the CPU `torch.cdist` raises for a mixed pair,
-        # while on MPS it computes one of up to 25 rows in the dtype of d1.
-        if d1.dtype != d2.dtype and not is_autocast_enabled():
-            raise RuntimeError(f"The descriptors must have the same dtype, got {d1.dtype} and {d2.dtype}")
     half = (torch.float16, torch.bfloat16)
     output_dtype = d1.dtype
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():  # noqa: SIM102
+        if d1.dtype != d2.dtype:
+            # Inside autocast, `torch.cdist` computes a mixed pair of float16, bfloat16 and float32 in float32, and
+            # so does the fallback here; autocast does not cast float64. Outside autocast, the CPU `torch.cdist`
+            # raises for a mixed pair, while on MPS it computes one of up to 25 rows in the dtype of d1.
+            castable = (torch.float16, torch.bfloat16, torch.float32)
+            if not (is_autocast_enabled() and d1.dtype in castable and d2.dtype in castable):
+                raise RuntimeError(f"The descriptors must have the same dtype, got {d1.dtype} and {d2.dtype}")
+            d1, d2 = d1.float(), d2.float()
     if output_dtype in half:
         d1, d2 = d1.float(), d2.float()
     if _torch_cdist_available(d1) and _torch_cdist_available(d2):
