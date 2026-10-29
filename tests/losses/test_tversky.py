@@ -72,8 +72,10 @@ class TestTverskyLoss(BaseTester):
         self.assert_close(gradient * 4096, expected_gradient * 4096)
         if dtype in (torch.float32, torch.float64):
             tolerance = 1e-5 if dtype == torch.float32 else 1e-10
-            error = (gradient - expected_gradient).double().norm()
-            assert error <= tolerance * expected_gradient.double().norm()
+            # MPS has no float64 kernels; keep the strict reference norm in float64 on the CPU.
+            error = (gradient - expected_gradient).cpu().double().norm()
+            reference_norm = expected_gradient.cpu().double().norm()
+            assert error <= tolerance * reference_norm
         if not near_exact:
             assert torch.count_nonzero(gradient[1]) == 0
 
