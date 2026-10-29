@@ -25,6 +25,7 @@ from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
 from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
+from kornia.feature.dedode.transformer.layers.attention import Attention
 from kornia.feature.dedode.transformer.layers.patch_embed import PatchEmbed
 from kornia.feature.dedode.utils import dedode_denormalize_pixel_coordinates
 
@@ -56,6 +57,27 @@ class TestConvRefiner(BaseTester):
 
 
 class TestMemEffAttention(BaseTester):
+    @pytest.mark.parametrize("attention_class", [Attention, MemEffAttention])
+    def test_matches_the_materialised_softmax(self, device, dtype, attention_class):
+        # The fused kernel computes softmax(q k^T * scale) v without materialising the N x N weights; the dropout of
+        # attn_drop is off in eval mode.
+        attention = attention_class(dim=16, num_heads=4, qkv_bias=True, attn_drop=0.5).to(device, dtype).eval()
+        x = torch.rand(2, 7, 16, device=device, dtype=dtype)
+        with torch.no_grad():
+            q, k, v = attention.qkv(x).reshape(2, 7, 3, 4, 4).permute(2, 0, 3, 1, 4)
+            weights = (q * attention.scale @ k.transpose(-2, -1)).softmax(dim=-1)
+            expected = attention.proj((weights @ v).transpose(1, 2).reshape(2, 7, 16))
+            self.assert_close(attention(x), expected)
+
+    def test_attn_drop_applies_in_training_mode_only(self, device, dtype):
+        attention = Attention(dim=16, num_heads=4, attn_drop=0.5).to(device, dtype)
+        x = torch.rand(2, 7, 16, device=device, dtype=dtype)
+        with torch.no_grad():
+            expected = attention.eval()(x)
+            assert not torch.allclose(attention.train()(x), expected)
+            attention.attn_drop.p = 0.0
+            self.assert_close(attention(x), expected)
+
     def test_attn_bias_raises(self, device, dtype):
         attention = MemEffAttention(dim=8, num_heads=2).to(device, dtype).eval()
         x = torch.rand(1, 5, 8, device=device, dtype=dtype)
