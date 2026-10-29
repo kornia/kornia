@@ -993,6 +993,27 @@ class TestDepthWarperConventions(BaseTester):
             rtol=0.0,
         )
 
+        # Translated camera pair: +1 x translation shifts image 1 column to the left with zero-filled right edge
+        cam_tx = PinholeCamera(
+            intrinsics, _tx_plus_one(device, dtype), torch.tensor([4], device=device), torch.tensor([5], device=device)
+        )
+        warper_tx = DepthWarper(cam_tx, 4, 5, align_corners=align_corners).compute_projection_matrix(cam)
+        expected_shifted = torch.zeros_like(image)
+        expected_shifted[..., :, :-1] = image[..., :, 1:]
+        self.assert_close(
+            warper_tx(depth, image),
+            expected_shifted,
+            atol=max(1e-11, 8 * torch.finfo(dtype).eps),
+            rtol=0.0,
+        )
+        direct_tx = depth_warp(cam_tx, cam, depth, image, 4, 5, align_corners=align_corners)
+        self.assert_close(
+            direct_tx,
+            expected_shifted,
+            atol=max(1e-11, 8 * torch.finfo(dtype).eps),
+            rtol=0.0,
+        )
+
     @staticmethod
     def _warper(device, dtype, dst_extrinsics, src_extrinsics):
         """Build a DepthWarper for a 4x5 image and run compute_projection_matrix on the source camera."""
