@@ -2663,6 +2663,46 @@ class TestPolCartConversions(BaseTester):
         expected = torch.tensor([2.0, 1.0], device=device, dtype=torch.float32) / math.sqrt(5.0)
         self.assert_close(xy.grad.float(), expected, atol=1e-2, rtol=1e-2)
 
+    @pytest.mark.parametrize("rho_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_cart2pol_rho_gradient_does_not_overflow_for_a_large_upstream_gradient(self, rho_dtype, device):
+        # The backward pass must not form upstream * x before dividing by rho: in float16 a 30000 upstream
+        # gradient times x = 3 overflows although the result, 30000 * (0.6, 0.8), is representable.
+        xy = torch.tensor([3.0, 4.0], device=device, dtype=rho_dtype, requires_grad=True)
+
+        rho = kornia.geometry.conversions.cart2pol(xy[0], xy[1])[0]
+        rho.backward(torch.tensor(30000.0, device=device, dtype=rho_dtype))
+
+        expected = torch.tensor([18000.0, 24000.0], device=device, dtype=torch.float32)
+        self.assert_close(xy.grad.float(), expected, atol=0.0, rtol=1e-2)
+
+    @pytest.mark.device_agnostic
+    def test_cart2pol_onnx_export_legacy_matches_eager(self, dtype):
+        # cart2pol must stay exportable: neither ONNX exporter supports torch.hypot (as in kornia#3993), so the
+        # overflow-safe radius is built from elementwise ops. 1e20 takes the scaled branch, the rest the direct one.
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Cart2Pol(torch.nn.Module):
+            def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+                return torch.stack(kornia.geometry.conversions.cart2pol(x, y), -1)
+
+        x = torch.tensor([3.0, 0.0, 300.0, 1e20, 5e-5, -2.0], dtype=dtype)
+        y = torch.tensor([4.0, 0.0, 150.0, 5e19, 0.0, -1.0], dtype=dtype)
+        model = Cart2Pol()
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (x, y), buffer, input_names=["x", "y"], opset_version=17, dynamo=False)
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        exported = torch.from_numpy(session.run(None, {"x": x.numpy(), "y": y.numpy()})[0])
+        eager = model(x, y)
+        self.assert_close(exported[:, 0], eager[:, 0])
+        # phi is compared off the origin only: the exported atan2(0, 0) is nan, independently of the radius
+        off_origin = (x != 0) | (y != 0)
+        self.assert_close(exported[off_origin, 1], eager[off_origin, 1])
+
     def test_convention_positive_rotation_decreases_cart2pol_phi(self, device, dtype):
         # Cross-symbol convention pin: enforces the opposite-sense relation between
         # angle_to_rotation_matrix and cart2pol stated canonically in cart2pol's Convention

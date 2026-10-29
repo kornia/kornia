@@ -165,6 +165,23 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.
     return x, y
 
 
+def _norm2d(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Return ``sqrt(x ** 2 + y ** 2)`` without overflow or underflow of the square sum.
+
+    Where the square sum is a finite normal number it is used directly, so those values are the plain formula's.
+    Elsewhere the radius is ``m * sqrt((x / m) ** 2 + (y / m) ** 2)`` with ``m = max(|x|, |y|)``, whose squared
+    ratios are at most 1. Each branch is evaluated at a safe argument where it is not selected, so its gradient
+    stays finite.
+    """
+    finfo = torch.finfo(x.dtype)
+    squared = x**2 + y**2
+    direct = (squared >= finfo.tiny) & (squared <= finfo.max)
+    m = torch.maximum(x.abs(), y.abs())
+    safe_m = torch.where(direct | (m == 0), torch.ones_like(m), m)
+    scaled = m * torch.sqrt((x / safe_m) ** 2 + (y / safe_m) ** 2)
+    return torch.where(direct, torch.sqrt(torch.where(direct, squared, torch.ones_like(squared))), scaled)
+
+
 def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert cartesian coordinates to polar coordinates.
 
@@ -213,13 +230,20 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    # The square sum only classifies points against eps. The radius comes from hypot, which neither overflows
-    # nor underflows while the radius itself is representable. Inside the eps neighbourhood the gradient is 0:
-    # hypot is differentiated at the safe point (1, 0) there, and the value is taken from a detached copy.
+    # The square sum only classifies points against eps, as before. The radius comes from _norm2d, which neither
+    # overflows nor underflows while the radius itself is representable; float16/bfloat16 compute it in float32 and
+    # round once. It uses elementwise ops only: torch.hypot does not export to ONNX. Inside the eps neighbourhood
+    # the gradient is 0: the norm is differentiated at the safe point (1, 0) there, and the value is taken from a
+    # detached copy.
     outside = x**2 + y**2 > eps
-    safe_x = torch.where(outside, x, torch.ones_like(x))
-    safe_y = torch.where(outside, y, torch.zeros_like(y))
-    rho = torch.where(outside, torch.hypot(safe_x, safe_y), torch.hypot(x, y).detach())
+    out_dtype = torch.promote_types(x.dtype, y.dtype)
+    if not out_dtype.is_floating_point:
+        out_dtype = torch.get_default_dtype()
+    work_dtype = torch.promote_types(out_dtype, torch.float32)
+    xw, yw = x.to(work_dtype), y.to(work_dtype)
+    safe_x = torch.where(outside, xw, torch.ones_like(xw))
+    safe_y = torch.where(outside, yw, torch.zeros_like(yw))
+    rho = torch.where(outside, _norm2d(safe_x, safe_y), _norm2d(xw, yw).detach()).to(out_dtype)
     phi = torch.atan2(y, x)
     return rho, phi
 
