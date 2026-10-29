@@ -2675,6 +2675,23 @@ class TestPolCartConversions(BaseTester):
         expected = torch.tensor([18000.0, 24000.0], device=device, dtype=torch.float32)
         self.assert_close(xy.grad.float(), expected, atol=0.0, rtol=1e-2)
 
+    def test_cart2pol_torchscript_matches_eager(self, device, dtype):
+        # cart2pol is reached from scripted code (kornia.feature.mkd), so it must stay scriptable: no torch.finfo,
+        # dtype.is_floating_point or torch.get_default_dtype. (1e4, 5e3) overflows a float16 square sum, and
+        # (1e20, 5e19) a float32 one, so the scripted function is checked on both branches.
+        x = torch.tensor([3.0, 0.0, 300.0, 1e4, 5e-5], device=device, dtype=dtype)
+        y = torch.tensor([4.0, 0.0, 150.0, 5e3, 0.0], device=device, dtype=dtype)
+        if dtype in (torch.float32, torch.float64, torch.bfloat16):
+            x = torch.cat([x, torch.tensor([1e20], device=device, dtype=dtype)])
+            y = torch.cat([y, torch.tensor([5e19], device=device, dtype=dtype)])
+        scripted = torch.jit.script(kornia.geometry.conversions.cart2pol)
+
+        rho, phi = scripted(x, y)
+
+        expected_rho, expected_phi = kornia.geometry.conversions.cart2pol(x, y)
+        self.assert_close(rho, expected_rho, atol=0.0, rtol=0.0)
+        self.assert_close(phi, expected_phi, atol=0.0, rtol=0.0)
+
     @pytest.mark.device_agnostic
     def test_cart2pol_onnx_export_legacy_matches_eager(self, dtype):
         # cart2pol must stay exportable: neither ONNX exporter supports torch.hypot (as in kornia#3993), so the

@@ -171,11 +171,15 @@ def _norm2d(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     Where the square sum is a finite normal number it is used directly, so those values are the plain formula's.
     Elsewhere the radius is ``m * sqrt((x / m) ** 2 + (y / m) ** 2)`` with ``m = max(|x|, |y|)``, whose squared
     ratios are at most 1. Each branch is evaluated at a safe argument where it is not selected, so its gradient
-    stays finite.
+    stays finite. ``x`` and ``y`` are float32 or float64.
     """
-    finfo = torch.finfo(x.dtype)
+    # smallest normal and largest finite values as literals rather than torch.finfo, which TorchScript cannot compile
+    if x.dtype == torch.float64:
+        tiny, largest = 2.0**-1022, 1.7976931348623157e308
+    else:
+        tiny, largest = 2.0**-126, 3.4028234663852886e38
     squared = x**2 + y**2
-    direct = (squared >= finfo.tiny) & (squared <= finfo.max)
+    direct = (squared >= tiny) & (squared <= largest)
     m = torch.maximum(x.abs(), y.abs())
     safe_m = torch.where(direct | (m == 0), torch.ones_like(m), m)
     scaled = m * torch.sqrt((x / safe_m) ** 2 + (y / safe_m) ** 2)
@@ -236,9 +240,9 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     # the gradient is 0: the norm is differentiated at the safe point (1, 0) there, and the value is taken from a
     # detached copy.
     outside = x**2 + y**2 > eps
-    out_dtype = torch.promote_types(x.dtype, y.dtype)
-    if not out_dtype.is_floating_point:
-        out_dtype = torch.get_default_dtype()
+    # rho keeps the dtype sqrt(x**2 + y**2) has (a float for integer input), read from a zero-element probe
+    # because TorchScript cannot access dtype.is_floating_point or call torch.get_default_dtype
+    out_dtype = torch.empty(0, device=x.device, dtype=torch.promote_types(x.dtype, y.dtype)).sqrt().dtype
     work_dtype = torch.promote_types(out_dtype, torch.float32)
     xw, yw = x.to(work_dtype), y.to(work_dtype)
     safe_x = torch.where(outside, xw, torch.ones_like(xw))
