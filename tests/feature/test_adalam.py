@@ -22,6 +22,7 @@ import torch
 
 from kornia.feature import GeometryAwareDescriptorMatcher, laf_from_center_scale_ori, match_adalam
 from kornia.feature.adalam import AdalamFilter, get_adalam_default_config
+from kornia.feature.adalam.core import _merge_duplicate_matches
 from kornia.feature.adalam.ransac import (
     _select_inliers,
     confidence_based_inlier_selection,
@@ -236,3 +237,15 @@ class TestDrawFirstKCouples(BaseTester):
         couples = draw_first_k_couples(4, torch.tensor([1000, 3], device=device), device)
         self.assert_close(couples[:, :, 0], torch.tensor([[1, 0], [2, 0], [2, 1], [3, 0]], device=device))
         self.assert_close(couples[:, :, 1], torch.tensor([[1, 0], [2, 0], [2, 1], [0, 0]], device=device))
+
+
+class TestMergeDuplicateMatches(BaseTester):
+    def test_keeps_each_match_once_with_its_smallest_distance_ratio(self, device, dtype):
+        # overlapping neighbourhoods accept a match in several local RANSACs; the most confident copy is reported,
+        # whichever comes first
+        matches = torch.tensor([[0, 1], [2, 3], [0, 1], [0, 1], [2, 0]], device=device)
+        dists = torch.tensor([0.5, 0.2, 0.1, 0.9, 0.4], device=device, dtype=dtype)
+        for order in ([0, 1, 2, 3, 4], [3, 4, 1, 2, 0]):
+            unique, best = _merge_duplicate_matches(matches[order], dists[order], 5)
+            assert unique.tolist() == [[0, 1], [2, 0], [2, 3]]
+            self.assert_close(best, torch.tensor([0.1, 0.4, 0.2], device=device, dtype=dtype))
