@@ -26,7 +26,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.core.ops import _is_numpy_bool
-from kornia.core.utils import is_compiling
+from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 
 
 class _HausdorffERLossBase(nn.Module):
@@ -144,7 +144,42 @@ class _HausdorffERLossBase(nn.Module):
                 f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
             )
 
-        out = torch.stack(
+        if (
+            not is_compiling()
+            and not is_exporting()
+            and not torch.jit.is_tracing()
+            # A batched convolution can round the backward differently at a threshold tie.
+            and not torch.is_grad_enabled()
+            and type(self) is HausdorffERLoss
+            and pred.device.type == "cpu"
+            and pred.dtype in (torch.float32, torch.float64)
+            and pred.size(1) > 1
+            and pred.is_contiguous()
+            and not isinstance(self.alpha, torch.Tensor)
+            and not is_autocast_enabled()
+            and not torch._C._are_functorch_transforms_active()
+        ):
+            classes = torch.arange(pred.size(1), device=target.device).view(1, -1, 1, 1)
+            foreground = (target == classes).to(pred.dtype)
+            # Each class remains an independent image; reduction='none' keeps the original (C, B, 1, H, W) order.
+            out = self.perform_erosion(pred.flatten(0, 1).unsqueeze(1), foreground.flatten(0, 1).unsqueeze(1))
+            out = out.reshape(pred.size(0), pred.size(1), 1, *pred.shape[2:]).transpose(0, 1).contiguous()
+        else:
+            out = self._classwise_erosion(pred, target)
+
+        if self.reduction == "mean":
+            out = out.mean()
+        elif self.reduction == "sum":
+            out = out.sum()
+        elif self.reduction == "none":
+            pass
+        else:
+            raise NotImplementedError(f"reduction `{self.reduction}` has not been implemented yet.")
+
+        return out
+
+    def _classwise_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return torch.stack(
             [
                 self.perform_erosion(
                     pred[:, i : i + 1],
@@ -157,17 +192,6 @@ class _HausdorffERLossBase(nn.Module):
                 for i in range(pred.size(1))
             ]
         )
-
-        if self.reduction == "mean":
-            out = out.mean()
-        elif self.reduction == "sum":
-            out = out.sum()
-        elif self.reduction == "none":
-            pass
-        else:
-            raise NotImplementedError(f"reduction `{self.reduction}` has not been implemented yet.")
-
-        return out
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
@@ -204,6 +228,9 @@ class HausdorffERLoss(_HausdorffERLossBase):
         - Each of the ``k`` erosions is min-max normalised per image and class and weighted by
           :math:`(i + 1)^\alpha` for :math:`i = 0, \dots, k - 1`: the value is a unitless surrogate, not a distance
           in pixels.
+        - Eager CPU float32/float64 evaluation under ``torch.no_grad()`` batches the independent class maps when
+          ``alpha`` is a Python number. Autograd, tensor exponents and captured graphs retain the classwise route;
+          class batching can round the convolution backward differently at threshold ties.
 
     Args:
         alpha: the exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.

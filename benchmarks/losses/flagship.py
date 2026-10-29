@@ -17,7 +17,7 @@
 
 """Flagship losses benchmark: kornia.losses forward + backward, vs torchvision where it has one.
 
-Losses run inside training steps, so every row times a forward **and** the backward pass to the
+By default every row times a forward **and** the backward pass to the
 prediction (``torch.autograd.grad``), not the forward alone. One representative per family:
 
 =================================  ======================================  ============================
@@ -28,6 +28,7 @@ kornia.losses                      torchvision                             task
 ``dice_loss``                      —                                       21-class segmentation
 ``dice_loss_macro``                —                                       per-class Dice, present classes
 ``dice_loss_weighted``             —                                       class-weighted micro Dice
+``hausdorff_er_loss``              —                                       3-class boundary segmentation
 ``ssim_loss``                      —                                       image reconstruction
 ``total_variation``                —                                       image regularization
 =================================  ======================================  ============================
@@ -42,6 +43,9 @@ from 0.5 to 1.5; all use the same logits and labels. ``--compile`` compiles the 
 the backward then runs through AOTAutograd,
 and both are compiled during the untimed warmup. Other libraries' losses are thin wrappers over the
 same PyTorch ops and are left out rather than timed as look-alikes. Throughput is img/s.
+
+``hausdorff_er_loss`` uses four erosions of a structured 3-class target with shifted predictions.
+``--forward-only`` times validation under ``torch.no_grad()`` for every row instead of forward + backward.
 
 Usage:
     python benchmarks/losses/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -83,6 +87,7 @@ OPS = (
     "dice_loss",
     "dice_loss_macro",
     "dice_loss_weighted",
+    "hausdorff_er_loss",
     "ssim_loss",
     "total_variation",
 )
@@ -99,8 +104,9 @@ def build_ops(
     tvops: Optional[ModuleType],
     skip_compile: frozenset[str] = frozenset(),
     selected: Optional[frozenset[str]] = None,
+    forward_only: bool = False,
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
-    """Build {op: {backend: zero-arg callable}}; each callable runs one forward + backward on the batch."""
+    """Build {op: {backend: zero-arg callable}} for training or no-grad validation."""
     gen = torch.Generator().manual_seed(0)
     _, batch_f = image_batch(b, h, w, device, dtype)
     logits = torch.randn(b, NUM_CLASSES, h, w, generator=gen).to(device=device, dtype=dtype).requires_grad_()
@@ -111,6 +117,8 @@ def build_ops(
     recon = recon.detach().requires_grad_()
 
     def backward_to(pred: torch.Tensor) -> Callable[[Callable[[], object]], Callable[[], object]]:
+        if forward_only:
+            return torch.no_grad()
         return lambda loss: lambda: torch.autograd.grad(loss(), pred)
 
     ops: dict[str, dict[str, Backend]] = {}
@@ -160,6 +168,15 @@ def build_ops(
     if include("ssim_loss"):
         ops["ssim_loss"] = kornia_row("ssim_loss", recon, KL.ssim_loss, recon, batch_f, WINDOW)
 
+    if include("hausdorff_er_loss"):
+        y = torch.arange(h, device=device)[:, None] // max(h // 4, 1)
+        x = torch.arange(w, device=device)[None, :] // max(w // 4, 1)
+        hd_labels = ((y + x) % 3).expand(b, 1, h, w).contiguous()
+        hd_logits = torch.randn(b, 3, h, w, generator=gen).to(device=device, dtype=dtype) * 0.1
+        hd_logits.scatter_add_(1, hd_labels.roll(max(w // 16, 1), dims=-1), torch.full_like(hd_labels, 3, dtype=dtype))
+        hd_pred = hd_logits.softmax(1).detach().requires_grad_()
+        ops["hausdorff_er_loss"] = kornia_row("hausdorff_er_loss", hd_pred, KL.HausdorffERLoss(k=4), hd_pred, hd_labels)
+
     if include("total_variation"):
 
         def tv_sum(img: torch.Tensor) -> torch.Tensor:
@@ -173,6 +190,7 @@ def build_ops(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_flagship_args(parser, ops=OPS)
+    parser.add_argument("--forward-only", action="store_true", help="time validation without gradient recording")
     args = parser.parse_args()
     device, dtype, sync = setup_run(args, opencv=False)
 
@@ -183,14 +201,27 @@ def main() -> None:
         args,
         device,
         units="img/s",
-        regimes=["all backends: batched float tensors on the device; timed region = forward + backward"],
+        regimes=[
+            "all backends: batched float tensors on the device; timed region = "
+            + ("forward only, no_grad" if args.forward_only else "forward + backward")
+        ],
         missing=[("torchvision", tvops_error)] if tvops is None else [],
     )
+    meta["timed_region"] = "forward_only_no_grad" if args.forward_only else "forward_backward"
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision"]
     results = run_batch_sweep(
         batch_list(args),
         lambda b: build_ops(
-            b, args.size, args.size, device, dtype, args.compile, tvops, args.skip_compile_ops, args.ops
+            b,
+            args.size,
+            args.size,
+            device,
+            dtype,
+            args.compile,
+            tvops,
+            args.skip_compile_ops,
+            args.ops,
+            args.forward_only,
         ),
         backends,
         row_fields=image_row_fields(args),

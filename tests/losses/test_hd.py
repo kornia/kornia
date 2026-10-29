@@ -34,6 +34,24 @@ _CAPTURE_UNAVAILABLE_REASON = (
 
 
 class TestHausdorffLoss(BaseTester):
+    @pytest.mark.parametrize("reduction", ["none", "mean"])
+    def test_no_grad_class_batching(self, device, dtype, reduction):
+        """Keep image/class scores and output layout when validation batches the independent class maps."""
+        generator = torch.Generator().manual_seed(0)
+        grid = torch.arange(32, device=device)
+        labels = ((grid[:, None] // 8 + grid[None, :] // 8) % 3).expand(2, 1, 32, 32).contiguous()
+        pred = torch.randn(2, 3, 32, 32, generator=generator).to(device=device, dtype=dtype) * 0.1
+        pred.scatter_add_(1, labels.roll(3, dims=-1), torch.full_like(labels, 3, dtype=dtype))
+        pred = pred.softmax(1).detach().requires_grad_()
+        loss = kornia.losses.HausdorffERLoss(k=4, reduction=reduction)
+        classwise = loss(pred, labels)
+        with torch.no_grad():
+            actual = loss(pred, labels)
+        assert classwise.max() > 0
+        assert not actual.requires_grad
+        assert actual.is_contiguous()
+        self.assert_close(actual, classwise.detach())
+
     @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
     @pytest.mark.parametrize(
         "hd,shape", [(kornia.losses.HausdorffERLoss, (10, 10)), (kornia.losses.HausdorffERLoss3D, (10, 10, 10))]

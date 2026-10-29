@@ -1,0 +1,1 @@
+Batch independent class maps in eager CPU `HausdorffERLoss` validation under `torch.no_grad()` for float32/float64 inputs with Python-number exponents. Autograd retains its existing per-class computation, including its threshold gradients.
