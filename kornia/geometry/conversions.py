@@ -306,6 +306,8 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
 
 
 def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
+    if not A.is_floating_point() and not A.is_complex():
+        raise ValueError(f"Input A must be a floating point or complex tensor. Got {A.dtype}.")
     H: torch.Tensor = F.pad(A, [0, 0, 0, 1], "constant", value=0.0)
     H[..., -1, -1] += 1.0
     return H
@@ -319,6 +321,10 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
           :math:`2 \times 3` block verbatim; the input tensor is not modified
         - the rank is enforced to be exactly 3, so batching is **mandatory**: an
           unbatched ``(2, 3)`` matrix raises ``ValueError``
+
+    Note:
+        ``A`` must be a floating point or complex tensor; an integer or
+        boolean one raises ``ValueError`` naming its dtype.
 
     Args:
         A: the affine matrix with shape ``(B,2,3)``.
@@ -3128,6 +3134,9 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           ``torch.zeros(1, 4)`` with ``t = (1, 1, 1)`` returns
           ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)``, the same answer as the
           identity input
+        - only real floating point ``qvec`` and ``tvec`` are accepted: an
+          integer, bool or complex one raises ``TypeCheckError`` (also a
+          ``TypeError``) naming the argument, so cast it first
 
     Args:
         qvec: ARKit rotation quaternion ``(B, 4)``, [w, x, y, z] format.
@@ -3147,6 +3156,11 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     """
     # ToDo:  integrate QuaterniaonAPI
 
+    for name, value in (("qvec", qvec), ("tvec", tvec)):
+        if isinstance(value, torch.Tensor) and not value.is_floating_point():  # complex is not floating point
+            raise TypeCheckError(
+                f"Input {name} must be a real floating point tensor. Got dtype {value.dtype}.", actual_type=value.dtype
+            )
     Rcg = quaternion_to_rotation_matrix(qvec)
     Rcv, Tcv = camtoworld_graphics_to_vision_Rt(Rcg, tvec)
     R_colmap, t_colmap = camtoworld_to_worldtocam_Rt(Rcv, Tcv)
