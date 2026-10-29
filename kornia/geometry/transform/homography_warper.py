@@ -34,11 +34,20 @@ __all__ = ["BaseWarper", "HomographyWarper"]
 class BaseWarper(ABC, nn.Module):
     """Provide an abstract base class for homography-based image warping.
 
-    ``BaseWarper`` cannot be instantiated: a subclass must implement ``forward`` and
-    ``precompute_warp_grid``, otherwise constructing it raises ``TypeError``.
+    ``warper = HomographyWarper(height, width)`` builds a concrete warper, and
+    ``patch_dst = warper(patch_src, src_homo_dst)`` samples ``patch_src`` on its ``(height, width)`` destination grid.
+    ``BaseWarper`` is the contract behind it and cannot be instantiated: a subclass must implement ``forward`` and
+    ``precompute_warp_grid``, otherwise constructing it raises ``TypeError``. Subclass it to give
+    :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator` a custom warper; for the standard
+    homography warp use :class:`HomographyWarper`.
 
     Convention:
         - subclasses receive ``src_homo_dst`` as the destination→source homography
+
+    See Also:
+        - :class:`HomographyWarper`: the concrete warper, which samples with :func:`homography_warp`.
+        - :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`: takes a warper class and fits a model
+          with it.
 
     """
 

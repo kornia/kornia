@@ -113,7 +113,7 @@ class TestHomography(BaseTester):
         assert h is not None
 
 
-class TestBaseModel:
+class TestBaseModel(BaseTester):
     def test_base_cannot_be_instantiated(self):
         with pytest.raises(TypeError, match="abstract"):
             kornia.geometry.transform.BaseModel()
@@ -141,32 +141,38 @@ class TestBaseModel:
         assert not getattr(model_cls, "__abstractmethods__", None)
 
     def test_custom_model_with_registrator(self, device, dtype):
-        # A complete BaseModel subclass is still an ordinary nn.Module: its parameters are optimized and it moves with
-        # the registrator.
+        """Verify registration resets and invokes a custom model in both warp directions."""
+        # A complete BaseModel subclass is still an ordinary nn.Module: ImageRegistrator resets it, calls both of its
+        # transforms, optimizes its parameters and returns what it produces.
         if not supports_bilinear_2d_grid_sample_backward(device, dtype):
             pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
         if not supports_reflect_padding(device, dtype):
             pytest.skip(f"torch has no {dtype} reflection padding kernel on {device.type}")
+
+        calls = {"reset_model": 0, "forward": 0, "forward_inverse": 0}
+        shift_after_reset = 0.25
 
         class Translation(kornia.geometry.transform.BaseModel):
             def __init__(self) -> None:
                 super().__init__()
                 self.shift = torch.nn.Parameter(torch.zeros(2))
 
+            def _homography(self, sign: float) -> torch.Tensor:
+                homography = torch.eye(3, dtype=self.shift.dtype, device=self.shift.device)
+                homography[:2, 2] = sign * self.shift
+                return homography[None]
+
             def reset_model(self) -> None:
-                torch.nn.init.zeros_(self.shift)
+                calls["reset_model"] += 1
+                torch.nn.init.constant_(self.shift, shift_after_reset)
 
             def forward(self) -> torch.Tensor:
-                homography = torch.eye(3, dtype=self.shift.dtype, device=self.shift.device)
-                homography = homography.clone()
-                homography[:2, 2] = self.shift
-                return homography[None]
+                calls["forward"] += 1
+                return self._homography(1.0)
 
             def forward_inverse(self) -> torch.Tensor:
-                homography = torch.eye(3, dtype=self.shift.dtype, device=self.shift.device)
-                homography = homography.clone()
-                homography[:2, 2] = -self.shift
-                return homography[None]
+                calls["forward_inverse"] += 1
+                return self._homography(-1.0)
 
         model = Translation()
         assert [name for name, _ in model.named_parameters()] == ["shift"]
@@ -176,7 +182,16 @@ class TestBaseModel:
         ).to(device, dtype)
         image = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
         result = ir.register(image, image)
+
         assert result.shape == (1, 3, 3)
+        # register() resets the model once and fits it through both warp directions
+        assert calls["reset_model"] == 1
+        assert calls["forward"] >= 1
+        assert calls["forward_inverse"] >= 1
+        # the result is the custom model's own transform: reset to the sentinel shift, then moved by one optimizer step
+        # of learning rate 1e-3 at most
+        expected_shift = torch.full((2,), shift_after_reset, device=device, dtype=dtype)
+        self.assert_close(result.detach()[0, :2, 2], expected_shift, atol=0.05, rtol=0.0)
 
 
 class TestImageRegistrator(BaseTester):

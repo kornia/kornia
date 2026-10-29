@@ -26,7 +26,7 @@ from testing.base import BaseTester
 from testing.error import compute_patch_abs_error
 
 
-class TestBaseWarper:
+class TestBaseWarper(BaseTester):
     def test_base_cannot_be_instantiated(self):
         with pytest.raises(TypeError, match="abstract"):
             kornia.geometry.transform.BaseWarper(4, 4)

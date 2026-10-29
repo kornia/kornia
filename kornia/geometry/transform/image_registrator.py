@@ -35,8 +35,18 @@ __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 class BaseModel(ABC, nn.Module):
     """Provide an abstract base class for image registration models.
 
-    ``BaseModel`` cannot be instantiated: a subclass must implement ``reset_model``, ``forward`` and
-    ``forward_inverse``, otherwise constructing it raises ``TypeError``.
+    ``model = Homography()`` builds a concrete model, ``model()`` returns the transform that warps the source image into
+    the destination image, and ``model.forward_inverse()`` returns the transform for the opposite warp. ``BaseModel`` is
+    the contract behind them and cannot be instantiated: a subclass must implement ``reset_model``, ``forward`` and
+    ``forward_inverse``, otherwise constructing it raises ``TypeError``. Subclass it to pass a custom model to
+    :class:`ImageRegistrator` together with a ``warper``; for the built-in models use :class:`Homography` or
+    :class:`Similarity`.
+
+    See Also:
+        - :class:`Homography`: the unconstrained homography model.
+        - :class:`Similarity`: a rotation, scale and shift model, each of which can be switched off.
+        - :class:`ImageRegistrator`: fits a model to a pair of images by gradient descent.
+
     """
 
     @abstractmethod
