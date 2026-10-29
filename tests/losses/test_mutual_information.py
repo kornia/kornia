@@ -31,6 +31,7 @@ from kornia.losses.mutual_information import (
     NMILossFromRef,
     NMILossFromRef2D,
     NMILossFromRef3D,
+    _chunked_joint_histogram_matmul,
     _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
@@ -1053,6 +1054,37 @@ class TestConventionsMutualInformation(BaseTester):
                 self.assert_close(grad, expected_grad.to(dtype))
                 if masked:
                     self.assert_close(grad[~mask], torch.zeros_like(grad[~mask]), rtol=0, atol=0)
+
+    def test_mps_large_k_matches_cpu_5873(self, device, dtype):
+        """The MI losses match CPU when MPS contracts 33,856 samples (#5873)."""
+        if device.type != "mps":
+            pytest.skip("MPS regression")
+        generator = torch.Generator().manual_seed(8)
+        reference = torch.rand(1, 184, 184, generator=generator)
+        other = reference.square() + 0.05 * torch.rand(1, 184, 184, generator=generator)
+        mps_reference, mps_other = reference.to(device, dtype), other.to(device, dtype)
+        cpu_reference, cpu_other = reference.to(dtype), other.to(dtype)
+
+        for loss_fn in (mutual_information_loss_2d, normalized_mutual_information_loss_2d):
+            actual = loss_fn(mps_reference, mps_other)
+            expected = loss_fn(cpu_reference, cpu_other)
+            assert actual.dtype == dtype
+            assert actual.device == device
+            assert actual.isfinite().all()
+            assert expected.isfinite().all()
+            self.assert_close(actual.cpu(), expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("chunk_size", [1, 7, 16, 50, 51, 1000])
+    def test_chunked_joint_histogram_matches_single_matmul_5873(self, chunk_size):
+        """Chunking the sample axis preserves the joint histogram within floating-point tolerance."""
+        generator = torch.Generator().manual_seed(3)
+        vals_1 = torch.rand(2, 8, 50, generator=generator, dtype=torch.float64)
+        vals_2 = torch.rand(2, 8, 50, generator=generator, dtype=torch.float64)
+        expected = vals_1 @ vals_2.transpose(-1, -2)
+        actual = _chunked_joint_histogram_matmul(vals_1, vals_2, chunk_size)
+        assert actual.shape == expected.shape
+        self.assert_close(actual, expected)
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])

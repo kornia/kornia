@@ -24,6 +24,23 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
 from kornia.core.utils import is_exporting
 
+# Keep MPS contractions below the sample range where some Apple GPUs miscompute bmm (#5873).
+_MPS_MATMUL_MAX_K = 16384
+
+
+def _chunked_joint_histogram_matmul(vals_1: torch.Tensor, vals_2: torch.Tensor, chunk_size: int) -> torch.Tensor:
+    """Contract the sample dimension in bounded chunks for MPS joint histograms."""
+    vals_2_t = vals_2.transpose(-1, -2)
+    num_samples = vals_1.shape[-1]
+    joint_histogram: torch.Tensor | None = None
+    for start in range(0, num_samples, chunk_size):
+        stop = start + chunk_size
+        chunk = vals_1[..., start:stop].contiguous() @ vals_2_t[..., start:stop, :].contiguous()
+        joint_histogram = chunk if joint_histogram is None else joint_histogram + chunk
+    if joint_histogram is None:
+        raise ValueError("The sample dimension must contain at least one value.")
+    return joint_histogram
+
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     """Implementation of a 2nd-order polynomial kernel for Kernel density estimate (Xu et al., 2008).
@@ -343,6 +360,8 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         # Autocast would undo the promotion at this matrix multiplication.
         with torch.autocast(device_type=other_signal.device.type, enabled=False):
+            if other_signal.device.type == "mps":
+                return _chunked_joint_histogram_matmul(vals_1, vals_2, _MPS_MATMUL_MAX_K)
             return torch.einsum("...in,...jn->...ij", vals_1, vals_2)
 
     def entropies(
