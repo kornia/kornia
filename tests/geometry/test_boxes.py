@@ -2520,14 +2520,14 @@ class TestVideoBoxes(BaseTester):
         expected[videos] = boxes[videos]
         self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize(("target_time", "value_time", "key"), [(4, 2, 0), (2, 4, "mask")])
+    @pytest.mark.parametrize(("target_time", "value_time", "key"), [(4, 2, 0), (2, 4, "mask"), (2, 3, 0)])
     def test_index_assignment_rejects_another_frame_count_6388(self, target_time, value_time, key, device, dtype):
         # A value whose videos have another number of frames used to be regrouped into videos of the target's length:
-        # two 2-frame videos were stitched into one 4-frame video, and one 4-frame video was split across two.
+        # two 2-frame videos were stitched into one 4-frame video, one 4-frame video was split across two, and a
+        # frame total that does not divide by the target's length raised a RuntimeError from view.
         target = VideoBoxes.from_tensor(torch.zeros(2, target_time, 1, 4, 2, device=device, dtype=dtype))
-        value = VideoBoxes.from_tensor(
-            torch.ones(8 // value_time // 2, value_time, 1, 4, 2, device=device, dtype=dtype)
-        )
+        num_videos = 2 if value_time == 2 else 1  # one 3-frame video does not divide into 2-frame videos
+        value = VideoBoxes.from_tensor(torch.ones(num_videos, value_time, 1, 4, 2, device=device, dtype=dtype))
         if key == "mask":
             key = torch.tensor([True, True], device=device)
         original = target.to_tensor().clone()
