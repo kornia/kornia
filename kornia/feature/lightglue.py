@@ -525,7 +525,8 @@ class LightGlue(nn.Module):
             and downloads no weights.
         **conf: keyword arguments that override entries of ``default_conf`` and of the configuration of
             ``features``, such as ``filter_threshold`` or ``depth_confidence``. The configuration of ``features`` sets
-            the defaults, and an explicit keyword argument always wins.
+            the defaults, and an explicit keyword argument always wins, except ``weights``, which must name the
+            checkpoint of ``features`` when ``features`` is given.
     """
 
     default_conf: ClassVar[Dict[str, Any]] = {
@@ -619,10 +620,15 @@ class LightGlue(nn.Module):
         },
     }
 
-    def __init__(self, features: str = "superpoint", **conf_) -> None:
+    def __init__(self, features: Optional[str] = "superpoint", **conf_) -> None:
         super().__init__()
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
+            # the download URL follows `features` and the cached file name `weights`: they must name one checkpoint
+            KORNIA_CHECK(
+                conf_.get("weights", self.features[features]["weights"]) == self.features[features]["weights"],
+                "`weights` names the checkpoint of `features`; pass `features=None` to load other weights",
+            )
         preset = self.features[features] if features is not None else {}
         self.conf = conf = SimpleNamespace(**{**self.default_conf, **preset, **conf_})
         KORNIA_CHECK(not (self.conf.add_scale_ori and self.conf.add_laf))  # we use either scale ori, or LAF

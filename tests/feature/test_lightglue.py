@@ -20,6 +20,7 @@ import unittest.mock
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.lightglue import (
@@ -963,6 +964,13 @@ class TestConventionsLightGlue(BaseTester):
         assert LightGlue("keynet_affnet_hardnet", n_layers=1).conf.depth_confidence == -1
         assert LightGlue("disk", n_layers=1).conf.input_dim == 128
         assert LightGlue("disk", input_dim=64, n_layers=1).conf.input_dim == 64
+
+    def test_lightglue_weights_must_name_the_checkpoint_of_features(self, monkeypatch):
+        # the URL follows `features` and the cached file name `weights`: another checkpoint is cached under that name
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        assert LightGlue("disk", weights="disk_lightglue", n_layers=1).conf.weights == "disk_lightglue"
+        with pytest.raises(BaseError, match="names the checkpoint of `features`"):
+            LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
 
     @pytest.mark.parametrize("features", ["doghardnet", "dog_affnet_hardnet"])
     def test_convention_lightglue_doghardnet_prunes_and_stops_early_by_default(self, features, monkeypatch):
