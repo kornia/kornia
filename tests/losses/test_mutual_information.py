@@ -1086,6 +1086,27 @@ class TestConventionsMutualInformation(BaseTester):
         assert actual.shape == expected.shape
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("chunk_size", [1, 5, 13, 20])
+    def test_chunked_joint_histogram_gradients(self, chunk_size, device, dtype):
+        """Chunked contraction preserves gradients for both histogram inputs."""
+        vals_1 = torch.rand(2, 4, 13, device=device, dtype=dtype, requires_grad=True)
+        vals_2 = torch.rand(2, 6, 13, device=device, dtype=dtype, requires_grad=True)
+        expected = vals_1 @ vals_2.transpose(-1, -2)
+        actual = _chunked_joint_histogram_matmul(vals_1, vals_2, chunk_size)
+        weights = torch.rand_like(actual)
+
+        expected_grads = torch.autograd.grad(expected, (vals_1, vals_2), weights)
+        actual_grads = torch.autograd.grad(actual, (vals_1, vals_2), weights)
+
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad)
+
+    def test_chunked_joint_histogram_rejects_empty_samples(self, device, dtype):
+        """Empty sample axes retain their explicit error after splitting."""
+        values = torch.empty(2, 4, 0, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="sample dimension"):
+            _chunked_joint_histogram_matmul(values, values, 5)
+
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize(
