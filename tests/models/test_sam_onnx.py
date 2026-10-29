@@ -39,16 +39,16 @@ def test_sam_has_to_onnx():
 
 @pytest.mark.timeout(120)
 @pytest.mark.xfail(
-    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+    torch_version_ge(2, 14) and torch_version_lt(2, 16, 0),
     reason=(
-        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph in the CPU "
-        "build (the CUDA build exports it): DispatchError 'No decompositions registered for the "
+        "the dynamo ONNX exporter of torch 2.14 and 2.15 cannot translate aten.mul.Scalar for this graph in "
+        "the CPU build (the 2.14 CUDA build exports it): DispatchError 'No decompositions registered for the "
         "real-valued input'; not yet reported upstream"
     ),
     raises=torch.onnx.OnnxExporterError,
-    # Strict on the CPU builds, where an upstream fix inside 2.14.x must announce itself as an XPASS failure rather
-    # than sit silently until the 2.15 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130 on
-    # Linux), so there the marker is not strict.
+    # Strict on the CPU builds, where an upstream fix inside 2.14.x or 2.15.x must announce itself as an XPASS failure
+    # rather than sit silently until the 2.16 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130
+    # on Linux), so there the marker is not strict.
     strict=torch.version.cuda is None,
 )
 def test_sam_encoder_to_onnx(tmp_path):

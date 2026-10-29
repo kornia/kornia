@@ -919,7 +919,9 @@ def test_upstream_probe_floor_is_consistent_across_jobs() -> None:
     assert len(set(floors.values())) == 1, floors
     root = Path(project_conftest.__file__).parent
     blocking = (root / ".github" / "workflows" / "pr_test_cpu.yml").read_text(encoding="utf-8")
-    pinned = re.findall(r'pytorch-version: "(\d+\.\d+\.\d+)"', blocking)
+    # Both the matrix entries (`pytorch-version: "2.15.0"`) and the JSON pins of single jobs (`'["2.15.0"]'`).
+    pins = re.findall(r"\n\s+pytorch-version: (.+)", blocking)
+    pinned = [version for pin in pins for version in re.findall(r'"(\d+\.\d+\.\d+)"', pin)]
     latest = max(pinned, key=lambda version: tuple(map(int, version.split("."))))
     assert set(floors.values()) == {latest}, floors
 

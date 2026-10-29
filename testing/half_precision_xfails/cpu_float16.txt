@@ -2,7 +2,6 @@
 # profile: cpu-float16
 # python: 3.11
 # pytorch: 2.15.0
-# Failure entries carried forward from 2.14.0; strict CI verification detects drift.
 # os: Linux
 # arch: x86_64
 # seed-scheme: sha256-nodeid-v1
