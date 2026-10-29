@@ -17,6 +17,7 @@
 
 """Tests for the shared docstring-style helpers in ``testing/docstring_style.py``."""
 
+import functools
 import inspect
 from functools import cache
 from pathlib import Path
@@ -35,6 +36,7 @@ from testing.docstring_style import (
     catalog_unimportable,
     covered,
     docstring_roles,
+    forwards_to,
     intersphinx_names,
     is_deprecated_wrapper,
     is_documented,
@@ -657,3 +659,116 @@ def test_public_and_undocumented_objects_split_the_export_walk(monkeypatch):
     monkeypatch.setattr(docstring_style, "_exported_objects", lambda: walk)
     assert [qualified for _, qualified in undocumented_public_objects.__wrapped__().values()] == ["m.undocumented"]
     assert [qualified for _, qualified in public_objects.__wrapped__().values()] == ["m.documented"]
+
+
+def _alias_target(a, b=1, *args, c=2, **kwargs):
+    return a
+
+
+def _forwarding_alias(a, b=1, *args, c=2, **kwargs):
+    """Alias of :func:`_alias_target`."""
+    return _alias_target(a, b, *args, c=c, **kwargs)
+
+
+def _keyword_alias(a, b=1):
+    """Alias of :func:`_alias_target`."""
+    return _alias_target(a, b=b)
+
+
+class _AliasTargetClass:
+    pass
+
+
+class _AliasClass(_AliasTargetClass):
+    """Alias of :class:`_AliasTargetClass`."""
+
+
+class _SubclassWithBody(_AliasTargetClass):
+    """Alias of :class:`_AliasTargetClass`."""
+
+    def extra(self):
+        return 1
+
+
+class _TwoBases(_AliasTargetClass, Exception):
+    """Alias of :class:`_AliasTargetClass`."""
+
+
+def _swapped(a, b):
+    return _alias_target(b, a)
+
+
+def _constant_argument(a):
+    return _alias_target(a, 2)
+
+
+def _extra_statement(a):
+    a = a + 1
+    return _alias_target(a)
+
+
+def _dropped_argument(a, b=1):
+    return _alias_target(a)
+
+
+def _renamed_keyword(a, b=1):
+    return _alias_target(a, c=b)
+
+
+def _other_target(a):
+    return _keyword_alias(a)
+
+
+@functools.lru_cache
+def _decorated(a):
+    return _alias_target(a)
+
+
+@pytest.mark.parametrize(
+    ("obj", "target"),
+    [(_forwarding_alias, _alias_target), (_keyword_alias, _alias_target), (_AliasClass, _AliasTargetClass)],
+)
+def test_forwards_to_accepts_a_forwarding_alias(obj, target):
+    assert forwards_to(obj, target)
+
+
+def test_forwards_to_resolves_a_target_from_the_closure():
+    def local_target(x):
+        return x
+
+    def local_alias(x):
+        """Alias of the local target."""
+        return local_target(x)
+
+    assert forwards_to(local_alias, local_target)
+
+
+@pytest.mark.parametrize(
+    ("obj", "target"),
+    [
+        (_swapped, _alias_target),
+        (_constant_argument, _alias_target),
+        (_extra_statement, _alias_target),
+        (_dropped_argument, _alias_target),
+        (_renamed_keyword, _alias_target),
+        (_other_target, _alias_target),
+        (_decorated, _alias_target),
+        (_SubclassWithBody, _AliasTargetClass),
+        (_TwoBases, _AliasTargetClass),
+        (_AliasClass, object),
+        (len, _alias_target),
+    ],
+)
+def test_forwards_to_rejects_anything_else(obj, target):
+    assert not forwards_to(obj, target)
+
+
+def test_forwards_to_rejects_a_live_function_titled_alias_of_another():
+    # The mutant the status-title check used to accept: give a live converted function the title
+    # "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`." and it skipped its See Also,
+    # although it computes something else entirely.
+    from kornia.geometry.conversions import axis_angle_to_quaternion, rotation_matrix_to_quaternion
+
+    title = "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`."
+    assert status_target(title) == "kornia.geometry.conversions.rotation_matrix_to_quaternion"
+    assert not forwards_to(axis_angle_to_quaternion, rotation_matrix_to_quaternion)

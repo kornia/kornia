@@ -31,6 +31,7 @@ import inspect
 import io
 import re
 import sys
+import textwrap
 import tokenize
 import warnings
 import zlib
@@ -199,6 +200,89 @@ def is_deprecated_wrapper(obj: object) -> bool:
 
     code = getattr(obj.__init__ if isinstance(obj, type) else obj, "__code__", None)
     return code is not None and Path(code.co_filename).resolve() == Path(compat.__file__).resolve()
+
+
+def _definition_body(obj: object) -> tuple[ast.FunctionDef | ast.ClassDef, list[ast.stmt]]:
+    """Return the AST definition of ``obj`` and its body without a leading docstring; ``OSError`` without source."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(obj)))
+    node = tree.body[0]
+    if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+        raise OSError(f"no plain function or class definition of {obj!r} in its source")
+    body = node.body
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        body = body[1:]
+    return node, body
+
+
+def _resolve_name(fn: object, expr: ast.expr) -> object | None:
+    """Return the object that the name or dotted attribute ``expr`` denotes inside function ``fn``, or ``None``."""
+    if isinstance(expr, ast.Attribute):
+        owner = _resolve_name(fn, expr.value)
+        return getattr(owner, expr.attr, None) if owner is not None else None
+    if not isinstance(expr, ast.Name):
+        return None
+    names = inspect.getclosurevars(fn)
+    for scope in (names.nonlocals, names.globals, names.builtins):
+        if expr.id in scope:
+            return scope[expr.id]
+    return None
+
+
+def _forwards_own_arguments(args: ast.arguments, call: ast.Call) -> bool:
+    """Whether ``call`` passes every parameter of ``args`` exactly once, unchanged and in place, and nothing else.
+
+    Positional arguments must be the leading positional parameters in their order; ``*args`` may follow only once
+    all of them are passed. Every other parameter goes by keyword under its own name, and ``**kwargs`` as such.
+    """
+    order = [arg.arg for arg in [*args.posonlyargs, *args.args]]
+    by_keyword = {arg.arg for arg in [*args.args, *args.kwonlyargs]}
+    passed: list[str] = []
+    for value in call.args:
+        if isinstance(value, ast.Starred):
+            vararg = args.vararg.arg if args.vararg is not None else None
+            if passed != order or not isinstance(value.value, ast.Name) or value.value.id != vararg:
+                return False
+            passed.append(value.value.id)
+        elif isinstance(value, ast.Name) and len(passed) < len(order) and value.id == order[len(passed)]:
+            passed.append(value.id)
+        else:
+            return False
+    for keyword in call.keywords:
+        if not isinstance(keyword.value, ast.Name):
+            return False
+        if keyword.arg is None:
+            if args.kwarg is None or keyword.value.id != args.kwarg.arg:
+                return False
+        elif keyword.arg not in by_keyword or keyword.value.id != keyword.arg:
+            return False
+        passed.append(keyword.value.id)
+    expected = [arg.arg for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]]
+    expected += [extra.arg for extra in (args.vararg, args.kwarg) if extra is not None]
+    return sorted(passed) == sorted(expected)
+
+
+def forwards_to(obj: object, target: object) -> bool:
+    """Return whether ``obj`` only forwards to ``target``, which is what an ``Alias of`` title line promises.
+
+    A function forwards when its body, docstring aside, is a single ``return target(...)`` that passes each of its
+    own parameters exactly once and unchanged, the leading ones by position in their order and the rest as
+    ``name=name``, with ``*args`` and ``**kwargs`` passed on as such, and nothing else. A class forwards when
+    ``target`` is its only base and its body, docstring aside, is empty or ``pass``. Neither may be decorated, since
+    a decorator can add behaviour; an async function, or an object without Python source, does not forward either.
+    """
+    try:
+        node, body = _definition_body(obj)
+    except (OSError, TypeError, SyntaxError):
+        return False
+    if node.decorator_list:
+        return False
+    if isinstance(node, ast.ClassDef):
+        bare = all(isinstance(statement, ast.Pass) for statement in body)
+        return isinstance(obj, type) and obj.__bases__ == (target,) and not node.keywords and bare
+    if len(body) != 1 or not isinstance(body[0], ast.Return) or not isinstance(body[0].value, ast.Call):
+        return False
+    call = body[0].value
+    return _resolve_name(obj, call.func) is target and _forwards_own_arguments(node.args, call)
 
 
 def docstring_roles(doc: str) -> list[tuple[str, str]]:
