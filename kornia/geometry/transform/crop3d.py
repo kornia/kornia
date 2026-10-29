@@ -41,8 +41,9 @@ def crop_and_resize3d(
           then back face, each face top-left, top-right, bottom-right, bottom-left —
           same ``(x, y)``/inclusive-pixel convention as :func:`crop_and_resize`, with
           ``z`` anchored at the top-left of the first depth slice (``z = 0``); an
-          integer-cornered box reproduces the exact integer-voxel slice under either
-          ``align_corners`` setting, since the box is given in voxel coordinates
+          integer-cornered box whose extent equals ``size`` reproduces the exact voxel slice
+          under either ``align_corners`` setting, since the box is given in voxel coordinates;
+          a box of another extent is resampled
         - align_corners: ``False`` by default; it changes nothing on an in-bounds box, since the box is
           given in voxel coordinates
 

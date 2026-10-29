@@ -2069,7 +2069,8 @@ def homography_warp3d(
     r"""Warp a volume by a normalized destination→source 3D homography (default ``normalized_coordinates=True``).
 
     For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d`. Alternatively pass
-    the inverse of that homography here with ``normalized_coordinates=False``. This function has no ``normalized_homography`` switch.
+    the inverse of that homography here with ``normalized_coordinates=False``. This function has no
+    ``normalized_homography`` switch.
 
     Convention:
         - input: ``(N, C, D, H, W)``; ``dsize`` is the output size ``(d, h, w)``

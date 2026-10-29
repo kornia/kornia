@@ -157,11 +157,12 @@ def create_meshgrid3d(
     normalized_coordinates: bool = True,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     """Deprecated: Use `kornia.geometry.create_meshgrid3d` instead."""
     if not torch.jit.is_scripting():
         _warn("create_meshgrid3d", "kornia.geometry")
-    return _create_meshgrid3d(depth, height, width, normalized_coordinates, device, dtype)
+    return _create_meshgrid3d(depth, height, width, normalized_coordinates, device, dtype, align_corners)
 
 
 def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:

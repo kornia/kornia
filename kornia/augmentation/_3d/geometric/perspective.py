@@ -54,7 +54,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
         - a spatial dimension of 1 gets a unit source extent and no corner offset, so its single
           slice, row or column maps onto itself. At ``distortion_scale=0`` the transform matrix is
-          the identity; output identity still requires ``align_corners=True`` as described above.
+          the identity, so such a volume is reproduced under either ``align_corners`` setting too.
 
     Examples:
         >>> import torch
