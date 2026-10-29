@@ -169,38 +169,72 @@ class TestLineSegmentOneWayError(BaseTester):
 
     def test_endpoint_mapped_to_infinity_6392(self, device, dtype):
         # H sends x = -1 to the line at infinity (w' = x + 1). The error of a segment with an endpoint there is inf,
-        # as oneway_transfer_error's is (#4881); near it, the error keeps growing. It used to read 1 for
-        # |w'| <= 1e-8, because transform_points returns the numerator unchanged there, and RANSAC counted it.
-        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=torch.float64)
-        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]] * 3], device=device, dtype=torch.float64)  # the line y = 0
+        # as oneway_transfer_error's is (#4881). It used to read 1 there, because transform_points returns the
+        # numerator unchanged for |w'| <= 1e-8, and RANSAC counted the segment as an inlier.
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]] * 3], device=device, dtype=dtype)  # the line y = 0
+        near = -1.0 + 2.0**-6  # exact in every dtype: w' = 1 / 64, so the point maps to y' = 64
         ls1 = torch.tensor(
-            [[[[-1.0, 1.0], [-1.0, 1.0]], [[-1.0, 1.0], [0.0, 1.0]], [[-1.0 + 5e-9, 1.0], [-1.0 + 5e-9, 1.0]]]],
+            [[[[-1.0, 1.0], [-1.0, 1.0]], [[-1.0, 1.0], [0.0, 1.0]], [[near, 1.0], [near, 1.0]]]],
             device=device,
-            dtype=torch.float64,
+            dtype=dtype,
         )
         ls1.requires_grad_()
-        error = line_segment_transfer_error_one_way(ls1, ls2, H)
-        assert torch.isinf(error[0, :2]).all()  # both endpoints, or one, at infinity
-        self.assert_close(error[0, 2], torch.tensor(2e8, device=device, dtype=torch.float64), rtol=1e-6, atol=0.0)
-        assert torch.isinf(line_segment_transfer_error_one_way(ls1, ls2, H, squared=True)[0, :2]).all()
-        error[0, 2].backward()
-        assert torch.isfinite(ls1.grad).all()
+        for squared in (False, True):
+            error = line_segment_transfer_error_one_way(ls1, ls2, H, squared=squared)
+            assert torch.isinf(error[0, :2]).all()  # both endpoints, or one, at infinity
+            self.assert_close(error[0, 2], torch.tensor(64.0**2 if squared else 64.0, device=device, dtype=dtype))
+            # No gradient flows through the inf, not even to the finite endpoint of the second segment.
+            (grad,) = torch.autograd.grad(error[0, :2].sum(), ls1)
+            assert torch.equal(grad, torch.zeros_like(grad))
 
-        # A zero-length image-2 segment defines no line and still reads 0; a NaN endpoint still gives NaN.
-        empty = torch.tensor([[[[2.0, 3.0], [2.0, 3.0]]]], device=device, dtype=torch.float64)
+        # A zero-length image-2 segment defines no line and still reads 0; a NaN endpoint gives NaN.
+        empty = torch.tensor([[[[2.0, 3.0], [2.0, 3.0]]]], device=device, dtype=dtype)
         self.assert_close(
             line_segment_transfer_error_one_way(ls1[:, :1].detach(), empty, H),
-            torch.zeros(1, 1, device=device, dtype=torch.float64),
+            torch.zeros(1, 1, device=device, dtype=dtype),
         )
         nan = ls1[:, :1].detach().clone()
         nan[..., 0, 0] = float("nan")
         assert line_segment_transfer_error_one_way(nan, ls2[:, :1], H).isnan().all()
+        # A NaN distance at w' = 0 stays NaN rather than becoming inf.
+        nan_h = H.clone()
+        nan_h[0, 0, 0] = float("nan")
+        assert line_segment_transfer_error_one_way(ls1[:, :1].detach(), ls2[:, :1], nan_h).isnan().all()
+
+    def test_endpoint_near_infinity_float64_6392(self, device):
+        # The issue's case: at w' = 5e-9 the error is 2e8, where the OpenCV-style dehomogenization made it 1.
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=torch.float64)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=torch.float64)
+        ls1 = torch.tensor([[[[-1.0 + 5e-9, 1.0], [-1.0 + 5e-9, 1.0]]]], device=device, dtype=torch.float64)
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        self.assert_close(error, torch.full_like(error, 2e8), rtol=1e-6, atol=0.0)
+
+    def test_mixed_dtypes_and_extreme_homography(self, device, dtype):
+        # Points are mapped in the dtype of H and the error is returned in theirs, as transform_points did.
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+        ls1 = torch.tensor([[[[0.0, 0.0], [1.0, 1.0]]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[0.0, 1.0], [1.0, 1.0]]]], device=device, dtype=dtype)  # the line y = 1
+        H = torch.eye(3, device=device, dtype=torch.float64)[None]
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == dtype
+        self.assert_close(error, torch.full_like(error, 0.5))
+        # The distance is formed from the homogeneous coordinates, so a mapped x' past the float32 range does not
+        # turn a zero distance into inf * 0 = NaN.
+        H = torch.diag(torch.tensor([1e30, 1.0, 1e-10], device=device, dtype=torch.float32))[None]
+        ls1 = torch.tensor([[[[1.0, 0.0], [1.0, 0.0]]]], device=device, dtype=torch.float32)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=torch.float32)  # the line y = 0
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), torch.zeros(1, 1, device=device))
 
     def test_matches_the_mapped_endpoint_distances(self, device, dtype):
         # Away from infinity the error is the mean distance of the dehomogenized mapped endpoints from the unit line.
+        _skip_half(dtype, _HALF_LINES)
         torch.manual_seed(0)
-        ls1 = torch.rand(2, 7, 2, 2, device=device, dtype=torch.float64) * 10
-        ls2 = torch.rand(2, 7, 2, 2, device=device, dtype=torch.float64) * 10
+        ls1 = torch.rand(2, 7, 2, 2, device=device, dtype=dtype) * 10
+        ls2 = torch.rand(2, 7, 2, 2, device=device, dtype=dtype) * 10
         H = create_random_homography(ls1, 3)
         a, b = ls2[:, :, 0], ls2[:, :, 1]
         normal = torch.stack([a[..., 1] - b[..., 1], b[..., 0] - a[..., 0]], -1)

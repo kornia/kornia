@@ -305,19 +305,27 @@ def line_segment_transfer_error_one_way(
     ln2 = (ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))).view(B, N, 3)
     has_line = scale.view(B, N) > 0
 
-    def endpoint_distance(p1: torch.Tensor) -> torch.Tensor:
+    out_dtype = torch.promote_types(ls1.dtype, ls2.dtype)
+
+    def endpoint_distance(p1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Map without the OpenCV-style dehomogenization of transform_points, which returns the numerator unchanged
         # for |w'| <= 1e-8: an endpoint mapped to infinity (w' = 0) is singular, as in oneway_transfer_error
-        # (#4881). A zero-length image-2 segment defines no line and keeps reading 0.
-        mapped = convert_points_to_homogeneous(p1.view(B, N, 2)) @ H.transpose(-2, -1)
+        # (#4881). The distance is |l . (x', y', w')| / |w'|, so no mapped coordinate is formed that could overflow.
+        # As transform_points did, the points are mapped in the dtype of H and the result is in theirs.
+        mapped = convert_points_to_homogeneous(p1.view(B, N, 2)).to(H.dtype) @ H.transpose(-2, -1)
         w = mapped[..., 2]
-        point = convert_points_to_homogeneous(mapped[..., :2] / _nonzero(w)[..., None])
-        return _inf_where((point * ln2).sum(-1).abs(), (w == 0) & has_line)
+        distance = ((mapped * ln2.to(H.dtype)).sum(-1) / _nonzero(w)).abs().to(out_dtype)
+        # A zero-length image-2 segment defines no line and keeps reading 0; a NaN distance stays NaN.
+        return distance, (w == 0) & has_line & ~distance.isnan()
 
-    error = 0.5 * (endpoint_distance(ps1) + endpoint_distance(pe1))
+    distance_start, singular_start = endpoint_distance(ps1)
+    distance_end, singular_end = endpoint_distance(pe1)
+    error = 0.5 * (distance_start + distance_end)
     if squared:
         error = error**2
-    return error
+    # Set inf after squaring so no gradient flows through the inf, not even to the other, finite endpoint; a NaN
+    # from the other endpoint stays NaN.
+    return _inf_where(error, (singular_start | singular_end) & ~error.isnan())
 
 
 def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor) -> torch.Tensor:
