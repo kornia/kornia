@@ -216,18 +216,21 @@ class TestAugmentationAudit(BaseTester):
         self.assert_close(report.spatial[0].roundtrip_max, torch.tensor([7], device=device, dtype=diagnostic_dtype))
         assert "round-trip error" in report.summary()
 
-    def test_nonrigid_silent_identity_is_not_supported(self, device, dtype):
+    def test_nonrigid_geometry_is_not_supported(self, device, dtype):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
-        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "keypoints"])
-        points = image.new_tensor([[[1, 2]]])
-        outputs, report = audit(aug, image, points)
-        self.assert_close(outputs[1], points)
+        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "mask"])
+        _, report = audit(aug, image, torch.ones_like(image))
         assert report.geometry_status == "unsupported"
         assert report.matrix is None
         assert report.inverse_matrix is None
-        assert report.spatial[0].roundtrip_valid_count.item() == 0
-        assert torch.isnan(report.spatial[0].roundtrip_max).all()
         assert "non-rigid" in report.summary()
+
+    def test_nonrigid_keypoints_are_refused(self, device, dtype):
+        # The sequence refuses keypoints through a non-rigid warp (#4420); they used to come back unchanged.
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "keypoints"])
+        with pytest.raises(NotImplementedError, match="RandomElasticTransform does not support keypoints"):
+            audit(aug, image, image.new_tensor([[[1, 2]]]))
 
     def test_singular_and_nonfinite_matrices(self, device, dtype):
         class SingularFlip(K.RandomHorizontalFlip):
