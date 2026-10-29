@@ -357,7 +357,10 @@ class XFeat(nn.Module):
         ``multiscale=False``), the reference's refinement moves the points by (-1.04, -1.25) px on average and leaves
         1 % of them within 1 px of their position, against (-0.04, -0.25) px and 94 % from bin 3. On 18 Oxford affine
         pairs the median homography corner error drops from 2.58 to 2.30 px; IMC 2021 PhotoTourism relative pose
-        mAA@10 is the same within noise (0.441 and 0.443 over 813 pairs).
+        mAA@10 is the same within noise (0.441 and 0.443 over 813 pairs). Away from a zero displacement the soft-argmax
+        still moves a point only about half of the way, as in the reference: on Oxford graf 1-2 to 1-5 its response to
+        the true sub-cell offset has a slope of about 0.5, so bin 3 removes the constant part of the error, not that
+        shrinkage.
 
     Example:
         >>> model = XFeat.from_pretrained()
