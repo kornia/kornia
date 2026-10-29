@@ -29,6 +29,7 @@ from torch import nn
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.exceptions import BaseError
 from kornia.core.utils import is_exporting
 from kornia.feature.laf import laf_to_three_points, scale_laf
 
@@ -624,11 +625,12 @@ class LightGlue(nn.Module):
         super().__init__()
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
-            # the download URL follows `features` and the cached file name `weights`: they must name one checkpoint
-            KORNIA_CHECK(
-                conf_.get("weights", self.features[features]["weights"]) == self.features[features]["weights"],
-                "`weights` names the checkpoint of `features`; pass `features=None` to load other weights",
-            )
+            # The download URL follows `features` and the cached file name `weights`: they must name one checkpoint,
+            # or another checkpoint is cached under this name. A plain raise, so that disable_checks() keeps it.
+            if conf_.get("weights", self.features[features]["weights"]) != self.features[features]["weights"]:
+                raise BaseError(
+                    "`weights` names the checkpoint of `features`; pass `features=None` to load other weights"
+                )
         preset = self.features[features] if features is not None else {}
         self.conf = conf = SimpleNamespace(**{**self.default_conf, **preset, **conf_})
         KORNIA_CHECK(not (self.conf.add_scale_ori and self.conf.add_laf))  # we use either scale ori, or LAF

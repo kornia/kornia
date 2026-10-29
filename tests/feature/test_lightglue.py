@@ -20,6 +20,7 @@ import unittest.mock
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
@@ -971,6 +972,15 @@ class TestConventionsLightGlue(BaseTester):
         assert LightGlue("disk", weights="disk_lightglue", n_layers=1).conf.weights == "disk_lightglue"
         with pytest.raises(BaseError, match="names the checkpoint of `features`"):
             LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
+        # a plain raise: disable_checks() must not let another checkpoint be cached under this name
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(BaseError, match="names the checkpoint of `features`"):
+                LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
 
     @pytest.mark.parametrize("features", ["doghardnet", "dog_affnet_hardnet"])
     def test_convention_lightglue_doghardnet_prunes_and_stops_early_by_default(self, features, monkeypatch):
