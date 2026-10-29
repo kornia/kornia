@@ -16,6 +16,7 @@
 #
 
 import numbers
+import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -780,7 +781,9 @@ def resize_to_be_divisible(
         interpolation (str, optional): Interpolation flag. Defaults to "bilinear".
         align_corners (Optional[bool], optional):
             whether to align the corners of the input and output. Defaults to None.
-        side (str, optional): Side to resize. Defaults to "short".
+        side (str, optional): Deprecated and ignored. Both sides are rounded independently to a multiple of
+            ``divisible_factor``. Values other than ``"short"`` emit a :class:`DeprecationWarning`.
+            This argument will be removed in a future release.
         antialias (bool, optional):
             If True, then image will be filtered with Gaussian before downscaling. Defaults to False.
 
@@ -788,6 +791,13 @@ def resize_to_be_divisible(
         torch.Tensor: The resized tensor.
 
     """
+    if side != "short":
+        warnings.warn(
+            "The `side` argument of `resize_to_be_divisible` is deprecated, has no effect, and will be removed "
+            "in a future release. Both sides are rounded to a multiple of `divisible_factor`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
     if input.ndim < 2:
@@ -798,7 +808,7 @@ def resize_to_be_divisible(
     height, width = input.shape[-2:]
     height = max(1, round(height / divisible_factor)) * divisible_factor if height > 0 else 0
     width = max(1, round(width / divisible_factor)) * divisible_factor if width > 0 else 0
-    return resize(input, (height, width), interpolation, align_corners, side, antialias)
+    return resize(input, (height, width), interpolation=interpolation, align_corners=align_corners, antialias=antialias)
 
 
 def rescale(
