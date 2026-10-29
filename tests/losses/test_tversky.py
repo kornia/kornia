@@ -19,12 +19,24 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError
 from kornia.losses.tversky import _tversky_loss_cpu
 
 from testing.base import BaseTester
 
 
 class TestTverskyLoss(BaseTester):
+    @pytest.mark.parametrize(
+        "label_value,label_dtype,error",
+        [(8, torch.int64, RuntimeError), (-1, torch.int64, RuntimeError), (0, torch.int32, BaseError)],
+    )
+    def test_cpu_path_label_validation(self, label_value, label_dtype, error):
+        """Reject invalid labels before gathering from an eligible large CPU prediction."""
+        logits = torch.zeros(1, 8, 64, 64)
+        labels = torch.full((1, 64, 64), label_value, dtype=label_dtype)
+        with pytest.raises(error):
+            kornia.losses.tversky_loss(logits, labels, alpha=0.3, beta=0.7, ignore_index=-100)
+
     @pytest.mark.parametrize("near_exact", [False, True])
     def test_large_spatial_loss_and_gradient(self, device, dtype, near_exact):
         """Compare large maps with the per-pixel TP/FP/FN formula in its existing computation dtype."""
