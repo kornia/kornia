@@ -609,7 +609,7 @@ def _add_module_members(
 _NOT_PAGES = frozenset({"_build", ".ipynb_checkpoints", "_templates", "_static", "_extra"})
 
 
-def _rst_pages(docs_source: Path) -> list[Path]:
+def rst_pages(docs_source: Path) -> list[Path]:
     """Every ``.rst`` page under ``docs_source``, subdirectories included, except those Sphinx does not build."""
     root = Path(docs_source)
     return sorted(page for page in root.rglob("*.rst") if _NOT_PAGES.isdisjoint(page.relative_to(root).parts[:-1]))
@@ -630,7 +630,7 @@ def sphinx_registry(docs_source: Path) -> dict[str, object]:
     """
     registry: dict[str, object] = {}
 
-    for page in _rst_pages(docs_source):
+    for page in rst_pages(docs_source):
         lines = page.read_text(encoding="utf-8").splitlines()
         current = ""
         enclosing_class = ""
