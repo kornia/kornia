@@ -65,7 +65,7 @@ class TestSOLD2_detector(BaseTester):
         assert not any("descriptor_decoder" in key for key in detector.state_dict())
         assert SOLD2(pretrained=False).model.descriptor_decoder is not None
         with torch.no_grad():
-            outputs = detector.model(torch.rand(1, 1, 32, 32, device=device, dtype=dtype))
+            outputs = detector.model(torch.rand(1, 1, 64, 64, device=device, dtype=dtype))
         assert set(outputs) == {"junctions", "heatmap"}
 
     def test_loads_weights_with_a_descriptor_head_and_detects_as_sold2(self, device, dtype):
