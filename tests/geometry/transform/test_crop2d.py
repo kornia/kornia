@@ -840,9 +840,7 @@ class TestCropByIndices(BaseTester):
         src_box = torch.tensor([[[0, 0], [2, 0], [2, 2], [0, 2]]], device=device, dtype=torch.int64)
 
         with pytest.raises(ValueError, match="shape_compensation.*resize.*pad.*F.pad"):
-            kornia.geometry.transform.crop_by_indices(
-                inp, src_box, size=(2, 2), shape_compensation=shape_compensation
-            )
+            kornia.geometry.transform.crop_by_indices(inp, src_box, size=(2, 2), shape_compensation=shape_compensation)
 
     def test_crop_by_indices_accepts_legacy_f_pad_shape_compensation_6402(self, device, dtype):
         inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
