@@ -167,6 +167,52 @@ class TestLineSegmentOneWayError(BaseTester):
         error.sum().backward()
         assert torch.isfinite(ls2.grad).all()
 
+    def test_endpoint_mapped_to_infinity_6392(self, device, dtype):
+        # H sends x = -1 to the line at infinity (w' = x + 1). The error of a segment with an endpoint there is inf,
+        # as oneway_transfer_error's is (#4881); near it, the error keeps growing. It used to read 1 for
+        # |w'| <= 1e-8, because transform_points returns the numerator unchanged there, and RANSAC counted it.
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=torch.float64)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]] * 3], device=device, dtype=torch.float64)  # the line y = 0
+        ls1 = torch.tensor(
+            [[[[-1.0, 1.0], [-1.0, 1.0]], [[-1.0, 1.0], [0.0, 1.0]], [[-1.0 + 5e-9, 1.0], [-1.0 + 5e-9, 1.0]]]],
+            device=device,
+            dtype=torch.float64,
+        )
+        ls1.requires_grad_()
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert torch.isinf(error[0, :2]).all()  # both endpoints, or one, at infinity
+        self.assert_close(error[0, 2], torch.tensor(2e8, device=device, dtype=torch.float64), rtol=1e-6, atol=0.0)
+        assert torch.isinf(line_segment_transfer_error_one_way(ls1, ls2, H, squared=True)[0, :2]).all()
+        error[0, 2].backward()
+        assert torch.isfinite(ls1.grad).all()
+
+        # A zero-length image-2 segment defines no line and still reads 0; a NaN endpoint still gives NaN.
+        empty = torch.tensor([[[[2.0, 3.0], [2.0, 3.0]]]], device=device, dtype=torch.float64)
+        self.assert_close(
+            line_segment_transfer_error_one_way(ls1[:, :1].detach(), empty, H),
+            torch.zeros(1, 1, device=device, dtype=torch.float64),
+        )
+        nan = ls1[:, :1].detach().clone()
+        nan[..., 0, 0] = float("nan")
+        assert line_segment_transfer_error_one_way(nan, ls2[:, :1], H).isnan().all()
+
+    def test_matches_the_mapped_endpoint_distances(self, device, dtype):
+        # Away from infinity the error is the mean distance of the dehomogenized mapped endpoints from the unit line.
+        torch.manual_seed(0)
+        ls1 = torch.rand(2, 7, 2, 2, device=device, dtype=torch.float64) * 10
+        ls2 = torch.rand(2, 7, 2, 2, device=device, dtype=torch.float64) * 10
+        H = create_random_homography(ls1, 3)
+        a, b = ls2[:, :, 0], ls2[:, :, 1]
+        normal = torch.stack([a[..., 1] - b[..., 1], b[..., 0] - a[..., 0]], -1)
+        normal = normal / normal.norm(dim=-1, keepdim=True)
+
+        def distance(p):
+            q = torch.cat([p, torch.ones_like(p[..., :1])], -1) @ H.transpose(-2, -1)
+            return ((q[..., :2] / q[..., 2:] - a) * normal).sum(-1).abs()
+
+        expected = 0.5 * (distance(ls1[:, :, 0]) + distance(ls1[:, :, 1]))
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected)
+
     @pytest.mark.parametrize("batch_size, num_segments", [(256, 256), (1, 2**16)])
     def test_2_pow_16_segments(self, batch_size, num_segments, device, dtype):
         # RANSAC scores a (B, N) batch of segments; with B * N or N reaching 2**16, MPS (torch 2.5.1 and 2.14) made

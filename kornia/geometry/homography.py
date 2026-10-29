@@ -33,7 +33,7 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
 from kornia.geometry.epipolar.fundamental import _robust_loss
-from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero, transform_points
+from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 __all__ = [
@@ -302,14 +302,19 @@ def line_segment_transfer_error_one_way(
     # distance times the image-2 segment length (#4867). A zero-length segment defines no line; as before the
     # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
     scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
-    ln2 = ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))
-    # Pass (B, N, 2) points so transform_points applies each H once; (B, N, 1, 2) points are flattened to
-    # (B*N, 1, 2) and every H is repeated N times.
-    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1.squeeze(-2))).unsqueeze(-2)
-    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1.squeeze(-2))).unsqueeze(-2)
-    er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
-    er_end1 = (ln2 @ pe1_in2.transpose(-2, -1)).view(B, N).abs()
-    error = 0.5 * (er_st1 + er_end1)
+    ln2 = (ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))).view(B, N, 3)
+    has_line = scale.view(B, N) > 0
+
+    def endpoint_distance(p1: torch.Tensor) -> torch.Tensor:
+        # Map without the OpenCV-style dehomogenization of transform_points, which returns the numerator unchanged
+        # for |w'| <= 1e-8: an endpoint mapped to infinity (w' = 0) is singular, as in oneway_transfer_error
+        # (#4881). A zero-length image-2 segment defines no line and keeps reading 0.
+        mapped = convert_points_to_homogeneous(p1.view(B, N, 2)) @ H.transpose(-2, -1)
+        w = mapped[..., 2]
+        point = convert_points_to_homogeneous(mapped[..., :2] / _nonzero(w)[..., None])
+        return _inf_where((point * ln2).sum(-1).abs(), (w == 0) & has_line)
+
+    error = 0.5 * (endpoint_distance(ps1) + endpoint_distance(pe1))
     if squared:
         error = error**2
     return error
