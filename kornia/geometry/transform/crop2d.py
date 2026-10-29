@@ -311,7 +311,9 @@ def crop_by_boxes(
                   [ 9.0000, 10.0000]]]])
 
     """
-    if validate_boxes is not None:
+    # TorchScript cannot compile the warning helper (it formats an ``Optional[str]`` and passes ``category`` to
+    # ``warnings.warn``), so a scripted call stays silent, as in ``bbox_to_mask``.
+    if not torch.jit.is_scripting() and validate_boxes is not None:
         _emit_deprecation_warning(
             "crop_by_boxes(validate_boxes=...)",
             None,

@@ -493,6 +493,19 @@ class TestCropByBoxes(BaseTester):
             warnings.simplefilter("error", DeprecationWarning)
             kornia.geometry.transform.crop_by_boxes(inp, src, dst)
 
+    def test_scriptable_with_the_validate_boxes_deprecation_6401(self, device, dtype):
+        # The deprecation warning must not take `crop_by_boxes` out of TorchScript: it scripted before #6401, and
+        # the scripted call matches eager.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+
+        scripted = torch.jit.script(kornia.geometry.transform.crop_by_boxes)
+
+        self.assert_close(scripted(inp, src, dst), kornia.geometry.transform.crop_by_boxes(inp, src, dst))
+
     @pytest.mark.parametrize("validate_boxes", [None, True, False])
     def test_convention_boxes_are_not_validated_6401(self, validate_boxes, device, dtype):
         # A trapezoid is not a rectangle, and `crop_by_boxes` does not require one: it maps `src_box` onto
