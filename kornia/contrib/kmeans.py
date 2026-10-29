@@ -66,7 +66,10 @@ class KMeans:
         max_iterations: int = 0,
         seed: int | None = None,
     ) -> None:
-        KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
+        KORNIA_CHECK(
+            isinstance(num_clusters, int) and num_clusters > 0,
+            f"num_clusters must be a positive int, got {num_clusters}",
+        )
         KORNIA_CHECK(max_iterations >= 0, f"max_iterations must be >= 0, got {max_iterations}")
         KORNIA_CHECK(tolerance is None or tolerance >= 0, f"tolerance must be None or >= 0, got {tolerance}")
         KORNIA_CHECK(
@@ -202,6 +205,11 @@ class KMeans:
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 
         if self._initial_cluster_centers is None:
+            # The starting centres are distinct samples of X, so there must be at least num_clusters of them.
+            KORNIA_CHECK(
+                len(X) >= self.num_clusters,
+                lambda: f"num_clusters={self.num_clusters} needs at least as many samples, but X has {len(X)}",
+            )
             current_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns
