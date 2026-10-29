@@ -470,7 +470,8 @@ def crop_by_indices(
           ``antialias=False`` option
         - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
           slice does not match ``size``, whether or not ``src_box`` is identical across
-          the batch — each row's output depends only on its own box.
+          the batch — each row's output depends only on its own box. It must be ``'resize'``,
+          ``'pad'``, or ``'F.pad'`` (a legacy alias for ``'pad'``).
         - the part of a box outside the image is clipped on every side, a box that starts left of or above the
           image included, and ``shape_compensation`` then applies. With ``'pad'`` the padding goes on the side
           where the box overflowed, so every kept pixel stays at its position in the box.
@@ -497,8 +498,8 @@ def crop_by_indices(
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
-        shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
-            or resized.
+        shape_compensation: how to compensate when the cropped slice size differs from `size`: ``'resize'``
+            resamples, while ``'pad'`` pads or trims. ``'F.pad'`` is a legacy alias for ``'pad'``.
 
     Returns:
         The cropped torch.Tensor with shape :math:`(B, C, h, w)`, where
@@ -519,6 +520,10 @@ def crop_by_indices(
     """
     KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
     KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
+    if shape_compensation not in ("resize", "pad", "F.pad"):
+        raise ValueError(
+            f"`shape_compensation` must be one of 'resize', 'pad', or 'F.pad'. Got {shape_compensation!r}."
+        )
 
     B, C, _, _ = input_tensor.shape
     # Kept on the device ``src_box`` lives on: the coordinates are read back to Python below, which costs no device
