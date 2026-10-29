@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import ast
 import inspect
 import re
 
@@ -39,6 +40,7 @@ def _documented_args(cls):
         K.RandomBrightness,
         K.RandomCutMixV2,
         K.RandomGaussianBlur,
+        K.RandomSnow,
         K.RandomThinPlateSpline,
     ],
 )
@@ -50,3 +52,18 @@ def test_args_block_matches_the_constructor(cls):
     signature = list(inspect.signature(cls.__init__).parameters)[1:]
 
     assert sorted(_documented_args(cls)) == sorted(signature)
+
+
+@pytest.mark.parametrize("cls", [K.RandomSnow])
+def test_documented_defaults_match_the_constructor(cls):
+    # RandomSnow documented `p` as defaulting to 0.5 while the constructor default is 1.0.
+    doc = inspect.getdoc(cls) or ""
+    block = re.search(r"Args:\n(.*?)\n\s*(?:Shape|Returns?|Examples?|Inputs|Convention)", doc, re.S).group(1)
+    signature = inspect.signature(cls.__init__).parameters
+    documented = {
+        match.group(1): ast.literal_eval(match.group(2))
+        for match in re.finditer(r"^\s{4}(\w+):.*?Default: ([\w.]+)\.\s*$", block, re.M)
+    }
+
+    assert documented
+    assert documented == {name: signature[name].default for name in documented}

@@ -26,7 +26,9 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, TypeVar, Un
 import torch
 from torch import float16, float32, float64
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import (
+    AsyncCheckError,
     BaseError,
     DeviceError,
     ImageError,
@@ -39,6 +41,7 @@ __all__ = [
     "KORNIA_CHECK",
     "KORNIA_CHECK_DM_DESC",
     "KORNIA_CHECK_IS_COLOR",
+    "KORNIA_CHECK_IS_COLOR_OR_GRAY",
     "KORNIA_CHECK_IS_GRAY",
     "KORNIA_CHECK_IS_IMAGE",
     "KORNIA_CHECK_IS_LIST_OF_TENSOR",
@@ -46,11 +49,13 @@ __all__ = [
     "KORNIA_CHECK_LAF",
     "KORNIA_CHECK_SAME_DEVICE",
     "KORNIA_CHECK_SAME_DEVICES",
+    "KORNIA_CHECK_SAME_SHAPE",
     "KORNIA_CHECK_SAME_SIZE",
     "KORNIA_CHECK_SHAPE",
     "KORNIA_CHECK_SIZES",
     "KORNIA_CHECK_TYPE",
     "KORNIA_UNWRAP",
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",
@@ -84,6 +89,9 @@ def _should_enable_checks() -> bool:
 
 # Module-level flag - evaluated once at import time, but can be changed at runtime
 _KORNIA_CHECKS_ENABLED: bool = _should_enable_checks()
+
+# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
+_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
 
 if TYPE_CHECKING:
     # A check message is a string, or a function without arguments that builds it; see ``KORNIA_CHECK``.
@@ -285,6 +293,71 @@ def KORNIA_CHECK(condition: bool, msg: Optional[CheckMessage] = None, raises: bo
             raise BaseError(error_msg)
         return False
     return True
+
+
+def _vmap_is_active() -> bool:
+    """Whether a ``torch.vmap`` level is on the functorch transform stack."""
+    stack = torch._C._functorch.get_interpreter_stack()
+    return stack is not None and any(level.key() == torch._C._functorch.TransformType.Vmap for level in stack)
+
+
+def _check_async(condition: torch.Tensor, msg: str, guard: bool = False) -> None:
+    """Check a boolean tensor ``condition`` where it lives, without reading it back from an accelerator.
+
+    On CUDA, and on MPS from torch 2.13, the check is ``torch._assert_async``: the call returns at once, and a false
+    ``condition`` raises :exc:`RuntimeError` by the next synchronization, possibly earlier: on CUDA often at the next
+    kernel launch, still inside the calling function. On CUDA it is a device-side assert, after which the context
+    cannot be used. Reading the condition on the host instead would wait for every queued kernel.
+
+    On the CPU, on MPS before torch 2.13, which has no assert kernel, and on any other device, the condition is read on
+    the host and a false one raises :exc:`~kornia.core.exceptions.AsyncCheckError` during the call. A meta tensor has
+    no value to check.
+
+    Under ``torch.compile`` and ``torch.export`` the check is ``torch._assert_async`` on every device that has the
+    kernel, so it stays in the graph and raises :exc:`RuntimeError`; Inductor keeps it from torch 2.9 and compiles it
+    to nothing before. On a device without the kernel nothing is checked there. ``torch.jit.trace`` runs the assert on
+    the traced values but drops it from the graph it records, and TorchScript drops it too, so a scripted call checks
+    on the host only. It does so on every device but CUDA, since TorchScript cannot read whether MPS has the kernel.
+    A scripted CUDA call is not checked. The check is skipped when checks are disabled with :func:`disable_checks`,
+    with ``python -O`` or with ``KORNIA_CHECKS=0``, unless ``guard`` is set. It is also skipped under ``torch.vmap``,
+    which has no batching rule for the assert. Eager calls keep it under the other functorch transforms, such as
+    ``torch.func.grad``; a compiled call skips it under all of them, unless ``guard`` is set, since Dynamo cannot
+    inspect the transform stack.
+
+    Args:
+        condition: a boolean tensor with one element, usually ``(...).all()``.
+        msg: the message of the error. It is a string, since the device assert carries it unformatted.
+        guard: run the check even when checks are disabled, and under a compiled functorch transform. Set it where the
+            check keeps a later index in bounds: on the CPU a compiled ``gather`` or ``scatter`` with an index out of
+            range terminates the process. A compiled ``torch.vmap`` with ``fullgraph=True`` then fails to trace, as the
+            assert has no batching rule, so set it only in code that cannot run under ``vmap`` anyway, such as the
+            in-place histograms of the ``equalize`` lookups.
+    """
+    # TorchScript cannot read ``_MPS_HAS_ASSERT_ASYNC``, so a scripted call reads MPS and other devices on the host.
+    on_host = condition.device.type not in ("cuda", "meta")
+    if not torch.jit.is_scripting():
+        if not (guard or _KORNIA_CHECKS_ENABLED):
+            return
+        if torch._C._are_functorch_transforms_active():
+            if torch.compiler.is_compiling():
+                # Dynamo cannot trace the stack walk, so a compiled call skips the check under every functorch
+                # transform. A guard stays: it keeps an index in bounds, and the assert works under grad.
+                if not guard:
+                    return
+            elif _vmap_is_active():
+                return
+        kind = condition.device.type
+        has_kernel = kind in ("cpu", "cuda", "meta") or (kind == "mps" and _MPS_HAS_ASSERT_ASYNC)
+        if torch.compiler.is_compiling() or torch.jit.is_tracing():
+            if has_kernel:
+                torch._assert_async(condition, msg)
+            return
+        on_host = not has_kernel or kind == "cpu"
+    if on_host:
+        if not bool(condition):
+            raise AsyncCheckError(msg)
+    else:
+        torch._assert_async(condition, msg)
 
 
 def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:
@@ -763,7 +836,7 @@ def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[CheckMessage] = None, r
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ImageError: if the input tensor does not have a shape :math:`(3,H,W)` and raises is True.
+        ImageError: if the input tensor does not have a shape ``(3,H,W)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
@@ -801,7 +874,7 @@ def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[CheckMessage] = None, ra
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ImageError: if the tensor does not have a shape :math:`(1,H,W)` or :math:`(H,W)` and raises is True.
+        ImageError: if the tensor does not have a shape ``(1,H,W)`` or ``(H,W)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
@@ -839,7 +912,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[CheckMessage] =
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ImageError: if the tensor does not have a shape :math:`(1,H,W)` or :math:`(3,H,W)` and raises is True.
+        ImageError: if the tensor does not have a shape ``(1,H,W)`` or ``(3,H,W)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
@@ -877,7 +950,7 @@ def KORNIA_CHECK_IS_IMAGE(
 ) -> bool:
     """Check whether a tensor is a color or gray image with values in [0, 1] for float or [0, 2 ** bits - 1] for int.
 
-    The shape must be :math:`(*, 3, H, W)` or :math:`(*, 1, H, W)`. A NaN value fails the range check, and an empty
+    The shape must be ``(*, 3, H, W)`` or ``(*, 1, H, W)``. A NaN value fails the range check, and an empty
     image passes it.
 
     Args:
@@ -1002,7 +1075,7 @@ def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
     """Check whether a Local Affine Frame (laf) has a valid shape.
 
     Convention:
-        - Only the shape :math:`(B, N, 2, 3)` is checked: any dtype and any values pass, ``N = 0`` included. Use
+        - Only the shape ``(B, N, 2, 3)`` is checked: any dtype and any values pass, ``N = 0`` included. Use
           :func:`~kornia.feature.laf_is_valid` to check the values.
         - With ``raises=False``, a wrong shape returns ``False`` instead of raising.
 
@@ -1011,7 +1084,7 @@ def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ShapeError: if the input laf does not have a shape :math:`(B,N,2,3)` and raises is True.
+        ShapeError: if the input laf does not have a shape ``(B,N,2,3)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS

@@ -4,6 +4,52 @@
 
 Install: `pip install kornia`. Kornia 0.9.0 requires Python ≥ 3.11 and PyTorch ≥ 2.5.1; its other runtime dependencies are NumPy ≥ 1.21 and `kornia_rs` ≥ 0.2.0 (image I/O). `RANSAC(compile=True)` needs PyTorch ≥ 2.14. What exports to ONNX and compiles in one graph: <https://kornia.readthedocs.io/en/latest/get-started/export-support.html>. Half precision and devices: <https://kornia.readthedocs.io/en/latest/get-started/precision.html>.
 
+## When to use Kornia
+
+Kornia pays off where a hand-written version gets long or fragile, or where the alternatives leave the GPU:
+
+- **Breadth.** 1,200+ public operators, most with no torchvision equivalent: camera models and
+  epipolar geometry, minimal solvers and RANSAC, feature detection, description and matching, edge detection,
+  morphology, Lab and Bayer color, image losses and metrics. torchvision overlaps mainly on resizing, cropping,
+  flipping, color jitter and blur.
+- **Per-sample parameters in one batched call.** `gaussian_blur2d(x, (9, 9), sigma)` takes a `(B, 2)` `sigma`;
+  `rotate` takes a `(B,)` angle, `warp_affine` / `warp_perspective` take `(B, 2, 3)` / `(B, 3, 3)` matrices and
+  `adjust_brightness` a `(B,)` factor. torchvision's functional ops apply one parameter per call. From Kornia 0.9.1,
+  a `sigma` tensor and the enhancement value checks (gamma, contrast, solarize) are validated on the device, so a
+  CUDA call, or an MPS call on PyTorch ≥ 2.13, needs no host synchronization for them.
+- **Batched minimal solvers and robust estimation.** `find_fundamental(x1, x2, method="7POINT")` solves `(B, 7, 2)`
+  samples and returns all real solutions in `(B, 3, 3, 3)`, with zero matrices in the unused slots; the 8-point,
+  5-point essential (`find_essential`), DLT homography and PnP (`solve_pnp_dlt`) solvers are there too. `RANSAC`
+  (homography, fundamental and essential models) samples and scores hypotheses on the device; by default its
+  refinement and final selection run on the host in float64, and `compile=True` (PyTorch ≥ 2.14, CPU and CUDA) runs
+  the whole estimation as one compiled graph on the device.
+- **Differentiable geometry.** Depth to 3D and back (`depth_to_3d_v2`, `unproject_points`, `project_points`),
+  `warp_frame_depth`, `remap`, camera models with Brown–Conrady and Kannala–Brandt distortion, and Lie groups (`So3`,
+  `Se3`) keep gradients with respect to depth, pose and camera parameters.
+- **Annotated augmentation.** `AugmentationSequential` applies one sampled transform to images, masks, boxes and
+  keypoints together and can invert it, in 2D; the 3D augmentations transform volumes, without annotations or an
+  inverse. On CUDA, augmentations move their sampled parameters to the
+  GPU without blocking it, and a sync-guard test keeps every public augmentation free of avoidable host
+  synchronizations.
+- **Local features on the GPU.** SIFT and HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue, with
+  mutual-nearest-neighbour and ratio-test matchers.
+- **Morphology** with arbitrary structuring elements on batched tensors.
+- **Compiles and exports.** Nearly all probed operator configurations run under `torch.compile` and match eager,
+  and over 1,000 export to ONNX; the result for every operator is on the
+  [export support page](https://kornia.readthedocs.io/en/latest/get-started/export-support.html).
+- **Fast where it is designed to be: batched tensors on a GPU.** In the published 0.9.0 flagship benchmarks (RTX 4090,
+  batch 32), many filters, warps, feature-matching steps and image metrics run about 10× to 70× faster in eager mode
+  than per-image OpenCV or scikit-image on the CPU, and `torch.compile` takes several of them past 100×. On the small
+  overlap with torchvision on the same GPU, eager Kornia is slower; compiled Kornia is faster for hue, color jitter
+  and Gaussian blur and still slower for flips, crops and brightness. OpenCV wins single-image `uint8` CPU work.
+  Results vary with hardware and workload; every number, win and loss is published on the
+  [performance page](https://kornia.readthedocs.io/en/latest/get-started/performance.html).
+
+These operators run on the input's device with no NumPy round trip, and most are differentiable; robust estimation
+(`RANSAC`) and the extraction methods of learned features such as DeDoDe and XFeat run without gradients. For a
+single fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are just as
+good.
+
 ## Tensor and coordinate conventions
 
 These conventions hold library-wide; per-function docs note any exception.
@@ -12,9 +58,10 @@ These conventions hold library-wide; per-function docs note any exception.
 - **Point coordinates:** `(x, y)` order, where x indexes columns and y indexes rows. A point tensor for N points is `(B, N, 2)`.
 - **Sizes:** output sizes and `dsize` arguments are `(h, w)` order — the OPPOSITE axis order from points.
 - **Angles:** degrees in the 2D image APIs (`rotate`, `get_rotation_matrix2d`, `RandomRotation`); radians in the 3D/conversion APIs (`axis_angle_to_rotation_matrix`, `So3`; convert with `deg2rad`/`rad2deg`). Positive 2D angle = counter-clockwise rotation as displayed, with the origin at the top-left corner (OpenCV convention).
-- **Transformation matrices:** batched. Homographies are `(B, 3, 3)`, affine matrices `(B, 2, 3)`. They act on pixel coordinates unless the function name or a flag says `normalized`. To apply a `(3, 3)` matrix, add the batch dim: `M[None]`.
+- **Transformation matrices:** batched. Homographies are `(B, 3, 3)`, affine matrices `(B, 2, 3)`. They act on pixel coordinates unless the function name or a flag says `normalized`. To apply a `(3, 3)` matrix, add the batch dim: `M[None]`. Exception: `homography_warp`, `homography_warp3d` and `HomographyWarper` take a destination→source homography, in normalized `[-1, 1]` coordinates by default (`normalized_coordinates=True`); `homography_warp(..., normalized_homography=False)` takes a pixel source→destination homography instead. For a pixel source→destination homography, as `RANSAC` and `find_homography_dlt` return it, use `warp_perspective`, or in 3D `warp_perspective3d`.
 - **`align_corners`:** `warp_perspective` and `warp_affine` default to `align_corners=True`; `resize` defaults to `align_corners=None` (PyTorch's native default per interpolation mode). When mixing Kornia warps with `torch.nn.functional.interpolate` or `grid_sample`, pass `align_corners` explicitly everywhere.
 - **Devices/dtypes:** ops run on whatever device/dtype the input tensors carry; there is no implicit `.cuda()` or `.float()`.
+- **Augmentation probability:** most augmentations apply per sample with probability `p` and default to `p=0.5`: `RandomRotation(degrees=30.0)` leaves about half the batch unrotated. `RandomGrayscale` defaults to 0.1 and `RandomMosaic` to 0.7; every class exported from `kornia.augmentation` with a default below 1 states it on its first docstring line. These default to `p=1.0`: `CenterCrop`, `CenterCrop3D`, `ColorJiggle`, `ColorJitter`, `Denormalize`, `LongestMaxSize`, `Normalize`, `PatchMix`, `RandomAutoContrast`, `RandomBrightness`, `RandomContrast`, `RandomCrop`, `RandomCrop3D`, `RandomCutMixV2`, `RandomGamma`, `RandomHue`, `RandomJPEG`, `RandomMixUpV2`, `RandomResizedCrop`, `RandomSaturation`, `RandomSnow`, `Resize` and `SmallestMaxSize`. The crop, resize and mix classes (`RandomCrop`, `CenterCrop`, `RandomResizedCrop`, `Resize`, `LongestMaxSize`, `SmallestMaxSize`, `RandomCrop3D`, `CenterCrop3D`, `RandomMixUpV2`, `RandomCutMixV2`, `PatchMix`) take their `p` as one draw for the whole batch, `Normalize`, `Denormalize` and `RandomDissolving` share one draw across the batch, and `same_on_batch=True` shares the draw for any class. torchvision's `RandomRotation`, `RandomAffine`, `ElasticTransform`, `GaussianBlur`, `GaussianNoise` and `RandomChannelPermutation` always apply: pass `p=1.0` for that behaviour. The reverse holds for `RandomAutoContrast`, which defaults to `p=1.0` while torchvision's `RandomAutocontrast` defaults to `p=0.5`.
 - **Pretrained models:** in `kornia.models` and `kornia.feature` alike, a model built with complete pretrained weights comes back in eval mode, and a randomly initialised or only partly pretrained one in training mode; call `.eval()` before inference on random weights, and after loading your own weights. In `kornia.feature`, `HardNet`, `HardNet8`, `HyNet`, `SOSNet`, `TFeat`, `OriNet`, `LAFAffNetShapeEstimator`, `KeyNet`, `KeyNetDetector` (its `KeyNet` network; the detector itself keeps its mode), `DeFMO`, `SOLD2`, `SOLD2_detector`, `LoFTR` and `LightGlue` load their pretrained weights by default (`pretrained=False`, or `None` for `LoFTR` and `LightGlue`, gives random ones), and `DISK`, `DeDoDe`, `ALIKED` and `XFeat` load them with `from_pretrained`.
 
 Full conventions reference with runnable proofs: <https://kornia.readthedocs.io/en/latest/get-started/conventions.html>
@@ -73,7 +120,7 @@ img_back, mask_back, kpts_back = aug.inverse(img_out, mask_out, kpts_out)
 Notes:
 
 - `data_keys` order defines the positional argument order.
-- Random parameters are sampled per batch element; `p=1.0` forces application.
+- Random parameters are sampled per batch element, and most augmentations apply to each sample with probability `p=0.5` by default; `p=1.0` forces application.
 - The last applied transform matrices are available via `aug.transform_matrix` after a forward pass.
 
 ## kornia.color — color space conversions
@@ -150,7 +197,7 @@ img = img[None]  # most ops want (B, C, H, W)
 6. Radians where degrees are expected — rotation angles are degrees.
 7. Uint8 `[0, 255]` tensors — ops expect float `[0, 1]`; divide by 255 first.
 8. Augmenting image and mask through two separate augmentation calls — the random parameters will differ; use one `AugmentationSequential` with `data_keys`.
-9. Feeding `homography_warp` a source→destination pixel homography — it expects destination→source, normalized to [-1, 1]: normalize the forward homography FIRST, then invert (`torch.inverse(normalize_homography(M, size_src, size_dst))`). It also defaults to `align_corners=False` unlike `warp_perspective`.
+9. Feeding `homography_warp` a source→destination pixel homography — it expects destination→source, normalized to [-1, 1]. Use `warp_perspective` (or `normalized_homography=False`) instead. To keep the normalized form, normalize the forward homography FIRST with the `align_corners` the warp uses, then invert: `torch.inverse(normalize_homography(M, size_src, size_dst, align_corners=False))` for `homography_warp`'s default `align_corners=False`, which differs from `warp_perspective`'s `True`.
 10. Mixing `axis_angle_to_rotation_matrix` (right-hand rule, math convention — screen-clockwise for +z on y-down images) with `rotate` (screen-counter-clockwise) without negating the angle.
 11. Treating `kornia.geometry.bbox.infer_bbox_shape` width/height as exclusive — they are inclusive (`x_right - x_left + 1`): corners (1,1),(2,2) give width 2.
 12. Quaternions in XYZW order — `kornia.geometry.quaternion.Quaternion` uses WXYZ (scalar first).

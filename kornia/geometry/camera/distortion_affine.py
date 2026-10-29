@@ -37,7 +37,7 @@ def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, par
           pixel, and ``params`` is the flat vector ``[fx, fy, cx, cy]``; the result is in pixels (integer pixel
           centres; see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
         - :func:`~kornia.geometry.calibration.distort_points` is the same camera parametrized by a
-          :math:`(*, 3, 3)` ``K`` and an OpenCV coefficient vector; it takes a **pixel** input instead.
+          ``(*, 3, 3)`` ``K`` and an OpenCV coefficient vector; it takes a **pixel** input instead.
         - :func:`undistort_points_affine` is the closed-form inverse.
 
     Args:
@@ -122,7 +122,7 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, 
         \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
 
     Convention:
-        - the result is the :math:`(..., 2, 2)` Jacobian of :func:`distort_points_affine` with respect to the
+        - the result is the ``(..., 2, 2)`` Jacobian of :func:`distort_points_affine` with respect to the
           **point**: rows are the output components ``(u, v)``, columns the input components ``(x, y)``.
         - the map is affine, so that Jacobian is ``diag(fx, fy)`` and does not depend on the point.
         - ``...`` is the broadcast of the points' and the params' leading shapes, as in

@@ -34,7 +34,7 @@ from .projection_orthographic import (
     unproject_points_orthographic,
 )
 from .projection_z1 import dx_project_points_z1, project_points_z1, unproject_points_z1
-from .stereo import StereoCamera
+from .stereo import StereoCamera, reproject_disparity_to_3D
 
 __all__ = [
     "PinholeCamera",
@@ -50,6 +50,7 @@ __all__ = [
     "project_points",
     "project_points_orthographic",
     "project_points_z1",
+    "reproject_disparity_to_3D",
     "undistort_points_affine",
     "undistort_points_kannala_brandt",
     "unproject_points",

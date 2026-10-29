@@ -155,6 +155,24 @@ class TestCenterCrop3D(BaseTester):
         out_crop = kornia.geometry.transform.center_crop3d(inp, crop_size, align_corners=True)
         self.assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize(
+        "shape, size, start",
+        [
+            ((3, 4, 5), (2, 3, 4), (0, 0, 0)),
+            ((3, 4, 5), (2, 2, 2), (0, 1, 1)),
+            ((5, 4, 6), (2, 3, 3), (1, 0, 1)),
+        ],
+    )
+    def test_convention_center_crop3d_odd_margin_returns_a_sub_volume_6290(self, shape, size, start, device, dtype):
+        # Odd margins on every axis. The crop starts at int(src / 2 - dst / 2), as in CenterCrop3D, and leaves the
+        # extra voxel at the back/bottom/right, instead of resampling between voxels. The default align_corners=True
+        # is the setting that reproduces an integer-voxel slice (see crop_and_resize3d's convention block).
+        inp = torch.arange(float(shape[0] * shape[1] * shape[2]), device=device, dtype=dtype).view(1, 1, *shape) ** 2
+        z, y, x = start
+        expected = inp[..., z : z + size[0], y : y + size[1], x : x + size[2]]
+
+        self.assert_close(kornia.geometry.transform.center_crop3d(inp, size), expected, atol=1e-4, rtol=1e-4)
+
     def test_gradcheck(self, device):
         img = torch.arange(0.0, 343.0, device=device, dtype=torch.float64).view(1, 1, 7, 7, 7)
 

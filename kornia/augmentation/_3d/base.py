@@ -29,7 +29,7 @@ from kornia.geometry.keypoints import Keypoints3D
 
 
 class AugmentationBase3D(_AugmentationBase):
-    r"""AugmentationBase3D base class for customized augmentation implementations.
+    r"""Base class for custom 3D augmentations, applied per sample with probability ``p`` (default 0.5).
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -48,7 +48,8 @@ class AugmentationBase3D(_AugmentationBase):
           only.
         - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
           values. Of the concrete 3D constructors only :class:`~kornia.augmentation.RandomTransplantation3D`
-          exposes ``p_batch`` (`#4425 <https://github.com/kornia/kornia/issues/4425>`_); :class:`CenterCrop3D` and
+          exposes ``p_batch`` in its constructor, though it can be set as an attribute on any 3D augmentation;
+          :class:`CenterCrop3D` and
           :class:`RandomCrop3D` instead map their own ``p`` onto the call-wide gate. Parameters use the common
           augmentation RNG and ``forward(x, params=...)`` replays a complete generated dictionary. See
           :doc:`/get-started/conventions` for the canonical sampling, seeding, and serialization contract.
@@ -83,7 +84,7 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
-    r"""AugmentationBase3D base class for rigid/affine augmentation implementations.
+    r"""Base class for 3D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
     RigidAffineAugmentationBase3D enables routined transformation with given transformation matrices
     for different data types like masks, boxes, and keypoints.

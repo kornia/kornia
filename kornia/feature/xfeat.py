@@ -92,12 +92,12 @@ class XFeatModel(nn.Module):
     Implements the architecture from
     "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
 
-    Input: float image tensor :math:`(B, C, H, W)` (grayscale or RGB, any channel count).
+    Input: float image tensor ``(B, C, H, W)`` (grayscale or RGB, any channel count).
     Output:
 
-    - ``feats``: dense descriptors :math:`(B, 64, H/8, W/8)`.
-    - ``keypoints``: keypoint logits :math:`(B, 65, H/8, W/8)`.
-    - ``heatmap``: reliability map :math:`(B, 1, H/8, W/8)`.
+    - ``feats``: dense descriptors ``(B, 64, H/8, W/8)``.
+    - ``keypoints``: keypoint logits ``(B, 65, H/8, W/8)``.
+    - ``heatmap``: reliability map ``(B, 1, H/8, W/8)``.
 
     Convention:
         - The channels are averaged and the result is instance-normalised, so any channel count is accepted and an
@@ -194,19 +194,19 @@ class XFeatModel(nn.Module):
         """Unfold spatial dims by window size ``ws`` and concatenate into channels."""
         B, C, H, W = x.shape
         x = x.unfold(2, ws, ws).unfold(3, ws, ws).reshape(B, C, H // ws, W // ws, ws**2)
-        return x.permute(0, 1, 4, 2, 3).reshape(B, -1, H // ws, W // ws)
+        return x.permute(0, 1, 4, 2, 3).flatten(start_dim=1, end_dim=2)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Run the XFeat backbone.
 
         Args:
-            x: image tensor of shape :math:`(B, C, H, W)`.
+            x: image tensor of shape ``(B, C, H, W)``.
 
         Returns:
             Tuple of:
-            - feats: dense descriptors :math:`(B, 64, H/8, W/8)`.
-            - keypoints: keypoint logits :math:`(B, 65, H/8, W/8)`.
-            - heatmap: reliability map :math:`(B, 1, H/8, W/8)`.
+            - feats: dense descriptors ``(B, 64, H/8, W/8)``.
+            - keypoints: keypoint logits ``(B, 65, H/8, W/8)``.
+            - heatmap: reliability map ``(B, 1, H/8, W/8)``.
         """
         with torch.no_grad():
             x = x.mean(dim=1, keepdim=True)
@@ -247,9 +247,9 @@ class InterpolateSparse2d(nn.Module):
             ``False``.
 
     Shape:
-        - Input ``x``: :math:`(B, C, H, W)`.
-        - Input ``pos``: :math:`(B, N, 2)` integer or float (x, y) coordinates.
-        - Output: :math:`(B, N, C)`.
+        - Input ``x``: ``(B, C, H, W)``.
+        - Input ``pos``: ``(B, N, 2)`` integer or float (x, y) coordinates.
+        - Output: ``(B, N, C)``.
     """
 
     def __init__(self, mode: str = "bicubic", align_corners: bool = False) -> None:
@@ -271,13 +271,13 @@ class InterpolateSparse2d(nn.Module):
         """Sample ``x`` at positions ``pos``.
 
         Args:
-            x: feature map :math:`(B, C, H, W)`.
-            pos: sampling positions :math:`(B, N, 2)` in pixel coordinates.
+            x: feature map ``(B, C, H, W)``.
+            pos: sampling positions ``(B, N, 2)`` in pixel coordinates.
             H: height used for coordinate normalisation.
             W: width used for coordinate normalisation.
 
         Returns:
-            Sampled features :math:`(B, N, C)`.
+            Sampled features ``(B, N, C)``.
         """
         grid = self.normgrid(pos, H, W).unsqueeze(-2).to(x.dtype)
         # align_corners=False is intentional: the pretrained XFeat weights were trained
@@ -305,7 +305,7 @@ class XFeat(nn.Module):
           running statistics on every call, and matching a single small image pair raises; call ``.eval()`` for
           inference. :meth:`from_pretrained` returns the trained model in evaluation mode. The inference methods
           run under ``torch.inference_mode``.
-        - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
+        - The image is ``(B, C, H, W)`` with any channel count. Each extraction resizes the image it gets
           bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
           intensities with a positive gain changes its maps only through the norm's ``eps``, which weighs more the
@@ -413,7 +413,7 @@ class XFeat(nn.Module):
         B = x.shape[0]
         pos = nms2d(x, (kernel_size, kernel_size), mask_only=True) & (x > threshold)
         pos_batched = [k.nonzero()[..., 1:].flip(-1) for k in pos]
-        pad_val = max(len(p) for p in pos_batched)
+        pad_val = max((len(p) for p in pos_batched), default=0)  # an empty batch pads to no keypoints
         pos_out = torch.full((B, pad_val, 2), -1, dtype=torch.long, device=x.device)
         for b in range(B):
             pos_out[b, : len(pos_batched[b])] = pos_batched[b]
@@ -421,7 +421,7 @@ class XFeat(nn.Module):
 
     @staticmethod
     def _create_xy(h: int, w: int, device: torch.device) -> torch.Tensor:
-        """Create a grid of (x, y) pixel coordinates of shape :math:`(H*W, 2)`."""
+        """Create a grid of (x, y) pixel coordinates of shape ``(H*W, 2)``."""
         y, x = torch.meshgrid(torch.arange(h, device=device), torch.arange(w, device=device), indexing="ij")
         return torch.cat([x[..., None], y[..., None]], -1).reshape(-1, 2)
 
@@ -498,8 +498,8 @@ class XFeat(nn.Module):
         if top_k is None:
             top_k = _H1 * _W1
         xy1 = (self._create_xy(_H1, _W1, M1.device) * 8).expand(B, -1, -1)
-        M1 = M1.permute(0, 2, 3, 1).reshape(B, -1, C)
-        H1 = H1.permute(0, 2, 3, 1).reshape(B, -1)
+        M1 = M1.permute(0, 2, 3, 1).flatten(start_dim=1, end_dim=2)
+        H1 = H1.permute(0, 2, 3, 1).flatten(start_dim=1)
         if top_k < 1:
             return torch.zeros(B, 0, 2, device=M1.device), M1.new_zeros(B, 0, C)
         _, top_k_idx = torch.topk(H1, k=min(H1.shape[1], top_k), dim=-1)
@@ -572,16 +572,16 @@ class XFeat(nn.Module):
         """Detect sparse keypoints and compute descriptors.
 
         Args:
-            x: image tensor of shape :math:`(B, C, H, W)`.
+            x: image tensor of shape ``(B, C, H, W)``.
             top_k: number of keypoints to keep (overrides ``self.top_k``).
             detection_threshold: the heatmap value to exceed (overrides ``self.detection_threshold``).
 
         Returns:
             List of length ``B``. Each element is a dict with:
 
-            - ``'keypoints'``: :math:`(N, 2)` keypoints in (x, y) pixel coordinates.
-            - ``'scores'``: :math:`(N,)` keypoint heatmap value times reliability, in descending order.
-            - ``'descriptors'``: :math:`(N, 64)` L2-normalised descriptors.
+            - ``'keypoints'``: ``(N, 2)`` keypoints in (x, y) pixel coordinates.
+            - ``'scores'``: ``(N,)`` keypoint heatmap value times reliability, in descending order.
+            - ``'descriptors'``: ``(N, 64)`` L2-normalised descriptors.
         """
         if top_k is None:
             top_k = self.top_k
@@ -630,7 +630,7 @@ class XFeat(nn.Module):
         """Detect keypoints and compute dense coarse descriptors.
 
         Args:
-            x: image tensor of shape :math:`(B, C, H, W)`.
+            x: image tensor of shape ``(B, C, H, W)``.
             top_k: number of features to keep (overrides ``self.top_k``). A value below 1 keeps every cell. With
                 ``multiscale=True`` the budget is split between the scales, ``int(0.2 * top_k)`` for the 0.6x
                 extraction and the rest for the 1.3x one, so the result never exceeds a positive ``top_k``; a scale
@@ -641,9 +641,9 @@ class XFeat(nn.Module):
         Returns:
             Dict with:
 
-            - ``'keypoints'``: :math:`(B, K, 2)` coarse keypoints.
-            - ``'descriptors'``: :math:`(B, K, 64)` coarse descriptors.
-            - ``'scales'``: :math:`(B, K)` extraction scale per keypoint.
+            - ``'keypoints'``: ``(B, K, 2)`` coarse keypoints.
+            - ``'descriptors'``: ``(B, K, 64)`` coarse descriptors.
+            - ``'scales'``: ``(B, K)`` extraction scale per keypoint.
         """
         if top_k is None:
             top_k = self.top_k
@@ -667,13 +667,13 @@ class XFeat(nn.Module):
         """Detect, describe and mutually match keypoints from two images.
 
         Args:
-            img1: first image tensor of shape :math:`(1, C, H, W)`.
-            img2: second image tensor of shape :math:`(1, C, H, W)`.
+            img1: first image tensor of shape ``(1, C, H, W)``.
+            img2: second image tensor of shape ``(1, C, H, W)``.
             top_k: number of top keypoints to use.
             min_cossim: minimum cosine similarity threshold. Use ``-1`` to disable.
 
         Returns:
-            Tuple ``(mkpts0, mkpts1)`` of matched keypoints, each :math:`(N, 2)`.
+            Tuple ``(mkpts0, mkpts1)`` of matched keypoints, each ``(N, 2)``.
         """
         if top_k is None:
             top_k = self.top_k
@@ -692,13 +692,14 @@ class XFeat(nn.Module):
         """Extract coarse features, match pairs and refine matches (XFeat*).
 
         Args:
-            im_set1: batch of images :math:`(B, C, H, W)`.
-            im_set2: batch of images :math:`(B, C, H, W)`.
+            im_set1: batch of images ``(B, C, H, W)``.
+            im_set2: batch of images ``(B, C, H, W)``.
             top_k: number of top features to use.
 
         Returns:
-            If ``B > 1``: list of :math:`(N, 4)` tensors with ``(x1, y1, x2, y2)`` matches.
-            If ``B == 1``: tuple of :math:`(N, 2)` matched keypoint tensors.
+            If ``B != 1``: list of ``(N, 4)`` tensors with ``(x1, y1, x2, y2)`` matches, one per pair; an empty
+            batch gives an empty list.
+            If ``B == 1``: tuple of ``(N, 2)`` matched keypoint tensors.
         """
         if top_k is None:
             top_k = self.top_k
@@ -707,6 +708,6 @@ class XFeat(nn.Module):
         idxs_list = self._batch_match(out1["descriptors"], out2["descriptors"])
         B = im_set1.shape[0]
         matches = [self._refine_matches(out1, out2, matches=idxs_list, batch_idx=b) for b in range(B)]
-        if B > 1:
+        if B != 1:
             return matches
         return matches[0][:, :2], matches[0][:, 2:]

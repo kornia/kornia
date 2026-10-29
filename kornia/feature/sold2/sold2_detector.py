@@ -41,10 +41,10 @@ class SOLD2_detector(nn.Module):
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
     Convention:
-        - The input is a grayscale image :math:`(B, 1, H, W)`, in :math:`[0, 1]` for the pretrained weights, with
+        - The input is a grayscale image ``(B, 1, H, W)``, in :math:`[0, 1]` for the pretrained weights, with
           ``H`` and ``W`` multiples of 8; other sizes raise an error or give heatmaps of another size.
-          ``junction_heatmap`` and ``line_heatmap`` are :math:`(B, H, W)`.
-        - ``line_segments`` holds one :math:`(N, 2, 2)` tensor per image: the two endpoints of each segment as
+          ``junction_heatmap`` and ``line_heatmap`` are ``(B, H, W)``.
+        - ``line_segments`` holds one ``(N, 2, 2)`` tensor per image: the two endpoints of each segment as
           ``(row, col)`` in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), so ``flip(-1)`` gives ``(x, y)``. The endpoints
           of a segment, and the segments by their first endpoint, are in raster order: the smaller row first or, on
@@ -119,12 +119,12 @@ class SOLD2_detector(nn.Module):
         """Run forward.
 
         Args:
-            img: batched images with shape :math:`(B, 1, H, W)`.
+            img: batched images with shape ``(B, 1, H, W)``.
 
         Returns:
             line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
-            junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
-            line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
+            junction_heatmap: raw junction heatmap of shape ``(B, H, W)``.
+            line_heatmap: raw line heatmap of shape ``(B, H, W)``.
 
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
@@ -507,19 +507,27 @@ class LineSegmentDetectionModule:
         return line_map
 
     def detect_bilinear(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor) -> torch.Tensor:
-        """Detect by bilinear sampling."""
-        # Get the floor and ceiling locations
+        """Detect by bilinear sampling.
+
+        The reference SOLD2 implementation takes ``ceil`` as the second neighbour, so at an integer coordinate, where
+        ``floor`` and ``ceil`` coincide, both weights of that axis are 0 and the sample scores 0. kornia takes
+        ``floor + 1`` (clipped at the image border) instead: an integer sample keeps its pixel value, and the junction
+        refinement no longer moves horizontal and vertical segments off the pixels that support them.
+        """
+        # Use the next pixel even at integer coordinates, where floor and ceil coincide.
         cand_h_floor = torch.floor(cand_h).to(torch.long)
-        cand_h_ceil = torch.ceil(cand_h).to(torch.long)
+        cand_h_ceil = (cand_h_floor + 1).clamp(max=heatmap.shape[0] - 1)
         cand_w_floor = torch.floor(cand_w).to(torch.long)
-        cand_w_ceil = torch.ceil(cand_w).to(torch.long)
+        cand_w_ceil = (cand_w_floor + 1).clamp(max=heatmap.shape[1] - 1)
+        h_weight = cand_h - cand_h_floor
+        w_weight = cand_w - cand_w_floor
 
         # Perform the bilinear sampling
         return (
-            heatmap[cand_h_floor, cand_w_floor] * (cand_h_ceil - cand_h) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_floor, cand_w_ceil] * (cand_h_ceil - cand_h) * (cand_w - cand_w_floor)
-            + heatmap[cand_h_ceil, cand_w_floor] * (cand_h - cand_h_floor) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_ceil, cand_w_ceil] * (cand_h - cand_h_floor) * (cand_w - cand_w_floor)
+            heatmap[cand_h_floor, cand_w_floor] * (1 - h_weight) * (1 - w_weight)
+            + heatmap[cand_h_floor, cand_w_ceil] * (1 - h_weight) * w_weight
+            + heatmap[cand_h_ceil, cand_w_floor] * h_weight * (1 - w_weight)
+            + heatmap[cand_h_ceil, cand_w_ceil] * h_weight * w_weight
         )
 
     def detect_local_max(
@@ -594,13 +602,13 @@ def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01
     from the junction indices is the one with the smaller row or, on the same row, the smaller column.
 
     Args:
-        prob: junction probability map with shape :math:`(H, W)`.
+        prob: junction probability map with shape ``(H, W)``.
         dist: suppression distance in pixels.
         prob_thresh: minimum probability of a junction.
         top_k: number of junctions to keep; ``0`` keeps all.
 
     Returns:
-        Junction locations in ``(row, col)`` order with shape :math:`(N, 2)`.
+        Junction locations in ``(row, col)`` order with shape ``(N, 2)``.
     """
     # Extract the junctions
     junctions = torch.stack(torch.where(prob >= prob_thresh), -1).float()

@@ -72,14 +72,14 @@ def oneway_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         pts2: correspondences from the right images with shape
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
-        H: Homographies with shape :math:`(B, 3, 3)`.
+        H: Homographies with shape ``(B, 3, 3)``.
         squared: if True (default), the squared distance is returned.
         eps: unused; it was added to the projective denominator and inside the square root, which made the error
             depend on the scale of ``H`` and an exact match score ``sqrt(eps)`` (#4881). The singular case is
             guarded exactly instead. Accepted so that existing calls keep working.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`.
+        the computed distance with shape ``(B, N)``.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -147,12 +147,12 @@ def symmetric_transfer_error(
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
         pts2: correspondences from the right images with shape
           (B, N, 2 or 3). If they are homogeneous, converted automatically.
-        H: Homographies with shape :math:`(B, 3, 3)`.
+        H: Homographies with shape ``(B, 3, 3)``.
         squared: if True (default), the squared distance is returned.
         eps: unused, as in :func:`oneway_transfer_error` (#4881).
 
     Returns:
-        the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
+        the computed distance with shape ``(B, N)``. Rows whose homography is not invertible
         score ``max_num``, i.e. ``torch.finfo(pts1.dtype).max``, for both values of ``squared``.
 
     """
@@ -209,14 +209,14 @@ def sampson_homography_distance(
           all integers.
 
     Args:
-        pts1: points in the first image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
-        pts2: points in the second image with shape :math:`(B, N, 2)`, or homogeneous :math:`(B, N, 3)`.
-        H: homographies with shape :math:`(B, 3, 3)`. Points with a leading dimension of 1 are scored against every
+        pts1: points in the first image with shape ``(B, N, 2)``, or homogeneous ``(B, N, 3)``.
+        pts2: points in the second image with shape ``(B, N, 2)``, or homogeneous ``(B, N, 3)``.
+        H: homographies with shape ``(B, 3, 3)``. Points with a leading dimension of 1 are scored against every
             homography.
         squared: if True (default), the squared distance is returned, else the distance.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`.
+        the computed distance with shape ``(B, N)``.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -282,11 +282,11 @@ def line_segment_transfer_error_one_way(
           (B, N, 2, 2).
         ls2: line segment correspondences from the right images with shape
           (B, N, 2, 2).
-        H: Homographies with shape :math:`(B, 3, 3)`.
+        H: Homographies with shape ``(B, 3, 3)``.
         squared: if True (default is False), the squared error is returned.
 
     Returns:
-        the computed error with shape :math:`(B, N)`.
+        the computed error with shape ``(B, N)``.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -518,15 +518,15 @@ def find_homography_dlt(
         - A caller's autocast region does not change the fit.
 
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        points1: A set of points in the first image with a tensor shape ``(B, N, 2)``.
+        points2: A set of points in the second image with a tensor shape ``(B, N, 2)``.
+        weights: Tensor containing the weights per point correspondence with a shape of ``(B, N)``.
           Zero-weight points are excluded from the DLT equations and Hartley normalization.
         solver: variants: svd, lu.
 
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element whose weighted DLT system is
+        the computed homography matrix with shape ``(B, 3, 3)``. A batch element whose weighted DLT system is
         not finite, because a weight or a point is not finite (zero-weight points included) or an entry overflows,
         is NaN for both solvers and on every device; the other elements are unaffected. If the SVD of
         ``solver="svd"`` fails to converge on a finite system, the whole batch is NaN and a ``RuntimeWarning`` is
@@ -730,15 +730,15 @@ def find_homography_dlt_iterated(
           standard deviation in pixels: a correspondence with ``e = soft_inl_th`` keeps weight ``exp(-1/2)``.
 
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        points1: A set of points in the first image with a tensor shape ``(B, N, 2)``.
+        points2: A set of points in the second image with a tensor shape ``(B, N, 2)``.
+        weights: Tensor containing the weights per point correspondence with a shape of ``(B, N)``.
           Used for the first iteration of the IRWLS.
         soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel given above.
         n_iter: number of solves, including the initial one.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`, NaN for a batch element as in
+        the computed homography matrix with shape ``(B, 3, 3)``, NaN for a batch element as in
         :func:`find_homography_dlt`.
 
     """
@@ -773,13 +773,13 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
           through a repeated point, counts as kept, so collinearity alone does not reject a sample.
 
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`; only the first four
+        points1: A set of points in the first image with a tensor shape ``(B, N, 2)``; only the first four
           points are used.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`; only the first four
+        points2: A set of points in the second image with a tensor shape ``(B, N, 2)``; only the first four
           points are used.
 
     Returns:
-        Mask with the minimal sample is good for homography estimation :math:`(B)`.
+        Mask with the minimal sample is good for homography estimation ``(B)``.
 
     """
     if points1.shape != points2.shape:
@@ -825,15 +825,15 @@ def find_homography_lines_dlt(
         - A caller's autocast region does not change the fit.
 
     Args:
-        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
-          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`. ``N`` must be at least 4.
-        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
-          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
-        weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
+        ls1: A set of line segments in the first image with a tensor shape ``(B, N, 2, 2)``, or
+          ``(N, 2, 2)``, which is treated as :math:`B = 1`. ``N`` must be at least 4.
+        ls2: A set of line segments in the second image with a tensor shape ``(B, N, 2, 2)``, or
+          ``(N, 2, 2)``, which is treated as :math:`B = 1`.
+        weights: Tensor containing the weights per segment with a shape of ``(B, N)``.
           Zero-weight segments are excluded from Hartley normalization.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element whose weighted DLT system is
+        the computed homography matrix with shape ``(B, 3, 3)``. A batch element whose weighted DLT system is
         not finite, because a weight or an endpoint is not finite (zero-weight segments included) or an entry
         overflows, is NaN on every device; the other elements are unaffected. If the SVD fails to converge on a
         finite system, the whole batch is NaN and a ``RuntimeWarning`` is issued.
@@ -920,18 +920,18 @@ def find_homography_lines_dlt_iterated(
           the image-2 line. A zero-length image-2 segment gets weight zero.
 
     Args:
-        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`, or
-          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`, as in :func:`find_homography_lines_dlt`.
-        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`, or
-          :math:`(N, 2, 2)`, which is treated as :math:`B = 1`.
-        weights: Tensor containing the weights per segment with a shape of :math:`(B, N)`.
+        ls1: A set of line segments in the first image with a tensor shape ``(B, N, 2, 2)``, or
+          ``(N, 2, 2)``, which is treated as :math:`B = 1`, as in :func:`find_homography_lines_dlt`.
+        ls2: A set of line segments in the second image with a tensor shape ``(B, N, 2, 2)``, or
+          ``(N, 2, 2)``, which is treated as :math:`B = 1`.
+        weights: Tensor containing the weights per segment with a shape of ``(B, N)``.
           Used for the first iteration of the IRWLS.
         soft_inl_th: standard deviation, in pixels, of the Gaussian re-weighting kernel of
           :func:`find_homography_dlt_iterated`.
         n_iter: number of solves, including the initial one.
 
     Returns:
-        the computed homography matrix with shape :math:`(B, 3, 3)`. A batch element is NaN when one of its
+        the computed homography matrix with shape ``(B, 3, 3)``. A batch element is NaN when one of its
         solves is, as in :func:`find_homography_lines_dlt`. In float16, segments with coordinates in the hundreds
         of pixels overflow the re-weighting distances of :func:`line_segment_transfer_error_one_way` and give NaN
         this way.

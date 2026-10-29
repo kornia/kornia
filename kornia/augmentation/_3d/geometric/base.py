@@ -19,7 +19,7 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 
 
 class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
-    r"""Base class for 3D geometric augmentations.
+    r"""Base class for custom 3D geometric augmentations, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
 

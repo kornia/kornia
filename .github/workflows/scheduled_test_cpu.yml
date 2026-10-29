@@ -164,7 +164,7 @@ jobs:
       matrix:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.6.0", "2.9.1", "2.14.0"]
+        pytorch-version: ["2.5.1", "2.6.0", "2.9.1", "2.15.0"]
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -189,7 +189,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.14.0"]'
+      pytorch-version: '["2.15.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
       # Same hang guard as the PR half-precision job (#5493).
@@ -200,7 +200,7 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  # ONNX conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers 2.14.0
+  # ONNX conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers 2.15.0
   # for the packages a change touches and the packages that import them.
   onnx-conformance:
     needs: [check-skip]
@@ -209,14 +209,14 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1", "2.14.0"]'
+      pytorch-version: '["2.9.1", "2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/onnx/test_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
       pytest-extra: --onnx-conformance=all --timeout=600
 
   # torch.compile conformance (#5819) of every promised operator on both enforced torch releases; the PR run covers
-  # 2.14.0 for the packages a change touches and the packages that import them.
+  # 2.15.0 for the packages a change touches and the packages that import them.
   compile-conformance:
     needs: [check-skip]
     if: needs.check-skip.outputs.should-skip == 'false'
@@ -224,7 +224,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1", "2.14.0"]'
+      pytorch-version: '["2.9.1", "2.15.0"]'
       pytorch-dtype: float32
       test-path: tests/test_inductor_conformance.py
       # pytest-timeout fails a case that runs past 10 min and names it, rather than the job timeout ending the run
@@ -239,7 +239,7 @@ jobs:
         os: ["windows-latest"]
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.15.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
           - python-version: "3.13"
@@ -286,7 +286,7 @@ jobs:
       matrix:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.15.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on macOS
           - python-version: "3.13"

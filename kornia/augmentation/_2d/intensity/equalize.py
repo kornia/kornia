@@ -24,21 +24,21 @@ from kornia.enhance import equalize
 
 
 class RandomEqualize(IntensityAugmentationBase2D):
-    r"""Equalize given tensor image or a batch of tensor images randomly.
+    r"""Equalize the histogram of each image channel, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomEqualize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: Probability to equalize an image.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped

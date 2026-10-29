@@ -244,6 +244,14 @@ class TestDeformConv2d(BaseTester):
 
 
 class TestALIKED(BaseTester):
+    @pytest.mark.parametrize("top_k_mode", [False, True])
+    def test_empty_batch_6266(self, top_k_mode, dtype, device):
+        """An empty batch gives one ALIKEDFeatures per image: none, in threshold and in top-k mode."""
+        kwargs = {"detection_threshold": 0.0, "max_num_keypoints": 20} if top_k_mode else {}
+        aliked = ALIKED(model_name="aliked-t16", **kwargs).to(device, dtype).eval()
+        output = aliked(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
+        assert output == []
+
     def test_smoke(self, dtype, device):
         aliked = ALIKED().to(device, dtype).eval()
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)

@@ -26,7 +26,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
-    r"""Apply random Salt and Pepper noise to input images.
+    r"""Add salt-and-pepper noise to images, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomSaltAndPepperNoise.png
 
@@ -35,14 +35,14 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     Args:
         amount: A float or a tuple representing the range for the amount of noise to apply.
         salt_vs_pepper: A float or a tuple representing the range for the ratio of Salt to Pepper noise.
-        p: The probability of applying the transformation. Default is 0.5.
+        p: The probability of applying the transformation to each sample. Default is 0.5.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.

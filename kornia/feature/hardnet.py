@@ -72,8 +72,8 @@ class HardNet(nn.Module):
         torch.Tensor: HardNet descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
@@ -134,10 +134,10 @@ class HardNet(nn.Module):
         """Compute HardNet descriptors for grayscale 32x32 patches.
 
         Args:
-            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+            input: Grayscale patch tensor of shape ``(B, 1, 32, 32)``.
 
         Returns:
-            L2-normalized descriptor tensor with shape :math:`(B, 128)`.
+            L2-normalized descriptor tensor with shape ``(B, 128)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
@@ -169,8 +169,8 @@ class HardNet8(nn.Module):
         torch.Tensor: HardNet8 descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
@@ -251,10 +251,10 @@ class HardNet8(nn.Module):
         """Compute HardNet8 descriptors with PCA projection.
 
         Args:
-            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+            input: Grayscale patch tensor of shape ``(B, 1, 32, 32)``.
 
         Returns:
-            L2-normalized descriptor tensor with shape :math:`(B, 128)`, after the PCA projection.
+            L2-normalized descriptor tensor with shape ``(B, 128)``, after the PCA projection.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)

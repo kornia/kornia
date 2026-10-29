@@ -284,21 +284,21 @@ class DKD(nn.Module):
 
         if self.top_k > 0:
             # at most top_k of the maxima: a non-maximum scores -inf here and is dropped, not used to fill up to top_k
-            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).reshape(b, -1)
+            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).flatten(start_dim=1)
             topk = torch.topk(candidate_scores, min(self.top_k, h * w))
             indices_keypoints = [topk.indices[i][topk.values[i] > float("-inf")] for i in range(b)]
         else:
             # the per-image mean score: the threshold when scores_th <= 0, and the fallback of an image whose maxima
             # are all at or below scores_th, decided for each image alone
-            mean = scores_nograd.reshape(b, -1).mean(dim=1).reshape(b, 1, 1, 1)
+            mean = scores_nograd.flatten(start_dim=1).mean(dim=1).reshape(b, 1, 1, 1)
             masks = is_max & (scores_nograd > mean)
             if self.scores_th > 0:
                 above = is_max & (scores_nograd > self.scores_th)
-                masks = torch.where(above.reshape(b, -1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
-            masks = masks.reshape(b, -1)
+                masks = torch.where(above.flatten(start_dim=1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
+            masks = masks.flatten(start_dim=1)
 
             indices_keypoints = []
-            scores_view = scores_nograd.reshape(b, -1)
+            scores_view = scores_nograd.flatten(start_dim=1)
             for mask, scores in zip(masks, scores_view):
                 indices = mask.nonzero()[:, 0]
                 if len(indices) > self.n_limit:
@@ -775,7 +775,7 @@ class ALIKED(nn.Module):
           running statistics on every call, and a single small image raises; call ``.eval()`` for inference.
           :meth:`from_pretrained` returns the trained model in evaluation mode.
         - ``images`` are RGB in :math:`[0, 1]`, the range of the pretrained weights, and the network applies no
-          normalisation; a :math:`(B, 1, H, W)` image is repeated to three channels. Any ``H`` and ``W`` work: the
+          normalisation; a ``(B, 1, H, W)`` image is repeated to three channels. Any ``H`` and ``W`` work: the
           image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
           does not move the keypoints.
         - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
@@ -794,7 +794,7 @@ class ALIKED(nn.Module):
         - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
           common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
         - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
-          largest keypoint count in the batch and the responses are :math:`(B, N, 1)`. Its ``mask`` multiplies the
+          largest keypoint count in the batch and the responses are ``(B, N, 1)``. Its ``mask`` multiplies the
           score map, and it takes no ``image_size``.
         - Known defects: on CPU, float16 and bfloat16 score and feature maps go to torch's ``grid_sample`` without
           an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has none the
@@ -1003,7 +1003,7 @@ class ALIKED(nn.Module):
         batched tensors.
 
         Args:
-            img: image to extract features with shape :math:`(B,C,H,W)`.
+            img: image to extract features with shape ``(B,C,H,W)``.
             mask: optional spatial mask ``(B, 1, H, W)`` with values in
                 ``[0, 1]``; the score map is multiplied by this mask before
                 keypoint detection so that features are suppressed in masked
@@ -1015,9 +1015,9 @@ class ALIKED(nn.Module):
                 call entirely (useful when only keypoint positions are needed).
 
         Returns:
-            - Detected local affine frames with shape :math:`(B,N,2,3)`.
-            - Response function values for corresponding LAFs with shape :math:`(B,N,1)`.
-            - Local descriptors of shape :math:`(B,N,D)`.
+            - Detected local affine frames with shape ``(B,N,2,3)``.
+            - Response function values for corresponding LAFs with shape ``(B,N,1)``.
+            - Local descriptors of shape ``(B,N,D)``.
 
         """
         if img.shape[1] == 1:

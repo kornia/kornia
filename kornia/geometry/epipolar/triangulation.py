@@ -130,12 +130,12 @@ def triangulate_points(
         - A caller's autocast region does not change the result.
 
     Args:
-        P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
-        P2: The projection matrix for the second camera with shape :math:`(*, 3, 4)`.
+        P1: The projection matrix for the first camera with shape ``(*, 3, 4)``.
+        P2: The projection matrix for the second camera with shape ``(*, 3, 4)``.
         points1: The set of points seen from the first camera, in the image coordinates of ``P1`` (pixels
-          for ``P1 = K [R | t]``), with shape :math:`(*, N, 2)`.
+          for ``P1 = K [R | t]``), with shape ``(*, N, 2)``.
         points2: The set of points seen from the second camera, in the image coordinates of ``P2`` (pixels
-          for ``P2 = K [R | t]``), with shape :math:`(*, N, 2)`.
+          for ``P2 = K [R | t]``), with shape ``(*, N, 2)``.
         solver: Back-end used to find the null vector of the :math:`4 \times 4` DLT
           constraint matrix. One of:
 
@@ -160,7 +160,7 @@ def triangulate_points(
             rank-deficient (zero baseline). Fastest option for large batches.
 
     Returns:
-        The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
+        The reconstructed 3d points in the world frame with shape ``(*, N, 3)``.
 
     Example:
         >>> P1 = torch.eye(3, 4)[None]   # 1x3x4

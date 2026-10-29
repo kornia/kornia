@@ -36,11 +36,11 @@ def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
               converted automatically.
         pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
               converted automatically.
-        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
+        Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to avoid ambiguity with torch.nn.functional.
         squared: if True (default), the squared distance is returned.
 
     Returns:
-        the computed Sampson distance with shape :math:`(*, N)`.
+        the computed Sampson distance with shape ``(*, N)``.
 
     """
     if not isinstance(Fm, Tensor):
@@ -96,11 +96,11 @@ def _sampson_epipolar_distance_matmul_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
               converted automatically.
         pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
               converted automatically.
-        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
+        Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to avoid ambiguity with torch.nn.functional.
         squared: if True (default), the squared distance is returned.
 
     Returns:
-        the computed Sampson distance with shape :math:`(*, N)`.
+        the computed Sampson distance with shape ``(*, N)``.
 
     """
     if pts1.shape[-1] == 2:
@@ -241,9 +241,9 @@ def sampson_epipolar_distance(
           degenerate ``Fm``, is at distance ``inf``.
 
     Args:
-        pts1: points in the first image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-        pts2: points in the second image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
+        pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+        pts2: points in the second image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+        Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to avoid ambiguity with torch.nn.functional.
         squared: if True (default), the squared distance is returned, else its square root.
         eps: unused; it was added to the denominator and inside the square root, which made the value depend on the
             scale of ``Fm`` and an exact match score :math:`\sqrt{\epsilon}` (#4881). The singular case is guarded
@@ -252,7 +252,7 @@ def sampson_epipolar_distance(
             use the matmul implementation.
 
     Returns:
-        the computed Sampson distance with shape :math:`(*, N)`.
+        the computed Sampson distance with shape ``(*, N)``.
 
     """
     # Checked here because the CUDA matmul and shared-point implementations do not check Fm. A single (3, 3) Fm
@@ -354,14 +354,14 @@ def symmetrical_epipolar_distance(
           either image is at distance ``inf``.
 
     Args:
-       pts1: points in the first image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-       pts2: points in the second image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-       Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
+       pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+       pts2: points in the second image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+       Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to avoid ambiguity with torch.nn.functional.
        squared: if True (default), the squared distance is returned, else its square root.
        eps: unused, as in :func:`sampson_epipolar_distance` (#4881).
 
     Returns:
-        the computed Symmetrical distance with shape :math:`(*, N)`.
+        the computed Symmetrical distance with shape ``(*, N)``.
 
     """
     # Checked here because the CUDA matmul implementation does not check Fm.
@@ -375,7 +375,7 @@ def symmetrical_epipolar_distance(
 
 
 def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return one-sided epipolar distance for correspondences given the fundamental matrix.
+    r"""Return the one-sided distance from each point in ``pts2`` to the epipolar line of its match in ``pts1``.
 
     Convention:
         - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each
@@ -384,13 +384,13 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
 
     Args:
-       pts1: points in the first image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-       pts2: points in the second image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-       Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
+       pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+       pts2: points in the second image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+       Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to
          avoid ambiguity with torch.nn.functional.
 
     Returns:
-        the one-sided distance with shape :math:`(*, N)`.
+        the one-sided distance with shape ``(*, N)``.
 
     """
     KORNIA_CHECK_IS_TENSOR(pts1)
@@ -410,7 +410,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
 
 def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return one-sided epipolar distance for correspondences given the fundamental matrix.
+    r"""Return the one-sided distance from each point in ``pts1`` to the epipolar line of its match in ``pts2``.
 
     Convention:
         - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each
@@ -419,13 +419,13 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
 
     Args:
-       pts1: points in the first image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-       pts2: points in the second image with shape :math:`(*, N, 2)` or :math:`(*, N, 3)`.
-       Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
+       pts1: points in the first image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+       pts2: points in the second image with shape ``(*, N, 2)`` or ``(*, N, 3)``.
+       Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to
          avoid ambiguity with torch.nn.functional.
 
     Returns:
-        the one-sided distance with shape :math:`(*, N)`.
+        the one-sided distance with shape ``(*, N)``.
 
     """
     KORNIA_CHECK_IS_TENSOR(pts1)

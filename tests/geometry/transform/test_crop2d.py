@@ -322,17 +322,55 @@ class TestCenterCrop(BaseTester):
             kornia.geometry.transform.CenterCrop2D(size, cropping_mode="resample")(inp), expected, atol=1e-4, rtol=1e-4
         )
 
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
+    @pytest.mark.parametrize(
+        "size, top, left",
+        [((3, 4), 0, 0), ((2, 2), 1, 1), ((1, 3), 1, 1), ((4, 2), 0, 1)],
+    )
+    def test_convention_center_crop_odd_margin_returns_a_sub_image_6290(
+        self, size, top, left, mode, align_corners, device, dtype
+    ):
+        # A 4x5 image with an odd margin on at least one axis. The crop starts at int(src / 2 - dst / 2), as in
+        # CenterCrop2D, and leaves the extra pixel at the bottom/right. A fractional start resampled between
+        # pixels instead, so bilinear blended neighbours and nearest picked an arbitrary side. In 2D both
+        # align_corners conventions resolve the pixel-coordinate box to the same pixel centres (#3904).
+        if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5) ** 2
+        expected = inp[..., top : top + size[0], left : left + size[1]]
+
+        out = kornia.geometry.transform.center_crop(inp, size, mode=mode, align_corners=align_corners)
+        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, kornia.geometry.transform.CenterCrop2D(size)(inp), atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_convention_center_crop_oversized_odd_margin_pads_bottom_right_6290(self, align_corners, device, dtype):
+        # A size larger than the input pads. With a negative odd margin the start is int(src / 2 - dst / 2), not
+        # (src - dst) // 2: -1 rather than -2 on the width (margin -3) and 0 rather than -1 on the height (margin
+        # -1). So the extra padding pixel is at the bottom/right, as in CenterCrop2D(cropping_mode="resample").
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.tensor([[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[[[0.0, 1.0, 2.0, 3.0, 0.0, 0.0], [0.0, 4.0, 5.0, 6.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        out = kornia.geometry.transform.center_crop(inp, (3, 6), align_corners=align_corners)
+        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        resample = kornia.geometry.transform.CenterCrop2D((3, 6), align_corners=align_corners, cropping_mode="resample")
+        self.assert_close(out, resample(inp), atol=1e-4, rtol=1e-4)
+
     def test_center_crop_forwards_mode_padding_mode_and_align_corners(self, device, dtype):
-        # center_crop hands mode, padding_mode and align_corners on to the warp; each one changes this output.
-        # A 2-wide crop of a 5-wide image starts at pixel 1.5, so bilinear averages four neighbours while
-        # nearest returns one of them.
+        # center_crop hands mode, padding_mode and align_corners on to the warp. The crop is a whole-pixel
+        # translation, so mode does not change an in-bounds crop: both modes return the same slice.
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
         inp = (torch.arange(25, device=device, dtype=dtype) ** 2).view(1, 1, 5, 5)
-        bilinear = (inp[..., 1:3, 1:3] + inp[..., 1:3, 2:4] + inp[..., 2:4, 1:3] + inp[..., 2:4, 2:4]) / 4
-        self.assert_close(kornia.geometry.transform.center_crop(inp, (2, 2)), bilinear)
-        nearest = kornia.geometry.transform.center_crop(inp, (2, 2), mode="nearest")
-        assert torch.isin(nearest, inp).all()
+        self.assert_close(kornia.geometry.transform.center_crop(inp, (2, 2)), inp[..., 1:3, 1:3])
+        self.assert_close(kornia.geometry.transform.center_crop(inp, (2, 2), mode="nearest"), inp[..., 1:3, 1:3])
 
         # A 4x4 crop of a 2x2 image samples pixels -1..2, outside the image on every side.
         small = torch.tensor([[[[1.0, 2.0], [3.0, 4.0]]]], device=device, dtype=dtype)
@@ -353,6 +391,28 @@ class TestCenterCrop(BaseTester):
         self.assert_close(reflected, mirrored)
         reflected = kornia.geometry.transform.center_crop(small, (4, 4), padding_mode="reflection", align_corners=False)
         self.assert_close(reflected, replicated)
+
+    # A 4x5 input: overflow on the right only, on every side, with odd margins, and on one axis while the other crops.
+    _larger_sizes_6312 = [(4, 6), (6, 6), (5, 7), (2, 7), (7, 3)]
+
+    @pytest.mark.parametrize("size", _larger_sizes_6312)
+    def test_center_crop2d_slice_larger_than_input_matches_resample_6312(self, size, device, dtype):
+        # The slice mode wrapped the negative start and stretched the wrong pixels; it must zero-pad as resample does.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(1.0, 21.0, device=device, dtype=dtype).view(1, 1, 4, 5).repeat(2, 3, 1, 1)
+        out_slice = kornia.geometry.transform.CenterCrop2D(size)(inp)
+        out_resample = kornia.geometry.transform.CenterCrop2D(size, cropping_mode="resample")(inp)
+        assert out_slice.shape == (2, 3, *size)
+        self.assert_close(out_slice, out_resample)
+
+    @pytest.mark.parametrize("size", _larger_sizes_6312)
+    def test_dynamo_center_crop2d_slice_larger_than_input_6312(self, size, device, dtype, torch_optimizer):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(1.0, 21.0, device=device, dtype=dtype).view(1, 1, 4, 5)
+        out = torch_optimizer(kornia.geometry.transform.CenterCrop2D(size), fullgraph=True)(inp)
+        self.assert_close(out, kornia.geometry.transform.CenterCrop2D(size, cropping_mode="resample")(inp))
 
 
 class TestCropByBoxes(BaseTester):
@@ -920,6 +980,99 @@ class TestCropByIndices(BaseTester):
             kornia.geometry.transform.crop_by_indices, (inp, src_box, (3, 4)), requires_grad=(True, False, False)
         )
 
+    # (x1, y1, x2, y2) boxes on a 5x6 image: left of it, above it, and both (#6312).
+    _outside_boxes_6312 = {"left": (-2, 1, 3, 3), "above": (1, -1, 4, 2), "left_and_above": (-1, -2, 2, 1)}
+
+    @staticmethod
+    def _box_6312(x1, y1, x2, y2, batch, device, dtype):
+        box = [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]
+        return torch.tensor([box] * batch, device=device, dtype=dtype)
+
+    @pytest.mark.parametrize("where", ["left", "above", "left_and_above"])
+    def test_box_outside_the_image_pads_in_place_6312(self, where, device, dtype):
+        # A negative start used to wrap to the far edge of the axis. With 'pad' the box must give what
+        # crop_by_boxes gives: the image pixels at their positions in the box and zeros outside the image.
+        x1, y1, x2, y2 = self._outside_boxes_6312[where]
+        size = (y2 - y1 + 1, x2 - x1 + 1)
+        inp = torch.arange(1.0, 31.0, device=device, dtype=dtype).view(1, 1, 5, 6).repeat(2, 1, 1, 1)
+        src_box = self._box_6312(x1, y1, x2, y2, 2, device, torch.int64)
+        dst_box = self._box_6312(0, 0, size[1] - 1, size[0] - 1, 2, device, dtype)
+
+        out = kornia.geometry.transform.crop_by_indices(inp, src_box, size=size, shape_compensation="pad")
+
+        expected = kornia.geometry.transform.crop_by_boxes(inp, src_box.to(dtype), dst_box)
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("where", ["left", "above", "left_and_above"])
+    def test_box_outside_the_image_resizes_the_clipped_slice_6312(self, where, device, dtype):
+        # With 'resize' the part inside the image is resized to `size`, as for a box past the right or bottom edge.
+        x1, y1, x2, y2 = self._outside_boxes_6312[where]
+        size = (y2 - y1 + 1, x2 - x1 + 1)
+        inp = torch.arange(1.0, 31.0, device=device, dtype=dtype).view(1, 1, 5, 6)
+        src_box = self._box_6312(x1, y1, x2, y2, 1, device, torch.int64)
+
+        out = kornia.geometry.transform.crop_by_indices(inp, src_box, size=size)
+
+        clipped = inp[..., max(y1, 0) : y2 + 1, max(x1, 0) : x2 + 1]
+        expected = kornia.geometry.transform.resize(clipped, size, align_corners=None, side="short")
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        "box", [(-5, 0, -2, 2), (0, -6, 3, -3), (7, 0, 9, 2), (0, 6, 3, 8)], ids=["left", "above", "right", "below"]
+    )
+    def test_box_entirely_outside_the_image_pads_to_zeros_6312(self, box, device, dtype):
+        # With 'pad' a box with no pixel in the image is all padding, on whichever side it lies.
+        inp = torch.arange(1.0, 31.0, device=device, dtype=dtype).view(1, 1, 5, 6)
+        src_box = self._box_6312(*box, 1, device, torch.int64)
+        out = kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 4), shape_compensation="pad")
+        self.assert_close(out, torch.zeros(1, 1, 3, 4, device=device, dtype=dtype))
+
+    def test_clipped_slice_of_the_requested_size_is_still_padded_6312(self, device, dtype):
+        # x = -1..2 is 4 wide; clipped to x = 0..2 it is 3 wide, the requested width, yet the pixels must keep their
+        # box positions: a zero for x = -1, then x = 0 and 1, with x = 2 trimmed. Both the identical-box path and the
+        # per-row path are checked.
+        inp = torch.arange(1.0, 13.0, device=device, dtype=dtype).view(1, 1, 2, 6)
+        box = self._box_6312(-1, 0, 2, 0, 1, device, torch.int64)
+        expected = torch.tensor([[[[0.0, 1.0, 2.0]]]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.crop_by_indices(inp, box, size=(1, 3), shape_compensation="pad")
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
+
+        in_bounds = self._box_6312(0, 1, 2, 1, 1, device, torch.int64)
+        out = kornia.geometry.transform.crop_by_indices(
+            inp.repeat(2, 1, 1, 1), torch.cat([box, in_bounds]), size=(1, 3), shape_compensation="pad"
+        )
+        self.assert_close(out[:1], expected, atol=0.0, rtol=0.0)
+        self.assert_close(out[1:], inp[..., 1:2, 0:3], atol=0.0, rtol=0.0)
+
+    def test_boxes_with_different_negative_starts_pad_per_row_6312(self, device, dtype):
+        # Both starts clip to x = 0, so the boxes look alike once clipped; each row must keep its own left padding.
+        inp = torch.arange(1.0, 31.0, device=device, dtype=dtype).view(1, 1, 5, 6).repeat(2, 1, 1, 1)
+        src_box = torch.cat(
+            [self._box_6312(-1, 0, 3, 2, 1, device, torch.int64), self._box_6312(-2, 0, 2, 2, 1, device, torch.int64)]
+        )
+        dst_box = self._box_6312(0, 0, 4, 2, 2, device, dtype)
+
+        out = kornia.geometry.transform.crop_by_indices(inp, src_box, size=(3, 5), shape_compensation="pad")
+
+        self.assert_close(out, kornia.geometry.transform.crop_by_boxes(inp, src_box.to(dtype), dst_box))
+
+    @pytest.mark.parametrize("interpolation", ["bilinear", "bicubic", "nearest"])
+    @pytest.mark.parametrize("where", ["left", "above", "left_and_above"])
+    def test_dynamo_box_outside_the_image_6312(self, where, interpolation, device, dtype, torch_optimizer):
+        # The fullgraph gather emulated the wrap, so it agreed with the wrong eager result; it must resize the
+        # clipped slice instead.
+        x1, y1, x2, y2 = self._outside_boxes_6312[where]
+        size = (y2 - y1 + 2, x2 - x1 + 2)
+        inp = torch.arange(1.0, 31.0, device=device, dtype=dtype).view(1, 1, 5, 6)
+        src_box = self._box_6312(x1, y1, x2, y2, 1, device, torch.int64)
+        op = kornia.geometry.transform.crop_by_indices
+
+        actual = torch_optimizer(op, fullgraph=True)(inp, src_box, size=size, interpolation=interpolation)
+
+        clipped = inp[..., max(y1, 0) : y2 + 1, max(x1, 0) : x2 + 1]
+        expected = kornia.geometry.transform.resize(clipped, size, interpolation=interpolation, side="short")
+        self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
 
 class TestCropSizeValidation:
     """Tests that crop functions properly reject invalid size arguments."""
@@ -962,3 +1115,18 @@ class TestSliceResizeFullgraphPathEager(BaseTester):
         )
         actual = _compiled_slice_resize(image, src, (13, 29), mode, align_corners)
         self.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+    @pytest.mark.parametrize("mode", ["bilinear", "bicubic", "nearest"])
+    def test_box_entirely_left_of_the_image_reads_its_own_rows_6312(self, mode):
+        # The eager path raises for the empty slice of a box with no pixel in the image; the gather cannot raise
+        # without a host sync. Its empty interval read the last pixel of the previous row; it must stay in the box's
+        # rows and read the image edge, as a box entirely past the right edge reads the last column.
+        from kornia.geometry.transform._crop import _compiled_slice_resize
+
+        image = torch.arange(1.0, 31.0, dtype=torch.float64).view(1, 1, 5, 6)
+        left = torch.tensor([[[-5, 2], [-2, 2], [-2, 3], [-5, 3]]])
+        right = torch.tensor([[[8, 2], [10, 2], [10, 3], [8, 3]]])
+        out_left = _compiled_slice_resize(image, left, (2, 4), mode, None)
+        out_right = _compiled_slice_resize(image, right, (2, 4), mode, None)
+        self.assert_close(out_left, image[..., 2:4, :1].expand(-1, -1, -1, 4))
+        self.assert_close(out_right, image[..., 2:4, -1:].expand(-1, -1, -1, 4))

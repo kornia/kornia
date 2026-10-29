@@ -27,7 +27,17 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.filters.gaussian import _gaussian_blur2d_cpu, _gaussian_blur2d_cpu_eligible
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "build_laplacian_pyramid", "build_pyramid", "pyrdown", "pyrup"]
+__all__ = [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "build_laplacian_pyramid",
+    "build_pyramid",
+    "find_next_powerof_two",
+    "is_powerof_two",
+    "pyrdown",
+    "pyrup",
+]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -65,8 +75,8 @@ class PyrDown(nn.Module):
         the downsampled torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H / 2, W / 2)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H / 2, W / 2)``
 
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
@@ -88,7 +98,7 @@ class PyrDown(nn.Module):
         many multi-scale image algorithms.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
@@ -116,8 +126,8 @@ class PyrUp(nn.Module):
         the upsampled torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H * 2, W * 2)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H * 2, W * 2)``
 
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
@@ -138,7 +148,7 @@ class PyrUp(nn.Module):
         reconstruction.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
@@ -155,10 +165,10 @@ class ScalePyramid(nn.Module):
     Images are consequently smoothed with Gaussian blur and downscaled.
 
     Convention:
-        - input: :math:`(B, C, H, W)`
+        - input: ``(B, C, H, W)``
         - ``forward`` returns ``(pyr, sigmas, pixel_dists)``, one entry per octave: ``pyr[o]`` is
-          :math:`(B, C, L, H_o, W_o)` with ``L = n_levels + extra_levels``, and ``sigmas[o]`` and
-          ``pixel_dists[o]`` are :math:`(B, L)` nominal values (the targeted blur, not a measurement)
+          ``(B, C, L, H_o, W_o)`` with ``L = n_levels + extra_levels``, and ``sigmas[o]`` and
+          ``pixel_dists[o]`` are ``(B, L)`` nominal values (the targeted blur, not a measurement)
         - ``sigmas`` is octave-relative: the blur in input pixels is ``sigmas[o] * pixel_dists[o]``
         - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
           ``double_image=True``) leaves the first level at that blur, and the octave is built and
@@ -180,7 +190,7 @@ class ScalePyramid(nn.Module):
         3rd output: pixelDists (nominal pixel spacing of each level relative to the input)
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
         - Output 1st: :math:`[(B, C, NL, H, W), (B, C, NL, H/2, W/2), ...]`
         - Output 2nd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
         - Output 3rd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
@@ -298,7 +308,7 @@ class ScalePyramid(nn.Module):
         ``init_sigma`` below the assumed input blur leaves the level unblurred.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`.
+            input: Image tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Tuple ``(cur_level, cur_sigma, pixel_distance)``. ``cur_level`` is
@@ -339,7 +349,7 @@ class ScalePyramid(nn.Module):
         feature detectors can search both spatial location and scale.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`, where
+            x: Input image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
@@ -410,7 +420,7 @@ def pyrdown(
     .. image:: _static/img/pyrdown.png
 
     Convention:
-        - input: :math:`(B, C, H, W)`
+        - input: ``(B, C, H, W)``
         - output spatial size is ``floor(side / factor)`` per dimension
           (:math:`5 \times 5 \to 2 \times 2` at the default ``factor=2.0`` —
           note OpenCV's ``pyrDown`` rounds up instead)
@@ -466,7 +476,7 @@ def pyrup(input: torch.Tensor, border_type: str = "reflect", align_corners: bool
     .. image:: _static/img/pyrup.png
 
     Convention:
-        - input: :math:`(B, C, H, W)`
+        - input: ``(B, C, H, W)``
         - output spatial size is exactly doubled per dimension (no ``factor``
           parameter, unlike :func:`pyrdown`; :math:`3 \times 3 \to 6 \times 6`)
         - border_type: ``'reflect'`` by default (blur after upsample)
@@ -516,7 +526,7 @@ def build_pyramid(
     by recursively applying pyrDown to the previously built pyramid layers.
 
     Convention:
-        - input: :math:`(B, C, H, W)`
+        - input: ``(B, C, H, W)``
         - ``max_level`` is the total number of levels returned (including the
           unchanged original as level 0), not a 0-based index of the last level
         - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
@@ -532,7 +542,7 @@ def build_pyramid(
         align_corners: interpolation flag.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
 
     """
@@ -556,11 +566,40 @@ def build_pyramid(
 
 
 def is_powerof_two(x: int) -> bool:
-    # check if number x is a power of two
+    r"""Check whether a number is a power of two.
+
+    Args:
+        x: the integer to check.
+
+    Returns:
+        ``True`` if ``x`` is a positive power of two, ``False`` otherwise (including for ``0``).
+
+    Example:
+        >>> is_powerof_two(64)
+        True
+        >>> is_powerof_two(100)
+        False
+
+    """
     return bool(x) and (not (x & (x - 1)))
 
 
 def find_next_powerof_two(x: int) -> int:
+    r"""Find the smallest power of two that is greater than or equal to a number.
+
+    Args:
+        x: a positive integer.
+
+    Returns:
+        the smallest power of two not below ``x``.
+
+    Example:
+        >>> find_next_powerof_two(100)
+        128
+        >>> find_next_powerof_two(64)
+        64
+
+    """
     return 1 << (x - 1).bit_length()
 
 
@@ -576,7 +615,7 @@ def build_laplacian_pyramid(
     See :cite:`burt1987laplacian` for more details.
 
     Convention:
-        - input: :math:`(B, C, H, W)`
+        - input: ``(B, C, H, W)``
         - ``max_level`` is the total number of levels returned, not a 0-based
           index of the last level
         - levels ``0`` through ``max_level - 2`` are band-pass residuals: level
@@ -594,7 +633,7 @@ def build_laplacian_pyramid(
         - align_corners: ``False`` by default
 
     Args:
-        input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
+        input : the torch.Tensor to be used to construct the pyramid with shape ``(B, C, H, W)``.
         max_level: a positive integer giving the number of pyramid levels to return (see Convention
           above for what each level contains).
         border_type: the padding mode to be applied before convolving.
@@ -604,7 +643,7 @@ def build_laplacian_pyramid(
 
     Return:
         Output: :math:`[(B, C, H', W'), (B, C, H'/2, W'/2), ...]`, where
-        :math:`(H', W')` equals the input :math:`(H, W)` unless padding was
+        :math:`(H', W')` equals the input ``(H, W)`` unless padding was
         applied (see Convention above), in which case it is the padded size.
 
     """
