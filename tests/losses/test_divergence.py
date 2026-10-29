@@ -29,27 +29,22 @@ from testing.base import BaseTester
 class TestDivergenceLoss(BaseTester):
     @pytest.mark.parametrize("amp_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("identical", [False, True])
-    @pytest.mark.parametrize(
-        "device_type",
-        [
-            "cpu",
-            pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")),
-        ],
-    )
-    def test_kl_autocast(self, amp_dtype, identical, device_type):
+    def test_kl_autocast(self, amp_dtype, identical, device):
         """Evaluate half heatmap logarithms at the precision used by autocast KL divergence."""
-        if device_type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("KL autocast precision is checked on CPU and CUDA")
+        if device.type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
             pytest.skip("CUDA bfloat16 autocast unavailable")
         generator = torch.Generator().manual_seed(0)
         target = torch.randn(1, 2, 49, generator=generator).softmax(-1).reshape(1, 2, 7, 7)
-        target = target.to(device=device_type, dtype=amp_dtype)
+        target = target.to(device=device, dtype=amp_dtype)
         pred = target.clone() if identical else target.roll(1, -1)
         pred = pred.detach().requires_grad_()
         target = target.detach().requires_grad_()
         pred_ref = pred.detach().double().requires_grad_()
         target_ref = target.detach().double().requires_grad_()
         expected = (target_ref * (target_ref.log() - pred_ref.log())).sum((-2, -1)).mean()
-        with torch.autocast(device_type, dtype=amp_dtype):
+        with torch.autocast(device.type, dtype=amp_dtype):
             actual = kornia.losses.kl_div_loss_2d(pred, target)
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected.float(), rtol=1e-6, atol=1e-6)
