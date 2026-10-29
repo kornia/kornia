@@ -241,11 +241,22 @@ class TestDrawFirstKCouples(BaseTester):
 
 class TestMergeDuplicateMatches(BaseTester):
     def test_keeps_each_match_once_with_its_smallest_distance_ratio(self, device, dtype):
-        # overlapping neighbourhoods accept a match in several local RANSACs; the most confident copy is reported,
-        # whichever comes first
+        # overlapping neighbourhoods accept a match in several local RANSACs; the most confident copy is reported, in
+        # whatever order the copies come
         matches = torch.tensor([[0, 1], [2, 3], [0, 1], [0, 1], [2, 0]], device=device)
         dists = torch.tensor([0.5, 0.2, 0.1, 0.9, 0.4], device=device, dtype=dtype)
         for order in ([0, 1, 2, 3, 4], [3, 4, 1, 2, 0]):
             unique, best = _merge_duplicate_matches(matches[order], dists[order], 5)
             assert unique.tolist() == [[0, 1], [2, 0], [2, 3]]
             self.assert_close(best, torch.tensor([0.1, 0.4, 0.2], device=device, dtype=dtype))
+
+    def test_many_copies_and_ties_give_the_minimum_of_each_match(self, device, dtype):
+        g = torch.Generator().manual_seed(0)
+        matches = torch.randint(0, 6, (300, 2), generator=g)
+        dists = torch.randint(0, 10, (300,), generator=g) / 10  # ties within and across matches
+        unique, best = _merge_duplicate_matches(matches.to(device), dists.to(device, dtype), 6)
+        expected = {}
+        for (i, j), d in zip(matches.tolist(), dists.tolist()):
+            expected[(i, j)] = min(d, expected.get((i, j), d))
+        assert unique.tolist() == [list(key) for key in sorted(expected)]
+        self.assert_close(best, torch.tensor([expected[key] for key in sorted(expected)], device=device, dtype=dtype))

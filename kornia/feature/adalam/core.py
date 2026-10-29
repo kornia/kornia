@@ -276,8 +276,14 @@ def _merge_duplicate_matches(matches: torch.Tensor, dists: torch.Tensor, n2: int
     """
     keys, inverse = torch.unique(matches[:, 0] * n2 + matches[:, 1], return_inverse=True)
     unique_matches = torch.stack([torch.div(keys, n2, rounding_mode="floor"), keys % n2], dim=1)
-    best = dists.new_full((keys.shape[0],), float("inf")).scatter_reduce(0, inverse, dists, reduce="amin")
-    return unique_matches, best
+    # The copies ordered by match, then by ratio, and the first of each match kept: scatter_reduce, the direct way to
+    # take a minimum per match, has no MPS kernel on torch 2.5.
+    by_ratio = torch.sort(dists, stable=True).indices
+    order = by_ratio[torch.sort(inverse[by_ratio], stable=True).indices]
+    grouped = inverse[order]
+    first = torch.ones_like(grouped, dtype=torch.bool)
+    first[1:] = grouped[1:] != grouped[:-1]
+    return unique_matches, dists[order][first]
 
 
 def adalam_core(
