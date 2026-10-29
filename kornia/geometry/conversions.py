@@ -165,25 +165,26 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.
     return x, y
 
 
-def _norm2d(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+def _norm2d(x: torch.Tensor, y: torch.Tensor, squared: torch.Tensor) -> torch.Tensor:
     """Return ``sqrt(x ** 2 + y ** 2)`` without overflow or underflow of the square sum.
 
-    Where the square sum is a finite normal number it is used directly, so those values are the plain formula's.
-    Elsewhere the radius is ``m * sqrt((x / m) ** 2 + (y / m) ** 2)`` with ``m = max(|x|, |y|)``, whose squared
-    ratios are at most 1. Each branch is evaluated at a safe argument where it is not selected, so its gradient
-    stays finite. ``x`` and ``y`` are float32 or float64.
+    The radius is ``s * sqrt((x / s) ** 2 + (y / s) ** 2)``. The scale ``s`` is 1 where the square sum is a finite
+    normal number, so those values are the plain formula's, and ``max(|x|, |y|)`` elsewhere, where the squared
+    ratios are at most 1. The origin gives 0 with a finite (zero) gradient. ``x`` and ``y`` are float32 or float64,
+    and ``squared`` is their ``x ** 2 + y ** 2``, used only to pick the scale.
     """
     # smallest normal and largest finite values as literals rather than torch.finfo, which TorchScript cannot compile
     if x.dtype == torch.float64:
         tiny, largest = 2.0**-1022, 1.7976931348623157e308
     else:
         tiny, largest = 2.0**-126, 3.4028234663852886e38
-    squared = x**2 + y**2
-    direct = (squared >= tiny) & (squared <= largest)
     m = torch.maximum(x.abs(), y.abs())
-    safe_m = torch.where(direct | (m == 0), torch.ones_like(m), m)
-    scaled = m * torch.sqrt((x / safe_m) ** 2 + (y / safe_m) ** 2)
-    return torch.where(direct, torch.sqrt(torch.where(direct, squared, torch.ones_like(squared))), scaled)
+    plain = ((squared >= tiny) & (squared <= largest)) | (m == 0)
+    scale = torch.where(plain, torch.ones_like(m), m)
+    ratios = (x / scale) ** 2 + (y / scale) ** 2
+    # != rather than >, so that a nan from an inf or nan coordinate propagates instead of reading as the origin
+    nonzero = ratios != 0
+    return torch.where(nonzero, scale * torch.sqrt(torch.where(nonzero, ratios, torch.ones_like(ratios))), 0.0)
 
 
 def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
@@ -237,17 +238,17 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     # The square sum only classifies points against eps, as before. The radius comes from _norm2d, which neither
     # overflows nor underflows while the radius itself is representable; float16/bfloat16 compute it in float32 and
     # round once. It uses elementwise ops only: torch.hypot does not export to ONNX. Inside the eps neighbourhood
-    # the gradient is 0: the norm is differentiated at the safe point (1, 0) there, and the value is taken from a
-    # detached copy.
-    outside = x**2 + y**2 > eps
+    # the gradient is 0: the norm sees detached coordinates there, so it is evaluated once, at the true point.
     # rho keeps the dtype sqrt(x**2 + y**2) has (a float for integer input), read from a zero-element probe
     # because TorchScript cannot access dtype.is_floating_point or call torch.get_default_dtype
     out_dtype = torch.empty(0, device=x.device, dtype=torch.promote_types(x.dtype, y.dtype)).sqrt().dtype
     work_dtype = torch.promote_types(out_dtype, torch.float32)
     xw, yw = x.to(work_dtype), y.to(work_dtype)
-    safe_x = torch.where(outside, xw, torch.ones_like(xw))
-    safe_y = torch.where(outside, yw, torch.zeros_like(yw))
-    rho = torch.where(outside, _norm2d(safe_x, safe_y), _norm2d(xw, yw).detach()).to(out_dtype)
+    squared = xw**2 + yw**2
+    # the eps test stays in the input dtype; for float32/float64 inputs that is the same square sum
+    outside = (squared if x.dtype == work_dtype and y.dtype == work_dtype else x**2 + y**2) > eps
+    rho = _norm2d(torch.where(outside, xw, xw.detach()), torch.where(outside, yw, yw.detach()), squared)
+    rho = rho.to(out_dtype)
     phi = torch.atan2(y, x)
     return rho, phi
 
