@@ -58,6 +58,8 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
         - The losses are symmetric in ``img1`` and ``img2``, which must have the same shape, without broadcasting,
           and the same device. The default ``reduction='none'`` returns the loss of every element, in the shape of
           the inputs.
+        - Integer and bool inputs are converted to float32 before computing the residual; pixel values are not
+          rescaled. An integer input paired with a half-precision input therefore gives a float32 result.
         - This loss, :func:`~kornia.losses.cauchy_loss`, :func:`~kornia.losses.geman_mcclure_loss` and
           :func:`~kornia.losses.welsch_loss` evaluate float16 and bfloat16 inputs in float32, gradients included, and
           return the input dtype.
@@ -93,6 +95,11 @@ def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "n
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
+    # Convert integer images before subtraction and squaring, which otherwise wrap.
+    if not img1.is_floating_point() and not img1.is_complex():
+        img1 = img1.to(torch.float32)
+    if not img2.is_floating_point() and not img2.is_complex():
+        img2 = img2.to(torch.float32)
     # Keep the square and its backward in float32 for half-precision residuals.
     output_dtype = torch.promote_types(img1.dtype, img2.dtype)
     compute_diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
