@@ -523,8 +523,9 @@ class LightGlue(nn.Module):
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
             pretrained weights are loaded. ``None`` builds the model from ``default_conf`` and the keyword arguments
             and downloads no weights.
-        **conf: keyword arguments that override entries of ``default_conf``, such as ``filter_threshold``; the
-            configuration of ``features`` is applied after them and wins where both set a key.
+        **conf: keyword arguments that override entries of ``default_conf`` and of the configuration of
+            ``features``, such as ``filter_threshold`` or ``depth_confidence``. The configuration of ``features`` sets
+            the defaults, and an explicit keyword argument always wins.
     """
 
     default_conf: ClassVar[Dict[str, Any]] = {
@@ -600,16 +601,12 @@ class LightGlue(nn.Module):
         "dog_affnet_hardnet": {
             "weights": "doghardnet",
             "input_dim": 128,
-            "width_confidence": -1,
-            "depth_confidence": -1,
             "add_scale_ori": True,
             "scale_coef": 1.0 / 6.0,
         },
         "doghardnet": {
             "weights": "doghardnet",
             "input_dim": 128,
-            "width_confidence": -1,
-            "depth_confidence": -1,
             "add_scale_ori": True,
             "scale_coef": 1.0 / 6.0,
         },
@@ -624,11 +621,10 @@ class LightGlue(nn.Module):
 
     def __init__(self, features: str = "superpoint", **conf_) -> None:
         super().__init__()
-        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf_})
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
-            for k, v in self.features[features].items():
-                setattr(conf, k, v)
+        preset = self.features[features] if features is not None else {}
+        self.conf = conf = SimpleNamespace(**{**self.default_conf, **preset, **conf_})
         KORNIA_CHECK(not (self.conf.add_scale_ori and self.conf.add_laf))  # we use either scale ori, or LAF
 
         if conf.input_dim != conf.descriptor_dim:

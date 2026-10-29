@@ -952,13 +952,26 @@ class TestConventionsLightGlue(BaseTester):
         with pytest.raises(NotImplementedError, match="orb is not supported"):
             LightGlueMatcher("orb")
 
-    def test_convention_lightglue_features_configuration_wins_over_keyword_arguments(self, device, dtype, monkeypatch):
-        # "disk" sets input_dim, so the keyword argument loses; filter_threshold is not in its configuration, so the
-        # keyword argument stays
+    def test_convention_lightglue_keyword_arguments_win_over_features_configuration(self, device, dtype, monkeypatch):
+        # the configuration of the features gives the defaults, and an explicit keyword argument always wins: "xfeat"
+        # sets width_confidence and filter_threshold, "keynet_affnet_hardnet" turns off pruning and early stopping
         monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
-        lg = LightGlue("disk", input_dim=64, filter_threshold=0.3, n_layers=1)
-        assert lg.conf.input_dim == 128
-        assert lg.conf.filter_threshold == 0.3
+        lg = LightGlue("xfeat", width_confidence=0.5, filter_threshold=0.3, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence, lg.conf.filter_threshold) == (-1, 0.5, 0.3)
+        lg = LightGlue("keynet_affnet_hardnet", depth_confidence=0.95, width_confidence=0.99, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (0.95, 0.99)
+        assert LightGlue("keynet_affnet_hardnet", n_layers=1).conf.depth_confidence == -1
+        assert LightGlue("disk", n_layers=1).conf.input_dim == 128
+        assert LightGlue("disk", input_dim=64, n_layers=1).conf.input_dim == 64
+
+    @pytest.mark.parametrize("features", ["doghardnet", "dog_affnet_hardnet"])
+    def test_convention_lightglue_doghardnet_prunes_and_stops_early_by_default(self, features, monkeypatch):
+        # like the other LightGlue weights trained with token-confidence heads; -1 turns either off
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        lg = LightGlue(features, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (0.95, 0.99)
+        lg = LightGlue(features, depth_confidence=-1, width_confidence=-1, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (-1, -1)
 
 
 class TestLightGlueAllPrunedScoreDtype(BaseTester):
