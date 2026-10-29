@@ -1,0 +1,1 @@
+`crop_by_boxes` emits a `DeprecationWarning` when `validate_boxes` is passed; the argument will be removed in a future release. It was never read, so the boxes were never validated whatever its value, and the results do not change. Validating by default would have rejected the non-rectangular `src_box` quadrilaterals that the perspective crop accepts. Closes #6401.

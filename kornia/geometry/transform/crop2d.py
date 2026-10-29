@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import Resample
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
@@ -252,7 +253,7 @@ def crop_by_boxes(
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
-    validate_boxes: bool = True,
+    validate_boxes: Optional[bool] = None,
 ) -> torch.Tensor:
     """Perform crop transform on 2D images (4D torch.Tensor) given two bounding boxes.
 
@@ -284,7 +285,9 @@ def crop_by_boxes(
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
-        validate_boxes: flag to perform validation on boxes.
+        validate_boxes: deprecated since kornia 0.9.1 and ignored; passing it emits a
+          :class:`DeprecationWarning`. The boxes were never validated, whatever its value: only the
+          shapes of ``src_box`` and ``dst_box`` and the equal size of the ``dst_box`` boxes are checked.
 
     Returns:
         torch.Tensor: the output torch.tensor with patches.
@@ -308,6 +311,15 @@ def crop_by_boxes(
                   [ 9.0000, 10.0000]]]])
 
     """
+    if validate_boxes is not None:
+        _emit_deprecation_warning(
+            "crop_by_boxes(validate_boxes=...)",
+            None,
+            "0.9.1",
+            "The argument has no effect: `crop_by_boxes` never validated the boxes, whatever its value. It will be "
+            "removed in a future release; stop passing it.",
+        )
+
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
