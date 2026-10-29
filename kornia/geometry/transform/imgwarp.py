@@ -1330,6 +1330,8 @@ def get_affine_matrix2d(
           counter-clockwise on screen.
         - :class:`Affine`: warp an image by these parameters in one module, counter-clockwise for a positive angle.
         - :func:`get_shear_matrix2d`: the shear part alone.
+        - :func:`~kornia.geometry.solvers.find_affine`: an affine matrix fitted to point correspondences instead of
+          built from parameters.
 
     """
     transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)

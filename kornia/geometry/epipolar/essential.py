@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Module containing functionalities for the Essential matrix."""
+"""Essential matrices: estimate them, convert from and to other models, recover the pose."""
 
 from typing import Any, Optional, Tuple, Union
 
@@ -52,8 +52,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     and the solver implemented referred to [@barath2020magsac++][@wei2023generalized][@wang2023vggsfm].
 
     Args:
-        points1: A set of calibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
+        points1: A set of calibrated points in the first image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
+        points2: A set of points in the second image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
         weights: Not used, kept for compatibility, including for :math:`N > 5`. Positive weights leave the null
           space of an exact five-point sample unchanged; for larger sets they can affect the least-squares fit.
 
@@ -460,13 +460,19 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
-    r"""Get Essential matrix from Fundamental and Camera matrices.
+    r"""Convert a fundamental matrix and the intrinsics of its two cameras to their essential matrix.
 
-    Uses the method from Hartley/Zisserman 9.6 pag 257 (formula 9.12).
+    ``E = essential_from_fundamental(F_mat, K1, K2)`` takes a fundamental matrix ``(*, 3, 3)`` in the
+    :math:`x_2^\top F x_1 = 0` order of :func:`find_fundamental` and the pixel intrinsics ``(*, 3, 3)`` of the
+    first and the second camera, and returns :math:`E = K_2^\top F K_1`, ``(*, 3, 3)`` with the leading dimensions
+    broadcast, for which :math:`x_2^\top E x_1 = 0` in normalized camera coordinates (Hartley and Zisserman, 9.6,
+    p. 257, eq. 9.12). It keeps the scale of ``F_mat`` and does not enforce the constraints of an essential matrix:
+    pass an estimated one through :func:`project_to_essential` before decomposing it. For the reverse, use
+    :func:`fundamental_from_essential`.
 
     Convention:
-        - :math:`E = K_2^\top F K_1` with ``K1`` the camera of the first image, so ``E`` follows the
-          :math:`x_2^\top E x_1 = 0` order of :func:`find_essential`; it keeps the scale of ``F_mat``.
+        - ``K1`` is the camera of the first image, so ``E`` follows the :math:`x_2^\top E x_1 = 0` order of
+          :func:`find_essential`.
 
     Args:
         F_mat: The fundamental matrix with shape of ``(*, 3, 3)``.
@@ -476,6 +482,11 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     Returns:
         The essential matrix with shape ``(*, 3, 3)``.
 
+    See Also:
+        - :func:`fundamental_from_essential`: the reverse conversion, :math:`F = K_2^{-\top} E K_1^{-1}`.
+        - :func:`project_to_essential`: the nearest matrix that satisfies the essential constraints.
+        - :func:`find_essential`: an essential matrix fitted to calibrated correspondences directly.
+
     """
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
@@ -484,13 +495,17 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
 
 def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
-    r"""Project a matrix onto the essential-matrix manifold.
+    r"""Project 3x3 matrices onto the nearest essential matrices in Frobenius norm.
 
-    An essential matrix must be of the form :math:`U \text{diag}(s, s, 0) V^T`. Matrices estimated
-    by other means (e.g. a fundamental matrix fitted with the 8-point DLT) generally violate this
-    constraint, which silently breaks tools that rely on it, such as
-    :func:`decompose_essential_matrix` and :func:`motion_from_essential`. The projection averages
-    the two largest singular values and zeroes the smallest one.
+    ``E = project_to_essential(E_mat)`` takes matrices ``(*, 3, 3)`` and returns the closest matrices ``(*, 3, 3)``
+    of the essential form :math:`U \text{diag}(s, s, 0) V^T`: the two largest singular values of ``E_mat`` averaged
+    and the smallest one set to zero. Matrices estimated by other means, such as an 8-point fit of
+    :func:`find_fundamental` on normalized camera coordinates or :func:`essential_from_fundamental` of an estimated
+    ``F``, generally violate this constraint, which silently breaks the functions that rely on it, such as
+    :func:`decompose_essential_matrix`, :func:`decompose_essential_matrix_no_svd` and :func:`motion_from_essential`.
+    The candidates of :func:`find_essential` have this form only up to rounding, which on unlucky samples leaves a
+    relative gap of order ``1e-4`` between their two largest singular values; :class:`~kornia.geometry.ransac.RANSAC`
+    projects its essential matrix for that reason (`#3874 <https://github.com/kornia/kornia/issues/3874>`_).
 
     Convention:
         - The result is not normalised to unit Frobenius norm, unlike the candidates of :func:`find_essential`.
@@ -502,6 +517,10 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
     Returns:
         The closest matrices (in Frobenius norm) satisfying the essential-matrix constraint,
         with shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`decompose_essential_matrix`: the rotations and translation of the projected matrix.
+        - :func:`essential_from_fundamental`: an essential matrix that usually needs this projection.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -523,14 +542,18 @@ def _project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
 
 
 def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Decompose an essential matrix to possible rotations and translation.
+    r"""Decompose an essential matrix into its two candidate rotations and its translation direction by SVD.
 
-    This function decomposes the essential matrix E using svd decomposition [96]
-    and give the possible solutions: :math:`R1, R2, t`.
+    ``R1, R2, t = decompose_essential_matrix(E_mat)`` takes essential matrices ``(*, 3, 3)`` and returns the two
+    rotations ``(*, 3, 3)`` and the unit translation ``(*, 3, 1)`` of their SVD factorization (Hartley and
+    Zisserman, section 9.6.2): the relative motion of camera 2 to camera 1, :math:`X_2 = R X_1 + t` as in
+    :func:`relative_camera_motion`, is one of :math:`(R_1, \pm t)` and :math:`(R_2, \pm t)`, with the translation
+    known only up to scale. It does not tell which; :func:`motion_from_essential` stacks the four candidates and
+    :func:`motion_from_essential_choose_solution` picks the one that puts the points in front of both cameras. For
+    the same candidates in closed form, without an SVD, use :func:`decompose_essential_matrix_no_svd`.
 
     Convention:
-        - Returns two rotations and a unit translation; the true pose is one of :math:`(R_1, \pm t)`,
-          :math:`(R_2, \pm t)`. :math:`(R_1, -t)` and :math:`(R_2, t)` give :math:`[t]_\times R` with the sign
+        - :math:`(R_1, -t)` and :math:`(R_2, t)` give :math:`[t]_\times R` with the sign
           of ``E_mat``, :math:`(R_1, t)` and :math:`(R_2, -t)` the opposite sign. Which of the four is the true
           pose is not fixed: it can change when ``E_mat`` is negated or rescaled. Select by cheirality with
           :func:`motion_from_essential_choose_solution`; :ref:`two-view geometry <two-view-conventions>`
@@ -543,7 +566,14 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector,
-       with shapes :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`: the same leading dims as the input.
+       with shapes ``(*, 3, 3)``, ``(*, 3, 3)`` and ``(*, 3, 1)``: the same leading dims as the input.
+
+    See Also:
+        - :func:`decompose_essential_matrix_no_svd`: the same candidates in closed form, exact essential
+          matrices only, with the leading dims flattened.
+        - :func:`motion_from_essential`: the four candidate poses stacked on one axis.
+        - :func:`motion_from_essential_choose_solution`: the one candidate with the points in front of both
+          cameras.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -584,14 +614,20 @@ def _decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torc
 
 
 def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Decompose the essential matrix to rotation and translation.
+    r"""Decompose an essential matrix into candidate rotations and translation in closed form.
 
-    Recovers the rotations and translation from an essential matrix without SVD.
-    Reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J].
-    J. Opt. Soc. Am, 1990, 110.
+    ``R1, R2, t = decompose_essential_matrix_no_svd(E_mat)`` takes essential matrices ``(*, 3, 3)`` and returns the
+    candidates of :func:`decompose_essential_matrix`, two rotations and a unit translation, from cross products of
+    the columns of ``E_mat`` and its cofactor matrix (Horn, Recovering baseline and orientation from essential
+    matrix, J. Opt. Soc. Am., 1990). Every leading dimension is flattened into one batch dimension ``B``, so a
+    ``(3, 3)`` input returns a batch of one. The closed form holds only for an exact essential matrix: for one off
+    the essential manifold, such as an estimate, the returned matrices are in general not rotations, so pass it
+    through :func:`project_to_essential` first or use :func:`decompose_essential_matrix`, whose rotations are
+    orthogonal for any input.
 
     Convention:
-        - Same candidate set as :func:`decompose_essential_matrix`, with ``t`` of unit norm.
+        - For an exact essential matrix, the same candidate set as :func:`decompose_essential_matrix`, with ``t``
+          of unit norm.
         - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
@@ -599,7 +635,13 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector, with
-       shapes :math:`[(B, 3, 3), (B, 3, 3), (B, 3, 1)]`: all leading dims are flattened into one batch dim.
+       shapes ``(B, 3, 3)``, ``(B, 3, 3)`` and ``(B, 3, 1)``: all leading dims are flattened into one batch dim.
+
+    See Also:
+        - :func:`decompose_essential_matrix`: the same candidates by SVD, with orthogonal rotations for any input
+          and the leading dims kept.
+        - :func:`motion_from_essential`: the four candidate poses stacked on one axis.
+        - :func:`project_to_essential`: the nearest exact essential matrix, to decompose an estimate.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -664,14 +706,15 @@ def _decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tenso
 
 
 def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor) -> torch.Tensor:
-    r"""Get the Essential matrix from Camera motion (Rs and ts).
+    r"""Build the essential matrix of two cameras from their world-to-camera rotations and translations.
 
-    Reference: Hartley/Zisserman 9.6 pag 257 (formula 9.12)
-
-    Convention:
-        - Returns :math:`[t]_\times R` for the relative motion ``(R, t)`` of :func:`relative_camera_motion`, so
-          :math:`x_2^\top E x_1 = 0` in normalised camera coordinates. It is not normalised:
-          :math:`\|E\|_F = \sqrt{2} \|t\|`.
+    ``E = essential_from_Rt(R1, t1, R2, t2)`` takes the world-to-camera extrinsics of the first and the second
+    camera, :math:`X_{cam} = R X + t`, as rotations ``(*, 3, 3)`` and translations ``(*, 3, 1)``, and returns
+    :math:`E = [t]_\times R`, ``(*, 3, 3)``, for their relative motion ``(R, t)`` from :func:`relative_camera_motion`,
+    so that :math:`x_2^\top E x_1 = 0` in normalized camera coordinates (Hartley and Zisserman, 9.6, p. 257,
+    eq. 9.12). It is not normalized: :math:`\|E\|_F = \sqrt{2} \|t\|`, unlike the unit-norm candidates of
+    :func:`find_essential`. For the fundamental matrix of two projection matrices, use
+    :func:`fundamental_from_projections`.
 
     Args:
         R1: The first camera rotation matrix with shape ``(*, 3, 3)``.
@@ -681,6 +724,11 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 
     Returns:
         The Essential matrix with the shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`relative_camera_motion`: the relative motion ``(R, t)`` that this matrix encodes.
+        - :func:`fundamental_from_projections`: the uncalibrated counterpart, from two projection matrices.
+        - :func:`decompose_essential_matrix`: the reverse, the motion candidates of an essential matrix.
 
     """
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
@@ -698,22 +746,29 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 
 
 def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Get Motion (R's and t's ) from Essential matrix.
+    r"""List the four candidate relative poses of an essential matrix, stacked on one axis.
 
-    Computes and return four possible poses exist for the decomposition of the Essential
-    matrix. The possible solutions are :math:`[R1,t], [R1,-t], [R2,t], [R2,-t]`.
+    ``Rs, ts = motion_from_essential(E_mat)`` takes essential matrices ``(*, 3, 3)`` and returns the four candidate
+    motions of camera 2 relative to camera 1 that the matrix allows, rotations ``(*, 4, 3, 3)`` and unit translations
+    ``(*, 4, 3, 1)``, in the order :math:`(R_1, t), (R_1, -t), (R_2, t), (R_2, -t)` of the candidates of
+    :func:`decompose_essential_matrix`. Only one of them puts the scene in front of both cameras; to select it from
+    point correspondences, use :func:`motion_from_essential_choose_solution`.
 
     Convention:
-        - The candidates of :func:`decompose_essential_matrix` are stacked on dim ``-3`` in that order; which
-          index is the true pose is not fixed.
+        - The candidates are stacked on dim ``-3``; which index is the true pose is not fixed.
         - A caller's autocast region does not change the result, as for :func:`decompose_essential_matrix`.
 
     Args:
         E_mat: The essential matrix in the form of ``(*, 3, 3)``.
 
     Returns:
-        The rotation and translation containing the four possible combination for the retrieved motion.
-        The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
+        The rotation and translation containing the four possible combination for the retrieved motion,
+        with shapes ``(*, 4, 3, 3)`` and ``(*, 4, 3, 1)``.
+
+    See Also:
+        - :func:`motion_from_essential_choose_solution`: the one candidate that passes the cheirality test.
+        - :func:`decompose_essential_matrix`: the two rotations and the translation the candidates combine.
+        - :func:`decompose_essential_matrix_no_svd`: the same rotations and translation without an SVD.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -736,20 +791,23 @@ def motion_from_essential_choose_solution(
     x2: torch.Tensor,
     mask: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Recover the relative camera rotation and the translation from an estimated essential matrix.
+    r"""Pick the relative pose of an essential matrix that puts the points in front of both cameras.
 
-    The method checks the corresponding points in two images and also returns the triangulated
-    3d points. Internally uses :py:meth:`~kornia.geometry.epipolar.decompose_essential_matrix` and
-    :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
+    ``R, t, points3d, count = motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2)`` takes essential matrices
+    ``(B, 3, 3)`` with :math:`x_2^\top E x_1 = 0` in normalized camera coordinates, the pixel intrinsics
+    ``(B, 3, 3)`` of the first and the second camera, and pixel correspondences ``(B, N, 2)`` of the first and the
+    second image. Of the four candidates of :func:`motion_from_essential` it keeps the one that puts the most points
+    at positive depth in both cameras. It returns that candidate's rotation ``(B, 3, 3)`` and unit translation
+    ``(B, 3, 1)`` of camera 2 relative to camera 1, :math:`X_2 = R X_1 + t` as in :func:`relative_camera_motion`. It
+    also returns the points triangulated by :func:`triangulate_points` in the frame of camera 1 at the scale
+    :math:`\|t\| = 1`, ``(B, N, 3)``, and the number of points that passed, ``(B,)``, the count that
+    ``cv2.recoverPose`` also returns. For all four candidates, use :func:`motion_from_essential`.
 
     Convention:
         - ``K1`` and ``K2`` are applied inside, so ``x1`` and ``x2`` are pixel coordinates.
-        - Returns the candidate with the most points at positive depth in both cameras, with
-          :math:`\|t\| = 1`, and the points triangulated in the first camera's frame at that scale.
-        - The fourth output is the number of points at positive depth in both cameras for the returned
-          candidate, as ``cv2.recoverPose`` returns. A count of ``0`` means no point passed, and the returned
-          pose is then candidate 0 of
-          :py:meth:`~kornia.geometry.epipolar.motion_from_essential`, not a recovered motion.
+        - The count is the number of points at positive depth in both cameras for the returned
+          candidate. A count of ``0`` means no point passed, and the returned pose is then candidate 0 of
+          :func:`motion_from_essential`, not a recovered motion.
         - A caller's autocast region does not change the result. ``K1`` and ``K2`` are cast to the dtype of
           ``E_mat``.
 
@@ -768,8 +826,14 @@ def motion_from_essential_choose_solution(
     Returns:
         The rotation, translation, 3d triangulated points, and the number of points
         with positive depth in both cameras for the selected candidate.
-        The tuple is as following :math:`[(B, 3, 3), (B, 3, 1), (B, N, 3), (B,)]`,
+        The tuple is as following ``(B, 3, 3)``, ``(B, 3, 1)``, ``(B, N, 3)`` and ``(B,)``,
         without ``B`` for unbatched inputs.
+
+    See Also:
+        - :func:`motion_from_essential`: all four candidate poses, without a cheirality test.
+        - :func:`decompose_essential_matrix`: the rotations and translation the candidates combine.
+        - :func:`triangulate_points`: the triangulation it tests the candidates with.
+        - :func:`find_essential`: the essential matrices to pass, from normalized camera coordinates.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -856,11 +920,15 @@ def motion_from_essential_choose_solution(
 def relative_camera_motion(
     R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Compute the relative camera motion between two cameras.
+    r"""Compute the motion from camera 1 to camera 2 from their world-to-camera rotations and translations.
 
-    Given the motion parameters of two cameras, computes the motion parameters of the second
-    one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,
-    the computed relative motion is :math:`T = T_{2}T^{-1}_{1}`.
+    ``R, t = relative_camera_motion(R1, t1, R2, t2)`` takes the world-to-camera extrinsics of two cameras,
+    rotations ``(*, 3, 3)`` and translations ``(*, 3, 1)``, and returns the rotation ``(*, 3, 3)`` and translation
+    ``(*, 3, 1)`` that take camera-1 coordinates to camera-2 coordinates, :math:`X_2 = R X_1 + t`: the pose of the
+    second camera when the first one is at the origin. This is the motion that :func:`essential_from_Rt` encodes and
+    :func:`motion_from_essential_choose_solution` recovers. For the same motion from ``4 x 4`` extrinsics, compute
+    ``E2 @ inverse_transformation(E1)`` with :func:`~kornia.geometry.linalg.inverse_transformation`;
+    :func:`~kornia.geometry.linalg.relative_transformation` composes in the other order.
 
     Convention:
         - Inputs are world-to-camera extrinsics, :math:`x_{cam} = R X + t` (see :doc:`camera and world
@@ -877,7 +945,13 @@ def relative_camera_motion(
 
     Returns:
         A tuple with the relative rotation matrix and
-        translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
+        translation vector with the shapes ``(*, 3, 3)`` and ``(*, 3, 1)``.
+
+    See Also:
+        - :func:`essential_from_Rt`: the essential matrix of this motion.
+        - :func:`~kornia.geometry.linalg.relative_transformation`: the relative pose of two 4x4 matrices,
+          :math:`E_1^{-1} E_2` rather than :math:`E_2 E_1^{-1}`.
+        - :func:`motion_from_essential_choose_solution`: the same motion, up to scale, from an essential matrix.
 
     """
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
@@ -897,14 +971,22 @@ def relative_camera_motion(
 def find_essential(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Find essential matrices.
+    r"""Estimate up to ten essential matrices from calibrated points with Nister's five-point solver.
+
+    ``Es = find_essential(points1, points2)`` takes correspondences ``(B, N, 2)``, ``N >= 5``, of the first and the
+    second image in normalized camera coordinates :math:`K^{-1} [u, v, 1]^\top`, not pixels (see
+    :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`), and returns ``(B, 10, 3, 3)``: one slot
+    per root of Nister's degree-ten polynomial, a candidate of unit Frobenius norm with :math:`x_2^\top E x_1 = 0`
+    for each real root and ``NaN`` for each complex one. With more than five points the null space of the epipolar
+    constraints is fitted by least squares first. Pick a candidate by its :func:`sampson_epipolar_distance` on other
+    correspondences, ignoring the ``NaN`` slots. For one essential matrix from correspondences with outliers, use
+    :class:`~kornia.geometry.ransac.RANSAC` with ``model_type="essential"``; for pixel correspondences of unknown
+    cameras, :func:`find_fundamental`.
 
     Convention:
-        - ``points1`` (first image) and ``points2`` (second image) are normalised camera coordinates
-          :math:`K^{-1} [u, v, 1]^\top`, not pixels; each real candidate satisfies :math:`x_2^\top E x_1 = 0`
-          in them. :ref:`Two-view geometry <two-view-conventions>` maps this onto OpenCV.
-        - All ten slots are always returned: each real root gives a candidate of unit Frobenius norm, and each
-          complex root a ``NaN`` slot, so a sample with no real solution returns ten ``NaN`` slots.
+        - :ref:`Two-view geometry <two-view-conventions>` maps the argument order and the candidate layout onto
+          OpenCV.
+        - All ten slots are always returned, so a sample with no real solution returns ten ``NaN`` slots.
         - The solve runs in float64 whatever the input dtype, and the degree-ten polynomial's roots come from LAPACK
           on the host for every device. MPS has no float64, so MPS inputs are solved on the host and the candidates
           copied back, which on an Apple M1 was also faster than a float32 solve on the device. A sample whose five
@@ -912,8 +994,8 @@ def find_essential(
           ``NaN`` slots and a zero gradient.
 
     Args:
-         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
-         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
+         points1: A set of points in the first image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
+         points2: A set of points in the second image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
          weights: Accepted with a shape of ``(B, N)`` and ignored for compatibility, including for :math:`N > 5`.
            Positive weights leave the null space of an exact five-point sample unchanged; for larger sets they can
            affect the least-squares fit.
@@ -922,6 +1004,14 @@ def find_essential(
          the computed essential matrices with shape ``(B, 10, 3, 3)``.
          To choose the best one out of 10, try to check the one with the lowest Sampson distance, ignoring the
          ``NaN`` slots.
+
+    See Also:
+        - :func:`find_fundamental`: the model of uncalibrated cameras, from pixel correspondences.
+        - :func:`~kornia.geometry.homography.find_homography_dlt`: a homography instead, for a planar scene or a
+          camera that only rotates.
+        - :class:`~kornia.geometry.ransac.RANSAC`: one essential matrix, robust to wrong correspondences.
+        - :func:`motion_from_essential_choose_solution`: the relative pose of a chosen candidate.
+        - :func:`essential_from_fundamental`: an essential matrix from a fundamental matrix and both intrinsics.
 
     """
     return run_5point(points1, points2, weights).to(points1.dtype)

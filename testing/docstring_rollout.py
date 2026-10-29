@@ -55,6 +55,11 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.geometry.conversions",
     "kornia.geometry.depth",
+    "kornia.geometry.epipolar",
+    "kornia.geometry.homography",
+    "kornia.geometry.pose",
+    "kornia.geometry.ransac",
+    "kornia.geometry.solvers",
     "kornia.geometry.transform.affwarp",
     "kornia.geometry.transform.crop2d",
     "kornia.geometry.transform.crop3d",
@@ -71,6 +76,11 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.geometry.conversions",
     "kornia.geometry.depth",
+    "kornia.geometry.epipolar",
+    "kornia.geometry.homography",
+    "kornia.geometry.pose",
+    "kornia.geometry.ransac",
+    "kornia.geometry.solvers",
     "kornia.geometry.transform",
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
