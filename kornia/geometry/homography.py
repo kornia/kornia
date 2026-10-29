@@ -312,24 +312,31 @@ def line_segment_transfer_error_one_way(
     ln2 = (ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))).view(B, N, 3)
     has_line = scale.view(B, N) > 0
 
-    def endpoint_distance(p1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Map without the OpenCV-style dehomogenization of transform_points, which returns the numerator unchanged
-        # for |w'| <= 1e-8: an endpoint mapped to infinity (w' = 0) is singular, as in oneway_transfer_error
-        # (#4881). The distance is |l . (x', y', w')| / |w'|, so no mapped coordinate is formed that could overflow.
-        mapped = convert_points_to_homogeneous(p1.view(B, N, 2)).to(work_dtype) @ H_work.transpose(-2, -1)
-        w = mapped[..., 2]
-        distance = ((mapped * ln2).sum(-1) / _nonzero(w)).abs().to(out_dtype)
-        # A zero-length image-2 segment defines no line and keeps reading 0; a NaN distance stays NaN.
-        return distance, (w == 0) & has_line & ~distance.isnan()
-
-    distance_start, singular_start = endpoint_distance(ps1)
-    distance_end, singular_end = endpoint_distance(pe1)
+    distance_start, singular_start = _line_endpoint_distance(ps1.view(B, N, 2), H_work, ln2)
+    distance_end, singular_end = _line_endpoint_distance(pe1.view(B, N, 2), H_work, ln2)
+    # Average and square in the working dtype, then cast: two float16 distances of 32768 have a representable mean
+    # but a sum past the float16 maximum.
     error = 0.5 * (distance_start + distance_end)
     if squared:
         error = error**2
     # Set inf after squaring so no gradient flows through the inf, not even to the other, finite endpoint; a NaN
-    # from the other endpoint stays NaN.
-    return _inf_where(error, (singular_start | singular_end) & ~error.isnan())
+    # from the other endpoint stays NaN. A zero-length image-2 segment defines no line and keeps reading 0.
+    singular = (singular_start | singular_end) & has_line & ~error.isnan()
+    return _inf_where(error, singular).to(out_dtype)
+
+
+def _line_endpoint_distance(
+    points: torch.Tensor, H: torch.Tensor, line: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the distances ``(B, N)`` of ``H``-mapped ``points`` from the unit image-2 ``line``, and ``w' == 0``.
+
+    Maps without the OpenCV-style dehomogenization of :func:`transform_points`, which returns the numerator unchanged
+    for ``|w'| <= 1e-8``: a point mapped to infinity (``w' = 0``) is singular, as in :func:`oneway_transfer_error`
+    (#4881). The distance is ``|l . (x', y', w')| / |w'|``, so no mapped coordinate is formed that could overflow.
+    """
+    mapped = convert_points_to_homogeneous(points).to(H.dtype) @ H.transpose(-2, -1)
+    w = mapped[..., 2]
+    return ((mapped * line).sum(-1) / _nonzero(w)).abs(), w == 0
 
 
 def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor) -> torch.Tensor:

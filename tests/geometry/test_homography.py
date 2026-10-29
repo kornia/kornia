@@ -247,6 +247,16 @@ class TestLineSegmentOneWayError(BaseTester):
         assert error.dtype == dtype
         self.assert_close(error, torch.ones_like(error))
 
+    def test_mean_of_large_endpoint_distances_is_kept(self, device, dtype):
+        # The endpoint distances are averaged in the working dtype and only then cast: two distances of 32768, each
+        # representable in float16, have a sum past its maximum, and averaging in float16 read inf.
+        H = torch.diag(torch.tensor([1.0, 1.0, 2.0**-30], device=device, dtype=torch.float32))[None]
+        ls1 = torch.tensor([[[[0.0, 2.0**-15], [1.0, 2.0**-15]]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=dtype)  # the line y = 0
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == dtype
+        self.assert_close(error, torch.full_like(error, 32768.0))
+
     def test_matches_the_mapped_endpoint_distances(self, device, dtype):
         # Away from infinity the error is the mean distance of the dehomogenized mapped endpoints from the unit line.
         _skip_half(dtype, _HALF_LINES)
