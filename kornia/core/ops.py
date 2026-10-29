@@ -82,11 +82,11 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
         n: the number of rows :math:`N`, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
           A ``float`` or a ``bool`` is rejected.
         input: image tensor that will determine the batch size of the output matrix.
-          The expected shape is :math:`(B, *)`.
+          The expected shape is ``(B, *)``.
         shared_memory: when set, all samples in the batch will share the same memory.
 
     Returns:
-       The identity matrix with the same batch size as the input :math:`(B, N, N)`.
+       The identity matrix with the same batch size as the input ``(B, N, N)``.
 
     Raises:
         TypeCheckError: if ``n`` is not an integer.
@@ -114,11 +114,11 @@ def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch
         n: the number of rows :math:`N`, a positive integer: an ``int``, a NumPy integer or a 0-d integer tensor.
           A ``float`` or a ``bool`` is rejected.
         tensor: image tensor that will determine the batch size of the output matrix.
-          The expected shape is :math:`(B, *)`.
+          The expected shape is ``(B, *)``.
         shared_memory: when set, all samples in the batch will share the same memory.
 
     Returns:
-        The vector with the same batch size as the input :math:`(B, N, 1)`.
+        The vector with the same batch size as the input ``(B, N, 1)``.
 
     Raises:
         TypeCheckError: if ``n`` is not an integer.

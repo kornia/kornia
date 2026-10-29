@@ -154,10 +154,10 @@ def gaussian(
 
     Args:
         window_size: the size which drives the filter amount.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``.
         mean: Mean of the Gaussian function (center); see the Convention block for an even
             ``window_size``. If not provided, it defaults to ``window_size // 2``. A Python ``int`` is
-            treated as its ``float``. If a tensor, should be in a shape :math:`(B, 1)`.
+            treated as its ``float``. If a tensor, should be in a shape ``(B, 1)``.
         device: This value will be used if sigma is an int or float. Device desired to compute.
         dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
@@ -238,7 +238,7 @@ def gaussian_discrete_erf(
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     Args:
         window_size: the size which drives the filter amount.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
         device: This value will be used if sigma is an int or float. Device desired to compute.
         dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
@@ -385,7 +385,7 @@ def gaussian_discrete(
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     Args:
         window_size: the size which drives the filter amount. It must be odd.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
         device: This value will be used if sigma is an int or float. Device desired to compute.
         dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
@@ -652,7 +652,7 @@ def get_sobel_kernel2d(*, device: Optional[torch.device] = None, dtype: Optional
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_spatial_gradient_kernel2d`; this is
-        ``get_spatial_gradient_kernel2d('sobel', 1)``, of shape :math:`(2, 3, 3)`.
+        ``get_spatial_gradient_kernel2d('sobel', 1)``, of shape ``(2, 3, 3)``.
     """
     kernel_x = get_sobel_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
@@ -664,7 +664,7 @@ def get_diff_kernel2d(*, device: Optional[torch.device] = None, dtype: Optional[
 
     Convention:
         See the Convention block on :func:`~kornia.filters.get_spatial_gradient_kernel2d`; this is
-        ``get_spatial_gradient_kernel2d('diff', 1)``, of shape :math:`(2, 3, 3)`.
+        ``get_spatial_gradient_kernel2d('diff', 1)``, of shape ``(2, 3, 3)``.
     """
     kernel_x = get_diff_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
@@ -720,8 +720,8 @@ def get_spatial_gradient_kernel2d(
         dtype: tensor dtype desired to create the kernel
 
     Returns:
-        the kernels with shape :math:`(2, 3, 3)` for ``order=1``, and :math:`(3, 5, 5)` (Sobel) or
-        :math:`(3, 3, 3)` (diff) for ``order=2``.
+        the kernels with shape ``(2, 3, 3)`` for ``order=1``, and ``(3, 5, 5)`` (Sobel) or
+        ``(3, 3, 3)`` (diff) for ``order=2``.
 
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
@@ -768,7 +768,7 @@ def get_spatial_gradient_kernel3d(
         dtype: tensor dtype desired to create the kernel
 
     Returns:
-        the kernels with shape :math:`(3, 1, 3, 3, 3)` for ``order=1`` and :math:`(6, 1, 3, 3, 3)` for ``order=2``.
+        the kernels with shape ``(3, 1, 3, 3, 3)`` for ``order=1`` and ``(6, 1, 3, 3, 3)`` for ``order=2``.
 
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
@@ -804,7 +804,7 @@ def get_gaussian_kernel1d(
           :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is the discrete Gaussian.
         - ``force_even=True`` also accepts an even ``kernel_size``, and in a floating ``dtype`` the kernel is then
           symmetric about the middle of the window, ``(kernel_size - 1) / 2``.
-        - A tensor ``sigma`` of shape :math:`(B, 1)` gives one kernel per row.
+        - A tensor ``sigma`` of shape ``(B, 1)`` gives one kernel per row.
         - A Python integer ``sigma`` is treated as its floating-point equivalent. With ``dtype=None``, both use
           the default floating-point dtype.
         - An integer or bool ``dtype`` raises: the taps are fractional, and an integer ``dtype`` would also
@@ -866,7 +866,7 @@ def get_gaussian_discrete_kernel1d(
 
     Args:
         kernel_size: filter size. It should be odd and positive.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
         force_even: accepted for parity with the other Gaussian builders. The discrete Gaussian needs an odd
             ``kernel_size`` either way.
         device: This value will be used if sigma is an int or float. Device desired to compute.
@@ -912,7 +912,7 @@ def get_gaussian_erf_kernel1d(
 
     Args:
         kernel_size: filter size. It should be odd and positive.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
         force_even: overrides requirement for odd kernel size.
         device: This value will be used if sigma is an int or float. Device desired to compute.
         dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
@@ -949,7 +949,7 @@ def get_gaussian_kernel2d(
         See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. ``kernel_size`` is
         ``(k_y, k_x)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)`, y first as in the output
         :math:`(B, k_y, k_x)`, which is the outer product of the two 1d kernels. A tensor ``sigma`` of shape
-        :math:`(B, 2)` gives one kernel per row.
+        ``(B, 2)`` gives one kernel per row.
 
     Args:
         kernel_size: filter sizes in the y and x direction. Sizes should be odd and positive.
@@ -1013,7 +1013,7 @@ def get_gaussian_kernel3d(
         See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. ``kernel_size`` is
         ``(k_z, k_y, k_x)`` and ``sigma`` is :math:`(\sigma_z, \sigma_y, \sigma_x)`, z first as in the output
         :math:`(B, k_z, k_y, k_x)`, which is the outer product of the three 1d kernels. A tensor ``sigma`` of shape
-        :math:`(B, 3)` gives one kernel per row.
+        ``(B, 3)`` gives one kernel per row.
 
     Args:
         kernel_size: filter sizes in the z, y and x direction. Sizes should be odd and positive.

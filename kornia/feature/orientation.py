@@ -48,11 +48,11 @@ class PassLAF(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
+            laf: ``(B, N, 2, 3)``
             img: not used.
 
         Returns:
-            LAF, unchanged :math:`(B, N, 2, 3)`
+            LAF, unchanged ``(B, N, 2, 3)``
 
         """
         return laf
@@ -111,10 +111,10 @@ class PatchDominantGradientOrientation(nn.Module):
         """Run forward.
 
         Args:
-            patch: :math:`(B, 1, H, W)`
+            patch: ``(B, 1, H, W)``
 
         Returns:
-            angle in radians: :math:`(B)`
+            angle in radians: ``(B)``
 
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
@@ -275,10 +275,10 @@ class OriNet(nn.Module):
         """Run forward.
 
         Args:
-            patch: :math:`(B, 1, H, W)`
+            patch: ``(B, 1, H, W)``
 
         Returns:
-            angle in radians: :math:`(B)`
+            angle in radians: ``(B)``
 
         """
         xy = self.features(self._normalize_input(patch)).view(-1, 2)
@@ -329,11 +329,11 @@ class LAFOrienter(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
-            img: :math:`(B, 1, H, W)`
+            laf: ``(B, N, 2, 3)``
+            img: ``(B, 1, H, W)``
 
         Returns:
-            LAF_out: :math:`(B, N, 2, 3)`
+            LAF_out: ``(B, N, 2, 3)``
 
         """
         KORNIA_CHECK_LAF(laf)

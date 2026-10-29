@@ -222,7 +222,7 @@ class ConvSoftArgmax2d(nn.Module):
         window coordinates, which gives differentiable subpixel coordinates.
 
         Args:
-            x: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+            x: Heatmap tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is the number of heatmap
                 channels, :math:`H` is height, and :math:`W` is width.
 
@@ -288,7 +288,7 @@ class ConvSoftArgmax3d(nn.Module):
         """Estimate local 3D coordinates from response-volume windows.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`D` is depth or scale level, :math:`H` is height, and
                 :math:`W` is width.
@@ -611,14 +611,14 @@ def spatial_soft_argmax2d(
           not either peak.
 
     Args:
-        input: the given heatmap with shape :math:`(B, N, H, W)`.
+        input: the given heatmap with shape ``(B, N, H, W)``.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
 
     Returns:
-        the expected coordinates of each map with shape :math:`(B, N, 2)`.
+        the expected coordinates of each map with shape ``(B, N, 2)``.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -663,7 +663,7 @@ class SpatialSoftArgmax2d(nn.Module):
         taking the hard argmax of each heatmap.
 
         Args:
-            input: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+            input: Heatmap tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`H` is height, and :math:`W` is width.
 
@@ -899,7 +899,7 @@ def conv_quad_interp3d(
           than 3 is returned unrefined.
 
     Args:
-        input: response pyramid with shape :math:`(B, C, D, H, W)`.
+        input: response pyramid with shape ``(B, C, D, H, W)``.
         n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
             last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
@@ -908,7 +908,7 @@ def conv_quad_interp3d(
         max_subpixel_shift: threshold above which the integer centre is
             moved one step and another iteration is run.
         precomputed_nms_mask: optional bool tensor of shape
-            :math:`(B, C, D, H, W)` — pass the result of
+            ``(B, C, D, H, W)`` — pass the result of
             :func:`~kornia.geometry.subpix.nms3d` to skip the internal NMS call.
         dilation_radius: L\ :math:`\infty` radius (in voxels) of the neighbourhood
             around each NMS maximum where the Hessian solve is precomputed.
@@ -920,10 +920,10 @@ def conv_quad_interp3d(
     Returns:
         Tuple ``(coords_max, y_max)``:
 
-        * ``coords_max`` — shape :math:`(B, C, 3, D, H, W)`, refined
+        * ``coords_max`` — shape ``(B, C, 3, D, H, W)``, refined
           ``[scale, x(width), y(height)]`` coordinates for each NMS maximum;
           non-maximum positions keep their grid coordinates.
-        * ``y_max`` — shape :math:`(B, C, D, H, W)`, quadratically corrected
+        * ``y_max`` — shape ``(B, C, D, H, W)``, quadratically corrected
           response at each NMS maximum; other positions keep the input value.
 
     Example:
@@ -1194,7 +1194,7 @@ class ConvQuadInterp3d(nn.Module):
         offset gives a subpixel position in scale, x, and y coordinates.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`D` is the scale/depth dimension.
             precomputed_nms_mask: Optional boolean NMS mask with the same shape
                 as ``x``. Passing it avoids recomputing local maxima.
@@ -1237,7 +1237,7 @@ def iterative_quad_interp3d(
           ``dilation_radius`` neighbourhood.
 
     Args:
-        input: response pyramid with shape :math:`(B, C, D, H, W)`.
+        input: response pyramid with shape ``(B, C, D, H, W)``.
         n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
             last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
         strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
@@ -1249,7 +1249,7 @@ def iterative_quad_interp3d(
             applied along the scale (depth) axis; set to ``False`` to keep the
             keypoint on its original scale level.
         precomputed_nms_mask: optional bool tensor of shape
-            :math:`(B, C, D, H, W)` — pass the result of
+            ``(B, C, D, H, W)`` — pass the result of
             :func:`~kornia.geometry.subpix.nms3d` to skip the internal NMS call.
         max_candidates: if given, only the top-``max_candidates`` NMS maxima (ranked by
             pre-refinement response) are processed.  The rest keep their grid-coordinate
@@ -1263,10 +1263,10 @@ def iterative_quad_interp3d(
     Returns:
         A tuple ``(coords_max, y_max)`` where
 
-        * ``coords_max`` has shape :math:`(B, C, 3, D, H, W)` and stores the refined
+        * ``coords_max`` has shape ``(B, C, 3, D, H, W)`` and stores the refined
           coordinates ``[scale, x, y]`` for every position in the input.
           Non-NMS positions keep their original grid coordinates.
-        * ``y_max`` has shape :math:`(B, C, D, H, W)` and stores the quadratically
+        * ``y_max`` has shape ``(B, C, D, H, W)`` and stores the quadratically
           corrected response values.
 
     Example:
@@ -1499,7 +1499,7 @@ class IterativeQuadInterp3d(nn.Module):
         """Refine 3D extrema by iteratively fitting local quadratic patches.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            x: Response tensor with shape ``(B, C, D, H, W)``.
             precomputed_nms_mask: Optional boolean local-maxima mask with the
                 same shape as ``x``.
 
@@ -1612,7 +1612,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         :func:`conv_quad_interp3d` or :func:`iterative_quad_interp3d`.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            x: Response tensor with shape ``(B, C, D, H, W)``.
             precomputed_nms_mask: Optional boolean local-maxima mask with the
                 same shape as ``x``.
 

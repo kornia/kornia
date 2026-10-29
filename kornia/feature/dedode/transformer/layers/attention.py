@@ -63,11 +63,11 @@ class Attention(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input token sequence with shape :math:`(B, N, C)`, where ``B`` is batch size,
+            x: Input token sequence with shape ``(B, N, C)``, where ``B`` is batch size,
                ``N`` is number of tokens (patches + class token), and ``C`` is the embedding dimension.
 
         Returns:
-            Attention output with shape :math:`(B, N, C)`.
+            Attention output with shape ``(B, N, C)``.
         """
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -95,11 +95,11 @@ class MemEffAttention(Attention):
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input token sequence with shape :math:`(B, N, C)`.
+            x: Input token sequence with shape ``(B, N, C)``.
             attn_bias: Unsupported; must be ``None``.
 
         Returns:
-            Attention output with shape :math:`(B, N, C)`.
+            Attention output with shape ``(B, N, C)``.
         """
         if attn_bias is not None:
             raise NotImplementedError("attn_bias is not supported")

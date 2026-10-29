@@ -80,7 +80,7 @@ def laplacian(
           :func:`~kornia.filters.filter2d`.
 
     Args:
-        input: the input image tensor with shape :math:`(B, C, H, W)`.
+        input: the input image tensor with shape ``(B, C, H, W)``.
         kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
@@ -94,7 +94,7 @@ def laplacian(
         execution returns a finite response.
 
     Return:
-        the Laplacian response with shape :math:`(B, C, H, W)`.
+        the Laplacian response with shape ``(B, C, H, W)``.
 
     Raises:
         BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
@@ -176,8 +176,8 @@ class Laplacian(nn.Module):
             :func:`~kornia.filters.laplacian` checks it when called.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -215,12 +215,12 @@ class Laplacian(nn.Module):
         detail.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the Laplacian
+            Tensor with shape ``(B, C, H, W)`` containing the Laplacian
             response for each batch item and channel. Positive and negative
             values represent opposite directions of local curvature.
         """

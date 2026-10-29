@@ -68,8 +68,8 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped

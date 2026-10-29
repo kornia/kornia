@@ -36,10 +36,10 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         rgb_to_linear_rgb; nonlinear sRGB values are not linearized here.
 
     Args:
-        image: RGB Image to be converted to XYZ with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to XYZ with shape ``(*, 3, H, W)``.
 
     Returns:
-         XYZ version of the image with shape :math:`(*, 3, H, W)`.
+         XYZ version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -73,10 +73,10 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         linear_rgb_to_rgb when nonlinear sRGB is required.
 
     Args:
-        image: XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: XYZ Image to be converted to RGB with shape ``(*, 3, H, W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -113,8 +113,8 @@ class RgbToXyz(nn.Module):
         XYZ version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -133,12 +133,12 @@ class RgbToXyz(nn.Module):
         """Convert an RGB tensor to XYZ.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            XYZ tensor with shape :math:`(*, 3, H, W)`.
+            XYZ tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_xyz(image)
 
@@ -152,8 +152,8 @@ class XyzToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -172,11 +172,11 @@ class XyzToRgb(nn.Module):
         """Convert an XYZ tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to XYZ channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return xyz_to_rgb(image)

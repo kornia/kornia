@@ -44,7 +44,7 @@ class Normalize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Return:
-        Normalised tensor with same size as input :math:`(*, C, H, W)`.
+        Normalised tensor with same size as input ``(*, C, H, W)``.
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.

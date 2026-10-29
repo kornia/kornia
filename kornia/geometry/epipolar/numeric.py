@@ -28,10 +28,10 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
           :math:`[x]_\times w = x \times w`, for any number of leading dims.
 
     Args:
-        x: The input vector to construct the matrix in the shape :math:`(*, 3)`.
+        x: The input vector to construct the matrix in the shape ``(*, 3)``.
 
     Returns:
-        The skew-symmetric matrix with shape :math:`(*, 3, 3)`.
+        The skew-symmetric matrix with shape ``(*, 3, 3)``.
 
     """
     if not x.shape[-1] == 3:
@@ -52,7 +52,7 @@ def matrix_cofactor_tensor(matrix: torch.Tensor) -> torch.Tensor:
     """Cofactor matrix, refer to the numpy doc.
 
     Args:
-        matrix: The input matrix in the shape :math:`(*, 3, 3)`.
+        matrix: The input matrix in the shape ``(*, 3, 3)``.
 
     """
     # Closed form: the rows of the cofactor matrix are the cross products of the other two rows. Unlike the

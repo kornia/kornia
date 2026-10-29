@@ -45,8 +45,8 @@ class RandomPerspective(GeometricAugmentationBase2D):
             Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.

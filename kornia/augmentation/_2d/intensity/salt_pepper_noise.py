@@ -41,8 +41,8 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.

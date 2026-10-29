@@ -104,8 +104,8 @@ class ParametrizedLine(nn.Module):
         """Construct a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         Args:
-            p0: tensor with first point :math:`(B, D)` where `D` is the point dimension.
-            p1: tensor with second point :math:`(B, D)` where `D` is the point dimension.
+            p0: tensor with first point ``(B, D)`` where `D` is the point dimension.
+            p1: tensor with second point ``(B, D)`` where `D` is the point dimension.
 
         Raises:
             ValueCheckError: if ``p0`` and ``p1`` coincide, so the line has no direction.
@@ -131,7 +131,7 @@ class ParametrizedLine(nn.Module):
 
         Args:
             t: step along the line: a number or a 0-d tensor for every row, or one step per row of shape
-                :math:`(B,)` or :math:`(B, 1)` for a line of shape :math:`(B, D)`.
+                ``(B,)`` or ``(B, 1)`` for a line of shape ``(B, D)``.
 
         Return:
             tensor with the point.
@@ -358,12 +358,12 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The expected
-            shape of the tensor is :math:`(B, N, D)`.
+            shape of the tensor is ``(B, N, D)``.
         weights: per-point weights, used in the centroid and in the fit. The expected
-            shape of the tensor is :math:`(B, N)`.
+            shape of the tensor is ``(B, N)``.
 
     Return:
-        The fitted line, with origin and direction of shape :math:`(B, D)`.
+        The fitted line, with origin and direction of shape ``(B, D)``.
 
     Raises:
         ValueCheckError: if the points do not determine a line — fewer than two points,

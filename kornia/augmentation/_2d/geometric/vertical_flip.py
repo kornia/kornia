@@ -38,8 +38,8 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         A selected flip maps ``(x, y)`` to ``(x, H - 1 - y)`` with the exact discrete

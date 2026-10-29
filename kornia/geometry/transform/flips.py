@@ -52,7 +52,7 @@ class Vflip(nn.Module):
 
         Args:
             input: Tensor containing one image or a batch of images, typically
-                shaped :math:`(*, C, H, W)`, where :math:`H` is height and
+                shaped ``(*, C, H, W)``, where :math:`H` is height and
                 :math:`W` is width.
 
         Returns:
@@ -96,7 +96,7 @@ class Hflip(nn.Module):
 
         Args:
             input: Tensor containing one image or a batch of images, typically
-                shaped :math:`(*, C, H, W)`, where :math:`H` is height and
+                shaped ``(*, C, H, W)``, where :math:`H` is height and
                 :math:`W` is width.
 
         Returns:
@@ -137,7 +137,7 @@ class Rot180(nn.Module):
 
         Args:
             input: Tensor containing one image or a batch of images, typically
-                shaped :math:`(*, C, H, W)`, where :math:`H` is height and
+                shaped ``(*, C, H, W)``, where :math:`H` is height and
                 :math:`W` is width.
 
         Returns:
@@ -158,8 +158,8 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
     Convention:
         - flips both the height and width axes (equivalent to :func:`vflip` followed by
           :func:`hflip`)
-        - requires rank ≥ 2: unbatched :math:`(H, W)`/:math:`(C, H, W)` or batched
-          :math:`(*, C, H, W)` all work
+        - requires rank ≥ 2: unbatched ``(H, W)``/``(C, H, W)`` or batched
+          ``(*, C, H, W)`` all work
 
     Args:
         input: input torch.Tensor.
@@ -197,8 +197,8 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - flips along the height axis (the second-to-last dimension)
-        - requires rank ≥ 2 (operates on dim ``-2``): unbatched :math:`(H, W)`/
-          :math:`(C, H, W)` or batched :math:`(*, C, H, W)` all work
+        - requires rank ≥ 2 (operates on dim ``-2``): unbatched ``(H, W)``/
+          ``(C, H, W)`` or batched ``(*, C, H, W)`` all work
 
     Args:
         input: input torch.Tensor.

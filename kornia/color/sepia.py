@@ -29,12 +29,12 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
         Disable it to keep the raw matrix response.
 
     Args:
-        input: the input tensor with shape :math:`(*, C, H, W)`.
+        input: the input tensor with shape ``(*, C, H, W)``.
         rescale: if True, divide all output channels by one maximum per image.
         eps: small constant added to the denominator for numerical stability.
 
     Returns:
-        torch.Tensor: sepia-filtered tensor with shape :math:`(*, C, H, W)`.
+        torch.Tensor: sepia-filtered tensor with shape ``(*, C, H, W)``.
 
     Example:
         >>> input = torch.ones(3, 1, 1)
@@ -75,7 +75,7 @@ class Sepia(nn.Module):
         eps: small constant added to the denominator for numerical stability.
 
     Returns:
-        torch.Tensor: sepia-filtered tensor with shape :math:`(*, C, H, W)`.
+        torch.Tensor: sepia-filtered tensor with shape ``(*, C, H, W)``.
 
     Example:
         >>> input = torch.ones(3, 1, 1)
@@ -106,9 +106,9 @@ class Sepia(nn.Module):
         """Apply the sepia filter.
 
         Args:
-            input: RGB image tensor with shape :math:`(*, 3, H, W)`.
+            input: RGB image tensor with shape ``(*, 3, H, W)``.
 
         Returns:
-            Sepia-filtered tensor with shape :math:`(*, 3, H, W)`.
+            Sepia-filtered tensor with shape ``(*, 3, H, W)``.
         """
         return sepia_from_rgb(input, rescale=self.rescale, eps=self.eps)
