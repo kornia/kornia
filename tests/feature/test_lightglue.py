@@ -587,6 +587,21 @@ class TestLightGlue(BaseTester):
         assert seen["device_type"] == data["image0"]["keypoints"].device.type
         assert "matches0" in out
 
+    def test_mp_keeps_a_float64_model_in_float64(self, device):
+        """Autocast does not cast float64, so ``mp=True`` leaves a float64 model as ``mp=False`` runs it.
+
+        On CUDA the descriptors used to be cast to float16 under autocast, which the float64 weights then met.
+        """
+        torch.manual_seed(0)
+        models = {mp: _make_lightglue(device, torch.float64, mp=mp) for mp in (False, True)}
+        models[True].load_state_dict(models[False].state_dict())
+        data = _make_data(device, torch.float64)
+        with torch.no_grad():
+            out = {mp: model(data) for mp, model in models.items()}
+        assert out[True]["matching_scores0"].dtype == torch.float64
+        assert torch.equal(out[True]["matches0"], out[False]["matches0"])
+        self.assert_close(out[True]["matching_scores0"], out[False]["matching_scores0"])
+
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
         """Instantiating with real feature type downloads and loads weights."""
