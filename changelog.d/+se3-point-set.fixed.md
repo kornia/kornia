@@ -1,0 +1,1 @@
+`So3 * points` and `Se3 * points`, and so `NamedPose.transform_points` for a 3D pose, now accept a point set such as `(N, 3)` with an unbatched pose, as `Se2` does for `(N, 2)`. They used to raise in `torch.linalg.cross`.

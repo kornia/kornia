@@ -85,6 +85,9 @@ def _so3_rotate(q: Quaternion, points: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(points, ["*", "3"])
     if _computes_in_float32(torch.promote_types(q.data.dtype, points.dtype)):
         q, points = q.to(torch.float32), points.float()
+    if q.data.dim() == 1 and points.dim() > 1:
+        # an unbatched rotation rotates every point of a point set, as So2 does for (N, 2)
+        q = Quaternion(q.data.expand(*points.shape[:-1], 4))
     w = torch.zeros(*points.shape[:-1], 1, device=points.device, dtype=points.dtype)
     quat = Quaternion(torch.cat((w, points), -1))
     # q p q* scales p by |q|^2, so rotate by the unit direction of q
@@ -107,8 +110,9 @@ class So3(nn.Module):
           ``q.to_axis_angle()``: it reads only the direction of ``q``, within the range limits stated on
           :class:`~kornia.geometry.quaternion.Quaternion`, and returns the principal vector, of norm at most
           :math:`\pi`, the same for ``q`` and ``-q`` below a half turn.
-        - ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p`` rotates points ``p`` of
-          shape ``(B, 3)``, a tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()`` is :math:`R` itself.
+        - ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p`` rotates points ``p``, a
+          tensor or a ``Vector3``, as :math:`R p`: ``(B, 3)`` for a batch of ``B``, any ``(*, 3)`` for an unbatched
+          ``So3``; and ``adjoint()`` is :math:`R` itself.
           :ref:`Rotations and rigid motions <rotation-conventions>` compares these with scipy, Sophus and Eigen.
         - A non-unit quaternion stands for the rotation of its direction :math:`q / |q|`, as for
           :meth:`~kornia.geometry.quaternion.Quaternion.matrix`: ``matrix()`` and ``s * p`` normalise it where they
@@ -174,7 +178,8 @@ class So3(nn.Module):
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
-            right: the other So3 transformation, or points of shape ``(B, 3)`` as a tensor or a ``Vector3``.
+            right: the other So3 transformation, or points as a tensor or a ``Vector3``: ``(B, 3)`` for a batch of
+                ``B``, any ``(*, 3)`` for an unbatched rotation.
 
         Return:
             The resulting So3 transformation, or the rotated points of the type of ``right``.

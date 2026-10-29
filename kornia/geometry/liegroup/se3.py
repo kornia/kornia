@@ -175,7 +175,7 @@ class Se3(nn.Module):
 
         Args:
             right: the other Se3 transformation, or points as a tensor or ``Vector3`` with the batch shape of the
-                pose and a last dimension of 3.
+                pose and a last dimension of 3; an unbatched pose maps any ``(*, 3)``.
 
         Return:
             The resulting Se3 transformation, or the transformed points.

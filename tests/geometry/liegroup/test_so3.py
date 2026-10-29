@@ -607,6 +607,20 @@ class TestSo3Conventions(BaseTester):
         tol = 1e-2 if dtype == torch.float16 else None
         self.assert_close((s * s2) * p, s * (s2 * p), rtol=tol, atol=tol)
 
+    @pytest.mark.parametrize("points_shape", [(7, 3), (2, 5, 3)])
+    def test_unbatched_rotation_rotates_a_point_set(self, points_shape, device, dtype):
+        # #6426: an unbatched So3 rotates every point of a point set, as So2 does for (N, 2); it used to raise
+        # in torch.linalg.cross because the (4,) quaternion and the points had different ranks.
+        s = So3.exp(torch.tensor([0.3, -0.5, 0.2], device=device, dtype=dtype))
+        p = torch.randn(points_shape, device=device, dtype=dtype)
+
+        out = s * p
+
+        assert out.shape == p.shape
+        self.assert_close(out, torch.stack([s * q for q in p.reshape(-1, 3)]).reshape(points_shape))
+        low_tolerance = dtype in (torch.float16, torch.bfloat16)
+        self.assert_close(out, p @ s.matrix().mT, low_tolerance=low_tolerance)
+
     def test_convention_so3_adjoint_conjugates_the_tangent(self, device, dtype):
         # Ad(g) xi is the tangent of g exp(xi) g^-1: exp(Ad(g) xi) = g exp(xi) g^-1, with Ad(g) = R
         g = So3.exp(torch.tensor([[0.7, -0.2, 0.4]], device=device, dtype=dtype))

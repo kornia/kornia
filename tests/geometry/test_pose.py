@@ -222,6 +222,23 @@ class TestNamedPose(BaseTester):
         self.assert_close(points_in_b, (points_in_a + shift_x) @ rot_z.T, low_tolerance=low_tolerance)
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a, low_tolerance=low_tolerance)
 
+    def test_transform_points_point_set_with_unbatched_se3(self, device, dtype):
+        # #6426: an unbatched 3D pose maps an (N, 3) point set, as an unbatched 2D pose maps (N, 2).
+        points_in_a = torch.randn(7, 3, device=device, dtype=dtype)
+        b_from_a_se3 = Se3.rot_z(torch.tensor(0.5, device=device, dtype=dtype)) * Se3.trans_x(
+            torch.tensor(1.0, device=device, dtype=dtype)
+        )
+        b_from_a = NamedPose(b_from_a_se3, frame_src="frame_a", frame_dst="frame_b")
+
+        points_in_b = b_from_a.transform_points(points_in_a)
+
+        low_tolerance = dtype in (torch.float16, torch.bfloat16)
+        c, s = math.cos(0.5), math.sin(0.5)
+        rot_z = torch.tensor([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        shift_x = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(points_in_b, (points_in_a + shift_x) @ rot_z.T, low_tolerance=low_tolerance)
+        self.assert_close(b_from_a.inverse().transform_points(points_in_b), points_in_a, low_tolerance=low_tolerance)
+
 
 class TestNamedPoseConventions(BaseTester):
     @staticmethod
