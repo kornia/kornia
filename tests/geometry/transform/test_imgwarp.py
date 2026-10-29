@@ -427,19 +427,19 @@ class TestRotationMatrix2d(BaseTester):
         assert actual.shape == (3, 2, 3)
         self.assert_close(actual, expected)
 
-    def test_broadcast_empty_batch_with_singletons(self):
-        center = torch.empty(0, 2)
-        angle = torch.zeros(1)
-        scale = torch.ones(1, 2)
+    def test_broadcast_empty_batch_with_singletons(self, device, dtype):
+        center = torch.empty(0, 2, device=device, dtype=dtype)
+        angle = torch.zeros(1, device=device, dtype=dtype)
+        scale = torch.ones(1, 2, device=device, dtype=dtype)
 
         actual = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
 
         assert actual.shape == (0, 2, 3)
 
-    def test_reject_incompatible_batch_dimensions(self):
-        center = torch.zeros(2, 2)
-        angle = torch.zeros(3)
-        scale = torch.ones(1, 2)
+    def test_reject_incompatible_batch_dimensions(self, device, dtype):
+        center = torch.zeros(2, 2, device=device, dtype=dtype)
+        angle = torch.zeros(3, device=device, dtype=dtype)
+        scale = torch.ones(1, 2, device=device, dtype=dtype)
 
         with pytest.raises(ValueError, match="same batch size dimension"):
             kornia.geometry.get_rotation_matrix2d(center, angle, scale)

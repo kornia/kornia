@@ -1007,9 +1007,10 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
                 )
             batch_size = input_batch_size
 
-    center = center.expand(batch_size, 2)
-    angle = angle.expand(batch_size)
-    scale = scale.expand(batch_size, 2)
+    # Keep the broadcast shape in the tensor graph so traces recorded at batch 1
+    # still accept larger compatible batches.
+    center, angle, scale = torch.broadcast_tensors(center, angle[:, None], scale)
+    angle = angle[:, 0]
 
     shift_m = eye_like(3, center)
     shift_m[:, :2, 2] = center
