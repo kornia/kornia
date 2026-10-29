@@ -23,6 +23,7 @@ import torch
 from kornia.enhance.normalize import Normalize
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
+from kornia.feature.dedode.dedode_models import get_detector
 from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
 from kornia.feature.dedode.transformer.layers.attention import Attention
@@ -244,6 +245,37 @@ class TestDeDoDeHalfPrecision(BaseTester):
         assert keypoints.shape == (1, 10, 2)
         assert scores.shape == (1, 10)
         assert torch.isfinite(scores).all()
+
+    def test_detector_returns_float32_logits(self, device, dtype):
+        # The networks run in the model dtype; the logits are accumulated in float32, as Parskatt/DeDoDe 6d15618
+        # (detectors/dedode_detector.py) does, and are not rounded to the model dtype afterwards.
+        detector = get_detector("L", amp_dtype=dtype).to(device, dtype).eval()
+        with torch.no_grad():
+            logits = detector(torch.rand(1, 3, 56, 84, device=device, dtype=dtype))
+        assert logits.shape == (1, 1, 56, 84)
+        assert logits.dtype == torch.float32
+        assert torch.isfinite(logits).all()
+
+    def test_half_scoremap_keeps_the_float32_top_k(self, device, dtype, monkeypatch):
+        # A peaky map of integer logits, exact in every dtype. Over 252 x 336 pixels most of its softmax
+        # probabilities are below 1e-8: float16 flushes them to 0 and bfloat16 keeps 8 significant bits, so a
+        # softmax in the model dtype loses the top-k. The softmax and the keypoint sampling run in float32, so every
+        # model dtype returns the float32 keypoints and scores.
+        h, w = 252, 336
+        logits = (torch.randn(1, 1, h, w, generator=torch.Generator().manual_seed(0)) * 8).round().to(device)
+
+        def detector(images):
+            return logits.to(images.dtype).expand(images.shape[0], -1, -1, -1)
+
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_detector", lambda *a, **k: _FixedMap(detector))
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_descriptor", lambda *a, **k: _FixedMap(lambda x: x))
+        image = torch.rand(1, 3, h, w, device=device)
+        expected_keypoints, expected_scores = DeDoDe().to(device).detect(image)
+        keypoints, scores = DeDoDe().to(device, dtype).detect(image.to(dtype))
+        assert keypoints.shape == (1, 10_000, 2)
+        self.assert_close(keypoints, expected_keypoints, rtol=0.0, atol=0.0)
+        assert keypoints.dtype == scores.dtype == torch.float32
+        self.assert_close(scores, expected_scores, rtol=0.0, atol=0.0)
 
 
 def _tiny_dinov2(monkeypatch):

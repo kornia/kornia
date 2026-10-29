@@ -92,10 +92,16 @@ class DeDoDe(nn.Module):
           (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a
           ``k`` to kornia's frame. A description is read at the centre of pixel ``i``.
         - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
-          threshold and no padding. Keypoints, and the descriptions of
-          :meth:`forward` and of ``describe(images, keypoints)``, are float32; descriptions are not normalized. The
-          dense map of ``describe(images)`` follows the network dtype: ``amp_dtype`` on CUDA, the dtype of the model
-          on CPU and MPS.
+          threshold and no padding. Keypoints, scores, and the descriptions of :meth:`forward` and of
+          ``describe(images, keypoints)``, are float32 whatever the model dtype (the scoremap softmax runs in float32);
+          descriptions are not normalized. The dense map of ``describe(images)`` follows the network dtype:
+          ``amp_dtype`` on CUDA, the dtype of the model on CPU and MPS.
+        - kornia detects and describes at the size of the input. The authors resize every image to 784 x 784, without
+          keeping its aspect ratio, in ``detect_from_path`` and ``describe_keypoints_from_path``, and train the
+          detector and the ``B`` descriptor at 512 x 512 (``G`` at 560 x 560). The 51-pixel coverage window of the
+          keypoint sampling and the 14-pixel patches of ``G`` do not scale with the image. After resizing to
+          784 x 784, the normalized keypoints of :meth:`detect` hold for the original image unchanged; multiply those
+          of :meth:`forward` by ``(W / 784, H / 784)``.
         - ``amp_dtype`` is CUDA mixed precision in every component: on CUDA tensors the networks run under
           ``torch.autocast`` in ``amp_dtype`` (and the DINOv2 backbone of the ``G`` descriptor is cast to it). On CPU
           and MPS it has no effect, so the default argument runs there with float32 weights and images.
@@ -228,7 +234,9 @@ class DeDoDe(nn.Module):
         if crop_h is not None and crop_w is not None:
             logits = logits[..., :crop_h, :crop_w]
             H, W = crop_h, crop_w
-        scoremap = logits.reshape(B, H * W).softmax(dim=-1).reshape(B, H, W)
+        # float32 whatever the model dtype: the probabilities are about 1 / (H W), below the smallest normal float16
+        # for images above 128 x 128, and bfloat16 keeps 8 significant bits of them.
+        scoremap = logits.float().reshape(B, H * W).softmax(dim=-1).reshape(B, H, W)
         keypoints, confidence = sample_keypoints(scoremap, num_samples=n)
         return keypoints, confidence
 
