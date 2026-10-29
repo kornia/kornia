@@ -33,8 +33,8 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_yuv.png
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
-    :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
+    The image data is assumed to be in the range of :math:`[0, 1]`. The range of the output is of
+    :math:`[0, 1]` to luma and the ranges of U and V are :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`,
     respectively.
 
     The YUV model adopted here follows M/PAL values (see
@@ -78,8 +78,8 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of :math:`(0, 1)` to
-    luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]`. The range of the output is of :math:`[0, 1]` to
+    luma and the ranges of U and V are :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     The YUV model adopted here follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -128,8 +128,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Input width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
-    :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
+    The image data is assumed to be in the range of :math:`[0, 1]`. The range of the output is of
+    :math:`[0, 1]` to luma and the ranges of U and V are :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`,
     respectively.
 
     The YUV model adopted here follows M/PAL values (see
@@ -170,8 +170,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a full-resolution YUV (4:4:4) image of shape ``(*, 3, H, W)`` to RGB.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -227,8 +227,8 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -282,8 +282,8 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     Input width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -335,7 +335,7 @@ class RgbToYuv(nn.Module):
 
     See the Convention block on :func:`rgb_to_yuv`.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`.
+    The image data is assumed to be in the range of :math:`[0, 1]`.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -383,7 +383,7 @@ class RgbToYuv420(nn.Module):
 
     Width and Height must be evenly divisible by 2.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`.
+    The image data is assumed to be in the range of :math:`[0, 1]`.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -433,7 +433,7 @@ class RgbToYuv422(nn.Module):
 
     Width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`.
+    The image data is assumed to be in the range of :math:`[0, 1]`.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -481,8 +481,8 @@ class YuvToRgb(nn.Module):
 
     See the Convention block on :func:`yuv_to_rgb`.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -530,8 +530,8 @@ class Yuv420ToRgb(nn.Module):
 
     Width and Height must be evenly divisible by 2.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -579,8 +579,8 @@ class Yuv422ToRgb(nn.Module):
 
     Width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
