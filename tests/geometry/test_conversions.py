@@ -4465,11 +4465,20 @@ class TestNormalizePointsWithIntrinsics(BaseTester):
         self.assert_close(out, expected)
 
     def test_grid_round_trip(self, device, dtype):
+        # u = c_b + f_b * k / 4 with k in {-2, ..., 2}: every pixel, difference, quotient and product below
+        # fits in 8 significant bits, so both directions are exact in float16, bfloat16, float32 and float64.
         camera_matrix = _two_distinct_cameras(device, dtype)
-        points_2d = 400.0 * torch.rand(2, 3, 5, 2, device=device, dtype=dtype)
+        k = (torch.arange(2 * 3 * 5 * 2, device=device) % 5 - 2).reshape(2, 3, 5, 2).to(dtype)
+        focal = camera_matrix[:, [0, 1], [0, 1]][:, None, None]
+        principal = camera_matrix[:, :2, 2][:, None, None]
+        points_2d = principal + focal * k / 4
         op = kornia.geometry.conversions.normalize_points_with_intrinsics
         back = kornia.geometry.conversions.denormalize_points_with_intrinsics
-        self.assert_close(back(op(points_2d, camera_matrix), camera_matrix), points_2d)
+
+        points_norm = op(points_2d, camera_matrix)
+
+        self.assert_close(points_norm, k / 4, atol=0.0, rtol=0.0)
+        self.assert_close(back(points_norm, camera_matrix), points_2d, atol=0.0, rtol=0.0)
 
 
 def _two_distinct_cameras(device, dtype):
@@ -4477,7 +4486,7 @@ def _two_distinct_cameras(device, dtype):
     return torch.tensor(
         [
             [[100.0, 0.0, 10.0], [0.0, 200.0, 20.0], [0.0, 0.0, 1.0]],
-            [[300.0, 0.0, 100.0], [0.0, 50.0, 250.0], [0.0, 0.0, 1.0]],
+            [[300.0, 0.0, 100.0], [0.0, 40.0, 240.0], [0.0, 0.0, 1.0]],
         ],
         device=device,
         dtype=dtype,
