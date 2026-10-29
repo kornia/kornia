@@ -24,6 +24,7 @@ import torch
 
 import kornia
 import kornia.augmentation as K
+from kornia.augmentation.container.augment import _NON_RIGID_WARPS
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import BorderType, DataKey, Resample
 from kornia.core._compat import torch_version_lt
@@ -2907,6 +2908,20 @@ class TestConventionAugmentationSequential(BaseTester):
             keypoints = keypoints.unsqueeze(1).expand(2, 3, 1, 2).clone()
         with pytest.raises(NotImplementedError, match=r"RandomElasticTransform does not support keypoints.*4420"):
             aug(image, keypoints)
+
+    def test_non_rigid_refusal_lists_every_unhandled_augmentation_4420(self):
+        # The container moves keypoints and boxes through rigid, intensity and mix children only; a shipped 2D
+        # augmentation outside them would return the coordinates unchanged, so it must be refused.
+        handled = (K.RigidAffineAugmentationBase2D, K.IntensityAugmentationBase2D, K.MixAugmentationBaseV2)
+        unhandled = {
+            cls
+            for cls in vars(K).values()
+            if isinstance(cls, type)
+            and issubclass(cls, K.AugmentationBase2D)
+            and cls is not K.AugmentationBase2D
+            and not issubclass(cls, handled)
+        }
+        assert unhandled == set(_NON_RIGID_WARPS)
 
     def test_elastic_box_hook_refuses_boxes_4420(self, device, dtype):
         # A direct call reaches the hook that used to return the boxes unchanged.
