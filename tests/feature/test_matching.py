@@ -978,6 +978,22 @@ class TestCDist(BaseTester):
         with pytest.raises(RuntimeError):
             _cdist(torch.ones(2, 4, device=device, dtype=dtype1), torch.ones(3, 4, device=device, dtype=dtype2))
 
+    @pytest.mark.parametrize("rows", [10, 30])
+    def test_mixed_pair_under_mixed_precision_is_computed(self, device, rows):
+        # Autocast casts a mixed pair to a common dtype, so the pair is computed there, as `torch.cdist` computes it;
+        # more than 25 rows also send `torch.cdist` through its matrix-multiplication form.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("autocast region of CPU, CUDA and MPS only")
+        low = torch.bfloat16 if device.type == "cpu" else torch.float16
+        d1 = _sine_pattern((rows, 16), 0.71, 0.13, 0.0, device, torch.float32)
+        d2 = _sine_pattern((rows + 5, 16), 0.53, 0.29, 1.0, device, torch.float32)
+        expected = torch.cdist(d1.cpu().double(), d2.cpu().double())
+        with torch.autocast(device.type, dtype=low):
+            for a, b in ((d1.to(low), d2), (d1, d2.to(low))):
+                actual = _cdist(a, b)
+                assert actual.dtype == a.dtype
+                self.assert_close(actual.cpu().double(), expected, rtol=2e-2, atol=5e-2)
+
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_zero_distance_gradient(self, device, desc_dtype):
         if not supports_matmul(device, desc_dtype):

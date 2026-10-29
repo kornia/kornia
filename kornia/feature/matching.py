@@ -22,7 +22,7 @@ from torch import nn
 
 from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _l2_normalize, is_exporting, is_mps_tensor_safe
+from kornia.core.utils import _l2_normalize, is_autocast_enabled, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
@@ -53,9 +53,12 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     distance between nearby descriptors, and ``torch.cdist`` has no float16 kernel on
     CPU. Distances are returned in the input dtype.
     """
-    if d1.dtype != d2.dtype:
-        # The CPU `torch.cdist` raises for a mixed pair; on MPS it computes one of up to 25 rows in the dtype of d1.
-        raise RuntimeError("The descriptors must have the same dtype")
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():  # noqa: SIM102
+        # Autocast casts a mixed pair to a common dtype. Outside it, the CPU `torch.cdist` raises for a mixed pair,
+        # while on MPS it computes one of up to 25 rows in the dtype of d1.
+        if d1.dtype != d2.dtype and not is_autocast_enabled():
+            raise RuntimeError(f"The descriptors must have the same dtype, got {d1.dtype} and {d2.dtype}")
     half = (torch.float16, torch.bfloat16)
     output_dtype = d1.dtype
     if output_dtype in half:
