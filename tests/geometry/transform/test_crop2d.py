@@ -834,6 +834,24 @@ class TestCropByIndices(BaseTester):
         with pytest.raises(ValueError, match="All boxes in the batch must have the same height and width"):
             kornia.geometry.transform.crop_by_indices(img, src_box, size=None)
 
+    @pytest.mark.parametrize("shape_compensation", ["resise", "unknown"])
+    def test_crop_by_indices_rejects_invalid_shape_compensation_6402(self, shape_compensation, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        src_box = torch.tensor([[[0, 0], [2, 0], [2, 2], [0, 2]]], device=device, dtype=torch.int64)
+
+        with pytest.raises(ValueError, match="shape_compensation.*resize.*pad.*F.pad"):
+            kornia.geometry.transform.crop_by_indices(
+                inp, src_box, size=(2, 2), shape_compensation=shape_compensation
+            )
+
+    def test_crop_by_indices_accepts_legacy_f_pad_shape_compensation_6402(self, device, dtype):
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src_box = torch.tensor([[[0, 0], [2, 0], [2, 2], [0, 2]]], device=device, dtype=torch.int64)
+
+        actual = kornia.geometry.transform.crop_by_indices(inp, src_box, size=(4, 4), shape_compensation="F.pad")
+        expected = torch.nn.functional.pad(inp[..., :3, :3], [0, 1, 0, 1])
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
     def test_convention_shape_compensation_pad_vs_resize(self, device, dtype):
         # shape_compensation is pinned per the crop_by_indices Convention block: it applies
         # whenever the cropped slice does not match `size`, whether or not src_box is identical
