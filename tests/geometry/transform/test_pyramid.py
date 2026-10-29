@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numpy as np
 import pytest
 import torch
 
@@ -351,12 +352,27 @@ class TestScalePyramid(BaseTester):
             self.assert_close(sigmas[octave], ref_sigmas[octave])
             self.assert_close(pyr[octave], ref_pyr[octave])
 
-    @pytest.mark.parametrize("extra_levels", [0, -1, -3, 1.5, 3.0, None, "3", True, False])
+    @pytest.mark.parametrize(
+        "extra_levels",
+        [0, -1, -3, 1.5, 3.0, None, "3", True, False, np.int64(0), np.int32(-1), np.float64(3.0), np.bool_(True)],
+    )
     def test_invalid_extra_levels_6400(self, extra_levels):
         # extra_levels=0 made `pyr[-1][-0]` pick level 0, so every octave after the first was seeded from the
         # least blurred level while `sigmas` still labelled it with the base sigma.
         with pytest.raises(BaseError, match="Invalid extra_levels, it must be a positive integer"):
             kornia.geometry.ScalePyramid(extra_levels=extra_levels)
+
+    @pytest.mark.parametrize("numpy_type", [np.int8, np.uint8, np.int32, np.int64])
+    def test_numpy_integer_extra_levels_6400(self, device, dtype, numpy_type):
+        # NumPy integers are not `int` subclasses but were accepted before extra_levels was validated.
+        inp = torch.rand(1, 1, 96, 96, device=device, dtype=dtype)
+        pyramid = kornia.geometry.ScalePyramid(extra_levels=numpy_type(2))
+        assert type(pyramid.extra_levels) is int
+        assert pyramid.extra_levels == 2
+        for got, expected in zip(pyramid(inp), kornia.geometry.ScalePyramid(extra_levels=2)(inp)):
+            assert len(got) == len(expected)
+            for got_octave, expected_octave in zip(got, expected):
+                self.assert_close(got_octave, expected_octave, rtol=0, atol=0)
 
     @pytest.mark.parametrize("n_levels", [1, 3])
     @pytest.mark.parametrize("extra_levels", [1, 2, 3])

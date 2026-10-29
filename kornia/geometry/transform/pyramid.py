@@ -18,6 +18,8 @@
 from __future__ import annotations
 
 import math
+import numbers
+import operator
 
 import torch
 import torch.nn.functional as F
@@ -185,7 +187,8 @@ class ScalePyramid(nn.Module):
         init_sigma: initial blur level.
         min_size: the minimum size of the octave in pixels.
         double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
-        extra_levels: number of levels built beyond ``n_levels`` in every octave, a positive integer. Level
+        extra_levels: number of levels built beyond ``n_levels`` in every octave, a positive integer (a NumPy integer is
+            converted to ``int``). Level
             ``n_levels`` seeds the next octave, so ``1`` is the least that works; DoG non-maximum suppression
             needs ``3``.
 
@@ -218,10 +221,12 @@ class ScalePyramid(nn.Module):
         extra_levels: int = 3,
     ) -> None:
         super().__init__()
+        # A Python or NumPy integer, not a bool (``numbers.Integral`` covers NumPy integers, not ``np.bool_``).
         KORNIA_CHECK(
-            isinstance(extra_levels, int) and not isinstance(extra_levels, bool) and extra_levels > 0,
+            isinstance(extra_levels, numbers.Integral) and not isinstance(extra_levels, bool) and extra_levels > 0,
             lambda: f"Invalid extra_levels, it must be a positive integer. Got: {extra_levels!r}",
         )
+        extra_levels = operator.index(extra_levels)
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
         self.extra_levels = extra_levels
