@@ -52,10 +52,20 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 }
 """Top-level packages left out of the rollout, with the reason."""
 
-CATALOG_NAMESPACES: tuple[str, ...] = ("kornia.geometry.depth",)
+CATALOG_NAMESPACES: tuple[str, ...] = (
+    "kornia.geometry.depth",
+    "kornia.geometry.transform.affwarp",
+    "kornia.geometry.transform.homography_warper",
+    "kornia.geometry.transform.imgwarp",
+)
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
-DOCSTRING_MODULES: tuple[str, ...] = ("kornia.geometry.depth",)
+DOCSTRING_MODULES: tuple[str, ...] = (
+    "kornia.geometry.depth",
+    "kornia.geometry.transform.affwarp",
+    "kornia.geometry.transform.homography_warper",
+    "kornia.geometry.transform.imgwarp",
+)
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
 SEE_ALSO_EXCEPTIONS: dict[str, str] = {}

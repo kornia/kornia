@@ -6,10 +6,23 @@ kornia.geometry.transform
 
 .. currentmodule:: kornia.geometry.transform
 
-The functions in this section perform various geometric transformations of 2D and 3D images.
+The functions in this section warp, resize, crop, flip and register 2D images and 3D volumes. The warps take a
+matrix that maps source pixels to destination pixels (:func:`warp_perspective`, :func:`warp_affine` and their 3D
+forms), except :func:`homography_warp` and :func:`homography_warp3d`, which take a destination→source homography in
+normalized :math:`[-1, 1]` coordinates by default. The 2D image transforms :func:`rotate`, :func:`translate`,
+:func:`scale` and :func:`shear` take parameters instead of a matrix and :func:`affine` takes a matrix, all at the
+image size; :func:`resize` and :func:`rescale` change the size. ``align_corners`` defaults differ between these
+functions; see :doc:`Conventions & Pitfalls </get-started/conventions>`.
 
 Warp operators
 --------------
+
+Warp images ``(B, C, H, W)`` or volumes ``(B, C, D, H, W)`` to the output size ``dsize`` by a source→destination
+pixel homography (:func:`warp_perspective`, :func:`warp_perspective3d`) or affine matrix (:func:`warp_affine`,
+:func:`warp_affine3d`), or by a destination→source homography in normalized coordinates (:func:`homography_warp`,
+:func:`homography_warp3d`). Sample an image at per-pixel source coordinates with :func:`remap`, or warp it by
+thin-plate-spline control points with :func:`warp_image_tps` (and points with :func:`warp_points_tps`).
+:func:`warp_grid` and :func:`warp_grid3d` return the warped sampling grid without sampling.
 
 .. autofunction:: warp_perspective
 .. autofunction:: warp_perspective3d
@@ -25,6 +38,11 @@ Warp operators
 
 Image 2D transforms
 -------------------
+
+Rotate, shift, zoom or shear an image by parameters (:func:`rotate`, :func:`translate`, :func:`scale`,
+:func:`shear`), or warp it by an affine matrix (:func:`affine`), at the input size; change the size with
+:func:`resize`, :func:`rescale` or :func:`resize_to_be_divisible`. The flips, the elastic transform and the image
+pyramids follow.
 
 .. autofunction:: affine
 .. autofunction:: rotate
@@ -48,11 +66,21 @@ Image 2D transforms
 Image 3D transforms
 -------------------
 
+Warp a volume by an affine matrix (:func:`affine3d`) or rotate it about its centre by an axis-angle vector
+(:func:`rotate3d`), at the input size.
+
 .. autofunction:: affine3d
 .. autofunction:: rotate3d
 
 Matrix transformations
 ----------------------
+
+Build the matrices the warps take: a homography from point pairs (:func:`get_perspective_transform`, and
+:func:`get_perspective_transform3d` from box corners), an affine matrix from a rotation, a translation, a shear or
+all of them (:func:`get_rotation_matrix2d`, :func:`get_translation_matrix2d`, :func:`get_shear_matrix2d`,
+:func:`get_affine_matrix2d`, and in 3D :func:`get_projective_transform`, :func:`get_shear_matrix3d`,
+:func:`get_affine_matrix3d`), the inverse of an affine matrix (:func:`invert_affine_transform`) and ``[R | t]``
+(:func:`projection_from_Rt`). :func:`get_tps_transform` fits the thin-plate spline that :func:`warp_image_tps` takes.
 
 .. autofunction:: get_perspective_transform
 .. autofunction:: get_perspective_transform3d
