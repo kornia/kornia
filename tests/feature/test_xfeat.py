@@ -485,6 +485,20 @@ def test_lighterglue_reference_matches(device, data):
     assert frac > 0.95, f"Only {frac:.1%} of reference matches reproduced within joint distance 2.0 px"
 
 
+@pytest.mark.slow
+@pytest.mark.parametrize("data", ["xfeat_outdoor"], indirect=True)
+def test_xfeat_star_refines_an_image_matched_with_itself_in_place_6418(device, data):
+    # #6418: each cell of an image matched with itself is its own coarse match, so the mean refinement offset is the
+    # bias of the refinement. Measured from bin 4, as the reference does, it is about -1 px on each axis.
+    xfeat = XFeat.from_pretrained().to(device)
+    out = xfeat.detectAndComputeDense(data["img1"].to(device), multiscale=False)
+    refined = xfeat._refine_matches(out, out, xfeat._batch_match(out["descriptors"], out["descriptors"]), 0)
+    displacement = refined[:, :2] - refined[:, 2:]
+    assert displacement.shape[0] > 100
+    assert displacement.mean(0).abs().max() < 0.5
+    assert (displacement.norm(dim=-1) < 1).float().mean() > 0.8
+
+
 class TestConventionsXFeat(BaseTester):
     @staticmethod
     def _net_outputs(peaks, h, w, reliability=0.5):
@@ -643,6 +657,14 @@ class TestConventionsXFeat(BaseTester):
         seen.clear()
         xfeat.detectAndComputeDense(image, -1, False)
         assert seen == [None]
+
+    def test_convention_xfeat_star_offsets_are_measured_from_bin_3_6418(self, device, dtype):
+        # a heatmap peaked at bin (x, y) of its 8 x 8 window moves the keypoint by (x - 3, y - 3)
+        heatmaps = torch.zeros(3, 8, 8, device=device, dtype=dtype)
+        for i, (x, y) in enumerate(((3, 3), (5, 2), (0, 7))):
+            heatmaps[i, y, x] = 20.0
+        expected = torch.tensor([[0.0, 0.0], [2.0, -1.0], [-3.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(XFeat._subpix_softmax2d(heatmaps), expected, atol=1e-3, rtol=0)
 
     def test_smoke_xfeat_star_matching_runs_with_a_scale_of_zero_budget(self, device, dtype):
         torch.manual_seed(0)
