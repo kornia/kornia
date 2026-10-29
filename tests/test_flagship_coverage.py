@@ -60,6 +60,24 @@ def build(suite, module, cv2=None, skc=None):
 
 
 class TestFlagshipCoverage(BaseTester):
+    @pytest.mark.device_agnostic
+    def test_validation_cannot_contribute_training_snapshot(self, monkeypatch, tmp_path, capsys):
+        module = load_suite("losses")
+        output = tmp_path / "validation.json"
+        monkeypatch.setattr(
+            sys, "argv", ["losses", "--forward-only", "--contribute", str(tmp_path), "--json", str(output)]
+        )
+
+        def unexpected_setup(*args, **kwargs):
+            pytest.fail("The incompatible modes must be rejected before setup or any output.")
+
+        monkeypatch.setattr(module, "setup_run", unexpected_setup)
+        with pytest.raises(SystemExit) as error:
+            module.main()
+        assert error.value.code == 2
+        assert "--forward-only cannot be used with --contribute" in capsys.readouterr().err
+        assert not output.exists()
+
     @pytest.mark.parametrize("suite", NEW_OPS)
     @pytest.mark.device_agnostic
     def test_without_optional_libraries(self, suite, monkeypatch):

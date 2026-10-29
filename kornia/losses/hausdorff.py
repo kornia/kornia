@@ -155,7 +155,7 @@ class _HausdorffERLossBase(nn.Module):
             and pred.dtype in (torch.float32, torch.float64)
             and pred.size(1) > 1
             and pred.is_contiguous()
-            and not isinstance(self.alpha, torch.Tensor)
+            and isinstance(self.alpha, (int, float))
             and not is_autocast_enabled()
             and not torch._C._are_functorch_transforms_active()
         ):

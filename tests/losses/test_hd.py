@@ -34,6 +34,20 @@ _CAPTURE_UNAVAILABLE_REASON = (
 
 
 class TestHausdorffLoss(BaseTester):
+    def test_no_grad_numpy_exponents(self, dtype):
+        """Keep per-sample NumPy exponents on the classwise CPU path."""
+        labels = torch.zeros(2, 1, 16, 16, dtype=torch.long)
+        labels[..., 4:12, 4:12] = 1
+        foreground = torch.zeros(2, 1, 16, 16, dtype=dtype)
+        foreground[..., 7:15, 7:15] = 1
+        pred = torch.cat([1 - foreground, foreground], 1)
+        alpha = np.array([2.0, -1.0]).reshape(2, 1, 1, 1)
+        with torch.no_grad():
+            expected = kornia.losses.HausdorffERLoss(k=3, alpha=torch.from_numpy(alpha), reduction="none")(pred, labels)
+            actual = kornia.losses.HausdorffERLoss(k=3, alpha=alpha, reduction="none")(pred, labels)
+        assert actual.shape == (2, 2, 1, 16, 16)
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("reduction", ["none", "mean"])
     def test_no_grad_class_batching(self, device, dtype, reduction):
         """Keep image/class scores and output layout when validation batches the independent class maps."""

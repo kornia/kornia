@@ -46,6 +46,7 @@ same PyTorch ops and are left out rather than timed as look-alikes. Throughput i
 
 ``hausdorff_er_loss`` uses four erosions of a structured 3-class target with shifted predictions.
 ``--forward-only`` times validation under ``torch.no_grad()`` for every row instead of forward + backward.
+Save validation measurements with ``--json``; ``--contribute`` is reserved for the default training regime.
 
 Usage:
     python benchmarks/losses/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -192,6 +193,8 @@ def main() -> None:
     add_flagship_args(parser, ops=OPS)
     parser.add_argument("--forward-only", action="store_true", help="time validation without gradient recording")
     args = parser.parse_args()
+    if args.forward_only and args.contribute:
+        parser.error("--forward-only cannot be used with --contribute; use --json to save validation measurements")
     device, dtype, sync = setup_run(args, opencv=False)
 
     tvops, tvops_error = optional_import("torchvision.ops")
