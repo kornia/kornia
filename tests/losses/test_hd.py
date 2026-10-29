@@ -34,8 +34,10 @@ _CAPTURE_UNAVAILABLE_REASON = (
 
 
 class TestHausdorffLoss(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
     def test_no_grad_numpy_exponents(self, dtype):
-        """Keep per-sample NumPy exponents on the classwise CPU path."""
+        """Keep NumPy exponents classwise on CPU, with NumPy-compatible floating dtypes."""
         labels = torch.zeros(2, 1, 16, 16, dtype=torch.long)
         labels[..., 4:12, 4:12] = 1
         foreground = torch.zeros(2, 1, 16, 16, dtype=dtype)
