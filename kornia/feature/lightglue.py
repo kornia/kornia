@@ -29,6 +29,7 @@ from torch import nn
 from kornia.core._compat import torch_version_lt
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.exceptions import BaseError
 from kornia.core.utils import is_exporting
 from kornia.feature.laf import laf_to_three_points, scale_laf
 
@@ -508,8 +509,13 @@ class LightGlue(nn.Module):
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
             pretrained weights are loaded. ``None`` builds the model from ``default_conf`` and the keyword arguments
             and downloads no weights.
-        **conf: keyword arguments that override entries of ``default_conf``, such as ``filter_threshold``; the
-            configuration of ``features`` is applied after them and wins where both set a key.
+        **conf: keyword arguments that override entries of ``default_conf`` and of the configuration of
+            ``features``, such as ``filter_threshold`` or ``depth_confidence``. The configuration of ``features`` sets
+            the defaults, and an explicit keyword argument always wins, except ``weights``, which must name the
+            checkpoint of ``features`` when ``features`` is given; ``weights=None``, the value in ``default_conf``,
+            counts as not given. This departs on purpose from cvg/LightGlue, which applies the configuration of
+            ``features`` after the keyword arguments, so that the tuning knobs a preset sets, such as ``"xfeat"``'s
+            ``width_confidence``, can be changed.
     """
 
     default_conf: ClassVar[Dict[str, Any]] = {
@@ -585,16 +591,12 @@ class LightGlue(nn.Module):
         "dog_affnet_hardnet": {
             "weights": "doghardnet",
             "input_dim": 128,
-            "width_confidence": -1,
-            "depth_confidence": -1,
             "add_scale_ori": True,
             "scale_coef": 1.0 / 6.0,
         },
         "doghardnet": {
             "weights": "doghardnet",
             "input_dim": 128,
-            "width_confidence": -1,
-            "depth_confidence": -1,
             "add_scale_ori": True,
             "scale_coef": 1.0 / 6.0,
         },
@@ -607,13 +609,24 @@ class LightGlue(nn.Module):
         },
     }
 
-    def __init__(self, features: str = "superpoint", **conf_) -> None:
+    def __init__(self, features: Optional[str] = "superpoint", **conf_) -> None:
         super().__init__()
-        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf_})
+        if conf_.get("weights", "") is None:
+            # `weights=None` is the value of default_conf, so it means "not given", also when default_conf is passed
+            # on. It must not reach `conf.weights`, which names the cached file: "None" would be one cache name for
+            # every preset.
+            conf_ = {k: v for k, v in conf_.items() if k != "weights"}
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
-            for k, v in self.features[features].items():
-                setattr(conf, k, v)
+            # The download URL follows `features` and the cached file name `weights`: they must name one checkpoint,
+            # or another checkpoint is cached under this name. A plain raise, so that disable_checks() keeps it.
+            if conf_.get("weights", self.features[features]["weights"]) != self.features[features]["weights"]:
+                raise BaseError(
+                    "`weights` must name the checkpoint of `features`. To load other weights, build the model with "
+                    "`features=None` and their architecture keyword arguments, then call `load_state_dict`"
+                )
+        preset = self.features[features] if features is not None else {}
+        self.conf = conf = SimpleNamespace(**{**self.default_conf, **preset, **conf_})
         KORNIA_CHECK(not (self.conf.add_scale_ori and self.conf.add_laf))  # we use either scale ori, or LAF
 
         if conf.input_dim != conf.descriptor_dim:

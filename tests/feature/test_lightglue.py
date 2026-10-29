@@ -20,6 +20,8 @@ import unittest.mock
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import BaseError
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.lightglue import (
@@ -976,13 +978,46 @@ class TestConventionsLightGlue(BaseTester):
         with pytest.raises(NotImplementedError, match="orb is not supported"):
             LightGlueMatcher("orb")
 
-    def test_convention_lightglue_features_configuration_wins_over_keyword_arguments(self, device, dtype, monkeypatch):
-        # "disk" sets input_dim, so the keyword argument loses; filter_threshold is not in its configuration, so the
-        # keyword argument stays
+    def test_convention_lightglue_keyword_arguments_win_over_features_configuration(self, device, dtype, monkeypatch):
+        # the configuration of the features gives the defaults, and an explicit keyword argument always wins: "xfeat"
+        # sets width_confidence and filter_threshold, "keynet_affnet_hardnet" turns off pruning and early stopping
         monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
-        lg = LightGlue("disk", input_dim=64, filter_threshold=0.3, n_layers=1)
-        assert lg.conf.input_dim == 128
-        assert lg.conf.filter_threshold == 0.3
+        lg = LightGlue("xfeat", width_confidence=0.5, filter_threshold=0.3, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence, lg.conf.filter_threshold) == (-1, 0.5, 0.3)
+        lg = LightGlue("keynet_affnet_hardnet", depth_confidence=0.95, width_confidence=0.99, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (0.95, 0.99)
+        assert LightGlue("keynet_affnet_hardnet", n_layers=1).conf.depth_confidence == -1
+        assert LightGlue("disk", n_layers=1).conf.input_dim == 128
+        assert LightGlue("disk", input_dim=64, n_layers=1).conf.input_dim == 64
+
+    def test_lightglue_weights_must_name_the_checkpoint_of_features(self, monkeypatch):
+        # the URL follows `features` and the cached file name `weights`: another checkpoint is cached under that name
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        assert LightGlue("disk", weights="disk_lightglue", n_layers=1).conf.weights == "disk_lightglue"
+        # weights=None is the value of default_conf and means "not given", also when default_conf is passed on
+        assert LightGlue("disk", weights=None, n_layers=1).conf.weights == "disk_lightglue"
+        splat = LightGlue("superpoint", **{**LightGlue.default_conf, "n_layers": 1})
+        assert splat.conf.weights == "superpoint_lightglue"
+        with pytest.raises(BaseError, match="must name the checkpoint of `features`"):
+            LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
+        # a plain raise: disable_checks() must not let another checkpoint be cached under this name
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(BaseError, match="must name the checkpoint of `features`"):
+                LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
+    @pytest.mark.parametrize("features", ["doghardnet", "dog_affnet_hardnet"])
+    def test_convention_lightglue_doghardnet_prunes_and_stops_early_by_default(self, features, monkeypatch):
+        # like the other LightGlue weights trained with token-confidence heads; -1 turns either off
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        lg = LightGlue(features, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (0.95, 0.99)
+        lg = LightGlue(features, depth_confidence=-1, width_confidence=-1, n_layers=1)
+        assert (lg.conf.depth_confidence, lg.conf.width_confidence) == (-1, -1)
 
 
 class TestLightGlueAllPrunedScoreDtype(BaseTester):
