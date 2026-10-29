@@ -36,8 +36,8 @@ def crop_and_resize3d(
     r"""Extract crops from 3D volumes (5D tensor) and resize them.
 
     Convention:
-        - input: :math:`(B, C, D, H, W)`; ``size`` is ``(d, h, w)``
-        - ``boxes``: :math:`(B, 8, 3)` corner points in ``(x, y, z)`` order, front face
+        - input: ``(B, C, D, H, W)``; ``size`` is ``(d, h, w)``
+        - ``boxes``: ``(B, 8, 3)`` corner points in ``(x, y, z)`` order, front face
           then back face, each face top-left, top-right, bottom-right, bottom-left —
           same ``(x, y)``/inclusive-pixel convention as :func:`crop_and_resize`, with
           ``z`` anchored at the top-left of the first depth slice (``z = 0``);
@@ -144,7 +144,7 @@ def center_crop3d(
     r"""Crop the 3D volumes (5D tensor) at the center.
 
     Convention:
-        - input: :math:`(B, C, D, H, W)`; ``size`` is ``(d, h, w)``
+        - input: ``(B, C, D, H, W)``; ``size`` is ``(d, h, w)``
         - align_corners: ``True`` by default
         - offset: the crop starts at the integer voxel ``int(D / 2 - d / 2)`` (likewise for the height and width),
           as in :class:`~kornia.augmentation.CenterCrop3D`, so with the default ``align_corners=True`` the output is a
@@ -284,8 +284,8 @@ def crop_by_boxes3d(
     in a batch must be rectangles with same width, height and depth.
 
     Convention:
-        - input: :math:`(B, C, D, H, W)`
-        - ``src_box``/``dst_box``: :math:`(B, 8, 3)` corner points in ``(x, y, z)``
+        - input: ``(B, C, D, H, W)``
+        - ``src_box``/``dst_box``: ``(B, 8, 3)`` corner points in ``(x, y, z)``
           order, front face then back face, each face top-left, top-right,
           bottom-right, bottom-left — same convention as :func:`crop_and_resize3d`;
           ``dst_box`` determines the output resolution
@@ -405,9 +405,9 @@ def crop_by_transform_mat3d(
     """Perform crop transform on 3D volumes (5D tensor) given a perspective transformation matrix.
 
     Convention:
-        - input: :math:`(B, C, D, H, W)`; ``out_size`` is ``(d, h, w)``
+        - input: ``(B, C, D, H, W)``; ``out_size`` is ``(d, h, w)``
         - ``transform`` is the source→destination **pixel** transform, accepted as
-          either :math:`(B, 3, 4)` affine or :math:`(B, 4, 4)` homogeneous; only the top
+          either ``(B, 3, 4)`` affine or ``(B, 4, 4)`` homogeneous; only the top
           three rows are used, so a projective last row is ignored (unlike the 2D
           :func:`crop_by_transform_mat`)
         - align_corners: ``True`` by default

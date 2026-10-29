@@ -380,7 +380,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     used.
 
     Convention:
-        - The image is :math:`(C, H, W)` with 1 or 3 channels. A float image is read in [0, 1] and an integer one in
+        - The image is ``(C, H, W)`` with 1 or 3 channels. A float image is read in [0, 1] and an integer one in
           [0, 255], so integer 255 and float 1.0 print alike; a value outside the range raises.
         - Each pixel prints as two spaces on its background colour, one text line per image row. An image wider than
           ``max_width`` pixels is first resized to ``max_width`` pixels wide, keeping its aspect ratio, so a line is at

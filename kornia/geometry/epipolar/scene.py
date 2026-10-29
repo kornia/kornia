@@ -42,12 +42,12 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     Returns:
         A dictionary of tensors on torch's default device and in the default dtype:
 
-        - ``"K"``: the camera matrix shared by all views, with shape :math:`(1, 3, 3)`.
-        - ``"R"``: the rotation of each view, with shape :math:`(V, 3, 3)`.
-        - ``"t"``: the translation of each view, with shape :math:`(V, 3, 1)`.
-        - ``"P"``: the projection matrix :math:`K [R|t]` of each view, with shape :math:`(V, 3, 4)`.
-        - ``"points3d"``: the 3d points, in :math:`[0, 1)` per coordinate, with shape :math:`(1, N, 3)`.
-        - ``"points2d"``: the projection of ``points3d`` by each ``P``, with shape :math:`(V, N, 2)`.
+        - ``"K"``: the camera matrix shared by all views, with shape ``(1, 3, 3)``.
+        - ``"R"``: the rotation of each view, with shape ``(V, 3, 3)``.
+        - ``"t"``: the translation of each view, with shape ``(V, 3, 1)``.
+        - ``"P"``: the projection matrix :math:`K [R|t]` of each view, with shape ``(V, 3, 4)``.
+        - ``"points3d"``: the 3d points, in :math:`[0, 1)` per coordinate, with shape ``(1, N, 3)``.
+        - ``"points2d"``: the projection of ``points3d`` by each ``P``, with shape ``(V, N, 2)``.
 
     """
     # Generate the 3d points

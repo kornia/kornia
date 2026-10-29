@@ -55,8 +55,8 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> tor
           gives a float32 result for half-precision images.
 
     Args:
-        image: the input image with arbitrary shape :math:`(*)`.
-        target: the labels image with arbitrary shape :math:`(*)`.
+        image: the input image with arbitrary shape ``(*)``.
+        target: the labels image with arbitrary shape ``(*)``.
         max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
 
     Return:

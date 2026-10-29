@@ -41,7 +41,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
         - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:

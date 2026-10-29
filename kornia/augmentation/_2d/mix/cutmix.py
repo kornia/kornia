@@ -64,12 +64,12 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             but will raise a deprecation warning when False.
 
     Inputs:
-        - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Raw labels, shape of :math:`(B)`.
+        - Input image tensors, shape of ``(B, C, H, W)``.
+        - Raw labels, shape of ``(B)``.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
-        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Adjusted image, shape of ``(B, C, H, W)``.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
 
     Convention:

@@ -939,16 +939,16 @@ class RANSAC(nn.Module):
         r"""Call main forward method to execute the RANSAC algorithm.
 
         Args:
-            kp1: source image keypoints :math:`(N, 2)` (or line segments :math:`(N, 2, 2)`).
+            kp1: source image keypoints ``(N, 2)`` (or line segments ``(N, 2, 2)``).
             kp2: target image keypoints with the same shape. For PROSAC, both inputs must be sorted
                 best-first using the same correspondence-quality ordering. Essential estimation uses
                 camera-normalized coordinates and a threshold in those units.
             weights: optional correspondences weights. Not used now.
 
         Returns:
-            - Estimated model, shape of :math:`(3, 3)`, or zeros if no valid model is found. A model needs
+            - Estimated model, shape of ``(3, 3)``, or zeros if no valid model is found. A model needs
               more inliers than its minimal sample, since a model fitted to a sample fits that sample.
-            - Boolean inlier mask, shape of :math:`(N,)`, in the supplied correspondence order.
+            - Boolean inlier mask, shape of ``(N,)``, in the supplied correspondence order.
 
         """
         self.validate_inputs(kp1, kp2, weights)

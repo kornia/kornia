@@ -67,10 +67,10 @@ class HourglassBackbone(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_images: Input image batch with shape :math:`(B, C, H, W)`.
+            input_images: Input image batch with shape ``(B, C, H, W)``.
 
         Returns:
-            Feature map with shape :math:`(B, 256, H/4, W/4)`.
+            Feature map with shape ``(B, 256, H/4, W/4)``.
         """
         return self.net(input_images)
 
@@ -99,10 +99,10 @@ class MultitaskHead(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+            x: Input feature tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Concatenated predictions from all heads with shape :math:`(B, 5, H, W)`.
+            Concatenated predictions from all heads with shape ``(B, 5, H, W)``.
         """
         return torch.cat([head(x) for head in self.heads], dim=1)
 
@@ -133,7 +133,7 @@ class Bottleneck2D(nn.Module):
         r"""Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+            x: Input feature tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Residual block output tensor with shape :math:`(B, 2 \times \text{planes}, H', W')`.
@@ -209,10 +209,10 @@ class Hourglass(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+            x: Input feature tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Hourglass output feature tensor with shape :math:`(B, C, H, W)`.
+            Hourglass output feature tensor with shape ``(B, C, H, W)``.
         """
         return self._hour_glass_forward(self.depth, x)
 
@@ -287,10 +287,10 @@ class HourglassNet(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            x: Input image tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Output feature map of the last stack with shape :math:`(B, 256, H/4, W/4)`.
+            Output feature map of the last stack with shape ``(B, 256, H/4, W/4)``.
         """
         out = []
         x = self.conv1(x)
@@ -353,10 +353,10 @@ class SuperpointDecoder(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+            input_features: Input feature map with shape ``(B, C, H/4, W/4)``.
 
         Returns:
-            Junction heatmap prediction with shape :math:`(B, H, W)`.
+            Junction heatmap prediction with shape ``(B, H, W)``.
         """
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
@@ -424,10 +424,10 @@ class PixelShuffleDecoder(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+            input_features: Input feature map with shape ``(B, C, H/4, W/4)``.
 
         Returns:
-            Line heatmap prediction with shape :math:`(B, H, W)`.
+            Line heatmap prediction with shape ``(B, H, W)``.
         """
         # Iterate til output block
         out = input_features
@@ -461,10 +461,10 @@ class SuperpointDescriptor(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+            input_features: Input feature map with shape ``(B, C, H/4, W/4)``.
 
         Returns:
-            Semi-dense descriptors with shape :math:`(B, 128, H/4, W/4)`.
+            Semi-dense descriptors with shape ``(B, 128, H/4, W/4)``.
         """
         feat = self.relu(self.convPa(input_features))
         return self.convPb(feat)
@@ -509,7 +509,7 @@ class SOLD2Net(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_images: Input image batch with shape :math:`(B, 1, H, W)`.
+            input_images: Input image batch with shape ``(B, 1, H, W)``.
 
         Returns:
             Dictionary containing predicted junction heatmap, line heatmap, and optional descriptors.

@@ -54,8 +54,8 @@ def crop_and_resize(
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
         defaults and sampling rules.
 
-        - input: :math:`(B, C, H, W)`; ``size`` is ``(h, w)``
-        - ``boxes``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order
+        - input: ``(B, C, H, W)``; ``size`` is ``(h, w)``
+        - ``boxes``: ``(B, 4, 2)`` corner points in ``(x, y)`` order
           top-left, top-right, bottom-right, bottom-left; coordinates are
           **inclusive** pixel positions (box ``(1, 1)``..``(2, 2)`` selects a
           :math:`2 \times 2` pixel block), origin at top-left
@@ -165,7 +165,7 @@ def center_crop(
     r"""Crop the 2D images (4D torch.Tensor) from the center.
 
     Convention:
-        - input: :math:`(B, C, H, W)` (strictly 4D — no unbatched ``(C, H, W)``/
+        - input: ``(B, C, H, W)`` (strictly 4D — no unbatched ``(C, H, W)``/
           ``(H, W)`` input is accepted); ``size`` is ``(h, w)``
         - offset: the crop starts at the integer pixel ``int(H / 2 - h / 2)`` (likewise for the width), as in
           :class:`CenterCrop2D`, so the output is a sub-image of the input. With an odd margin the extra pixel is
@@ -262,8 +262,8 @@ def crop_by_boxes(
     the bounding boxes in a batch must be rectangles with same width and height.
 
     Convention:
-        - input: :math:`(B, C, H, W)`
-        - ``src_box``/``dst_box``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order
+        - input: ``(B, C, H, W)``
+        - ``src_box``/``dst_box``: ``(B, 4, 2)`` corner points in ``(x, y)`` order
           top-left, top-right, bottom-right, bottom-left — same convention as
           :func:`crop_and_resize`; ``dst_box`` determines the output resolution
         - a single box (batch size 1) broadcasts over a batch of images, but a single
@@ -368,11 +368,11 @@ def crop_by_transform_mat(
     """Perform crop transform on 2D images (4D torch.Tensor) given a perspective transformation matrix.
 
     Convention:
-        - input: :math:`(B, C, H, W)`; ``out_size`` is ``(h, w)``
+        - input: ``(B, C, H, W)``; ``out_size`` is ``(h, w)``
         - ``transform`` is the source→destination **pixel** transform, accepted as
-          either :math:`(B, 2, 3)` affine or :math:`(B, 3, 3)` homogeneous; dispatch is
-          by shape — :math:`(B, 2, 3)` takes the cheaper :func:`warp_affine` path,
-          while :math:`(B, 3, 3)` takes :func:`warp_perspective` and uses the **full**
+          either ``(B, 2, 3)`` affine or ``(B, 3, 3)`` homogeneous; dispatch is
+          by shape — ``(B, 2, 3)`` takes the cheaper :func:`warp_affine` path,
+          while ``(B, 3, 3)`` takes :func:`warp_perspective` and uses the **full**
           matrix, so a non-trivial third (projective) row changes the output; an
           ``out_size`` dimension of ``1`` is handled like any other size
 
@@ -435,7 +435,7 @@ def _crop_inverse_by_transform_mat(
     only pixel, so the whole canvas axis gets its value, and with ``False`` it blends it into the next pixel. One
     pixel of padding on each side of such an axis, in the warp's own padding (a reflected one-pixel axis repeats
     its pixel), gives the sampler a neighbour to interpolate towards, and ``transform`` is shifted to match.
-    ``transform`` is the :math:`(B, 3, 3)` crop-to-canvas pixel matrix.
+    ``transform`` is the ``(B, 3, 3)`` crop-to-canvas pixel matrix.
     """
     pad_h = int(input_tensor.shape[-2] == 1)
     pad_w = int(input_tensor.shape[-1] == 1)
@@ -461,9 +461,9 @@ def crop_by_indices(
     """Crop tensors with naive indices.
 
     Convention:
-        - input: :math:`(B, C, H, W)`; ``size`` is ``(h, w)`` if given, else inferred
+        - input: ``(B, C, H, W)``; ``size`` is ``(h, w)`` if given, else inferred
           from ``src_box``
-        - ``src_box``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order top-left,
+        - ``src_box``: ``(B, 4, 2)`` corner points in ``(x, y)`` order top-left,
           top-right, bottom-right, bottom-left — same convention as :func:`crop_and_resize`
         - unlike the other crop operators in this module: ``interpolation=`` (not
           ``mode=``), ``align_corners=None`` by default (not ``True``), and an
@@ -727,7 +727,7 @@ class CenterCrop2D(nn.Module):
         perspective-resampling (subpixel/interpolated) or by direct slicing.
 
         Args:
-            input: Image batch with shape :math:`(B, C, H, W)`, where
+            input: Image batch with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 source height, and :math:`W` is source width.
 

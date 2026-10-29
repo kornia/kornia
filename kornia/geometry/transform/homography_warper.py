@@ -50,10 +50,10 @@ class BaseWarper(nn.Module):
 
         Args:
             patch_src: Source image or patch tensor with shape
-                :math:`(B, C, H, W)`, where :math:`B` is batch size,
+                ``(B, C, H, W)``, where :math:`B` is batch size,
                 :math:`C` is channels, :math:`H` is source height, and
                 :math:`W` is source width.
-            src_homo_dst: Optional homography with shape :math:`(B, 3, 3)`
+            src_homo_dst: Optional homography with shape ``(B, 3, 3)``
                 mapping destination coordinates into the source image. Concrete
                 implementations may also use a grid precomputed from this
                 matrix.
@@ -68,7 +68,7 @@ class BaseWarper(nn.Module):
         """Precompute a sampling grid for repeated homography warps.
 
         Args:
-            src_homo_dst: Homography tensor with shape :math:`(B, 3, 3)` used
+            src_homo_dst: Homography tensor with shape ``(B, 3, 3)`` used
                 to transform destination grid points into source coordinates.
         """
         ...
@@ -142,7 +142,7 @@ class HomographyWarper(BaseWarper):
         Args:
             src_homo_dst: Homography or homographies (stacked) to
               transform all points in the grid. Shape of the homography
-              has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
+              has to be ``(1, 3, 3)``, ``(N, 3, 3)`` or ``(N, 1, 3, 3)``.
               The homography assumes normalized coordinates [-1, 1] if
               normalized_coordinates is True, and pixel coordinates otherwise.
 
@@ -170,8 +170,8 @@ class HomographyWarper(BaseWarper):
             Patch sampled at locations from source to destination.
 
         Shape:
-            - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`
-            - Output: :math:`(N, C, H, W)`
+            - Input: ``(N, C, H, W)`` and ``(N, 3, 3)``
+            - Output: ``(N, C, H, W)``
 
         Example:
             >>> input = torch.rand(1, 3, 32, 32)

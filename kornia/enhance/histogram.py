@@ -123,7 +123,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
+        x: Input torch.Tensor to compute the histogram with shape ``(B, D)``.
         bins: The bin centers, with shape :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability.
@@ -165,8 +165,8 @@ def histogram2d(
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x1: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
-        x2: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
+        x1: Input torch.Tensor to compute the histogram with shape ``(B, D)``.
+        x2: Input torch.Tensor to compute the histogram with shape ``(B, D)``.
         bins: The bin centers, with shape :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability. Default: 1e-10.
@@ -262,7 +262,7 @@ def image_histogram2d(
 
     Args:
         image: Input torch.Tensor to compute the histogram with shape
-          :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+          ``(H, W)``, ``(C, H, W)`` or ``(B, C, H, W)``.
         min: Lower end of the interval (inclusive).
         max: Upper end of the interval (inclusive). Ignored when
           :attr:`centers` is specified.

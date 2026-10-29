@@ -209,7 +209,7 @@ class DinoVisionTransformer(nn.Module):
         """Interpolate positional encodings to the current patch grid.
 
         Args:
-            x: Token sequence with class token prepended, shape :math:`(B, N+1, D)`.
+            x: Token sequence with class token prepended, shape ``(B, N+1, D)``.
             w: Image width in pixels.
             h: Image height in pixels.
 
@@ -245,11 +245,11 @@ class DinoVisionTransformer(nn.Module):
         """Prepare image patch tokens before transformer encoding.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
-            masks: Optional boolean mask tensor with shape :math:`(B, N)` for masked patch tokens.
+            x: Input image tensor with shape ``(B, C, H, W)``.
+            masks: Optional boolean mask tensor with shape ``(B, N)`` for masked patch tokens.
 
         Returns:
-            Token sequence with class token, positional embeddings, and optional masks, shape :math:`(B, N+1, D)`.
+            Token sequence with class token, positional embeddings, and optional masks, shape ``(B, N+1, D)``.
         """
         _B, _nc, w, h = x.shape
         x = self.patch_embed(x)
@@ -263,8 +263,8 @@ class DinoVisionTransformer(nn.Module):
         """Compute transformer features for one image tensor.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
-            masks: Optional boolean mask tensor with shape :math:`(B, N)` or ``None``.
+            x: Input image tensor with shape ``(B, C, H, W)``.
+            masks: Optional boolean mask tensor with shape ``(B, N)`` or ``None``.
 
         Returns:
             Feature dictionary with keys ``x_norm_clstoken``, ``x_norm_patchtokens``, ``x_prenorm``, and ``masks``.
@@ -319,9 +319,9 @@ class DinoVisionTransformer(nn.Module):
         """Return selected intermediate transformer layer outputs.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            x: Input image tensor with shape ``(B, C, H, W)``.
             n: Number of last transformer blocks to return, or explicit list of block indices.
-            reshape: If ``True``, reshape patch tokens from :math:`(B, N, D)` to :math:`(B, D, H_p, W_p)`.
+            reshape: If ``True``, reshape patch tokens from ``(B, N, D)`` to ``(B, D, H_p, W_p)``.
             return_class_token: If ``True``, return ``(patch_tokens, class_token)`` tuples.
             norm: If ``True``, apply layer normalization to each output.
 

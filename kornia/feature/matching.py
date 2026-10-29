@@ -70,10 +70,10 @@ def _get_lazy_distance_matrix(
     """Check validity of provided distance matrix, or calculates L2-distance matrix if dm is not provided.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         dm_: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     """
     if dm_ is None:
@@ -88,8 +88,8 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Output empty tensors.
 
     Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+            - Descriptor distance of matching descriptors, shape of ``(0, 1)``.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(0, 2)``.
 
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
@@ -104,8 +104,8 @@ def match_nn(
 
     Convention:
         - Every ``match_*`` function returns ``(dists, idxs)``, one row per match. ``idxs`` is an int64
-          :math:`(M, 2)` tensor of ``(index in desc1, index in desc2)`` rows (:func:`match_smnn_batched` adds the
-          batch index as a first column). ``dists`` is :math:`(M, 1)`, in the dtype of ``dm`` when it is given and in
+          ``(M, 2)`` tensor of ``(index in desc1, index in desc2)`` rows (:func:`match_smnn_batched` adds the
+          batch index as a first column). ``dists`` is ``(M, 1)``, in the dtype of ``dm`` when it is given and in
           the descriptor dtype otherwise, except that :func:`match_adalam` returns float32. Lower values are better,
           and what they are depends on the function:
 
@@ -126,21 +126,21 @@ def match_nn(
           :func:`match_nn` and :func:`match_mnn` accept any matrix in which smaller is better and return its
           entries, while the ratio tests divide its entries, so they need non-negative values, and squared
           distances need ``th ** 2``.
-        - An empty desc1 or desc2 gives a :math:`(0, 1)` and a :math:`(0, 2)` tensor (:math:`(0, 3)` for
+        - An empty desc1 or desc2 gives a ``(0, 1)`` and a ``(0, 2)`` tensor (``(0, 3)`` for
           :func:`match_smnn_batched`). The ratio tests need a second neighbour: :func:`match_snn` and
           :func:`match_fginn` return no match unless desc2 has two rows, and :func:`match_smnn`,
           :func:`match_smnn_batched` and :func:`match_adalam`, which scores its putative matches by the same ratio,
           need two rows in both.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Returns:
-        - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
+        - Descriptor distance of matching descriptors, shape of ``(B1, 1)``.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(B1, 2)``.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -164,14 +164,14 @@ def match_mnn(
         nearest neighbour of the other.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
-        - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
+        - Descriptor distance of matching descriptors, shape of ``(B3, 1)``.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(B3, 2)``,
           where 0 <= B3 <= min(B1, B2)
 
     """
@@ -208,15 +208,15 @@ def match_snn(
         distance.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         th: distance ratio threshold.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
-        - Ratio of the nearest to the second-nearest distance of each match, shape of :math:`(B3, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+        - Ratio of the nearest to the second-nearest distance of each match, shape of ``(B3, 1)``.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
 
     """
@@ -252,16 +252,16 @@ def match_smnn(
         - ``th`` defaults to 0.95, where :func:`match_snn` and :func:`match_fginn` default to 0.8.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
         th: distance ratio threshold.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
-        - The larger of the two distance ratios of each match, shape of :math:`(B3, 1)`.
+        - The larger of the two distance ratios of each match, shape of ``(B3, 1)``.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-          shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
+          shape of ``(B3, 2)`` where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -312,17 +312,17 @@ def match_smnn_batched(
         slightly from those of :func:`match_smnn` on the half-precision descriptors.
 
     Args:
-        desc1: First descriptors, shape :math:`(B, N, D)`.
-        desc2: Second descriptors, shape :math:`(B, M, D)`.
+        desc1: First descriptors, shape ``(B, N, D)``.
+        desc2: Second descriptors, shape ``(B, M, D)``.
         th: Inclusive distance-ratio threshold.
-        dm: Optional precomputed L2 distances, shape :math:`(B, N, M)`.
-        mask1: Optional boolean mask of valid first descriptors, shape :math:`(B, N)`.
-        mask2: Optional boolean mask of valid second descriptors, shape :math:`(B, M)`.
+        dm: Optional precomputed L2 distances, shape ``(B, N, M)``.
+        mask1: Optional boolean mask of valid first descriptors, shape ``(B, N)``.
+        mask2: Optional boolean mask of valid second descriptors, shape ``(B, M)``.
             Masks allow padding variable-length pairs; padding never becomes a neighbor.
 
     Returns:
-        - Ratios, shape :math:`(K, 1)`, with the input device and dtype.
-        - Long indices, shape :math:`(K, 3)`: ``(batch_index, index_in_desc1, index_in_desc2)``.
+        - Ratios, shape ``(K, 1)``, with the input device and dtype.
+        - Long indices, shape ``(K, 3)``: ``(batch_index, index_in_desc1, index_in_desc2)``.
           Indices refer to the original padded tensors, sorted by batch and first-descriptor index.
           A pair with fewer than two valid descriptors on either side contributes no matches.
 
@@ -445,23 +445,23 @@ def match_fginn(
         - Only the centres of ``lafs2`` are read, and ``spatial_th`` is in their units: pixels for LAFs in pixels.
 
     Args:
-        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-        lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`. Accepted for API symmetry with
+        desc1: Batch of descriptors of a shape ``(B1, D)``.
+        desc2: Batch of descriptors of a shape ``(B2, D)``.
+        lafs1: LAFs of a shape ``(1, B1, 2, 3)``. Accepted for API symmetry with
           :func:`~kornia.feature.match_adalam` but not read by this function -- only
           ``lafs2`` feeds the geometric check.
-        lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
+        lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
         th: distance ratio threshold.
         spatial_th: minimal distance between the ``lafs2`` centres of the 1st and the 2nd nearest neighbor, in the
           units of those centres.
         mutual: also perform mutual nearest neighbor check.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+          to each descriptor in desc2, shape of ``(B1, B2)``.
 
     Return:
         - Ratio of the nearest to the second-neighbour distance of each match, see the Convention block, shape of
-          :math:`(B3, 1)`.
-        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+          ``(B3, 1)``.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
 
     """
@@ -539,13 +539,13 @@ class DescriptorMatcher(nn.Module):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            desc1: Batch of descriptors of a shape ``(B1, D)``.
+            desc2: Batch of descriptors of a shape ``(B2, D)``.
 
         Returns:
-            - ``dists`` of the matching function, see :func:`~kornia.feature.match_nn`, shape of :math:`(B3, 1)`.
+            - ``dists`` of the matching function, see :func:`~kornia.feature.match_nn`, shape of ``(B3, 1)``.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+                shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
 
         """
         if self.match_mode == "nn":
@@ -672,17 +672,17 @@ class DescriptorMatcherWithSteerer(nn.Module):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            desc1: Batch of descriptors of a shape ``(B1, D)``.
+            desc2: Batch of descriptors of a shape ``(B2, D)``.
             normalize: bool to decide whether to F.normalize descriptors to unit norm.
             subset_size: If set, the subset size to use for determining optimal
                 number of rotations. Smaller subset size leads to faster but less
                 accurate matching. Only used when `self.steer_mode` is `"global"`.
 
         Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - Descriptor distance of matching descriptors, shape of ``(B3, 1)``.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+                shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
             - Number of global rotations from desc1 to desc2, in terms of `self.steerer_order`
                 (will be `None` if `self.steer_mode` is `local`).
 
@@ -766,15 +766,15 @@ class GeometryAwareDescriptorMatcher(nn.Module):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-            lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-            lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
+            desc1: Batch of descriptors of a shape ``(B1, D)``.
+            desc2: Batch of descriptors of a shape ``(B2, D)``.
+            lafs1: LAFs of a shape ``(1, B1, 2, 3)``.
+            lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
 
         Returns:
-            - ``dists`` of the matching function, see :func:`~kornia.feature.match_nn`, shape of :math:`(B3, 1)`.
+            - ``dists`` of the matching function, see :func:`~kornia.feature.match_nn`, shape of ``(B3, 1)``.
             - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+                shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
 
         """
         if self.match_mode == "fginn":
