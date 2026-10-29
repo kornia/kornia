@@ -267,9 +267,7 @@ def extract_local_patterns(
     return im1loc[sorting_perm], im2loc[sorting_perm], ransidx, tokp1[sorting_perm], tokp2[sorting_perm]
 
 
-def _merge_duplicate_matches(
-    matches: torch.Tensor, dists: torch.Tensor, n2: int
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def _merge_duplicate_matches(matches: torch.Tensor, dists: torch.Tensor, n2: int) -> Tuple[torch.Tensor, torch.Tensor]:
     """Keep each match once, with the smallest distance ratio of its copies.
 
     Overlapping neighbourhoods accept the same match in several local RANSACs, each with its own confidence; the best

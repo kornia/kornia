@@ -1,0 +1,1 @@
+`match_adalam` and `AdalamFilter` report, for a match accepted by several overlapping local verifications, the distance ratio of its most confident one; they used to report the ratio of whichever copy came first, which depended on the order of the neighbourhoods and the device's sort.
