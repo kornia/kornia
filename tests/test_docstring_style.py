@@ -20,7 +20,9 @@
 ``testing/docstring_rollout.py`` lists the modules that are converted. For those, this file enforces what a reader,
 an IDE or a coding agent relies on and what a refactor silently breaks; the shape rule applies everywhere:
 
-* every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs;
+* every public function and class has a docstring, so none escapes the checks below;
+* every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
+  unless its title line is ``Alias of :func:`target`.``, which forwards to the target and needs none;
 * every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
   ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
   object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
@@ -52,6 +54,7 @@ from testing.docstring_rollout import (
     SEE_ALSO_EXCEPTIONS,
 )
 from testing.docstring_style import (
+    alias_target,
     catalog_missing,
     catalog_required,
     catalog_unimportable,
@@ -69,6 +72,7 @@ from testing.docstring_style import (
     rst_pages,
     see_also_entries,
     sphinx_registry,
+    undocumented_public_objects,
 )
 
 KORNIA_ROOT = Path(kornia.__file__).resolve().parent
@@ -80,6 +84,13 @@ INTERSPHINX = intersphinx_names(DOCS)
 CONVERTED = sorted(
     ((qualified, obj) for obj, qualified in public_objects().values() if covered(obj.__module__, DOCSTRING_MODULES)),
     key=lambda pair: pair[0],
+)
+UNDOCUMENTED = sorted(
+    (
+        qualified
+        for obj, qualified in undocumented_public_objects().values()
+        if covered(obj.__module__, DOCSTRING_MODULES)
+    ),
 )
 
 
@@ -143,11 +154,22 @@ def test_rollout_lists_are_real() -> None:
         assert reason.strip(), f"SEE_ALSO_EXCEPTIONS entry {key!r} needs a reason"
 
 
+@pytest.mark.parametrize("qualified", UNDOCUMENTED, ids=UNDOCUMENTED)
+def test_converted_object_has_docstring(qualified: str) -> None:
+    pytest.fail(
+        f"{qualified} is exported without a docstring, so the checks cannot see it; write one. A thin wrapper "
+        "that only forwards to another object starts with 'Alias of :func:`target`.'"
+    )
+
+
 @pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
 def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
     if qualified in SEE_ALSO_EXCEPTIONS:
         pytest.skip(f"excepted: {SEE_ALSO_EXCEPTIONS[qualified]}")
-    entries = see_also_entries(own_docstring(obj))
+    doc = own_docstring(obj)
+    entries = see_also_entries(doc)
+    if entries is None and alias_target(doc):
+        return  # "Alias of :func:`target`." forwards to the target, so a See Also would only repeat it
     assert entries, (
         f"{qualified} needs a 'See Also:' section with at least one bullet like "
         "'- :func:`name`: how it differs.' (or an entry in SEE_ALSO_EXCEPTIONS with a reason)"

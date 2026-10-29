@@ -29,6 +29,7 @@ from kornia.geometry.boxes import Boxes, Boxes3D
 from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 
 from testing.docstring_style import (
+    alias_target,
     catalog_missing,
     catalog_required,
     catalog_unimportable,
@@ -45,6 +46,7 @@ from testing.docstring_style import (
     resolve_reference,
     see_also_entries,
     sphinx_registry,
+    undocumented_public_objects,
 )
 
 DOCS = Path(__file__).resolve().parents[1] / "docs" / "source"
@@ -567,3 +569,42 @@ def test_own_docstring_ignores_whitespace_only():
         """ """
 
     assert own_docstring(blank) is None
+
+
+@pytest.mark.parametrize(
+    ("doc", "target"),
+    [
+        ("Alias of :func:`axis_angle_to_rotation_matrix`.", "axis_angle_to_rotation_matrix"),
+        ("Alias of :class:`kornia.geometry.depth.DepthWarper`.", "kornia.geometry.depth.DepthWarper"),
+        (
+            "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`.",
+            "kornia.geometry.conversions.rotation_matrix_to_axis_angle",
+        ),
+        ("Alias of :py:func:`foo`.\n\nMore text.", "foo"),
+    ],
+)
+def test_alias_target_accepts_an_alias_title(doc, target):
+    assert alias_target(doc) == target
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        "Alias of :func:`foo`",
+        "Alias of :func:`foo` with a twist.",
+        "Alias of :func:`foo` and :func:`bar`.",
+        "Alias for :func:`foo`.",
+        "Return the thing.\nAlias of :func:`foo`.",
+        "Alias of foo.",
+        "",
+    ],
+)
+def test_alias_target_rejects_other_titles(doc):
+    assert alias_target(doc) is None
+
+
+def test_undocumented_public_objects_complements_public_objects():
+    documented, undocumented = public_objects(), undocumented_public_objects()
+    assert not documented.keys() & undocumented.keys()
+    assert all(own_docstring(obj) is None for obj, _ in undocumented.values())
+    assert undocumented, "kornia still exports functions without a docstring"

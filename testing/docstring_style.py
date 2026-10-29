@@ -100,13 +100,8 @@ def _is_kornia_function_or_class(obj: object) -> bool:
 
 
 @cache
-def public_objects() -> dict[int, tuple[object, str]]:
-    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for every exported kornia function and class with a docstring.
-
-    Covers every name in the ``__all__`` of a non-private kornia module that is a function or class defined in
-    kornia and has a docstring of its own, deduplicated by object identity. Names starting with an underscore are
-    out of scope. The dict is cached and shared between callers, who must not mutate it.
-    """
+def _exported_objects() -> tuple[tuple[object, str], ...]:
+    """List ``(obj, "module.qualname")`` for every exported kornia function and class, deduplicated by identity."""
     collected: dict[int, tuple[object, str]] = {}
     for module_name in modules_declaring_all():
         module = _import_exported(module_name)
@@ -117,9 +112,30 @@ def public_objects() -> dict[int, tuple[object, str]]:
             warnings.simplefilter("ignore")
             exported = [getattr(module, name, None) for name in module.__all__ if not name.startswith("_")]
         for obj in exported:
-            if _is_kornia_function_or_class(obj) and own_docstring(obj):
-                collected[id(obj)] = (obj, f"{obj.__module__}.{obj.__qualname__}")
-    return collected
+            if _is_kornia_function_or_class(obj):
+                collected.setdefault(id(obj), (obj, f"{obj.__module__}.{obj.__qualname__}"))
+    return tuple(collected.values())
+
+
+@cache
+def public_objects() -> dict[int, tuple[object, str]]:
+    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for every exported kornia function and class with a docstring.
+
+    Covers every name in the ``__all__`` of a non-private kornia module that is a function or class defined in
+    kornia and has a docstring of its own, deduplicated by object identity. Names starting with an underscore are
+    out of scope. The dict is cached and shared between callers, who must not mutate it.
+    """
+    return {id(obj): (obj, qualified) for obj, qualified in _exported_objects() if own_docstring(obj)}
+
+
+@cache
+def undocumented_public_objects() -> dict[int, tuple[object, str]]:
+    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for every exported kornia function and class without a docstring.
+
+    The complement of ``public_objects()`` over the same walk: ``public_objects()`` cannot see these, so a converted
+    module could otherwise keep one forever. The dict is cached and shared between callers, who must not mutate it.
+    """
+    return {id(obj): (obj, qualified) for obj, qualified in _exported_objects() if not own_docstring(obj)}
 
 
 def covered(module_name: str, prefixes: Iterable[str]) -> bool:
@@ -158,6 +174,19 @@ def math_shape_roles(text: str) -> list[str]:
 # The Python-domain roles that link to an object. ``:mod:`` links to a module page and is not checked here.
 _PY_ROLES = "func|class|meth|attr|data|const|exc|obj"
 _XREF_ROLE = re.compile(rf":(?:py:)?({_PY_ROLES}):`~?([^`]+)`")
+
+
+_ALIAS_TITLE = re.compile(rf"Alias of :(?:py:)?(?:{_PY_ROLES}):`~?([^`\s]+)`\.")
+
+
+def alias_target(doc: str) -> str | None:
+    """Return the target of an ``Alias of :role:`target`.`` title line, or ``None`` when ``doc`` has another title.
+
+    Only the first line counts: it must read exactly ``Alias of``, one Python-domain role with an optional leading
+    ``~``, and a closing period. The returned target has no ``~``.
+    """
+    match = _ALIAS_TITLE.fullmatch(doc.strip().split("\n", 1)[0].strip())
+    return match.group(1) if match else None
 
 
 def docstring_roles(doc: str) -> list[tuple[str, str]]:
