@@ -135,14 +135,15 @@ class Attention(nn.Module):
     """Implement the optimized multi-head attention mechanism for LightGlue.
 
     Args:
-        allow_flash: Whether to enable FlashAttention for increased performance.
+        allow_flash: Whether to run the attention of CUDA tensors in float16, where PyTorch can select its
+            FlashAttention kernel. Which ``scaled_dot_product_attention`` backends PyTorch may use stays a
+            process-wide setting of the caller (``torch.nn.attention.sdpa_kernel``); this module does not change it.
     """
 
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
         self.allow_flash = allow_flash
         self._windows_old_torch = sys.platform == "win32" and torch_version_lt(2, 6, 0)
-        torch.backends.cuda.enable_flash_sdp(allow_flash)
 
     def forward(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None
@@ -185,7 +186,8 @@ class SelfBlock(nn.Module):
     Args:
         embed_dim: The dimension of the feature embeddings.
         num_heads: The number of attention heads.
-        flash: Whether to use FlashAttention. Default: False.
+        flash: Whether to run the attention of CUDA tensors in float16, where PyTorch can select its FlashAttention
+            kernel (see :class:`Attention`). Default: False.
         bias: Whether to include bias in the linear layers. Default: True.
     """
 
@@ -239,7 +241,8 @@ class CrossBlock(nn.Module):
     Args:
         embed_dim: The dimension of the feature embeddings.
         num_heads: The number of attention heads.
-        flash: Whether to use FlashAttention. Default: False.
+        flash: Whether to run the attention of CUDA tensors in float16, where PyTorch can select its FlashAttention
+            kernel (see :class:`Attention`). Default: False.
         bias: Whether to include bias in the linear layers. Default: True.
     """
 
@@ -247,7 +250,6 @@ class CrossBlock(nn.Module):
         super().__init__()
         self.heads = num_heads
         dim_head = embed_dim // num_heads
-        self.scale = dim_head**-0.5
         inner_dim = dim_head * num_heads
         self.to_qk = nn.Linear(embed_dim, inner_dim, bias=bias)
         self.to_v = nn.Linear(embed_dim, inner_dim, bias=bias)
@@ -258,10 +260,7 @@ class CrossBlock(nn.Module):
             nn.GELU(),
             nn.Linear(2 * embed_dim, embed_dim),
         )
-        if flash:
-            self.flash = Attention(True)
-        else:
-            self.flash = None
+        self.inner_attn = Attention(flash)
 
     def map_(self, func: Callable, x0: torch.Tensor, x1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Apply the same function to descriptor tensors from both images.
@@ -295,20 +294,8 @@ class CrossBlock(nn.Module):
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = (t.unflatten(-1, (self.heads, -1)).transpose(1, 2) for t in (qk0, qk1, v0, v1))
-        if self.flash is not None and qk0.device.type == "cuda":
-            m0 = self.flash(qk0, qk1, v1, mask)
-            m1 = self.flash(qk1, qk0, v0, mask.transpose(-1, -2) if mask is not None else None)
-        else:
-            qk0, qk1 = qk0 * self.scale**0.5, qk1 * self.scale**0.5
-            sim = torch.einsum("bhid, bhjd -> bhij", qk0, qk1)
-            if mask is not None:
-                sim = sim.masked_fill(~mask, -float("inf"))
-            attn01 = F.softmax(sim, dim=-1)
-            attn10 = F.softmax(sim.transpose(-2, -1).contiguous(), dim=-1)
-            m0 = torch.einsum("bhij, bhjd -> bhid", attn01, v1)
-            m1 = torch.einsum("bhji, bhjd -> bhid", attn10.transpose(-2, -1), v0)
-            if mask is not None:
-                m0, m1 = m0.nan_to_num(), m1.nan_to_num()
+        m0 = self.inner_attn(qk0, qk1, v1, mask)
+        m1 = self.inner_attn(qk1, qk0, v0, mask.transpose(-1, -2) if mask is not None else None)
         m0, m1 = self.map_(lambda t: t.transpose(1, 2).flatten(start_dim=-2), m0, m1)
         m0, m1 = self.map_(self.to_out, m0, m1)
         x0 = x0 + self.ffn(torch.cat([x0, m0], -1))
@@ -514,10 +501,8 @@ class LightGlue(nn.Module):
           them, ``stop`` is the largest number of layers that a pair ran, and there is no ``log_assignment``.
           Otherwise a batch runs as one, and early stopping (``depth_confidence``) ends it at a layer only when every
           pair meets its own criterion. A pair can therefore run more layers in a batch than on its own, and its
-          matches can differ.
-        - Known defects: on the static-length path of :meth:`compile`, early stopping also counts the unconfident
-          padded positions, against the number of real keypoints, so a padded pair can stop later than without
-          padding (`#5930 <https://github.com/kornia/kornia/issues/5930>`_).
+          matches can differ. Early stopping counts the real keypoints only, so padding to the static lengths of
+          :meth:`compile` does not change the layer at which a pair stops.
 
     Args:
         features: The type of local features to match (e.g., 'superpoint', 'disk'), whose configuration and
@@ -885,7 +870,7 @@ class LightGlue(nn.Module):
 
             if do_early_stop:
                 token0, token1 = self.token_confidence[i](desc0, desc1)
-                if self.check_if_stop(token0, token1, i, m + n):
+                if self.check_if_stop(token0[..., :m], token1[..., :n], i, m + n):
                     break
             # Pruning runs here for a single pair only: a batch that would prune runs its pairs one at a time.
             if do_point_pruning and desc0.shape[-2] > pruning_th:

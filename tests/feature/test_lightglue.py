@@ -24,6 +24,7 @@ from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.lightglue import (
     Attention,
+    CrossBlock,
     LearnableFourierPositionalEncoding,
     LightGlue,
     TokenConfidence,
@@ -178,29 +179,37 @@ def test_attention_allow_flash_matches_on_cpu():
     k = torch.rand(B, H, N, Dh)
     v = torch.rand(B, H, N, Dh)
 
-    # ``Attention.__init__`` flips the process-global ``torch.backends.cuda`` flash-SDPA switch;
-    # put back whatever this test found so later tests in a CUDA run do not depend on its order.
-    flash_sdp_was_enabled = torch.backends.cuda.flash_sdp_enabled()
+    attn_no_flash = Attention(allow_flash=False)
+    attn_flash = Attention(allow_flash=True)
+
+    out_no_flash = attn_no_flash(q, k, v)
+    out_flash = attn_flash(q, k, v)
+    assert_close(out_no_flash, out_flash)
+
+    # First query row cannot attend to anything: softmax produces NaN there, which
+    # ``Attention.forward`` replaces via ``nan_to_num``.
+    mask = torch.ones(B, H, N, N, dtype=torch.bool)
+    mask[:, :, 0, :] = False
+
+    out_no_flash_masked = attn_no_flash(q, k, v, mask=mask)
+    out_flash_masked = attn_flash(q, k, v, mask=mask)
+    assert not torch.isnan(out_no_flash_masked).any()
+    assert not torch.isnan(out_flash_masked).any()
+    assert_close(out_no_flash_masked, out_flash_masked)
+
+
+@pytest.mark.parametrize("flash", [False, True])
+def test_lightglue_leaves_global_flash_sdp_setting_alone(flash):
+    # the SDPA backends are the caller's process-wide choice: building a model in either mode must not change them
+    was_enabled = torch.backends.cuda.flash_sdp_enabled()
     try:
-        attn_no_flash = Attention(allow_flash=False)
-        attn_flash = Attention(allow_flash=True)
-
-        out_no_flash = attn_no_flash(q, k, v)
-        out_flash = attn_flash(q, k, v)
-        assert_close(out_no_flash, out_flash)
-
-        # First query row cannot attend to anything: softmax produces NaN there, which
-        # ``Attention.forward`` replaces via ``nan_to_num``.
-        mask = torch.ones(B, H, N, N, dtype=torch.bool)
-        mask[:, :, 0, :] = False
-
-        out_no_flash_masked = attn_no_flash(q, k, v, mask=mask)
-        out_flash_masked = attn_flash(q, k, v, mask=mask)
-        assert not torch.isnan(out_no_flash_masked).any()
-        assert not torch.isnan(out_flash_masked).any()
-        assert_close(out_no_flash_masked, out_flash_masked)
+        for enabled in (False, True):
+            torch.backends.cuda.enable_flash_sdp(enabled)
+            Attention(allow_flash=flash)
+            LightGlue(None, input_dim=64, descriptor_dim=64, num_heads=1, n_layers=1, flash=flash)
+            assert torch.backends.cuda.flash_sdp_enabled() == enabled
     finally:
-        torch.backends.cuda.enable_flash_sdp(flash_sdp_was_enabled)
+        torch.backends.cuda.enable_flash_sdp(was_enabled)
 
 
 # ---------------------------------------------------------------------------
@@ -237,60 +246,46 @@ class TestAttention(BaseTester):
                 return torch.full_like(q, float("nan"))
             return sdpa(q, k, v, **kwargs)
 
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            if legacy_windows:
-                # Exercise the real fallback on every host, as well as the native platform selection above.
-                attention._windows_old_torch = True
-            backend_flags = (
-                torch.backends.cuda.flash_sdp_enabled(),
-                torch.backends.cuda.math_sdp_enabled(),
-                torch.backends.cuda.mem_efficient_sdp_enabled(),
-                torch.backends.cuda.cudnn_sdp_enabled(),
-            )
-            with unittest.mock.patch(
-                "kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa
-            ):
-                actual = attention(q, k, v, mask)
-            assert actual.isfinite().all()
-            self.assert_close(actual, expected)
-            assert backend_flags == (
-                torch.backends.cuda.flash_sdp_enabled(),
-                torch.backends.cuda.math_sdp_enabled(),
-                torch.backends.cuda.mem_efficient_sdp_enabled(),
-                torch.backends.cuda.cudnn_sdp_enabled(),
-            )
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+        attention = Attention(allow_flash=True)
+        if legacy_windows:
+            # Exercise the real fallback on every host, as well as the native platform selection above.
+            attention._windows_old_torch = True
+        backend_flags = (
+            torch.backends.cuda.flash_sdp_enabled(),
+            torch.backends.cuda.math_sdp_enabled(),
+            torch.backends.cuda.mem_efficient_sdp_enabled(),
+            torch.backends.cuda.cudnn_sdp_enabled(),
+        )
+        with unittest.mock.patch("kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa):
+            actual = attention(q, k, v, mask)
+        assert actual.isfinite().all()
+        self.assert_close(actual, expected)
+        assert backend_flags == (
+            torch.backends.cuda.flash_sdp_enabled(),
+            torch.backends.cuda.math_sdp_enabled(),
+            torch.backends.cuda.mem_efficient_sdp_enabled(),
+            torch.backends.cuda.cudnn_sdp_enabled(),
+        )
 
     @pytest.mark.parametrize("masked", [False, True])
     def test_windows_float64_fallback_gradcheck(self, device, masked):
         if device.type != "cpu":
             pytest.skip("the fallback is CPU-only")
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            attention._windows_old_torch = True
-            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
-            mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
-            self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+        attention = Attention(allow_flash=True)
+        attention._windows_old_torch = True
+        q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64, requires_grad=True) for _ in range(3)]
+        mask = torch.tensor([[False, False], [True, True]], device=device) if masked else None
+        self.gradcheck(lambda q, k, v: attention(q, k, v, mask), (q, k, v))
 
     def test_dynamo_windows_float64_fallback(self, device, torch_optimizer, optimizer_backend):
         if device.type != "cpu" or not optimizer_backend or optimizer_backend == "jit":
             pytest.skip("the fallback needs CPU torch.compile coverage")
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            attention._windows_old_torch = True
-            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
-            mask = torch.tensor([[False, False], [True, True]], device=device)
-            compiled = torch_optimizer(attention, fullgraph=True)
-            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+        attention = Attention(allow_flash=True)
+        attention._windows_old_torch = True
+        q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+        mask = torch.tensor([[False, False], [True, True]], device=device)
+        compiled = torch_optimizer(attention, fullgraph=True)
+        self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
 
     @pytest.mark.skipif(not dynamo_is_available(), reason="no Dynamo on this torch/python pair")
     def test_eager_backend_traces_windows_float64_fallback(self, device):
@@ -298,17 +293,46 @@ class TestAttention(BaseTester):
         # torch 2.14. This name also runs on the scheduled torch 2.5.1 legs, where the fallback is live on Windows.
         if device.type != "cpu":
             pytest.skip("the fallback is CPU-only")
-        flash_enabled = torch.backends.cuda.flash_sdp_enabled()
-        try:
-            attention = Attention(allow_flash=True)
-            attention._windows_old_torch = True
-            q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
-            mask = torch.tensor([[False, False], [True, True]], device=device)
-            torch._dynamo.reset()
-            compiled = torch.compile(attention, backend="eager", fullgraph=True)
-            self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
-        finally:
-            torch.backends.cuda.enable_flash_sdp(flash_enabled)
+        attention = Attention(allow_flash=True)
+        attention._windows_old_torch = True
+        q, k, v = [torch.rand(1, 1, 2, 4, device=device, dtype=torch.float64) for _ in range(3)]
+        mask = torch.tensor([[False, False], [True, True]], device=device)
+        torch._dynamo.reset()
+        compiled = torch.compile(attention, backend="eager", fullgraph=True)
+        self.assert_close(compiled(q, k, v, mask), attention(q, k, v, mask))
+
+
+class TestCrossBlock(BaseTester):
+    @pytest.mark.parametrize("masked", [False, True])
+    def test_matches_shared_similarity_softmax(self, device, dtype, masked):
+        # both directions attend over one similarity matrix, 1 -> 0 over its transpose; fully masked rows give zero
+        # messages
+        g = torch.Generator().manual_seed(0)
+        block = CrossBlock(64, 4).to(device, dtype).eval()
+        x0 = torch.randn(2, 7, 64, generator=g).to(device, dtype)
+        x1 = torch.randn(2, 5, 64, generator=g).to(device, dtype)
+        mask = None
+        if masked:
+            mask = torch.rand(2, 1, 7, 5, generator=g) > 0.3
+            mask[:, :, 0] = False
+            mask[:, :, :, 0] = False
+            mask = mask.to(device)
+        with torch.no_grad():
+            out0, out1 = block(x0, x1, mask)
+            qk0, qk1, v0, v1 = (
+                t.unflatten(-1, (4, -1)).transpose(1, 2)
+                for t in (block.to_qk(x0), block.to_qk(x1), block.to_v(x0), block.to_v(x1))
+            )
+            sim = qk0 @ qk1.transpose(-2, -1) * qk0.shape[-1] ** -0.5
+            if mask is not None:
+                sim = sim.masked_fill(~mask, -float("inf"))
+            m0 = (sim.softmax(-1) @ v1).nan_to_num()
+            m1 = (sim.transpose(-2, -1).softmax(-1) @ v0).nan_to_num()
+            m0, m1 = (block.to_out(m.transpose(1, 2).flatten(start_dim=-2)) for m in (m0, m1))
+            expected0 = x0 + block.ffn(torch.cat([x0, m0], -1))
+            expected1 = x1 + block.ffn(torch.cat([x1, m1], -1))
+        self.assert_close(out0, expected0)
+        self.assert_close(out1, expected1)
 
 
 class TestLearnableFourierPositionalEncoding(BaseTester):
@@ -1371,12 +1395,16 @@ class TestLightGlueBatchedPairs(BaseTester):
         for k in range(b):
             self._assert_pair(out, k, singles[k], exact=True)
 
-    def test_wart_lightglue_static_lengths_early_stop_counts_padding_5930(self, device, dtype):
+    def test_lightglue_static_lengths_early_stop_ignores_padding_5930(self, device, dtype):
         # #5930: every point of this pair is confident, so it stops after layer 0. Padded to the static length 64, the
-        # padded positions, unconfident here, count against its 32 points, and it runs both layers.
+        # padded positions, unconfident here, are not counted, and it still stops after layer 0 with the same matches.
         model = TestLightGluePruningDtype._model(device, dtype, width_confidence=-1)
         everywhere = (1,) * self._M
         data, _ = self._pair(device, dtype, 0, everywhere, everywhere)
-        assert self._forward(model, data)["stop"] == 1
+        unpadded = self._forward(model, data)
+        assert unpadded["stop"] == 1
         model.static_lengths = (64,)  # what compile() sets; the padded layers run here without compiling
-        assert self._forward(model, data)["stop"] == 2
+        padded = self._forward(model, data)
+        assert padded["stop"] == 1
+        self.assert_close(padded["matches0"], unpadded["matches0"])
+        self.assert_close(padded["matching_scores0"], unpadded["matching_scores0"])
