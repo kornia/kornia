@@ -38,8 +38,8 @@ Which function to use:
   :func:`sampson_homography_distance` is the first-order error of moving both points.
   :func:`line_segment_transfer_error_one_way` scores segments by the distance of their mapped endpoints from the
   matched line.
-- Whether four correspondences keep their orientation, as a homography sample must, before fitting them:
-  :func:`sample_is_valid_for_homography`.
+- Whether four correspondences keep their orientation, as two views of a plane in front of both cameras do, before
+  fitting them: :func:`sample_is_valid_for_homography`. A mirroring homography fails this test.
 - A two-view model other than a plane: :func:`~kornia.geometry.epipolar.find_fundamental`,
   :func:`~kornia.geometry.epipolar.find_essential`.
 """

@@ -1255,8 +1255,9 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     r"""Map ``(w, x, y, z)`` quaternions ``(*, 4)`` to log 3-vectors ``(*, 3)``, the logarithm map.
 
     ``v = quaternion_exp_to_log(q)`` takes quaternions ``(*, 4)`` with the real part first and returns the 3-vectors
-    ``atan2(||u||, w) u / ||u||`` of shape ``(*, 3)``, with ``u`` the vector part, which
-    :func:`quaternion_log_to_exp` maps back. The input need not be unit. For ``w >= 0`` the result is half the
+    ``atan2(||u||, w) u / max(||u||, eps)`` of shape ``(*, 3)``, with ``u`` the vector part, which
+    :func:`quaternion_log_to_exp` maps back to the unit quaternion of ``q``. The input need not be unit, as long as
+    ``||u||`` is at least ``eps``; below it the log shrinks by ``||u|| / eps``. For ``w >= 0`` the result is half the
     axis-angle vector; for ``w < 0`` it is not, because this map tells ``q`` from ``-q``. For the axis-angle vector,
     use :func:`quaternion_to_axis_angle`.
 
@@ -1279,8 +1280,8 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         - ``float16``/``bfloat16`` are computed in ``float32``, so the identity
           returns ``[0., 0., 0.]`` at every dtype, and the gradient is finite
           at ``w = +-1``, the identity included
-        - the map is scale-invariant: a non-unit quaternion produces the same
-          log as its normalisation
+        - the map is scale-invariant while ``||u||`` stays at least ``eps``: a non-unit quaternion produces the
+          same log as its normalisation
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -1649,9 +1650,10 @@ def normalize_pixel_coordinates(
     ``(x, y)`` order and the image size in ``(height, width)`` order, and returns them as normalized
     :math:`[-1, 1]` coordinates, corner-aligned: the centres of the first and last pixel of each axis map to ``-1``
     and ``1``. This is the ``align_corners=True`` convention, and there is no other choice here: for the half-pixel
-    convention of ``align_corners=False``, apply ``normal_transform_pixel(height, width, align_corners=False)`` with
-    :func:`~kornia.geometry.linalg.transform_points`. For the reverse, use :func:`denormalize_pixel_coordinates`; for
-    ``(*, 3)`` voxel coordinates, :func:`normalize_pixel_coordinates3d`.
+    convention of ``align_corners=False``, apply
+    ``normal_transform_pixel(height, width, device=..., dtype=..., align_corners=False)``, on the device and in the
+    dtype of the coordinates, with :func:`~kornia.geometry.linalg.transform_points`. For the reverse, use
+    :func:`denormalize_pixel_coordinates`; for ``(*, 3)`` voxel coordinates, :func:`normalize_pixel_coordinates3d`.
 
     Convention:
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
@@ -2072,8 +2074,8 @@ def normalize_homography(
     ``H_norm = normalize_homography(H, dsize_src, dsize_dst)`` takes homographies ``(B, 3, 3)``, or one ``(3, 3)``,
     that map **source pixels to destination pixels**, and the ``(height, width)`` of both images, and returns
     ``N_dst @ H @ inv(N_src)`` ``(B, 3, 3)``: the same maps between normalized :math:`[-1, 1]` coordinates, with ``N``
-    from :func:`normal_transform_pixel`. Pass the ``align_corners`` of the sampling that will use the result: for
-    ``H_norm = normalize_homography(H, img.shape[-2:], dsize, align_corners=a)``,
+    from :func:`normal_transform_pixel`. Pass the ``align_corners`` of the sampling that will use the result: for a
+    ``(B, 3, 3)`` ``H`` and ``H_norm = normalize_homography(H, img.shape[-2:], dsize, align_corners=a)``,
     ``homography_warp(img, torch.linalg.inv(H_norm), dsize, align_corners=a)`` samples what
     ``warp_perspective(img, H, dsize, align_corners=a)`` samples, since
     :func:`~kornia.geometry.transform.warp_perspective` normalizes a pixel homography itself. For the reverse, use

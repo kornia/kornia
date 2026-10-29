@@ -972,6 +972,10 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - points: ``(x, y)``, pixel centers, origin at top-left; shape ``(B, 4, 2)``
         - a degenerate quadrilateral, such as one with three collinear points or two equal ones, does not raise: a
           degenerate source returns a non-finite matrix, a degenerate destination a non-finite or a singular one
+        - a homography with a zero bottom-right entry, such as one that sends source pixel ``(0, 0)`` to infinity,
+          cannot be scaled to ``M[2, 2] = 1``, and the result is non-finite although neither quadrilateral is
+          degenerate (`#6435 <https://github.com/kornia/kornia/issues/6435>`_);
+          :func:`~kornia.geometry.homography.find_homography_dlt` returns it, at another scale
         - float16 and bfloat16 points are solved in float32, and the result is cast back to their dtype
         - a caller's autocast region does not change the result, outside TorchScript
 
@@ -2222,7 +2226,8 @@ def homography_warp(
         - :func:`homography_warp3d`: the same warp for ``(N, C, D, H, W)`` volumes by ``(N, 4, 4)`` homographies.
         - :func:`warp_grid`: the warped sampling grid alone, without sampling the image.
         - :func:`~kornia.geometry.conversions.normalize_homography`: convert a pixel source→destination homography to
-          normalized coordinates; invert the result for this function.
+          normalized coordinates, with this function's ``align_corners`` (it defaults to ``True`` there); invert the
+          result for this function.
 
     Example:
         >>> input = torch.rand(1, 3, 32, 32)

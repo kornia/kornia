@@ -185,7 +185,7 @@ def affine(
     ``out = affine(tensor, matrix)`` warps ``(C, H, W)`` or ``(B, C, H, W)`` images by ``(B, 2, 3)`` source→destination
     pixel affine matrices and returns them at their own size: :func:`warp_affine` with ``dsize=(H, W)``, plus an
     unbatched image and broadcasting. One matrix serves every image of a batch, and one image, unbatched or of batch 1,
-    is warped by every matrix, so it returns ``(B, C, H, W)`` for ``B`` matrices. For another output size, use
+    is warped by every matrix, so it returns ``(B, C, H, W)`` for ``B > 1`` matrices. For another output size, use
     :func:`warp_affine`; to build the matrix from an angle, a shift, a scale and a shear, use :class:`Affine`.
 
     .. image:: _static/img/warp_affine.png
@@ -206,8 +206,8 @@ def affine(
         align_corners: interpolation flag.
 
     Returns:
-        The warped image with the same shape as the input, except that one image warped by ``B`` matrices returns
-        ``(B, C, H, W)``.
+        The warped image with the same shape as the input, except that one image warped by ``B > 1`` matrices
+        returns ``(B, C, H, W)``.
 
     See Also:
         - :func:`warp_affine`: the same warp with an explicit output size, for batched images.
@@ -550,7 +550,7 @@ def translate(
         align_corners: interpolation flag.
 
     Returns:
-        The translated tensor with shape as input, except that one image shifted by ``B`` translations returns
+        The translated tensor with shape as input, except that one image shifted by ``B > 1`` translations returns
         ``(B, C, H, W)``.
 
     See Also:
@@ -700,8 +700,8 @@ def shear(
         align_corners: interpolation flag.
 
     Returns:
-        The skewed tensor with shape same as the input, except that one image sheared by ``B`` pairs of factors
-        returns ``(B, C, H, W)``.
+        The skewed tensor with shape same as the input, except that one image sheared by ``B > 1`` pairs of
+        factors returns ``(B, C, H, W)``.
 
     See Also:
         - :class:`Shear`: the module form, which defaults to ``align_corners=True``.
@@ -1161,8 +1161,8 @@ class Affine(nn.Module):
             ``(C, H, W)`` input counting as 1 (`#6395 <https://github.com/kornia/kornia/issues/6395>`_).
 
     Returns:
-        The transformed tensor with same shape as input, except that with ``center`` given, one image warped by ``B``
-        parameter sets returns ``(B, C, H, W)``.
+        The transformed tensor with same shape as input, except that with ``center`` given, one image warped by
+        ``B > 1`` parameter sets returns ``(B, C, H, W)``.
 
     See Also:
         - :func:`get_affine_matrix2d`: the ``(B, 3, 3)`` matrix this module warps by, whose own angle turns clockwise
@@ -1420,8 +1420,8 @@ class Translate(nn.Module):
         align_corners: interpolation flag.
 
     Returns:
-        The translated tensor with the same shape as the input, except that one image shifted by ``B`` translations
-        returns ``(B, C, H, W)``.
+        The translated tensor with the same shape as the input, except that one image shifted by ``B > 1``
+        translations returns ``(B, C, H, W)``.
 
     See Also:
         - :func:`translate`: the one-call form.
@@ -1560,8 +1560,8 @@ class Shear(nn.Module):
         align_corners: interpolation flag.
 
     Returns:
-        The skewed tensor with the same shape as the input, except that one image sheared by ``B`` pairs of factors
-        returns ``(B, C, H, W)``.
+        The skewed tensor with the same shape as the input, except that one image sheared by ``B > 1`` pairs of
+        factors returns ``(B, C, H, W)``.
 
     See Also:
         - :func:`shear`: the one-call form, which defaults to ``align_corners=False``.

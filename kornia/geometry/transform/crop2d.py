@@ -96,8 +96,9 @@ def crop_and_resize(
           **inclusive** pixel positions (box ``(1, 1)``..``(2, 2)`` selects a
           :math:`2 \times 2` pixel block), origin at top-left
         - a box axis of one pixel is cropped exactly when ``size`` is one pixel on that axis too; one pixel in the box
-          but not in ``size``, or the reverse, has no invertible matrix and returns NaN, and so does a box with no
-          homography to the patch, such as a triangle (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
+          but not in ``size``, or the reverse, has no invertible matrix and returns NaN (a meaningless finite value
+          with ``mode='nearest'``), and so does a box with no homography to the patch, such as a triangle
+          (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape ``(B, C, H, W)``.
@@ -244,7 +245,8 @@ def center_crop(
         - :class:`CenterCrop2D`: the module form; slices with integer indices by default instead of resampling.
         - :func:`center_crop3d`: the central window of each volume; keep its default ``align_corners=True``.
         - :func:`crop_and_resize`: a window at any box, resampled to a fixed size.
-        - :class:`~kornia.augmentation.CenterCrop`: the same windows as an augmentation, for augmentation pipelines.
+        - :class:`~kornia.augmentation.CenterCrop`: the same windows as an augmentation, for augmentation pipelines;
+          it raises for a ``size`` larger than the input instead of padding.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -334,7 +336,8 @@ def crop_by_boxes(
           :func:`crop_and_resize`; ``dst_box`` determines the output resolution
         - a single box (batch size 1) broadcasts over a batch of images, but a single
           image does not broadcast over a batch of boxes; ``src_box`` and ``dst_box`` have the same batch size
-        - a box axis of one pixel in one box but not in the other returns NaN, as in :func:`crop_and_resize`
+        - a box axis of one pixel in one box but not in the other returns NaN (a meaningless finite value with
+          ``mode='nearest'``), as in :func:`crop_and_resize`
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
 
     Args:
@@ -817,7 +820,8 @@ class CenterCrop2D(nn.Module):
     See Also:
         - :func:`center_crop`: the one-call form, which always resamples.
         - :func:`crop_by_indices`: the integer slicing of the default mode, for any axis-aligned box.
-        - :class:`~kornia.augmentation.CenterCrop`: the same windows as an augmentation, for augmentation pipelines.
+        - :class:`~kornia.augmentation.CenterCrop`: the same windows as an augmentation, for augmentation pipelines;
+          it raises for a ``size`` larger than the input instead of padding.
 
     """
 

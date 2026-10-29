@@ -976,9 +976,10 @@ def find_essential(
     ``Es = find_essential(points1, points2)`` takes correspondences ``(B, N, 2)``, ``N >= 5``, of the first and the
     second image in normalized camera coordinates :math:`K^{-1} [u, v, 1]^\top`, not pixels (see
     :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`), and returns ``(B, 10, 3, 3)``: one slot
-    per root of Nister's degree-ten polynomial, a candidate of unit Frobenius norm with :math:`x_2^\top E x_1 = 0`
-    for each real root and ``NaN`` for each complex one. With more than five points the null space of the epipolar
-    constraints is fitted by least squares first. Pick a candidate by its :func:`sampson_epipolar_distance` on other
+    per root of Nister's degree-ten polynomial, a candidate of unit Frobenius norm for each real root and ``NaN`` for
+    each complex one. Five points satisfy :math:`x_2^\top E x_1 = 0` exactly for every candidate; with more, the null
+    space of the epipolar constraints is fitted by least squares first, so the candidates satisfy it only
+    approximately. Pick a candidate by its :func:`sampson_epipolar_distance` on other
     correspondences, ignoring the ``NaN`` slots. For one essential matrix from correspondences with outliers, use
     :class:`~kornia.geometry.ransac.RANSAC` with ``model_type="essential"``; for pixel correspondences of unknown
     cameras, :func:`find_fundamental`.

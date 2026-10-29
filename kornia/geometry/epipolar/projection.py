@@ -222,8 +222,8 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
     See Also:
         - :func:`projection_from_KRt`: the reverse, ``P = K [R | t]``.
-        - :func:`projections_from_fundamental`: projection matrices consistent with a fundamental matrix, to
-          decompose.
+        - :func:`projections_from_fundamental`: a projective camera pair consistent with a fundamental matrix; the
+          left ``3 x 3`` block of its second camera has rank 2, so this decomposition gives no metric camera for it.
 
     """
     KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])

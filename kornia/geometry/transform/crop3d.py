@@ -62,10 +62,11 @@ def crop_and_resize3d(
 
     ``patches = crop_and_resize3d(tensor, boxes, size)`` takes volumes ``(B, C, D, H, W)`` and boxes ``(B, 8, 3)``, one
     per volume or ``(1, 8, 3)`` for all of them, and returns the ``(B, C, d, h, w)`` patches for ``size = (d, h, w)``.
-    With ``align_corners=True`` the box corners land on the corner voxels of the patch, by the 3D homography between
-    the two; pass it, since the default ``False`` samples off the box
-    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For images, use :func:`crop_and_resize`; to place the
-    crop by a second box, :func:`crop_by_boxes3d`.
+    With ``align_corners=True`` the corners of a parallelepiped box land on the corner voxels of the patch; the warp
+    keeps only the top three rows of the 3D homography between the two, so the corners of any other box miss
+    (`#6436 <https://github.com/kornia/kornia/issues/6436>`_). Pass ``align_corners=True``, since the default
+    ``False`` samples off the box (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For images, use
+    :func:`crop_and_resize`; to place the crop by a second box, :func:`crop_by_boxes3d`.
 
     Convention:
         - input: ``(B, C, D, H, W)``; ``size`` is ``(d, h, w)``
@@ -219,7 +220,8 @@ def center_crop3d(
     See Also:
         - :func:`center_crop`: the central window of each image.
         - :func:`crop_and_resize3d`: a window at any box, resampled to a fixed size.
-        - :class:`~kornia.augmentation.CenterCrop3D`: the same windows as an augmentation, for augmentation pipelines.
+        - :class:`~kornia.augmentation.CenterCrop3D`: the same windows as an augmentation, for augmentation pipelines;
+          it raises for a ``size`` larger than the input instead of padding.
 
     Examples:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
@@ -338,8 +340,10 @@ def crop_by_boxes3d(
     r"""Crop volumes by mapping a source box onto a destination box, whose size sets the output size.
 
     ``patches = crop_by_boxes3d(tensor, src_box, dst_box)`` takes volumes ``(B, C, D, H, W)`` and two boxes per
-    volume, ``(B, 8, 3)`` each (both ``(1, 8, 3)`` for all volumes), warps each volume by the 3D homography that maps
-    ``src_box`` onto ``dst_box`` and returns the ``(B, C, d, h, w)`` window that starts at voxel ``(0, 0, 0)``, where
+    volume, ``(B, 8, 3)`` each (both ``(1, 8, 3)`` for all volumes), warps each volume by the top three rows of the
+    3D homography that maps ``src_box`` onto ``dst_box``, which is exact for parallelepiped boxes only
+    (`#6436 <https://github.com/kornia/kornia/issues/6436>`_), and returns the ``(B, C, d, h, w)`` window that
+    starts at voxel ``(0, 0, 0)``, where
     ``(d, h, w)`` is the inclusive size of ``dst_box``; every ``dst_box`` in the batch must have that size. Pass
     ``align_corners=True``: the default ``False`` samples off the box
     (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). When the output size is known, :func:`crop_and_resize3d`
