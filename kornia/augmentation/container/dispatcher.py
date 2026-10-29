@@ -60,7 +60,7 @@ class ManyToManyAugmentationDispather(nn.Module):
     def __init__(self, *augmentations: AugmentationSequential) -> None:
         super().__init__()
         self._check_consistency(*augmentations)
-        self.augmentations = augmentations
+        self.augmentations = nn.ModuleList(augmentations)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):
@@ -129,7 +129,7 @@ class ManyToOneAugmentationDispather(nn.Module):
         super().__init__()
         self.strict = strict
         self._check_consistency(*augmentations)
-        self.augmentations = augmentations
+        self.augmentations = nn.ModuleList(augmentations)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):
