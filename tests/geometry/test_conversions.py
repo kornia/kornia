@@ -2646,7 +2646,8 @@ class TestPolCartConversions(BaseTester):
         # Expected: the float64 hypot of the dtype-rounded inputs, rounded once to the dtype.
         xt = torch.tensor(x, device=device, dtype=rho_dtype)
         yt = torch.tensor(y, device=device, dtype=rho_dtype)
-        expected = torch.tensor(math.hypot(xt.item(), yt.item()), dtype=torch.float64).to(device, rho_dtype)
+        # rounded to rho_dtype on the CPU before it moves, so no float64 tensor reaches the device (MPS has none)
+        expected = torch.tensor(math.hypot(xt.item(), yt.item()), dtype=torch.float64).to(rho_dtype).to(device)
 
         rho = kornia.geometry.conversions.cart2pol(xt, yt)[0]
 
@@ -2689,6 +2690,8 @@ class TestPolCartConversions(BaseTester):
     ):
         # rho has the dtype of sqrt(x**2 + y**2) under torch's rank-aware promotion, as phi = atan2(y, x) does: a 0-d
         # operand does not decide it, and integer input gives the default float dtype.
+        if device.type == "mps" and torch.float64 in (x_dtype, y_dtype):
+            pytest.skip("MPS does not support float64")
         expected = torch.get_default_dtype() if expected is None else expected
         x = torch.full(x_shape, 3, device=device, dtype=x_dtype)
         y = torch.full(y_shape, 4, device=device, dtype=y_dtype)
