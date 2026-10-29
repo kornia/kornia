@@ -302,8 +302,9 @@ def test_pixel_meshgrid_half_dtype_matches_compile(is_3d, grid_dtype):
 
 
 @pytest.mark.parametrize("grid_dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("align_corners", [True, False])
 @pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
-def test_normalized_meshgrid_half_dtype_matches_compile(is_3d, grid_dtype, device):
+def test_normalized_meshgrid_half_dtype_matches_compile(is_3d, align_corners, grid_dtype, device):
     """A half-precision normalized grid must not change when it is built under ``torch.compile``.
 
     Eager evaluates ``(xs / (size - 1) - 0.5) * 2`` as three half-precision ops and rounds after
@@ -323,10 +324,21 @@ def test_normalized_meshgrid_half_dtype_matches_compile(is_3d, grid_dtype, devic
         def forward(self, image):
             if is_3d:
                 return kornia.geometry.create_meshgrid3d(
-                    image.shape[-3], image.shape[-2], image.shape[-1], True, device=image.device, dtype=image.dtype
+                    image.shape[-3],
+                    image.shape[-2],
+                    image.shape[-1],
+                    True,
+                    device=image.device,
+                    dtype=image.dtype,
+                    align_corners=align_corners,
                 )
             return kornia.geometry.create_meshgrid(
-                image.shape[-2], image.shape[-1], True, device=image.device, dtype=image.dtype
+                image.shape[-2],
+                image.shape[-1],
+                True,
+                device=image.device,
+                dtype=image.dtype,
+                align_corners=align_corners,
             )
 
     size = 300 if grid_dtype == torch.bfloat16 else 3000
@@ -387,15 +399,19 @@ def test_create_meshgrid3d(device, dtype):
 
 
 @pytest.mark.parametrize(("depth", "height", "width", "axis"), [(1, 4, 6, 0), (5, 1, 6, 2), (5, 4, 1, 1)])
-def test_normalized_meshgrid3d_singleton_axis_is_centered(depth, height, width, axis, device, dtype):
+@pytest.mark.parametrize("align_corners", [True, False])
+def test_normalized_meshgrid3d_singleton_axis_is_centered(depth, height, width, axis, align_corners, device, dtype):
     grid = kornia.geometry.create_meshgrid3d(
-        depth, height, width, normalized_coordinates=True, device=device, dtype=dtype
+        depth, height, width, normalized_coordinates=True, device=device, dtype=dtype, align_corners=align_corners
     )
     assert_close(grid[..., axis], torch.zeros_like(grid[..., axis]), atol=0.0, rtol=0.0)
 
 
 @pytest.mark.parametrize(("trace_depth", "runtime_depth"), [(2, 1), (1, 2)])
-def test_normalized_meshgrid3d_trace_crosses_singleton_boundary(trace_depth, runtime_depth, device, dtype):
+@pytest.mark.parametrize("align_corners", [True, False])
+def test_normalized_meshgrid3d_trace_crosses_singleton_boundary(
+    trace_depth, runtime_depth, align_corners, device, dtype
+):
     class MeshGrid3d(torch.nn.Module):
         def forward(self, volume):
             return kornia.geometry.create_meshgrid3d(
@@ -405,6 +421,7 @@ def test_normalized_meshgrid3d_trace_crosses_singleton_boundary(trace_depth, run
                 normalized_coordinates=True,
                 device=volume.device,
                 dtype=volume.dtype,
+                align_corners=align_corners,
             )
 
     example = torch.zeros(1, 1, trace_depth, 3, 4, device=device, dtype=dtype)
