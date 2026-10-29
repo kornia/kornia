@@ -348,8 +348,8 @@ def crop_by_boxes3d(
     bbox = infer_bbox_shape3d(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all()):
         raise AssertionError(
-            "Cropping height, width and depth must be exact same in a batch."
-            f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
+            "Cropping depth, height and width must be exact same in a batch. "
+            f"Got depth {bbox[0]}, height {bbox[1]} and width {bbox[2]}."
         )
 
     out_size = (int(bbox[0][0].item()), int(bbox[1][0].item()), int(bbox[2][0].item()))
