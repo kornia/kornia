@@ -49,15 +49,12 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
 
-        - ``distortion_scale=0`` generates identical source and destination corners. The default bilinear,
-          ``align_corners=False`` perspective warp nevertheless does not reproduce its input, even a constant one;
-          use ``align_corners=True`` for an identity warp up to floating-point roundoff in ``float32`` and
-          ``float64``. The false-setting normalization defect is tracked in
-          `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
+        - ``distortion_scale=0`` generates identical source and destination corners, and the warp reproduces
+          its input under either ``align_corners`` setting up to floating-point roundoff.
         - the default interpolation is bilinear and the default ``align_corners`` is ``False``.
         - a spatial dimension of 1 gets a unit source extent and no corner offset, so its single
           slice, row or column maps onto itself. At ``distortion_scale=0`` the transform matrix is
-          the identity; output identity still requires ``align_corners=True`` as described above.
+          the identity, so such a volume is reproduced under either ``align_corners`` setting too.
 
     Examples:
         >>> import torch

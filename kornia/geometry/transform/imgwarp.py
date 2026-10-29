@@ -753,21 +753,16 @@ def _normalize_warped_pixel_grid3d(
 ) -> torch.Tensor:
     """Map a ``(N, D, H, W, 3)`` grid of ``(x, y, z)`` source voxels to the ``[-1, 1]`` coordinates of ``grid_sample``.
 
-    ``depth``, ``height`` and ``width`` are the source's. With ``align_corners=True`` the map is
-    :func:`~kornia.geometry.conversions.normal_transform_pixel3d`, the one :func:`warp_perspective3d` conjugates its
-    voxel homography with, applied per axis. With ``False`` it is the half-voxel map ``(2v + 1) / size - 1``.
+    ``depth``, ``height`` and ``width`` are the source's. The map is
+    :func:`~kornia.geometry.conversions.normal_transform_pixel3d` under ``align_corners``, the one
+    :func:`warp_perspective3d` conjugates its voxel homography with, applied per axis.
     """
-    if align_corners:
-        norm = normal_transform_pixel3d(depth, height, width, device=grid.device, dtype=grid.dtype)[0]
-        scale = torch.stack((norm[0, 0], norm[1, 1], norm[2, 2]))
-        offset = torch.stack((norm[0, 3], norm[1, 3], norm[2, 3]))
-        return grid * scale + offset
-    # normal_transform_pixel3d has no align_corners yet, so the half-voxel map is written out here; #4503 gives the
-    # helper align_corners, and normal_transform_pixel3d(..., align_corners=False) then replaces these lines.
-    x = (2.0 * grid[..., 0:1] + 1.0) / width - 1.0
-    y = (2.0 * grid[..., 1:2] + 1.0) / height - 1.0
-    z = (2.0 * grid[..., 2:3] + 1.0) / depth - 1.0
-    return torch.cat((x, y, z), -1)
+    norm = normal_transform_pixel3d(
+        depth, height, width, device=grid.device, dtype=grid.dtype, align_corners=align_corners
+    )[0]
+    scale = torch.stack((norm[0, 0], norm[1, 1], norm[2, 2]))
+    offset = torch.stack((norm[0, 3], norm[1, 3], norm[2, 3]))
+    return grid * scale + offset
 
 
 # TODO: move to kornia.geometry.projective
@@ -1479,7 +1474,10 @@ def warp_affine3d(
     Convention:
         - input: ``(B, C, D, H, W)``; ``dsize`` is ``(d, h, w)``
         - ``M`` is the source→destination **pixel** affine matrix ``(B, 3, 4)``
-        - align_corners: ``True`` by default
+        - align_corners: ``True`` by default. It selects the normalization of the homography as
+          well as the ``grid_sample`` call, so a whole-voxel translation moves the volume by
+          exactly that many voxels under either setting; the two differ only in out-of-bounds
+          handling
         - padding_mode: ``'zeros'`` by default
         - an empty batch returns shape :math:`(0, C, d, h, w)` with gradients connected to both inputs
           even when a source spatial dimension is zero
@@ -1495,7 +1493,8 @@ def warp_affine3d(
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
-        align_corners : mode for grid_generation.
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention to use. It is
+          forwarded to both the homography normalization and the sampler so the two agree.
 
     Returns:
         torch.Tensor: the warped 3d torch.tensor with shape :math:`(B, C, d, h, w)`, spatial sizes
@@ -1528,7 +1527,9 @@ def warp_affine3d(
     M_4x4 = convert_affinematrix_to_homography3d(M)  # Bx4x4
 
     # we need to F.normalize the transformation since grid sample needs -1/1 coordinates
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(M_4x4, size_src, size_out)  # Bx4x4
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
+        M_4x4, size_src, size_out, align_corners=align_corners
+    )  # Bx4x4
 
     src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
     P_norm: torch.Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
@@ -1874,7 +1875,9 @@ def warp_perspective3d(
         - input: ``(B, C, D, H, W)``; ``dsize`` is ``(d, h, w)``
         - ``M`` is the source→destination **pixel** homography ``(B, 4, 4)``
         - align_corners: ``False`` by default (differs from the 2D :func:`warp_perspective`,
-          whose default is ``True``)
+          whose default is ``True``). It selects the normalization of the homography and of the
+          sampling grid as well as the ``grid_sample`` call, so an identity homography reproduces
+          the input under either setting
         - border_mode: ``'zeros'`` by default
         - a zero output dimension returns an autograd-connected empty tensor;
           negative output dimensions raise ``ValueError``
@@ -1887,7 +1890,8 @@ def warp_perspective3d(
           ``'bilinear'`` | ``'nearest'``.
         border_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
-        align_corners: interpolation flag.
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention to use. It is
+          forwarded to the homography normalization, the sampling grid and the sampler.
 
     Returns:
         the warped input image :math:`(B, C, d, h, w)`, spatial sizes given by ``dsize``.
@@ -2045,7 +2049,9 @@ def _transform_warp_impl3d(
     align_corners: bool,
 ) -> torch.Tensor:
     """Compute the transform in normalized coordinates and perform the warping."""
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
+        dst_pix_trans_src_pix, dsize_src, dsize_dst, align_corners=align_corners
+    )
 
     src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
     return homography_warp3d(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode, align_corners, True)
@@ -2062,10 +2068,9 @@ def homography_warp3d(
 ) -> torch.Tensor:
     r"""Warp a volume by a normalized destination→source 3D homography (default ``normalized_coordinates=True``).
 
-    For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d` with
-    ``align_corners=True``: at its default ``align_corners=False`` it resamples even an identity
-    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Alternatively pass the inverse of that homography
-    here with ``normalized_coordinates=False``. This function has no ``normalized_homography`` switch.
+    For a source→destination homography in voxel coordinates, use :func:`warp_perspective3d`. Alternatively pass
+    the inverse of that homography here with ``normalized_coordinates=False``. This function has no
+    ``normalized_homography`` switch.
 
     Convention:
         - input: ``(N, C, D, H, W)``; ``dsize`` is the output size ``(d, h, w)``
@@ -2085,9 +2090,12 @@ def homography_warp3d(
         - with ``normalized_coordinates=False`` the voxel grid is warped and normalized in at least
           float32, also under a half default dtype and in a caller's autocast region, and then cast to
           the homography's dtype
-        - align_corners: ``False`` by default. With ``normalized_coordinates=False`` and a source axis
-          longer than one voxel, a voxel homography samples the same positions under both settings,
-          which then differ only in ``padding_mode="reflection"``
+        - align_corners: ``False`` by default. With ``normalized_coordinates=True`` it selects the
+          normalization of the sampling grid as well as the ``grid_sample`` call, so the two agree and an
+          identity homography reproduces the input under either setting. With
+          ``normalized_coordinates=False`` and a source axis longer than one voxel, a voxel homography
+          samples the same positions under both settings, which then differ only in
+          ``padding_mode="reflection"``
         - padding_mode: ``'zeros'`` by default
         - negative output dimensions raise ``ValueError``
 
@@ -2131,6 +2139,7 @@ def homography_warp3d(
             normalized_coordinates=True,
             device=patch_src.device,
             dtype=torch.promote_types(patch_src.dtype, src_homo_dst.dtype),
+            align_corners=align_corners,
         )
         # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
         # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and

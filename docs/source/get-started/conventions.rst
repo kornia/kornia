@@ -152,9 +152,8 @@ Coordinates and sizes
   ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
   order and the ``*_pixel_coordinates3d`` conversions consume it.
   :func:`torch.nn.functional.grid_sample` reads a 3D grid as ``(x, y, z)``:
-  pass ``grid[..., [1, 2, 0]]`` and ``align_corners=True``, because the
-  normalized 3D grid is corner-aligned and has no ``align_corners`` argument
-  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+  pass ``grid[..., [1, 2, 0]]`` and the ``align_corners`` the grid was built
+  with.
 - Sub-pixel outputs follow the same orders: the soft-argmax functions of
   :doc:`kornia.geometry.subpix </geometry.subpix>` return ``(x, y)`` in 2D
   and ``(d, x, y)`` in 3D, and the quadratic refiners
@@ -297,10 +296,7 @@ Transformation matrices and homographies
   source→destination homography, as :class:`~kornia.geometry.ransac.RANSAC`
   and :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
   :func:`~kornia.geometry.transform.warp_perspective`, or in 3D
-  :func:`~kornia.geometry.transform.warp_perspective3d` with
-  ``align_corners=True``, because its default ``align_corners=False``
-  resamples even an identity
-  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Passed to
+  :func:`~kornia.geometry.transform.warp_perspective3d`. Passed to
   ``homography_warp`` unchanged, such a homography usually samples outside
   the source and the warp comes back mostly or entirely as zeros. To keep
   ``homography_warp``, convert a pixel source→destination homography by
@@ -355,6 +351,11 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``True`` (default)
    * - ``remap``
      - ``None`` (resolved to ``False`` internally)
+   * - ``warp_affine3d``, ``center_crop3d``, ``crop_by_transform_mat3d``
+     - ``True``
+   * - ``warp_perspective3d``, ``homography_warp3d``, ``affine3d``, ``rotate3d``,
+       ``crop_and_resize3d``, ``crop_by_boxes3d``
+     - ``False``
 
 The flag selects only how Kornia normalizes coordinates for ``grid_sample``
 (``True``: pixel *centers* 0 and ``size-1`` sit at ``±1``; ``False``: the outer
@@ -380,6 +381,13 @@ that should be an identity is one under both settings, and ``warp_affine`` and
 Where the two settings genuinely differ is out-of-bounds sampling, since ``±1``
 covers a slightly different extent of the source image.
 
+The 3-D warps are consistent. ``normal_transform_pixel3d``, ``normalize_homography3d``
+and ``create_meshgrid3d`` take the same ``align_corners`` as their 2-D counterparts, with
+the same ``True`` default, and :func:`kornia.geometry.transform.warp_affine3d`,
+:func:`kornia.geometry.transform.warp_perspective3d` and
+:func:`kornia.geometry.transform.homography_warp3d` forward their own flag, so an identity
+warp reproduces the input under either setting.
+
 .. warning::
 
    :func:`kornia.geometry.transform.remap` is the 2D exception left: it normalizes its
@@ -388,17 +396,6 @@ covers a slightly different extent of the source image.
    pixel map resamples the image, by ``11.25`` on a 4x4 ``arange`` image. Pass
    ``align_corners=True`` until this is fixed. Tracked in
    `#4504 <https://github.com/kornia/kornia/issues/4504>`_.
-
-   The 3-D warps are the other exception. ``normal_transform_pixel3d`` and
-   ``normalize_homography3d`` take no ``align_corners`` at all, so
-   :func:`kornia.geometry.transform.warp_affine3d` and
-   :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
-   convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
-   ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
-   volume by up to ``55.1`` there, against roundoff at ``align_corners=True``: exactly
-   ``0`` in ``float32`` on torch 2.14 and about ``2e-6`` on torch 2.5.1. Pass
-   ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
-   `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
 Bounding boxes
 --------------
