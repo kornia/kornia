@@ -19,11 +19,66 @@ import pytest
 import torch
 
 import kornia
+from kornia.losses.tversky import _tversky_loss_cpu
 
 from testing.base import BaseTester
 
 
 class TestTverskyLoss(BaseTester):
+    @pytest.mark.parametrize("near_exact", [False, True])
+    def test_large_spatial_loss_and_gradient(self, device, dtype, near_exact):
+        """Compare large maps with the per-pixel TP/FP/FN formula in its existing computation dtype."""
+        generator = torch.Generator().manual_seed(0)
+        logits = torch.randn(2, 8, 64, 64, generator=generator).to(device=device, dtype=dtype)
+        labels = torch.randint(0, 3 if not near_exact else 8, (2, 64, 64), generator=generator).to(device)
+        if near_exact:
+            logits = torch.full_like(logits, -8.0).scatter(1, labels[:, None], 8.0)
+        else:
+            # Absent classes, a partial ignore mask and a fully ignored sample all enter the CPU fast path.
+            labels[0, :, ::5] = -100
+            labels[1] = -100
+        logits.requires_grad_()
+        reference_logits = logits.detach().clone().requires_grad_()
+        computation_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        valid = labels != -100
+        target = torch.nn.functional.one_hot(labels.clamp_min(0), 8).movedim(-1, 1).to(computation_dtype)
+        target = target * valid[:, None]
+        # A nearly exact float32 softmax already has rounding in its backward; retain that arithmetic in the oracle.
+        probability = reference_logits.softmax(1, dtype=computation_dtype) * valid[:, None]
+        tp = (probability * target).sum((2, 3))
+        fp = (probability * (1.0 - target)).sum((2, 3))
+        fn = ((1.0 - probability) * target).sum((2, 3))
+        present = target.sum((2, 3)) > 0
+        score = (tp / (tp + 0.3 * fp + 0.7 * fn + 1e-8).masked_fill(~present, 1)).masked_fill(~present, 0)
+        expected = 1.0 - (score.sum(-1) / present.sum(-1).clamp_min(1)).mean()
+
+        loss = kornia.losses.tversky_loss(logits, labels, 0.3, 0.7)
+        gradient = torch.autograd.grad(loss, logits)[0]
+        expected_gradient = torch.autograd.grad(expected, reference_logits)[0].to(dtype)
+        self.assert_close(loss, expected.to(dtype))
+        # Scaling avoids a loose absolute tolerance accepting zero gradients of large images.
+        self.assert_close(gradient * 4096, expected_gradient * 4096)
+        if dtype in (torch.float32, torch.float64):
+            tolerance = 1e-5 if dtype == torch.float32 else 1e-10
+            error = (gradient - expected_gradient).double().norm()
+            assert error <= tolerance * expected_gradient.double().norm()
+        if not near_exact:
+            assert torch.count_nonzero(gradient[1]) == 0
+
+    def test_cpu_reduction_gradcheck(self):
+        """Check the grouped TP/FN and direct FP derivatives, including tensor penalties."""
+        logits = torch.tensor(
+            [[[[0.1, 0.3], [-0.2, 0.4]], [[0.4, -0.1], [0.2, 0.1]], [[-0.3, 0.2], [0.5, -0.4]]]],
+            dtype=torch.float64,
+        )
+        labels = torch.tensor([[[0, 1], [0, -100]]])
+        alpha, beta = torch.tensor(0.3, dtype=torch.float64), torch.tensor(0.7, dtype=torch.float64)
+        self.gradcheck(
+            _tversky_loss_cpu,
+            (logits, labels, alpha, beta, 0.1, -100),
+            dtypes=[torch.float64, torch.int64, torch.float64, torch.float64, None, None],
+        )
+
     def test_per_class_issue_5543(self, device):
         # The issue's CPU-seeded fixture; all classes are present in each sample.
         generator = torch.Generator().manual_seed(1206)
@@ -341,11 +396,12 @@ class TestTverskyLoss(BaseTester):
         )
 
     @pytest.mark.parametrize("ignored_sample", [False, True])
-    def test_dynamo(self, device, dtype, torch_optimizer, ignored_sample):
+    @pytest.mark.parametrize("spatial_shape", [(3, 2), (128, 128)])
+    def test_dynamo(self, device, dtype, torch_optimizer, ignored_sample, spatial_shape):
         num_classes = 3
         params = (0.5, 0.05)
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
+        logits = torch.rand(2, num_classes, *spatial_shape, device=device, dtype=dtype)
+        labels = torch.rand(2, *spatial_shape) * num_classes
         labels = labels.to(device).long()
 
         if ignored_sample:

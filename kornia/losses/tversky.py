@@ -24,14 +24,70 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.losses.one_hot import one_hot
+from kornia.losses.one_hot import _check_class_labels, one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
 # A module constant: torch.compile on torch 2.5 cannot read sys.float_info inside a traced function.
 _FLOAT_MAX: float = sys.float_info.max
+
+
+def _tversky_cpu_eligible(pred: torch.Tensor) -> bool:
+    if torch.jit.is_scripting():
+        return False
+    return (
+        pred.device.type == "cpu"
+        and pred.dtype in (torch.float32, torch.float64)
+        and not is_compiling()
+        and not is_exporting()
+        and not torch.jit.is_tracing()
+        # Small images keep the cheaper one-hot route; measured forward + backward on CPU.
+        and pred.numel() >= 1 << 15
+        and not torch._C._are_functorch_transforms_active()
+        and not is_autocast_enabled()
+    )
+
+
+def _tversky_loss_cpu(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    alpha: float,
+    beta: float,
+    eps: float,
+    ignore_index: Optional[int],
+) -> torch.Tensor:
+    """Accumulate target-class terms without allocating a one-hot image."""
+    batch, classes = pred.shape[:2]
+    target, mask = mask_ignore_pixels(target, ignore_index)
+    KORNIA_CHECK(target.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {target.dtype}")
+    target = _check_class_labels(target, classes)
+    probability = pred.softmax(1)
+    target_probability = probability.gather(1, target.unsqueeze(1)).squeeze(1)
+    missed_probability = 1.0 - target_probability
+    non_target = probability.clone()
+    non_target.scatter_(1, target.unsqueeze(1), 0.0)
+    valid = torch.ones_like(target, dtype=pred.dtype) if mask is None else mask.to(pred.dtype)
+    if mask is not None:
+        target_probability = target_probability * valid
+        missed_probability = missed_probability * valid
+        non_target.mul_(mask.unsqueeze(1))
+
+    index = target.flatten(1)
+    # As in the CPU Dice path, double bins avoid long float32 scatter sums losing small contributions.
+    bins = pred.new_zeros(batch, classes, dtype=torch.float64)
+    tp = bins.scatter_add(1, index, target_probability.flatten(1).to(torch.float64)).to(pred.dtype)
+    fn = bins.scatter_add(1, index, missed_probability.flatten(1).to(torch.float64)).to(pred.dtype)
+    present = bins.scatter_add(1, index, valid.flatten(1).to(torch.float64)) > 0
+    # Sum false positives directly: mass - tp would cancel the small errors of a nearly correct prediction.
+    fp = non_target.sum((2, 3))
+    denominator = tp + alpha * fp + beta * fn + eps
+    score = (tp / denominator.masked_fill(~present, 1.0)).masked_fill(~present, 0.0)
+    score = score.sum(-1) / present.sum(-1).clamp_min(1)
+    return (1.0 - score.mean()).to(pred.dtype)
 
 
 def _check_parameters(alpha: float, beta: float, eps: float) -> None:
@@ -97,6 +153,8 @@ def tversky_loss(
         Softmax, spatial reductions and the ratio use float32 for float16 and
         bfloat16 inputs to avoid overflow in large-image sums and ratio gradients.
         The returned loss retains the input dtype.
+        Large eager CPU float32/float64 inputs avoid a dense one-hot target;
+        their class sums agree with the one-hot computation to rounding.
 
     Example:
         >>> N = 5  # num_classes
@@ -125,6 +183,9 @@ def tversky_loss(
         raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
 
     _check_parameters(alpha, beta, eps)
+
+    if _tversky_cpu_eligible(pred):
+        return _tversky_loss_cpu(pred, target, alpha, beta, eps, ignore_index)
 
     # Keep the ratio's backward pass in float32 through softmax for half inputs.
     reduction_dtype = torch.float32 if pred.dtype in (torch.float16, torch.bfloat16) else pred.dtype

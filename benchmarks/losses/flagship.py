@@ -28,6 +28,7 @@ kornia.losses                      torchvision                             task
 ``dice_loss``                      —                                       21-class segmentation
 ``dice_loss_macro``                —                                       per-class Dice, present classes
 ``dice_loss_weighted``             —                                       class-weighted micro Dice
+``tversky_loss``                    —                                       per-class Tversky segmentation
 ``ssim_loss``                      —                                       image reconstruction
 ``total_variation``                —                                       image regularization
 =================================  ======================================  ============================
@@ -38,7 +39,8 @@ against ``(B, H, W)`` labels; the binary focal loss scores ``(B, 1, H, W)`` logi
 ``{0, 1}`` targets with ``alpha=0.25, gamma=2`` and mean reduction in both libraries. ``ssim_loss``
 uses an 11x11 window; ``total_variation`` sums over each image and the batch is summed before the
 backward. Dice rows cover default micro, macro, and micro with class weights linearly spaced
-from 0.5 to 1.5; all use the same logits and labels. ``--compile`` compiles the loss function;
+from 0.5 to 1.5; Tversky uses ``alpha=0.3, beta=0.7``. All use the same logits and labels.
+``--compile`` compiles the loss function;
 the backward then runs through AOTAutograd,
 and both are compiled during the untimed warmup. Other libraries' losses are thin wrappers over the
 same PyTorch ops and are left out rather than timed as look-alikes. Throughput is img/s.
@@ -83,6 +85,7 @@ OPS = (
     "dice_loss",
     "dice_loss_macro",
     "dice_loss_weighted",
+    "tversky_loss",
     "ssim_loss",
     "total_variation",
 )
@@ -156,6 +159,9 @@ def build_ops(
         ops["dice_loss_weighted"] = kornia_row(
             "dice_loss_weighted", logits, KL.dice_loss, logits, labels, "micro", 1e-8, weights
         )
+
+    if include("tversky_loss"):
+        ops["tversky_loss"] = kornia_row("tversky_loss", logits, KL.tversky_loss, logits, labels, 0.3, 0.7)
 
     if include("ssim_loss"):
         ops["ssim_loss"] = kornia_row("ssim_loss", recon, KL.ssim_loss, recon, batch_f, WINDOW)
