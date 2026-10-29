@@ -28,8 +28,8 @@ from kornia.augmentation.auto.operations.ops import AutoContrast
 from kornia.geometry.boxes import Boxes, Boxes3D
 from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 
+from testing import docstring_style
 from testing.docstring_style import (
-    alias_target,
     catalog_missing,
     catalog_required,
     catalog_unimportable,
@@ -46,6 +46,7 @@ from testing.docstring_style import (
     resolve_reference,
     see_also_entries,
     sphinx_registry,
+    status_target,
     undocumented_public_objects,
 )
 
@@ -581,10 +582,16 @@ def test_own_docstring_ignores_whitespace_only():
             "kornia.geometry.conversions.rotation_matrix_to_axis_angle",
         ),
         ("Alias of :py:func:`foo`.\n\nMore text.", "foo"),
+        (
+            "Deprecated: use :func:`~kornia.geometry.conversions.axis_angle_to_quaternion`.",
+            "kornia.geometry.conversions.axis_angle_to_quaternion",
+        ),
+        ("Deprecated: use :class:`kornia.geometry.boxes.Boxes`.", "kornia.geometry.boxes.Boxes"),
+        ("Deprecated: use :py:meth:`Foo.bar`.\n\nIt warns on every call.", "Foo.bar"),
     ],
 )
-def test_alias_target_accepts_an_alias_title(doc, target):
-    assert alias_target(doc) == target
+def test_status_target_accepts_a_status_title(doc, target):
+    assert status_target(doc) == target
 
 
 @pytest.mark.parametrize(
@@ -597,14 +604,37 @@ def test_alias_target_accepts_an_alias_title(doc, target):
         "Return the thing.\nAlias of :func:`foo`.",
         "Alias of foo.",
         "",
+        "Deprecated, use :func:`foo`.",
+        "Deprecated: use foo.",
+        "Deprecated: use :func:`foo`",
+        "Deprecated: use :func:`foo` instead.",
+        "Deprecated: use :func:`foo` or :func:`bar`.",
+        "Deprecated: Use :func:`foo`.",
+        "Deprecated since 0.7.0: use :func:`foo`.",
+        "Return the thing.\nDeprecated: use :func:`foo`.",
+        "Deprecated: use :math:`foo`.",
     ],
 )
-def test_alias_target_rejects_other_titles(doc):
-    assert alias_target(doc) is None
+def test_status_target_rejects_other_titles(doc):
+    assert status_target(doc) is None
 
 
 def test_undocumented_public_objects_complements_public_objects():
     documented, undocumented = public_objects(), undocumented_public_objects()
     assert not documented.keys() & undocumented.keys()
     assert all(own_docstring(obj) is None for obj, _ in undocumented.values())
-    assert undocumented, "kornia still exports functions without a docstring"
+
+
+def test_public_and_undocumented_objects_split_the_export_walk(monkeypatch):
+    # kornia may export nothing undocumented, so the split is checked on a synthetic walk. ``__wrapped__`` calls the
+    # functions past their own ``functools.cache``, which the patched walk would otherwise never reach.
+    def undocumented():
+        pass
+
+    def documented():
+        """Do the thing."""
+
+    walk = ((undocumented, "m.undocumented"), (documented, "m.documented"))
+    monkeypatch.setattr(docstring_style, "_exported_objects", lambda: walk)
+    assert [qualified for _, qualified in undocumented_public_objects.__wrapped__().values()] == ["m.undocumented"]
+    assert [qualified for _, qualified in public_objects.__wrapped__().values()] == ["m.documented"]

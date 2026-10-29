@@ -347,6 +347,8 @@ def warp_perspective(
         - :func:`remap`: sample at given per-pixel source coordinates instead of by a matrix.
         - :func:`crop_by_transform_mat`: dispatches to this warp or :func:`warp_affine` by matrix shape, casting the
           matrix to the image dtype and broadcasting a batch-1 matrix.
+        - :func:`~kornia.geometry.conversions.normalize_homography`: ``M`` in normalized :math:`[-1, 1]` coordinates,
+          the conversion this warp applies before sampling.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)

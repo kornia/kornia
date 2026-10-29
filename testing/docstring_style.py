@@ -176,16 +176,17 @@ _PY_ROLES = "func|class|meth|attr|data|const|exc|obj"
 _XREF_ROLE = re.compile(rf":(?:py:)?({_PY_ROLES}):`~?([^`]+)`")
 
 
-_ALIAS_TITLE = re.compile(rf"Alias of :(?:py:)?(?:{_PY_ROLES}):`~?([^`\s]+)`\.")
+_STATUS_TITLE = re.compile(rf"(?:Alias of|Deprecated: use) :(?:py:)?(?:{_PY_ROLES}):`~?([^`\s]+)`\.")
 
 
-def alias_target(doc: str) -> str | None:
-    """Return the target of an ``Alias of :role:`target`.`` title line, or ``None`` when ``doc`` has another title.
+def status_target(doc: str) -> str | None:
+    """Return the target of a status title line, or ``None`` when ``doc`` has another title.
 
-    Only the first line counts: it must read exactly ``Alias of``, one Python-domain role with an optional leading
-    ``~``, and a closing period. The returned target has no ``~``.
+    The status titles are ``Alias of :role:`target`.`` and ``Deprecated: use :role:`target`.``. Only the first line
+    counts: it must read exactly ``Alias of`` or ``Deprecated: use``, one Python-domain role with an optional ``py:``
+    prefix and an optional leading ``~``, and a closing period. The returned target has no ``~``.
     """
-    match = _ALIAS_TITLE.fullmatch(doc.strip().split("\n", 1)[0].strip())
+    match = _STATUS_TITLE.fullmatch(doc.strip().split("\n", 1)[0].strip())
     return match.group(1) if match else None
 
 

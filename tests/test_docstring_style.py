@@ -22,7 +22,8 @@ an IDE or a coding agent relies on and what a refactor silently breaks; the shap
 
 * every public function and class has a docstring, so none escapes the checks below;
 * every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
-  unless its title line is ``Alias of :func:`target`.``, which forwards to the target and needs none;
+  unless its title line is a status title, ``Alias of :func:`target`.`` or ``Deprecated: use :func:`target`.``,
+  which points to the target and needs none;
 * every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
   ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
   object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
@@ -54,7 +55,6 @@ from testing.docstring_rollout import (
     SEE_ALSO_EXCEPTIONS,
 )
 from testing.docstring_style import (
-    alias_target,
     catalog_missing,
     catalog_required,
     catalog_unimportable,
@@ -72,6 +72,7 @@ from testing.docstring_style import (
     rst_pages,
     see_also_entries,
     sphinx_registry,
+    status_target,
     undocumented_public_objects,
 )
 
@@ -158,7 +159,8 @@ def test_rollout_lists_are_real() -> None:
 def test_converted_object_has_docstring(qualified: str) -> None:
     pytest.fail(
         f"{qualified} is exported without a docstring, so the checks cannot see it; write one. A thin wrapper "
-        "that only forwards to another object starts with 'Alias of :func:`target`.'"
+        "that only forwards to another object starts with 'Alias of :func:`target`.', a deprecated one with "
+        "'Deprecated: use :func:`target`.'"
     )
 
 
@@ -168,8 +170,8 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
         pytest.skip(f"excepted: {SEE_ALSO_EXCEPTIONS[qualified]}")
     doc = own_docstring(obj)
     entries = see_also_entries(doc)
-    if entries is None and alias_target(doc):
-        return  # "Alias of :func:`target`." forwards to the target, so a See Also would only repeat it
+    if entries is None and status_target(doc):
+        return  # an "Alias of" or "Deprecated: use" title points to the target, so a See Also would only repeat it
     assert entries, (
         f"{qualified} needs a 'See Also:' section with at least one bullet like "
         "'- :func:`name`: how it differs.' (or an entry in SEE_ALSO_EXCEPTIONS with a reason)"
