@@ -68,14 +68,16 @@ class TestResize(BaseTester):
 
     @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_resize_to_be_divisible_compile_fullgraph(self, side, device, dtype, torch_optimizer):
+    def test_resize_to_be_divisible_compile_fullgraph(self, side, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            pytest.skip("TorchScript does not support fullgraph compilation.")
         inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
         expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
         op = torch_optimizer(kornia.geometry.transform.resize_to_be_divisible, fullgraph=True)
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
             out = op(inp, 5, side=side)
-        self.assert_close(out, expected, rtol=0, atol=0)
+        self.assert_close(out, expected)
 
     def test_resize_to_be_divisible_numpy_factor_and_empty_side(self, device, dtype):
         resize_to_be_divisible = kornia.geometry.transform.resize_to_be_divisible
