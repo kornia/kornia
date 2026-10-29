@@ -1,0 +1,1 @@
+`ALIKED` computes the per-keypoint convolutions of its descriptor head (SDDH) as matrix products with the same weights, which makes the head about 3x faster on CPU and the whole forward about 1.5x faster at 2048 keypoints on a 480 x 640 image; the descriptors change at float32 rounding level only.

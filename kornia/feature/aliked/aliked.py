@@ -692,6 +692,14 @@ class SDDH(nn.Module):
         wh = torch.tensor([[w - 1, h - 1]], device=x.device, dtype=torch.promote_types(x.dtype, torch.float32))
         max_offset = max(h, w) / 4.0
 
+        # Each convolution of the head sees one window (offset_conv) or one sample (sf_conv) per keypoint, so it is a
+        # matrix product over the flattened channels and window. F.linear with the convolution's weights computes it
+        # as one GEMM; conv2d on these (N, C, k, k) inputs runs on NNPACK on CPU, which makes the head about 3x slower.
+        conv_offset, gate, conv_offset_1x1 = self.offset_conv
+        w_offset = conv_offset.weight.flatten(1)
+        w_offset_1x1 = conv_offset_1x1.weight.flatten(1)
+        w_sf = self.sf_conv.weight.flatten(1)
+
         offsets_list = []
         descriptors = []
 
@@ -706,14 +714,15 @@ class SDDH(nn.Module):
                 kptsi_wh_long = kptsi_wh.long()
                 patch = xi[:, kptsi_wh_long[:, 1], kptsi_wh_long[:, 0]].permute(1, 0).reshape(N_kpts, c, 1, 1)
 
-            offset = self.offset_conv(patch).clamp(-max_offset, max_offset)
+            offset = gate(F.linear(patch.flatten(1), w_offset, conv_offset.bias))
+            offset = F.linear(offset, w_offset_1x1, conv_offset_1x1.bias).clamp(-max_offset, max_offset)
 
             if self.mask:
-                offset = offset[:, :, 0, 0].view(N_kpts, 3, self.n_pos).permute(0, 2, 1)
+                offset = offset.view(N_kpts, 3, self.n_pos).permute(0, 2, 1)
                 mask_w = torch.sigmoid(offset[:, :, -1])
                 offset = offset[:, :, :-1]
             else:
-                offset = offset[:, :, 0, 0].view(N_kpts, 2, self.n_pos).permute(0, 2, 1)
+                offset = offset.view(N_kpts, 2, self.n_pos).permute(0, 2, 1)
                 mask_w = None
             offsets_list.append(offset)
 
@@ -722,18 +731,18 @@ class SDDH(nn.Module):
             pos = pos.reshape(1, N_kpts * self.n_pos, 1, 2)
 
             features = F.grid_sample(xi.unsqueeze(0), pos.to(xi.dtype), mode="bilinear", align_corners=True)
-            features = features.reshape(c, N_kpts, self.n_pos, 1).permute(1, 0, 2, 3)
+            features = features.reshape(c, N_kpts, self.n_pos).permute(1, 2, 0)  # [N_kpts, n_pos, C]
 
             if mask_w is not None:
-                features = torch.einsum("ncpo,np->ncpo", features, mask_w)
+                features = features * mask_w[:, :, None]
 
-            features = torch.selu_(self.sf_conv(features)).squeeze(-1)  # [N_kpts, C, n_pos]
+            features = torch.selu_(F.linear(features, w_sf, self.sf_conv.bias))  # [N_kpts, n_pos, C]
 
             if not self.conv2d:
-                descs = torch.einsum("ncp,pcd->nd", features, self.agg_weights)  # codespell:ignore
+                descs = features.flatten(1) @ self.agg_weights.flatten(0, 1)
             else:
-                features = features.reshape(N_kpts, -1)[:, :, None, None]
-                descs = self.convM(features).squeeze(-1).squeeze(-1)
+                features = features.transpose(1, 2).flatten(1)  # channel-major, the order of convM's input channels
+                descs = F.linear(features, self.convM.weight.flatten(1))
 
             descs = F.normalize(descs, p=2.0, dim=1)
             descriptors.append(descs)
