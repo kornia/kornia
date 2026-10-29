@@ -239,14 +239,16 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     # overflows nor underflows while the radius itself is representable; float16/bfloat16 compute it in float32 and
     # round once. It uses elementwise ops only: torch.hypot does not export to ONNX. Inside the eps neighbourhood
     # the gradient is 0: the norm sees detached coordinates there, so it is evaluated once, at the true point.
-    # rho keeps the dtype sqrt(x**2 + y**2) has (a float for integer input), read from a zero-element probe
-    # because TorchScript cannot access dtype.is_floating_point or call torch.get_default_dtype
-    out_dtype = torch.empty(0, device=x.device, dtype=torch.promote_types(x.dtype, y.dtype)).sqrt().dtype
+    # x**2 + y**2 in the input dtypes, as before: it classifies points against eps, and torch's rank-aware type
+    # promotion of it fixes rho's dtype, that of its sqrt (a float for integer input). The dtype is read from a
+    # zero-element probe because TorchScript cannot access dtype.is_floating_point or call torch.get_default_dtype.
+    input_squared = x**2 + y**2
+    outside = input_squared > eps
+    out_dtype = torch.empty(0, device=x.device, dtype=input_squared.dtype).sqrt().dtype
     work_dtype = torch.promote_types(out_dtype, torch.float32)
     xw, yw = x.to(work_dtype), y.to(work_dtype)
-    squared = xw**2 + yw**2
-    # the eps test stays in the input dtype; for float32/float64 inputs that is the same square sum
-    outside = (squared if x.dtype == work_dtype and y.dtype == work_dtype else x**2 + y**2) > eps
+    # for float32/float64 inputs the input square sum already is the working one
+    squared = input_squared if x.dtype == work_dtype and y.dtype == work_dtype else xw**2 + yw**2
     rho = _norm2d(torch.where(outside, xw, xw.detach()), torch.where(outside, yw, yw.detach()), squared)
     rho = rho.to(out_dtype)
     phi = torch.atan2(y, x)

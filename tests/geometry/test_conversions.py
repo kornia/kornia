@@ -2675,6 +2675,29 @@ class TestPolCartConversions(BaseTester):
         expected = torch.tensor([18000.0, 24000.0], device=device, dtype=torch.float32)
         self.assert_close(xy.grad.float(), expected, atol=0.0, rtol=1e-2)
 
+    @pytest.mark.parametrize(
+        "x_dtype, x_shape, y_dtype, y_shape, expected",
+        [
+            (torch.float32, (3,), torch.float64, (), torch.float32),
+            (torch.float16, (3,), torch.float32, (), torch.float16),
+            (torch.float64, (), torch.float32, (3,), torch.float32),
+            (torch.int64, (3,), torch.int64, (3,), None),  # None: the default float dtype
+        ],
+    )
+    def test_cart2pol_rho_dtype_follows_torch_promotion_like_phi(
+        self, x_dtype, x_shape, y_dtype, y_shape, expected, device
+    ):
+        # rho has the dtype of sqrt(x**2 + y**2) under torch's rank-aware promotion, as phi = atan2(y, x) does: a 0-d
+        # operand does not decide it, and integer input gives the default float dtype.
+        expected = torch.get_default_dtype() if expected is None else expected
+        x = torch.full(x_shape, 3, device=device, dtype=x_dtype)
+        y = torch.full(y_shape, 4, device=device, dtype=y_dtype)
+
+        rho, phi = kornia.geometry.conversions.cart2pol(x, y)
+
+        assert rho.dtype == phi.dtype == expected
+        self.assert_close(rho, torch.full_like(rho, 5.0))
+
     def test_cart2pol_torchscript_matches_eager(self, device, dtype):
         # cart2pol is reached from scripted code (kornia.feature.mkd), so it must stay scriptable: no torch.finfo,
         # dtype.is_floating_point or torch.get_default_dtype. (1e4, 5e3) overflows a float16 square sum, and
