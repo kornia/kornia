@@ -341,7 +341,8 @@ def crop_by_boxes3d(
 
     ``patches = crop_by_boxes3d(tensor, src_box, dst_box)`` takes volumes ``(B, C, D, H, W)`` and two boxes per
     volume, ``(B, 8, 3)`` each (both ``(1, 8, 3)`` for all volumes), warps each volume by the top three rows of the
-    3D homography that maps ``src_box`` onto ``dst_box``, which is exact for parallelepiped boxes only
+    3D homography computed from the corners of ``src_box`` and ``dst_box``, which takes every corner onto its
+    destination only when an affine map relates the two boxes, as it relates any two parallelepipeds
     (`#6436 <https://github.com/kornia/kornia/issues/6436>`_), and returns the ``(B, C, d, h, w)`` window that
     starts at voxel ``(0, 0, 0)``, where
     ``(d, h, w)`` is the inclusive size of ``dst_box``; every ``dst_box`` in the batch must have that size. Pass
