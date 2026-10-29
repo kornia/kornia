@@ -940,21 +940,22 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     Convention:
         - ``center`` is ``(x, y)`` in pixels, origin at top-left
         - positive ``angle`` rotates counter-clockwise as displayed (y-down image axes)
+        - a batch dimension of size 1 in any input broadcasts to the other input batches
         - returns ``(B, 2, 3)`` affine matrix in pixel coordinates
 
     Args:
-        center: center of the rotation in the source image with shape ``(B, 2)``.
+        center: center of the rotation in the source image with shape ``(B, 2)``. A batch size of 1 broadcasts.
         angle: rotation angle in degrees. Positive values mean
             counter-clockwise rotation (the coordinate origin is assumed to
-            be the top-left corner) with shape ``(B)``.
-        scale: scale factor for x, y scaling with shape ``(B, 2)``.
+            be the top-left corner) with shape ``(B)``. A batch size of 1 broadcasts.
+        scale: scale factor for x, y scaling with shape ``(B, 2)``. A batch size of 1 broadcasts.
 
     Returns:
         the affine matrix of 2D rotation with shape ``(B, 2, 3)``.
 
     Raises:
         TypeError: If any input is not a tensor.
-        ValueError: If input shapes are invalid, or batch sizes, devices or dtypes do not match.
+        ValueError: If input shapes are invalid, batch sizes are incompatible, or devices or dtypes do not match.
 
     Example:
         >>> center = torch.zeros(1, 2)
@@ -986,12 +987,6 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     if not (len(scale.shape) == 2 and scale.shape[1] == 2):
         raise ValueError(f"Input scale must be a Bx2 torch.Tensor. Got {scale.shape}")
 
-    if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
-        raise ValueError(
-            f"Inputs must have same batch size dimension. Got center {center.shape}, angle {angle.shape} and scale "
-            f"{scale.shape}"
-        )
-
     if not (center.device == angle.device == scale.device):
         raise ValueError(
             f"Inputs must have same device. Got center {center.device}, angle {angle.device} and scale {scale.device}."
@@ -1001,6 +996,20 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
         raise ValueError(
             f"Inputs must have same dtype. Got center {center.dtype}, angle {angle.dtype} and scale {scale.dtype}."
         )
+
+    batch_size = 1
+    for input_batch_size in (center.shape[0], angle.shape[0], scale.shape[0]):
+        if input_batch_size != 1:
+            if batch_size not in (1, input_batch_size):
+                raise ValueError(
+                    f"Inputs must have same batch size dimension or a singleton batch. Got center {center.shape}, "
+                    f"angle {angle.shape} and scale {scale.shape}"
+                )
+            batch_size = input_batch_size
+
+    center = center.expand(batch_size, 2)
+    angle = angle.expand(batch_size)
+    scale = scale.expand(batch_size, 2)
 
     shift_m = eye_like(3, center)
     shift_m[:, :2, 2] = center
