@@ -335,7 +335,9 @@ def rotate(
     ``out = rotate(tensor, angle)`` rotates ``(C, H, W)`` or ``(B, C, H, W)`` images by ``angle`` degrees, ``(B,)`` or
     one value for all, counter-clockwise as displayed, about ``center`` (``(B, 2)`` ``(x, y)`` pixels, by default the
     image centre ``((W - 1) / 2, (H - 1) / 2)``), and returns them at their size; the uncovered corners are padded
-    by ``padding_mode``. For a stored angle, use :class:`Rotate`; for volumes, :func:`rotate3d`; for the matrix, to
+    by ``padding_mode``, except along a one-pixel axis, which the default ``align_corners=True`` repeats
+    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For a stored angle, use :class:`Rotate`; for volumes,
+    :func:`rotate3d`; for the matrix, to
     compose or reuse it, :func:`get_rotation_matrix2d`.
 
     .. image:: _static/img/rotate.png
@@ -525,7 +527,9 @@ def translate(
 
     ``out = translate(tensor, translation)`` shifts ``(C, H, W)`` or ``(B, C, H, W)`` images by ``translation``
     ``(B, 2)``, ``(dx, dy)`` in pixels, a positive ``dx`` to the right and a positive ``dy`` down, and returns them at
-    their size; a fractional shift interpolates, and the uncovered border is padded by ``padding_mode``. One
+    their size; a fractional shift interpolates, and the uncovered border is padded by ``padding_mode``, except
+    along a one-pixel axis, which the default ``align_corners=True`` repeats
+    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). One
     translation serves every image of a batch, and one image, unbatched or of batch 1, is shifted by every
     translation. For a stored translation, use :class:`Translate`; for the matrix, :func:`get_translation_matrix2d`.
 
@@ -591,7 +595,9 @@ def scale(
     ``out = scale(tensor, scale_factor)`` scales the content of ``(C, H, W)`` or ``(B, C, H, W)`` images by
     ``scale_factor``, ``(B,)`` for both axes or ``(B, 2)`` as ``(sx, sy)``, about ``center`` (``(B, 2)`` ``(x, y)``
     pixels, by default the image centre), and returns them at their size: a factor above 1 zooms in and crops, one
-    below 1 shrinks the content and pads the border. To change the image size instead, use :func:`rescale` or
+    below 1 shrinks the content and pads the border, except along a one-pixel axis, which the default
+    ``align_corners=True`` repeats (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). To change the image
+    size instead, use :func:`rescale` or
     :func:`resize`; for a stored factor, :class:`Scale`.
 
     .. image:: _static/img/scale.png

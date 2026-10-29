@@ -98,8 +98,9 @@ def crop_and_resize3d(
             it.
 
     See Also:
-        - :func:`crop_and_resize`: the same for images and ``(B, 4, 2)`` boxes, where ``align_corners`` changes only
-          ``'reflection'`` padding and, with ``mode='nearest'``, which pixel a sample exactly halfway takes.
+        - :func:`crop_and_resize`: the same for images and ``(B, 4, 2)`` boxes, where, along an axis longer than one
+          pixel, ``align_corners`` changes only ``'reflection'`` padding and, with ``mode='nearest'``, which pixel a
+          sample exactly halfway takes.
         - :func:`crop_by_boxes3d`: maps the box onto a second box, whose size sets the output size.
         - :func:`center_crop3d`: the central window of each volume, with ``align_corners=True`` by default.
 
@@ -190,7 +191,9 @@ def center_crop3d(
     ``patches = center_crop3d(tensor, size)`` takes volumes ``(B, C, D, H, W)`` and returns their central
     ``(B, C, d, h, w)`` windows for ``size = (d, h, w)``: with the default ``align_corners=True``, a sub-volume of the
     input, with the extra voxel of an odd margin at the back/bottom/right. A ``size`` larger than the input pads with
-    zeros. For images, use :func:`center_crop`; for a crop at any box, :func:`crop_and_resize3d`.
+    zeros, except along a one-voxel input axis, which ``align_corners=True`` repeats
+    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). For images, use :func:`center_crop`; for a crop at any
+    box, :func:`crop_and_resize3d`.
 
     Convention:
         - input: ``(B, C, D, H, W)``; ``size`` is ``(d, h, w)``
