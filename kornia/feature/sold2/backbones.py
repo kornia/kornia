@@ -483,7 +483,7 @@ class SOLD2Net(nn.Module):
         a Dict with the following values:
             junctions: heatmap of junctions.
             heatmap: line heatmap.
-            descriptors: semi-dense descriptors.
+            descriptors: semi-dense descriptors, only when ``use_descriptor`` is true in ``model_cfg``.
 
     """
 
