@@ -173,9 +173,9 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
     doc = own_docstring(obj)
     entries = see_also_entries(doc)
     target = status_target(doc)
-    if entries is None and target:
-        # an "Alias of" or "Deprecated: use" title points to the target, so a See Also would only repeat it; the
-        # target is another public kornia object, and only a deprecated object says "Deprecated: use"
+    if target:
+        # an "Alias of" or "Deprecated: use" title points to another public kornia object, and only a deprecated
+        # object says "Deprecated: use", whether or not a See Also follows
         resolved = resolve_reference(obj, target, REGISTRY)
         message = f"{qualified}: a status title points to another public kornia object, not to {target!r}"
         assert resolved is not None, message
@@ -184,7 +184,8 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
         assert not doc.lstrip().startswith("Deprecated: use") or is_deprecated_wrapper(obj), (
             f"{qualified} has a 'Deprecated: use' title but is not wrapped by kornia.core._compat.deprecated"
         )
-        return
+        if entries is None:
+            return  # the title points to the target, so a See Also would only repeat it
     assert entries, (
         f"{qualified} needs a 'See Also:' section with at least one bullet like "
         "'- :func:`name`: how it differs.' (or an entry in SEE_ALSO_EXCEPTIONS with a reason)"
