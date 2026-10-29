@@ -2695,7 +2695,8 @@ class TestPolCartConversions(BaseTester):
     @pytest.mark.device_agnostic
     def test_cart2pol_onnx_export_legacy_matches_eager(self, dtype):
         # cart2pol must stay exportable: neither ONNX exporter supports torch.hypot (as in kornia#3993), so the
-        # overflow-safe radius is built from elementwise ops. 1e20 takes the scaled branch, the rest the direct one.
+        # overflow-safe radius is built from elementwise ops. 1e20 (overflow) and 1e-20 (underflow) take the scaled
+        # branch, the rest the direct one.
         if dtype != torch.float32:
             pytest.skip("the exported graph is checked once, in float32")
         pytest.importorskip("onnx")
@@ -2705,8 +2706,8 @@ class TestPolCartConversions(BaseTester):
             def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
                 return torch.stack(kornia.geometry.conversions.cart2pol(x, y), -1)
 
-        x = torch.tensor([3.0, 0.0, 300.0, 1e20, 5e-5, -2.0], dtype=dtype)
-        y = torch.tensor([4.0, 0.0, 150.0, 5e19, 0.0, -1.0], dtype=dtype)
+        x = torch.tensor([3.0, 0.0, 300.0, 1e20, 5e-5, -2.0, 1e-20], dtype=dtype)
+        y = torch.tensor([4.0, 0.0, 150.0, 5e19, 0.0, -1.0, 0.0], dtype=dtype)
         model = Cart2Pol()
         buffer = io.BytesIO()
         with warnings.catch_warnings():
@@ -2716,6 +2717,8 @@ class TestPolCartConversions(BaseTester):
         exported = torch.from_numpy(session.run(None, {"x": x.numpy(), "y": y.numpy()})[0])
         eager = model(x, y)
         self.assert_close(exported[:, 0], eager[:, 0])
+        # 1e-20 is below the default atol, so pin the underflowing radius exactly
+        self.assert_close(exported[-1, 0], x[-1], atol=0.0, rtol=0.0)
         # phi is compared off the origin only: the exported atan2(0, 0) is nan, independently of the radius
         off_origin = (x != 0) | (y != 0)
         self.assert_close(exported[off_origin, 1], eager[off_origin, 1])
