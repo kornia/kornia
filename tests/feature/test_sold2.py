@@ -52,12 +52,38 @@ class TestSOLD2_detector(BaseTester):
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 128, 128
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        # pretrained=False: scripting does not need the weights, and the CI cache
-        # deliberately does not carry ``sold2_wireframe.tar`` -- see
-        # ``NOT_PREFETCHED`` in tests/core/test_weights_prefetch.py.
+        # pretrained=False: scripting does not need the weights
         model = SOLD2_detector(pretrained=False).to(img.device, img.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
+
+
+    def test_has_no_descriptor_head(self, device, dtype):
+        # SOLD2_detector returns no descriptors, so its network neither builds nor runs the descriptor head; SOLD2 does
+        detector = SOLD2_detector(pretrained=False).to(device, dtype).eval()
+        assert detector.model.descriptor_decoder is None
+        assert not any("descriptor_decoder" in key for key in detector.state_dict())
+        assert SOLD2(pretrained=False).model.descriptor_decoder is not None
+        with torch.no_grad():
+            outputs = detector.model(torch.rand(1, 1, 32, 32, device=device, dtype=dtype))
+        assert set(outputs) == {"junctions", "heatmap"}
+
+    def test_loads_weights_with_a_descriptor_head_and_detects_as_sold2(self, device, dtype):
+        # the pretrained checkpoint, and state dicts saved from a detector that built the head, carry the head's weights
+        torch.manual_seed(0)
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
+        detector = SOLD2_detector(pretrained=False).to(device, dtype).eval()
+        weights = sold2.model.state_dict()
+        detector.model.load_state_dict(weights)
+        assert any(key.startswith("descriptor_decoder.") for key in weights)  # the caller's dict is left as it was
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        with torch.no_grad():
+            expected, actual = sold2(img), detector(img)
+        self.assert_close(actual["junction_heatmap"], expected["junction_heatmap"])
+        self.assert_close(actual["line_heatmap"], expected["line_heatmap"])
+        assert len(actual["line_segments"]) == len(expected["line_segments"])
+        for segments, expected_segments in zip(actual["line_segments"], expected["line_segments"]):
+            self.assert_close(segments, expected_segments)
 
 
 class TestJunctionsAndSegments(BaseTester):
