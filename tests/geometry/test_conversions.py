@@ -4338,6 +4338,23 @@ class TestDenormalizePointsWithIntrinsics(BaseTester):
         expected = torch.tensor([[420.0, 440.0]], device=device, dtype=dtype)
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("points_shape", [(2, 6, 2), (2, 2, 5, 2), (2, 3, 5, 2)])
+    def test_camera_b_applies_to_every_point_of_batch_b(self, points_shape, device, dtype):
+        # (B, N, 2), and (B, H, W, 2) with H == B and H != B (#6409): camera b must pair with batch b
+        # for every point, not with the H axis. Expected: u = x * fx_b + cx_b, v = y * fy_b + cy_b.
+        camera_matrix = _two_distinct_cameras(device, dtype)
+        points_norm = torch.rand(points_shape, device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.denormalize_points_with_intrinsics(points_norm, camera_matrix)
+
+        expected = torch.stack(
+            [
+                points_norm[b] * camera_matrix[b, [0, 1], [0, 1]] + camera_matrix[b, :2, 2]
+                for b in range(points_shape[0])
+            ]
+        )
+        self.assert_close(out, expected)
+
 
 class TestNormalizePointsWithIntrinsics(BaseTester):
     def test_smoke(self, device, dtype):
@@ -4429,6 +4446,42 @@ class TestNormalizePointsWithIntrinsics(BaseTester):
 
         expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("points_shape", [(2, 6, 2), (2, 2, 5, 2), (2, 3, 5, 2)])
+    def test_camera_b_applies_to_every_point_of_batch_b(self, points_shape, device, dtype):
+        # (B, N, 2), and (B, H, W, 2) with H == B and H != B (#6409): camera b must pair with batch b
+        # for every point, not with the H axis. Expected: x = (u - cx_b) / fx_b, y = (v - cy_b) / fy_b.
+        camera_matrix = _two_distinct_cameras(device, dtype)
+        points_2d = 400.0 * torch.rand(points_shape, device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
+
+        expected = torch.stack(
+            [
+                (points_2d[b] - camera_matrix[b, :2, 2]) / camera_matrix[b, [0, 1], [0, 1]]
+                for b in range(points_shape[0])
+            ]
+        )
+        self.assert_close(out, expected)
+
+    def test_grid_round_trip(self, device, dtype):
+        camera_matrix = _two_distinct_cameras(device, dtype)
+        points_2d = 400.0 * torch.rand(2, 3, 5, 2, device=device, dtype=dtype)
+        op = kornia.geometry.conversions.normalize_points_with_intrinsics
+        back = kornia.geometry.conversions.denormalize_points_with_intrinsics
+        self.assert_close(back(op(points_2d, camera_matrix), camera_matrix), points_2d)
+
+
+def _two_distinct_cameras(device, dtype):
+    """Return two pinhole ``K`` with different ``fx``, ``fy``, ``cx`` and ``cy``, shape ``(2, 3, 3)``."""
+    return torch.tensor(
+        [
+            [[100.0, 0.0, 10.0], [0.0, 200.0, 20.0], [0.0, 0.0, 1.0]],
+            [[300.0, 0.0, 100.0], [0.0, 50.0, 250.0], [0.0, 0.0, 1.0]],
+        ],
+        device=device,
+        dtype=dtype,
+    )
 
 
 class TestRt2Extrinsics(BaseTester):

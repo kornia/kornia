@@ -1,0 +1,1 @@
+`normalize_points_with_intrinsics` and `denormalize_points_with_intrinsics` now pair camera `b` with every point of batch `b` for points with more than one non-batch dimension, such as a `(B, H, W, 2)` grid. They used to line the cameras up with `H`, which raised for `H != B` and gave a wrong result silently for `H == B`. `(B, N, 2)` results are unchanged.

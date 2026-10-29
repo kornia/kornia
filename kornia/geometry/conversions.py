@@ -2535,7 +2535,8 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
     # unpack coordinates
     cxcy = camera_matrix[..., :2, 2]
     fxfy = camera_matrix[..., :2, :2].diagonal(dim1=-2, dim2=-1)
-    if len(cxcy.shape) < len(point_2d.shape):  # broadcast intrinsics:
+    # broadcast intrinsics to the points' rank, (B, 1, ..., 1, 2), so camera b applies to every point of batch b
+    for _ in range(point_2d.dim() - cxcy.dim()):
         cxcy, fxfy = cxcy.unsqueeze(-2), fxfy.unsqueeze(-2)
     return (point_2d - cxcy) / fxfy
 
@@ -2577,7 +2578,8 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
 
     fxfy = camera_matrix[..., :2, :2].diagonal(dim1=-2, dim2=-1)  # (*, 2)
     cxcy = camera_matrix[..., :2, 2]  # (*, 2)
-    if len(cxcy.shape) < len(point_2d_norm.shape):
+    # broadcast intrinsics to the points' rank, (B, 1, ..., 1, 2), so camera b applies to every point of batch b
+    for _ in range(point_2d_norm.dim() - cxcy.dim()):
         fxfy, cxcy = fxfy.unsqueeze(-2), cxcy.unsqueeze(-2)
     return point_2d_norm * fxfy + cxcy
 
