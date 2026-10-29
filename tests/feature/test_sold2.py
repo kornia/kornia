@@ -57,7 +57,6 @@ class TestSOLD2_detector(BaseTester):
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
 
-
     def test_has_no_descriptor_head(self, device, dtype):
         # SOLD2_detector returns no descriptors, so its network neither builds nor runs the descriptor head; SOLD2 does
         detector = SOLD2_detector(pretrained=False).to(device, dtype).eval()
