@@ -256,9 +256,7 @@ class TestAttention(BaseTester):
             torch.backends.cuda.mem_efficient_sdp_enabled(),
             torch.backends.cuda.cudnn_sdp_enabled(),
         )
-        with unittest.mock.patch(
-            "kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa
-        ):
+        with unittest.mock.patch("kornia.feature.lightglue.F.scaled_dot_product_attention", side_effect=legacy_sdpa):
             actual = attention(q, k, v, mask)
         assert actual.isfinite().all()
         self.assert_close(actual, expected)
