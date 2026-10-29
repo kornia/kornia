@@ -237,6 +237,16 @@ class TestLineSegmentOneWayError(BaseTester):
         ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=torch.float32)  # the line y = 0
         self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), torch.zeros(1, 1, device=device))
 
+    def test_scaling_homography_does_not_overflow_half(self, device, dtype):
+        # The distance is computed in at least float32: a scaling H maps (70, 70) to x' = 70000, past the float16
+        # maximum, and float16 arithmetic read the 1 px distance as NaN. The result keeps the input dtype.
+        H = 1000 * torch.eye(3, device=device, dtype=dtype)[None]
+        ls1 = torch.tensor([[[[70.0, 70.0], [71.0, 70.0]]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[70.0, 71.0], [71.0, 71.0]]]], device=device, dtype=dtype)  # the line y = 71
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == dtype
+        self.assert_close(error, torch.ones_like(error))
+
     def test_matches_the_mapped_endpoint_distances(self, device, dtype):
         # Away from infinity the error is the mean distance of the dehomogenized mapped endpoints from the unit line.
         _skip_half(dtype, _HALF_LINES)
@@ -1476,7 +1486,7 @@ _HALF_POINTS = (
     "of rounding in bfloat16 (0.25 px in float16), the size of the offsets these pins measure"
 )
 _HALF_LINES = (
-    "line_segment_transfer_error_one_way builds the unnormalised image-2 line in the input dtype; its constant term "
+    "the line DLT and these references build the unnormalised image-2 lines in the input dtype; their constant term "
     "is of order (pixel coordinate)**2, which overflows float16 and which bfloat16 cannot resolve"
 )
 

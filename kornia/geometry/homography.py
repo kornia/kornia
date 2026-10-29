@@ -295,8 +295,15 @@ def line_segment_transfer_error_one_way(
     B, N = ls1.shape[:2]
     ps1, pe1 = torch.chunk(ls1, dim=2, chunks=2)
     ps2, pe2 = torch.chunk(ls2, dim=2, chunks=2)
-    ps2_h = convert_points_to_homogeneous(ps2)
-    pe2_h = convert_points_to_homogeneous(pe2)
+    # The line and the distances are computed in a dtype that holds every input, and at least float32: none of H,
+    # ls1 and ls2 loses precision, and in half precision neither the line's constant term, of order (pixel
+    # coordinate)**2, nor H @ p overflows or rounds away. They are returned in the segments' dtype, as
+    # transform_points returned the mapped points in theirs.
+    out_dtype = torch.promote_types(ls1.dtype, ls2.dtype)
+    work_dtype = torch.promote_types(torch.promote_types(H.dtype, out_dtype), torch.float32)
+    H_work = H.to(work_dtype)
+    ps2_h = convert_points_to_homogeneous(ps2).to(work_dtype)
+    pe2_h = convert_points_to_homogeneous(pe2).to(work_dtype)
     ln2 = torch.linalg.cross(ps2_h, pe2_h, dim=3)
     # Scale the image-2 line to a unit (a, b) so the error is a perpendicular distance in pixels, not that
     # distance times the image-2 segment length (#4867). A zero-length segment defines no line; as before the
@@ -304,12 +311,6 @@ def line_segment_transfer_error_one_way(
     scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
     ln2 = (ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))).view(B, N, 3)
     has_line = scale.view(B, N) > 0
-
-    # The distances are computed in a dtype that holds every input, so none of H, ls1 and ls2 loses precision, and
-    # returned in the segments' dtype, as transform_points returned the mapped points in theirs.
-    out_dtype = torch.promote_types(ls1.dtype, ls2.dtype)
-    work_dtype = torch.promote_types(H.dtype, out_dtype)
-    H_work, ln2 = H.to(work_dtype), ln2.to(work_dtype)
 
     def endpoint_distance(p1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Map without the OpenCV-style dehomogenization of transform_points, which returns the numerator unchanged
