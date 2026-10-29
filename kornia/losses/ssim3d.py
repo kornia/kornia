@@ -46,8 +46,8 @@ def ssim3d_loss(
         - The per-voxel loss is ``clamp((1 - SSIM) / 2, 0, 1)``, as in :func:`~kornia.losses.ssim_loss`.
 
     Args:
-        img1: the first input image with shape :math:`(B, C, D, H, W)`.
-        img2: the second input image with shape :math:`(B, C, D, H, W)`.
+        img1: the first input image with shape ``(B, C, D, H, W)``.
+        img2: the second input image with shape ``(B, C, D, H, W)``.
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
@@ -133,7 +133,7 @@ class SSIM3DLoss(nn.Module):
         """Compute SSIM loss between two 3D image or volume tensors.
 
         Args:
-            img1: First volume batch with shape :math:`(B, C, D, H, W)`, where
+            img1: First volume batch with shape ``(B, C, D, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`D` is depth, :math:`H` is height, and :math:`W` is
                 width.

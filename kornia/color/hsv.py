@@ -36,11 +36,11 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         pixels have hue zero. eps biases the saturation denominator.
 
     Args:
-        image: RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to HSV with shape of ``(*, 3, H, W)``.
         eps: scalar to enforce numarical stability.
 
     Returns:
-        HSV version of the image with shape of :math:`(*, 3, H, W)`.
+        HSV version of the image with shape of ``(*, 3, H, W)``.
         The H channel values are in the range [0, 2pi). S and V are in the range 0..1.
 
     .. note::
@@ -97,10 +97,10 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         Expects H, S, V channels at axis -3 with hue in radians.
 
     Args:
-        image: HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        image: HSV Image to be converted to HSV with shape of ``(*, 3, H, W)``.
 
     Returns:
-        RGB version of the image with shape of :math:`(*, 3, H, W)`.
+        RGB version of the image with shape of ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -158,8 +158,8 @@ class RgbToHsv(nn.Module):
         HSV version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -179,12 +179,12 @@ class RgbToHsv(nn.Module):
         """Convert an RGB tensor to HSV.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` is the channel dimension, and ``H``/``W`` are height and width.
 
         Returns:
-            HSV tensor with shape :math:`(*, 3, H, W)`.
+            HSV tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_hsv(image, self.eps)
 
@@ -200,8 +200,8 @@ class HsvToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -217,11 +217,11 @@ class HsvToRgb(nn.Module):
         """Convert an HSV tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` is the channel dimension, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return hsv_to_rgb(image)

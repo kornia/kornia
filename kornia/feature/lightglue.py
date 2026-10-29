@@ -150,17 +150,17 @@ class Attention(nn.Module):
         """Apply multi-head attention to query, key, and value tensors.
 
         Args:
-            q: Query tensor with shape :math:`(B, H, N_q, D_h)`, where ``B`` is batch size,
+            q: Query tensor with shape ``(B, H, N_q, D_h)``, where ``B`` is batch size,
                 ``H`` is the number of attention heads, ``N_q`` is the number of query tokens,
                 and ``D_h`` is the per-head descriptor dimension.
-            k: Key tensor with shape :math:`(B, H, N_k, D_h)`, where ``N_k`` is the number
+            k: Key tensor with shape ``(B, H, N_k, D_h)``, where ``N_k`` is the number
                 of key tokens.
-            v: Value tensor with shape :math:`(B, H, N_k, D_h)`.
+            v: Value tensor with shape ``(B, H, N_k, D_h)``.
             mask: Optional boolean attention mask. ``True`` entries mark token pairs that
                 are allowed to attend to each other.
 
         Returns:
-            Attention output with shape :math:`(B, H, N_q, D_h)`.
+            Attention output with shape ``(B, H, N_q, D_h)``.
         """
         if self.allow_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
@@ -214,7 +214,7 @@ class SelfBlock(nn.Module):
         """Update descriptors from one image using self-attention.
 
         Args:
-            x: Descriptor tensor with shape :math:`(B, N, D)`, where ``B`` is batch size,
+            x: Descriptor tensor with shape ``(B, N, D)``, where ``B`` is batch size,
                 ``N`` is the number of local features, and ``D`` is descriptor dimension.
             encoding: Positional encoding tensor aligned with ``x`` and used for rotary
                 position embedding inside attention.
@@ -282,11 +282,11 @@ class CrossBlock(nn.Module):
         """Exchange information between two images using cross-attention.
 
         Args:
-            x0: Descriptor tensor from the first image with shape :math:`(B, M, D)`,
+            x0: Descriptor tensor from the first image with shape ``(B, M, D)``,
                 where ``M`` is the number of local features in image 0.
-            x1: Descriptor tensor from the second image with shape :math:`(B, N, D)`,
+            x1: Descriptor tensor from the second image with shape ``(B, N, D)``,
                 where ``N`` is the number of local features in image 1.
-            mask: Optional boolean mask with shape :math:`(B, H, M, N)` or a broadcastable
+            mask: Optional boolean mask with shape ``(B, H, M, N)`` or a broadcastable
                 equivalent, marking valid descriptor pairs.
 
         Returns:
@@ -340,8 +340,8 @@ class TransformerLayer(nn.Module):
         """Run one LightGlue transformer layer over two descriptor sets.
 
         Args:
-            desc0: Descriptor tensor from image 0 with shape :math:`(B, M, D)`.
-            desc1: Descriptor tensor from image 1 with shape :math:`(B, N, D)`.
+            desc0: Descriptor tensor from image 0 with shape ``(B, M, D)``.
+            desc1: Descriptor tensor from image 1 with shape ``(B, N, D)``.
             encoding0: Positional encoding for ``desc0``.
             encoding1: Positional encoding for ``desc1``.
             mask0: Optional validity mask for descriptors in image 0.
@@ -369,8 +369,8 @@ class TransformerLayer(nn.Module):
         """Run the transformer layer with explicit descriptor validity masks.
 
         Args:
-            desc0: Descriptor tensor from image 0 with shape :math:`(B, M, D)`.
-            desc1: Descriptor tensor from image 1 with shape :math:`(B, N, D)`.
+            desc0: Descriptor tensor from image 0 with shape ``(B, M, D)``.
+            desc1: Descriptor tensor from image 1 with shape ``(B, N, D)``.
             encoding0: Positional encoding for image 0 descriptors.
             encoding1: Positional encoding for image 1 descriptors.
             mask0: Boolean mask for valid image 0 descriptors.
@@ -428,11 +428,11 @@ class MatchAssignment(nn.Module):
         """Estimate how likely each descriptor is to obtain a valid match.
 
         Args:
-            desc: Descriptor tensor with shape :math:`(B, N, D)`, where ``N`` is the
+            desc: Descriptor tensor with shape ``(B, N, D)``, where ``N`` is the
                 number of local features.
 
         Returns:
-            Matchability probabilities with shape :math:`(B, N)`.
+            Matchability probabilities with shape ``(B, N)``.
         """
         return torch.sigmoid(self.matchability(desc)).squeeze(-1)
 
@@ -1014,8 +1014,8 @@ class LightGlue(nn.Module):
         """Evaluate the early-stopping condition of every pair in a batch.
 
         Args:
-            confidences0: Token confidences of image 0, shape :math:`(B, M)`.
-            confidences1: Token confidences of image 1, shape :math:`(B, N)`.
+            confidences0: Token confidences of image 0, shape ``(B, M)``.
+            confidences1: Token confidences of image 1, shape ``(B, N)``.
             layer_index: Index of the layer that computed the confidences.
             num_points: Number of keypoints of one pair that the unconfident points are counted against.
 

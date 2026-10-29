@@ -2908,10 +2908,10 @@ def determinant_to_polynomial(
           ``z**i``), the reverse of the :func:`solve_quadratic` layout.
 
     Args:
-        A: torch.Tensor :math:`(B, 3, 13)`.
+        A: torch.Tensor ``(B, 3, 13)``.
 
     Returns:
-        a degree 10 poly of shape :math:`(B, 11)`, representing determinant (Eqn. 14 in the paper).
+        a degree 10 poly of shape ``(B, 11)``, representing determinant (Eqn. 14 in the paper).
 
     """
     B, device, dtype = A.shape[0], A.device, A.dtype

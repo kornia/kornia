@@ -33,7 +33,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     r"""Return a 3x3 intrinsics matrix per batch element of the input.
 
     Convention:
-        - ``fx = fy = focal`` and the principal point is ``(W / 2, H / 2)`` of the :math:`(B, C, H, W)` input;
+        - ``fx = fy = focal`` and the principal point is ``(W / 2, H / 2)`` of the ``(B, C, H, W)`` input;
           dtype and device follow the input. ``focal`` must be positive and the input 4-D.
         - The input must be floating point, like kornia's images: an integer input raises by design rather than
           returning an integer ``K``.
@@ -44,10 +44,10 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     Args:
         focal: the focal length for the camera matrix.
         input: image tensor that will determine the batch size and image height
-          and width. It is assumed to be a floating-point tensor in the shape of :math:`(B, C, H, W)`.
+          and width. It is assumed to be a floating-point tensor in the shape of ``(B, C, H, W)``.
 
     Returns:
-        The camera matrix with the shape of :math:`(B, 3, 3)`.
+        The camera matrix with the shape of ``(B, 3, 3)``.
 
     """
     if len(input.shape) != 4:
@@ -78,7 +78,7 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
         high: upper range (exclusive).
 
     Returns:
-        the random camera matrix with the shape of :math:`(1, 3, 3)`.
+        the random camera matrix with the shape of ``(1, 3, 3)``.
 
     """
     sampler = torch.distributions.Uniform(low, high)
@@ -102,12 +102,12 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
 
     Args:
         camera_matrix: the camera calibration matrix containing the intrinsic
-          parameters. The expected shape for the tensor is :math:`(B, 3, 3)`.
-        scale_factor: the scaling factor to be applied: a float, or a tensor of shape :math:`(B,)` that
+          parameters. The expected shape for the tensor is ``(B, 3, 3)``.
+        scale_factor: the scaling factor to be applied: a float, or a tensor of shape ``(B,)`` that
           scales each batch element by its own factor.
 
     Returns:
-        The scaled camera matrix with the same shape as the input :math:`(B, 3, 3)`.
+        The scaled camera matrix with the same shape as the input ``(B, 3, 3)``.
 
     """
     K_scale = camera_matrix.clone()
@@ -131,12 +131,12 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
           :func:`KRt_from_projection`, and :func:`depth_from_point` gives the depth of a point in this camera.
 
     Args:
-       K: the camera matrix with the intrinsics with shape :math:`(*, 3, 3)`.
-       R: The rotation matrix with shape :math:`(*, 3, 3)`.
-       t: The translation vector with shape :math:`(*, 3, 1)`.
+       K: the camera matrix with the intrinsics with shape ``(*, 3, 3)``.
+       R: The rotation matrix with shape ``(*, 3, 3)``.
+       t: The translation vector with shape ``(*, 3, 1)``.
 
     Returns:
-       The projection matrix P with shape :math:`(*, 3, 4)`.
+       The projection matrix P with shape ``(*, 3, 4)``.
 
     """
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
@@ -170,14 +170,14 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
         - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
-        P: the projection matrix with shape :math:`(B, 3, 4)`.
+        P: the projection matrix with shape ``(B, 3, 4)``.
         eps: unused; kept for backward compatibility. The sign of the triangular factor's diagonal is taken
           exactly.
 
     Returns:
-        - The Camera matrix with shape :math:`(B, 3, 3)`.
-        - The Rotation matrix with shape :math:`(B, 3, 3)`.
-        - The Translation vector with shape :math:`(B, 3, 1)`.
+        - The Camera matrix with shape ``(B, 3, 3)``.
+        - The Rotation matrix with shape ``(B, 3, 3)``.
+        - The Translation vector with shape ``(B, 3, 1)``.
 
     """
     KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
@@ -229,12 +229,12 @@ def depth_from_point(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch
           ``R`` is read as ``B`` points seen by every camera and gives ``(B, B)``, not one point per camera.
 
     Args:
-       R: The rotation matrix with shape :math:`(*, 3, 3)`.
-       t: The translation vector with shape :math:`(*, 3, 1)`.
-       X: The 3d points with shape :math:`(*, N, 3)`.
+       R: The rotation matrix with shape ``(*, 3, 3)``.
+       t: The translation vector with shape ``(*, 3, 1)``.
+       X: The 3d points with shape ``(*, N, 3)``.
 
     Returns:
-       The depth value per point with shape :math:`(*, N)`.
+       The depth value per point with shape ``(*, N)``.
 
     """
     X_tmp = R @ X.transpose(-2, -1)
@@ -264,10 +264,10 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
         - ``F_mat`` must have exactly one batch dimension.
 
     Args:
-       F_mat: the fundamental matrix with the shape :math:`(B, 3, 3)`.
+       F_mat: the fundamental matrix with the shape ``(B, 3, 3)``.
 
     Returns:
-        The projection matrices with shape :math:`(B, 3, 4, 2)`.
+        The projection matrices with shape ``(B, 3, 4, 2)``.
 
     """
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])

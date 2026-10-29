@@ -81,7 +81,7 @@ class Homography(BaseModel):
         r"""Single-batch homography, scaled so that its ``[2, 2]`` entry is 1.
 
         Returns:
-            Homography matrix with shape :math:`(1, 3, 3)`.
+            Homography matrix with shape ``(1, 3, 3)``.
 
         """
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
@@ -90,7 +90,7 @@ class Homography(BaseModel):
         r"""Inverted single-batch homography.
 
         Returns:
-            Homography matrix with shape :math:`(1, 3, 3)`.
+            Homography matrix with shape ``(1, 3, 3)``.
 
         """
         return torch.unsqueeze(_torch_inverse_cast(self.model), dim=0)
@@ -163,7 +163,7 @@ class Similarity(BaseModel):
         r"""Single-batch similarity transform.
 
         Returns:
-            Similarity with shape :math:`(1, 3, 3)`
+            Similarity with shape ``(1, 3, 3)``
 
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
@@ -178,7 +178,7 @@ class Similarity(BaseModel):
         r"""Single-batch inverse similarity transform.
 
         Returns:
-            Similarity with shape :math:`(1, 3, 3)`
+            Similarity with shape ``(1, 3, 3)``
 
         """
         return _torch_inverse_cast(self.forward())

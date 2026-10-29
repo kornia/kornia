@@ -198,14 +198,14 @@ def find_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[
     Ambient autocast is disabled during fitting to preserve this arithmetic precision.
 
     Args:
-        points1: Source points with shape :math:`(B, N, 2)`, where :math:`N \geq 3`.
-        points2: Destination points with shape :math:`(B, N, 2)`.
-        weights: Optional correspondence weights with shape :math:`(B, N)`. They must be
+        points1: Source points with shape ``(B, N, 2)``, where :math:`N \geq 3`.
+        points2: Destination points with shape ``(B, N, 2)``.
+        weights: Optional correspondence weights with shape ``(B, N)``. They must be
             finite and non-negative; other values are not detected and give undefined
             results. Only relative weights matter.
 
     Returns:
-        Homogeneous affine transformations with shape :math:`(B, 3, 3)`. Degenerate
+        Homogeneous affine transformations with shape ``(B, 3, 3)``. Degenerate
         batches without three non-collinear, positive-weight source points contain
         NaNs, allowing robust estimators to reject singular fits as invalid models.
     """

@@ -18,17 +18,19 @@
 """Converted kornia modules keep the docstring style the rollout set out to give them.
 
 ``testing/docstring_rollout.py`` lists the modules that are converted. For those, this file enforces what a reader,
-an IDE or a coding agent relies on and what a refactor silently breaks:
+an IDE or a coding agent relies on and what a refactor silently breaks; the shape rule applies everywhere:
 
 * every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs;
 * every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
   ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
   object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
   text (a short import alias is importable but is not a target); See Also entries name kornia objects only;
-* the source writes a tensor shape as a literal such as ``(B, 1, H, W)``, not as ``:math:``;
+* every ``kornia/**/*.py`` file and every page Sphinx builds from ``docs/source`` writes a tensor shape as a literal
+  such as ``(B, 1, H, W)``, not as ``:math:``, except for the values listed in ``MATH_NON_SHAPES``;
 * the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal.
 
-The test ids are qualified names, so a failure names the object to fix. Run with ``-s`` to see the progress table.
+The test ids are qualified names, or repository paths for the shape check, so a failure names what to fix. Run with
+``-s`` to see the progress table.
 """
 
 from __future__ import annotations
@@ -46,8 +48,8 @@ from testing.docstring_rollout import (
     DOCSTRING_MODULES,
     EXCLUDED_PACKAGES,
     IN_SCOPE_PACKAGES,
+    MATH_NON_SHAPES,
     SEE_ALSO_EXCEPTIONS,
-    SHAPE_CHECK_MODULES,
 )
 from testing.docstring_style import (
     catalog_missing,
@@ -64,12 +66,14 @@ from testing.docstring_style import (
     public_objects,
     reference_resolves,
     resolve_reference,
+    rst_pages,
     see_also_entries,
     sphinx_registry,
 )
 
 KORNIA_ROOT = Path(kornia.__file__).resolve().parent
-DOCS = KORNIA_ROOT.parent / "docs" / "source"
+REPO_ROOT = KORNIA_ROOT.parent
+DOCS = REPO_ROOT / "docs" / "source"
 REGISTRY = sphinx_registry(DOCS)
 INTERSPHINX = intersphinx_names(DOCS)
 
@@ -79,18 +83,7 @@ CONVERTED = sorted(
 )
 
 
-def _module_name(path: Path) -> str:
-    parts = list(path.relative_to(KORNIA_ROOT.parent).with_suffix("").parts)
-    if parts[-1] == "__init__":
-        parts.pop()
-    return ".".join(parts)
-
-
-SHAPE_CHECK_FILES = sorted(
-    path
-    for path in KORNIA_ROOT.rglob("*.py")
-    if SHAPE_CHECK_MODULES is None or covered(_module_name(path), SHAPE_CHECK_MODULES)
-)
+SHAPE_CHECK_FILES = sorted([*KORNIA_ROOT.rglob("*.py"), *rst_pages(DOCS)])
 
 
 def _suggest(target: str) -> str:
@@ -109,17 +102,13 @@ def _wrong_role(role: str, target: str) -> str:
 def test_rollout_selects_something() -> None:
     """The parametrized checks below are not vacuous: the rollout lists select objects and files."""
     assert CONVERTED, f"DOCSTRING_MODULES {DOCSTRING_MODULES} select no public object"
-    assert SHAPE_CHECK_FILES, f"SHAPE_CHECK_MODULES {SHAPE_CHECK_MODULES} select no source file"
+    assert SHAPE_CHECK_FILES, f"no source file or docs page found under {KORNIA_ROOT} and {DOCS}"
     assert CATALOG_NAMESPACES, "CATALOG_NAMESPACES is empty, so no module catalog is checked"
     assert REGISTRY, f"sphinx_registry({DOCS}) registered nothing"
     assert INTERSPHINX, f"intersphinx_names({DOCS}) found no inventory names"
     for prefix in DOCSTRING_MODULES:
         assert any(covered(obj.__module__, [prefix]) for _, obj in CONVERTED), (
             f"DOCSTRING_MODULES entry {prefix!r} selects no public object with a docstring"
-        )
-    for prefix in SHAPE_CHECK_MODULES or ():
-        assert any(covered(_module_name(path), [prefix]) for path in SHAPE_CHECK_FILES), (
-            f"SHAPE_CHECK_MODULES entry {prefix!r} selects no source file"
         )
 
 
@@ -137,7 +126,6 @@ def test_rollout_lists_are_real() -> None:
     lists = {
         "DOCSTRING_MODULES": DOCSTRING_MODULES,
         "CATALOG_NAMESPACES": CATALOG_NAMESPACES,
-        "SHAPE_CHECK_MODULES": SHAPE_CHECK_MODULES or (),
     }
     for list_name, entries in lists.items():
         for entry in entries:
@@ -198,13 +186,27 @@ def test_converted_object_references_resolve(qualified: str, obj: object) -> Non
 
 
 @pytest.mark.parametrize(
-    "path", SHAPE_CHECK_FILES, ids=[str(path.relative_to(KORNIA_ROOT.parent)) for path in SHAPE_CHECK_FILES]
+    "path", SHAPE_CHECK_FILES, ids=[path.relative_to(REPO_ROOT).as_posix() for path in SHAPE_CHECK_FILES]
 )
 def test_no_math_shape_roles(path: Path) -> None:
-    found = math_shape_roles(path.read_text(encoding="utf-8"))
+    relative = path.relative_to(REPO_ROOT).as_posix()
+    values = MATH_NON_SHAPES.get(relative, {})
+    found = [content for content in math_shape_roles(path.read_text(encoding="utf-8")) if content not in values]
     assert found == [], (
-        f"{path.relative_to(KORNIA_ROOT.parent)} writes shapes as :math: {found}; use literals like ``(B, 1, H, W)``"
+        f"{relative} writes shapes as :math: {found}; use literals like ``(B, 1, H, W)``, or list a tuple that is "
+        "a value, not a shape, in MATH_NON_SHAPES with what it is"
     )
+
+
+def test_math_non_shapes_are_current() -> None:
+    """Every ``MATH_NON_SHAPES`` entry names a checked file that still writes that tuple as ``:math:``."""
+    checked = {path.relative_to(REPO_ROOT).as_posix(): path for path in SHAPE_CHECK_FILES}
+    for relative, values in MATH_NON_SHAPES.items():
+        assert relative in checked, f"MATH_NON_SHAPES key {relative!r} is not a checked source file or docs page"
+        found = set(math_shape_roles(checked[relative].read_text(encoding="utf-8")))
+        for content, reason in values.items():
+            assert content in found, f"MATH_NON_SHAPES entry {content!r} no longer occurs in {relative}; remove it"
+            assert reason.strip(), f"MATH_NON_SHAPES entry {content!r} in {relative} needs a reason"
 
 
 @pytest.mark.parametrize("namespace", CATALOG_NAMESPACES)

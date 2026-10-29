@@ -57,8 +57,8 @@ def undistort_points(
         `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
 
     Args:
-        points: Input image points with shape :math:`(*, N, 2)`.
-        K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
+        points: Input image points with shape ``(*, N, 2)``.
+        K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
@@ -67,11 +67,11 @@ def undistort_points(
             :math:`z = 1` plane -- the mirror image of the two roles in
             :func:`~kornia.geometry.calibration.distort_points`. By default it is the same as ``K``, in which
             case both steps use the same camera; a different matrix rescales and shifts the **result**.
-            Shape: :math:`(*, 3, 3)`. Default: None.
+            Shape: ``(*, 3, 3)``. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
 
     Returns:
-        Undistorted 2D points with shape :math:`(*, N, 2)`.
+        Undistorted 2D points with shape ``(*, N, 2)``.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -169,21 +169,21 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     Convention:
         - the leading dimensions of ``image`` (in front of ``C, H, W``), ``K`` (in front of :math:`3 \times 3`)
           and ``dist`` (in front of its ``n`` coefficients) must match exactly; the one exception is the
-          legacy unbatched call, a :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)`
+          legacy unbatched call, a ``(1, C, H, W)`` image with a ``(3, 3)`` ``K`` and an :math:`(n,)`
           ``dist``.
         - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
           centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
           a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
 
     Args:
-        image: Input image with shape :math:`(*, C, H, W)`.
-        K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
+        image: Input image with shape ``(*, C, H, W)``.
+        K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
 
     Returns:
-        Undistorted image with shape :math:`(*, C, H, W)`.
+        Undistorted image with shape ``(*, C, H, W)``.
 
     Example:
         >>> img = torch.rand(1, 3, 5, 5)

@@ -775,7 +775,7 @@ class ALIKED(nn.Module):
           running statistics on every call, and a single small image raises; call ``.eval()`` for inference.
           :meth:`from_pretrained` returns the trained model in evaluation mode.
         - ``images`` are RGB in :math:`[0, 1]`, the range of the pretrained weights, and the network applies no
-          normalisation; a :math:`(B, 1, H, W)` image is repeated to three channels. Any ``H`` and ``W`` work: the
+          normalisation; a ``(B, 1, H, W)`` image is repeated to three channels. Any ``H`` and ``W`` work: the
           image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
           does not move the keypoints.
         - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
@@ -794,7 +794,7 @@ class ALIKED(nn.Module):
         - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
           common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
         - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
-          largest keypoint count in the batch and the responses are :math:`(B, N, 1)`. Its ``mask`` multiplies the
+          largest keypoint count in the batch and the responses are ``(B, N, 1)``. Its ``mask`` multiplies the
           score map, and it takes no ``image_size``.
         - Known defects: on CPU, float16 and bfloat16 score and feature maps go to torch's ``grid_sample`` without
           an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has none the
@@ -1003,7 +1003,7 @@ class ALIKED(nn.Module):
         batched tensors.
 
         Args:
-            img: image to extract features with shape :math:`(B,C,H,W)`.
+            img: image to extract features with shape ``(B,C,H,W)``.
             mask: optional spatial mask ``(B, 1, H, W)`` with values in
                 ``[0, 1]``; the score map is multiplied by this mask before
                 keypoint detection so that features are suppressed in masked
@@ -1015,9 +1015,9 @@ class ALIKED(nn.Module):
                 call entirely (useful when only keypoint positions are needed).
 
         Returns:
-            - Detected local affine frames with shape :math:`(B,N,2,3)`.
-            - Response function values for corresponding LAFs with shape :math:`(B,N,1)`.
-            - Local descriptors of shape :math:`(B,N,D)`.
+            - Detected local affine frames with shape ``(B,N,2,3)``.
+            - Response function values for corresponding LAFs with shape ``(B,N,1)``.
+            - Local descriptors of shape ``(B,N,D)``.
 
         """
         if img.shape[1] == 1:

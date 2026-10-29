@@ -44,7 +44,7 @@ def elastic_transform2d(
     .. image:: _static/img/elastic_transform2d.png
 
     Convention:
-        - image: :math:`(B, C, H, W)`; ``noise``: :math:`(B, 2, H, W)` with
+        - image: ``(B, C, H, W)``; ``noise``: ``(B, 2, H, W)`` with
           channel 0 the x- and channel 1 the y-displacement of the sampling
           grid (positive x-noise shifts image content left)
         - displacements are smoothed with a Gaussian (``kernel_size``,
@@ -55,9 +55,9 @@ def elastic_transform2d(
           zeros, the edge value, or the reflected image
 
     Args:
-        image: Input image to be transformed with shape :math:`(B, C, H, W)`.
+        image: Input image to be transformed with shape ``(B, C, H, W)``.
         noise: Noise image used to spatially transform the input image. Same
-          resolution as the input image with shape :math:`(B, 2, H, W)`. The coordinates order
+          resolution as the input image with shape ``(B, 2, H, W)``. The coordinates order
           it is expected to be in x-y.
         kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
         sigma: The standard deviation of the Gaussian in the y and x directions,
@@ -69,7 +69,7 @@ def elastic_transform2d(
         padding_mode: The padding used by ``grid_sample``. Either ``'zeros'``, ``'border'`` or ``'reflection'``.
 
     Returns:
-        the elastically transformed input image with shape :math:`(B,C,H,W)`.
+        the elastically transformed input image with shape ``(B,C,H,W)``.
 
     Example:
         >>> image = torch.rand(1, 3, 5, 5)

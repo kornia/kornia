@@ -151,8 +151,8 @@ class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
         """Forward pass of the super resolution model.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             output torch.Tensor.

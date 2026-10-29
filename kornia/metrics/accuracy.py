@@ -45,8 +45,8 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
     """Compute the accuracy over the k top predictions for the specified values of k.
 
     Convention:
-        - ``pred`` holds one score per class, :math:`(B, C)`; only the order of the scores in a row matters.
-          ``target`` holds class indices, :math:`(B,)` or :math:`(B, 1)`. The batch sizes of ``pred`` and
+        - ``pred`` holds one score per class, ``(B, C)``; only the order of the scores in a row matters.
+          ``target`` holds class indices, ``(B,)`` or ``(B, 1)``. The batch sizes of ``pred`` and
           ``target`` must match.
         - The result is a list with one 0-d float32 tensor per entry of ``topk``, in that order. Each is a
           **percentage** in :math:`[0, 100]`, not a fraction, taken over the whole batch: a sample counts for ``k``
@@ -54,8 +54,8 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
           :ref:`Losses and metrics <losses-metrics-conventions>` lists the scale of every task metric.
 
     Args:
-        pred: the class scores, with shape :math:`(B, C)`.
-        target: the ground-truth class indices, with shape :math:`(B,)` or :math:`(B, 1)`.
+        pred: the class scores, with shape ``(B, C)``.
+        target: the ground-truth class indices, with shape ``(B,)`` or ``(B, 1)``.
         topk: the expected topk ranking.
 
     Example:

@@ -40,10 +40,10 @@ class DeDoDeDetector(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            images: Input image batch with shape :math:`(B, C, H, W)`.
+            images: Input image batch with shape ``(B, C, H, W)``.
 
         Returns:
-            Keypoint detection logits with shape :math:`(B, 1, H, W)`.
+            Keypoint detection logits with shape ``(B, 1, H, W)``.
         """
         dtype = images.dtype
         features, sizes = self.encoder(images)

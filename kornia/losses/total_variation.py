@@ -28,7 +28,7 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
 
     Convention:
         - The anisotropic L1 variation, :math:`\sum |\partial_y I| + \sum |\partial_x I|`, over the last two axes
-          only: the output keeps every leading axis, :math:`(B, C)` for an image batch, and the channels are not
+          only: the output keeps every leading axis, ``(B, C)`` for an image batch, and the channels are not
           summed.
         - The default ``reduction='sum'`` adds the differences. ``'mean'`` averages each term over its own count,
           :math:`(H - 1) W` vertical and :math:`H (W - 1)` horizontal differences, and adds the two means; it is not
@@ -36,13 +36,13 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
           :ref:`Losses and metrics <losses-metrics-conventions>` compares both with torchmetrics.
 
     Args:
-        img: the input image with shape :math:`(*, H, W)`.
+        img: the input image with shape ``(*, H, W)``.
         reduction : Specifies the reduction to apply to the output: ``'mean'`` | ``'sum'``.
          ``'mean'``: each of the vertical and horizontal terms is averaged over its own number of differences,
          ``'sum'``: the differences are summed.
 
     Return:
-         a torch.Tensor with shape :math:`(*,)`.
+         a torch.Tensor with shape ``(*,)``.
 
     Examples:
         >>> total_variation(torch.ones(4, 4))
@@ -107,8 +107,8 @@ class TotalVariation(nn.Module):
         always sums.
 
     Shape:
-        - Input: :math:`(*, H, W)`.
-        - Output: :math:`(*,)`.
+        - Input: ``(*, H, W)``.
+        - Output: ``(*,)``.
 
     Examples:
         >>> tv = TotalVariation()
@@ -127,7 +127,7 @@ class TotalVariation(nn.Module):
         """Compute total variation for an image or image batch.
 
         Args:
-            img: Tensor with shape :math:`(*, H, W)`, where ``*`` represents
+            img: Tensor with shape ``(*, H, W)``, where ``*`` represents
                 optional leading dimensions such as batch and channels,
                 :math:`H` is height, and :math:`W` is width.
 

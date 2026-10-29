@@ -32,9 +32,9 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
     See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
     Convention:
-        - ``point_3d`` is a **camera-frame** point and ``camera_matrix`` the :math:`(*, 3, 3)` ``K``; the
+        - ``point_3d`` is a **camera-frame** point and ``camera_matrix`` the ``(*, 3, 3)`` ``K``; the
           function takes no extrinsics, so it does not move between frames.
-        - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`.
+        - the input must be at least rank 2: an unbatched ``(3,)`` point raises :class:`ValueError`.
 
     .. warning::
         At ``abs(z) <= 1e-8`` the divide is skipped and ``K`` is applied to the undivided point, giving the
@@ -44,12 +44,12 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
 
     Args:
         point_3d: tensor containing the 3d points to be projected
-            to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
+            to the camera plane. The shape of the tensor can be ``(*, 3)``.
         camera_matrix: tensor containing the intrinsics camera
-            matrix. The tensor shape must be :math:`(*, 3, 3)`.
+            matrix. The tensor shape must be ``(*, 3, 3)``.
 
     Returns:
-        tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+        tensor of (u, v) cam coordinates with shape ``(*, 2)``.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -85,17 +85,17 @@ def unproject_points(
 
     Args:
         point_2d: tensor containing the 2d points to be projected to
-            the camera frame. The shape of the tensor can be :math:`(*, 2)`.
+            the camera frame. The shape of the tensor can be ``(*, 2)``.
         depth: tensor containing the depth value of each 2d
-            points. The tensor shape must be equal to point2d :math:`(*, 1)`.
+            points. The tensor shape must be equal to point2d ``(*, 1)``.
         camera_matrix: tensor containing the intrinsics camera
-            matrix. The tensor shape must be :math:`(*, 3, 3)`.
+            matrix. The tensor shape must be ``(*, 3, 3)``.
         normalize: whether to normalize the pointcloud. This
             must be set to `True` when the depth is represented as the Euclidean
             ray length from the camera position.
 
     Returns:
-        tensor of (x, y, z) camera coordinates with shape :math:`(*, 3)`.
+        tensor of (x, y, z) camera coordinates with shape ``(*, 3)``.
 
     Example:
         >>> _ = torch.manual_seed(0)

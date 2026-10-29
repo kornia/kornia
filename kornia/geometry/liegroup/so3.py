@@ -77,7 +77,7 @@ def _computes_in_float32(dtype: torch.dtype) -> bool:
 
 
 def _so3_rotate(q: Quaternion, points: torch.Tensor) -> torch.Tensor:
-    """Rotate points of shape :math:`(*, 3)` by the unit direction of ``q`` as :math:`q p q^*`.
+    """Rotate points of shape ``(*, 3)`` by the unit direction of ``q`` as :math:`q p q^*`.
 
     A float16/bfloat16 result is computed in float32 and returned in float32, for the caller to add to it or round it
     once; any other dtype combination is evaluated as given.
@@ -108,7 +108,7 @@ class So3(nn.Module):
           :class:`~kornia.geometry.quaternion.Quaternion`, and returns the principal vector, of norm at most
           :math:`\pi`, the same for ``q`` and ``-q`` below a half turn.
         - ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p`` rotates points ``p`` of
-          shape :math:`(B, 3)`, a tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()`` is :math:`R` itself.
+          shape ``(B, 3)``, a tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()`` is :math:`R` itself.
           :ref:`Rotations and rigid motions <rotation-conventions>` compares these with scipy, Sophus and Eigen.
         - A non-unit quaternion stands for the rotation of its direction :math:`q / |q|`, as for
           :meth:`~kornia.geometry.quaternion.Quaternion.matrix`: ``matrix()`` and ``s * p`` normalise it where they
@@ -139,7 +139,7 @@ class So3(nn.Module):
         """Construct the base class.
 
         Args:
-            q: Quaternion with the shape of :math:`(B, 4)`.
+            q: Quaternion with the shape of ``(B, 4)``.
 
         Example:
             >>> data = torch.tensor([[1., 0., 0., 0.], [0., 1., 0., 0.]])
@@ -174,7 +174,7 @@ class So3(nn.Module):
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
-            right: the other So3 transformation, or points of shape :math:`(B, 3)` as a tensor or a ``Vector3``.
+            right: the other So3 transformation, or points of shape ``(B, 3)`` as a tensor or a ``Vector3``.
 
         Return:
             The resulting So3 transformation, or the rotated points of the type of ``right``.
@@ -195,7 +195,7 @@ class So3(nn.Module):
 
     @property
     def q(self) -> Quaternion:
-        """Return the underlying data with shape :math:`(B,4)`."""
+        """Return the underlying data with shape ``(B,4)``."""
         return self._q
 
     @staticmethod
@@ -205,7 +205,7 @@ class So3(nn.Module):
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
 
         Args:
-            v: vector of shape :math:`(B,3)`.
+            v: vector of shape ``(B,3)``.
 
         Example:
             >>> v = torch.zeros((2, 3))
@@ -258,10 +258,10 @@ class So3(nn.Module):
 
     @staticmethod
     def hat(v: Vector3 | torch.Tensor) -> torch.Tensor:
-        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
+        """Convert elements from vector space to lie algebra. Returns matrix of shape ``(B,3,3)``.
 
         Args:
-            v: Vector3 or torch.Tensor of shape :math:`(B,3)`.
+            v: Vector3 or torch.Tensor of shape ``(B,3)``.
 
         Example:
             >>> v = torch.ones((1,3))
@@ -286,7 +286,7 @@ class So3(nn.Module):
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
-        r"""Convert elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
+        r"""Convert elements from lie algebra to vector space. Returns vector of shape ``(B,3)``.
 
         .. math::
             omega = \begin{bmatrix} 0 & -c & b \\
@@ -308,7 +308,7 @@ class So3(nn.Module):
         return torch.stack((a, b, c), -1)
 
     def matrix(self) -> torch.Tensor:
-        r"""Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
+        r"""Convert the quaternion to a rotation matrix of shape ``(B,3,3)``.
 
         The matrix is of the form:
 
@@ -354,7 +354,7 @@ class So3(nn.Module):
         """Create So3 from a rotation matrix.
 
         Args:
-            matrix: the rotation matrix to convert of shape :math:`(B,3,3)`.
+            matrix: the rotation matrix to convert of shape ``(B,3,3)``.
             check_rotation: if ``True``, raise ``ValueError`` unless every input
                 is a rotation matrix. The default ``False`` keeps the unchecked
                 behaviour, under which a reflection such as ``diag(-1, 1, 1)``
@@ -376,7 +376,7 @@ class So3(nn.Module):
         """Create So3 from a torch.Tensor representing a quaternion.
 
         Args:
-            wxyz: the quaternion to convert of shape :math:`(B,4)`.
+            wxyz: the quaternion to convert of shape ``(B,4)``.
 
         Example:
             >>> q = torch.tensor([1., 0., 0., 0.])
@@ -481,7 +481,7 @@ class So3(nn.Module):
         return cls.exp(torch.stack((zs, zs, z), -1))
 
     def adjoint(self) -> torch.Tensor:
-        """Return the adjoint matrix of shape :math:`(B, 3, 3)`.
+        """Return the adjoint matrix of shape ``(B, 3, 3)``.
 
         Example:
             >>> s = So3.identity()
@@ -498,7 +498,7 @@ class So3(nn.Module):
         """Compute the right Jacobian of So3.
 
         Args:
-            vec: the tangent vector of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape ``(B, 3)``.
 
         Example:
             >>> vec = torch.tensor([1., 2., 3.])
@@ -520,7 +520,7 @@ class So3(nn.Module):
         """Alias for right jacobian.
 
         Args:
-            vec: the tangent vector of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape ``(B, 3)``.
 
         """
         return So3.right_jacobian(vec)
@@ -530,7 +530,7 @@ class So3(nn.Module):
         """Compute the left Jacobian of So3.
 
         Args:
-            vec: the tangent vector of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape ``(B, 3)``.
 
         Example:
             >>> vec = torch.tensor([1., 2., 3.])
@@ -552,7 +552,7 @@ class So3(nn.Module):
         """Alias for left jacobian.
 
         Args:
-            vec: the tangent vector of shape :math:`(B, 3)`.
+            vec: the tangent vector of shape ``(B, 3)``.
 
         """
         return So3.left_jacobian(vec)

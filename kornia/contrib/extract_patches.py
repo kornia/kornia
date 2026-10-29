@@ -136,7 +136,7 @@ class ExtractTensorPatches(nn.Module):
     r"""nn.Module that extracts patches from tensors and stacks them.
 
     In the simplest case, the output value of the operator with input size
-    :math:`(B, C, H, W)` is :math:`(B, N, C, H_{out}, W_{out})`.
+    ``(B, C, H, W)`` is :math:`(B, N, C, H_{out}, W_{out})`.
 
     where
       - :math:`B` is the batch size.
@@ -187,14 +187,14 @@ class ExtractTensorPatches(nn.Module):
           ``disable_checks()``.
 
     Args:
-        input: torch.Tensor image where to extract the patches with shape :math:`(B, C, H, W)`.
+        input: torch.Tensor image where to extract the patches with shape ``(B, C, H, W)``.
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         padding: zero padding, or cropping where negative: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.
         allow_auto_padding: whether to allow automatic padding if the window and stride do not fit into the image.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
         - Output: :math:`(B, N, C, H_{out}, W_{out})`
 
     Returns:
@@ -231,7 +231,7 @@ class ExtractTensorPatches(nn.Module):
         """Extract sliding-window patches from a batched image tensor.
 
         Args:
-            input: Input tensor with shape :math:`(B, C, H, W)`, where:
+            input: Input tensor with shape ``(B, C, H, W)``, where:
                 - ``B`` is the batch size (number of images),
                 - ``C`` is the number of channels,
                 - ``H`` is height,
@@ -256,7 +256,7 @@ class CombineTensorPatches(nn.Module):
     r"""nn.Module that combines patches back into full tensors.
 
     In the simplest case, the output value of the operator with input size
-    :math:`(B, N, C, H_{out}, W_{out})` is :math:`(B, C, H, W)`.
+    :math:`(B, N, C, H_{out}, W_{out})` is ``(B, C, H, W)``.
 
     where
       - :math:`B` is the batch size.
@@ -318,7 +318,7 @@ class CombineTensorPatches(nn.Module):
 
     Shape:
         - Input: :math:`(B, N, C, H_{out}, W_{out})`
-        - Output: :math:`(B, C, H, W)`
+        - Output: ``(B, C, H, W)``
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
@@ -360,7 +360,7 @@ class CombineTensorPatches(nn.Module):
                 - ``H_{out}`` and ``W_{out}`` are patch height and width.
 
         Returns:
-            A reconstructed tensor with shape :math:`(B, C, H, W)`, where ``H``
+            A reconstructed tensor with shape ``(B, C, H, W)``, where ``H``
             and ``W`` correspond to ``original_size`` after optional unpadding.
         """
         return combine_tensor_patches(
@@ -414,7 +414,7 @@ def combine_tensor_patches(
             covers is 0.
 
     Return:
-        The combined patches in an image torch.Tensor with shape :math:`(B, C, H, W)`.
+        The combined patches in an image torch.Tensor with shape ``(B, C, H, W)``.
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
@@ -596,7 +596,7 @@ def extract_tensor_patches(
         See the Convention block of :class:`~kornia.contrib.ExtractTensorPatches`.
 
     Args:
-        input: torch.Tensor image where to extract the patches with shape :math:`(B, C, H, W)`.
+        input: torch.Tensor image where to extract the patches with shape ``(B, C, H, W)``.
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         padding: zero padding, or cropping where negative: an int, ``(ph, pw)`` or ``(top, bottom, left, right)``.

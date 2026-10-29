@@ -71,18 +71,18 @@ class RandomTransplantation(MixAugmentationBaseV2):
           :class:`kornia.augmentation.RandomTransplantation3D` for 3D images.
 
     Inputs:
-        - Segmentation mask torch.Tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
+        - Segmentation mask torch.Tensor which is used to determine the objects for transplantation: ``(B, *)``.
         - (optional) Additional image or mask tensors where the features are transplanted based on the first
-          segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
+          segmentation mask: ``(B, C, *)`` (`DataKey.INPUT`) or ``(B, *)`` (`DataKey.MASK`).
 
     Returns:
         torch.Tensor | list[torch.Tensor]:
 
         torch.Tensor:
-            - Augmented mask tensors: :math:`(B, *)`.
+            - Augmented mask tensors: ``(B, *)``.
         list[torch.Tensor]:
-            - Augmented mask tensors: :math:`(B, *)`.
-            - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
+            - Augmented mask tensors: ``(B, *)``.
+            - Additional augmented image or mask tensors: ``(B, C, *)`` (`DataKey.INPUT`) or ``(B, *)``
               (`DataKey.MASK`).
 
     Convention:

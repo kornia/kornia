@@ -116,7 +116,7 @@ class MBConv(nn.Module):
         """Apply the MBConv residual block to a feature map.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`, where
+            x: Feature map tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
@@ -159,8 +159,8 @@ class PatchMerging(nn.Module):
         """Merge or project patch tokens for TinyViT downsampling.
 
         Args:
-            x: Either token tensor with shape :math:`(B, H * W, C)` or feature
-                map tensor with shape :math:`(B, C, H, W)`.
+            x: Either token tensor with shape ``(B, H * W, C)`` or feature
+                map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Token tensor with shape :math:`(B, H_{out} * W_{out}, C_{out})`.
@@ -170,7 +170,7 @@ class PatchMerging(nn.Module):
         Raises:
             ValueError: if :math:`(H_{out}, W_{out})` is not the grid the next stage is built for: the input of a
                 :class:`TinyViT` is not ``img_size`` (the first patch merging reads the image's own grid from a
-                :math:`(B, C, H, W)` map), or ``img_size`` is not a multiple of 32 (of 16 with ``mobile_sam=True``),
+                ``(B, C, H, W)`` map), or ``img_size`` is not a multiple of 32 (of 16 with ``mobile_sam=True``),
                 so the stride-2 convolution rounds an odd grid up where the stages were built for it rounded down.
         """
         if x.ndim == 3:
@@ -337,12 +337,12 @@ class Attention(nn.Module):
         """Apply relative-position self-attention to token features.
 
         Args:
-            x: Token tensor with shape :math:`(B, N, C)`, where :math:`B` is
+            x: Token tensor with shape ``(B, N, C)``, where :math:`B` is
                 batch size, :math:`N` is number of tokens, and :math:`C` is
                 embedding dimension.
 
         Returns:
-            Tensor with shape :math:`(B, N, C)` after attention and projection.
+            Tensor with shape ``(B, N, C)`` after attention and projection.
         """
         B, N, _ = x.shape
         x = self.norm(x)
@@ -403,7 +403,7 @@ class TinyViTBlock(nn.Module):
         """Apply one TinyViT window-attention block.
 
         Args:
-            x: Token tensor with shape :math:`(B, H * W, C)`, where
+            x: Token tensor with shape ``(B, H * W, C)``, where
                 :math:`H` and :math:`W` match ``self.input_resolution``.
 
         Returns:
@@ -492,7 +492,7 @@ class BasicLayer(nn.Module):
         """Run a TinyViT stage made of several blocks.
 
         Args:
-            x: Token tensor with shape :math:`(B, H * W, C)`.
+            x: Token tensor with shape ``(B, H * W, C)``.
 
         Returns:
             Tensor after all TinyViT blocks and optional patch merging. The
@@ -626,7 +626,7 @@ class TinyViT(nn.Module):
         """Classify images if ``mobile_sam=False``, produce feature maps if ``mobile_sam=True``.
 
         Args:
-            x: images :math:`(B, C, H, W)` with :math:`H = W =` ``img_size``. The strided convolutions before the
+            x: images ``(B, C, H, W)`` with :math:`H = W =` ``img_size``. The strided convolutions before the
                 first attention stage round up, so :math:`H` and :math:`W` from ``img_size - 7`` to ``img_size`` give
                 the same token grid and run too.
 

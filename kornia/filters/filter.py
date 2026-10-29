@@ -110,7 +110,7 @@ def filter2d(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, H, W)`.
+          ``(B, C, H, W)``.
         kernel: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -123,7 +123,7 @@ def filter2d(
           or true convolution (kernel is flipped). 2 modes available ``'corr'`` or ``'conv'``.
 
     Return:
-        the filtered tensor. With ``padding='same'`` it has the input's shape :math:`(B, C, H, W)`. With
+        the filtered tensor. With ``padding='same'`` it has the input's shape ``(B, C, H, W)``. With
         ``padding='valid'`` it has shape :math:`(B, C, H - kH + 1, W - kW + 1)`, and its pixel ``(0, 0)`` is the
         ``'same'`` output at the anchor ``(a_y, a_x)``.
 
@@ -226,7 +226,7 @@ def filter2d_separable(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, H, W)`.
+          ``(B, C, H, W)``.
         kernel_x: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kW)` or :math:`(B, kW)`.
         kernel_y: the kernel to be convolved with the input
@@ -240,7 +240,7 @@ def filter2d_separable(
 
     Return:
         the filtered tensor, of the shape :func:`~kornia.filters.filter2d` returns for the same ``padding``:
-        :math:`(B, C, H, W)` with ``padding='same'``.
+        ``(B, C, H, W)`` with ``padding='same'``.
 
     Example:
         >>> input = torch.tensor([[[
@@ -285,7 +285,7 @@ def filter3d(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, D, H, W)`.
+          ``(B, C, D, H, W)``.
         kernel: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kD, kH, kW)`  or :math:`(B, kD, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -297,7 +297,7 @@ def filter3d(
 
     Return:
         the convolved tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, D, H, W)`.
+        as the input with shape ``(B, C, D, H, W)``.
 
     Example:
         >>> input = torch.tensor([[[
@@ -423,7 +423,7 @@ def fft_conv(
           :func:`~kornia.filters.filter2d`.
 
     Args:
-        input: Input tensor of shape :math:`(B, C, H, W)`.
+        input: Input tensor of shape ``(B, C, H, W)``.
         kernel: Convolution kernel of shape :math:`(1, kH, kW)`, shared by the
             whole batch, or :math:`(B, kH, kW)`, where each batch element
             provides one kernel, which is shared across all channels of the
@@ -442,7 +442,7 @@ def fft_conv(
 
     Returns:
         Tensor: The filtered tensor. If ``padding='same'``, the output shape
-        is :math:`(B, C, H, W)`. If ``padding='valid'``, the output shape is
+        is ``(B, C, H, W)``. If ``padding='valid'``, the output shape is
         :math:`(B, C, H - kH + 1, W - kW + 1)`.
 
     Note:
@@ -577,7 +577,7 @@ def correlate2d(
     .. seealso:: :func:`convolve2d`, :func:`filter2d`
 
     Args:
-        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        input: the input tensor with shape of ``(B, C, H, W)``.
         kernel: the kernel to be correlated with the input tensor.
             The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -586,7 +586,7 @@ def correlate2d(
         padding: This defines the type of padding. 2 modes available ``'same'`` or ``'valid'``.
 
     Return:
-        the correlated tensor. With ``padding='same'`` it has the input's shape :math:`(B, C, H, W)`. With
+        the correlated tensor. With ``padding='same'`` it has the input's shape ``(B, C, H, W)``. With
         ``padding='valid'`` it has shape :math:`(B, C, H - kH + 1, W - kW + 1)`.
 
     Example:
@@ -626,7 +626,7 @@ def convolve2d(
     .. seealso:: :func:`correlate2d`, :func:`filter2d`
 
     Args:
-        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        input: the input tensor with shape of ``(B, C, H, W)``.
         kernel: the kernel to be convolved with the input tensor.
             The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -635,7 +635,7 @@ def convolve2d(
         padding: This defines the type of padding. 2 modes available ``'same'`` or ``'valid'``.
 
     Return:
-        the convolved tensor. With ``padding='same'`` it has the input's shape :math:`(B, C, H, W)`. With
+        the convolved tensor. With ``padding='same'`` it has the input's shape ``(B, C, H, W)``. With
         ``padding='valid'`` it has shape :math:`(B, C, H - kH + 1, W - kW + 1)`.
 
     Example:
@@ -673,7 +673,7 @@ def correlate3d(
     .. seealso:: :func:`convolve3d`, :func:`filter3d`
 
     Args:
-        input: the input tensor with shape of :math:`(B, C, D, H, W)`.
+        input: the input tensor with shape of ``(B, C, D, H, W)``.
         kernel: the kernel to be correlated with the input tensor.
             The kernel shape must be :math:`(1, kD, kH, kW)` or :math:`(B, kD, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -681,7 +681,7 @@ def correlate3d(
         normalized: If True, kernel will be L1 normalized.
 
     Return:
-        the correlated tensor, with the input's shape :math:`(B, C, D, H, W)`.
+        the correlated tensor, with the input's shape ``(B, C, D, H, W)``.
 
     Example:
         Correlation applies the kernel as given. A single tap at the kernel's first corner, index ``(0, 0, 0)`` in
@@ -715,7 +715,7 @@ def convolve3d(
     .. seealso:: :func:`correlate3d`, :func:`filter3d`
 
     Args:
-        input: the input tensor with shape of :math:`(B, C, D, H, W)`.
+        input: the input tensor with shape of ``(B, C, D, H, W)``.
         kernel: the kernel to be convolved with the input tensor.
             The kernel shape must be :math:`(1, kD, kH, kW)` or :math:`(B, kD, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -723,7 +723,7 @@ def convolve3d(
         normalized: If True, kernel will be L1 normalized.
 
     Return:
-        the convolved tensor, with the input's shape :math:`(B, C, D, H, W)`.
+        the convolved tensor, with the input's shape ``(B, C, D, H, W)``.
 
     Example:
         Convolution flips the kernel along all three axes, which moves a tap at the kernel's first corner, index
