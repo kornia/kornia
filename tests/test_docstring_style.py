@@ -189,7 +189,8 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
         )
         assert not doc.lstrip().startswith("Alias of") or forwards_to(obj, resolved), (
             f"{qualified} has an 'Alias of' title but does not only forward to {target!r}: an alias function returns "
-            "the target called with its own arguments, unchanged, and an alias class subclasses it and adds nothing"
+            "the target called with its own arguments, unchanged and with the target's defaults, and an alias class "
+            "subclasses it and adds nothing"
         )
         if entries is None:
             return  # the title points to the target, so a See Also would only repeat it

@@ -724,9 +724,45 @@ def _decorated(a):
     return _alias_target(a)
 
 
+def _renamed_positional(x, y=1):
+    return _alias_target(x, y)
+
+
+def _required_where_target_defaults(a, b):
+    return _alias_target(a, b)
+
+
+def _changed_default(a, b=5):
+    return _alias_target(a, b)
+
+
+def _renamed_positional_changed_default(x, y=3):
+    return _alias_target(x, y)
+
+
+def _defaulted_where_target_requires(a=0):
+    return _alias_target(a)
+
+
+def _keyword_changed_default(a, c=9):
+    return _alias_target(a, c=c)
+
+
+def _default_into_target_kwargs(a, d=1):
+    return _alias_target(a, d=d)
+
+
 @pytest.mark.parametrize(
     ("obj", "target"),
-    [(_forwarding_alias, _alias_target), (_keyword_alias, _alias_target), (_AliasClass, _AliasTargetClass)],
+    [
+        (_forwarding_alias, _alias_target),
+        (_keyword_alias, _alias_target),
+        (_AliasClass, _AliasTargetClass),
+        # positional parameters reach the target by position, so their names may differ
+        (_renamed_positional, _alias_target),
+        # an alias may require what the target defaults: every call it accepts still behaves as the target
+        (_required_where_target_defaults, _alias_target),
+    ],
 )
 def test_forwards_to_accepts_a_forwarding_alias(obj, target):
     assert forwards_to(obj, target)
@@ -753,6 +789,12 @@ def test_forwards_to_resolves_a_target_from_the_closure():
         (_renamed_keyword, _alias_target),
         (_other_target, _alias_target),
         (_decorated, _alias_target),
+        # a default that differs from the target's changes what a call relying on it returns
+        (_changed_default, _alias_target),
+        (_renamed_positional_changed_default, _alias_target),
+        (_keyword_changed_default, _alias_target),
+        (_defaulted_where_target_requires, _alias_target),
+        (_default_into_target_kwargs, _alias_target),
         (_SubclassWithBody, _AliasTargetClass),
         (_TwoBases, _AliasTargetClass),
         (_AliasClass, object),

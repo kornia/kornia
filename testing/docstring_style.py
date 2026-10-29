@@ -261,14 +261,49 @@ def _forwards_own_arguments(args: ast.arguments, call: ast.Call) -> bool:
     return sorted(passed) == sorted(expected)
 
 
+def _keeps_target_defaults(obj: object, target: object, call: ast.Call) -> bool:
+    """Whether every parameter ``obj`` gives a default reaches a ``target`` parameter with the same default.
+
+    ``call`` is the forwarding call that :func:`_forwards_own_arguments` accepted, so its positional values map onto
+    the leading positional parameters of ``target``, whatever their names, and its keywords onto the parameters of
+    the same name. Defaults compare by ``repr``. A parameter without a default may meet one with a default: every
+    call the alias accepts then behaves as the target. A default that differs, or that meets a required parameter,
+    ``*args`` or ``**kwargs``, changes what a call relying on it returns.
+    """
+    try:
+        own = inspect.signature(obj).parameters
+        theirs = inspect.signature(target).parameters
+    except (TypeError, ValueError):
+        return False
+    leading = [p for p in theirs.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    reached: dict[str, inspect.Parameter | None] = {}
+    for index, value in enumerate(call.args):
+        if isinstance(value, ast.Name):
+            reached[value.id] = leading[index] if index < len(leading) else None
+    for keyword in call.keywords:
+        if keyword.arg is not None and isinstance(keyword.value, ast.Name):
+            parameter = theirs.get(keyword.arg)
+            if parameter is not None and parameter.kind == parameter.VAR_KEYWORD:
+                parameter = None
+            reached[keyword.value.id] = parameter
+    for name, parameter in own.items():
+        if parameter.default is inspect.Parameter.empty:
+            continue
+        other = reached.get(name)
+        if other is None or other.default is inspect.Parameter.empty or repr(other.default) != repr(parameter.default):
+            return False
+    return True
+
+
 def forwards_to(obj: object, target: object) -> bool:
     """Return whether ``obj`` only forwards to ``target``, which is what an ``Alias of`` title line promises.
 
     A function forwards when its body, docstring aside, is a single ``return target(...)`` that passes each of its
     own parameters exactly once and unchanged, the leading ones by position in their order and the rest as
-    ``name=name``, with ``*args`` and ``**kwargs`` passed on as such, and nothing else. A class forwards when
-    ``target`` is its only base and its body, docstring aside, is empty or ``pass``. Neither may be decorated, since
-    a decorator can add behaviour; an async function, or an object without Python source, does not forward either.
+    ``name=name``, with ``*args`` and ``**kwargs`` passed on as such, and nothing else, and when every default it
+    declares is the default of the ``target`` parameter it reaches. A class forwards when ``target`` is its only
+    base and its body, docstring aside, is empty or ``pass``. Neither may be decorated, since a decorator can add
+    behaviour; an async function, or an object without Python source, does not forward either.
     """
     try:
         node, body = _definition_body(obj)
@@ -282,7 +317,11 @@ def forwards_to(obj: object, target: object) -> bool:
     if len(body) != 1 or not isinstance(body[0], ast.Return) or not isinstance(body[0].value, ast.Call):
         return False
     call = body[0].value
-    return _resolve_name(obj, call.func) is target and _forwards_own_arguments(node.args, call)
+    return (
+        _resolve_name(obj, call.func) is target
+        and _forwards_own_arguments(node.args, call)
+        and _keeps_target_defaults(obj, target, call)
+    )
 
 
 def docstring_roles(doc: str) -> list[tuple[str, str]]:
