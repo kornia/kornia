@@ -1,0 +1,1 @@
+Compute half-precision prediction logarithms in float32 for `kl_div_loss_2d` in CPU/CUDA autocast, avoiding nonzero self-divergence and inaccurate losses and gradients from an already-rounded logarithm. Behavior outside autocast is unchanged.
