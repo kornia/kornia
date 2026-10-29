@@ -34,7 +34,7 @@ class Normalize(IntensityAugmentationBase2D):
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         mean: Mean for each channel.

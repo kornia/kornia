@@ -2617,7 +2617,7 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         negate and multiply, so they accept integer input as well.
 
     Args:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
@@ -2665,7 +2665,7 @@ def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
         extrinsics: pose matrix :math:`(B, 4, 4)`.
 
     Returns:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Example:
@@ -2797,11 +2797,11 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
           columns negated
 
     Args:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Example:
@@ -2887,11 +2887,11 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
           graphics-to-vision ``_Rt`` form
 
     Args:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Example:
@@ -2996,7 +2996,7 @@ def camtoworld_to_worldtocam_Rt(
         (``det(R) < 0``).
 
     Args:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
         check_rotation: if ``True``, raise ``ValueError`` unless every ``R``
             is a rotation: ``max|R @ R^T - I|`` within 100 eps of the dtype of
@@ -3004,7 +3004,7 @@ def camtoworld_to_worldtocam_Rt(
             Defaults to ``False`` (unchecked).
 
     Returns:
-        Rinv: Rotation matrix, :math:`(B, 3, 3).`
+        Rinv: Rotation matrix, :math:`(B, 3, 3)`.
         tinv: Translation matrix :math:`(B, 3, 1)`.
 
     Example:
@@ -3050,7 +3050,7 @@ def worldtocam_to_camtoworld_Rt(
         - the shapes and the rotation warning are as documented there
 
     Args:
-        R: Rotation matrix, :math:`(B, 3, 3).`
+        R: Rotation matrix, :math:`(B, 3, 3)`.
         t: Translation matrix :math:`(B, 3, 1)`.
         check_rotation: if ``True``, raise ``ValueError`` unless every ``R``
             is a rotation: ``max|R @ R^T - I|`` within 100 eps of the dtype of
@@ -3058,7 +3058,7 @@ def worldtocam_to_camtoworld_Rt(
             Defaults to ``False`` (unchecked).
 
     Returns:
-        Rinv: Rotation matrix, :math:`(B, 3, 3).`
+        Rinv: Rotation matrix, :math:`(B, 3, 3)`.
         tinv: Translation matrix :math:`(B, 3, 1)`.
 
     Example:

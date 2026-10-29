@@ -51,7 +51,7 @@ class Normalize(nn.Module):
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         mean: Mean for each channel.
@@ -140,7 +140,7 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         data: Image torch.Tensor of size :math:`(B, C, *)`.
@@ -230,7 +230,7 @@ class Denormalize(nn.Module):
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         mean: Mean for each channel.
@@ -315,7 +315,7 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         data: Image torch.Tensor of size :math:`(B, C, *)`.
