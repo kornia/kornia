@@ -970,13 +970,17 @@ class TestConventionsLightGlue(BaseTester):
         # the URL follows `features` and the cached file name `weights`: another checkpoint is cached under that name
         monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
         assert LightGlue("disk", weights="disk_lightglue", n_layers=1).conf.weights == "disk_lightglue"
-        with pytest.raises(BaseError, match="names the checkpoint of `features`"):
+        # weights=None is the value of default_conf and means "not given", also when default_conf is passed on
+        assert LightGlue("disk", weights=None, n_layers=1).conf.weights == "disk_lightglue"
+        splat = LightGlue("superpoint", **{**LightGlue.default_conf, "n_layers": 1})
+        assert splat.conf.weights == "superpoint_lightglue"
+        with pytest.raises(BaseError, match="must name the checkpoint of `features`"):
             LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
         # a plain raise: disable_checks() must not let another checkpoint be cached under this name
         were_checks_enabled = are_checks_enabled()
         disable_checks()
         try:
-            with pytest.raises(BaseError, match="names the checkpoint of `features`"):
+            with pytest.raises(BaseError, match="must name the checkpoint of `features`"):
                 LightGlue("disk", weights="superpoint_lightglue", n_layers=1)
         finally:
             if were_checks_enabled:
