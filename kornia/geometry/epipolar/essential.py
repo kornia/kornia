@@ -467,7 +467,8 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     first and the second camera, and returns :math:`E = K_2^\top F K_1`, ``(*, 3, 3)`` with the leading dimensions
     broadcast, for which :math:`x_2^\top E x_1 = 0` in normalized camera coordinates (Hartley and Zisserman, 9.6,
     p. 257, eq. 9.12). It keeps the scale of ``F_mat`` and does not enforce the constraints of an essential matrix:
-    pass an estimated one through :func:`project_to_essential` before decomposing it. For the reverse, use
+    pass an estimated one through :func:`project_to_essential` before decomposing it with
+    :func:`decompose_essential_matrix_no_svd`; :func:`decompose_essential_matrix` does not need it. For the reverse, use
     :func:`fundamental_from_essential`.
 
     Convention:
@@ -501,11 +502,15 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
     of the essential form :math:`U \text{diag}(s, s, 0) V^T`: the two largest singular values of ``E_mat`` averaged
     and the smallest one set to zero. Matrices estimated by other means, such as an 8-point fit of
     :func:`find_fundamental` on normalized camera coordinates or :func:`essential_from_fundamental` of an estimated
-    ``F``, generally violate this constraint, which silently breaks the functions that rely on it, such as
-    :func:`decompose_essential_matrix`, :func:`decompose_essential_matrix_no_svd` and :func:`motion_from_essential`.
-    The candidates of :func:`find_essential` have this form only up to rounding, which on unlucky samples leaves a
-    relative gap of order ``1e-4`` between their two largest singular values; :class:`~kornia.geometry.ransac.RANSAC`
-    projects its essential matrix for that reason (`#3874 <https://github.com/kornia/kornia/issues/3874>`_).
+    ``F``, generally violate this constraint. :func:`decompose_essential_matrix_no_svd` then returns matrices that are
+    not rotations, while :func:`decompose_essential_matrix` and :func:`motion_from_essential` return the same
+    candidates for a matrix and for its projection, because the projection keeps its singular vectors. Their order can
+    differ, though: on about half of noisy inputs the projection swaps the two rotations and flips the translation,
+    so pick a candidate by its triangulated points, as :func:`motion_from_essential_choose_solution` does, not by its
+    index. The candidates of :func:`find_essential` have this form only up to rounding, which on unlucky samples
+    leaves a relative gap of order ``1e-4`` between their two largest singular values;
+    :class:`~kornia.geometry.ransac.RANSAC` projects its essential matrix for that reason
+    (`#3874 <https://github.com/kornia/kornia/issues/3874>`_).
 
     Convention:
         - The result is not normalised to unit Frobenius norm, unlike the candidates of :func:`find_essential`.
@@ -519,7 +524,10 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
         with shape ``(*, 3, 3)``.
 
     See Also:
-        - :func:`decompose_essential_matrix`: the rotations and translation of the projected matrix.
+        - :func:`decompose_essential_matrix_no_svd`: the closed-form decomposition, which needs this projection of
+          an estimate.
+        - :func:`decompose_essential_matrix`: the SVD decomposition, which gives the same candidates with or without
+          it.
         - :func:`essential_from_fundamental`: an essential matrix that usually needs this projection.
 
     """

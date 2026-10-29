@@ -96,9 +96,9 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           identity mapping gives zero kernel weights and an identity affine up to solver round-off, and any pairs
           related by an affine map give zero kernel weights, except a constant map of more than three points, whose
           equal ``points_dst`` make the system singular
-        - fewer than three points make the linear system singular and ``torch.linalg.solve`` raises; points all on one
-          line make it singular too, but round-off can hide that, and the solve then returns huge affine weights that
-          throw points off that line far away and may miss the landmarks themselves
+        - zero or one point makes the linear system singular and ``torch.linalg.solve`` raises; two points, like any
+          set of points all on one line, make it singular too, but round-off can hide that, and the solve then
+          returns huge affine weights that throw points off that line far away and may miss the landmarks themselves
         - the tensor passed as the **second** argument is the ``kernel_centers`` that the warp
           function must receive with these weights. :func:`warp_points_tps` is composed in the
           natural ``(points_src, points_dst)`` order; :func:`warp_image_tps` samples from output
