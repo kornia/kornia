@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
@@ -32,8 +32,12 @@ from .pyramid import build_pyramid
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
-class BaseModel(nn.Module):
-    """Provide an abstract base class for image registration models."""
+class BaseModel(ABC, nn.Module):
+    """Provide an abstract base class for image registration models.
+
+    ``BaseModel`` cannot be instantiated: a subclass must implement ``reset_model``, ``forward`` and
+    ``forward_inverse``, otherwise constructing it raises ``TypeError``.
+    """
 
     @abstractmethod
     def reset_model(self) -> None:

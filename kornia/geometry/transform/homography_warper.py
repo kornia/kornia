@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 import torch
@@ -31,8 +31,11 @@ from .imgwarp import _normalize_warped_pixel_grid, _warp_pixel_grid, homography_
 __all__ = ["BaseWarper", "HomographyWarper"]
 
 
-class BaseWarper(nn.Module):
-    """Provide a base class for homography-based image warping.
+class BaseWarper(ABC, nn.Module):
+    """Provide an abstract base class for homography-based image warping.
+
+    ``BaseWarper`` cannot be instantiated: a subclass must implement ``forward`` and
+    ``precompute_warp_grid``, otherwise constructing it raises ``TypeError``.
 
     Convention:
         - subclasses receive ``src_homo_dst`` as the destination→source homography

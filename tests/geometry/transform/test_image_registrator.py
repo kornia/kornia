@@ -113,6 +113,72 @@ class TestHomography(BaseTester):
         assert h is not None
 
 
+class TestBaseModel:
+    def test_base_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="abstract"):
+            kornia.geometry.transform.BaseModel()
+
+    def test_abstract_contract(self):
+        assert kornia.geometry.transform.BaseModel.__abstractmethods__ == {"reset_model", "forward", "forward_inverse"}
+
+    @pytest.mark.parametrize("missing", ["reset_model", "forward", "forward_inverse"])
+    def test_subclass_missing_a_method_is_rejected(self, missing):
+        methods = {
+            "reset_model": lambda self: None,
+            "forward": lambda self: torch.eye(3)[None],
+            "forward_inverse": lambda self: torch.eye(3)[None],
+        }
+        del methods[missing]
+        incomplete = type("Incomplete", (kornia.geometry.transform.BaseModel,), methods)
+
+        with pytest.raises(TypeError, match=missing):
+            incomplete()
+
+    @pytest.mark.parametrize("model_cls", [Homography, Similarity])
+    def test_builtin_models_stay_concrete(self, model_cls):
+        model = model_cls()
+        assert isinstance(model, kornia.geometry.transform.BaseModel)
+        assert not getattr(model_cls, "__abstractmethods__", None)
+
+    def test_custom_model_with_registrator(self, device, dtype):
+        # A complete BaseModel subclass is still an ordinary nn.Module: its parameters are optimized and it moves with
+        # the registrator.
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"torch has no {dtype} reflection padding kernel on {device.type}")
+
+        class Translation(kornia.geometry.transform.BaseModel):
+            def __init__(self) -> None:
+                super().__init__()
+                self.shift = torch.nn.Parameter(torch.zeros(2))
+
+            def reset_model(self) -> None:
+                torch.nn.init.zeros_(self.shift)
+
+            def forward(self) -> torch.Tensor:
+                homography = torch.eye(3, dtype=self.shift.dtype, device=self.shift.device)
+                homography = homography.clone()
+                homography[:2, 2] = self.shift
+                return homography[None]
+
+            def forward_inverse(self) -> torch.Tensor:
+                homography = torch.eye(3, dtype=self.shift.dtype, device=self.shift.device)
+                homography = homography.clone()
+                homography[:2, 2] = -self.shift
+                return homography[None]
+
+        model = Translation()
+        assert [name for name, _ in model.named_parameters()] == ["shift"]
+
+        ir = ImageRegistrator(
+            model, warper=kornia.geometry.transform.HomographyWarper, num_iterations=1, pyramid_levels=1
+        ).to(device, dtype)
+        image = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        result = ir.register(image, image)
+        assert result.shape == (1, 3, 3)
+
+
 class TestImageRegistrator(BaseTester):
     @pytest.mark.parametrize("model_type", ["homography", "similarity", "translation", "scale", "rotation"])
     def test_smoke(self, device, dtype, model_type):

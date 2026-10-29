@@ -26,6 +26,50 @@ from testing.base import BaseTester
 from testing.error import compute_patch_abs_error
 
 
+class TestBaseWarper:
+    def test_base_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="abstract"):
+            kornia.geometry.transform.BaseWarper(4, 4)
+
+    def test_abstract_contract(self):
+        assert kornia.geometry.transform.BaseWarper.__abstractmethods__ == {"forward", "precompute_warp_grid"}
+
+    def test_subclass_without_forward_is_rejected(self):
+        class NoForward(kornia.geometry.transform.BaseWarper):
+            def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+                pass
+
+        with pytest.raises(TypeError, match="forward"):
+            NoForward(4, 4)
+
+    def test_subclass_without_precompute_is_rejected(self):
+        class NoPrecompute(kornia.geometry.transform.BaseWarper):
+            def forward(self, patch_src, src_homo_dst=None):
+                return patch_src
+
+        with pytest.raises(TypeError, match="precompute_warp_grid"):
+            NoPrecompute(4, 4)
+
+    def test_complete_subclass_works(self, device, dtype):
+        class Identity(kornia.geometry.transform.BaseWarper):
+            def forward(self, patch_src, src_homo_dst=None):
+                return patch_src
+
+            def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+                pass
+
+        warper = Identity(4, 4).to(device, dtype)
+        assert isinstance(warper, torch.nn.Module)
+        assert (warper.height, warper.width) == (4, 4)
+        patch = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        assert warper(patch) is patch
+
+    def test_homography_warper_stays_concrete(self):
+        warper = kornia.geometry.transform.HomographyWarper(4, 4)
+        assert isinstance(warper, kornia.geometry.transform.BaseWarper)
+        assert not getattr(type(warper), "__abstractmethods__", None)
+
+
 class TestHomographyWarper(BaseTester):
     num_tests = 10
     threshold = 0.1
