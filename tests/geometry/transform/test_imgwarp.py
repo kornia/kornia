@@ -361,6 +361,16 @@ class TestGetPerspectiveTransform(BaseTester):
 
         self.assert_close(kornia.geometry.transform_points(dst_trans_src, point_left), point_right)
 
+    def test_integer_points_6396(self, device):
+        points_src = torch.tensor([[[0, 0], [10, 0], [10, 10], [0, 10]]], device=device)
+        points_dst = torch.tensor([[[1, 2], [12, 1], [11, 13], [0, 9]]], device=device)
+
+        out = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        expected = kornia.geometry.get_perspective_transform(points_src.to(out.dtype), points_dst.to(out.dtype))
+
+        assert out.dtype == torch.get_default_dtype()
+        self.assert_close(out, expected)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points_dst = torch.rand(1, 4, 2, device=device, dtype=dtype)
