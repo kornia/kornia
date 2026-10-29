@@ -190,6 +190,17 @@ def status_target(doc: str) -> str | None:
     return match.group(1) if match else None
 
 
+def is_deprecated_wrapper(obj: object) -> bool:
+    """Return whether ``obj`` is a function or class that ``kornia.core._compat.deprecated`` wraps.
+
+    The decorator replaces a function by a wrapper, and the ``__init__`` of a class, with code of its own module.
+    """
+    import kornia.core._compat as compat
+
+    code = getattr(obj.__init__ if isinstance(obj, type) else obj, "__code__", None)
+    return code is not None and Path(code.co_filename).resolve() == Path(compat.__file__).resolve()
+
+
 def docstring_roles(doc: str) -> list[tuple[str, str]]:
     """Return ``(role, target)`` for every Python-domain object role in ``doc``, without a leading ``~``.
 

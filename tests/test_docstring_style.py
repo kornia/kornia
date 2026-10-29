@@ -23,7 +23,8 @@ an IDE or a coding agent relies on and what a refactor silently breaks; the shap
 * every public function and class has a docstring, so none escapes the checks below;
 * every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
   unless its title line is a status title, ``Alias of :func:`target`.`` or ``Deprecated: use :func:`target`.``,
-  which points to the target and needs none;
+  which points to another public kornia object and needs none (``Deprecated: use`` only on an object that
+  ``kornia.core._compat.deprecated`` wraps);
 * every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
   ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
   object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
@@ -61,6 +62,7 @@ from testing.docstring_style import (
     covered,
     docstring_roles,
     intersphinx_names,
+    is_deprecated_wrapper,
     is_documented,
     is_private_target,
     math_shape_roles,
@@ -170,8 +172,19 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
         pytest.skip(f"excepted: {SEE_ALSO_EXCEPTIONS[qualified]}")
     doc = own_docstring(obj)
     entries = see_also_entries(doc)
-    if entries is None and status_target(doc):
-        return  # an "Alias of" or "Deprecated: use" title points to the target, so a See Also would only repeat it
+    target = status_target(doc)
+    if entries is None and target:
+        # an "Alias of" or "Deprecated: use" title points to the target, so a See Also would only repeat it; the
+        # target is another public kornia object, and only a deprecated object says "Deprecated: use"
+        resolved = resolve_reference(obj, target, REGISTRY)
+        message = f"{qualified}: a status title points to another public kornia object, not to {target!r}"
+        assert resolved is not None, message
+        assert resolved is not obj, message
+        assert not is_private_target(target), message
+        assert not doc.lstrip().startswith("Deprecated: use") or is_deprecated_wrapper(obj), (
+            f"{qualified} has a 'Deprecated: use' title but is not wrapped by kornia.core._compat.deprecated"
+        )
+        return
     assert entries, (
         f"{qualified} needs a 'See Also:' section with at least one bullet like "
         "'- :func:`name`: how it differs.' (or an entry in SEE_ALSO_EXCEPTIONS with a reason)"

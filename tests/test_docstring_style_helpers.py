@@ -36,6 +36,7 @@ from testing.docstring_style import (
     covered,
     docstring_roles,
     intersphinx_names,
+    is_deprecated_wrapper,
     is_documented,
     is_private_target,
     is_shape_tuple,
@@ -592,6 +593,24 @@ def test_own_docstring_ignores_whitespace_only():
 )
 def test_status_target_accepts_a_status_title(doc, target):
     assert status_target(doc) == target
+
+
+def test_is_deprecated_wrapper_recognises_the_decorator():
+    from kornia.core._compat import deprecated
+
+    def plain():
+        return 1
+
+    class Plain:
+        def __init__(self) -> None:
+            pass
+
+    wrapped = deprecated(replace_with="plain", version="0.1")(plain)
+    wrapped_class = deprecated(replace_with="Plain", version="0.1")(type("Old", (Plain,), {}))
+    assert is_deprecated_wrapper(wrapped)
+    assert is_deprecated_wrapper(wrapped_class)
+    assert not is_deprecated_wrapper(plain)
+    assert not is_deprecated_wrapper(Plain)
 
 
 @pytest.mark.parametrize(
