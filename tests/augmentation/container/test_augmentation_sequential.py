@@ -2315,9 +2315,12 @@ class TestConventionAugmentationSequential(BaseTester):
             (K.RandomRotation((90.0, 90.0), p=1.0), [[[0.0, 1.0]], [[1.0, 2.0]]]),
         ],
     )
-    def test_nested_container_matrix_matches_keypoints_4476(self, outer_augmentation, expected_points, device, dtype):
-        inner = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0))
-        nested = K.AugmentationSequential(inner)
+    @pytest.mark.parametrize("nested_cls", [K.AugmentationSequential, K.ImageSequential])
+    def test_nested_container_matrix_matches_keypoints_4476(
+        self, outer_augmentation, expected_points, nested_cls, device, dtype
+    ):
+        inner = nested_cls(K.RandomVerticalFlip(p=1.0))
+        nested = nested_cls(inner)
         outer = K.AugmentationSequential(outer_augmentation, nested, data_keys=["input", "keypoints"])
         image = torch.rand(2, 1, 6, 6, device=device, dtype=dtype)
         points = torch.tensor([[[1.0, 0.0]], [[2.0, 1.0]]], device=device, dtype=dtype)
@@ -2357,6 +2360,104 @@ class TestConventionAugmentationSequential(BaseTester):
         image = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
         output = outer(image)
         self.assert_close(nested.inverse(output), image.flip(-1))
+
+    @pytest.mark.parametrize("nested_first", [False, True])
+    @pytest.mark.parametrize("mode", ["silent", "silence"])
+    def test_nested_image_sequence_matrix_4476(self, nested_first, mode, device, dtype):
+        nested = K.ImageSequential(K.RandomVerticalFlip(p=1.0))
+        horizontal = K.RandomHorizontalFlip(p=1.0)
+        children = [nested, horizontal] if nested_first else [horizontal, nested]
+        outer = K.AugmentationSequential(*children, data_keys=["input", "keypoints"], transformation_matrix_mode=mode)
+        for batch, height, width in [(2, 8, 10), (1, 4, 6)]:
+            image = torch.arange(batch * height * width, device=device, dtype=dtype).reshape(batch, 1, height, width)
+            points = torch.tensor([[[1.0, 0.0]]], device=device, dtype=dtype).expand(batch, -1, -1)
+            output, moved = outer(image, points)
+            params = outer._params
+            expected = torch.tensor([[[width - 2.0, height - 1.0]]], device=device, dtype=dtype).expand(batch, -1, -1)
+            self.assert_close(output, image.flip((-2, -1)))
+            self.assert_close(moved, expected)
+            homogeneous = torch.cat((points, torch.ones_like(points[..., :1])), dim=-1)
+            self.assert_close((homogeneous @ outer.transform_matrix.transpose(-2, -1))[..., :2], expected)
+            replay = outer(image, points, params=params)
+            self.assert_close(replay[0], output)
+            self.assert_close(replay[1], moved)
+            self.assert_close(outer.inverse(*replay, params=params)[1], points)
+
+    @pytest.mark.parametrize("nested_container", [False, True])
+    def test_repeated_nested_image_member_matrix_4476(self, nested_container, device, dtype):
+        image = torch.arange(24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
+        horizontal = K.RandomHorizontalFlip(p=0.5)
+        child = K.AugmentationSequential(horizontal) if nested_container else horizontal
+        nested = K.ImageSequential(child, random_apply=2)
+        outer = K.AugmentationSequential(nested)
+        first = horizontal.forward_parameters(image.shape)
+        first["batch_prob"].fill_(1.0)
+        second = horizontal.forward_parameters(image.shape)
+        second["batch_prob"].zero_()
+        calls = [
+            ParamItem("AugmentationSequential_0", [ParamItem("RandomHorizontalFlip_0", p)])
+            if nested_container
+            else ParamItem("RandomHorizontalFlip_0", p)
+            for p in (first, second)
+        ]
+        params = [ParamItem("ImageSequential_0", calls)]
+        output = outer(image, params=params)
+        self.assert_close(output, image.flip(-1))
+        expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(outer.transform_matrix, expected)
+        self.assert_close(outer(image, params=params), output)
+        self.assert_close(outer.transform_matrix, expected)
+
+    @pytest.mark.parametrize("mode", ["silent", "skip"])
+    def test_nested_image_sequence_modes_4476(self, mode, device, dtype):
+        nested = K.ImageSequential(K.RandomVerticalFlip(p=1.0), K.RandomThinPlateSpline(p=0.0))
+        outer = K.AugmentationSequential(nested, K.RandomHorizontalFlip(p=1.0), transformation_matrix_mode=mode)
+        image = torch.arange(24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
+        self.assert_close(outer(image), image.flip((-2, -1)))
+        if mode == "skip":
+            assert outer.transform_matrix is None
+        else:
+            expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, -1.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+            self.assert_close(outer.transform_matrix, expected)
+
+    def test_nested_image_sequence_keeps_mix_labels_4476(self, device, dtype):
+        outer = K.AugmentationSequential(K.ImageSequential(K.RandomMixUpV2(p=1.0)), data_keys=["input", "class"])
+        image = torch.rand(2, 1, 4, 6, device=device, dtype=dtype)
+        labels = torch.tensor([0, 1], device=device)
+        _, result = outer(image, labels)
+        self.assert_close(result, labels, rtol=0, atol=0)
+
+    def test_nested_image_sequence_keeps_inner_skip_mode_4476(self, device, dtype):
+        nested = K.ImageSequential(
+            K.AugmentationSequential(K.RandomVerticalFlip(p=1.0), transformation_matrix_mode="skip"),
+            K.RandomHorizontalFlip(p=1.0),
+        )
+        outer = K.AugmentationSequential(nested)
+        image = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        self.assert_close(outer(image), image.flip((-2, -1)))
+        expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(outer.transform_matrix, expected)
+
+    def test_nested_image_sequence_3d_matrix_4476(self, device, dtype):
+        outer = K.AugmentationSequential(
+            K.RandomVerticalFlip3D(p=1.0), K.ImageSequential(K.RandomHorizontalFlip3D(p=1.0))
+        )
+        image = torch.rand(1, 1, 3, 4, 6, device=device, dtype=dtype)
+        self.assert_close(outer(image), image.flip((-2, -1)))
+        expected = torch.tensor(
+            [[[-1.0, 0.0, 0.0, 5.0], [0.0, -1.0, 0.0, 3.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(outer.transform_matrix, expected)
+
+    def test_repeated_nested_resize_keeps_input_overrides_4476(self, device, dtype):
+        nested = K.ImageSequential(K.Resize((4, 6)), random_apply=2)
+        outer = K.AugmentationSequential(nested, extra_args={DataKey.INPUT: {"align_corners": False}})
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        outer(image)
+        expected = torch.tensor([[[0.6, 0.0, -0.2], [0.0, 0.5, -0.25], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(outer.transform_matrix, expected)
 
     def test_convention_nested_rigid_container_checks_its_children_4476(self, device, dtype):
         # A nested container records its matrix in its own mode, so ``rigid`` rejects a non-rigid child as a direct
