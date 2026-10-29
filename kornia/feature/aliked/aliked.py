@@ -712,7 +712,7 @@ class SDDH(nn.Module):
 
         # Each convolution of the head sees one window (offset_conv) or one sample (sf_conv) per keypoint, so it is a
         # matrix product over the flattened channels and window. F.linear with the convolution's weights computes it
-        # as one GEMM; conv2d on these (N, C, k, k) inputs runs on NNPACK on CPU, which makes the head about 3x slower.
+        # as one GEMM; conv2d on these (N, C, k, k) inputs made the head about 3x slower on an Apple M1 CPU.
         conv_offset, gate, conv_offset_1x1 = self.offset_conv
         w_offset = conv_offset.weight.flatten(1)
         w_offset_1x1 = conv_offset_1x1.weight.flatten(1)
@@ -732,7 +732,8 @@ class SDDH(nn.Module):
                 kptsi_wh_long = kptsi_wh.long()
                 patch = xi[:, kptsi_wh_long[:, 1], kptsi_wh_long[:, 0]].permute(1, 0).reshape(N_kpts, c, 1, 1)
 
-            offset = gate(F.linear(patch.flatten(1), w_offset, conv_offset.bias))
+            # the gate gets the (N, C, 1, 1) map the convolution would give it, so a 2-D-only module stays valid
+            offset = gate(F.linear(patch.flatten(1), w_offset, conv_offset.bias)[:, :, None, None]).flatten(1)
             offset = F.linear(offset, w_offset_1x1, conv_offset_1x1.bias).clamp(-max_offset, max_offset)
 
             if self.mask:

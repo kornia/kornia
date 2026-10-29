@@ -432,6 +432,16 @@ class TestSDDH(BaseTester):
         for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
             self.assert_close(actual, expected)
 
+    def test_gate_gets_the_convolution_output_map(self, device, dtype):
+        # a gate that accepts only (N, C, H, W) input, such as Softmax2d, works as it did on the convolution output
+        sddh = SDDH(16, 3, 4, gate=torch.nn.Softmax2d()).to(device, dtype)
+        x, keypoints = self._inputs(device, dtype)
+        with torch.no_grad():
+            descriptors, offsets = sddh(x, keypoints)
+            expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
+        for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
+            self.assert_close(actual, expected)
+
     def test_gradients_match_the_convolutions(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
             # a weight gradient sums over every sample, in another order than conv2d's backward: a few ulps apart
