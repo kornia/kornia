@@ -182,15 +182,25 @@ class TestFlagshipCoverage(BaseTester):
             assert {tuple(pair.tolist()) for pair in indices} == expected[name]
             assert {(m.queryIdx, m.trainIdx) for m in row["opencv"]()[0]} == expected[name]
 
-    @pytest.mark.parametrize("op", ["dice_loss", "dice_loss_macro", "dice_loss_weighted"])
-    def test_dice_variants_backward(self, op, device, dtype):
+    @pytest.mark.parametrize("op", ["dice_loss", "dice_loss_macro", "dice_loss_weighted", "hausdorff_er_loss"])
+    @pytest.mark.parametrize("forward_only", [False, True])
+    def test_loss_training_and_validation(self, op, forward_only, device, dtype):
         module = load_suite("losses")
-        ops, failures = module.build_ops(2, 16, 20, device, dtype, False, None, selected=frozenset({op}))
+        ops, failures = module.build_ops(
+            2, 16, 20, device, dtype, False, None, selected=frozenset({op}), forward_only=forward_only
+        )
         assert not failures
-        (gradient,) = ops[op]["kornia (eager)"]()
-        assert gradient.shape == (2, module.NUM_CLASSES, 16, 20)
-        assert torch.isfinite(gradient).all()
-        assert (gradient != 0).any()
+        result = ops[op]["kornia (eager)"]()
+        if forward_only:
+            assert result.ndim == 0
+            assert not result.requires_grad
+            assert torch.isfinite(result)
+            assert result > 0
+        else:
+            (gradient,) = result
+            assert gradient.shape == (2, 3 if op == "hausdorff_er_loss" else module.NUM_CLASSES, 16, 20)
+            assert torch.isfinite(gradient).all()
+            assert (gradient != 0).any()
 
     @pytest.mark.device_agnostic
     def test_hsv_inverse_pil(self):

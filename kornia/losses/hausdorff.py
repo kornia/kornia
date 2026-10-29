@@ -145,11 +145,11 @@ class _HausdorffERLossBase(nn.Module):
             )
 
         if (
-            not is_compiling()
+            # A batched convolution can round the backward differently at a threshold tie.
+            not torch.is_grad_enabled()
+            and not is_compiling()
             and not is_exporting()
             and not torch.jit.is_tracing()
-            # A batched convolution can round the backward differently at a threshold tie.
-            and not torch.is_grad_enabled()
             and type(self) is HausdorffERLoss
             and pred.device.type == "cpu"
             and pred.dtype in (torch.float32, torch.float64)
