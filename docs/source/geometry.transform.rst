@@ -41,8 +41,11 @@ Image 2D transforms
 
 Rotate, shift, zoom or shear an image by parameters (:func:`rotate`, :func:`translate`, :func:`scale`,
 :func:`shear`), or warp it by an affine matrix (:func:`affine`), at the input size; change the size with
-:func:`resize`, :func:`rescale` or :func:`resize_to_be_divisible`. The flips, the elastic transform and the image
-pyramids follow.
+:func:`resize`, :func:`rescale` or :func:`resize_to_be_divisible`. Mirror or turn it by reversing axes, without
+interpolation (:func:`hflip`, :func:`vflip`, :func:`rot180`); deform it by a smoothed displacement field
+(:func:`elastic_transform2d`); blur and resize it by one pyramid level (:func:`pyrdown`, :func:`pyrup`), or build a
+Gaussian or Laplacian pyramid (:func:`build_pyramid`, :func:`build_laplacian_pyramid`, with the integer helpers
+:func:`is_powerof_two` and :func:`find_next_powerof_two`).
 
 .. autofunction:: affine
 .. autofunction:: rotate
@@ -98,6 +101,12 @@ all of them (:func:`get_rotation_matrix2d`, :func:`get_translation_matrix2d`, :f
 Crop operators
 --------------
 
+Crop ``(B, C, H, W)`` images by integer slicing of axis-aligned boxes (:func:`crop_by_indices`), by resampling a
+four-corner box to a fixed size (:func:`crop_and_resize`) or onto a second box whose size sets the output
+(:func:`crop_by_boxes`), by a source→destination pixel matrix (:func:`crop_by_transform_mat`), or at the centre
+(:func:`center_crop`, and its module form :class:`CenterCrop2D`). A box is ``(B, 4, 2)``: its ``(x, y)`` corners
+clockwise from the top-left, as inclusive pixel positions.
+
 .. autofunction:: crop_by_indices
 .. autofunction:: crop_by_boxes
 .. autofunction:: crop_by_transform_mat
@@ -107,6 +116,11 @@ Crop operators
 Crop operators (3D)
 --------------------
 
+Crop ``(B, C, D, H, W)`` volumes by ``(B, 8, 3)`` boxes, resampled to a fixed size (:func:`crop_and_resize3d`) or onto
+a second box (:func:`crop_by_boxes3d`), by a source→destination voxel matrix (:func:`crop_by_transform_mat3d`), or at
+the centre (:func:`center_crop3d`). Pass ``align_corners=True``: at ``False`` the 3D crops sample off the box
+(`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+
 .. autofunction:: crop_by_boxes3d
 .. autofunction:: crop_by_transform_mat3d
 .. autofunction:: center_crop3d
@@ -114,6 +128,13 @@ Crop operators (3D)
 
 Modules
 -------
+
+The ``torch.nn.Module`` classes. Module forms that store their arguments: the 2D transforms (:class:`Rotate`,
+:class:`Translate`, :class:`Scale`, :class:`Shear`, :class:`Affine`), the resizes (:class:`Resize`, :class:`Rescale`),
+the pyramid steps (:class:`PyrDown`, :class:`PyrUp`) and the centre crop (:class:`CenterCrop2D`); module forms that
+take no arguments: the flips (:class:`Hflip`, :class:`Vflip`, :class:`Rot180`). :class:`ScalePyramid` builds
+scale-space octaves, :class:`HomographyWarper` warps by a normalized homography, and :class:`BaseWarper` is the
+interface for writing another warper.
 
 .. autoclass:: Rotate
 .. autoclass:: Translate

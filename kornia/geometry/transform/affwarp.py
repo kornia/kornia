@@ -790,6 +790,7 @@ def resize(
         - :func:`rescale`: the output size as a factor of the input size.
         - :func:`resize_to_be_divisible`: the nearest size whose sides are multiples of a factor.
         - :func:`scale`: zoom the content about the centre and keep the size.
+        - :func:`crop_and_resize`: resamples a box of each image, not the whole image, to a fixed size.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)

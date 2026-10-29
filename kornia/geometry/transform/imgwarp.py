@@ -345,6 +345,8 @@ def warp_perspective(
         - :func:`warp_affine`: a ``(B, 2, 3)`` affine matrix instead, where a single ``(1, 2, 3)`` one serves a batch.
         - :func:`get_perspective_transform`: the homography that maps four source points onto four destination points.
         - :func:`remap`: sample at given per-pixel source coordinates instead of by a matrix.
+        - :func:`crop_by_transform_mat`: dispatches to this warp or :func:`warp_affine` by matrix shape, casting the
+          matrix to the image dtype and broadcasting a batch-1 matrix.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
@@ -488,6 +490,8 @@ def warp_affine(
         - :func:`invert_affine_transform`: the destination→source matrix, to warp back.
         - :func:`get_affine_matrix2d`: a ``(B, 3, 3)`` matrix from translation, rotation, scale and shear; pass its
           ``M[:, :2]``.
+        - :func:`crop_by_transform_mat`: calls this warp for a ``(B, 2, 3)`` matrix after casting it to the image dtype,
+          and :func:`warp_perspective` for a ``(B, 3, 3)`` one.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
@@ -1680,6 +1684,8 @@ def warp_affine3d(
           identity.
         - :func:`affine3d`: keeps the input size and accepts an unbatched ``(C, D, H, W)`` volume.
         - :func:`get_projective_transform`: the ``(B, 3, 4)`` matrix of a rotation and a scale about a centre.
+        - :func:`crop_by_transform_mat3d`: calls this warp with the top three rows of a ``(B, 3, 4)`` or ``(B, 4, 4)``
+          matrix, and broadcasts a batch-1 matrix.
 
     """
     if len(src.shape) != 5:

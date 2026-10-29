@@ -55,16 +55,21 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 CATALOG_NAMESPACES: tuple[str, ...] = (
     "kornia.geometry.depth",
     "kornia.geometry.transform.affwarp",
+    "kornia.geometry.transform.crop2d",
+    "kornia.geometry.transform.crop3d",
+    "kornia.geometry.transform.elastic_transform",
+    "kornia.geometry.transform.flips",
     "kornia.geometry.transform.homography_warper",
+    "kornia.geometry.transform.image_registrator",
     "kornia.geometry.transform.imgwarp",
+    "kornia.geometry.transform.pyramid",
+    "kornia.geometry.transform.thin_plate_spline",
 )
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.geometry.depth",
-    "kornia.geometry.transform.affwarp",
-    "kornia.geometry.transform.homography_warper",
-    "kornia.geometry.transform.imgwarp",
+    "kornia.geometry.transform",
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
