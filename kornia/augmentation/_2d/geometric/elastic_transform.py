@@ -37,8 +37,9 @@ class RandomElasticTransform(AugmentationBase2D):
         ``p=1.0`` to warp every sample.
 
     Convention:
-        This is a dense backward sampling field with no ``transform_matrix`` or ``inverse``; spatial labels in
-        containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        This is a dense backward sampling field with no ``transform_matrix`` or ``inverse``. A ``mask`` data key
+        is resampled through the same field; keypoint and box data keys raise ``NotImplementedError``, even at
+        ``p=0`` (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
         Noise has shape ``(B, 2, H, W)`` with channels ``(x, y)``; ``alpha`` scales displacement in
         normalized sampling coordinates, whereas ``kernel_size`` and ``sigma`` use ``(y, x)`` order.
         Coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``. Zero
@@ -153,9 +154,10 @@ class RandomElasticTransform(AugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
-        """Process masks corresponding to the inputs that are transformed."""
-        # We assume that boxes may not be affected too much by the deformation.
-        return input
+        """Reject box inputs, which this augmentation does not move."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support box inputs. See https://github.com/kornia/kornia/issues/4420."
+        )
 
     def apply_transform_class(
         self,
