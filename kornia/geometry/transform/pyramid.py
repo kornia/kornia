@@ -173,6 +173,8 @@ class ScalePyramid(nn.Module):
         - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
           ``double_image=True``) leaves the first level at that blur, and the octave is built and
           labelled from it, as if ``init_sigma`` were the assumed input blur
+        - the first level of octave ``o + 1`` is the 2x downscale of level ``n_levels`` of octave ``o``, the level
+          blurred to twice the first level's sigma, which is why ``extra_levels`` must be at least ``1``
         - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter. They keep the
           first and last pixel centres, so pixel :math:`(u, v)` of octave ``o`` is input pixel
           :math:`(u (W - 1) / (W_o - 1), v (H - 1) / (H_o - 1))`; ``pixel_dists`` is the nominal spacing
@@ -183,11 +185,17 @@ class ScalePyramid(nn.Module):
         init_sigma: initial blur level.
         min_size: the minimum size of the octave in pixels.
         double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
+        extra_levels: number of levels built beyond ``n_levels`` in every octave, a positive integer. Level
+            ``n_levels`` seeds the next octave, so ``1`` is the least that works; DoG non-maximum suppression
+            needs ``3``.
 
     Returns:
         1st output: images
         2nd output: sigmas (coefficients for scale conversion)
         3rd output: pixelDists (nominal pixel spacing of each level relative to the input)
+
+    Raises:
+        BaseError: if ``extra_levels`` is not a positive integer.
 
     Shape:
         - Input: ``(B, C, H, W)``
@@ -210,6 +218,10 @@ class ScalePyramid(nn.Module):
         extra_levels: int = 3,
     ) -> None:
         super().__init__()
+        KORNIA_CHECK(
+            isinstance(extra_levels, int) and not isinstance(extra_levels, bool) and extra_levels > 0,
+            lambda: f"Invalid extra_levels, it must be a positive integer. Got: {extra_levels!r}",
+        )
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
         self.extra_levels = extra_levels
@@ -391,9 +403,11 @@ class ScalePyramid(nn.Module):
                 sigmas[-1][:, level_idx] = cur_sigma_oct
                 pixel_dists[-1][:, level_idx] = pixel_distance
 
-            # Seed next octave: bilinear 2x downscale of the (-extra_levels) level.
+            # Seed next octave: bilinear 2x downscale of level ``n_levels``, the one blurred to twice the first
+            # level's sigma, so the new octave starts at the same octave-relative blur. It is addressed from the
+            # front: ``-self.extra_levels`` is the same level for ``extra_levels >= 1`` but selects level 0 for 0.
             # Bilinear resampling is more accurate than integer-stride decimation.
-            _pyr = pyr[-1][-self.extra_levels]
+            _pyr = pyr[-1][self.n_levels]
             H, W = _pyr.shape[2], _pyr.shape[3]
             if min(H // 2, W // 2) <= self.min_size:
                 break

@@ -351,6 +351,37 @@ class TestScalePyramid(BaseTester):
             self.assert_close(sigmas[octave], ref_sigmas[octave])
             self.assert_close(pyr[octave], ref_pyr[octave])
 
+    @pytest.mark.parametrize("extra_levels", [0, -1, -3, 1.5, 3.0, None, "3", True, False])
+    def test_invalid_extra_levels_6400(self, extra_levels):
+        # extra_levels=0 made `pyr[-1][-0]` pick level 0, so every octave after the first was seeded from the
+        # least blurred level while `sigmas` still labelled it with the base sigma.
+        with pytest.raises(BaseError, match="Invalid extra_levels, it must be a positive integer"):
+            kornia.geometry.ScalePyramid(extra_levels=extra_levels)
+
+    @pytest.mark.parametrize("n_levels", [1, 3])
+    @pytest.mark.parametrize("extra_levels", [1, 2, 3])
+    def test_octave_is_seeded_from_level_n_levels_6400(self, device, dtype, n_levels, extra_levels):
+        # Level n_levels is blurred to twice the first level's sigma, so downscaling it by 2 gives the next octave
+        # the same octave-relative blur. It does not depend on how many spare levels follow it.
+        inp = torch.rand(1, 1, 96, 96, device=device, dtype=dtype)
+        pyr, sigmas, _ = kornia.geometry.ScalePyramid(n_levels, extra_levels=extra_levels)(inp)
+        assert len(pyr) >= 3
+        for octave in range(len(pyr) - 1):
+            assert pyr[octave].shape[2] == n_levels + extra_levels
+            size = (pyr[octave].shape[-2] // 2, pyr[octave].shape[-1] // 2)
+
+            def downscale(level, size=size, octave=octave):
+                return torch.nn.functional.interpolate(
+                    pyr[octave][:, :, level], size=size, mode="bilinear", align_corners=True
+                )
+
+            self.assert_close(pyr[octave + 1][:, :, 0], downscale(n_levels))
+            assert not torch.allclose(pyr[octave + 1][:, :, 0], downscale(0))
+            # The labels agree with the seed: level n_levels is at twice the first level's sigma, and the next
+            # octave's first level, downscaled by 2, is back at the first level's sigma.
+            self.assert_close(sigmas[octave][:, n_levels], 2.0 * sigmas[octave][:, 0])
+            self.assert_close(sigmas[octave + 1][:, 0], sigmas[octave][:, 0])
+
 
 class TestPyramidLevelValidation(BaseTester):
     @pytest.mark.parametrize("op", ["build_pyramid", "build_laplacian_pyramid"])
