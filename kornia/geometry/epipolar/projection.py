@@ -180,7 +180,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
         - The Translation vector with shape ``(B, 3, 1)``.
 
     """
-    KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
+    KORNIA_CHECK_SHAPE(P, ["B", "3", "4"], "P must have shape (B, 3, 4).")
     # A caller's autocast region would run the products below in half precision, which torch.linalg.det (CPU) and
     # qr (MPS) have no kernel for. TorchScript has no context managers; a scripted call keeps the caller's precision.
     if torch.jit.is_scripting():
@@ -270,7 +270,7 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
         The projection matrices with shape ``(B, 3, 4, 2)``.
 
     """
-    KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(F_mat, ["B", "3", "3"], "F_mat must have shape (B, 3, 3).")
 
     R1 = eye_like(3, F_mat)  # Bx3x3
     t1 = vec_like(3, F_mat)  # Bx3

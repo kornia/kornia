@@ -920,17 +920,16 @@ class RANSAC(nn.Module):
             KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
                 raise ValueError(
-                    "kp1 and kp2 should be                                  equal shape at least"
-                    f" [{self.minimal_sample_size}, 2],                                  got {kp1.shape}, {kp2.shape}"
+                    f"kp1 and kp2 should be equal shape at least [{self.minimal_sample_size}, 2],"
+                    f" got {kp1.shape}, {kp2.shape}"
                 )
         if self.model_type == "homography_from_linesegments":
             KORNIA_CHECK_SHAPE(kp1, ["N", "2", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
                 raise ValueError(
-                    "kp1 and kp2 should be                                  equal shape at least"
-                    f" [{self.minimal_sample_size}, 2, 2],                                  got {kp1.shape},"
-                    f" {kp2.shape}"
+                    f"kp1 and kp2 should be equal shape at least [{self.minimal_sample_size}, 2, 2],"
+                    f" got {kp1.shape}, {kp2.shape}"
                 )
 
     def forward(

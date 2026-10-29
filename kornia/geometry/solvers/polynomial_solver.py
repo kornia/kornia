@@ -1358,6 +1358,8 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
 
     """
+    KORNIA_CHECK_SHAPE(a, ["B", "4"], "a must have shape (B, 4).")
+    KORNIA_CHECK_SHAPE(b, ["B", "4"], "b must have shape (B, 4).")
     global T_deg1  # noqa: PLW0603
     if T_deg1.device != a.device or T_deg1.dtype != a.dtype:
         T_deg1 = T_deg1.to(device=a.device, dtype=a.dtype)

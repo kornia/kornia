@@ -22,6 +22,7 @@ import torch
 
 import kornia.geometry.epipolar as epi
 import kornia.geometry.epipolar.fundamental as fundamental_module
+from kornia.core.exceptions import ShapeError
 from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix, convert_points_to_homogeneous
 from kornia.geometry.epipolar.fundamental import (
@@ -681,6 +682,19 @@ class TestPerpendicular(BaseTester):
         line = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         self.gradcheck(epi.get_perpendicular, (pt, line), requires_grad=(True, False))
 
+    def test_unbatched_points_raise_6422(self, device, dtype):
+        # The shape check accepted unbatched points, and points.shape[2] then raised an IndexError.
+        lines = torch.rand(5, 3, device=device, dtype=dtype)
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"points must have shape \(B, N, 2\) or \(B, N, 3\)"):
+            epi.get_perpendicular(lines, points)
+
+    def test_unbatched_lines_still_broadcast_6422(self, device, dtype):
+        # Only points are read on dimension 2: unbatched lines broadcast against batched points, as before.
+        lines = torch.rand(4, 3, device=device, dtype=dtype)
+        points = torch.rand(2, 4, 2, device=device, dtype=dtype)
+        self.assert_close(epi.get_perpendicular(lines, points), epi.get_perpendicular(lines.expand(2, 4, 3), points))
+
 
 class TestGetClosestPointOnEpipolarLine(BaseTester):
     def test_shape(self, device, dtype):
@@ -703,6 +717,22 @@ class TestGetClosestPointOnEpipolarLine(BaseTester):
         pts2 = torch.rand(2, 4, 2, device=device, dtype=torch.float64)
         Fm = create_random_fundamental_matrix(1, dtype=torch.float64, device=device)
         self.gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), requires_grad=(True, False, False))
+
+    def test_unbatched_pts2_raises_6422(self, device, dtype):
+        # pts2 reached get_perpendicular, whose points.shape[2] raised an IndexError.
+        pts1 = torch.rand(5, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(5, 2, device=device, dtype=dtype)
+        Fm = create_random_fundamental_matrix(1, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"pts2 must have shape \(B, N, 2\) or \(B, N, 3\)"):
+            epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm)
+
+    def test_unbatched_pts1_still_broadcasts_6422(self, device, dtype):
+        # An unbatched pts1 broadcasts against Fm in compute_correspond_epilines, as before.
+        pts1 = torch.rand(4, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        Fm = create_random_fundamental_matrix(1, device=device, dtype=dtype)
+        expected = epi.get_closest_point_on_epipolar_line(pts1[None], pts2, Fm)
+        self.assert_close(epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm), expected)
 
 
 _NO_HALF_EIGH = "find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel"
