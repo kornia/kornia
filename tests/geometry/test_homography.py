@@ -222,6 +222,14 @@ class TestLineSegmentOneWayError(BaseTester):
         error = line_segment_transfer_error_one_way(ls1, ls2, H)
         assert error.dtype == dtype
         self.assert_close(error, torch.full_like(error, 0.5))
+        # A float64 destination line keeps its precision with a float32 H and float32 points: the 1e-8 distance is
+        # not rounded away by computing in float32.
+        ls1 = torch.tensor([[[[0.0, 1.0], [1.0, 1.0]]]], device=device, dtype=torch.float32)
+        ls2 = torch.tensor([[[[0.0, 1.0 + 1e-8], [1.0, 1.0 + 1e-8]]]], device=device, dtype=torch.float64)
+        H = torch.eye(3, device=device, dtype=torch.float32)[None]
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == torch.float64
+        self.assert_close(error, torch.full_like(error, 1e-8), rtol=1e-6, atol=0.0)
         # The distance is formed from the homogeneous coordinates, so a mapped x' past the float32 range does not
         # turn a zero distance into inf * 0 = NaN.
         H = torch.diag(torch.tensor([1e30, 1.0, 1e-10], device=device, dtype=torch.float32))[None]
