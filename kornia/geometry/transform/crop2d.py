@@ -398,8 +398,8 @@ def crop_by_boxes(
             "crop_by_boxes(validate_boxes=...)",
             None,
             "0.9.1",
-            "The argument has no effect: `crop_by_boxes` never validated the boxes, whatever its value. It will be "
-            "removed in a future release; stop passing it.",
+            "The argument has no effect: `crop_by_boxes` never validated the boxes, whatever its value; stop "
+            "passing it.",
         )
 
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
