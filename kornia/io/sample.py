@@ -185,7 +185,7 @@ def get_sample_images(
         if resize is not None:
             img_tensor = kornia.geometry.resize(img_tensor, resize, **kwargs)
         if divisible_factor is not None:
-            div_kwargs = {key: value for key, value in kwargs.items() if key != "side"}
+            div_kwargs = kwargs if resize is None else {key: value for key, value in kwargs.items() if key != "side"}
             img_tensor = kornia.geometry.transform.resize_to_be_divisible(img_tensor, divisible_factor, **div_kwargs)
         tensors.append(img_tensor)
 

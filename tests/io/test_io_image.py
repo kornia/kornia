@@ -1304,3 +1304,17 @@ def test_sample_images_resize_side_with_divisible_factor(tmp_path, side, expecte
         warnings.filterwarnings("error", message=r".*side", category=DeprecationWarning)
         out = get_sample_images(40, paths=[str(path)], divisible_factor=8, as_list=False, side=side)
     assert out.shape == expected
+
+
+@pytest.mark.parametrize("side", ["short", "long"])
+def test_sample_images_divisible_only_warns_for_side(tmp_path, side):
+    from kornia.io import get_sample_images
+
+    path = tmp_path / "non_square.png"
+    write_image(path, torch.zeros(3, 22, 32, dtype=torch.uint8))
+    expected = get_sample_images(paths=[str(path)], divisible_factor=8)
+    with pytest.warns(DeprecationWarning, match="side"):
+        out = get_sample_images(paths=[str(path)], divisible_factor=8, side=side)
+    assert len(out) == len(expected) == 1
+    assert out[0].shape == expected[0].shape
+    torch.testing.assert_close(out[0], expected[0], rtol=0, atol=0)
