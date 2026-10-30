@@ -45,6 +45,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
@@ -223,6 +224,9 @@ def affine(
         torch.Size([1, 2, 3, 5])
 
     """
+    # An unbatched (2, 3) matrix would be read as a batch of 2 below and silently double the image (#6462).
+    KORNIA_CHECK_SHAPE(matrix, ["B", "2", "3"])
+
     # warping needs data in the shape of BCHW
     is_unbatched: bool = tensor.dim() == 3
     if is_unbatched:
