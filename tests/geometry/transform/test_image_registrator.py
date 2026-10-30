@@ -285,6 +285,17 @@ class TestImageRegistrator(BaseTester):
         ir.register(scene(0.0), scene(6.0))
         assert abs(ir.model.rot.item() + 6.0) < 0.4
 
+    def test_different_shapes_message_6454(self, device, dtype):
+        # The message carried a run of spaces from its string literal.
+        ir = ImageRegistrator("similarity").to(device, dtype)
+        src = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        dst = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        with pytest.raises(ValueError) as excinfo:
+            ir.get_single_level_loss(src, dst, ir.model())
+        assert str(excinfo.value) == (
+            "Cannot register images of different shapes torch.Size([1, 1, 8, 8]) torch.Size([1, 1, 6, 6])"
+        )
+
 
 class TestConventionsImageRegistrator(BaseTester):
     height, width = 32, 48
