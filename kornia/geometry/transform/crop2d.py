@@ -576,8 +576,7 @@ def crop_by_indices(
           ``antialias=False`` option
         - ``shape_compensation`` (``'resize'`` by default) applies whenever the cropped
           slice does not match ``size``, whether or not ``src_box`` is identical across
-          the batch — each row's output depends only on its own box. It must be ``'resize'``,
-          ``'pad'``, or ``'F.pad'`` (a legacy alias for ``'pad'``).
+          the batch — each row's output depends only on its own box.
         - the part of a box outside the image is clipped on every side, a box that starts left of or above the
           image included, and ``shape_compensation`` then applies. With ``'pad'`` the padding goes on the side
           where the box overflowed, so every kept pixel stays at its position in the box.
@@ -613,7 +612,8 @@ def crop_by_indices(
         from ``src_box``.
 
     Raises:
-        ValueError: if ``size`` is ``None`` and the boxes differ in size.
+        ValueError: if ``shape_compensation`` is not ``'resize'``, ``'pad'`` or ``'F.pad'``, or ``size`` is ``None``
+            and the boxes differ in size.
 
     See Also:
         - :func:`crop_and_resize`: resamples any four-corner box, differentiably with respect to its corners.
