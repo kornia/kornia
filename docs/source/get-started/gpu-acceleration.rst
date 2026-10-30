@@ -47,7 +47,10 @@ An accelerator-compatible implementation is not automatically faster than its re
 For local features, choose the detector, descriptor and matcher together, and check both
 accuracy and latency on your workload. The following **interim M1 audit** compares Kornia
 at commit ``160e0f0f7`` with pinned author implementations and explicitly named alternatives.
-These measurements do not predict CUDA or Intel performance.
+These measurements do not predict CUDA or Intel performance. The
+`audit PR <https://github.com/kornia/kornia/pull/6452>`_ records the full interim table,
+reference revisions, remaining coverage and CUDA handoff instructions; its replay and raw
+evidence packages currently require a separate local transfer.
 
 .. list-table:: Baseline guidance from the feature audit
    :header-rows: 1
