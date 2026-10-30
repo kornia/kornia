@@ -15,6 +15,18 @@
 # limitations under the License.
 #
 
+"""Rigid SE(2) and SE(3) poses that carry the names of their source and destination frames.
+
+A pose ``b_from_a`` maps points in frame ``a`` to frame ``b``, and ``c_from_b * b_from_a`` is ``c_from_a``: the
+names make a composition whose frames do not chain raise instead of returning a wrong pose.
+
+Which class to use:
+
+- A pose between named frames, built from an :class:`~kornia.geometry.liegroup.Se3` or
+  :class:`~kornia.geometry.liegroup.Se2`, a rotation and a translation, or a matrix: :class:`NamedPose`.
+- The pose without names: :class:`~kornia.geometry.liegroup.Se3` and :class:`~kornia.geometry.liegroup.Se2`.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -43,20 +55,33 @@ def _check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
 
 
 class NamedPose:
-    r"""Class to represent a named pose between two frames.
+    r"""Hold an SE(2) or SE(3) pose with the names of its two frames, which composition checks.
 
-    Internally represented by either Se2 or Se3.
+    ``b_from_a = NamedPose(pose, frame_src="a", frame_dst="b")`` wraps an :class:`~kornia.geometry.liegroup.Se3` or
+    :class:`~kornia.geometry.liegroup.Se2` pose that maps frame ``a`` to frame ``b``;
+    ``b_from_a.transform_points(points)`` maps points from ``a`` to ``b``, and ``c_from_b * b_from_a`` composes two
+    poses into ``c_from_a`` after checking that the frames chain. An unbatched ``Se3`` maps one point ``(3,)`` and a
+    batch of ``B`` maps ``(B, 3)``, one point per pose (a batch of one also maps ``(N, 3)``); a point set ``(N, 3)``
+    with an unbatched ``Se3`` raises (`#6426 <https://github.com/kornia/kornia/issues/6426>`_). An unbatched ``Se2``
+    maps ``(2,)`` or ``(N, 2)``, and a batch of ``B`` maps ``(B, 2)``. Build one from a rotation and a translation with
+    :meth:`from_rt`, or from a ``3 x 3`` or ``4 x 4`` matrix with :meth:`from_matrix`. For a pose without frame names,
+    use the Lie group classes directly; for ``4 x 4`` matrices,
+    :func:`~kornia.geometry.linalg.compose_transformations`.
 
     Convention:
-        - ``NamedPose(pose, frame_src="a", frame_dst="b")`` is ``b_from_a``: :meth:`transform_points` maps points in
-          frame ``a`` to frame ``b``, so ``NamedPose(pose, frame_src="1", frame_dst="0")`` is ``trans_01`` in the
-          notation of :func:`~kornia.geometry.linalg.relative_transformation`, for an ``Se2`` and an ``Se3`` pose alike.
-        - ``c_from_b * b_from_a`` is ``c_from_a``, whose matrix is ``c_from_b.pose.matrix() @ b_from_a.pose.matrix()``.
+        - ``NamedPose(pose, frame_src="1", frame_dst="0")`` is ``trans_01`` in the notation of
+          :func:`~kornia.geometry.linalg.relative_transformation`, for an ``Se2`` and an ``Se3`` pose alike.
+        - The matrix of ``c_from_b * b_from_a`` is ``c_from_b.pose.matrix() @ b_from_a.pose.matrix()``.
           The left operand's ``frame_src`` must equal the right operand's ``frame_dst``, otherwise ``*`` raises
           ``ValueError``; :meth:`inverse` inverts the pose and swaps the frame names.
         - The pose must be an ``Se2`` or an ``Se3``: an ``So3``, ``So2``, ``Quaternion`` or tensor is rejected at
           construction (use :meth:`from_rt` or :meth:`from_matrix` to build a pose from one), and ``*`` raises
           ``TypeError`` for a right operand that is not a ``NamedPose`` or holds the other group.
+
+    See Also:
+        - :class:`~kornia.geometry.liegroup.Se3`: the 3D rigid pose it wraps, without frame names.
+        - :class:`~kornia.geometry.liegroup.Se2`: the 2D rigid pose it wraps, without frame names.
+        - :func:`~kornia.geometry.linalg.relative_transformation`: the relative pose of two ``4 x 4`` matrices.
 
     Example:
         >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")

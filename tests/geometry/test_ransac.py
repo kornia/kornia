@@ -42,15 +42,6 @@ from testing.casts import dict_to
 from testing.default_device import default_device
 from testing.geometry.create import create_dominant_plane_scene
 
-# RANSAC's batched minimal solvers take the Metal shader compiler down on the paravirtualized GPU
-# of the hosted macOS runners, and the next MPS allocation aborts the pytest process (SIGABRT).
-# The abort site moves between runs — observed inside the 5-point solver and, with that class
-# deselected, later in an unrelated `F.pad` — and SIGABRT carries no exception type, so these
-# cannot be recorded as strict xfails in testing/known_failure_xfails/mps_float32.txt: the process
-# dies and every test after it is lost. conftest skips this module on MPS; real Apple hardware
-# does not abort, so `--run-mps-process-abort` runs it anyway. Tracked in #4204.
-pytestmark = pytest.mark.mps_process_abort
-
 
 class TestRANSACHomography(BaseTester):
     def test_smoke(self, device, dtype):
