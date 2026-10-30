@@ -418,29 +418,37 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         params: List[ParamItem],
         input: DataType,
         extra_args: Optional[Dict[str, Any]] = None,
+        sequence_matrices: Optional[Iterator[Optional[torch.Tensor]]] = None,
     ) -> Iterator[torch.Tensor]:
-        """Read plain image-sequence matrices using the same parameter-aware lookup as geometric annotations."""
+        """Read invocation snapshots and parameter-aware geometric matrices from a plain image sequence."""
         for param in params:
             module = container.get_submodule(param.name)
             if type(module) is ImageSequential:
                 yield from AugmentationSequential._image_sequence_matrices(
-                    module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
+                    module, InputSequentialOps.get_sequential_module_param(param), input, extra_args, sequence_matrices
                 )
-            elif type(module) is AugmentationSequential:
-                if module._transformation_matrix_arg != "skip":
-                    yield from AugmentationSequential._image_sequence_matrices(
-                        module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
-                    )
             elif isinstance(module, AugmentationSequential):
-                matrix = module.transform_matrix
-                if matrix is not None:
-                    yield matrix
+                if sequence_matrices is None and type(module) is AugmentationSequential:
+                    if module._transformation_matrix_arg != "skip":
+                        yield from AugmentationSequential._image_sequence_matrices(
+                            module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
+                        )
+                else:
+                    matrix = module.transform_matrix if sequence_matrices is None else next(sequence_matrices)
+                    if matrix is not None:
+                        yield matrix
             elif isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D)):
                 yield InputSequentialOps.get_transform_matrix(module, param, input, extra_args=extra_args)
 
     def _update_image_sequence_matrix(
-        self, module: nn.Module, param: ParamItem, input: DataType, extra_args: Optional[Dict[str, Any]] = None
+        self,
+        module: nn.Module,
+        param: ParamItem,
+        input: DataType,
+        extra_args: Optional[Dict[str, Any]] = None,
+        image_transformed: bool = True,
     ) -> None:
+        """Collect nested matrices, using invocation snapshots only after an image call."""
         if (
             type(module) is ImageSequential
             and self._transformation_matrix_arg in ("silent", "silence")
@@ -448,7 +456,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ):
             self._transform_matrices.extend(
                 self._image_sequence_matrices(
-                    module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
+                    module,
+                    InputSequentialOps.get_sequential_module_param(param),
+                    input,
+                    extra_args,
+                    iter(module._sequence_matrices) if image_transformed else None,
                 )
             )
         else:
@@ -798,7 +810,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
                 self._update_image_sequence_matrix(
-                    module, param, outputs[0], extra_args=self.extra_args.get(DataKey.INPUT)
+                    module,
+                    param,
+                    outputs[0],
+                    extra_args=self.extra_args.get(DataKey.INPUT),
+                    image_transformed=DataKey.INPUT in original_data_keys,
                 )
 
             if input_first_order != list(range(len(input_first_order))):

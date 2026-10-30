@@ -2408,6 +2408,52 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(outer(image, params=params), output)
         self.assert_close(outer.transform_matrix, expected)
 
+    @pytest.mark.parametrize("repeated_plain", [False, True])
+    @pytest.mark.parametrize("override", [False, True])
+    def test_repeated_nested_subclass_matrix_4476(self, repeated_plain, override, device, dtype):
+        class CustomSequential(K.AugmentationSequential):
+            def transform_inputs(self, input, params, extra_args=None):
+                output = super().transform_inputs(input, params, extra_args)
+                if override:
+                    vertical = input.new_tensor([[[1.0, 0.0, 0.0], [0.0, -1.0, 3.0], [0.0, 0.0, 1.0]]])
+                    self._transform_matrix = vertical @ self.transform_matrix
+                    output = output.flip(-2)
+                return output
+
+        image = torch.arange(24, device=device, dtype=dtype).reshape(1, 1, 4, 6)
+        horizontal = K.RandomHorizontalFlip(p=0.5)
+        child = CustomSequential(horizontal)
+        nested = K.ImageSequential(child, random_apply=2)
+        if repeated_plain:
+            nested = K.ImageSequential(K.ImageSequential(child), random_apply=2)
+        outer = K.AugmentationSequential(nested)
+        first = horizontal.forward_parameters(image.shape)
+        first["batch_prob"].fill_(1.0)
+        second = horizontal.forward_parameters(image.shape)
+        second["batch_prob"].zero_()
+        for draws in ((first, second), (second, first)):
+            calls = [ParamItem("CustomSequential_0", [ParamItem("RandomHorizontalFlip_0", p)]) for p in draws]
+            if repeated_plain:
+                calls = [ParamItem("ImageSequential_0", [call]) for call in calls]
+            params = [ParamItem("ImageSequential_0", calls)]
+            expected = image.new_tensor([[[-1.0, 0.0, 5.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]])
+            for _ in range(2):
+                rng = torch.get_rng_state()
+                self.assert_close(outer(image, params=params), image.flip(-1))
+                self.assert_close(outer.transform_matrix, expected)
+                self.assert_close(torch.get_rng_state(), rng, rtol=0, atol=0)
+
+    def test_nested_image_annotation_only_replay_4476(self, device, dtype):
+        horizontal = K.RandomHorizontalFlip(p=1.0)
+        outer = K.AugmentationSequential(K.ImageSequential(horizontal))
+        draw = horizontal.forward_parameters(torch.Size((1, 1, 4, 6)))
+        params = [ParamItem("ImageSequential_0", [ParamItem("RandomHorizontalFlip_0", draw)])]
+        points = torch.tensor([[[1.0, 0.0]]], device=device, dtype=dtype)
+        expected = points.new_tensor([[[-1.0, 0.0, 5.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]])
+        for _ in range(2):
+            self.assert_close(outer(points, params=params, data_keys=["keypoints"]), points.new_tensor([[[4.0, 0.0]]]))
+            self.assert_close(outer.transform_matrix, expected)
+
     @pytest.mark.parametrize("mode", ["silent", "skip"])
     def test_nested_image_sequence_modes_4476(self, mode, device, dtype):
         nested = K.ImageSequential(K.RandomVerticalFlip(p=1.0), K.RandomThinPlateSpline(p=0.0))
