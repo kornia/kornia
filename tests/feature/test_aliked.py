@@ -516,6 +516,7 @@ class TestALIKEDForwardLAF(BaseTester):
         assert [t.dtype for t in (lafs, responses, descs)] == [t.dtype for t in ref]
         assert all(t.device == ref[0].device for t in (lafs, responses, descs))
         # The empty outputs stay in the autograd graph, so a loss over an empty batch can still be backpropagated.
+        assert [t.requires_grad for t in (lafs, responses, descs)] == [t.requires_grad for t in ref]
         (lafs.sum() + responses.sum() + descs.sum()).backward()
 
     @pytest.mark.parametrize("compute_affine", [True, False])
