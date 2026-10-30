@@ -245,8 +245,6 @@ class ScalePyramid(nn.Module):
         - an ``init_sigma`` below the assumed input blur (``0.5``, or ``1.0`` with
           ``double_image=True``) leaves the first level at that blur, and the octave is built and
           labelled from it, as if ``init_sigma`` were the assumed input blur
-        - the first level of octave ``o + 1`` is the 2x downscale of level ``n_levels`` of octave ``o``, the level
-          blurred to twice the first level's sigma, which is why ``extra_levels`` must be at least ``1``
         - the internal resizes use ``align_corners=True``; there is no ``align_corners`` parameter. They keep the
           first and last pixel centres, so pixel :math:`(u, v)` of octave ``o`` is input pixel
           :math:`(u (W - 1) / (W_o - 1), v (H - 1) / (H_o - 1))`; ``pixel_dists`` is the nominal spacing
@@ -260,7 +258,8 @@ class ScalePyramid(nn.Module):
         double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
         extra_levels: number of levels per octave beyond ``n_levels``, a positive integer (a NumPy integer or
           integer tensor is converted to ``int``); the default 3 is what DoG non-maximum suppression needs. Level
-          ``n_levels`` seeds the next octave, so ``1`` is the least that works.
+          ``n_levels``, blurred to twice the first level's sigma, seeds the next octave, so ``1`` is the least
+          that works.
 
     Returns:
         1st output: images, the levels of each octave.
