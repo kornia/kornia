@@ -377,6 +377,40 @@ class TestGetPerspectiveTransform(BaseTester):
         points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst))
 
+    def test_zero_bottom_right_entry_6435(self, device, dtype):
+        # Quadrilateral pair whose homography maps source origin to infinity (H[2, 2] == 0)
+        src = torch.tensor([[[1.0, 0.0], [2.0, 0.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        dst = torch.tensor([[[1.0, 0.0], [0.5, 0.0], [0.5, 1.0], [1.0, 2.0]]], device=device, dtype=dtype)
+
+        H = kornia.geometry.transform.get_perspective_transform(src, dst)
+        assert torch.isfinite(H).all()
+        assert H.shape == (1, 3, 3)
+        self.assert_close(kornia.geometry.transform_points(H, src), dst)
+
+        # Mixed batch: one zero H[2, 2] and one standard non-zero H[2, 2]
+        src_std = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
+        dst_std = torch.tensor([[[1.0, 0.0], [2.0, 0.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+
+        src_batch = torch.cat([src, src_std], dim=0)
+        dst_batch = torch.cat([dst, dst_std], dim=0)
+
+        H_batch = kornia.geometry.transform.get_perspective_transform(src_batch, dst_batch)
+        assert torch.isfinite(H_batch).all()
+        assert H_batch.shape == (2, 3, 3)
+        self.assert_close(kornia.geometry.transform_points(H_batch, src_batch), dst_batch)
+        # Check standard entry is normalized to H[2, 2] == 1
+        self.assert_close(H_batch[1, 2, 2], torch.tensor(1.0, device=device, dtype=dtype))
+
+        # Near-zero bottom-right entry in float16: H[2, 2] = 1 scaling would overflow float16,
+        # fallback keeps it finite and maps points accurately.
+        if dtype == torch.float16:
+            dst_near_zero = torch.tensor(
+                [[[1.0, float(2**-16)], [0.5, 0.0], [0.5, 1.0], [1.0, 2.0]]], device=device, dtype=dtype
+            )
+            H_near_zero = kornia.geometry.transform.get_perspective_transform(src, dst_near_zero)
+            assert torch.isfinite(H_near_zero).all()
+            self.assert_close(kornia.geometry.transform_points(H_near_zero, src), dst_near_zero)
+
 
 class TestRotationMatrix2d(BaseTester):
     @pytest.mark.parametrize("argument", ["center", "angle", "scale"])

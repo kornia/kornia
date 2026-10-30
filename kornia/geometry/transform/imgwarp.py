@@ -914,6 +914,16 @@ def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
     return torch.stack([row0, row1, row2], dim=-2)
 
 
+def _max_val_for_dtype(dtype: torch.dtype) -> float:
+    if dtype == torch.float16:
+        return 65504.0
+    if dtype == torch.bfloat16:
+        return 3.3895313892515355e38
+    if dtype == torch.float64:
+        return 1.7976931348623157e308
+    return 3.4028234663852886e38
+
+
 def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
     """Perspective transform via two unit-square (Heckbert) decompositions.
 
@@ -923,15 +933,22 @@ def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst:
     closed-form 3x3 inverse — no ``torch.linalg.solve`` — so it needs no
     LAPACK/cusolver backend (runs on the Jetson wheel) and traces cleanly for
     ONNX. The result is normalized to ``H[2, 2] == 1`` to match the DLT
-    convention. Computed in float32/float64 for numerical stability, then cast
-    back to the input dtype.
+    convention when ``H[2, 2]`` is non-zero and does not cause overflow in the
+    output dtype, and normalized by its Frobenius norm otherwise. Computed in
+    float32/float64 for numerical stability, then cast back to the input dtype.
     """
     dtype = points_src.dtype
     work_dtype = _normalize_to_float32_or_float64(dtype)
     h_s = _unit_square_to_quad(points_src.to(work_dtype))
     h_d = _unit_square_to_quad(points_dst.to(work_dtype))
     transform = h_d @ _inverse_3x3_closed_form(h_s)
-    transform = transform / transform[..., 2:3, 2:3]
+    scale = transform[..., 2:3, 2:3]
+    norm = torch.linalg.vector_norm(transform, dim=(-2, -1), keepdim=True)
+    norm = torch.where(norm > 0, norm, torch.ones_like(norm))
+    max_val = _max_val_for_dtype(dtype)
+    threshold = torch.clamp(norm / max_val, min=1e-8)
+    divisor = torch.where(scale.abs() > threshold, scale, norm)
+    transform = transform / divisor
     return transform.to(dtype)
 
 
@@ -972,13 +989,9 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - points: ``(x, y)``, pixel centers, origin at top-left; shape ``(B, 4, 2)``
         - a degenerate quadrilateral, such as one with three collinear points or two equal ones, does not raise: a
           degenerate source returns a non-finite matrix, a degenerate destination a non-finite or a singular one
-        - a homography whose true bottom-right entry is zero, such as one that sends source pixel ``(0, 0)`` to
-          infinity, has no ``M[2, 2] = 1`` form, although neither quadrilateral is degenerate: the division by
-          ``M[2, 2]`` gives NaN or inf when rounding leaves that entry exactly zero, and otherwise a finite matrix
-          scaled by the inverse of the rounding residue, whose largest entry is typically ``1e5`` in ``float32`` and
-          ``1e13`` in ``float64`` and which still maps the points, to a relative error of up to about ``1e-2`` in
-          ``float32`` (`#6435 <https://github.com/kornia/kornia/issues/6435>`_);
-          :func:`~kornia.geometry.homography.find_homography_dlt` returns it, at another scale
+        - scaled to ``H[2, 2] == 1`` when that entry is not close to zero and does not cause overflow in the output
+          dtype, and normalized by its Frobenius norm otherwise (such as when the homography maps the source origin
+          to infinity)
         - float16 and bfloat16 points are solved in float32, and the result is cast back to their dtype
         - a caller's autocast region does not change the result, outside TorchScript
 
