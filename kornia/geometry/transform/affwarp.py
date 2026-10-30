@@ -16,12 +16,12 @@
 #
 
 import numbers
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
 from torch import nn
 
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
@@ -764,7 +764,7 @@ def resize_to_be_divisible(
     divisible_factor: int,
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
-    side: str = "short",
+    side: Optional[str] = None,
     antialias: bool = False,
 ) -> torch.Tensor:
     """Resize the input tensor to be divisible by a certain factor.
@@ -782,8 +782,8 @@ def resize_to_be_divisible(
         align_corners (Optional[bool], optional):
             whether to align the corners of the input and output. Defaults to None.
         side (str, optional): Deprecated and ignored. Both sides are rounded independently to a multiple of
-            ``divisible_factor``. In eager mode, values other than ``"short"`` emit a :class:`DeprecationWarning`.
-            This argument will be removed in a future release.
+            ``divisible_factor``. In eager mode, any explicit non-None value emits a :class:`DeprecationWarning`.
+            Defaults to None. This argument will be removed in a future release.
         antialias (bool, optional):
             If True, then image will be filtered with Gaussian before downscaling. Defaults to False.
 
@@ -792,12 +792,12 @@ def resize_to_be_divisible(
 
     """
     if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript needs a standalone guard.
-        if side != "short" and not torch.compiler.is_compiling():
-            warnings.warn(
-                "The `side` argument of `resize_to_be_divisible` is deprecated, has no effect, and will be removed "
-                "in a future release. Both sides are rounded to a multiple of `divisible_factor`.",
-                DeprecationWarning,
-                stacklevel=2,
+        if side is not None:
+            _emit_deprecation_warning(
+                "resize_to_be_divisible(..., side=...)",
+                None,
+                "0.9.1",
+                "The `side` argument has no effect. Both sides are rounded to a multiple of `divisible_factor`.",
             )
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")

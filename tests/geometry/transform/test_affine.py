@@ -47,7 +47,7 @@ class TestResize(BaseTester):
         out = kornia.geometry.transform.resize_to_be_divisible(inp, divisible_factor)
         assert out.shape == expected
 
-    @pytest.mark.parametrize("kwargs", [{}, {"side": "short"}])
+    @pytest.mark.parametrize("kwargs", [{}, {"side": None}])
     def test_resize_to_be_divisible_default_side(self, kwargs, device, dtype):
         inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
         with warnings.catch_warnings():
@@ -56,7 +56,7 @@ class TestResize(BaseTester):
         assert out.shape == (1, 1, 5, 10)
 
     @pytest.mark.parametrize("shape", [(1, 1, 6, 12), (2, 3, 17, 9), (1, 1, 5, 10), (1, 1, 0, 12)])
-    @pytest.mark.parametrize("side", ["long", "vert", "horz", "bogus"])
+    @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
     def test_resize_to_be_divisible_deprecated_side(self, shape, side, device, dtype):
         inp = torch.rand(*shape, device=device, dtype=dtype)
         expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
@@ -75,9 +75,7 @@ class TestResize(BaseTester):
         expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
         op = torch_optimizer(kornia.geometry.transform.resize_to_be_divisible, fullgraph=True)
         with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "error", message=r"The `side` argument of `resize_to_be_divisible`", category=DeprecationWarning
-            )
+            warnings.filterwarnings("error", message=r".*resize_to_be_divisible.*side", category=DeprecationWarning)
             out = op(inp, 5, side=side)
         self.assert_close(out, expected)
 
