@@ -189,7 +189,10 @@ class PatchDominantGradientOrientation(nn.Module):
         # A flat patch has an empty histogram (a zero-gradient pixel contributes no magnitude), and a
         # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
         denom = left + right - 2.0 * center
-        c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
+        has_peak = denom != 0
+        # Guard the division itself: masking 0 / 0 afterwards still gives NaN smoothing-weight gradients.
+        safe_denom = torch.where(has_peak, denom, torch.ones_like(denom))
+        c_subpix = torch.where(has_peak, 0.5 * (left - right) / safe_denom, torch.zeros_like(denom))
         return -((2.0 * math.pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - math.pi)
 
 
