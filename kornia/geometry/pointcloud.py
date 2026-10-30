@@ -49,7 +49,7 @@ def save_pointcloud_ply(filename: str | os.PathLike[str], pointcloud: torch.Tens
 
     Args:
         filename: path of the ``.ply`` file to write, a ``str`` or ``os.PathLike[str]``.
-        pointcloud: tensor of shape :math:`(*, 3)` with at least two dimensions, where the last dimension is the
+        pointcloud: tensor of shape ``(*, 3)`` with at least two dimensions, where the last dimension is the
           point :math:`(X, Y, Z)`.
     """
     filename = os.fspath(filename)
@@ -99,7 +99,7 @@ def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: tor
 
     Args:
         filename: path of the ``.ply`` file to write, a ``str`` or ``os.PathLike[str]``.
-        pointcloud: tensor of shape :math:`(*, 3)` with at least two dimensions, where the last dimension is the
+        pointcloud: tensor of shape ``(*, 3)`` with at least two dimensions, where the last dimension is the
           point :math:`(X, Y, Z)`.
     """
     filename = os.fspath(filename)
@@ -294,7 +294,7 @@ def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[
         header_size: deprecated and ignored; the header is parsed instead of skipped.
 
     Return:
-        tensor containing the loaded points with shape :math:`(N, 3)` in ``float32``, where
+        tensor containing the loaded points with shape ``(N, 3)`` in ``float32``, where
         :math:`N` is the declared vertex count.
     """
     filename = os.fspath(filename)
@@ -356,7 +356,7 @@ def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Op
         header_size: deprecated and ignored; the header is parsed instead of skipped.
 
     Return:
-        tensor containing the loaded points with shape :math:`(N, 3)` in ``float32``, where
+        tensor containing the loaded points with shape ``(N, 3)`` in ``float32``, where
         :math:`N` is the declared vertex count.
     """
     filename = os.fspath(filename)

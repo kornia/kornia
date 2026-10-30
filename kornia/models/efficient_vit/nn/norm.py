@@ -35,7 +35,7 @@ class LayerNorm2d(nn.LayerNorm):
         """Normalize an NCHW feature map across channels.
 
         Args:
-            x: Tensor with shape :math:`(B, C, H, W)`.
+            x: Tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Tensor with the same shape as ``x`` after channel-wise layer

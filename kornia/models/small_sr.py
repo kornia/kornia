@@ -83,7 +83,7 @@ class SmallSRNet(nn.Module):
         """Super-resolve a single-channel image tensor.
 
         Args:
-            x: Luminance image tensor with shape :math:`(B, 1, H, W)`, where
+            x: Luminance image tensor with shape ``(B, 1, H, W)``, where
                 :math:`B` is batch size, :math:`H` is height, and :math:`W` is
                 width.
 
@@ -128,7 +128,7 @@ class SmallSRNetWrapper(nn.Module):
         """Apply RGB super-resolution through a luminance-only SR model.
 
         Args:
-            input: RGB image tensor with shape :math:`(B, 3, H, W)`.
+            input: RGB image tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             RGB tensor upscaled by ``self.upscale_factor``. The Y channel is

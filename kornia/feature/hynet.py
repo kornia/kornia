@@ -233,7 +233,7 @@ class HyNet(nn.Module):
         HyNet descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
+        - Input: ``(B, 1, 32, 32)``
         - Output: :math:`(B, \text{dim\_desc})`
 
     Note:

@@ -97,7 +97,7 @@ class ConvLayer(nn.Module):
         """Apply dropout, convolution, optional normalization, and activation.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after the configured convolutional layer stack.
@@ -175,7 +175,7 @@ class DSConv(nn.Module):
         """Apply depthwise then pointwise convolution.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map with ``out_channels`` produced by the pointwise
@@ -248,7 +248,7 @@ class MBConv(nn.Module):
         """Apply an inverted bottleneck convolution block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after expansion, depthwise convolution, and projection.
@@ -320,7 +320,7 @@ class FusedMBConv(nn.Module):
         """Apply a fused mobile inverted bottleneck convolution.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after fused spatial convolution and pointwise
@@ -382,7 +382,7 @@ class ResBlock(nn.Module):
         """Apply the two-convolution residual-block main branch.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after the block's convolutional transformations.
@@ -499,7 +499,7 @@ class LiteMLA(nn.Module):
         """Apply lightweight multi-scale linear attention.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map after multi-scale query/key/value aggregation, linear
@@ -564,7 +564,7 @@ class EfficientViTBlock(nn.Module):
         """Apply an EfficientViT attention-plus-local block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Feature map with the same shape after the context module and local

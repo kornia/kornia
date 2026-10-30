@@ -45,7 +45,7 @@ def get_motion_kernel2d(
         - The rotation resamples the line with ``mode``: ``'nearest'`` copies each pixel from the nearest tap, so the
           number of taps changes with the angle (3 at 45 degrees, 7 at 25 for a size-5 line), and ``'bilinear'``
           spreads the weight off the line.
-        - A floating tensor ``angle`` of shape :math:`(B,)` gives :math:`(B, k, k)` in its dtype. A tensor
+        - A floating tensor ``angle`` of shape ``(B,)`` gives :math:`(B, k, k)` in its dtype. A tensor
           ``direction`` must match it in length, dtype and device; a float ``direction`` is not broadcast, so it
           raises for ``B > 1``.
         - With ``'nearest'``, each pixel copies the tap nearest to its source under the inverse rotation, picked
@@ -181,7 +181,7 @@ def get_motion_kernel3d(
     Args:
         kernel_size: motion kernel width, height and depth, an odd integer of at least 3.
         angle: Rodrigues axis-angle vector ``(rx, ry, rz)`` in degrees, not Euler angles.
-            If tensor, it must be :math:`(B, 3)`.
+            If tensor, it must be ``(B, 3)``.
             If tuple, it must be ``(rx, ry, rz)``.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),

@@ -96,8 +96,8 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
           The returned loss retains the promoted input dtype.
 
     Args:
-        pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.
-        target: the target torch.Tensor with shape :math:`(B, N, H, W)`.
+        pred: the input torch.Tensor with shape ``(B, N, H, W)``.
+        target: the target torch.Tensor with shape ``(B, N, H, W)``.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
@@ -126,7 +126,7 @@ def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
         - The inputs are probabilities, each :math:`(b, n)` slice a distribution over :math:`H \times W`. The log is
           taken inside, so log-probabilities give NaN, and nothing is normalised. A zero in ``pred`` where ``target``
           is positive gives ``inf``.
-        - ``reduction='none'`` returns :math:`(B, N)`; the default ``'mean'`` averages over the :math:`B N`
+        - ``reduction='none'`` returns ``(B, N)``; the default ``'mean'`` averages over the :math:`B N`
           distributions and ``'sum'`` adds them.
         - Both inputs must have the same shape. Unsupported reductions, including torch's ``'batchmean'``, raise
           ``NotImplementedError``. A zero in ``target`` with a finite nonnegative ``pred`` contributes zero to the
@@ -135,8 +135,8 @@ def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
           ``F.kl_div``, whose autocast promotion otherwise happens too late to avoid rounding that logarithm.
 
     Args:
-        pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.
-        target: the target torch.Tensor with shape :math:`(B, N, H, W)`.
+        pred: the input torch.Tensor with shape ``(B, N, H, W)``.
+        target: the target torch.Tensor with shape ``(B, N, H, W)``.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by

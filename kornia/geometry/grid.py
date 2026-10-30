@@ -58,7 +58,7 @@ def create_meshgrid(
           outer pixel *edges*. Ignored when ``normalized_coordinates`` is ``False``.
 
     Return:
-        grid tensor with shape :math:`(1, H, W, 2)`.
+        grid tensor with shape ``(1, H, W, 2)``.
 
     Example:
         >>> create_meshgrid(2, 2)
@@ -178,7 +178,7 @@ def create_meshgrid3d(
         dtype: the data type of the generated grid.
 
     Return:
-        grid tensor with shape :math:`(1, D, H, W, 3)`.
+        grid tensor with shape ``(1, D, H, W, 3)``.
 
     """
     # See ``create_meshgrid``: ``arange`` keeps eager and captured pixel ramps identical at

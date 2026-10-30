@@ -44,8 +44,8 @@ class NaFlex(nn.Module):
 
     Args:
         patch_embedding_fcn: A callable (e.g., Conv2d) that takes images and returns
-            patch embeddings of shape :math:`(B, C, h, w)` or :math:`(B, N, C)`. A :math:`(B, C, h, w)` output gives
-            the patch grid. A :math:`(B, N, C)` output carries no grid: without ``patch_size`` its :math:`N` tokens
+            patch embeddings of shape :math:`(B, C, h, w)` or ``(B, N, C)``. A :math:`(B, C, h, w)` output gives
+            the patch grid. A ``(B, N, C)`` output carries no grid: without ``patch_size`` its :math:`N` tokens
             are read as a square :math:`\sqrt{N} \times \sqrt{N}` grid in raster order, and a :math:`N` that is not
             a square number raises. A non-square grid therefore needs ``patch_size`` or a :math:`(B, C, h, w)` output:
             the :math:`8 \times 32` grid of a :math:`128 \times 512` image at patch 16 is read right with
@@ -59,7 +59,7 @@ class NaFlex(nn.Module):
             parameter of the module, so it is trained with it; any other tensor is registered as a buffer. A table
             that is not a square grid is added as is when it has one row per patch.
         patch_size: The patch size :math:`p` or :math:`(p_h, p_w)` of a patch embedding that returns
-            :math:`(B, N, C)`, which then has the grid :math:`(H // p_h, W // p_w)` of whole patches with the remainder
+            ``(B, N, C)``, which then has the grid :math:`(H // p_h, W // p_w)` of whole patches with the remainder
             dropped (a ``Conv2d`` with that kernel and stride); the grid must have :math:`N` cells. Ignored for a
             :math:`(B, C, h, w)` output. Default: ``None``, the square reading above.
 
@@ -112,15 +112,15 @@ class NaFlex(nn.Module):
         r"""Forward pass through NaFlex wrapper.
 
         Args:
-            pixel_values: Input tensor of shape :math:`(B, C, H, W)`.
+            pixel_values: Input tensor of shape ``(B, C, H, W)``.
 
         Returns:
-            Embeddings with interpolated positional embeddings of shape :math:`(B, N, C)`.
+            Embeddings with interpolated positional embeddings of shape ``(B, N, C)``.
 
         Raises:
             ValueError: If original positional embedding does not form a square grid and does not have one row per
                 patch.
-            BaseError: If a :math:`(B, N, C)` patch output's grid cannot be read: with ``patch_size``, when
+            BaseError: If a ``(B, N, C)`` patch output's grid cannot be read: with ``patch_size``, when
                 :math:`(H // p_h) (W // p_w) \neq N`; without it, when :math:`N` is not a square number.
         """
         embeddings = self.patch_embedding_fcn(pixel_values)

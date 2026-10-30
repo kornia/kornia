@@ -33,8 +33,8 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_yuv.png
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
-    :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
+    The image data is assumed to be in the range of :math:`[0, 1]`. The range of the output is of
+    :math:`[0, 1]` to luma and the ranges of U and V are :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`,
     respectively.
 
     The YUV model adopted here follows M/PAL values (see
@@ -46,10 +46,10 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
         chroma components centered at zero.
 
     Args:
-        image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to YUV with shape ``(*, 3, H, W)``.
 
     Returns:
-        YUV version of the image with shape :math:`(*, 3, H, W)`.
+        YUV version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -78,23 +78,23 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of :math:`(0, 1)` to
-    luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]`. The range of the output is of :math:`[0, 1]` to
+    luma and the ranges of U and V are :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     The YUV model adopted here follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
     Convention:
-        Returns (Y, UV): Y has shape :math:`(*, 1, H, W)` and UV holds the U and V planes as two
-        channels, :math:`(*, 2, H/2, W/2)`. Height and width must be even.
+        Returns (Y, UV): Y has shape ``(*, 1, H, W)`` and UV holds the U and V planes as two
+        channels, ``(*, 2, H/2, W/2)``. Height and width must be even.
 
     Args:
-        image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to YUV with shape ``(*, 3, H, W)``.
 
     Returns:
-        A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
-        A torch.Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
+        A torch.Tensor containing the Y plane with shape ``(*, 1, H, W)``
+        A torch.Tensor containing the UV planes with shape ``(*, 2, H/2, W/2)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
@@ -128,8 +128,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Input width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
-    :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
+    The image data is assumed to be in the range of :math:`[0, 1]`. The range of the output is of
+    :math:`[0, 1]` to luma and the ranges of U and V are :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`,
     respectively.
 
     The YUV model adopted here follows M/PAL values (see
@@ -137,15 +137,15 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     items 2.5 and 2.6).
 
     Convention:
-        Returns (Y, UV): Y has shape :math:`(*, 1, H, W)` and UV holds the U and V planes as two
-        channels, :math:`(*, 2, H, W/2)`. Width must be even.
+        Returns (Y, UV): Y has shape ``(*, 1, H, W)`` and UV holds the U and V planes as two
+        channels, ``(*, 2, H, W/2)``. Width must be even.
 
     Args:
-        image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to YUV with shape ``(*, 3, H, W)``.
 
     Returns:
-       A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
-       A torch.Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
+       A torch.Tensor containing the Y plane with shape ``(*, 1, H, W)``
+       A torch.Tensor containing the UV planes with shape ``(*, 2, H, W/2)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
@@ -170,8 +170,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a full-resolution YUV (4:4:4) image of shape ``(*, 3, H, W)`` to RGB.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -186,10 +186,10 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         rgb_to_yuv.
 
     Args:
-        image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: YUV Image to be converted to RGB with shape ``(*, 3, H, W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -227,8 +227,8 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -239,11 +239,11 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         nearest-neighbor replication.
 
     Args:
-        imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
+        imagey: Y (luma) Image plane to be converted to RGB with shape ``(*, 1, H, W)``.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape ``(*, 2, H/2, W/2)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
@@ -282,8 +282,8 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     Input width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -294,11 +294,11 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         width by nearest-neighbor replication.
 
     Args:
-        imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
+        imagey: Y (luma) Image plane to be converted to RGB with shape ``(*, 1, H, W)``.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape ``(*, 2, H, W/2)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
@@ -335,7 +335,7 @@ class RgbToYuv(nn.Module):
 
     See the Convention block on :func:`rgb_to_yuv`.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`.
+    The image data is assumed to be in the range of :math:`[0, 1]`.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -345,8 +345,8 @@ class RgbToYuv(nn.Module):
         YUV version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -366,12 +366,12 @@ class RgbToYuv(nn.Module):
         """Convert an RGB tensor to YUV.
 
         Args:
-            input: Input tensor with shape :math:`(*, 3, H, W)`.
+            input: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            YUV tensor with shape :math:`(*, 3, H, W)`.
+            YUV tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_yuv(input)
 
@@ -383,7 +383,7 @@ class RgbToYuv420(nn.Module):
 
     Width and Height must be evenly divisible by 2.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`.
+    The image data is assumed to be in the range of :math:`[0, 1]`.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -393,8 +393,8 @@ class RgbToYuv420(nn.Module):
         YUV420 version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)` and :math:`(*, 2, H/2, W/2)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 1, H, W)`` and ``(*, 2, H/2, W/2)``
 
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
@@ -414,13 +414,13 @@ class RgbToYuv420(nn.Module):
         """Convert an RGB tensor to YUV420 planes.
 
         Args:
-            yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+            yuvinput: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
-            shape :math:`(*, 2, H / 2, W / 2)`. The ``1`` channel is luma and the ``2``
+            Tuple of ``(y, uv)`` where ``y`` has shape ``(*, 1, H, W)`` and ``uv`` has
+            shape ``(*, 2, H / 2, W / 2)``. The ``1`` channel is luma and the ``2``
             channels are chroma.
         """
         return rgb_to_yuv420(yuvinput)
@@ -433,7 +433,7 @@ class RgbToYuv422(nn.Module):
 
     Width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`.
+    The image data is assumed to be in the range of :math:`[0, 1]`.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -443,8 +443,8 @@ class RgbToYuv422(nn.Module):
         YUV422 version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)` and :math:`(*, 2, H, W/2)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 1, H, W)`` and ``(*, 2, H, W/2)``
 
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
@@ -464,13 +464,13 @@ class RgbToYuv422(nn.Module):
         """Convert an RGB tensor to YUV422 planes.
 
         Args:
-            yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+            yuvinput: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
-            shape :math:`(*, 2, H, W / 2)`. The ``1`` channel is luma and the ``2`` channels
+            Tuple of ``(y, uv)`` where ``y`` has shape ``(*, 1, H, W)`` and ``uv`` has
+            shape ``(*, 2, H, W / 2)``. The ``1`` channel is luma and the ``2`` channels
             are chroma.
         """
         return rgb_to_yuv422(yuvinput)
@@ -481,8 +481,8 @@ class YuvToRgb(nn.Module):
 
     See the Convention block on :func:`yuv_to_rgb`.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -495,8 +495,8 @@ class YuvToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -513,12 +513,12 @@ class YuvToRgb(nn.Module):
         """Convert a YUV tensor to RGB.
 
         Args:
-            input: Input tensor with shape :math:`(*, 3, H, W)`.
+            input: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to YUV channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return yuv_to_rgb(input)
 
@@ -530,8 +530,8 @@ class Yuv420ToRgb(nn.Module):
 
     Width and Height must be evenly divisible by 2.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -541,9 +541,9 @@ class Yuv420ToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - imagey: :math:`(*, 1, H, W)`
-        - imageuv: :math:`(*, 2, H/2, W/2)`
-        - output: :math:`(*, 3, H, W)`
+        - imagey: ``(*, 1, H, W)``
+        - imageuv: ``(*, 2, H/2, W/2)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> inputy = torch.rand(2, 1, 4, 6)
@@ -561,13 +561,13 @@ class Yuv420ToRgb(nn.Module):
         """Convert YUV420 luma/chroma planes to RGB.
 
         Args:
-            inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
-            inputuv: Chroma tensor with shape :math:`(*, 2, H / 2, W / 2)`.
+            inputy: Luma tensor with shape ``(*, 1, H, W)``.
+            inputuv: Chroma tensor with shape ``(*, 2, H / 2, W / 2)``.
                 For both tensors, ``*`` means any number of leading dimensions (for example,
                 batch size), and ``H``/``W`` are the full-resolution height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return yuv420_to_rgb(inputy, inputuv)
 
@@ -579,8 +579,8 @@ class Yuv422ToRgb(nn.Module):
 
     Width must be evenly divisible by 2; height may be odd.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
-    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`[0, 1]` for luma (Y). The ranges of U and V are
+    :math:`[-0.436, 0.436]` and :math:`[-0.615, 0.615]`, respectively.
 
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
@@ -590,9 +590,9 @@ class Yuv422ToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - imagey: :math:`(*, 1, H, W)`
-        - imageuv: :math:`(*, 2, H, W/2)`
-        - output: :math:`(*, 3, H, W)`
+        - imagey: ``(*, 1, H, W)``
+        - imageuv: ``(*, 2, H, W/2)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> inputy = torch.rand(2, 1, 4, 6)
@@ -610,12 +610,12 @@ class Yuv422ToRgb(nn.Module):
         """Convert YUV422 luma/chroma planes to RGB.
 
         Args:
-            inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
-            inputuv: Chroma tensor with shape :math:`(*, 2, H, W / 2)`.
+            inputy: Luma tensor with shape ``(*, 1, H, W)``.
+            inputuv: Chroma tensor with shape ``(*, 2, H, W / 2)``.
                 For both tensors, ``*`` means any number of leading dimensions (for example,
                 batch size), and ``H``/``W`` are the full-resolution height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return yuv422_to_rgb(inputy, inputuv)

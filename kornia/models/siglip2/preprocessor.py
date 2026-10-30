@@ -91,8 +91,8 @@ class SigLip2ImagePreprocessor(nn.Module):
         """Prepare images for SigLIP2 vision encoding.
 
         Args:
-            images: Image tensor with shape :math:`(C, H, W)` or
-                :math:`(B, C, H, W)`. Values are expected in the range used by
+            images: Image tensor with shape ``(C, H, W)`` or
+                ``(B, C, H, W)``. Values are expected in the range used by
                 the configured rescale factor.
 
         Returns:

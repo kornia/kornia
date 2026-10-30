@@ -223,9 +223,6 @@ NOT_PREFETCHED: dict[str, str] = {
     "tfeat-yosemite.params": "yosemite variant; tests use the liberty default",
     # Model variants no test selects.
     "loftr_indoor_ds_new.ckpt": "tests instantiate LoFTR('indoor') and LoFTR('outdoor') only",
-    "sold2_wireframe.tar": (
-        "the suite builds SOLD2_detector random, or weighted through the prefetched, byte-identical sold2_wireframe.pth"
-    ),
     "epipolar-save.pth": "tests call DISK.from_pretrained(checkpoint='depth')",
     # LightGlue heads: tests build the disk and doghardnet matchers, and the
     # suite also reaches the superpoint head. The rest are unused.

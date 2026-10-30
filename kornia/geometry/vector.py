@@ -40,11 +40,11 @@ class Scalar(TensorWrapper):
 
 
 class Vector3(TensorWrapper):
-    r"""Wrap a tensor of 3D vectors, shape :math:`(*, 3)`.
+    r"""Wrap a tensor of 3D vectors, shape ``(*, 3)``.
 
     Convention:
         - The tensor is wrapped without a copy; any leading shape and dtype are accepted. :attr:`x`, :attr:`y` and
-          :attr:`z` are plain tensors of the leading shape :math:`(*)`, and :meth:`dot` and :meth:`squared_norm`
+          :attr:`z` are plain tensors of the leading shape ``(*)``, and :meth:`dot` and :meth:`squared_norm`
           return a :class:`Scalar` of that shape (for :meth:`dot`, the two operands' broadcast leading shape).
         - :meth:`random` draws vectors uniformly in the unit cube from torch's global generator, so every vector
           lies in the first octant: it is not a random direction.
@@ -131,7 +131,7 @@ class Vector3(TensorWrapper):
         Args:
             shape: Optional leading dimensions before the final coordinate
                 dimension. For example, ``shape=(B, N)`` creates
-                :math:`(B, N, 3)` vectors.
+                ``(B, N, 3)`` vectors.
             device: Target device for the generated tensor.
             dtype: Target dtype for the generated tensor.
 
@@ -198,7 +198,7 @@ class Vector3(TensorWrapper):
 
 
 class Vector2(TensorWrapper):
-    r"""Wrap a tensor of 2D vectors, shape :math:`(*, 2)`.
+    r"""Wrap a tensor of 2D vectors, shape ``(*, 2)``.
 
     See the Convention block on :class:`Vector3`, which applies to ``(x, y)`` vectors; :meth:`random` fills the
     unit square.
@@ -266,7 +266,7 @@ class Vector2(TensorWrapper):
         Args:
             shape: Optional leading dimensions before the final coordinate
                 dimension. For example, ``shape=(B, N)`` creates
-                :math:`(B, N, 2)` vectors.
+                ``(B, N, 2)`` vectors.
             device: Target device for the generated tensor.
             dtype: Target dtype for the generated tensor.
 

@@ -6,7 +6,15 @@ kornia.geometry.ransac
 
 .. currentmodule:: kornia.geometry.ransac
 
-Robust model fitting with RANSAC (Random Sample Consensus), used to estimate affine transforms, homographies, fundamental and essential matrices from noisy correspondences.
+Robust model fitting with RANSAC (Random Sample Consensus), used to estimate affine transforms, homographies,
+fundamental and essential matrices from noisy correspondences. ``RANSAC(model_type, inl_th)`` builds the estimator,
+and calling it on one set of ``(N, 2)`` correspondences (``(N, 2, 2)`` segments for
+``"homography_from_linesegments"``) of the first and the second image returns the ``(3, 3)`` model and the ``(N,)``
+inlier mask. A homography or affine map takes the first image to the second, a fundamental matrix satisfies
+:math:`x_2^\top F x_1 = 0`, and an essential matrix expects camera-normalized coordinates; ``inl_th`` is a distance in
+the units of the correspondences. For correspondences known to be inliers, call the estimators
+directly: :func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`,
+:func:`~kornia.geometry.epipolar.find_fundamental` and :func:`~kornia.geometry.epipolar.find_essential`.
 
 Affine transforms
 -----------------

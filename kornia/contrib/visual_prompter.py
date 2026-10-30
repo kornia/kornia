@@ -55,7 +55,7 @@ class VisualPrompter:
 
     At the moment, we just support the SAM model. The model is loaded based on the given config.
 
-    The prompter holds one image at a time: :meth:`set_image` takes a :math:`(3, H, W)` or :math:`(1, 3, H, W)` image,
+    The prompter holds one image at a time: :meth:`set_image` takes a ``(3, H, W)`` or ``(1, 3, H, W)`` image,
     and :meth:`predict` then answers prompts on it. To segment a batch of images, each with its own prompts, use
     :meth:`kornia.models.sam.Sam.forward`.
 
@@ -200,7 +200,7 @@ class VisualPrompter:
         it with the preprocess method.
 
         Args:
-            image: One RGB image, shape :math:`(3, H, W)` or :math:`(1, 3, H, W)`, in the dtype of the model. Normally
+            image: One RGB image, shape ``(3, H, W)`` or ``(1, 3, H, W)``, in the dtype of the model. Normally
                    images with range of [0-1], the model preprocess F.normalize the pixel values with the mean and std
                    defined in its initialization. A batch of more than one image raises; use
                    :meth:`kornia.models.sam.Sam.forward` for batches.
@@ -382,17 +382,17 @@ class VisualPrompter:
         """Predict masks for the given image based on the input prompts.
 
         Args:
-            keypoints: Point prompts to the model. Each point is in (X,Y) in pixels. Shape :math:`(K, N, 2)`. Where
+            keypoints: Point prompts to the model. Each point is in (X,Y) in pixels. Shape ``(K, N, 2)``. Where
                        `N` is the number of points and `K` the number of prompts.
             keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
-                             point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
+                             point. Shape ``(K, N)``. Where `N` is the number of points, and `K` the number of
                              prompts. Required with `keypoints`.
-            boxes: Box prompts to the model, one per prompt: a torch.Tensor in xyxy mode, shape :math:`(K, 4)` or
-                   :math:`(1, K, 4)`, whose corners are taken as given, or a :class:`~kornia.geometry.boxes.Boxes` of
-                   shape :math:`(K, 4, 2)` or :math:`(1, K, 4, 2)`, read through ``to_tensor(mode="xyxy")``. `K` is
+            boxes: Box prompts to the model, one per prompt: a torch.Tensor in xyxy mode, shape ``(K, 4)`` or
+                   ``(1, K, 4)``, whose corners are taken as given, or a :class:`~kornia.geometry.boxes.Boxes` of
+                   shape ``(K, 4, 2)`` or ``(1, K, 4, 2)``, read through ``to_tensor(mode="xyxy")``. `K` is
                    the number of prompts.
             masks: A low resolution mask input to the model, typically coming from a previous prediction
-                   iteration. Has shape :math:`(K, 1, H, W)`, where for SAM, H=W=256.
+                   iteration. Has shape ``(K, 1, H, W)``, where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a
                               single click), this will often produce better masks than a single prediction. If only
                               a single mask is needed, the model's predicted quality score can be used to select the
