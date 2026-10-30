@@ -270,11 +270,11 @@ def _bilateral_blur(
     pad_y, pad_x = _compute_zero_padding(kernel_size)
 
     # Keep both patch axes: flattening them would copy every overlapping window. The windows are viewed in the order of
-    # their elements in memory, (B, C, H, Ky, W, Kx), so that the arithmetic allocates every temporary contiguous, and
-    # every reduction, here and in the backward, runs over one axis. MPS reduces a permuted 6-D tensor about 150 times
-    # slower than a contiguous one (an M1: 238 ms against 1.4 ms for the colour distance of an 8 x 3 x 256 x 256 batch
-    # with a 5 x 5 kernel), and two axes that are not adjacent, such as Ky and Kx, about 140 times slower than one at a
-    # time, on torch 2.14 and on a 2.16 nightly alike.
+    # their elements in memory, (B, C, H, Ky, W, Kx), so that the arithmetic allocates every temporary contiguous, and,
+    # on MPS, every reduction, here and in the backward, runs over one axis. MPS reduces a permuted 6-D tensor about 150
+    # times slower than a contiguous one (an M1: 238 ms against 1.4 ms for the colour distance of an 8 x 3 x 256 x 256
+    # batch with a 5 x 5 kernel), and two axes that are not adjacent, such as Ky and Kx, about 140 times slower than one
+    # at a time, on torch 2.14 and on a 2.16 nightly alike.
     padded_input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
     unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).permute(0, 1, 2, 4, 3, 5)  # (B, C, H, Ky, W, Kx)
 
@@ -311,9 +311,9 @@ def _bilateral_blur(
     # to the system on every free, faults fewer pages back in per call.
     kernel = space_kernel * (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, Ky, W, Kx)
     del color_distance_sq
-    # Over Kx, then over Ky. MPS reduces two non-adjacent axes about 140x slower than sequential reductions.
-    # Non-MPS devices (CPU, CUDA) use a single-step reduction over (-3, -1) to prevent intermediate
-    # half-precision rounding loss in the gradients w.r.t. sigmas (#6284).
+    # On MPS over Kx, then over Ky, for the speed above. Elsewhere one reduction over both window axes: the two-step sum
+    # rounds every partial sum over Kx to a half dtype, which costs float16 and bfloat16 gradients with respect to
+    # tensor sigmas their accuracy.
     if input.device.type == "mps":
         return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
     return (unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))
@@ -355,6 +355,10 @@ def bilateral_blur(
           windows for every input size. Under ``torch.compile``, only kernels of up to 25 taps are filtered tap by
           tap, since the compiled loop has a block of operations per tap. Both forms compute the same weights and add
           up the weighted values in a different order, so they agree to rounding.
+        - On MPS, each window is summed over its columns and then over its rows, because MPS reduces two non-adjacent
+          axes much more slowly than one. In float16 and bfloat16 that rounds every partial sum, so there the
+          gradients with respect to a tensor ``sigma_color`` or ``sigma_space`` are less accurate than on the CPU or
+          CUDA; keep learnable sigmas in float32 on MPS.
 
     Arguments:
         input: the input torch.Tensor with shape ``(B,C,H,W)``.
