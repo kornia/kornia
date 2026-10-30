@@ -1,0 +1,1 @@
+`psnr`, `psnr_loss` and `PSNRLoss` widen narrow integer tensor data ranges to int64 before squaring. Narrow integer ranges previously overflowed: a uint8 range of 255 with an MSE of 1 returned 0 dB instead of 48.1308 dB, and a signed int16 range of 255 returned NaN. Python scalar, int64 tensor and floating tensor ranges keep their behavior.
