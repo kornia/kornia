@@ -289,8 +289,8 @@ def fit_plane(points: Vector3) -> Hyperplane:
         of unspecified sign. Each batch row is fitted on its own.
 
     Args:
-        points: a tensor or a :class:`~kornia.geometry.vector.Vector3` of 3D points, of shape :math:`(N, 3)` or
-            :math:`(B, N, 3)`. Another number of coordinates raises ``TypeError``.
+        points: a tensor or a :class:`~kornia.geometry.vector.Vector3` of 3D points, of shape ``(N, 3)`` or
+            ``(B, N, 3)``. Another number of coordinates raises ``TypeError``.
 
     Return:
         The computed hyperplane object.

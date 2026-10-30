@@ -35,10 +35,10 @@ def _merge_keypoint_list(keypoints: List[torch.torch.Tensor]) -> torch.torch.Ten
 
 
 class Keypoints:
-    r"""2D keypoints, stored as an :math:`(N, 2)` or :math:`(B, N, 2)` tensor of ``(x, y)`` points.
+    r"""2D keypoints, stored as an ``(N, 2)`` or ``(B, N, 2)`` tensor of ``(x, y)`` points.
 
     Args:
-        keypoints: tensor of :math:`(N, 2)` or :math:`(B, N, 2)` coordinates. A list of tensors is not implemented
+        keypoints: tensor of ``(N, 2)`` or ``(B, N, 2)`` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
             it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
@@ -97,8 +97,8 @@ class Keypoints:
         """Return the tensor shape used to store 2D keypoints.
 
         Returns:
-            Shape of :attr:`data`. The common layouts are :math:`(N, 2)` for
-            unbatched keypoints and :math:`(B, N, 2)` for batched keypoints,
+            Shape of :attr:`data`. The common layouts are ``(N, 2)`` for
+            unbatched keypoints and ``(B, N, 2)`` for batched keypoints,
             where :math:`B` is the batch size, :math:`N` is the number of
             keypoints, and the final dimension stores ``(x, y)`` coordinates.
         """
@@ -181,11 +181,11 @@ class Keypoints:
         See the Convention block on :class:`Keypoints`.
 
         ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only ``left`` and ``top`` shift the
-        coordinate origin. Both the batched :math:`(B, N, 2)` and the unbatched :math:`(N, 2)` container are
+        coordinate origin. Both the batched ``(B, N, 2)`` and the unbatched ``(N, 2)`` container are
         supported; the unbatched form carries a single image, so ``padding_size`` must have exactly one row.
 
         Args:
-            padding_size: per-image padding in pixels, shaped :math:`(B, 4)`. A single row broadcasts across the
+            padding_size: per-image padding in pixels, shaped ``(B, 4)``. A single row broadcasts across the
                 batch.
 
         """
@@ -204,7 +204,7 @@ class Keypoints:
         Accepts the same batched and unbatched containers and ``padding_size`` layout as :meth:`pad`.
 
         Args:
-            padding_size: per-image padding in pixels, shaped :math:`(B, 4)`. A single row broadcasts across the
+            padding_size: per-image padding in pixels, shaped ``(B, 4)``. A single row broadcasts across the
                 batch.
 
         """
@@ -221,7 +221,7 @@ class Keypoints:
         See the Convention block on :class:`Keypoints`.
 
         Args:
-            M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
+            M: The transformation matrix to be applied, shape of ``(3, 3)`` or ``(B, 3, 3)``.
             inplace: ``True`` rebinds this object to the transformed tensor and returns it; ``False`` returns a new
                 :class:`Keypoints`.
 
@@ -248,7 +248,7 @@ class Keypoints:
         """Validate and wrap a tensor of 2D keypoint coordinates.
 
         Args:
-            keypoints: Floating-point tensor in :math:`(N, 2)` or :math:`(B, N, 2)` format; an integer tensor
+            keypoints: Floating-point tensor in ``(N, 2)`` or ``(B, N, 2)`` format; an integer tensor
                 raises ``ValueError``. The last dimension stores ``(x, y)`` coordinates.
 
         Returns:
@@ -264,7 +264,7 @@ class Keypoints:
                 (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
         Returns:
-            The stored tensor itself, :math:`(N, 2)` or :math:`(B, N, 2)`.
+            The stored tensor itself, ``(N, 2)`` or ``(B, N, 2)``.
 
         """
         if as_padded_sequence:
@@ -367,12 +367,12 @@ class VideoKeypoints(Keypoints):
 
 
 class Keypoints3D:
-    """3D keypoints, stored as an :math:`(N, 3)` or :math:`(B, N, 3)` tensor of ``(x, y, z)`` points.
+    """3D keypoints, stored as an ``(N, 3)`` or ``(B, N, 3)`` tensor of ``(x, y, z)`` points.
 
     The constructor validates the tensor as :class:`Keypoints` does and wraps a floating-point one without copying it.
 
     Args:
-        keypoints: tensor of :math:`(N, 3)` or :math:`(B, N, 3)` coordinates. A list of tensors is not implemented
+        keypoints: tensor of ``(N, 3)`` or ``(B, N, 3)`` coordinates. A list of tensors is not implemented
             (see Known defects).
         raise_if_not_floating_point: ``True`` raises ``ValueError`` for a non-floating-point tensor, ``False`` casts
             it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
@@ -423,8 +423,8 @@ class Keypoints3D:
         """Return the tensor shape used to store 3D keypoints.
 
         Returns:
-            Shape of :attr:`data`. The common layouts are :math:`(N, 3)` and
-            :math:`(B, N, 3)`, where the final dimension stores ``(x, y, z)``
+            Shape of :attr:`data`. The common layouts are ``(N, 3)`` and
+            ``(B, N, 3)``, where the final dimension stores ``(x, y, z)``
             coordinates.
         """
         return self.data.shape
@@ -466,7 +466,7 @@ class Keypoints3D:
         :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`.
 
         Args:
-            M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
+            M: The transformation matrix to be applied, shape of ``(4, 4)`` or ``(B, 4, 4)``.
             inplace: ``True`` rebinds this object to the transformed tensor and returns it, without writing into the
                 tensor it wrapped; ``False`` returns a new :class:`Keypoints3D`.
 
@@ -493,7 +493,7 @@ class Keypoints3D:
         """Validate and wrap a tensor of 3D keypoint coordinates.
 
         Args:
-            keypoints: Tensor in :math:`(N, 3)` or :math:`(B, N, 3)` format,
+            keypoints: Tensor in ``(N, 3)`` or ``(B, N, 3)`` format,
                 where the last dimension stores ``(x, y, z)``.
 
         Returns:
@@ -509,7 +509,7 @@ class Keypoints3D:
                 (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
         Returns:
-            The stored tensor itself, :math:`(N, 3)` or :math:`(B, N, 3)`.
+            The stored tensor itself, ``(N, 3)`` or ``(B, N, 3)``.
 
         """
         if as_padded_sequence:

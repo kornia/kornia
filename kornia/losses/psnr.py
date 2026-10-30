@@ -38,8 +38,8 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -
           inputs give ``-inf``.
 
     Args:
-        image: the input image with shape :math:`(*)`.
-        target : the labels image with shape :math:`(*)`.
+        image: the input image with shape ``(*)``.
+        target : the labels image with shape ``(*)``.
         max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
 
     Return:
@@ -71,8 +71,8 @@ class PSNRLoss(nn.Module):
         max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
 
     Shape:
-        - Image: arbitrary dimensional tensor :math:`(*)`.
-        - Target: arbitrary dimensional tensor :math:`(*)` same shape as image.
+        - Image: arbitrary dimensional tensor ``(*)``.
+        - Target: arbitrary dimensional tensor ``(*)`` same shape as image.
         - Output: a scalar for a scalar range, or with the shape of a tensor range.
 
     Examples:

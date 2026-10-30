@@ -246,7 +246,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
           2 px apart and 0.579 px in a one-pixel hole, and in a hole towards 0 as ``h`` nears its upper bound.
 
     Args:
-        image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
+        image: Image or volume with shape ``(B,C,H,W)`` or ``(B,C,D,H,W)``.
         kernel_size: size of the convolution kernel. Must be an odd number of at least 3.
         h: value that influences the approximation of the min function. The cascade's kernel taps are
             ``exp(-dist/h)``. Accepted: ``h`` large enough that the corner tap (distance
@@ -321,8 +321,8 @@ class DistanceTransform(nn.Module):
         Each channel is processed independently, as in :func:`distance_transform`.
 
         Args:
-            image: Input tensor with shape :math:`(B, C, H, W)` for 2D data or
-                :math:`(B, C, D, H, W)` for 3D data, where:
+            image: Input tensor with shape ``(B, C, H, W)`` for 2D data or
+                ``(B, C, D, H, W)`` for 3D data, where:
                 - ``B`` is batch size,
                 - ``C`` is the number of channels,
                 - ``D`` is depth (only for 3D volumes),

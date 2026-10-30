@@ -836,7 +836,7 @@ def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[CheckMessage] = None, r
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ImageError: if the input tensor does not have a shape :math:`(3,H,W)` and raises is True.
+        ImageError: if the input tensor does not have a shape ``(3,H,W)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
@@ -874,7 +874,7 @@ def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[CheckMessage] = None, ra
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ImageError: if the tensor does not have a shape :math:`(1,H,W)` or :math:`(H,W)` and raises is True.
+        ImageError: if the tensor does not have a shape ``(1,H,W)`` or ``(H,W)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
@@ -912,7 +912,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[CheckMessage] =
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ImageError: if the tensor does not have a shape :math:`(1,H,W)` or :math:`(3,H,W)` and raises is True.
+        ImageError: if the tensor does not have a shape ``(1,H,W)`` or ``(3,H,W)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS
@@ -950,7 +950,7 @@ def KORNIA_CHECK_IS_IMAGE(
 ) -> bool:
     """Check whether a tensor is a color or gray image with values in [0, 1] for float or [0, 2 ** bits - 1] for int.
 
-    The shape must be :math:`(*, 3, H, W)` or :math:`(*, 1, H, W)`. A NaN value fails the range check, and an empty
+    The shape must be ``(*, 3, H, W)`` or ``(*, 1, H, W)``. A NaN value fails the range check, and an empty
     image passes it.
 
     Args:
@@ -1075,7 +1075,7 @@ def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
     """Check whether a Local Affine Frame (laf) has a valid shape.
 
     Convention:
-        - Only the shape :math:`(B, N, 2, 3)` is checked: any dtype and any values pass, ``N = 0`` included. Use
+        - Only the shape ``(B, N, 2, 3)`` is checked: any dtype and any values pass, ``N = 0`` included. Use
           :func:`~kornia.feature.laf_is_valid` to check the values.
         - With ``raises=False``, a wrong shape returns ``False`` instead of raising.
 
@@ -1084,7 +1084,7 @@ def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        ShapeError: if the input laf does not have a shape :math:`(B,N,2,3)` and raises is True.
+        ShapeError: if the input laf does not have a shape ``(B,N,2,3)`` and raises is True.
 
     Note:
         Checks can be disabled in Python mode using `disable_checks()` or the KORNIA_CHECKS

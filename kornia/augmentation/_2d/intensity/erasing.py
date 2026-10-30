@@ -48,8 +48,8 @@ class RandomErasing(IntensityAugmentationBase2D):
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
@@ -71,7 +71,7 @@ class RandomErasing(IntensityAugmentationBase2D):
           in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 
     Note:
-        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:

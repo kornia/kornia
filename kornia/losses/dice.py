@@ -223,8 +223,8 @@ def dice_loss(
           the one-hot target there, and its compiled ``one_hot`` does not check the labels.
 
     Args:
-        pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        target: labels torch.Tensor with shape :math:`(N, H, W)` where each value
+        pred: logits torch.Tensor with shape ``(N, C, H, W)`` where C = number of classes.
+        target: labels torch.Tensor with shape ``(N, H, W)`` where each value
           is in range :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:
@@ -253,6 +253,7 @@ def dice_loss(
 
     """
     KORNIA_CHECK_IS_TENSOR(pred)
+    KORNIA_CHECK_IS_TENSOR(target)
 
     if not len(pred.shape) == 4:
         raise ValueError(f"Invalid pred shape, we expect BxNxHxW. Got: {pred.shape}")
@@ -265,6 +266,12 @@ def dice_loss(
 
     if not (pred.shape[0] == target.shape[0] and pred.shape[2:] == target.shape[1:]):
         raise ValueError(f"Expected target size {torch.Size((pred.shape[0], *pred.shape[2:]))}, got {target.shape}")
+
+    # Only a Python number is checked: a tensor eps worked before, and reading its value here would cost a host sync
+    # on every call and break a fullgraph compile.
+    if isinstance(eps, (int, float)) and eps < 0.0:
+        raise ValueError(f"eps must be non-negative. Got: {eps}")
+
     num_of_classes = pred.shape[1]
     possible_average = {"micro", "macro"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
@@ -354,12 +361,12 @@ class DiceLoss(nn.Module):
         average: Reduction strategy for multi-class computation. Use "micro" to pool the classes of each
             sample, or "macro" to average over classes present in each sample's non-ignored target.
         eps: Small constant added to the denominator for numerical stability.
-        weight: Optional class-weight tensor of shape :math:`(C,)`.
+        weight: Optional class-weight tensor of shape ``(C,)``.
         ignore_index: Label value to exclude from loss computation.
 
     Shapes:
-        - pred: :math:`(N, C, H, W)` where C is the number of classes.
-        - target: :math:`(N, H, W)` where each value is in the range :math:`[0, C-1]`.
+        - pred: ``(N, C, H, W)`` where C is the number of classes.
+        - target: ``(N, H, W)`` where each value is in the range :math:`[0, C-1]`.
         - Output: scalar.
     """
 
@@ -375,9 +382,14 @@ class DiceLoss(nn.Module):
         Args:
             average: Reduction strategy for multi-class computation.
             eps: Small constant added for numerical stability.
-            weight: Optional class-weight tensor of shape :math:`(C,)`.
+            weight: Optional class-weight tensor of shape ``(C,)``.
             ignore_index: Label value to exclude from loss computation.
         """
+        if isinstance(eps, (int, float)) and eps < 0.0:
+            raise ValueError(f"eps must be non-negative. Got: {eps}")
+        possible_average = {"micro", "macro"}
+        KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
+
         super().__init__()
         self.average = average
         self.eps = eps
@@ -391,10 +403,10 @@ class DiceLoss(nn.Module):
         """Compute Sørensen-Dice loss for segmentation logits and labels.
 
         Args:
-            pred: Logit tensor with shape :math:`(B, C, H, W)`, where
+            pred: Logit tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is number of classes,
                 :math:`H` is height, and :math:`W` is width.
-            target: Integer target labels with shape :math:`(B, H, W)`.
+            target: Integer target labels with shape ``(B, H, W)``.
 
         Returns:
             Scalar tensor containing ``1 - Dice`` after applying the configured

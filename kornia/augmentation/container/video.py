@@ -454,8 +454,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 4, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 4, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -479,8 +479,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 4, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 4, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -507,8 +507,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
@@ -534,8 +534,8 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
-                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+            input: torch.Tensor with shape ``(B, T, N, 2)``.
+                If input is a `Keypoints` type, the internal shape is ``(B * T, N, 2)``.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """

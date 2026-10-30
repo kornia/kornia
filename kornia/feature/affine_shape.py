@@ -90,10 +90,10 @@ class PatchAffineShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            patch: :math:`(B, 1, H, W)`
+            patch: ``(B, 1, H, W)``
 
         Returns:
-            torch.Tensor: ellipse_shape :math:`(B, 1, 3)`
+            torch.Tensor: ellipse_shape ``(B, 1, 3)``
 
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
@@ -231,11 +231,11 @@ class LAFAffineShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
-            img: :math:`(B, 1, H, W)`
+            laf: ``(B, N, 2, 3)``
+            img: ``(B, 1, H, W)``
 
         Returns:
-            LAF_out: :math:`(B, N, 2, 3)`
+            LAF_out: ``(B, N, 2, 3)``
 
         """
         KORNIA_CHECK_LAF(laf)
@@ -334,11 +334,11 @@ class LAFAffNetShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            laf: :math:`(B, N, 2, 3)`
-            img: :math:`(B, 1, H, W)`
+            laf: ``(B, N, 2, 3)``
+            img: ``(B, 1, H, W)``
 
         Returns:
-            LAF_out: :math:`(B, N, 2, 3)`
+            LAF_out: ``(B, N, 2, 3)``
 
         """
         KORNIA_CHECK_LAF(laf)

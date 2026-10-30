@@ -78,7 +78,7 @@ class Qwen25RMSNorm(nn.Module):
         """Normalize ``x`` over its last dimension.
 
         Args:
-            x: Tensor with shape :math:`(*, D)`.
+            x: Tensor with shape ``(*, D)``.
 
         Returns:
             Tensor with the shape and dtype of ``x``.
@@ -106,10 +106,10 @@ class Qwen25VisionPatchEmbed(nn.Module):
         """Embed every patch of ``images``.
 
         Args:
-            images: Image tensor with shape :math:`(B, C, H, W)`.
+            images: Image tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Patch tokens with shape :math:`(B, N, D)` in merge order, where :math:`N` is the number of patches.
+            Patch tokens with shape ``(B, N, D)`` in merge order, where :math:`N` is the number of patches.
         """
         frames = images.unsqueeze(2).expand(-1, -1, self.temporal_patch_size, -1, -1)
         x = self.proj(frames).squeeze(2)
@@ -140,13 +140,13 @@ class Qwen25VisionAttention(nn.Module):
         """Attend over the tokens of each image.
 
         Args:
-            x: Tokens with shape :math:`(B, N, D)`.
-            cos: Rotary cosine table with shape :math:`(N, D / H)`.
-            sin: Rotary sine table with shape :math:`(N, D / H)`.
-            attn_mask: Optional boolean mask with shape :math:`(N, N)`, ``True`` where attention is allowed.
+            x: Tokens with shape ``(B, N, D)``.
+            cos: Rotary cosine table with shape ``(N, D / H)``.
+            sin: Rotary sine table with shape ``(N, D / H)``.
+            attn_mask: Optional boolean mask with shape ``(N, N)``, ``True`` where attention is allowed.
 
         Returns:
-            Tokens with shape :math:`(B, N, D)`.
+            Tokens with shape ``(B, N, D)``.
         """
         b, n, d = x.shape
         q, k, v = self.qkv(x).reshape(b, n, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4).unbind(0)
@@ -176,10 +176,10 @@ class Qwen25VisionMLP(nn.Module):
         """Apply the gated MLP.
 
         Args:
-            x: Tokens with shape :math:`(B, N, D)`.
+            x: Tokens with shape ``(B, N, D)``.
 
         Returns:
-            Tokens with shape :math:`(B, N, D)`.
+            Tokens with shape ``(B, N, D)``.
         """
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 
@@ -204,13 +204,13 @@ class Qwen25VisionBlock(nn.Module):
         """Run one block.
 
         Args:
-            x: Tokens with shape :math:`(B, N, D)`.
-            cos: Rotary cosine table with shape :math:`(N, D / H)`.
-            sin: Rotary sine table with shape :math:`(N, D / H)`.
-            attn_mask: Optional boolean attention mask with shape :math:`(N, N)`.
+            x: Tokens with shape ``(B, N, D)``.
+            cos: Rotary cosine table with shape ``(N, D / H)``.
+            sin: Rotary sine table with shape ``(N, D / H)``.
+            attn_mask: Optional boolean attention mask with shape ``(N, N)``.
 
         Returns:
-            Tokens with shape :math:`(B, N, D)`.
+            Tokens with shape ``(B, N, D)``.
         """
         x = x + self.attn(self.norm1(x), cos, sin, attn_mask)
         return x + self.mlp(self.norm2(x))
@@ -237,7 +237,7 @@ class Qwen25VisionPatchMerger(nn.Module):
         """Merge tokens.
 
         Args:
-            x: Tokens with shape :math:`(B, N, D)` in merge order.
+            x: Tokens with shape ``(B, N, D)`` in merge order.
 
         Returns:
             Merged tokens with shape :math:`(B, N / s^2, D_{out})`, where :math:`s` is the spatial merge size.
@@ -308,7 +308,7 @@ class Qwen25VisionTransformer(nn.Module):
         """Encode a batch of images into vision tokens.
 
         Args:
-            images: Normalized images with shape :math:`(B, C, H, W)`. ``H`` and ``W`` must be multiples of
+            images: Normalized images with shape ``(B, C, H, W)``. ``H`` and ``W`` must be multiples of
                 ``patch_size * spatial_merge_size`` (28 for the released checkpoints).
 
         Returns:

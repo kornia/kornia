@@ -97,7 +97,7 @@ class PriorBox:
         """Generate YuNet prior boxes for all configured feature maps.
 
         Returns:
-            Tensor with shape :math:`(N, 4)`, where :math:`N` is the total
+            Tensor with shape ``(N, 4)``, where :math:`N` is the total
             number of anchors and the four values are normalized center-x,
             center-y, width, and height.
         """

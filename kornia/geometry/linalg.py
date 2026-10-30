@@ -51,14 +51,14 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     Args:
         trans_01: tensor with the homogeneous transformation from
           a reference frame 1 respect to a frame 0. The tensor must have a
-          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
+          shape of ``(N, 4, 4)`` or ``(4, 4)``.
         trans_12: tensor with the homogeneous transformation from
           a reference frame 2 respect to a frame 1. The tensor must have a
-          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch of one broadcasts against a batch of
+          shape of ``(N, 4, 4)`` or ``(4, 4)``. A batch of one broadcasts against a batch of
           :math:`N` in either argument.
 
     Returns:
-        the transformation between the two frames with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        the transformation between the two frames with shape ``(N, 4, 4)`` or ``(4, 4)``.
 
     Example::
         >>> trans_01 = torch.eye(4)  # 4x4
@@ -119,10 +119,10 @@ def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
           is on :func:`relative_transformation`.
 
     Args:
-        trans_12: transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        trans_12: transformation tensor of shape ``(N, 4, 4)`` or ``(4, 4)``.
 
     Returns:
-        tensor with inverted transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        tensor with inverted transformations with shape ``(N, 4, 4)`` or ``(4, 4)``.
 
     Example:
         >>> trans_12 = torch.eye(4)[None]  # Nx4x4: a rotation of 90 degrees about z and a translation
@@ -178,12 +178,12 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
           :math:`E_2`.
 
     Args:
-        trans_01: reference transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
-        trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`. A batch
+        trans_01: reference transformation tensor of shape ``(N, 4, 4)`` or ``(4, 4)``.
+        trans_02: destination transformation tensor of shape ``(N, 4, 4)`` or ``(4, 4)``. A batch
           of one broadcasts against a batch of :math:`N` in either argument.
 
     Returns:
-        the relative transformation between the transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        the relative transformation between the transformations with shape ``(N, 4, 4)`` or ``(4, 4)``.
 
     Example::
         >>> trans_01 = torch.eye(4)  # 4x4
@@ -231,8 +231,8 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Args:
         trans_01: tensor for transformations of shape
-          :math:`(D+1, D+1)` or :math:`(B, D+1, D+1)`.
-        points_1: tensor of points of shape :math:`(N, D)` or :math:`(B, N, D)`.
+          ``(D+1, D+1)`` or ``(B, D+1, D+1)``.
+        points_1: tensor of points of shape ``(N, D)`` or ``(B, N, D)``.
 
     Returns:
         transformed points with the same shape as ``points_1``.
@@ -331,14 +331,14 @@ def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e
           from every point, as a point at infinity is from every line.
 
     Args:
-       point: points :math:`(*, N, 2)`, or homogeneous points :math:`(*, N, 3)` whose last coordinate is the
+       point: points ``(*, N, 2)``, or homogeneous points ``(*, N, 3)`` whose last coordinate is the
          weight :math:`w`; a point at infinity (:math:`w = 0`) is at distance ``inf`` from every line.
-       line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
+       line: lines coefficients :math:`(a, b, c)` with shape ``(*, N, 3)``, where :math:`ax + by + c = 0`.
        eps: unused; it was added to :math:`\|(a, b)\|` and made the distance depend on the scale of the line
          (#4881). The singular line is guarded exactly instead. Accepted so that existing calls keep working.
 
     Returns:
-        the computed distance with shape :math:`(*, N)`.
+        the computed distance with shape ``(*, N)``.
 
     """
     KORNIA_CHECK_IS_TENSOR(point)
@@ -391,8 +391,8 @@ def euclidean_distance(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False, 
     More: https://en.wikipedia.org/wiki/Euclidean_distance
 
     Args:
-        x: first set of points of shape :math:`(*, N)`.
-        y: second set of points of shape :math:`(*, N)`.
+        x: first set of points of shape ``(*, N)``.
+        y: second set of points of shape ``(*, N)``.
         keepdim: whether to keep the dimension after reduction.
         eps: unused; kept for backward compatibility. The result is the exact Euclidean distance.
 

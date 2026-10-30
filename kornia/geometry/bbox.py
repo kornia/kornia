@@ -59,7 +59,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     Convention:
         Vertices are inclusive, in clockwise top-left, top-right, bottom-right, bottom-left order (see
-        :func:`infer_bbox_shape`). Accepts :math:`(B, 4, 2)` and :math:`(B, N, 4, 2)`. Returns ``False``, without
+        :func:`infer_bbox_shape`). Accepts ``(B, 4, 2)`` and ``(B, N, 4, 2)``. Returns ``False``, without
         raising, for an invalid shape or when the top and bottom edge vectors differ by more than ``1e-4``. Right
         angles, positive area and direction are not checked, so any parallelogram in cyclic vertex order passes.
 
@@ -69,7 +69,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 4, 2)` or :math:`(B, N, 4, 2)`, where each box is defined in the
+            of ``(B, 4, 2)`` or ``(B, N, 4, 2)``, where each box is defined in the
             following ``clockwise`` order: top-left, top-right, bottom-right, bottom-left. The coordinates must be in
             the x, y order.
 
@@ -112,7 +112,7 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
 
     Convention:
         Vertices are inclusive, front-top-left, front-top-right, front-bottom-right, front-bottom-left, then the
-        same four back vertices. Accepts :math:`(B, 8, 3)` and :math:`(B, N, 8, 3)`; another shape, or unequal
+        same four back vertices. Accepts ``(B, 8, 3)`` and ``(B, N, 8, 3)``; another shape, or unequal
         extents of the four edges parallel to an axis, raises ``AssertionError``. Right angles and positive
         extent are not checked. A non-finite coordinate returns ``False``. Under graph capture only the shape is
         checked.
@@ -123,7 +123,7 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 8, 3)` or :math:`(B, N, 8, 3)`, where each box is defined in the following ``clockwise``
+            of ``(B, 8, 3)`` or ``(B, N, 8, 3)``, where each box is defined in the following ``clockwise``
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
 
@@ -202,15 +202,15 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have shape
-            :math:`(N, 4, 2)`, where each box is defined in the following ``clockwise`` order: top-left, top-right,
+            ``(N, 4, 2)``, where each box is defined in the following ``clockwise`` order: top-left, top-right,
             bottom-right, bottom-left. The coordinates must be in the x, y order.
 
     Raises:
-        ShapeError: if ``boxes`` does not have shape :math:`(N, 4, 2)`.
+        ShapeError: if ``boxes`` does not have shape ``(N, 4, 2)``.
 
     Returns:
-        - Bounding box heights, shape of :math:`(N,)`.
-        - Bounding box widths, shape of :math:`(N,)`.
+        - Bounding box heights, shape of ``(N,)``.
+        - Bounding box widths, shape of ``(N,)``.
 
     Example:
         >>> boxes = torch.tensor([[
@@ -244,7 +244,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         example ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1``), so another vertex order can give a negative
         extent. Pass the ``'vertices_plus'``
         export of :class:`~kornia.geometry.boxes.Boxes3D`; ``'vertices'`` reads one larger per axis.
-        :math:`(B, N, 8, 3)` input raises :class:`~kornia.core.exceptions.ShapeError`; flatten it first.
+        ``(B, N, 8, 3)`` input raises :class:`~kornia.core.exceptions.ShapeError`; flatten it first.
 
     .. warning::
         The ``+1`` is `#3934 <https://github.com/kornia/kornia/issues/3934>`_ and the exclusive-export trap
@@ -254,14 +254,14 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 8, 3)`, where each box is defined in the following ``clockwise`` order: front-top-left,
+            of ``(B, 8, 3)``, where each box is defined in the following ``clockwise`` order: front-top-left,
             front-top-right, front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right,
             back-bottom-left. The coordinates must be in the x, y, z order.
 
     Returns:
-        - Bounding box depths, shape of :math:`(B,)`.
-        - Bounding box heights, shape of :math:`(B,)`.
-        - Bounding box widths, shape of :math:`(B,)`.
+        - Bounding box depths, shape of ``(B,)``.
+        - Bounding box heights, shape of ``(B,)``.
+        - Bounding box widths, shape of ``(B,)``.
 
     Example:
         >>> boxes = torch.tensor([[[ 0,  1,  2],
@@ -321,7 +321,7 @@ def bbox_to_mask(
         (bottom-right) are read. A pixel is covered when ``xmin <= x <= xmax`` and ``ymin <= y <= ymax`` on the
         unrounded values, i.e. inclusively: pass the ``'vertices_plus'`` export of
         :class:`~kornia.geometry.boxes.Boxes`. The mask has the input dtype and no gradient path.
-        :math:`(B, N, 4, 2)` raises :class:`~kornia.core.exceptions.ShapeError`.
+        ``(B, N, 4, 2)`` raises :class:`~kornia.core.exceptions.ShapeError`.
 
     .. warning::
         The ``(width, height)`` form is deprecated in favour of ``size=(height, width)``:
@@ -332,7 +332,7 @@ def bbox_to_mask(
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 4, 2)`, where each box is defined in the following ``clockwise`` order: top-left, top-right,
+            of ``(B, 4, 2)``, where each box is defined in the following ``clockwise`` order: top-left, top-right,
             bottom-right and bottom-left. The coordinates must be in the x, y order.
         width: deprecated since 0.9.1; pass ``size=(height, width)`` instead. Width of the masked image.
         height: deprecated since 0.9.1; pass ``size=(height, width)`` instead. Height of the masked image.
@@ -342,7 +342,7 @@ def bbox_to_mask(
         the output mask tensor, shape of :math:`(B, height, width)` and dtype of ``boxes``.
 
     Raises:
-        ShapeError: if ``boxes`` does not have shape :math:`(B, 4, 2)`.
+        ShapeError: if ``boxes`` does not have shape ``(B, 4, 2)``.
         ValueError: if ``size`` is passed together with ``width`` or ``height``.
         TypeError: if neither ``size`` nor both ``width`` and ``height`` are given.
 
@@ -428,7 +428,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         dtype, with a channel axis that :func:`bbox_to_mask` does not have
         (:meth:`kornia.geometry.boxes.Boxes3D.to_mask` returns :math:`(N, depth, height, width)`). The bounds are
         truncated toward zero and compared inclusively: pass the ``'vertices_plus'`` export. There is no
-        gradient path. :math:`(B, N, 8, 3)` input raises :class:`~kornia.core.exceptions.ShapeError`.
+        gradient path. ``(B, N, 8, 3)`` input raises :class:`~kornia.core.exceptions.ShapeError`.
 
     .. warning::
         For fractional coordinates the truncation differs from :func:`bbox_to_mask` and
@@ -438,7 +438,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 8, 3)`, where each box is defined in the following ``clockwise`` order: front-top-left,
+            of ``(B, 8, 3)``, where each box is defined in the following ``clockwise`` order: front-top-left,
             front-top-right, front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right,
             back-bottom-left. The coordinates must be in the x, y, z order.
         size: depth, height and width of the masked image.
@@ -528,14 +528,14 @@ def bbox_generator(
 
     Args:
         x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
-            tensor or :math:`(B,)`.
+            tensor or ``(B,)``.
         y_start: a tensor containing the y coordinates of the bounding boxes to be extracted. Shape must be a scalar
-            tensor or :math:`(B,)`.
-        width: widths of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
-        height: heights of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
+            tensor or ``(B,)``.
+        width: widths of the bounding boxes. Shape must be a scalar tensor or ``(B,)``.
+        height: heights of the bounding boxes. Shape must be a scalar tensor or ``(B,)``.
 
     Returns:
-        the bounding box tensor, shape of :math:`(B, 4, 2)`.
+        the bounding box tensor, shape of ``(B, 4, 2)``.
 
     Examples:
         >>> x_start = torch.tensor([0, 1])
@@ -607,17 +607,17 @@ def bbox_generator3d(
 
     Args:
         x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
-            tensor or :math:`(B,)`.
+            tensor or ``(B,)``.
         y_start: a tensor containing the y coordinates of the bounding boxes to be extracted. Shape must be a scalar
-            tensor or :math:`(B,)`.
+            tensor or ``(B,)``.
         z_start: a tensor containing the z coordinates of the bounding boxes to be extracted. Shape must be a scalar
-            tensor or :math:`(B,)`.
-        width: widths of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
-        height: heights of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
-        depth: depths of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
+            tensor or ``(B,)``.
+        width: widths of the bounding boxes. Shape must be a scalar tensor or ``(B,)``.
+        height: heights of the bounding boxes. Shape must be a scalar tensor or ``(B,)``.
+        depth: depths of the bounding boxes. Shape must be a scalar tensor or ``(B,)``.
 
     Returns:
-        the 3d bounding box tensor :math:`(B, 8, 3)`.
+        the 3d bounding box tensor ``(B, 8, 3)``.
 
     Examples:
         >>> x_start = torch.tensor([0, 3])
@@ -693,11 +693,11 @@ def transform_bbox(
         transformed cyclic order.
 
     Args:
-        trans_mat: The transformation matrix to be applied, with supported shape :math:`(B, 3, 3)`.
-            For boxes shaped :math:`(N, 4)`, ``B`` is one or ``N``. For boxes shaped
-            :math:`(B, N, 4)` or :math:`(B, N, 4, 2)`, it is one or the boxes' ``B``.
-        boxes: The boxes to be transformed with a common shape of :math:`(N, 4)` or batched as :math:`(B, N, 4)`, the
-            polygon shape of :math:`(B, N, 4, 2)` is also supported.
+        trans_mat: The transformation matrix to be applied, with supported shape ``(B, 3, 3)``.
+            For boxes shaped ``(N, 4)``, ``B`` is one or ``N``. For boxes shaped
+            ``(B, N, 4)`` or ``(B, N, 4, 2)``, it is one or the boxes' ``B``.
+        boxes: The boxes to be transformed with a common shape of ``(N, 4)`` or batched as ``(B, N, 4)``, the
+            polygon shape of ``(B, N, 4, 2)`` is also supported.
         mode: The format in which the boxes are provided. If set to 'xyxy' the boxes are assumed to be in the format
             ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
             ``xmin, ymin, width, height``
@@ -753,8 +753,8 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     Args:
         boxes: tensor containing exclusive ``xyxy`` bounding boxes with shape
-            :math:`(N, 4)`, ordered as ``(x_1, y_1, x_2, y_2)``.
-        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
+            ``(N, 4)``, ordered as ``(x_1, y_1, x_2, y_2)``.
+        scores: tensor containing the scores associated to each bounding box with shape ``(N,)``.
         iou_threshold: the threshold to discard the overlapping boxes.
 
     Returns:
@@ -770,6 +770,10 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         For one box or more, ``torch.compile`` cannot capture ``nms`` in one graph: the number of loop iterations and
         the size of the output depend on the box values. ``fullgraph=True`` raises, and a default ``torch.compile``
         runs it eagerly, so it is outside the :ref:`torch.compile promise <export-support-promise>`.
+
+    Note:
+        Two boxes whose union is empty, such as two zero-width boxes, have an IoU of ``0``, so neither suppresses the
+        other, as in ``torchvision.ops.nms``.
 
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other
@@ -818,7 +822,11 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         w = torch.clamp(xx2 - xx1, min=0.0)
         h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        union = areas[i] + areas[order[1:]] - inter
+        # Two zero-area boxes have a zero union, and their IoU is 0 rather than 0 / 0: a NaN would compare as an
+        # overlap below and suppress a disjoint box. torchvision keeps such a box too. The intersection is 0 whenever
+        # the union is not positive, so dividing it by 1 there gives 0, and a NaN coordinate still gives a NaN IoU.
+        ovr = inter / torch.where(union > 0, union, torch.ones_like(union))
 
         inds = torch.where(ovr <= iou_threshold)[0]
         order = order[inds + 1]

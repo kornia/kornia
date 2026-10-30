@@ -23,18 +23,12 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.download import load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 
 from .backbones import SOLD2Net
-from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
-
-urls: Dict[str, str | list[str]] = {}
-urls["wireframe"] = [
-    hf_url("sold2", "sold2_wireframe.pth"),
-    "https://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
-]
+from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions, urls
 
 
 class SOLD2(nn.Module):
@@ -46,9 +40,9 @@ class SOLD2(nn.Module):
     Convention:
         - :meth:`forward` takes the input and returns the heatmaps and the ``(row, col)`` line segments of
           :class:`~kornia.feature.SOLD2_detector`, whose Convention block gives their frame and order, and also
-          ``dense_desc``, :math:`(B, 128, H / 4, W / 4)`, which is not normalized.
+          ``dense_desc``, ``(B, 128, H / 4, W / 4)``, which is not normalized.
         - ``match`` takes segments as :meth:`forward` returns them and the descriptor map of one image each. It
-          returns an int64 tensor :math:`(N_1,)`: for each segment of ``line_seg1``, the index of its match in
+          returns an int64 tensor ``(N_1,)``: for each segment of ``line_seg1``, the index of its match in
           ``line_seg2``, or ``-1``. It is int64 also when either set of segments is empty: an empty tensor when
           ``line_seg1`` is, ``-1`` for every segment of ``line_seg1`` when ``line_seg2`` is.
         - Known defects: on CPU, ``match`` passes float16 and bfloat16 descriptor maps to torch's ``grid_sample``
@@ -108,13 +102,13 @@ class SOLD2(nn.Module):
         """Run forward.
 
         Args:
-            img: batched images with shape :math:`(B, 1, H, W)`.
+            img: batched images with shape ``(B, 1, H, W)``.
 
         Returns:
             line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
-            junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
-            line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
-            dense_desc: the semi-dense descriptor map of shape :math:`(B, 128, H/4, W/4)`.
+            junction_heatmap: raw junction heatmap of shape ``(B, H, W)``.
+            line_heatmap: raw line heatmap of shape ``(B, H, W)``.
+            dense_desc: the semi-dense descriptor map of shape ``(B, 128, H/4, W/4)``.
 
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])

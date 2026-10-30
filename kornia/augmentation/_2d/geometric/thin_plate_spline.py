@@ -37,9 +37,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
         ``(1, -1)``, ``(1, 1)``, and ``(0, 0)``. Each destination coordinate receives uniform
         noise between ``-scale`` and ``scale``; zero scale leaves these points unchanged.
         Sampling is bilinear, with no interpolation-mode argument. Zero scale is an identity warp up to
-        interpolation roundoff for either ``align_corners``. There is no ``transform_matrix`` or ``inverse``;
-        spatial labels in containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
-        A ``mask`` data key raises ``NotImplementedError`` identifying this augmentation, even at ``p=0``.
+        interpolation roundoff for either ``align_corners``. There is no ``transform_matrix`` or ``inverse``.
+        A ``mask``, keypoint or box data key raises ``NotImplementedError`` identifying this augmentation, even at
+        ``p=0`` (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
         Its defaults and the ``align_corners`` split across classes
         (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
         :class:`~kornia.augmentation.GeometricAugmentationBase2D`.

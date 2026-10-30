@@ -47,7 +47,7 @@ class StemBlock(nn.Module):
         """Run the HGNetV2 stem and reduce the input spatial resolution.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`.
+            x: Image tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Stem feature map after strided convolutions, pooling, concatenation,
@@ -114,7 +114,7 @@ class HGBlock(nn.Module):
         """Apply one HGNetV2 aggregation block.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+            x: Feature map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Aggregated feature map. If ``self.identity`` is enabled, the input
@@ -168,7 +168,7 @@ class PPHGNetV2(nn.Module):
         """Run the PPHGNetV2 backbone and return detection feature maps.
 
         Args:
-            x: Image tensor with shape :math:`(B, 3, H, W)`.
+            x: Image tensor with shape ``(B, 3, H, W)``.
 
         Returns:
             List ``[s3, s4, s5]`` containing the final three backbone stages

@@ -64,11 +64,11 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
         checked to be rotations.
 
     Args:
-        R1: a rotation matrix of shape :math:`(*, 3, 3)`.
-        R2: a rotation matrix of shape :math:`(*, 3, 3)`.
+        R1: a rotation matrix of shape ``(*, 3, 3)``.
+        R2: a rotation matrix of shape ``(*, 3, 3)``.
 
     Return:
-        the per-matrix angle in degrees, with shape :math:`(*,)`.
+        the per-matrix angle in degrees, with shape ``(*,)``.
 
     .. note::
         The angle has a kink at exactly :math:`0^\circ` and :math:`180^\circ` (identical or opposite
@@ -110,11 +110,11 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
         folded: opposite vectors give 180.
 
     Args:
-        v1: a vector of shape :math:`(*, 3)`.
-        v2: a vector of shape :math:`(*, 3)`.
+        v1: a vector of shape ``(*, 3)``.
+        v2: a vector of shape ``(*, 3)``.
 
     Return:
-        the per-vector angle in degrees, with shape :math:`(*,)`.
+        the per-vector angle in degrees, with shape ``(*,)``.
 
     .. note::
         The angle has a kink at exactly :math:`0^\circ` and :math:`180^\circ` (identical or opposite
@@ -159,12 +159,12 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
         the translations, with no alignment: a trajectory shifted by a constant keeps that offset at every pose.
 
     Args:
-        t: an estimated translation of shape :math:`(*, 3)`.
+        t: an estimated translation of shape ``(*, 3)``.
         t_gt: a ground-truth translation of the same shape as ``t``.
 
     Return:
-        the per-sample translation error, with shape :math:`(*,)`. An unbatched :math:`(3,)` input is
-        treated as a single sample and returns shape :math:`(1,)`.
+        the per-sample translation error, with shape ``(*,)``. An unbatched ``(3,)`` input is
+        treated as a single sample and returns shape ``(1,)``.
 
     .. note::
         The gradient stays finite even at zero distance, where ``norm`` returns the subgradient ``0``.
@@ -191,21 +191,21 @@ def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[
 
     Convention:
         - Every error is an angle in **degrees**, one per pose and never averaged over the batch; an unbatched pose
-          gives shape :math:`(1,)`, where :func:`~kornia.metrics.angle_error_mat` gives a 0-d tensor.
+          gives shape ``(1,)``, where :func:`~kornia.metrics.angle_error_mat` gives a 0-d tensor.
         - ``"R_err"`` is :func:`~kornia.metrics.angle_error_mat` of the two rotation blocks and is never folded.
           ``"t_err"`` is :func:`~kornia.metrics.angle_error_vec` of the two translations, so it compares their
           directions only, folded as ``fold_translation`` says. ``"max_err"`` is the larger of the two per pose.
-        - Only the top three rows are read: the bottom row of a :math:`(4, 4)` pose is ignored.
+        - Only the top three rows are read: the bottom row of a ``(4, 4)`` pose is ignored.
 
     Args:
-        P: an estimated relative pose ``[R | t]`` of shape :math:`(3, 4)`, :math:`(4, 4)`, or batched
-            :math:`(B, 3, 4)` / :math:`(B, 4, 4)`.
+        P: an estimated relative pose ``[R | t]`` of shape ``(3, 4)``, ``(4, 4)``, or batched
+            ``(B, 3, 4)`` / ``(B, 4, 4)``.
         P_gt: a ground-truth relative pose of the same shape.
         fold_translation: if ``True`` (default), fold the translation error into :math:`[0, 90]` via
             :math:`\min(e, 180 - e)` to absorb the sign ambiguity of an essential-matrix translation.
 
     Return:
-        a dict of per-pose errors of shape :math:`(B,)`: ``"R_err"`` (rotation), ``"t_err"``
+        a dict of per-pose errors of shape ``(B,)``: ``"R_err"`` (rotation), ``"t_err"``
         (translation) and ``"max_err"`` (element-wise max of the two).
 
     .. note::
@@ -255,7 +255,7 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
           SuperGlue.
 
     Args:
-        errors: per-sample error values of shape :math:`(B,)`. Must be non-negative. Integer and
+        errors: per-sample error values of shape ``(B,)``. Must be non-negative. Integer and
             half-precision inputs are promoted to the default floating dtype before accumulating.
         thresholds: a single threshold or a sequence of thresholds, in the same units as ``errors``.
             Must be strictly positive. Defaults to ``(1, 3, 5, 10)``.
