@@ -231,28 +231,6 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.
     return x, y
 
 
-def _norm2d(x: torch.Tensor, y: torch.Tensor, squared: torch.Tensor) -> torch.Tensor:
-    """Return ``sqrt(x ** 2 + y ** 2)`` without overflow or underflow of the square sum.
-
-    The radius is ``s * sqrt((x / s) ** 2 + (y / s) ** 2)``. The scale ``s`` is 1 where the square sum is a finite
-    normal number, so those values are the plain formula's, and ``max(|x|, |y|)`` elsewhere, where the squared
-    ratios are at most 1. The origin gives 0 with a finite (zero) gradient. ``x`` and ``y`` are float32 or float64,
-    and ``squared`` is their ``x ** 2 + y ** 2``, used only to pick the scale.
-    """
-    # smallest normal and largest finite values as literals rather than torch.finfo, which TorchScript cannot compile
-    if x.dtype == torch.float64:
-        tiny, largest = 2.0**-1022, 1.7976931348623157e308
-    else:
-        tiny, largest = 2.0**-126, 3.4028234663852886e38
-    m = torch.maximum(x.abs(), y.abs())
-    plain = ((squared >= tiny) & (squared <= largest)) | (m == 0)
-    scale = torch.where(plain, torch.ones_like(m), m)
-    ratios = (x / scale) ** 2 + (y / scale) ** 2
-    # != rather than >, so that a nan from an inf or nan coordinate propagates instead of reading as the origin
-    nonzero = ratios != 0
-    return torch.where(nonzero, scale * torch.sqrt(torch.where(nonzero, ratios, torch.ones_like(ratios))), 0.0)
-
-
 def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert cartesian coordinates (x, y) to polar coordinates (rho, phi), phi in radians.
 
@@ -322,22 +300,17 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    # The square sum only classifies points against eps, as before. The radius comes from _norm2d, which neither
-    # overflows nor underflows while the radius itself is representable; float16/bfloat16 compute it in float32 and
-    # round once. It uses elementwise ops only: torch.hypot does not export to ONNX. Inside the eps neighbourhood
-    # the gradient is 0: the norm sees detached coordinates there, so it is evaluated once, at the true point.
-    # x**2 + y**2 in the input dtypes, as before: it classifies points against eps, and torch's rank-aware type
-    # promotion of it fixes rho's dtype, that of its sqrt (a float for integer input). The dtype is read from a
-    # zero-element probe because TorchScript cannot access dtype.is_floating_point or call torch.get_default_dtype.
-    input_squared = x**2 + y**2
-    outside = input_squared > eps
-    out_dtype = torch.empty(0, device=x.device, dtype=input_squared.dtype).sqrt().dtype
-    work_dtype = torch.promote_types(out_dtype, torch.float32)
-    xw, yw = x.to(work_dtype), y.to(work_dtype)
-    # for float32/float64 inputs the input square sum already is the working one
-    squared = input_squared if x.dtype == work_dtype and y.dtype == work_dtype else xw**2 + yw**2
-    rho = _norm2d(torch.where(outside, xw, xw.detach()), torch.where(outside, yw, yw.detach()), squared)
-    rho = rho.to(out_dtype)
+    in_dtype = torch.promote_types(x.dtype, y.dtype)
+    half = in_dtype in (torch.float16, torch.bfloat16)
+    # float32 holds the square of every float16 value, so half-precision radii neither overflow nor lose small values
+    xw, yw = (x.float(), y.float()) if half else (x, y)
+    squared_radius = xw**2 + yw**2
+    outside = squared_radius > eps
+    # inside eps, the exact radius from a detached root keeps the zero gradient at the origin
+    safe_rho = torch.sqrt(torch.where(outside, squared_radius, torch.ones_like(squared_radius)))
+    rho = torch.where(outside, safe_rho, torch.sqrt(squared_radius).detach())
+    if half:
+        rho = rho.to(in_dtype)
     phi = torch.atan2(y, x)
     return rho, phi
 
