@@ -226,7 +226,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
           left ``3 x 3`` block of its second camera has rank 2, so this decomposition gives no metric camera for it.
 
     """
-    KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
+    KORNIA_CHECK_SHAPE(P, ["B", "3", "4"], "P must have shape (B, 3, 4).")
     # A caller's autocast region would run the products below in half precision, which torch.linalg.det (CPU) and
     # qr (MPS) have no kernel for. TorchScript has no context managers; a scripted call keeps the caller's precision.
     if torch.jit.is_scripting():
@@ -334,7 +334,7 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
         - :func:`KRt_from_projection`: the decomposition of a metric projection matrix.
 
     """
-    KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(F_mat, ["B", "3", "3"], "F_mat must have shape (B, 3, 3).")
 
     R1 = eye_like(3, F_mat)  # Bx3x3
     t1 = vec_like(3, F_mat)  # Bx3

@@ -23,6 +23,7 @@ from typing import Literal, Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ShapeError
 from kornia.core.utils import _autocast_disabled, _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.solvers.homogeneous import _det3, _null_space_lu
@@ -739,13 +740,18 @@ def get_perpendicular(lines: torch.Tensor, points: torch.Tensor) -> torch.Tensor
 
     """
     KORNIA_CHECK_SHAPE(lines, ["*", "N", "3"])
-    KORNIA_CHECK_SHAPE(points, ["*", "N", "two"])
+    # points are read on dimension 2 below; an unbatched lines tensor broadcasts against them.
+    KORNIA_CHECK_SHAPE(points, ["B", "N", "D"], "points must have shape (B, N, 2) or (B, N, 3).")
     if points.shape[2] == 2:
         points_h: torch.Tensor = convert_points_to_homogeneous(points)
     elif points.shape[2] == 3:
         points_h = points
     else:
-        raise AssertionError(points.shape)
+        raise ShapeError(
+            f"points must have shape (B, N, 2) or (B, N, 3), got {list(points.shape)}.",
+            actual_shape=list(points.shape),
+            expected_shape=["B", "N", "2 or 3"],
+        )
     infinity_point = lines * torch.tensor([1, 1, 0], dtype=lines.dtype, device=lines.device).view(1, 1, 3)
     perp: torch.Tensor = torch.linalg.cross(points_h, infinity_point, dim=2)
     return perp
@@ -784,6 +790,14 @@ def get_closest_point_on_epipolar_line(pts1: torch.Tensor, pts2: torch.Tensor, F
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+    # pts2 goes to get_perpendicular, which reads dimension 2; an unbatched pts1 broadcasts against Fm.
+    KORNIA_CHECK_SHAPE(pts2, ["B", "N", "D"], "pts2 must have shape (B, N, 2) or (B, N, 3).")
+    if pts2.shape[2] not in (2, 3):
+        raise ShapeError(
+            f"pts2 must have shape (B, N, 2) or (B, N, 3), got {list(pts2.shape)}.",
+            actual_shape=list(pts2.shape),
+            expected_shape=["B", "N", "2 or 3"],
+        )
     # A caller's autocast region would compute the epipolar lines in half precision and hand them, with the caller's
     # float32 points, to torch.linalg.cross, which raised on the dtype mismatch. TorchScript has no context managers;
     # a scripted call keeps the caller's precision.

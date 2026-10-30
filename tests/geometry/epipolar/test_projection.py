@@ -20,6 +20,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
+from kornia.core.exceptions import ShapeError
 from kornia.geometry.camera import PinholeCamera
 
 from testing.base import BaseTester
@@ -155,6 +156,12 @@ class TestProjectionsFromFundamental(BaseTester):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(epi.projections_from_fundamental, (F_mat,), raise_exception=True, fast_mode=True)
 
+    def test_unbatched_input_raises_6422(self, device, dtype):
+        # An unbatched F_mat passed the shape check and failed later in torch.stack with a RuntimeError.
+        F_mat = torch.rand(3, 3, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"F_mat must have shape \(B, 3, 3\)"):
+            epi.projections_from_fundamental(F_mat)
+
 
 class TestKRtFromProjection(BaseTester):
     def test_smoke(self, device, dtype):
@@ -173,6 +180,12 @@ class TestKRtFromProjection(BaseTester):
         assert K.shape == (B, 3, 3)
         assert R.shape == (B, 3, 3)
         assert t.shape == (B, 3, 1)
+
+    def test_unbatched_input_raises_6422(self, device, dtype):
+        # An unbatched P passed the shape check and failed later with an IndexError.
+        P = torch.eye(3, 4, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"P must have shape \(B, 3, 4\)"):
+            epi.KRt_from_projection(P)
 
     def test_simple(self, device, dtype):
         P = torch.tensor(
@@ -317,7 +330,7 @@ class TestConventionProjection(BaseTester):
         two_view = two_view_scene(device, dtype)
         # P must have exactly one batch dimension.
         for P_bad in (two_view["P2"][0], two_view["P2"][None]):
-            with pytest.raises(IndexError):
+            with pytest.raises(ShapeError):
                 epi.KRt_from_projection(P_bad)
         if dtype in (torch.float16, torch.bfloat16):
             # float16 and bfloat16 raise: the input is not upcast (projections_from_fundamental upcasts).
@@ -372,7 +385,7 @@ class TestConventionProjection(BaseTester):
         assert (_unit(F_reversed) * torch.sign((F_reversed * F).sum()) - _unit(F)).abs().max() > 0.1
         # F_mat must have exactly one batch dimension.
         for F_bad in (F[0], F[None]):
-            with pytest.raises(RuntimeError):
+            with pytest.raises(ShapeError):
                 epi.projections_from_fundamental(F_bad)
 
     def test_convention_depth_from_point_is_camera_z(self, device, dtype):

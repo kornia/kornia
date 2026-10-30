@@ -48,10 +48,7 @@ def _check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
     elif matrix_type == "RT":
         target_shapes = [[3, 3], [4, 4]]
     if len(matrix.shape) > 3 or len(matrix.shape) < 2 or list(matrix.shape[-2:]) not in target_shapes:
-        raise ValueError(
-            f"{matrix_type} must be either {target_shapes[0]}x{target_shapes[0]} or \
-              {target_shapes[1]}x{target_shapes[1]}, got {matrix.shape}"
-        )
+        raise ValueError(f"{matrix_type} must be either {target_shapes[0]} or {target_shapes[1]}, got {matrix.shape}")
 
 
 class NamedPose:

@@ -1577,6 +1577,16 @@ class TestRANSACValidation(BaseTester):
         with pytest.raises(ValueError):
             RANSAC(model).validate_inputs(points, points[:8])
 
+    @pytest.mark.parametrize(("model", "shape"), [("homography", (3, 2)), ("homography_from_linesegments", (3, 2, 2))])
+    def test_too_few_correspondences_message_6422(self, device, dtype, model, shape):
+        # The message used to contain runs of spaces.
+        points = torch.zeros(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError) as excinfo:
+            RANSAC(model).validate_inputs(points, points)
+        minimal = [4, *shape[1:]]
+        size = torch.Size(shape)
+        assert str(excinfo.value) == f"kp1 and kp2 should be equal shape at least {minimal}, got {size}, {size}"
+
     @staticmethod
     def _projection_case(device, dtype, extra_exact_points):
         # Every correspondence fits this rank-two F exactly. Its projection onto the essential manifold

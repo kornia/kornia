@@ -187,6 +187,15 @@ class TestNamedPose(BaseTester):
         assert b_from_a.translation.dtype == bf16
         assert isinstance((b_from_a.inverse() * b_from_a).pose, Se2)
 
+    def test_wrong_matrix_shape_message_6422(self, device, dtype):
+        # The message used to print [2, 2]x[2, 2] and carry a run of spaces from a backslash continuation.
+        with pytest.raises(ValueError) as excinfo:
+            NamedPose.from_rt(torch.eye(4, device=device, dtype=dtype), torch.zeros(4, device=device, dtype=dtype))
+        assert str(excinfo.value) == "R must be either [2, 2] or [3, 3], got torch.Size([4, 4])"
+        with pytest.raises(ValueError) as excinfo:
+            NamedPose.from_matrix(torch.eye(5, device=device, dtype=dtype))
+        assert str(excinfo.value) == "RT must be either [3, 3] or [4, 4], got torch.Size([5, 5])"
+
     def test_inverse(self, device, dtype):
         b_from_a = NamedPose(
             Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame_src="frame_a", frame_dst="frame_b"
