@@ -31,10 +31,8 @@ class TestDivergenceLoss(BaseTester):
     @pytest.mark.parametrize("identical", [False, True])
     def test_kl_autocast(self, amp_dtype, identical, device):
         """Evaluate half heatmap logarithms at the precision used by autocast KL divergence."""
-        if device.type not in ("cpu", "cuda"):
-            pytest.skip("KL autocast precision is checked on CPU and CUDA")
-        if device.type == "cuda" and amp_dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
-            pytest.skip("CUDA bfloat16 autocast unavailable")
+        if device.type != "cpu":
+            pytest.skip("only CPU autocast leaves log in half precision; CUDA and MPS autocast run it in float32")
         generator = torch.Generator().manual_seed(0)
         target = torch.randn(1, 2, 49, generator=generator).softmax(-1).reshape(1, 2, 7, 7)
         target = target.to(device=device, dtype=amp_dtype)
@@ -52,6 +50,20 @@ class TestDivergenceLoss(BaseTester):
         references = torch.autograd.grad(expected, (pred_ref, target_ref))
         for gradient, reference in zip(gradients, references):
             self.assert_close(gradient, reference.to(amp_dtype))
+
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float64])
+    def test_kl_autocast_keeps_full_precision_inputs(self, input_dtype, device):
+        """Leave float32/float64 heatmaps untouched by the CPU autocast logarithm lift."""
+        if device.type != "cpu":
+            pytest.skip("checks the CPU autocast logarithm lift")
+        generator = torch.Generator().manual_seed(0)
+        target = torch.randn(1, 2, 49, generator=generator, dtype=input_dtype).softmax(-1).reshape(1, 2, 7, 7)
+        pred = target.roll(1, -1)
+        expected = kornia.losses.kl_div_loss_2d(pred, target)
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            actual = kornia.losses.kl_div_loss_2d(pred, target)
+        assert actual.dtype == input_dtype
+        assert torch.equal(actual, expected)
 
     @pytest.mark.parametrize("loss", [kornia.losses.kl_div_loss_2d, kornia.losses.js_div_loss_2d])
     def test_jit(self, loss, device, dtype):
