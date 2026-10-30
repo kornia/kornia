@@ -180,7 +180,8 @@ class TestBaseModel(BaseTester):
         ir = ImageRegistrator(
             model, warper=kornia.geometry.transform.HomographyWarper, num_iterations=1, pyramid_levels=1
         ).to(device, dtype)
-        image = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 16, 16).to(device, dtype)
         result = ir.register(image, image)
 
         assert result.shape == (1, 3, 3)
