@@ -110,7 +110,7 @@ class Se3(nn.Module):
         Args:
             rotation: So3 group encompassing a rotation, or a Quaternion to wrap in one; it is stored as given, and
                 a non-unit quaternion stands for the rotation of its direction.
-            translation: translation torch.Tensor with the shape of :math:`(B, 3)`, or a Vector3 wrapping one; the
+            translation: translation torch.Tensor with the shape of ``(B, 3)``, or a Vector3 wrapping one; the
                 tensor is what gets stored. It must have the rotation's dtype and device.
 
         Raises:
@@ -211,7 +211,7 @@ class Se3(nn.Module):
 
     @property
     def t(self) -> torch.Tensor:
-        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        """Return the underlying translation vector of shape ``(B,3)``."""
         return self._translation
 
     @property
@@ -221,7 +221,7 @@ class Se3(nn.Module):
 
     @property
     def translation(self) -> torch.Tensor:
-        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        """Return the underlying translation vector of shape ``(B,3)``."""
         return self._translation
 
     @staticmethod
@@ -229,7 +229,7 @@ class Se3(nn.Module):
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
-            v: vector of shape :math:`(B, 6)`.
+            v: vector of shape ``(B, 6)``.
 
         Example:
             >>> v = torch.zeros((1, 6))
@@ -299,10 +299,10 @@ class Se3(nn.Module):
         """Convert elements from vector space to lie algebra.
 
         Args:
-            v: vector of shape :math:`(B, 6)`.
+            v: vector of shape ``(B, 6)``.
 
         Returns:
-            matrix of shape :math:`(B, 4, 4)`.
+            matrix of shape ``(B, 4, 4)``.
 
         Example:
             >>> v = torch.ones((1, 6))
@@ -324,10 +324,10 @@ class Se3(nn.Module):
         """Convert elements from lie algebra to vector space.
 
         Args:
-            omega: 4x4-matrix representing lie algebra of shape :math:`(B,4,4)`.
+            omega: 4x4-matrix representing lie algebra of shape ``(B,4,4)``.
 
         Returns:
-            vector of shape :math:`(B,6)`.
+            vector of shape ``(B,6)``.
 
         Example:
             >>> v = torch.ones((1, 6))
@@ -371,7 +371,7 @@ class Se3(nn.Module):
         return cls(So3.identity(batch_size, device, dtype), t)
 
     def matrix(self) -> torch.Tensor:
-        """Return the matrix representation of shape :math:`(B, 4, 4)`.
+        """Return the matrix representation of shape ``(B, 4, 4)``.
 
         Example:
             >>> s = Se3(So3.identity(), torch.ones(3))
@@ -392,7 +392,7 @@ class Se3(nn.Module):
         """Create a Se3 group from a matrix.
 
         Args:
-            matrix: torch.Tensor of shape :math:`(B, 4, 4)`.
+            matrix: torch.Tensor of shape ``(B, 4, 4)``.
             check_rotation: if ``True``, raise ``ValueError`` unless the rotation
                 block of every input is a rotation matrix. The default ``False``
                 keeps the unchecked behaviour, under which a reflection block
@@ -417,7 +417,7 @@ class Se3(nn.Module):
         """Create a Se3 group from a quaternion and a translation vector.
 
         Args:
-            qxyz: torch.Tensor of shape :math:`(B, 7)` laid out as ``[qw, qx, qy, qz, x, y, z]``, scalar first; the
+            qxyz: torch.Tensor of shape ``(B, 7)`` laid out as ``[qw, qx, qy, qz, x, y, z]``, scalar first; the
                 quaternion is stored as given, and a non-unit one stands for the rotation of its direction.
 
         Example:
@@ -562,7 +562,7 @@ class Se3(nn.Module):
         return cls.trans(zs, zs, z)
 
     def adjoint(self) -> torch.Tensor:
-        """Return the adjoint matrix of shape :math:`(B, 6, 6)`.
+        """Return the adjoint matrix of shape ``(B, 6, 6)``.
 
         Example:
             >>> s = Se3.identity()

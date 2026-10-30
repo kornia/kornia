@@ -264,7 +264,7 @@ class VisionTransformer(nn.Module):
 
         Returns:
             List of tensors produced by the encoder blocks. Each tensor stores
-            token embeddings for a layer, typically shaped :math:`(B, N, D)`,
+            token embeddings for a layer, typically shaped ``(B, N, D)``,
             where :math:`B` is batch size, :math:`N` is token count, and
             :math:`D` is embedding dimension.
         """
@@ -274,7 +274,7 @@ class VisionTransformer(nn.Module):
         """Encode an image batch into Vision Transformer token embeddings.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`. Without a
+            x: Image tensor with shape ``(B, C, H, W)``. Without a
                 ``backbone``, :math:`C` must equal ``self.in_channels`` and
                 :math:`H` and :math:`W` must both equal ``self.image_size``;
                 with one, the backbone's token grid must be the one it gives
@@ -284,10 +284,10 @@ class VisionTransformer(nn.Module):
         Returns:
             Normalized token embedding tensor produced by patch embedding and
             the transformer encoder. The output shape follows the encoder
-            layout, usually :math:`(B, N, D)`.
+            layout, usually ``(B, N, D)``.
 
         Raises:
-            ValueError: without a ``backbone``, if :math:`C` is not ``in_channels`` or :math:`(H, W)` is not
+            ValueError: without a ``backbone``, if :math:`C` is not ``in_channels`` or ``(H, W)`` is not
                 ``(image_size, image_size)``; with one, if the backbone's token grid is not the one it gives for an
                 ``image_size`` input.
         """

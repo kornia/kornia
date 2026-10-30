@@ -223,8 +223,8 @@ def dice_loss(
           the one-hot target there, and its compiled ``one_hot`` does not check the labels.
 
     Args:
-        pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        target: labels torch.Tensor with shape :math:`(N, H, W)` where each value
+        pred: logits torch.Tensor with shape ``(N, C, H, W)`` where C = number of classes.
+        target: labels torch.Tensor with shape ``(N, H, W)`` where each value
           is in range :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:
@@ -361,12 +361,12 @@ class DiceLoss(nn.Module):
         average: Reduction strategy for multi-class computation. Use "micro" to pool the classes of each
             sample, or "macro" to average over classes present in each sample's non-ignored target.
         eps: Small constant added to the denominator for numerical stability.
-        weight: Optional class-weight tensor of shape :math:`(C,)`.
+        weight: Optional class-weight tensor of shape ``(C,)``.
         ignore_index: Label value to exclude from loss computation.
 
     Shapes:
-        - pred: :math:`(N, C, H, W)` where C is the number of classes.
-        - target: :math:`(N, H, W)` where each value is in the range :math:`[0, C-1]`.
+        - pred: ``(N, C, H, W)`` where C is the number of classes.
+        - target: ``(N, H, W)`` where each value is in the range :math:`[0, C-1]`.
         - Output: scalar.
     """
 
@@ -382,7 +382,7 @@ class DiceLoss(nn.Module):
         Args:
             average: Reduction strategy for multi-class computation.
             eps: Small constant added for numerical stability.
-            weight: Optional class-weight tensor of shape :math:`(C,)`.
+            weight: Optional class-weight tensor of shape ``(C,)``.
             ignore_index: Label value to exclude from loss computation.
         """
         if isinstance(eps, (int, float)) and eps < 0.0:
@@ -403,10 +403,10 @@ class DiceLoss(nn.Module):
         """Compute Sørensen-Dice loss for segmentation logits and labels.
 
         Args:
-            pred: Logit tensor with shape :math:`(B, C, H, W)`, where
+            pred: Logit tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is number of classes,
                 :math:`H` is height, and :math:`W` is width.
-            target: Integer target labels with shape :math:`(B, H, W)`.
+            target: Integer target labels with shape ``(B, H, W)``.
 
         Returns:
             Scalar tensor containing ``1 - Dice`` after applying the configured

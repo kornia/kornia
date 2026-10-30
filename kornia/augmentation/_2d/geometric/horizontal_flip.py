@@ -32,7 +32,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 
     .. image:: _static/img/RandomHorizontalFlip.png
 
-    Input should be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
+    Input should be a torch.Tensor of shape (C, H, W) or a batch of tensors ``(B, C, H, W)``.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Horizontally flip the tensors and torch.cat the corresponding transformation matrix to the
@@ -45,8 +45,8 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         A selected flip maps ``(x, y)`` to ``(W - 1 - x, y)`` with the exact discrete

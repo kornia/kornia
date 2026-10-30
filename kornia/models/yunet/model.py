@@ -123,7 +123,7 @@ class YuNet(nn.Module):
         """Run YuNet face detection heads over an input image batch.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`B` is
+            x: Image tensor with shape ``(B, C, H, W)``, where :math:`B` is
                 batch size, :math:`C` is channel count, :math:`H` is height,
                 and :math:`W` is width.
 

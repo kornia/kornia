@@ -18,17 +18,24 @@
 """Converted kornia modules keep the docstring style the rollout set out to give them.
 
 ``testing/docstring_rollout.py`` lists the modules that are converted. For those, this file enforces what a reader,
-an IDE or a coding agent relies on and what a refactor silently breaks:
+an IDE or a coding agent relies on and what a refactor silently breaks; the shape rule applies everywhere:
 
-* every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs;
+* every public function and class has a docstring, so none escapes the checks below;
+* every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
+  unless its title line is a status title, ``Alias of :func:`target`.`` or ``Deprecated: use :func:`target`.``,
+  which points to another public kornia object and needs none (``Deprecated: use`` only on an object that
+  ``kornia.core._compat.deprecated`` wraps, ``Alias of`` only on one that forwards to its target unchanged, as
+  ``testing.docstring_style.forwards_to`` checks);
 * every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
   ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
   object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
   text (a short import alias is importable but is not a target); See Also entries name kornia objects only;
-* the source writes a tensor shape as a literal such as ``(B, 1, H, W)``, not as ``:math:``;
+* every ``kornia/**/*.py`` file and every page Sphinx builds from ``docs/source`` writes a tensor shape as a literal
+  such as ``(B, 1, H, W)``, not as ``:math:``, except for the values listed in ``MATH_NON_SHAPES``;
 * the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal.
 
-The test ids are qualified names, so a failure names the object to fix. Run with ``-s`` to see the progress table.
+The test ids are qualified names, or repository paths for the shape check, so a failure names what to fix. Run with
+``-s`` to see the progress table.
 """
 
 from __future__ import annotations
@@ -46,8 +53,8 @@ from testing.docstring_rollout import (
     DOCSTRING_MODULES,
     EXCLUDED_PACKAGES,
     IN_SCOPE_PACKAGES,
+    MATH_NON_SHAPES,
     SEE_ALSO_EXCEPTIONS,
-    SHAPE_CHECK_MODULES,
 )
 from testing.docstring_style import (
     catalog_missing,
@@ -55,7 +62,9 @@ from testing.docstring_style import (
     catalog_unimportable,
     covered,
     docstring_roles,
+    forwards_to,
     intersphinx_names,
+    is_deprecated_wrapper,
     is_documented,
     is_private_target,
     math_shape_roles,
@@ -64,12 +73,16 @@ from testing.docstring_style import (
     public_objects,
     reference_resolves,
     resolve_reference,
+    rst_pages,
     see_also_entries,
     sphinx_registry,
+    status_target,
+    undocumented_public_objects,
 )
 
 KORNIA_ROOT = Path(kornia.__file__).resolve().parent
-DOCS = KORNIA_ROOT.parent / "docs" / "source"
+REPO_ROOT = KORNIA_ROOT.parent
+DOCS = REPO_ROOT / "docs" / "source"
 REGISTRY = sphinx_registry(DOCS)
 INTERSPHINX = intersphinx_names(DOCS)
 
@@ -77,20 +90,16 @@ CONVERTED = sorted(
     ((qualified, obj) for obj, qualified in public_objects().values() if covered(obj.__module__, DOCSTRING_MODULES)),
     key=lambda pair: pair[0],
 )
-
-
-def _module_name(path: Path) -> str:
-    parts = list(path.relative_to(KORNIA_ROOT.parent).with_suffix("").parts)
-    if parts[-1] == "__init__":
-        parts.pop()
-    return ".".join(parts)
-
-
-SHAPE_CHECK_FILES = sorted(
-    path
-    for path in KORNIA_ROOT.rglob("*.py")
-    if SHAPE_CHECK_MODULES is None or covered(_module_name(path), SHAPE_CHECK_MODULES)
+UNDOCUMENTED = sorted(
+    (
+        qualified
+        for obj, qualified in undocumented_public_objects().values()
+        if covered(obj.__module__, DOCSTRING_MODULES)
+    ),
 )
+
+
+SHAPE_CHECK_FILES = sorted([*KORNIA_ROOT.rglob("*.py"), *rst_pages(DOCS)])
 
 
 def _suggest(target: str) -> str:
@@ -109,17 +118,13 @@ def _wrong_role(role: str, target: str) -> str:
 def test_rollout_selects_something() -> None:
     """The parametrized checks below are not vacuous: the rollout lists select objects and files."""
     assert CONVERTED, f"DOCSTRING_MODULES {DOCSTRING_MODULES} select no public object"
-    assert SHAPE_CHECK_FILES, f"SHAPE_CHECK_MODULES {SHAPE_CHECK_MODULES} select no source file"
+    assert SHAPE_CHECK_FILES, f"no source file or docs page found under {KORNIA_ROOT} and {DOCS}"
     assert CATALOG_NAMESPACES, "CATALOG_NAMESPACES is empty, so no module catalog is checked"
     assert REGISTRY, f"sphinx_registry({DOCS}) registered nothing"
     assert INTERSPHINX, f"intersphinx_names({DOCS}) found no inventory names"
     for prefix in DOCSTRING_MODULES:
         assert any(covered(obj.__module__, [prefix]) for _, obj in CONVERTED), (
             f"DOCSTRING_MODULES entry {prefix!r} selects no public object with a docstring"
-        )
-    for prefix in SHAPE_CHECK_MODULES or ():
-        assert any(covered(_module_name(path), [prefix]) for path in SHAPE_CHECK_FILES), (
-            f"SHAPE_CHECK_MODULES entry {prefix!r} selects no source file"
         )
 
 
@@ -137,7 +142,6 @@ def test_rollout_lists_are_real() -> None:
     lists = {
         "DOCSTRING_MODULES": DOCSTRING_MODULES,
         "CATALOG_NAMESPACES": CATALOG_NAMESPACES,
-        "SHAPE_CHECK_MODULES": SHAPE_CHECK_MODULES or (),
     }
     for list_name, entries in lists.items():
         for entry in entries:
@@ -155,11 +159,41 @@ def test_rollout_lists_are_real() -> None:
         assert reason.strip(), f"SEE_ALSO_EXCEPTIONS entry {key!r} needs a reason"
 
 
+@pytest.mark.parametrize("qualified", UNDOCUMENTED, ids=UNDOCUMENTED)
+def test_converted_object_has_docstring(qualified: str) -> None:
+    pytest.fail(
+        f"{qualified} is exported without a docstring, so the checks cannot see it; write one. A thin wrapper "
+        "that only forwards to another object starts with 'Alias of :func:`target`.', a deprecated one with "
+        "'Deprecated: use :func:`target`.'"
+    )
+
+
 @pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
 def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
     if qualified in SEE_ALSO_EXCEPTIONS:
         pytest.skip(f"excepted: {SEE_ALSO_EXCEPTIONS[qualified]}")
-    entries = see_also_entries(own_docstring(obj))
+    doc = own_docstring(obj)
+    entries = see_also_entries(doc)
+    target = status_target(doc)
+    if target:
+        # an "Alias of" or "Deprecated: use" title points to another public kornia object, only a deprecated object
+        # says "Deprecated: use", and only one that forwards to its target says "Alias of", whether or not a See
+        # Also follows
+        resolved = resolve_reference(obj, target, REGISTRY)
+        message = f"{qualified}: a status title points to another public kornia object, not to {target!r}"
+        assert resolved is not None, message
+        assert resolved is not obj, message
+        assert not is_private_target(target), message
+        assert not doc.lstrip().startswith("Deprecated: use") or is_deprecated_wrapper(obj), (
+            f"{qualified} has a 'Deprecated: use' title but is not wrapped by kornia.core._compat.deprecated"
+        )
+        assert not doc.lstrip().startswith("Alias of") or forwards_to(obj, resolved), (
+            f"{qualified} has an 'Alias of' title but does not only forward to {target!r}: an alias function returns "
+            "the target called with its own arguments, unchanged and with the target's defaults, and an alias class "
+            "subclasses it and adds nothing"
+        )
+        if entries is None:
+            return  # the title points to the target, so a See Also would only repeat it
     assert entries, (
         f"{qualified} needs a 'See Also:' section with at least one bullet like "
         "'- :func:`name`: how it differs.' (or an entry in SEE_ALSO_EXCEPTIONS with a reason)"
@@ -198,13 +232,27 @@ def test_converted_object_references_resolve(qualified: str, obj: object) -> Non
 
 
 @pytest.mark.parametrize(
-    "path", SHAPE_CHECK_FILES, ids=[str(path.relative_to(KORNIA_ROOT.parent)) for path in SHAPE_CHECK_FILES]
+    "path", SHAPE_CHECK_FILES, ids=[path.relative_to(REPO_ROOT).as_posix() for path in SHAPE_CHECK_FILES]
 )
 def test_no_math_shape_roles(path: Path) -> None:
-    found = math_shape_roles(path.read_text(encoding="utf-8"))
+    relative = path.relative_to(REPO_ROOT).as_posix()
+    values = MATH_NON_SHAPES.get(relative, {})
+    found = [content for content in math_shape_roles(path.read_text(encoding="utf-8")) if content not in values]
     assert found == [], (
-        f"{path.relative_to(KORNIA_ROOT.parent)} writes shapes as :math: {found}; use literals like ``(B, 1, H, W)``"
+        f"{relative} writes shapes as :math: {found}; use literals like ``(B, 1, H, W)``, or list a tuple that is "
+        "a value, not a shape, in MATH_NON_SHAPES with what it is"
     )
+
+
+def test_math_non_shapes_are_current() -> None:
+    """Every ``MATH_NON_SHAPES`` entry names a checked file that still writes that tuple as ``:math:``."""
+    checked = {path.relative_to(REPO_ROOT).as_posix(): path for path in SHAPE_CHECK_FILES}
+    for relative, values in MATH_NON_SHAPES.items():
+        assert relative in checked, f"MATH_NON_SHAPES key {relative!r} is not a checked source file or docs page"
+        found = set(math_shape_roles(checked[relative].read_text(encoding="utf-8")))
+        for content, reason in values.items():
+            assert content in found, f"MATH_NON_SHAPES entry {content!r} no longer occurs in {relative}; remove it"
+            assert reason.strip(), f"MATH_NON_SHAPES entry {content!r} in {relative} needs a reason"
 
 
 @pytest.mark.parametrize("namespace", CATALOG_NAMESPACES)

@@ -139,7 +139,7 @@ class ImageEncoderViT(nn.Module):
         """Encode an image batch into SAM image embeddings.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`B`
+            x: Image tensor with shape ``(B, C, H, W)``, where :math:`B`
                 is batch size, :math:`C` is channel count, and :math:`H`,
                 :math:`W` are image height and width.
 
@@ -208,7 +208,7 @@ class Block(nn.Module):
         """Apply one SAM image-encoder transformer block.
 
         Args:
-            x: Feature tensor with shape :math:`(B, H, W, C)`.
+            x: Feature tensor with shape ``(B, H, W, C)``.
 
         Returns:
             Tensor with the same shape as ``x`` after window or global
@@ -271,10 +271,10 @@ class Attention(nn.Module):
         """Apply multi-head attention over 2D image tokens.
 
         Args:
-            x: Token grid with shape :math:`(B, H, W, C)`.
+            x: Token grid with shape ``(B, H, W, C)``.
 
         Returns:
-            Tensor with shape :math:`(B, H, W, C)` after attention, optional
+            Tensor with shape ``(B, H, W, C)`` after attention, optional
             decomposed relative positional bias, and output projection.
         """
         _, H, W, C = x.shape
@@ -395,10 +395,10 @@ class PatchEmbed(nn.Module):
         """Project an image into patch embeddings.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`.
+            x: Image tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Patch embedding tensor with shape :math:`(B, H_p, W_p, D)`, where
+            Patch embedding tensor with shape ``(B, H_p, W_p, D)``, where
             :math:`H_p` and :math:`W_p` are patch-grid dimensions and
             :math:`D` is embedding dimension.
         """

@@ -1,7 +1,7 @@
 # known-failure-schema: 1
 # profile: cpu-float16
 # python: 3.11
-# pytorch: 2.14.0
+# pytorch: 2.15.0
 # os: Linux
 # arch: x86_64
 # seed-scheme: sha256-nodeid-v1

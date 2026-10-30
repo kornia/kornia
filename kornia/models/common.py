@@ -167,7 +167,7 @@ class LayerNorm2d(nn.Module):
         """Apply channel-wise layer normalization to an NCHW tensor.
 
         Args:
-            x: Tensor with shape :math:`(B, C, H, W)`, where :math:`B` is batch
+            x: Tensor with shape ``(B, C, H, W)``, where :math:`B` is batch
                 size, :math:`C` is channel count, :math:`H` is height, and
                 :math:`W` is width.
 
