@@ -693,6 +693,27 @@ class TestEqualization(BaseTester):
             torch.set_default_dtype(previous)
         self.assert_close(out, expected, rtol=0, atol=0)
 
+    def test_clahe_slow_path_centres_in_promoted_tile_dtype_6366(self, device, dtype, monkeypatch):
+        # Float64 tiles get float64 centres and bandwidth; every other dtype keeps the float32 ones it had, so its
+        # output is unchanged (#6366). The test above cannot see a dtype that ignores the default dtype but is wrong.
+        from kornia.enhance import equalization
+
+        calls = []
+        histogram = equalization.histogram
+
+        def spy(x, bins, bandwidth, *args, **kwargs):
+            calls.append((bins, bandwidth))
+            return histogram(x, bins, bandwidth, *args, **kwargs)
+
+        monkeypatch.setattr(equalization, "histogram", spy)
+        img = torch.linspace(0, 1, 256, device=device, dtype=dtype).view(1, 1, 16, 16)
+        enhance.equalize_clahe(img, slow_and_differentiable=True)
+        expected = torch.promote_types(dtype, torch.float32)
+        ((bins, bandwidth),) = calls
+        assert bins.dtype == expected
+        assert bandwidth.dtype == expected
+        self.assert_close(bins, torch.linspace(0, 1, 256, device=device, dtype=expected), rtol=0, atol=0)
+
     def test_clahe_odd_tiles_gradcheck_5812(self, device):
         torch.manual_seed(4)
         img = torch.rand(1, 1, 9, 15, device=device, dtype=torch.float64)
