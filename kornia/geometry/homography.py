@@ -347,6 +347,8 @@ def line_segment_transfer_error_one_way(
         - Argument order and direction as :func:`oneway_transfer_error`.
         - The image-2 line is scaled to unit :math:`(a, b)`, so the error is the mean perpendicular distance of
           the two mapped endpoints, in pixels.
+        - An endpoint that ``H`` maps to infinity (:math:`w' = 0`) gives the segment the error ``inf``, as in
+          :func:`oneway_transfer_error`, unless the image-2 segment has zero length; a NaN input stays NaN.
 
     Args:
         ls1: line segment correspondences from the left images with shape
@@ -384,8 +386,9 @@ def line_segment_transfer_error_one_way(
     # distance times the image-2 segment length (#4867). A zero-length segment defines no line; as before the
     # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
     scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
-    ln2 = (ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))).view(B, N, 3)
-    has_line = scale.view(B, N) > 0
+    # Squeeze rather than view(B, N, ...): ls2 may have a batch of 1 against the batch of ls1 and H.
+    ln2 = (ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))).squeeze(-2)
+    has_line = scale[..., 0, 0] > 0
 
     distance_start, singular_start = _line_endpoint_distance(ps1.view(B, N, 2), H_work, ln2)
     distance_end, singular_end = _line_endpoint_distance(pe1.view(B, N, 2), H_work, ln2)
@@ -409,7 +412,9 @@ def _line_endpoint_distance(
     for ``|w'| <= 1e-8``: a point mapped to infinity (``w' = 0``) is singular, as in :func:`oneway_transfer_error`
     (#4881). The distance is ``|l . (x', y', w')| / |w'|``, so no mapped coordinate is formed that could overflow.
     """
-    mapped = convert_points_to_homogeneous(points).to(H.dtype) @ H.transpose(-2, -1)
+    # A caller's autocast region would run the matrix product in half precision.
+    with _autocast_disabled(H.device.type):
+        mapped = convert_points_to_homogeneous(points).to(H.dtype) @ H.transpose(-2, -1)
     w = mapped[..., 2]
     return ((mapped * line).sum(-1) / _nonzero(w)).abs(), w == 0
 
@@ -1092,9 +1097,7 @@ def find_homography_lines_dlt_iterated(
 
     Returns:
         the computed homography matrix with shape ``(B, 3, 3)``. A batch element is NaN when one of its
-        solves is, as in :func:`find_homography_lines_dlt`. In float16, segments with coordinates in the hundreds
-        of pixels overflow the re-weighting distances of :func:`line_segment_transfer_error_one_way` and give NaN
-        this way.
+        solves is, as in :func:`find_homography_lines_dlt`.
 
     Raises:
         AssertionError: if fewer than four segments are given, as in :func:`find_homography_lines_dlt`.

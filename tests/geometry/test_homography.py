@@ -275,6 +275,27 @@ class TestLineSegmentOneWayError(BaseTester):
         expected = 0.5 * (distance(ls1[:, :, 0]) + distance(ls1[:, :, 1]))
         self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected)
 
+    def test_batch_one_ls2_broadcasts(self, device, dtype):
+        # ls2 with a batch of 1 against a batch of ls1 and H broadcasts, as it did through transform_points.
+        torch.manual_seed(0)
+        ls1 = torch.rand(4, 5, 2, 2, device=device, dtype=dtype) * 10
+        ls2 = torch.rand(1, 5, 2, 2, device=device, dtype=dtype) * 10
+        H = create_random_homography(ls1, 3)
+        expected = line_segment_transfer_error_one_way(ls1, ls2.expand(4, 5, 2, 2), H)
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected, atol=0.0, rtol=0.0)
+
+    def test_autocast_does_not_reach_the_mapping(self, device):
+        # A caller's bfloat16 autocast ran H @ p in bfloat16, which rounds w' = 2**-10 to 0 and read inf, not 1024.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device)  # w' = x + 1
+        ls1 = torch.tensor([[[[-1.0 + 2.0**-10, 1.0], [-1.0 + 2.0**-10, 1.0]]]], device=device)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device)  # the line y = 0
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == torch.float32
+        self.assert_close(error, torch.full_like(error, 1024.0), atol=0.0, rtol=0.0)
+
     @pytest.mark.parametrize("batch_size, num_segments", [(256, 256), (1, 2**16)])
     def test_2_pow_16_segments(self, batch_size, num_segments, device, dtype):
         # RANSAC scores a (B, N) batch of segments; with B * N or N reaching 2**16, MPS (torch 2.5.1 and 2.14) made
