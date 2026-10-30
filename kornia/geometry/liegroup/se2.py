@@ -185,7 +185,8 @@ class Se2(nn.Module):
         """Compose two Se2 transformations, or transform points.
 
         Args:
-            right: the other Se2 transformation, or points of shape ``(B, 2)`` or ``(2,)``.
+            right: the other Se2 transformation, or points: ``(2,)`` or ``(N, 2)`` for an unbatched pose,
+                ``(B, 2)`` or ``(2,)`` for a batch of ``B`` (a batch of one also maps ``(N, 2)``).
 
         Return:
             The resulting Se2 transformation, or the transformed points.

@@ -192,7 +192,7 @@ class TestSe3(BaseTester):
         self._assert_chains_agree(pt_in_s1, pt_in_s2_in_s1, pt_in_world, *translations)
         self._assert_chains_agree(pt_in_s2, pt_in_s1_in_s2, pt_in_world, *translations)
 
-    @pytest.mark.parametrize("points_shape", [(7, 3), (2, 5, 3)])
+    @pytest.mark.parametrize("points_shape", [(7, 3), (1, 3)])
     def test_unbatched_pose_transforms_a_point_set(self, points_shape, device, dtype):
         # #6426: an unbatched Se3 maps every point of a point set, as Se2 does for (N, 2); it used to raise in
         # torch.linalg.cross. Expected: R p + t for each point.
@@ -207,6 +207,24 @@ class TestSe3(BaseTester):
         # R p + t in float64, on the CPU, from the same rounded pose and points: only the output is rounded
         r = So3(Quaternion(g.so3.q.data.cpu().double())).matrix()
         self.assert_close(out.cpu(), (p.cpu().double() @ r.mT + g.t.cpu().double()).to(dtype))
+
+    # #6426: a pose maps (3,) or (N, 3) unbatched and one point per pose for a batch; other layouts, such as a
+    # batch of poses with a point set, raise a ValueError that names the accepted layouts.
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape"), [(None, (2, 5, 3)), (2, (3,)), (2, (7, 3)), (2, (2, 7, 3)), (1, (1, 7, 3))]
+    )
+    def test_point_layout_outside_the_contract_raises(self, batch_size, points_shape, device, dtype):
+        pose = Se3.identity(batch_size, device, dtype)
+        with pytest.raises(ValueError, match=r"Expected points of shape \(3,\) or \(N, 3\)"):
+            pose * torch.zeros(points_shape, device=device, dtype=dtype)
+
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape", "out_shape"),
+        [(None, (3,), (3,)), (None, (7, 3), (7, 3)), (1, (7, 3), (7, 3)), (2, (2, 3), (2, 3)), (2, (1, 3), (2, 3))],
+    )
+    def test_point_layout_in_the_contract_maps(self, batch_size, points_shape, out_shape, device, dtype):
+        pose = Se3.identity(batch_size, device, dtype)
+        assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):

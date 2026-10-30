@@ -60,10 +60,10 @@ class NamedPose:
     ``b_from_a = NamedPose(pose, frame_src="a", frame_dst="b")`` wraps an :class:`~kornia.geometry.liegroup.Se3` or
     :class:`~kornia.geometry.liegroup.Se2` pose that maps frame ``a`` to frame ``b``;
     ``b_from_a.transform_points(points)`` maps points from ``a`` to ``b``, and ``c_from_b * b_from_a`` composes two
-    poses into ``c_from_a`` after checking that the frames chain. An unbatched ``Se3`` maps one point ``(3,)`` and a
-    batch of ``B`` maps ``(B, 3)``, one point per pose (a batch of one also maps ``(N, 3)``); a point set ``(N, 3)``
-    with an unbatched ``Se3`` raises (`#6426 <https://github.com/kornia/kornia/issues/6426>`_). An unbatched ``Se2``
-    maps ``(2,)`` or ``(N, 2)``, and a batch of ``B`` maps ``(B, 2)``. Build one from a rotation and a translation with
+    poses into ``c_from_a`` after checking that the frames chain. An unbatched ``Se3`` maps ``(3,)`` or ``(N, 3)``,
+    and a batch of ``B`` maps ``(B, 3)``, one point per pose (a batch of one also maps ``(N, 3)``); an unbatched
+    ``Se2`` maps ``(2,)`` or ``(N, 2)``, and a batch of ``B`` maps ``(B, 2)``. Other layouts, such as a batch of poses
+    with a point set ``(B, N, 3)``, raise ``ValueError``. Build one from a rotation and a translation with
     :meth:`from_rt`, or from a ``3 x 3`` or ``4 x 4`` matrix with :meth:`from_matrix`. For a pose without frame names,
     use the Lie group classes directly; for ``4 x 4`` matrices,
     :func:`~kornia.geometry.linalg.compose_transformations`.
