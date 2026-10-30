@@ -31,6 +31,7 @@ import inspect
 import io
 import re
 import sys
+import textwrap
 import tokenize
 import warnings
 import zlib
@@ -100,13 +101,8 @@ def _is_kornia_function_or_class(obj: object) -> bool:
 
 
 @cache
-def public_objects() -> dict[int, tuple[object, str]]:
-    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for every exported kornia function and class with a docstring.
-
-    Covers every name in the ``__all__`` of a non-private kornia module that is a function or class defined in
-    kornia and has a docstring of its own, deduplicated by object identity. Names starting with an underscore are
-    out of scope. The dict is cached and shared between callers, who must not mutate it.
-    """
+def _exported_objects() -> tuple[tuple[object, str], ...]:
+    """List ``(obj, "module.qualname")`` for every exported kornia function and class, deduplicated by identity."""
     collected: dict[int, tuple[object, str]] = {}
     for module_name in modules_declaring_all():
         module = _import_exported(module_name)
@@ -117,9 +113,30 @@ def public_objects() -> dict[int, tuple[object, str]]:
             warnings.simplefilter("ignore")
             exported = [getattr(module, name, None) for name in module.__all__ if not name.startswith("_")]
         for obj in exported:
-            if _is_kornia_function_or_class(obj) and own_docstring(obj):
-                collected[id(obj)] = (obj, f"{obj.__module__}.{obj.__qualname__}")
-    return collected
+            if _is_kornia_function_or_class(obj):
+                collected.setdefault(id(obj), (obj, f"{obj.__module__}.{obj.__qualname__}"))
+    return tuple(collected.values())
+
+
+@cache
+def public_objects() -> dict[int, tuple[object, str]]:
+    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for every exported kornia function and class with a docstring.
+
+    Covers every name in the ``__all__`` of a non-private kornia module that is a function or class defined in
+    kornia and has a docstring of its own, deduplicated by object identity. Names starting with an underscore are
+    out of scope. The dict is cached and shared between callers, who must not mutate it.
+    """
+    return {id(obj): (obj, qualified) for obj, qualified in _exported_objects() if own_docstring(obj)}
+
+
+@cache
+def undocumented_public_objects() -> dict[int, tuple[object, str]]:
+    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for every exported kornia function and class without a docstring.
+
+    The complement of ``public_objects()`` over the same walk: ``public_objects()`` cannot see these, so a converted
+    module could otherwise keep one forever. The dict is cached and shared between callers, who must not mutate it.
+    """
+    return {id(obj): (obj, qualified) for obj, qualified in _exported_objects() if not own_docstring(obj)}
 
 
 def covered(module_name: str, prefixes: Iterable[str]) -> bool:
@@ -158,6 +175,153 @@ def math_shape_roles(text: str) -> list[str]:
 # The Python-domain roles that link to an object. ``:mod:`` links to a module page and is not checked here.
 _PY_ROLES = "func|class|meth|attr|data|const|exc|obj"
 _XREF_ROLE = re.compile(rf":(?:py:)?({_PY_ROLES}):`~?([^`]+)`")
+
+
+_STATUS_TITLE = re.compile(rf"(?:Alias of|Deprecated: use) :(?:py:)?(?:{_PY_ROLES}):`~?([^`\s]+)`\.")
+
+
+def status_target(doc: str) -> str | None:
+    """Return the target of a status title line, or ``None`` when ``doc`` has another title.
+
+    The status titles are ``Alias of :role:`target`.`` and ``Deprecated: use :role:`target`.``. Only the first line
+    counts: it must read exactly ``Alias of`` or ``Deprecated: use``, one Python-domain role with an optional ``py:``
+    prefix and an optional leading ``~``, and a closing period. The returned target has no ``~``.
+    """
+    match = _STATUS_TITLE.fullmatch(doc.strip().split("\n", 1)[0].strip())
+    return match.group(1) if match else None
+
+
+def is_deprecated_wrapper(obj: object) -> bool:
+    """Return whether ``obj`` is a function or class that ``kornia.core._compat.deprecated`` wraps.
+
+    The decorator replaces a function by a wrapper, and the ``__init__`` of a class, with code of its own module.
+    """
+    import kornia.core._compat as compat
+
+    code = getattr(obj.__init__ if isinstance(obj, type) else obj, "__code__", None)
+    return code is not None and Path(code.co_filename).resolve() == Path(compat.__file__).resolve()
+
+
+def _definition_body(obj: object) -> tuple[ast.FunctionDef | ast.ClassDef, list[ast.stmt]]:
+    """Return the AST definition of ``obj`` and its body without a leading docstring; ``OSError`` without source."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(obj)))
+    node = tree.body[0]
+    if not isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+        raise OSError(f"no plain function or class definition of {obj!r} in its source")
+    body = node.body
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        body = body[1:]
+    return node, body
+
+
+def _resolve_name(fn: object, expr: ast.expr) -> object | None:
+    """Return the object that the name or dotted attribute ``expr`` denotes inside function ``fn``, or ``None``."""
+    if isinstance(expr, ast.Attribute):
+        owner = _resolve_name(fn, expr.value)
+        return getattr(owner, expr.attr, None) if owner is not None else None
+    if not isinstance(expr, ast.Name):
+        return None
+    names = inspect.getclosurevars(fn)
+    for scope in (names.nonlocals, names.globals, names.builtins):
+        if expr.id in scope:
+            return scope[expr.id]
+    return None
+
+
+def _forwards_own_arguments(args: ast.arguments, call: ast.Call) -> bool:
+    """Whether ``call`` passes every parameter of ``args`` exactly once, unchanged and in place, and nothing else.
+
+    Positional arguments must be the leading positional parameters in their order; ``*args`` may follow only once
+    all of them are passed. Every other parameter goes by keyword under its own name, and ``**kwargs`` as such.
+    """
+    order = [arg.arg for arg in [*args.posonlyargs, *args.args]]
+    by_keyword = {arg.arg for arg in [*args.args, *args.kwonlyargs]}
+    passed: list[str] = []
+    for value in call.args:
+        if isinstance(value, ast.Starred):
+            vararg = args.vararg.arg if args.vararg is not None else None
+            if passed != order or not isinstance(value.value, ast.Name) or value.value.id != vararg:
+                return False
+            passed.append(value.value.id)
+        elif isinstance(value, ast.Name) and len(passed) < len(order) and value.id == order[len(passed)]:
+            passed.append(value.id)
+        else:
+            return False
+    for keyword in call.keywords:
+        if not isinstance(keyword.value, ast.Name):
+            return False
+        if keyword.arg is None:
+            if args.kwarg is None or keyword.value.id != args.kwarg.arg:
+                return False
+        elif keyword.arg not in by_keyword or keyword.value.id != keyword.arg:
+            return False
+        passed.append(keyword.value.id)
+    expected = [arg.arg for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]]
+    expected += [extra.arg for extra in (args.vararg, args.kwarg) if extra is not None]
+    return sorted(passed) == sorted(expected)
+
+
+def _keeps_target_defaults(obj: object, target: object, call: ast.Call) -> bool:
+    """Whether every parameter ``obj`` gives a default reaches a ``target`` parameter with the same default.
+
+    ``call`` is the forwarding call that :func:`_forwards_own_arguments` accepted, so its positional values map onto
+    the leading positional parameters of ``target``, whatever their names, and its keywords onto the parameters of
+    the same name. Defaults compare by ``repr``. A parameter without a default may meet one with a default: every
+    call the alias accepts then behaves as the target. A default that differs, or that meets a required parameter,
+    ``*args`` or ``**kwargs``, changes what a call relying on it returns.
+    """
+    try:
+        own = inspect.signature(obj).parameters
+        theirs = inspect.signature(target).parameters
+    except (TypeError, ValueError):
+        return False
+    leading = [p for p in theirs.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    reached: dict[str, inspect.Parameter | None] = {}
+    for index, value in enumerate(call.args):
+        if isinstance(value, ast.Name):
+            reached[value.id] = leading[index] if index < len(leading) else None
+    for keyword in call.keywords:
+        if keyword.arg is not None and isinstance(keyword.value, ast.Name):
+            parameter = theirs.get(keyword.arg)
+            if parameter is not None and parameter.kind == parameter.VAR_KEYWORD:
+                parameter = None
+            reached[keyword.value.id] = parameter
+    for name, parameter in own.items():
+        if parameter.default is inspect.Parameter.empty:
+            continue
+        other = reached.get(name)
+        if other is None or other.default is inspect.Parameter.empty or repr(other.default) != repr(parameter.default):
+            return False
+    return True
+
+
+def forwards_to(obj: object, target: object) -> bool:
+    """Return whether ``obj`` only forwards to ``target``, which is what an ``Alias of`` title line promises.
+
+    A function forwards when its body, docstring aside, is a single ``return target(...)`` that passes each of its
+    own parameters exactly once and unchanged, the leading ones by position in their order and the rest as
+    ``name=name``, with ``*args`` and ``**kwargs`` passed on as such, and nothing else, and when every default it
+    declares is the default of the ``target`` parameter it reaches. A class forwards when ``target`` is its only
+    base and its body, docstring aside, is empty or ``pass``. Neither may be decorated, since a decorator can add
+    behaviour; an async function, or an object without Python source, does not forward either.
+    """
+    try:
+        node, body = _definition_body(obj)
+    except (OSError, TypeError, SyntaxError):
+        return False
+    if node.decorator_list:
+        return False
+    if isinstance(node, ast.ClassDef):
+        bare = all(isinstance(statement, ast.Pass) for statement in body)
+        return isinstance(obj, type) and obj.__bases__ == (target,) and not node.keywords and bare
+    if len(body) != 1 or not isinstance(body[0], ast.Return) or not isinstance(body[0].value, ast.Call):
+        return False
+    call = body[0].value
+    return (
+        _resolve_name(obj, call.func) is target
+        and _forwards_own_arguments(node.args, call)
+        and _keeps_target_defaults(obj, target, call)
+    )
 
 
 def docstring_roles(doc: str) -> list[tuple[str, str]]:
