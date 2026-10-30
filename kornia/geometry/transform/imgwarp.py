@@ -1624,9 +1624,12 @@ def _check_scale_shape3d(scales: torch.Tensor) -> None:
 
     A ``(3,)`` tensor is refused: it is read as ``(sx, sy, sz)`` shared by every sample when the batch happens to be
     1 or 3, and fails inside the broadcast for any other batch, so ``(B,)`` per-sample factors would be misread at
-    ``B = 3``.
+    ``B = 3``. Per-sample factors go in a column, ``(B, 1)``; a single ``(sx, sy, sz)`` goes in a row, ``(1, 3)``.
     """
-    msg = "scale must be (B, 3) per-axis or (B, 1) isotropic factors; a single (3,) scale needs a batch dimension."
+    msg = (
+        "scale must be (B, 3) per-axis or (B, 1) isotropic factors; reshape per-sample factors (B,) to (B, 1) and "
+        "a single (sx, sy, sz) to (1, 3)."
+    )
     if scales.dim() == 1:
         # One factor for every sample, as before.
         KORNIA_CHECK_SHAPE(scales, ["1"], msg=msg)
@@ -1664,7 +1667,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
 
     Raises:
         ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)`` or ``(1,)``. A ``(3,)`` tensor is refused rather than
-            read as ``(sx, sy, sz)`` when the batch happens to be 1 or 3.
+            read as ``(sx, sy, sz)`` when the batch happens to be 1 or 3: pass per-sample factors as ``(B, 1)`` and
+            a single ``(sx, sy, sz)`` as ``(1, 3)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine3d`.

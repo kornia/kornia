@@ -1060,7 +1060,7 @@ class TestScaleShape3d(BaseTester):
     def test_projective_transform_rejects_unbatched_per_axis_scale(self, batch, device, dtype):
         _, center, angles = self._inputs(batch, device, dtype)
         scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)  # (sx, sy, sz) without a batch dimension
-        with pytest.raises(ShapeError, match="batch dimension"):
+        with pytest.raises(ShapeError, match=r"\(B, 1\)"):
             proj.get_projective_transform(center, angles, scale)
 
     @pytest.mark.parametrize("batch", [2, 3, 4])
@@ -1076,14 +1076,15 @@ class TestScaleShape3d(BaseTester):
     def test_affine_matrix3d_rejects_unbatched_per_axis_scale(self, batch, device, dtype):
         translations, center, angles = self._inputs(batch, device, dtype)
         scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
-        with pytest.raises(ShapeError, match="batch dimension"):
+        with pytest.raises(ShapeError, match=r"\(B, 1\)"):
             proj.get_affine_matrix3d(translations, center, scale, angles)
 
     @pytest.mark.parametrize("batch", [1, 2, 3, 4])
     def test_per_axis_scale_is_the_diagonal(self, batch, device, dtype):
         translations, center, angles = self._inputs(batch, device, dtype)
-        scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype).repeat(batch, 1)  # (B, 3)
-        expected = torch.diag(scale[0]).repeat(batch, 1, 1)
+        # A different (sx, sy, sz) for every sample, so reusing one sample's scale for the others is caught.
+        scale = torch.arange(1, 3 * batch + 1, device=device, dtype=dtype).reshape(batch, 3)  # (B, 3)
+        expected = torch.diag_embed(scale)
 
         projective = proj.get_projective_transform(center, angles, scale)
         assert projective.shape == (batch, 3, 4)
@@ -1107,6 +1108,27 @@ class TestScaleShape3d(BaseTester):
             proj.get_affine_matrix3d(translations, center, isotropic, angles),
             proj.get_affine_matrix3d(translations, center, isotropic.repeat(1, 3), angles),
         )
+
+    @pytest.mark.parametrize("batch", [2, 3, 4])
+    def test_the_two_reshapes_of_a_flat_scale_mean_different_things(self, batch, device, dtype):
+        # The error message sends (B,) per-sample factors to (B, 1) and one (sx, sy, sz) to (1, 3). They must not be
+        # confused: a (1, 3) row is read per axis and shared by every sample.
+        translations, center, angles = self._inputs(batch, device, dtype)
+        per_sample = torch.arange(1, batch + 1, device=device, dtype=dtype)
+        axes = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+
+        column_expected = torch.diag_embed(per_sample[:, None].expand(batch, 3))
+        row_expected = torch.diag(axes).expand(batch, 3, 3)
+
+        column = proj.get_projective_transform(center, angles, per_sample[:, None])
+        row = proj.get_projective_transform(center, angles, axes[None])
+        self.assert_close(column[..., :3], column_expected)
+        self.assert_close(row[..., :3], row_expected)
+
+        column = proj.get_affine_matrix3d(translations, center, per_sample[:, None], angles)
+        row = proj.get_affine_matrix3d(translations, center, axes[None], angles)
+        self.assert_close(column[..., :3, :3], column_expected)
+        self.assert_close(row[..., :3, :3], row_expected)
 
     @pytest.mark.parametrize("batch", [1, 3])
     def test_single_scale_factor_still_applies_to_every_sample(self, batch, device, dtype):

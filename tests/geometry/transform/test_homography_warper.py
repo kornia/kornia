@@ -1039,6 +1039,33 @@ class TestHomographyShapeChecks(BaseTester):
         # a batched grid with a matching batch of homographies
         self.assert_close(kornia.geometry.transform.warp_grid(grid.expand(batch, -1, -1, -1), homography), flow)
 
+    @pytest.mark.parametrize("batch", [1, 2, 3])
+    def test_homography_warp_pixel_homography_path_rejects_unbatched_homography(self, batch, device, dtype):
+        # normalized_homography=False is handed to warp_perspective, which has always raised its own ValueError
+        # (not a ShapeError) for an unbatched matrix; this pins that it stays an error for every batch.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.geometry.transform.homography_warp(
+                image, torch.eye(3, device=device, dtype=dtype), (4, 5), normalized_homography=False
+            )
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_homography_warp_shares_one_homography_with_expand(self, batch, device, dtype):
+        # The migration for an unbatched (3, 3) is one homography per image. expand shares one matrix without a copy
+        # and is what the old (3, 3) call amounted to at a batch of 3.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        homography = torch.eye(3, device=device, dtype=dtype)
+        homography[0, 2], homography[1, 2] = 0.2, -0.1
+
+        out = kornia.geometry.transform.homography_warp(image, homography.expand(batch, -1, -1), (4, 5))
+        expected = torch.cat(
+            [
+                kornia.geometry.transform.homography_warp(image[i : i + 1], homography[None], (4, 5))
+                for i in range(batch)
+            ]
+        )
+        self.assert_close(out, expected)
+
     @pytest.mark.parametrize("batch", [1, 2, 3, 5])
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
     def test_homography_warp_rejects_unbatched_homography_for_any_batch(
