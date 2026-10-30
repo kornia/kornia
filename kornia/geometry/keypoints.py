@@ -53,6 +53,8 @@ class Keypoints:
         - The constructor and :meth:`from_tensor` wrap a floating-point tensor without copying it. :meth:`pad`,
           :meth:`unpad`, item assignment and ``index_put(inplace=True)`` write into the stored tensor, so they
           change the caller's tensor; call :meth:`clone` first to keep it.
+        - Integer indexing selects one batch for batched input, or one point with shape ``(1, 2)`` for unbatched
+          input. Scalar integer tensors follow the same rule.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
@@ -86,7 +88,10 @@ class Keypoints:
         self._data = keypoints
 
     def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "Keypoints":
-        return type(self)(self._data[key], False)
+        data = self._data[key]
+        if data.ndim == 1:
+            data = data.unsqueeze(0)
+        return type(self)(data, False)
 
     def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "Keypoints":
         self._data[key] = value._data
@@ -382,6 +387,8 @@ class Keypoints3D:
             it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
 
     Convention:
+        - Integer indexing selects one batch for batched input, or one point with shape ``(1, 3)`` for unbatched
+          input. Scalar integer tensors follow the same rule.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``;
           :meth:`pad` and :meth:`unpad` are deprecated and also raise it
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
@@ -416,7 +423,10 @@ class Keypoints3D:
         self._data = keypoints
 
     def __getitem__(self, key: Union[slice, int, torch.Tensor]) -> "Keypoints3D":
-        return type(self)(self._data[key], False)
+        data = self._data[key]
+        if data.ndim == 1:
+            data = data.unsqueeze(0)
+        return type(self)(data, False)
 
     def __setitem__(self, key: Union[slice, int, torch.Tensor], value: "Keypoints3D") -> "Keypoints3D":
         self._data[key] = value._data

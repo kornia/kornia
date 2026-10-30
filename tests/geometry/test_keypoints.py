@@ -25,6 +25,54 @@ from kornia.geometry.linalg import transform_points
 from testing.base import BaseTester, supports_bilinear_2d_grid_sample
 
 
+@pytest.mark.parametrize("container,coordinates", [(Keypoints, 2), (Keypoints3D, 3)])
+class TestKeypointsIndexing(BaseTester):
+    @pytest.mark.parametrize("num_points", [1, 4])
+    @pytest.mark.parametrize("key_kind", ["first", "last", "scalar_tensor"])
+    @pytest.mark.parametrize("strided", [False, True])
+    def test_scalar_unbatched(self, container, coordinates, num_points, key_kind, strided, device, dtype):
+        data = torch.arange(num_points * coordinates, device=device, dtype=dtype).reshape(num_points, coordinates)
+        if strided:
+            data = data.t().contiguous().t()
+        key = {"first": 0, "last": -1, "scalar_tensor": torch.tensor(-1, device=device)}[key_kind]
+        keypoints = container(data)
+
+        selected = keypoints[key]
+
+        assert type(selected) is container
+        assert selected.shape == (1, coordinates)
+        assert selected.data.dtype == dtype
+        assert selected.data.device == device
+        self.assert_close(selected.to_tensor(), data[key].unsqueeze(0), atol=0, rtol=0)
+        selected.data.add_(1)
+        self.assert_close(keypoints.data[key], selected.data[0], atol=0, rtol=0)
+        keypoints[key] = container(torch.full((1, coordinates), 7.0, device=device, dtype=dtype))
+        self.assert_close(data[key], torch.full((coordinates,), 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_existing_selection(self, container, coordinates, batched, device, dtype):
+        shape = (2, 4, coordinates) if batched else (4, coordinates)
+        data = torch.arange(8 * coordinates if batched else 4 * coordinates, device=device, dtype=dtype).reshape(shape)
+        keypoints = container(data)
+        for key in [
+            slice(None, 1),
+            slice(0, 0),
+            torch.tensor([1, 0], device=device),
+            torch.arange(data.shape[0], device=device) % 2 == 0,
+        ]:
+            self.assert_close(keypoints[key].data, data[key], atol=0, rtol=0)
+        if batched:
+            self.assert_close(keypoints[0].data, data[0], atol=0, rtol=0)
+        empty = container(data[:0])
+        assert empty[:].shape == data[:0].shape
+        with pytest.raises(IndexError):
+            empty[0]
+
+    def test_gradcheck_scalar(self, container, coordinates, device):
+        data = torch.arange(3 * coordinates, device=device, dtype=torch.float64).reshape(3, coordinates)
+        self.gradcheck(lambda x: container(x)[-1].data, (data.requires_grad_(),))
+
+
 class TestKeypoints(BaseTester):
     def test_smoke(self, device, dtype):
         data = torch.rand(10, 2, device=device, dtype=dtype)
