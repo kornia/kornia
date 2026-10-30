@@ -204,10 +204,11 @@ class PyrUp(nn.Module):
 def _extra_levels_as_int(extra_levels: Any) -> int:
     """Return ``extra_levels`` as a positive ``int``, or raise :class:`~kornia.core.exceptions.ValueCheckError`.
 
+    ``_extra_levels_as_int(extra_levels)`` converts a positive integer-like value to ``int`` through ``operator.index``.
     Python and NumPy integers, 0-d integer arrays and integer tensors are accepted, as is anything else that
-    ``operator.index`` converts; bools of every kind are not. The error is raised directly instead of through
-    ``KORNIA_CHECK``: with ``extra_levels < 1`` the level that seeds the next octave does not exist, so the guard
-    must also hold under ``python -O``, ``KORNIA_CHECKS=0`` and ``disable_checks()``.
+    ``operator.index`` converts to a positive integer; bools of every kind are rejected. The error is raised directly
+    instead of through ``KORNIA_CHECK``: with ``extra_levels < 1`` the level that seeds the next octave does not exist,
+    so the guard must also hold under ``python -O``, ``KORNIA_CHECKS=0`` and ``disable_checks()``.
     """
     dtype = getattr(extra_levels, "dtype", None)
     # ``operator.index`` turns ``True``, ``torch.tensor(True)`` and, on older NumPy, ``np.bool_`` into 1.
