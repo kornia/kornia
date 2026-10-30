@@ -32,6 +32,18 @@ from kornia.geometry.camera.distortion_kannala_brandt import (
 from testing.base import BaseTester
 
 
+def _count_nodes(graph, kind: str) -> int:
+    """Count the nodes of ``kind`` in a TorchScript graph, inside loop bodies and fusion subgraphs too."""
+    count = 0
+    for node in graph.nodes():
+        count += node.kind() == kind
+        for block in node.blocks():
+            count += _count_nodes(block, kind)
+        if node.hasAttribute("Subgraph"):
+            count += _count_nodes(node.g("Subgraph"), kind)
+    return count
+
+
 class TestDistortionAffine(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
@@ -423,9 +435,14 @@ class TestDistortionKannalaBrandt(BaseTester):
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         op_script = torch.jit.script(undistort_points_kannala_brandt)
         expected = undistort_points_kannala_brandt(points, params)
-        # Twice: TorchScript optimizes the graph on the second call, where an unrolled loop hung on CUDA (#6257).
+        # Twice: TorchScript optimizes the graph on the second call. With a constant-count loop it unrolled the ten
+        # Gauss-Newton steps there (24 ``aten::sub`` nodes against the 8 of the inlined scripted graph), and on CUDA its
+        # fuser then hung (#6257). The scripted function is cached across tests, so compare with its inlined graph,
+        # which optimization only shrinks, rather than with the first call.
+        scripted_subs = _count_nodes(op_script.inlined_graph, "aten::sub")
         for _ in range(2):
             self.assert_close(op_script(points, params), expected)
+            assert _count_nodes(torch.jit.last_executed_optimized_graph(), "aten::sub") <= scripted_subs
 
     def test_jit(self, device, dtype) -> None:
         self._test_jit_distort(device, dtype)
