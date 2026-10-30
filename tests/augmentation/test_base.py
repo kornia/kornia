@@ -625,6 +625,15 @@ class TestConventionAugmentationBase2D(BaseTester):
             RandomHorizontalFlip3D(p=1.0).validate_tensor(x6)
         RandomHorizontalFlip3D(p=1.0).validate_tensor(torch.rand(3, 4, 5, device=device, dtype=dtype))
 
+    def test_convention_wrong_input_rank_in_augmentation_sequential_video_and_3d_4424(self, device, dtype):
+        video = K.AugmentationSequential(K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BCTHW"))
+        with pytest.raises(InputRankError, match=r"either \(T, H, W\), \(C, T, H, W\) or \(B, C, T, H, W\)\. Got"):
+            video(torch.rand(1, 1, 2, 3, 6, 8, device=device, dtype=dtype))
+        volume = K.AugmentationSequential(RandomHorizontalFlip3D(p=1.0), data_keys=["input"])
+        with pytest.raises(InputRankError, match=r"either \(D, H, W\) or \(B, C, D, H, W\)\. Got") as info:
+            volume(torch.rand(2, 3, 5, 6, device=device, dtype=dtype))
+        assert isinstance(info.value, RuntimeError)
+
     def test_convention_numeric_ranges_return_cpu_parameters_independently_of_input(self, device, dtype):
         # With numeric ranges and unchanged CPU defaults, returned parameter placement is independent of
         # the image. This pin checks returned tensors, not the sampling backend/precision (covered below).

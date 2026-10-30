@@ -456,7 +456,7 @@ class TestTransplantationConventions(BaseTester):
         inner = K.RandomTransplantation3D(p=1.0)
         with pytest.raises(
             RuntimeError,
-            match=r"3D augmentations in AugmentationSequential expect input shape",
+            match=r"Input size must have a shape of either \(D, H, W\) or \(B, C, D, H, W\)",
         ):
             K.AugmentationSequential(inner, data_keys=["image", "mask"])(image, mask)
 

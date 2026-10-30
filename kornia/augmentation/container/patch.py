@@ -401,7 +401,9 @@ class PatchSequential(ImageSequential):
                     (width + left + right) // self.grid_size[1],
                 )
             )
-        if len(batch_shape) != 5 or batch_shape[1] != self.grid_size[0] * self.grid_size[1]:
+        if len(batch_shape) != 5:
+            _raise_input_rank_error(batch_shape, "either (B, C, H, W) or (B, rows * columns, C, h, w)")
+        if batch_shape[1] != self.grid_size[0] * self.grid_size[1]:
             raise ValueError(
                 f"Expected image shape (B, C, H, W) or patch shape (B, rows * columns, C, h, w). Got {batch_shape}."
             )

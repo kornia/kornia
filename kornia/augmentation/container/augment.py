@@ -28,7 +28,7 @@ from kornia.augmentation._2d.geometric.fisheye import RandomFisheye
 from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateSpline
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
+from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor, _raise_input_rank_error, _trailing_shapes
 from kornia.constants import DataKey, Resample
 from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
@@ -384,6 +384,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self.contains_video_sequential: bool = False
         self.contains_3d_augmentation: bool = False
+        # Layout of the contained VideoSequential, reported for a rejected input rank (#4424).
+        self._video_data_format: Optional[str] = None
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
                 warnings.warn(
@@ -391,6 +393,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 )
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
+                self._video_data_format = arg.data_format
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
@@ -748,10 +751,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if not isinstance(inp, torch.Tensor):
                     raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
                 if self.contains_3d_augmentation and len(inp.shape) == 4:
-                    raise RuntimeError(
-                        f"3D augmentations in AugmentationSequential expect input shape "
-                        f"(D, H, W) or (B, C, D, H, W), but got {inp.shape}."
-                    )
+                    # A 4D tensor is ambiguous next to 3D augmentations: (C, D, H, W) or a 2D batch.
+                    _raise_input_rank_error(inp.shape, "either (D, H, W) or (B, C, D, H, W)")
 
             if params is None:
                 # image data must exist if params is not provided.
@@ -759,7 +760,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     inp = in_args[0]
                     # A video input shall be BCDHW while an image input shall be BCHW
                     if self.contains_video_sequential or self.contains_3d_augmentation:
-                        _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                        accepted = (
+                            _trailing_shapes(self._video_data_format, min_rank=3)
+                            if self._video_data_format is not None
+                            else None
+                        )
+                        _, out_shape = self.autofill_dim(inp, dim_range=(3, 5), accepted=accepted)
                     else:
                         _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
                     params = self.forward_parameters(out_shape)
