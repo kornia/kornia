@@ -358,7 +358,8 @@ def bilateral_blur(
         - On MPS, each window is summed over its columns and then over its rows, because MPS reduces two non-adjacent
           axes much more slowly than one. In float16 and bfloat16 that rounds every partial sum, so there the
           gradients with respect to a tensor ``sigma_color`` or ``sigma_space`` are less accurate than on the CPU or
-          CUDA; keep learnable sigmas in float32 on MPS.
+          CUDA. Tensor sigmas are cast to the input's dtype, so keeping them in float32 does not help; pass a float32
+          input on MPS when those gradients matter.
 
     Arguments:
         input: the input torch.Tensor with shape ``(B,C,H,W)``.
