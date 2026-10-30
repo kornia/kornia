@@ -591,12 +591,12 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     any parameter they share with an invalid one) stays finite.
 
     Args:
-        B: right-hand side of shape :math:`(*, N, K)` or :math:`(*, N)`.
-        A: square matrices of shape :math:`(*, N, N)`.
+        B: right-hand side of shape ``(*, N, K)`` or ``(*, N)``.
+        A: square matrices of shape ``(*, N, N)``.
 
     Returns:
-        The solution :math:`(*, N, K)`, the LU factor of the solved matrices :math:`(*, N, N)` and the
-        validity mask :math:`(*)`.
+        The solution ``(*, N, K)``, the LU factor of the solved matrices ``(*, N, N)`` and the
+        validity mask ``(*)``.
     """
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
@@ -647,10 +647,10 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     share with an invalid one) stays finite.
 
     Args:
-        A: square matrices of shape :math:`(*, N, N)`.
+        A: square matrices of shape ``(*, N, N)``.
 
     Returns:
-        The inverse :math:`(*, N, N)` and the validity mask :math:`(*)`.
+        The inverse ``(*, N, N)`` and the validity mask ``(*)``.
     """
     KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
 

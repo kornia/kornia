@@ -8,7 +8,7 @@ on:
       pytorch-version:
         required: false
         type: string
-        default: '["2.14.0"]'
+        default: '["2.15.0"]'
       torch-channel:
         # "pinned" (default) installs exactly the pytorch-version matrix value, byte-identical
         # to prior behavior. "stable" ignores pytorch-version for the install step itself and

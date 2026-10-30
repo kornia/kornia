@@ -196,14 +196,14 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
         """Pool vision tokens with a learned probe query.
 
         Args:
-            hidden_state: Vision token tensor with shape :math:`(B, N, D)`,
+            hidden_state: Vision token tensor with shape ``(B, N, D)``,
                 where :math:`B` is batch size, :math:`N` is token count, and
                 :math:`D` is hidden size.
             attention_mask: Optional mask of the tokens, ``1``/``True`` for a token to pool and ``0``/``False`` for
-                padding, in any form :class:`SigLip2Attention` accepts: :math:`(B, N)`, :math:`(B, N, N)` or
-                :math:`(B, 1, N, N)`. The probe does not attend to the padding tokens. For a 3-D or 4-D mask, a token
-                that no query may attend to is padding, so a :math:`(B, N)` mask broadcast over the queries pools
-                exactly as the :math:`(B, N)` mask itself. As in transformers, a padding token's attention score gets
+                padding, in any form :class:`SigLip2Attention` accepts: ``(B, N)``, ``(B, N, N)`` or
+                ``(B, 1, N, N)``. The probe does not attend to the padding tokens. For a 3-D or 4-D mask, a token
+                that no query may attend to is padding, so a ``(B, N)`` mask broadcast over the queries pools
+                exactly as the ``(B, N)`` mask itself. As in transformers, a padding token's attention score gets
                 ``torch.finfo(dtype).min`` added rather than ``-inf``: a sample whose tokens are all padding pools
                 them with exactly uniform weights in float32, float64 and bfloat16. In float16, as in transformers,
                 ``finfo(float16).min`` plus a score rounds to a multiple of 32, so those weights are only roughly
@@ -214,7 +214,7 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
                 input, which autocast leaves alone, keeps the float64 mask.
 
         Returns:
-            Tensor with shape :math:`(B, D)` containing the pooled visual
+            Tensor with shape ``(B, D)`` containing the pooled visual
             representation after attention, layer normalization, and MLP
             refinement.
         """
@@ -331,7 +331,7 @@ class SigLip2VisionModel(nn.Module):
             pixel_values: Input images of shape (batch_size, num_channels, height, width), with height and width
                 both equal to ``config.image_size`` (see :class:`SigLip2VisionEmbeddings`).
             attention_mask: Optional mask of the patches, ``1``/``True`` for a patch to keep and ``0``/``False`` for
-                a padded one: :math:`(B, N)`, :math:`(B, N, N)` or :math:`(B, 1, N, N)` for :math:`N` patches (see
+                a padded one: ``(B, N)``, ``(B, N, N)`` or ``(B, 1, N, N)`` for :math:`N` patches (see
                 :class:`SigLip2Attention`). It excludes the padded patches from the encoder, where no patch attends
                 to them, and from the pooling.
             output_hidden_states: Whether to return hidden states from all layers.

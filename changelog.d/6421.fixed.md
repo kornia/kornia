@@ -1,0 +1,1 @@
+Keyword arguments of `LightGlue` (and the `params` of `LightGlueMatcher`) now override the configuration of `features`. `depth_confidence`, `width_confidence` and `filter_threshold` given with `"xfeat"`, `"doghardnet"`, `"dog_affnet_hardnet"` or `"keynet_affnet_hardnet"` used to be replaced silently by the preset's values.

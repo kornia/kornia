@@ -34,8 +34,8 @@ class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
           to the batch form ``False``.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.

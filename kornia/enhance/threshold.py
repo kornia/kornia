@@ -194,7 +194,7 @@ class Threshold(Module):
 
         Args:
             input: Input tensor to threshold. Typical image inputs are shaped
-                :math:`(*, C, H, W)`, but any tensor shape supported by
+                ``(*, C, H, W)``, but any tensor shape supported by
                 :func:`threshold` is accepted.
 
         Returns:

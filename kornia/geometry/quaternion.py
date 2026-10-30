@@ -58,7 +58,7 @@ class Quaternion(nn.Module):
         Q = \begin{bmatrix} q_w & q_x & q_y & q_z \end{bmatrix}
 
     Convention:
-        - ``data`` is ``(w, x, y, z)``, real part first, with shape :math:`(*, 4)`; only the last axis is checked.
+        - ``data`` is ``(w, x, y, z)``, real part first, with shape ``(*, 4)``; only the last axis is checked.
           Other libraries' orders, such as scipy's default ``(x, y, z, w)``, are mapped on
           :ref:`Rotations and rigid motions <rotation-conventions>`.
         - ``*`` between quaternions is the Hamilton product, so ``(q1 * q2).matrix()`` is
@@ -101,7 +101,7 @@ class Quaternion(nn.Module):
         """Construct a quaternion from torch.Tensor or parameter data.
 
         Args:
-            data: torch.Tensor or parameter containing the quaternion data with the shape of :math:`(*, 4)`.
+            data: torch.Tensor or parameter containing the quaternion data with the shape of ``(*, 4)``.
                 Stored without copying as a persistent buffer, or as a parameter if already an ``nn.Parameter``.
 
         Example:
@@ -358,7 +358,7 @@ class Quaternion(nn.Module):
 
     @property
     def data(self) -> torch.Tensor:
-        """Return the underlying data with shape :math:`(B, 4)`."""
+        """Return the underlying data with shape ``(B, 4)``."""
         return self._data
 
     @property
@@ -368,7 +368,7 @@ class Quaternion(nn.Module):
 
     @property
     def real(self) -> torch.Tensor:
-        """Return the real part with shape :math:`(B,)`.
+        """Return the real part with shape ``(B,)``.
 
         Alias for :attr:`~kornia.geometry.quaternion.Quaternion.w`.
         """
@@ -376,12 +376,12 @@ class Quaternion(nn.Module):
 
     @property
     def vec(self) -> torch.Tensor:
-        """Return the vector with the imaginary part with shape :math:`(B, 3)`."""
+        """Return the vector with the imaginary part with shape ``(B, 3)``."""
         return self.data[..., 1:]
 
     @property
     def q(self) -> torch.Tensor:
-        """Return the underlying data with shape :math:`(B, 4)`.
+        """Return the underlying data with shape ``(B, 4)``.
 
         Alias for :func:`~kornia.geometry.quaternion.Quaternion.data`
         """
@@ -389,7 +389,7 @@ class Quaternion(nn.Module):
 
     @property
     def scalar(self) -> torch.Tensor:
-        """Return a scalar with the real with shape :math:`(B,)`.
+        """Return a scalar with the real with shape ``(B,)``.
 
         Alias for :attr:`~kornia.geometry.quaternion.Quaternion.w`.
         """
@@ -397,32 +397,32 @@ class Quaternion(nn.Module):
 
     @property
     def w(self) -> torch.Tensor:
-        """Return the :math:`q_w` with shape :math:`(B,)`."""
+        """Return the :math:`q_w` with shape ``(B,)``."""
         return self.data[..., 0]
 
     @property
     def x(self) -> torch.Tensor:
-        """Return the :math:`q_x` with shape :math:`(B,)`."""
+        """Return the :math:`q_x` with shape ``(B,)``."""
         return self.data[..., 1]
 
     @property
     def y(self) -> torch.Tensor:
-        """Return the :math:`q_y` with shape :math:`(B,)`."""
+        """Return the :math:`q_y` with shape ``(B,)``."""
         return self.data[..., 2]
 
     @property
     def z(self) -> torch.Tensor:
-        """Return the :math:`q_z` with shape :math:`(B,)`."""
+        """Return the :math:`q_z` with shape ``(B,)``."""
         return self.data[..., 3]
 
     @property
     def shape(self) -> Tuple[int, ...]:
-        """Return the shape of the underlying data with shape :math:`(B, 4)`."""
+        """Return the shape of the underlying data with shape ``(B, 4)``."""
         return tuple(self.data.shape)
 
     @property
     def polar_angle(self) -> torch.Tensor:
-        r"""Return the polar angle :math:`\arccos(w / |q|)` in :math:`[0, \pi]`, with shape :math:`(B,)`.
+        r"""Return the polar angle :math:`\arccos(w / |q|)` in :math:`[0, \pi]`, with shape ``(B,)``.
 
         ``q`` rotates by twice this angle about the axis ``vec``.
 
@@ -437,7 +437,7 @@ class Quaternion(nn.Module):
         return torch.atan2(self.vec.norm(dim=-1), self.scalar)
 
     def matrix(self) -> torch.Tensor:
-        """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
+        """Convert the quaternion to a rotation matrix of shape ``(B, 3, 3)``.
 
         Example:
             >>> q = Quaternion.identity()
@@ -455,7 +455,7 @@ class Quaternion(nn.Module):
         """Create a quaternion from a rotation matrix.
 
         Args:
-            matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+            matrix: the rotation matrix to convert of shape ``(B, 3, 3)``.
             check_rotation: if ``True``, raise ``ValueError`` unless every input
                 is a rotation matrix. The default ``False`` keeps the unchecked
                 behaviour, under which a reflection such as
@@ -512,7 +512,7 @@ class Quaternion(nn.Module):
         """Create a quaternion from axis-angle representation.
 
         Args:
-            axis_angle: rotation vector of shape :math:`(B, 3)`.
+            axis_angle: rotation vector of shape ``(B, 3)``.
 
         Example:
             >>> axis_angle = torch.tensor([[1., 0., 0.]])
@@ -587,7 +587,7 @@ class Quaternion(nn.Module):
         device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
-        """Create a random unit quaternion of shape :math:`(B, 4)`.
+        """Create a random unit quaternion of shape ``(B, 4)``.
 
         Uniformly distributed across the rotation space as per: http://planning.cs.uiuc.edu/node198.html
 
@@ -625,8 +625,8 @@ class Quaternion(nn.Module):
         Args:
             q1: second quaternion to be interpolated between.
             t: interpolation ratio, ``0`` at ``self`` and ``1`` at ``q1``. It is not validated: values outside
-                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B,)`, like
-                ``self.w``, or :math:`(B, 1)`.
+                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape ``(B,)``, like
+                ``self.w``, or ``(B, 1)``.
 
         Example:
             >>> q0 = Quaternion.identity()

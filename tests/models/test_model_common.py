@@ -230,6 +230,13 @@ class TestWindowPartition:
         assert reconstructed.shape == (2, 7, 9, 16)
         assert torch.allclose(x, reconstructed)
 
+    @pytest.mark.parametrize("hw", [(8, 8), (7, 9)], ids=["no-padding", "padding"])
+    def test_roundtrip_empty_batch_6266(self, hw):
+        x = torch.rand(0, *hw, 16)
+        windows, pad_hw = window_partition(x, window_size=4)
+        assert windows.shape == (0, 4, 4, 16)
+        assert window_unpartition(windows, window_size=4, pad_hw=pad_hw, hw=hw).shape == (0, *hw, 16)
+
 
 class TestWindowUnpartition:
     def test_no_crop_needed(self):

@@ -1,0 +1,1 @@
+`LightGlueMatcher` accepts the `"xfeat"` and `"raco-aliked"` modes, whose weights `LightGlue` already loads. With `"xfeat"`, pass the descriptors of `XFeat.detectAndCompute` and LAFs centred on its keypoints.

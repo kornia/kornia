@@ -52,15 +52,74 @@ class TestSOLD2_detector(BaseTester):
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 128, 128
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        # pretrained=False: scripting does not need the weights, and the CI cache
-        # deliberately does not carry ``sold2_wireframe.tar`` -- see
-        # ``NOT_PREFETCHED`` in tests/core/test_weights_prefetch.py.
+        # pretrained=False: scripting does not need the weights
         model = SOLD2_detector(pretrained=False).to(img.device, img.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
 
+    def test_has_no_descriptor_head(self, device, dtype):
+        # SOLD2_detector returns no descriptors, so its network neither builds nor runs the descriptor head; SOLD2 does
+        detector = SOLD2_detector(pretrained=False).to(device, dtype).eval()
+        assert detector.model.descriptor_decoder is None
+        assert not any("descriptor_decoder" in key for key in detector.state_dict())
+        assert SOLD2(pretrained=False).model.descriptor_decoder is not None
+        with torch.no_grad():
+            outputs = detector.model(torch.rand(1, 1, 64, 64, device=device, dtype=dtype))
+        assert set(outputs) == {"junctions", "heatmap"}
+
+    def test_loads_weights_with_a_descriptor_head_and_detects_as_sold2(self, device, dtype):
+        # the pretrained checkpoint, and state dicts saved from a detector that built the head, carry the head's weights
+        torch.manual_seed(0)
+        sold2 = SOLD2(pretrained=False).to(device, dtype).eval()
+        detector = SOLD2_detector(pretrained=False).to(device, dtype).eval()
+        weights = sold2.model.state_dict()
+        detector.model.load_state_dict(weights)
+        assert any(key.startswith("descriptor_decoder.") for key in weights)  # the caller's dict is left as it was
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        with torch.no_grad():
+            expected, actual = sold2(img), detector(img)
+        self.assert_close(actual["junction_heatmap"], expected["junction_heatmap"])
+        self.assert_close(actual["line_heatmap"], expected["line_heatmap"])
+        assert len(actual["line_segments"]) == len(expected["line_segments"])
+        for segments, expected_segments in zip(actual["line_segments"], expected["line_segments"]):
+            self.assert_close(segments, expected_segments)
+
 
 class TestJunctionsAndSegments(BaseTester):
+    def test_bilinear_integer_coordinates(self, device, dtype):
+        detector = LineSegmentDetectionModule()
+        heatmap = torch.arange(20, device=device, dtype=dtype).reshape(4, 5)
+        rows = torch.tensor([[0.0, 1.0, 1.5, 2.0, 3.0, 3.0]], device=device, dtype=dtype)
+        cols = torch.tensor([[0.0, 2.5, 2.0, 3.0, 2.5, 4.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.0, 7.5, 9.5, 13.0, 17.5, 19.0]], device=device, dtype=dtype)
+        self.assert_close(detector.detect_bilinear(heatmap, rows, cols), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("transpose", [False, True], ids=["horizontal", "vertical"])
+    def test_refinement_keeps_integer_line(self, device, dtype, transpose):
+        heatmap = torch.zeros(32, 96, device=device, dtype=dtype)
+        heatmap[16, 16:80] = 1
+        junctions = torch.tensor([[16.0, 16.0], [16.0, 79.0]], device=device, dtype=dtype)
+        if transpose:
+            heatmap = heatmap.t()
+            junctions = junctions.flip(-1)
+        config = LineDetectorCfg(use_heatmap_refinement=False, use_candidate_suppression=False)
+        line_map, refined, _ = LineSegmentDetectionModule(config).detect(junctions, heatmap)
+        segments = line_map_to_segments(refined, line_map)
+        assert segments.shape == (1, 2, 2)
+        axis = 1 if transpose else 0
+        self.assert_close(segments[..., axis], torch.full_like(segments[..., axis], 16.0), atol=0, rtol=0)
+        # Candidates may shorten a constant-strength line by one pixel without changing its score.
+        self.assert_close(segments, junctions[None].to(segments.dtype), atol=1.0, rtol=0)
+
+    def test_bilinear_integer_coordinate_gradient(self, device, dtype):
+        detector = LineSegmentDetectionModule()
+        heatmap = torch.arange(20, device=device, dtype=dtype).reshape(4, 5)
+        rows = torch.tensor([[1.0, 1.5]], device=device, dtype=dtype, requires_grad=True)
+        cols = torch.tensor([[2.0, 2.5]], device=device, dtype=dtype, requires_grad=True)
+        row_grad, col_grad = torch.autograd.grad(detector.detect_bilinear(heatmap, rows, cols).sum(), (rows, cols))
+        self.assert_close(row_grad, torch.full_like(rows, 5.0), atol=0, rtol=0)
+        self.assert_close(col_grad, torch.ones_like(cols), atol=0, rtol=0)
+
     @staticmethod
     def _junction_map(points, device, dtype, shape=(96, 128)):
         prob = torch.zeros(shape, device=device, dtype=dtype)

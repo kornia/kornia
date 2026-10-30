@@ -182,7 +182,7 @@ def diamond_square(
           ``torch.rand`` the map stays in [0, 1] without normalization while ``random_scale`` and ``roughness`` are in
           [0, 1], and it is flat in mean (0.5 at every pixel) for every ``random_scale``, though its variance varies
           across the map.
-        - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a :math:`(B,)` tensor with one value per
+        - ``roughness`` and ``random_scale`` are a float, a 0-d tensor or a ``(B,)`` tensor with one value per
           sample, and follow ``device`` and ``dtype``; with ``dtype=None`` a tensor keeps its dtype and a float takes
           the default dtype. When ``random_fn`` returns the dtype it is asked for, the map has the dtype that
           ``dtype`` (the default dtype for ``None``), ``roughness`` and ``random_scale`` promote to, at every map
@@ -202,7 +202,7 @@ def diamond_square(
         dtype: the torch dtype to place the output map.
 
     Returns:
-        A torch.Tensor with shape :math:`(B,C,H,W)` containing the fractal image.
+        A torch.Tensor with shape ``(B,C,H,W)`` containing the fractal image.
 
     """
     KORNIA_CHECK(len(output_size) == 4, "output_size must be (B,C,H,W)")

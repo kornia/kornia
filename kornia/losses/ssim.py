@@ -49,8 +49,8 @@ def ssim_loss(
         - The default ``reduction='mean'`` averages every element; ``'none'`` keeps the shape of the SSIM map.
 
     Args:
-        img1: the first input image with shape :math:`(B, C, H, W)`.
-        img2: the second input image with shape :math:`(B, C, H, W)`.
+        img1: the first input image with shape ``(B, C, H, W)``.
+        img2: the second input image with shape ``(B, C, H, W)``.
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
@@ -136,7 +136,7 @@ class SSIMLoss(nn.Module):
         """Compute SSIM loss between two 2D image tensors.
 
         Args:
-            img1: First image batch with shape :math:`(B, C, H, W)`, where
+            img1: First image batch with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`H` is height, and :math:`W` is width.
             img2: Second image batch with the same shape as ``img1``.

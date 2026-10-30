@@ -12,7 +12,7 @@ Each operation documents its channel order and range.
 Conventions
 -----------
 
-Color tensors are channel-first, :math:`(*, C, H, W)`. Float RGB inputs are unit-range nonlinear sRGB,
+Color tensors are channel-first, ``(*, C, H, W)``. Float RGB inputs are unit-range nonlinear sRGB,
 except that :func:`rgb_to_xyz` takes linear RGB and the ``*rgb255*`` helpers use :math:`[0, 255]`.
 :func:`rgb_to_linear_rgb` and :func:`linear_rgb_to_rgb` apply the sRGB transfer curve. HLS and HSV
 hue is measured in radians. The conversion pages define the remaining channel orders and ranges.
