@@ -719,6 +719,10 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     Returns:
         the transformed grid of shape ``(N, H, W, 2)``.
 
+    Raises:
+        ShapeError: If ``grid`` is not ``(B, H, W, 2)``, or ``src_homo_dst`` is not ``(B, 3, 3)`` or
+            ``(B, 1, 3, 3)``. A single ``(3, 3)`` homography needs a leading batch dimension.
+
     See Also:
         - :func:`warp_grid3d`: the same for a 3D ``(x, y, z)`` grid and ``(N, 4, 4)`` homographies.
         - :func:`homography_warp`: builds the grid, warps it with this function and samples the image.
@@ -822,6 +826,10 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 
     Returns:
         the transformed grid of shape ``(N, D, H, W, 3)``.
+
+    Raises:
+        ShapeError: If ``grid`` is not ``(B, D, H, W, 3)``, or ``src_homo_dst`` is not ``(B, 4, 4)`` or
+            ``(B, 1, 4, 4)``. A single ``(4, 4)`` homography needs a leading batch dimension.
 
     See Also:
         - :func:`warp_grid`: the same for a 2D ``(x, y)`` grid and ``(N, 3, 3)`` homographies.
@@ -1403,6 +1411,9 @@ def get_translation_matrix2d(translations: torch.Tensor) -> torch.Tensor:
     Returns:
         the affine transformation matrix ``(B, 3, 3)``.
 
+    Raises:
+        ShapeError: If ``translations`` is not ``(B, 2)``. A single translation needs shape ``(1, 2)``.
+
     See Also:
         - :func:`translate`: shift an image without building the matrix.
         - :func:`get_affine_matrix2d`: a translation composed with a rotation, a scale and a shear.
@@ -1521,10 +1532,9 @@ def get_affine_matrix3d(
     Args:
         translations: torch.Tensor containing the translation vector (dx,dy,dz) with shape ``(B, 3)``.
         center: torch.Tensor containing the center vector (x,y,z) with shape ``(B, 3)``.
-        scale: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``; a ``(B, 1)`` or ``(1,)`` tensor scales
-            the three axes alike. A ``(B,)`` tensor is not one factor per matrix: for ``B = 3`` it is read as
-            ``(sx, sy, sz)``, and for another ``B > 1`` it raises
-            (`#6398 <https://github.com/kornia/kornia/issues/6398>`_).
+        scale: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` shared across the batch.
+            Use ``(B, 1)`` for one isotropic factor per sample, or ``(1,)`` for one factor shared across all samples
+            and axes. A flat ``(B,)`` tensor with more than one element is rejected; reshape it to ``(B, 1)``.
         angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
@@ -1537,6 +1547,10 @@ def get_affine_matrix3d(
 
     Returns:
         the 3d affine transformation matrix ``(B, 4, 4)``.
+
+    Raises:
+        ShapeError: If ``scale`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)`` or ``(1,)``;
+            see :func:`get_projective_transform`.
 
     See Also:
         - :func:`get_affine_matrix2d`: the 2D composition, whose positive angle turns clockwise on screen.
@@ -1852,10 +1866,16 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
-        scales: scale factor for x-y-z-directions with shape ``(B, 3)``.
+        scales: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` shared across the batch.
+            Use ``(B, 1)`` for one isotropic factor per sample, or ``(1,)`` for one factor shared across all samples
+            and axes.
 
     Returns:
         the projection matrix of 3D rotation with shape ``(B, 3, 4)``.
+
+    Raises:
+        ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)`` or ``(1,)``. A flat ``(3,)`` tensor
+            is rejected: pass shared per-axis factors as ``(1, 3)`` and per-sample factors as ``(B, 1)``.
 
     See Also:
         - :func:`get_rotation_matrix2d`: the 2D rotation and scale, counter-clockwise on screen.
