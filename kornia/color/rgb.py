@@ -31,11 +31,14 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_bgr.png
 
+    Convention:
+        Reverses the three channels at axis -3; leading dimensions are preserved.
+
     Args:
-        image: RGB Image to be converted to BGRof of shape :math:`(*,3,H,W)`.
+        image: RGB Image to be converted to BGRof of shape ``(*,3,H,W)``.
 
     Returns:
-        BGR version of the image with shape of shape :math:`(*,3,H,W)`.
+        BGR version of the image with shape of shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -54,11 +57,14 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
 def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to RGB.
 
+    Convention:
+        Reverses the three channels at axis -3; it is its own inverse.
+
     Args:
-        image: BGR Image to be converted to BGR of shape :math:`(*,3,H,W)`.
+        image: BGR Image to be converted to BGR of shape ``(*,3,H,W)``.
 
     Returns:
-        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape of shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -79,13 +85,17 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Convert an image from RGB to RGBA.
 
+    Convention:
+        Appends alpha as the fourth channel at axis -3. A Python float alpha is broadcast over the image;
+        a tensor alpha must have shape ``(*,1,H,W)`` matching the image's leading and spatial axes.
+
     Args:
-        image: RGB Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
-        alpha_val (float, torch.Tensor): A float number for the alpha value or a torch.tensor
-          of shape :math:`(*,1,H,W)`.
+        image: RGB Image to be converted to RGBA of shape ``(*,3,H,W)``.
+        alpha_val (float, torch.Tensor): A float number for the alpha value or a torch.Tensor
+          of shape ``(*,1,H,W)`` matching the image's leading and spatial dimensions.
 
     Returns:
-        RGBA version of the image with shape :math:`(*,4,H,W)`.
+        RGBA version of the image with shape ``(*,4,H,W)``.
 
     .. note:: The current functionality is NOT supported by Torchscript.
 
@@ -110,6 +120,8 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     if isinstance(alpha_val, float):
         a = torch.full_like(r, fill_value=float(alpha_val))
+    elif alpha_val.shape != r.shape:
+        raise ValueError(f"alpha_val must have shape {r.shape}. Got {alpha_val.shape}")
 
     return torch.cat([r, g, b, a], dim=-3)
 
@@ -117,13 +129,16 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Convert an image from BGR to RGBA.
 
+    Convention:
+        Reorders BGR to RGB and appends alpha as the fourth channel at axis -3.
+
     Args:
-        image: BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
+        image: BGR Image to be converted to RGBA of shape ``(*,3,H,W)``.
         alpha_val: A float number for the alpha value or a torch.Tensor
-          of shape :math:`(*,1,H,W)`.
+          of shape ``(*,1,H,W)`` matching the image's leading and spatial dimensions.
 
     Returns:
-        RGBA version of the image with shape :math:`(*,4,H,W)`.
+        RGBA version of the image with shape ``(*,4,H,W)``.
 
     .. note:: The current functionality is NOT supported by Torchscript.
 
@@ -152,14 +167,18 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     The function composites the input RGBA image over a background color. If no
     background color is provided, it defaults to a white background.
 
+    Convention:
+        Expects unit-range float RGBA with alpha in [0, 1]; the default background is white (1.0)
+        and background_color is a unit-range RGB color.
+
     Args:
-        image: The RGBA image to be converted, with shape :math:`(*,4,H,W)`.
+        image: The RGBA image to be converted, with shape ``(*,4,H,W)``.
         background_color: An optional background color. It can be a *tuple or list* of 3 floats,
-            a torch.Tensor of shape :math:`(*,3,H,W)` for a per-pixel background, or a broadcastable
-            torch.Tensor (e.g., :math:`(*,3,1,1)`). If None, a white background is used.
+            a torch.Tensor of shape ``(*,3,H,W)`` for a per-pixel background, or a broadcastable
+            torch.Tensor (e.g., ``(*,3,1,1)``). If None, a white background is used.
 
     Returns:
-        The converted RGB image with shape :math:`(*,3,H,W)`.
+        The converted RGB image with shape ``(*,3,H,W)``.
 
     Example:
         >>> rgba_image = torch.rand(2, 4, 32, 32)
@@ -183,7 +202,8 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     elif isinstance(background_color, (tuple, list)):
         if len(background_color) != 3:
             raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
-        background_rgb = torch.as_tensor(background_color, device=image.device, dtype=image.dtype).view(-1, 3, 1, 1)
+        # A channel-first color broadcasts over any leading dimensions without adding a batch axis.
+        background_rgb = torch.as_tensor(background_color, device=image.device, dtype=image.dtype).view(3, 1, 1)
 
     elif isinstance(background_color, torch.Tensor):
         if background_color.shape[-3] != 3:
@@ -202,11 +222,14 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGBA to BGR.
 
+    Convention:
+        Alpha-composites RGBA over white, then reverses the RGB channels at axis -3.
+
     Args:
-        image: RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
+        image: RGBA Image to be converted to BGR of shape ``(*,4,H,W)``.
 
     Returns:
-        RGB version of the image with shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
@@ -229,11 +252,15 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_linear_rgb.png
 
+    Convention:
+        Converts nonlinear unit-range sRGB to linear RGB channelwise. It is the companion of
+        linear_rgb_to_rgb and the required preparation for rgb_to_xyz.
+
     Args:
-        image: sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
+        image: sRGB Image to be converted to linear RGB of shape ``(*,3,H,W)``.
 
     Returns:
-        linear RGB version of the image with shape of :math:`(*,3,H,W)`.
+        linear RGB version of the image with shape of ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -246,7 +273,12 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
-    lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(((image + 0.055) / 1.055), 2.4), image / 12.92)
+    threshold = 0.04045
+    lin_rgb: torch.Tensor = torch.where(
+        image > threshold,
+        torch.pow(((image + 0.055).clamp(min=0.0) / 1.055), 2.4),
+        image / 12.92,
+    )
 
     return lin_rgb
 
@@ -254,11 +286,14 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
 def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a linear RGB image to sRGB. Used in colorspace conversions.
 
+    Convention:
+        Converts linear RGB to nonlinear unit-range sRGB channelwise.
+
     Args:
-        image: linear RGB Image to be converted to sRGB of shape :math:`(*,3,H,W)`.
+        image: linear RGB Image to be converted to sRGB of shape ``(*,3,H,W)``.
 
     Returns:
-        sRGB version of the image with shape of shape :math:`(*,3,H,W)`.
+        sRGB version of the image with shape of shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -282,11 +317,14 @@ def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
 def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
     r"""Convert surface normals to RGB [0, 255] for visualization purposes.
 
+    Convention:
+        Maps normal components from [-1, 1] to RGB255 channels [0, 255], clamping the result.
+
     Args:
-        image: surface normals to be converted to RGB with quantization of shape :math:`(*,3,H,W)`.
+        image: surface normals to be converted to RGB with quantization of shape ``(*,3,H,W)``.
 
     Returns:
-        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape of shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -301,11 +339,14 @@ def normals_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.
 
+    Convention:
+        Multiplies unit-range RGB values by 255 and clamps the result to [0, 255].
+
     Args:
-        image: RGB Image to be converted to RGB [0, 255] of shape :math:`(*,3,H,W)`.
+        image: RGB Image to be converted to RGB [0, 255] of shape ``(*,3,H,W)``.
 
     Returns:
-        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape of shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -319,11 +360,14 @@ def rgb_to_rgb255(image: torch.Tensor) -> torch.Tensor:
 def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGB [0, 255] to RGB for visualization purposes.
 
+    Convention:
+        Divides RGB255 values by 255 without clipping.
+
     Args:
-        image: RGB Image to be converted to RGB of shape :math:`(*,3,H,W)`.
+        image: RGB Image to be converted to RGB of shape ``(*,3,H,W)``.
 
     Returns:
-        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape of shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -338,11 +382,15 @@ def rgb255_to_rgb(image: torch.Tensor) -> torch.Tensor:
 def rgb255_to_normals(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGB [0, 255] to surface normals for visualization purposes.
 
+    Convention:
+        Maps RGB255 channels to [-1, 1], then normalizes each three-channel vector at axis -3.
+        Half inputs are computed in float32 and rounded to the input dtype once at return.
+
     Args:
-        image: RGB Image to be converted to surface normals of shape :math:`(*,3,H,W)`.
+        image: RGB Image to be converted to surface normals of shape ``(*,3,H,W)``.
 
     Returns:
-        surface normals version of the image with shape of shape :math:`(*,3,H,W)`.
+        surface normals version of the image with shape of shape ``(*,3,H,W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -350,11 +398,17 @@ def rgb255_to_normals(image: torch.Tensor) -> torch.Tensor:
 
     """
     KORNIA_CHECK_IS_COLOR(image)
-    return F.normalize((image / 255.0) * 2.0 - 1.0, dim=-3, p=2.0)
+    dtype = image.dtype
+    if dtype in (torch.float16, torch.bfloat16):
+        image = image.float()
+    output = F.normalize((image / 255.0) * 2.0 - 1.0, dim=-3, p=2.0)
+    return output.to(dtype) if dtype in (torch.float16, torch.bfloat16) else output
 
 
 class BgrToRgb(nn.Module):
     r"""Convert image from BGR to RGB.
+
+    See the Convention block on :func:`bgr_to_rgb`.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -362,8 +416,8 @@ class BgrToRgb(nn.Module):
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -379,12 +433,12 @@ class BgrToRgb(nn.Module):
         """Convert a BGR tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to BGR channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return bgr_to_rgb(image)
 
@@ -392,14 +446,16 @@ class BgrToRgb(nn.Module):
 class RgbToBgr(nn.Module):
     r"""Convert an image from RGB to BGR.
 
+    See the Convention block on :func:`rgb_to_bgr`.
+
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
         BGR version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -415,12 +471,12 @@ class RgbToBgr(nn.Module):
         """Convert an RGB tensor to BGR.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            BGR tensor with shape :math:`(*, 3, H, W)`.
+            BGR tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_bgr(image)
 
@@ -428,18 +484,20 @@ class RgbToBgr(nn.Module):
 class RgbToRgba(nn.Module):
     r"""Convert an image from RGB to RGBA.
 
+    See the Convention block on :func:`rgb_to_rgba`.
+
     Add an alpha channel to existing RGB image.
 
     Args:
         alpha_val: A float number for the alpha value or a torch.Tensor
-          of shape :math:`(*,1,H,W)`.
+          of shape ``(*,1,H,W)``.
 
     Returns:
-        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
+        torch.Tensor: RGBA version of the image with shape ``(*,4,H,W)``.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 4, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 4, H, W)``
 
     .. note:: The current functionality is NOT supported by Torchscript.
 
@@ -455,18 +513,21 @@ class RgbToRgba(nn.Module):
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
         super().__init__()
-        self.alpha_val = alpha_val
+        if isinstance(alpha_val, torch.Tensor) and not isinstance(alpha_val, nn.Parameter):
+            self.register_buffer("alpha_val", alpha_val, persistent=False)
+        else:
+            self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """Convert an RGB tensor to RGBA.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGBA tensor with shape :math:`(*, 4, H, W)` using this module's alpha value.
+            RGBA tensor with shape ``(*, 4, H, W)`` using this module's alpha value.
         """
         return rgb_to_rgba(image, self.alpha_val)
 
@@ -474,18 +535,20 @@ class RgbToRgba(nn.Module):
 class BgrToRgba(nn.Module):
     r"""Convert an image from BGR to RGBA.
 
+    See the Convention block on :func:`bgr_to_rgba`.
+
     Add an alpha channel to existing RGB image.
 
     Args:
         alpha_val: A float number for the alpha value or a torch.Tensor
-          of shape :math:`(*,1,H,W)`.
+          of shape ``(*,1,H,W)``.
 
     Returns:
-        RGBA version of the image with shape :math:`(*,4,H,W)`.
+        RGBA version of the image with shape ``(*,4,H,W)``.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 4, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 4, H, W)``
 
     .. note:: The current functionality is NOT supported by Torchscript.
 
@@ -501,18 +564,21 @@ class BgrToRgba(nn.Module):
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
         super().__init__()
-        self.alpha_val = alpha_val
+        if isinstance(alpha_val, torch.Tensor) and not isinstance(alpha_val, nn.Parameter):
+            self.register_buffer("alpha_val", alpha_val, persistent=False)
+        else:
+            self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """Append this module's alpha channel to the input tensor.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` is the input channel count, and ``H``/``W`` are height and width.
 
         Returns:
-            RGBA tensor with shape :math:`(*, 4, H, W)`.
+            RGBA tensor with shape ``(*, 4, H, W)``.
         """
         return bgr_to_rgba(image, self.alpha_val)
 
@@ -520,14 +586,16 @@ class BgrToRgba(nn.Module):
 class RgbaToRgb(nn.Module):
     r"""Convert an image from RGBA to RGB.
 
+    See the Convention block on :func:`rgba_to_rgb`.
+
     Remove an alpha channel from RGB image.
 
     Returns:
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 4, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 4, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
@@ -543,12 +611,12 @@ class RgbaToRgb(nn.Module):
         """Convert an RGBA tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 4, H, W)`.
+            image: Input tensor with shape ``(*, 4, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``4`` corresponds to RGBA channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return rgba_to_rgb(image)
 
@@ -556,14 +624,16 @@ class RgbaToRgb(nn.Module):
 class RgbaToBgr(nn.Module):
     r"""Convert an image from RGBA to BGR.
 
+    See the Convention block on :func:`rgba_to_bgr`.
+
     Remove an alpha channel from BGR image.
 
     Returns:
         BGR version of the image.
 
     Shape:
-        - image: :math:`(*, 4, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 4, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
@@ -579,18 +649,20 @@ class RgbaToBgr(nn.Module):
         """Convert an RGBA tensor to BGR.
 
         Args:
-            image: Input tensor with shape :math:`(*, 4, H, W)`.
+            image: Input tensor with shape ``(*, 4, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``4`` corresponds to RGBA channels, and ``H``/``W`` are height and width.
 
         Returns:
-            BGR tensor with shape :math:`(*, 3, H, W)`.
+            BGR tensor with shape ``(*, 3, H, W)``.
         """
         return rgba_to_bgr(image)
 
 
 class RgbToLinearRgb(nn.Module):
     r"""Convert an image from sRGB to linear RGB.
+
+    See the Convention block on :func:`rgb_to_linear_rgb`.
 
     Reverses the gamma correction of sRGB to get linear RGB values for colorspace conversions.
     The image data is assumed to be in the range of :math:`[0, 1]`
@@ -599,8 +671,8 @@ class RgbToLinearRgb(nn.Module):
         Linear RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -623,12 +695,12 @@ class RgbToLinearRgb(nn.Module):
         """Convert an sRGB tensor to linear RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Linear RGB tensor with shape :math:`(*, 3, H, W)`.
+            Linear RGB tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_linear_rgb(image)
 
@@ -636,14 +708,16 @@ class RgbToLinearRgb(nn.Module):
 class LinearRgbToRgb(nn.Module):
     r"""Convert a linear RGB image to sRGB.
 
+    See the Convention block on :func:`linear_rgb_to_rgb`.
+
     Applies gamma correction to linear RGB values, at the end of colorspace conversions, to get sRGB.
 
     Returns:
         sRGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -666,12 +740,12 @@ class LinearRgbToRgb(nn.Module):
         """Convert a linear RGB tensor to sRGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            sRGB tensor with shape :math:`(*, 3, H, W)`.
+            sRGB tensor with shape ``(*, 3, H, W)``.
         """
         return linear_rgb_to_rgb(image)
 
@@ -679,12 +753,14 @@ class LinearRgbToRgb(nn.Module):
 class NormalsToRgb255(nn.Module):
     r"""Convert surface normals to RGB [0, 255] for visualization purposes.
 
+    See the Convention block on :func:`normals_to_rgb255`.
+
     Returns:
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -697,12 +773,12 @@ class NormalsToRgb255(nn.Module):
         """Convert surface normals to RGB values in :math:`[0, 255]`.
 
         Args:
-            image: Input normal map tensor with shape :math:`(*, 3, H, W)`.
+            image: Input normal map tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to XYZ normal components, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
+            RGB tensor in :math:`[0, 255]` with shape ``(*, 3, H, W)``.
         """
         return normals_to_rgb255(image)
 
@@ -710,12 +786,14 @@ class NormalsToRgb255(nn.Module):
 class RgbToRgb255(nn.Module):
     r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.
 
+    See the Convention block on :func:`rgb_to_rgb255`.
+
     Returns:
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -728,12 +806,12 @@ class RgbToRgb255(nn.Module):
         """Convert RGB values from :math:`[0, 1]` to :math:`[0, 255]`.
 
         Args:
-            image: Input RGB tensor with shape :math:`(*, 3, H, W)`.
+            image: Input RGB tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
+            RGB tensor in :math:`[0, 255]` with shape ``(*, 3, H, W)``.
         """
         return rgb_to_rgb255(image)
 
@@ -741,12 +819,14 @@ class RgbToRgb255(nn.Module):
 class Rgb255ToRgb(nn.Module):
     r"""Convert an image from RGB [0, 255] to RGB for visualization purposes.
 
+    See the Convention block on :func:`rgb255_to_rgb`.
+
     Returns:
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -759,12 +839,12 @@ class Rgb255ToRgb(nn.Module):
         """Convert RGB values from :math:`[0, 255]` to :math:`[0, 1]`.
 
         Args:
-            image: Input RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
+            image: Input RGB tensor in :math:`[0, 255]` with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor in :math:`[0, 1]` with shape :math:`(*, 3, H, W)`.
+            RGB tensor in :math:`[0, 1]` with shape ``(*, 3, H, W)``.
         """
         return rgb255_to_rgb(image)
 
@@ -772,12 +852,14 @@ class Rgb255ToRgb(nn.Module):
 class Rgb255ToNormals(nn.Module):
     r"""Convert an image from RGB [0, 255] to surface normals for visualization purposes.
 
+    See the Convention block on :func:`rgb255_to_normals`.
+
     Returns:
         surface normals version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -790,11 +872,11 @@ class Rgb255ToNormals(nn.Module):
         """Convert RGB values in :math:`[0, 255]` to surface normals.
 
         Args:
-            image: Input RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
+            image: Input RGB tensor in :math:`[0, 255]` with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Normal map tensor with shape :math:`(*, 3, H, W)`.
+            Normal map tensor with shape ``(*, 3, H, W)``.
         """
         return rgb255_to_normals(image)

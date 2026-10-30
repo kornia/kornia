@@ -21,22 +21,23 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.core.ops import _device_literal
 
 
 class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
-    r"""Apply random flip along the depth axis of 3D volumes (5D tensor).
+    r"""Flip 3D volumes along the depth axis, applied per sample with probability ``p`` (default 0.5).
 
-    Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
+    Input should be a tensor of shape ``(C, D, H, W)`` or a batch of tensors ``(*, C, D, H, W)``.
 
     Args:
-        p: probability of the image being flipped.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -81,8 +82,16 @@ class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         d: int = input.shape[-3]
-        flip_mat: Tensor = torch.tensor(
-            [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, d - 1], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+        # Filled on the device in eager mode: a ``torch.tensor`` literal copies from the host and waits for queued
+        # kernels. ``torch.jit.trace`` can pass the size as a 0-d tensor, which keeps the literal.
+        flip_mat: Tensor = (
+            _device_literal(
+                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, d - 1], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+            )
+            if isinstance(d, int)
+            else torch.tensor(
+                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, d - 1], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+            )
         )
         return flip_mat.expand(input.shape[0], 4, 4)
 

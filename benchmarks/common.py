@@ -150,7 +150,9 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "device": str(device),
         "torch_num_threads": torch.get_num_threads(),
         "opencv_num_threads": opencv_num_threads,
+        "rayon_num_threads_requested": os.environ.get("RAYON_NUM_THREADS"),
         "opencv": _optional_version("cv2"),
+        "poselib": _optional_version("poselib"),
         "torchvision": _optional_version("torchvision"),
         "numpy": _optional_version("numpy"),
         "albumentations": _optional_version("albumentations"),
@@ -404,6 +406,16 @@ Backend = Optional[Callable[[], object]]
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def kornia_rs_fn(name: str) -> Optional[Callable[..., object]]:
+    """Resolve an optional public image operation in new and legacy wheel layouts."""
+    module, _ = optional_import("kornia_rs")
+    if module is None:
+        return None
+    namespace = getattr(module, "imgproc", module)
+    fn = getattr(namespace, name, getattr(module, name, None))
+    return fn if callable(fn) else None
+
+
 def optional_import(name: str) -> tuple[Optional[ModuleType], Optional[str]]:
     """Import an optional baseline library, returning ``(module, None)`` or ``(None, reason)``."""
     try:
@@ -460,6 +472,10 @@ def setup_run(
 ) -> tuple[torch.device, torch.dtype, Optional[Callable[[], None]]]:
     """Thread counts, CPU warm-up and pinned seeds; returns ``(device, dtype, sync)``.
 
+    ``--threads`` also requests the Rayon pool size used by kornia-rs. Run each CLI in a fresh
+    process: Rayon reads RAYON_NUM_THREADS only when its global pool is first initialized.
+    Metadata records the requested value, not an observed count.
+
     ``--threads`` pins OpenCV as well as torch when OpenCV is installed. Left alone, OpenCV uses
     every core while torch uses ``--threads``, and the header would report only torch's count.
     Some OpenCV builds ignore the request (the GCD backend of the macOS wheels); ``start_run``
@@ -469,6 +485,7 @@ def setup_run(
     ``sync`` is the MPS synchronize for ``time_us`` (``blocked_autorange`` already syncs CUDA). The
     CPU warm-up runs on accelerator runs too, because they still time CPU-only baselines.
     """
+    os.environ["RAYON_NUM_THREADS"] = str(args.threads)
     torch.set_num_threads(args.threads)
     cv2, _ = optional_import("cv2") if opencv else (None, None)
     if cv2 is not None:

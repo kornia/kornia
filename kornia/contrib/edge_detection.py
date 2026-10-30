@@ -23,10 +23,12 @@ import torch
 from torch import nn
 
 from kornia.color.gray import grayscale_to_rgb
+from kornia.color.rgb import RgbToBgr
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
-from kornia.core.mixin.onnx import ONNXExportMixin
+from kornia.core.mixin.onnx import ONNXExportMixin, _has_forward_hooks, _preserved_rng, _returns_per_image_outputs
 from kornia.enhance.normalize import Normalize
+from kornia.geometry.transform import resize
 from kornia.models.base import ModelBase
 from kornia.models.dexined import DexiNed
 from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
@@ -38,6 +40,8 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
     """EdgeDetector is a module that wraps an edge detection model.
 
     This is a high-level API that wraps edge detection models like :py:class:`kornia.models.DexiNed`.
+    :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder` builds one with the input conversion, the network
+    and the sigmoid in ``model``.
 
     Args:
         model: The edge detection model.
@@ -46,16 +50,15 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         name: Optional name for the detector.
 
     Example:
-        >>> from kornia.models.dexined import DexiNed
-        >>> from kornia.models.processors import ResizePreProcessor, ResizePostProcessor
-        >>> model = DexiNed(pretrained=True)
-        >>> detector = EdgeDetector(model, ResizePreProcessor(352, 352), ResizePostProcessor())
-        >>> img = torch.rand(1, 3, 320, 320)
-        >>> out = detector(img)
+        >>> detector = EdgeDetectorBuilder.build("dexined", pretrained=True, image_size=352)
+        >>> img = torch.rand(1, 3, 320, 320)  # RGB in [0, 1]
+        >>> out = detector(img)  # a list with one (1, 1, 320, 320) edge probability map per image
 
     """
 
     name: str = "edge_detection"
+    # Set by ``to_onnx`` for the duration of its export, read by ``forward`` (see there).
+    _exporting_to_onnx: bool = False
 
     def __init__(
         self,
@@ -104,23 +107,87 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         """Forward pass of the edge detection model.
 
         Args:
-            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
-                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape ``(3, H, W)``.
+                If torch.Tensor, a torch.Tensor with shape ``(B, 3, H, W)``. For a detector from
+                :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, the pixel values are in
+                :math:`[0, 1]`.
 
         Returns:
-            output torch.Tensor.
+            A list with one output of shape ``(1, 1, H, W)`` per input image, resized back to that image's size.
+            For a detector from :py:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, it holds edge
+            probabilities in :math:`[0, 1]`. Under an ONNX export with a ``ResizePostProcessor``, one
+            ``(B, 1, H, W)`` tensor at the input's size instead, see :meth:`to_onnx`.
+
+        Raises:
+            ValueError: Under an ONNX export through :meth:`to_onnx`, or a direct one on the TorchScript exporter or,
+                from torch 2.9, the dynamo exporter, if the ``ResizePostProcessor`` resizes with ``"area"``.
 
         """
+        if (
+            (self._exporting_to_onnx or torch.onnx.is_in_onnx_export())
+            and isinstance(images, torch.Tensor)
+            and self._resizes_back_on_export()
+        ):
+            # An exported graph returns one tensor, so the maps of a batch, whose images share a size, are resized
+            # back together: the ``torch.cat`` of the eager list. The size is read from the input, a symbolic size
+            # under every exporter, not from the pre-processor's ``original_sizes``, whose values
+            # ``ResizePostProcessor`` reads with ``.tolist()``. The flag covers the dynamo exporter below torch 2.9,
+            # where ``is_in_onnx_export()`` is False; ``is_exporting()`` would also be True under ``torch.compile``
+            # there (#5037).
+            interpolation = self._export_interpolation()
+            height, width = images.shape[-2:]
+            out_images = self.model(self.pre_processor(images)[0])
+            return resize(out_images, (height, width), interpolation=interpolation)
         images, image_sizes = self.pre_processor(images)
         out_images = self.model(images)
         return self.post_processor(out_images, image_sizes)
+
+    def _resizes_back_on_export(self) -> bool:
+        """Whether an export replaces the post-processor: a ``ResizePostProcessor`` that keeps its own ``forward``.
+
+        A subclass that overrides ``forward`` is exported as that ``forward`` computes.
+        """
+        return (
+            isinstance(self.post_processor, ResizePostProcessor)
+            and type(self.post_processor).forward is ResizePostProcessor.forward
+        )
+
+    def _returns_one_tensor_on_export(self) -> bool:
+        """Whether an export returns the maps of the batch as one tensor, so ``to_onnx`` reads no output kind.
+
+        That holds for a post-processor the export replaces (:meth:`_resizes_back_on_export`) under this class's own
+        :meth:`forward`, with no forward hook on the detector, on a module inside it or on all modules. Any other
+        detector is probed; with such a post-processor the probe reads the eager per-image list and the detector is
+        exported for one image.
+        """
+        return (
+            self._resizes_back_on_export()
+            and getattr(self.forward, "__func__", None) is EdgeDetector.forward
+            and not _has_forward_hooks(self)
+        )
+
+    def _export_interpolation(self) -> str:
+        """The post-processor's interpolation mode, which an export resizes the maps back with.
+
+        Raises:
+            ValueError: For ``"area"``, which an exported graph cannot compute at the input's size.
+        """
+        interpolation = self.post_processor.interpolation_mode
+        if interpolation == "area":
+            raise ValueError(
+                'A ResizePostProcessor with interpolation_mode="area" cannot be exported with the input\'s size: '
+                '"area" resizing is adaptive average pooling, which an exported graph cannot compute to a size known '
+                'only at run time. Build the post-processor with "bilinear", "bicubic", "nearest" or "nearest-exact" '
+                "for export."
+            )
+        return interpolation
 
     def visualize(
         self,
         images: Union[torch.Tensor, list[torch.Tensor]],
         edge_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:
         """Draw the edge detection results.
 
         Args:
@@ -163,7 +230,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_edge")
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 352,
@@ -171,38 +238,107 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type: ignore
+    ) -> onnx.ModelProto:
         """Export the current edge detection model to an ONNX model file.
+
+        The graph takes one ``(B, 3, H, W)`` tensor. With the pre- and post-processor and a
+        ``ResizePostProcessor``, it returns the edge maps of the batch as one ``(B, 1, H, W)`` tensor at the
+        input's size, resized with the post-processor's ``"bilinear"``, ``"bicubic"``, ``"nearest"`` or
+        ``"nearest-exact"`` mode: the ``torch.cat`` of the list that :meth:`forward` returns. A subclass of
+        ``ResizePostProcessor`` that overrides ``forward`` is exported as its ``forward`` computes. Export through
+        this method rather than ``torch.onnx.export(detector, ...)``: below torch 2.9, a direct
+        ``torch.onnx.export(..., dynamo=True)`` traces the eager per-image list instead.
 
         Args:
             onnx_name:
-                The name of the output ONNX file. If not provided, a default name in the
-                format "Kornia-<ClassName>.onnx" will be used.
+                The name of the output ONNX file. If not provided, ``"kornia_<name>_<image_size>.onnx"``, for
+                example ``"kornia_dexined_352.onnx"`` (``"kornia_dexined_None.onnx"`` for ``image_size=None``).
             image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, image_size will be dynamic. For DexiNed, recommended scale is 352.
+                The height and width of the graph's input, which the returned maps have too. If None, both are
+                dynamic. With the pre- and post-processor, the pre-processor resizes the input to the size it was
+                built with, whatever ``image_size`` is; without them, the model runs at the size of its input.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
-                If to save the model or load it.
+                If True, write the model to ``onnx_name``; it is returned either way.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
-            kwargs: Additional arguments to convert to onnx.
+            kwargs: Additional keyword arguments of :func:`torch.onnx.export`.
+
+        Returns:
+            The exported ONNX model.
+
+        Raises:
+            ValueError: With the pre- and post-processor, if the ``ResizePostProcessor`` resizes with ``"area"``:
+                adaptive average pooling cannot be exported with the input's size; or if the post-processor returns
+                a list (or tuple) with one map per image and the exported batch is dynamic, from a ``dynamic_axes`` or
+                ``dynamic_shapes`` argument or, with the TorchScript exporter, because the list comes only for more
+                than one image.
+
+        Note:
+            With the pre- and post-processor, a detector whose post-processor returns a list with one map per image,
+            or a tuple as long as the batch at two batch sizes, is exported for a batch of one image: the exporters
+            turn such a sequence into one graph output per traced image, so a dynamic batch would return the traced
+            batch's maps at any batch size. A ``ResizePostProcessor`` that keeps
+            its own ``forward`` is not such a post-processor, since the export replaces it, as long as the detector
+            keeps :meth:`forward` as this class defines it and no forward hook applies to it. Which kind of output
+            any other detector returns is read from one forward pass of the detector for one image at the export
+            size, in eval mode, without gradients and outside the export. A ``forward`` that returns a list there is
+            therefore exported for one image even if it returns a tensor under export, as a ``ResizePostProcessor``
+            subclass whose own ``forward`` calls ``ResizePostProcessor.forward`` does. A tensor there is read again at
+            the batch a dynamic export traces, since the kind can depend on the batch size. Return the maps of the
+            batch as one tensor to export a batch of any size. A ``dynamic_axes`` or ``dynamic_shapes`` argument that
+            makes the batch of such an export dynamic raises a ``ValueError`` after the export, before anything is
+            saved. A post-processor that returns a list only for more than one image has no dynamic export either: the
+            TorchScript exporter's graph raises that ``ValueError``, the dynamo exporter of torch 2.9 and later fails to
+            trace it, and that of torch 2.5.1 fixes the batch at the two images it traces.
 
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
+        if include_pre_and_post_processor and self._resizes_back_on_export():
+            self._export_interpolation()  # raises before the export for a mode it cannot export
+        pseudo_shape = [1, 3, image_size or 352, image_size or 352]
 
-        return ONNXExportMixin.to_onnx(
-            self,
-            onnx_name,
-            input_shape=[-1, 3, image_size or -1, image_size or -1],
-            output_shape=[-1, 1, image_size or -1, image_size or -1],
-            pseudo_shape=[1, 3, image_size or 352, image_size or 352],
-            model=self if include_pre_and_post_processor else self.model,
-            save=save,
-            additional_metadata=additional_metadata,
-            **kwargs,
+        previous = self._exporting_to_onnx
+        self._exporting_to_onnx = True
+        try:
+            # Exported for a dynamic batch, a list of per-image maps comes out as the traced batch's maps, or the
+            # export fails: such a detector is exported for one image.
+            per_image = None
+            if include_pre_and_post_processor and not self._returns_one_tensor_on_export():
+                # The probe's input draws from the global generator, as the export's dummy does, and gives back what
+                # it drew.
+                with _preserved_rng():
+                    per_image = _returns_per_image_outputs(self, torch.rand(pseudo_shape))
+            batch = 1 if per_image else -1
+            with self._onnx_output_kind_kept(per_image):
+                return ONNXExportMixin.to_onnx(
+                    self,
+                    onnx_name,
+                    input_shape=[batch, 3, image_size or -1, image_size or -1],
+                    output_shape=[batch, 1, image_size or -1, image_size or -1],
+                    pseudo_shape=pseudo_shape,
+                    model=self if include_pre_and_post_processor else self.model,
+                    save=save,
+                    additional_metadata=additional_metadata,
+                    **kwargs,
+                )
+        finally:
+            self._exporting_to_onnx = previous
+
+    def _onnx_fixed_batch_hint(self, module: Any, dummy_input: Any) -> Optional[str]:
+        # The export replaces a ``ResizePostProcessor`` with one resize of the batch, a tensor: only another detector
+        # is read, from what ``to_onnx`` read before the export.
+        if (
+            module is not self
+            or self._returns_one_tensor_on_export()
+            or not self._onnx_returns_per_image_outputs(dummy_input)
+        ):
+            return None
+        return (
+            "Use a post-processor that returns the maps of the batch as one tensor, or a ResizePostProcessor, which "
+            "the export replaces with one resize of the batch, to export a dynamic batch."
         )
 
 
@@ -220,6 +356,10 @@ class EdgeDetectorBuilder:
     def build(model_name: str = "dexined", pretrained: bool = True, image_size: int = 352) -> EdgeDetector:
         """Build an edge detection model.
 
+        The detector takes RGB images in :math:`[0, 1]`. For ``"dexined"`` it flips them to BGR, scales them to
+        :math:`[0, 255]` and subtracts the BGR mean ``[103.939, 116.779, 123.68]``, the input the pretrained DexiNed
+        was trained on (xavysp/DexiNed@d944b70), then applies a sigmoid to the network's logits.
+
         Args:
             model_name: Name of the model to build. Currently only "dexined" is supported.
             pretrained: If True, loads pretrained weights.
@@ -235,9 +375,12 @@ class EdgeDetectorBuilder:
 
         """
         if model_name.lower() == "dexined":
-            # Normalize then scale to [0, 255]
-            norm = Normalize(mean=torch.tensor([[0.485, 0.456, 0.406]]), std=torch.tensor([[1.0 / 255.0] * 3]))
-            model = nn.Sequential(norm, DexiNed(pretrained=pretrained), nn.Sigmoid())
+            # RGB in [0, 1] -> 255 * BGR - mean_bgr, with mean_bgr in B, G, R order (xavysp/DexiNed@d944b70
+            # main.py:319-320). Both steps share slot 0, so DexiNed stays at ``model[1]`` and the state-dict keys stay
+            # ``model.1.*``.
+            mean_bgr = torch.tensor([[103.939, 116.779, 123.68]])
+            to_bgr = nn.Sequential(RgbToBgr(), Normalize(mean=mean_bgr / 255.0, std=torch.tensor([[1.0 / 255.0] * 3])))
+            model = nn.Sequential(to_bgr, DexiNed(pretrained=pretrained), nn.Sigmoid())
         else:
             raise ValueError(f"Model {model_name} not found. Please choose from 'dexined'.")
 

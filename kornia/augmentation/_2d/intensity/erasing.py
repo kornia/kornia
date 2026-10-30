@@ -21,11 +21,12 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
 class RandomErasing(IntensityAugmentationBase2D):
-    r"""Erase a random rectangle of a torch.Tensor image according to a probability p value.
+    r"""Erase a random rectangle of the image, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomErasing.png
 
@@ -42,15 +43,16 @@ class RandomErasing(IntensityAugmentationBase2D):
         ratio: range of aspect ratio of erased area.
         value: the value to fill the erased area.
         same_on_batch: apply the same transformation across the batch.
-        p: probability that the random erasing operation will be performed.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``scale`` is the fraction of the image *area* the rectangle targets and ``ratio`` is its height over
           its width, so a ratio above ``1`` targets a tall box and below ``1`` a wide one. The box is rounded
           to whole pixels and then clamped to ``[1, H] x [1, W]``, so it is never empty and never larger than the
@@ -69,7 +71,7 @@ class RandomErasing(IntensityAugmentationBase2D):
           in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 
     Note:
-        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
@@ -112,7 +114,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         _, _, h, w = input.size()
-        values = params["values"].view(-1, 1, 1, 1).to(input)
+        values = _to_device_nonblocking(params["values"].view(-1, 1, 1, 1), input.device, input.dtype)
 
         if self.same_on_batch:
             # Every sample shares one rectangle, so write that single region directly instead of
@@ -135,7 +137,10 @@ class RandomErasing(IntensityAugmentationBase2D):
         # `where` broadcasts to the input shape, so the result is identical while allocating two
         # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)
 
     def apply_transform_mask(
@@ -153,5 +158,8 @@ class RandomErasing(IntensityAugmentationBase2D):
         values = torch.zeros((), dtype=input.dtype, device=input.device)
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
+        # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
+        # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
+        bboxes = _to_device_nonblocking(bboxes, input.device)
+        mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)

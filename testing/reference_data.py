@@ -24,34 +24,65 @@ enumerate it in ``WEIGHT_REGISTRIES`` next to the library's own weight tables:
 every entry must be prefetched by ``.github/download-models-weights.py`` under
 the exact cache name the fixture looks up, from the exact source list.
 
-URLs are commit-pinned ``raw.githubusercontent.com`` links, which avoid the
-GitHub blob-page redirect the ``?raw=true`` spelling goes through.
+The reference tensors are ``.safetensors`` files in ``kornia/data_test``, read
+without unpickling anything. Their URLs are commit-pinned
+``raw.githubusercontent.com`` links, which avoid the GitHub blob-page redirect
+the ``?raw=true`` spelling goes through.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
+from kornia.core import check_safetensors, download_file_from_url, load_safetensors
+from kornia.feature import DISKFeatures
 from kornia.filters import dexined as _dexined
 
-# Test data commit hashes from the kornia/data_test repository.
-DATA_TEST_SHA: dict[str, str] = {
-    "loftr": "cb8f42bf28b9f347df6afba5558738f62a11f28a",
-    "adalam": "f7d8da661701424babb64850e03c5e8faec7ea62",
-    "disk": "8b98f44abbe92b7a84631ed06613b08fee7dae14",
-    "xfeat": "279e95e411f2d3926953dea3842347242190f4da",
+# The kornia/data_test commit that carries every ``.safetensors`` reference file.
+DATA_TEST_SHA = "4ffed08df3d82af85aa9012d3104f19ca4b62604"
+
+_RAW = f"https://raw.githubusercontent.com/kornia/data_test/{DATA_TEST_SHA}"
+
+# Reference tensors, read by :func:`load_reference_data`.
+TEST_DATA_URLS: dict[str, str | list[str]] = {
+    "loftr_homo": f"{_RAW}/loftr_outdoor_and_homography_data.safetensors",
+    "loftr_fund": f"{_RAW}/loftr_indoor_and_fundamental_data.safetensors",
+    "adalam_idxs": f"{_RAW}/adalam_test.safetensors",
+    "lightglue_idxs": f"{_RAW}/adalam_test.safetensors",
+    "disk_outdoor": f"{_RAW}/knchurch_disk.safetensors",
+    "xfeat_outdoor": f"{_RAW}/xfeat_reference.safetensors",
 }
 
-_RAW = "https://raw.githubusercontent.com/kornia/data_test"
-
-TEST_DATA_URLS: dict[str, str | list[str]] = {
-    "loftr_homo": f"{_RAW}/{DATA_TEST_SHA['loftr']}/loftr_outdoor_and_homography_data.pt",
-    "loftr_fund": f"{_RAW}/{DATA_TEST_SHA['loftr']}/loftr_indoor_and_fundamental_data.pt",
-    "adalam_idxs": f"{_RAW}/{DATA_TEST_SHA['adalam']}/adalam_test.pt",
-    "lightglue_idxs": f"{_RAW}/{DATA_TEST_SHA['adalam']}/adalam_test.pt",
-    "disk_outdoor": f"{_RAW}/{DATA_TEST_SHA['disk']}/knchurch_disk.pt",
-    "xfeat_outdoor": f"{_RAW}/{DATA_TEST_SHA['xfeat']}/xfeat_reference.pt",
-    # The library's own DexiNed checkpoint, from the library's own source list, so the
-    # fixture shares its cache entry, its fallback mirror and its prefetch guard.
+# Library checkpoints the fixture serves as they are: the library's own source list,
+# loaded the library's way, so the fixture shares its cache entry, its fallback
+# mirror and its prefetch guard.
+TEST_CHECKPOINT_URLS: dict[str, str | list[str]] = {
     "dexined": list(_dexined.url),
 }
 
-__all__ = ["DATA_TEST_SHA", "TEST_DATA_URLS"]
+# Entries whose file stores ``list[DISKFeatures]`` values of length 1, flattened to
+# ``<key>.keypoints``, ``<key>.descriptors`` and ``<key>.detection_scores``.
+_DISK_FEATURES: dict[str, tuple[str, ...]] = {
+    "disk_outdoor": ("disk1", "disk2"),
+}
+
+
+def load_reference_data(name: str) -> dict[str, Any]:
+    """Download and read the reference tensors of the ``TEST_DATA_URLS`` entry *name*.
+
+    A truncated cache entry fails ``check_safetensors`` and is fetched again
+    rather than read.
+
+    Returns:
+        The file's tensors by key, on CPU, with each flattened ``DISKFeatures``
+        rebuilt into the one-element list the tests index.
+    """
+    path = download_file_from_url(TEST_DATA_URLS[name], validate=check_safetensors)
+    data: dict[str, Any] = load_safetensors(path)
+    for key in _DISK_FEATURES.get(name, ()):
+        fields = ("keypoints", "descriptors", "detection_scores")
+        data[key] = [DISKFeatures(*(data.pop(f"{key}.{field}") for field in fields))]
+    return data
+
+
+__all__ = ["DATA_TEST_SHA", "TEST_CHECKPOINT_URLS", "TEST_DATA_URLS", "load_reference_data"]

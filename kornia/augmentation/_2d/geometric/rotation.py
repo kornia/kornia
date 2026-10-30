@@ -23,14 +23,20 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.ops import eye_like
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import affine
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 
 class RandomRotation(GeometricAugmentationBase2D):
-    r"""Apply a random rotation to a torch.Tensor image or a batch of torch.Tensor images given an amount of degrees.
+    r"""Rotate images by a random angle in degrees, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomRotation.png
+
+    .. note::
+        Unlike torchvision's ``RandomRotation``, which rotates every image, this class rotates each sample with
+        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to rotate every sample.
 
     Args:
         degrees: range of degrees to select from. If degrees is a number the
@@ -38,13 +44,13 @@ class RandomRotation(GeometricAugmentationBase2D):
         resample: Default: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
@@ -102,7 +108,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: torch.Tensor = params["degrees"].to(input)
+        angles: torch.Tensor = _to_device_nonblocking(params["degrees"], input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
@@ -144,26 +150,29 @@ class RandomRotation(GeometricAugmentationBase2D):
 
 
 class RandomRotation90(GeometricAugmentationBase2D):
-    r"""Apply a random 90 * n degree rotation to a torch.Tensor image or a batch of torch.Tensor images.
+    r"""Rotate images by a random multiple of 90 degrees, applied per sample with probability ``p`` (default 0.5).
 
     Args:
-        times: the range of n times 90 degree rotation needs to be applied.
+        times: the range of n times 90 degree rotation needs to be applied. A range of whole numbers is closed:
+          every whole number from the lower to the upper bound is drawn with the same probability.
         resample: Default: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
         - a positive rounded ``times`` rotates the displayed image counter-clockwise by ``times * 90`` degrees.
-        - ``times`` is sampled from a continuous uniform range and rounded, and a non-square image keeps its
-          ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
+        - a range of whole numbers for ``times`` is closed and uniform: ``times=(-1, 1)`` gives a clockwise quarter
+          turn, no turn and a counter-clockwise quarter turn with the same probability. A range with a fractional
+          bound is still drawn continuously and rounded.
+        - a non-square image keeps its ``(H, W)`` shape (`#4409 <https://github.com/kornia/kornia/issues/4409>`_).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively
@@ -206,7 +215,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator((times, "times", 0.0, (-3, 3)))
+        self._param_generator = rg.Rotation90Generator(times)
 
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
 
@@ -214,7 +223,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: dict[str, torch.Tensor], flags: dict[str, Any]
     ) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: torch.Tensor = 90.0 * params["times"].round().to(input)
+        angles: torch.Tensor = 90.0 * _to_device_nonblocking(params["times"].round(), input.device, input.dtype)
 
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))

@@ -42,6 +42,8 @@ pixi run test-quick
 | `--record-known-failures=PATH` | none | unset | Record a complete profile to a guarded, untracked candidate path |
 | `--known-failure-manifest=PATH` | none | unset | Replay a candidate manifest instead of the checked-in profile manifest |
 | `--run-device-agnostic` | `KORNIA_TEST_RUN_DEVICE_AGNOSTIC` | off | Run `@pytest.mark.device_agnostic` tests even when CPU is not in the device matrix |
+| `--onnx-conformance=PACKAGES` | `KORNIA_TEST_ONNX_CONFORMANCE` | unset | Run the ONNX conformance test for these stable-core packages (`geometry,color`, ...) or `all`; deselected otherwise (see below) |
+| `--compile-conformance=PACKAGES` | `KORNIA_TEST_COMPILE_CONFORMANCE` | unset | Run the torch.compile conformance test for these stable-core packages or `all`; deselected otherwise (see below) |
 
 ## Test Structure
 
@@ -69,6 +71,74 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 | `@pytest.mark.device_agnostic` | Test runs once in a CPU-containing matrix because its logic does not use the selected accelerator. An accelerator-only run deselects it and says so on a line of its own at the start of the run, because the deselected set includes the ONNX and `torch.export` suites; `--run-device-agnostic` forces it back on |
 | `@pytest.mark.slow` | Long-running test; skipped unless `--runslow` is passed |
 | `@pytest.mark.tf32` | Known to fail under TF32 (see section below); xfail unless `--tf32` |
+| `@pytest.mark.onnx_conformance` | Part of the ONNX conformance test; deselected unless `--onnx-conformance` selects packages |
+| `@pytest.mark.compile_conformance` | Part of the torch.compile conformance test; deselected unless `--compile-conformance` selects packages |
+
+### ONNX conformance (#5819)
+
+`tests/onnx/test_conformance.py` holds kornia's ONNX promise: every *promised* case -- a record of the survey
+snapshot `docs/source/_data/export_support.json` with ONNX status `ok` in a stable-core package
+(`docs/source/get-started/stability.rst`), without anything built from pretrained weights (registry tag `pretrained`)
+or listed in `EXCLUDED` -- must export with `torch.onnx.export(..., dynamo=True)` and match eager execution in
+onnxruntime (the same dtype, values within the case's tolerance), and a legacy (TorchScript) export that succeeds must
+match as well; one that fails loudly passes. The cases are the survey's own (`docs/export_support/cases_*.py`, joined
+by name; `cases_models.py` is never imported) and run through `docs/export_support/harness.py`, so the test and the
+survey page cannot drift apart: `test_promised_cases_are_registered` fails when a promised case is missing or skipped
+in its registry, and `test_promised_set_is_pinned` when the promised names change or an exclusion leaves nothing out.
+
+The promise itself -- the promised cases, `EXCLUDED` with the reason for each exclusion, `ENFORCED_TORCH_RELEASES` and
+the reading of the manifests -- is `testing/conformance_promise.py`, which imports no pytest: the docs build renders
+the support statement of the export-support page ("What Kornia promises") from it, and `testing/conformance.py` runs
+it as tests.
+
+```bash
+pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=all
+pixi run test-module tests/onnx/test_conformance.py --onnx-conformance=geometry,color
+```
+
+The run takes minutes, so it is opt-in. Pull requests run it on torch 2.15.0 for the packages their changes reach
+(`.github/scripts/conformance_packages.py onnx`: a changed module selects its stable-core package and every
+stable-core package with a module that imports it, directly or not; `kornia/core`, `kornia/utils`, `kornia/onnx`, the
+survey and its snapshot, the stability page, the test and its support, and the dependency pins select `all`); the
+scheduled run on `main` checks `all` on torch 2.9.1 and 2.15.0. No promised case needs pretrained weights, and the test
+never downloads.
+
+Known failures are strict xfails in `testing/known_failure_xfails/onnx_conformance_torch<major>.<minor>.txt`, one
+manifest per enforced torch release, in the `<exception>\t<node ID>` format of the other manifests, each entry under
+a comment that opens with its tracking issue (`# #NNNN: why`, or `# owner/repo#NNNN ...` upstream; a comment naming no
+issue after an entry or a blank line starts a block without one); loading a manifest rejects an entry without one, and
+the support statement lists each entry with that issue. The exception type names the
+kind of failure (`STATUS_EXCEPTIONS` in `testing/conformance.py`): `AssertionError` for a result that differs from
+eager, `RuntimeError` for a failed export, checker or onnxruntime run (or, in the compile test, a failed compile),
+`ValueError` for a failed eager run, so a known failure that changes kind fails the run. Entries of packages a run does
+not select are not checked. Delete an entry when its case passes (a strict XPASS fails the run); a new failure of a
+promised operator is a regression to fix.
+
+### torch.compile conformance (#5819)
+
+`tests/test_inductor_conformance.py` holds the torch.compile promise the same way: every record of the survey snapshot
+with compile status `ok` in a stable-core package, without anything built from pretrained weights or listed in
+`EXCLUDED`, must compile with `torch.compile(..., fullgraph=True)` and the default inductor backend and match eager
+execution (the same dtype, values within the case's tolerance). The survey records `ok` only for a case that
+`fullgraph=True` compiles and that matches eager (#6194). `EXCLUDED` lists the snapshot's `ok` cases the promise leaves
+out, each with its reason; an exclusion must name a case the promise would cover without it, so a snapshot
+regeneration that drops one fails `test_promised_set_is_pinned` until its entry is deleted. Each case is called once,
+at its registry input shapes, through the survey's own `docs/export_support/probe_compile.py`, with Dynamo reset
+around it; a recompile at another shape is not part of the promise. The selection, the drift guard, the pinned
+promised set and the manifests (`testing/known_failure_xfails/compile_conformance_torch<major>.<minor>.txt`) work as
+for the ONNX test.
+
+```bash
+pixi run test-module tests/test_inductor_conformance.py --compile-conformance=all
+pixi run test-module tests/test_inductor_conformance.py --compile-conformance=color
+```
+
+It has its own option and does not read `KORNIA_TEST_OPTIMIZER`, and its tests are named after inductor because the
+root `conftest.py` drops tests whose name contains `compile` or `dynamo` when that variable is unset. Inductor needs a
+C++ compiler; onnx and onnxruntime are not needed. Pull requests run it on torch 2.15.0 for the packages
+`.github/scripts/conformance_packages.py compile` selects (the same mapping as the ONNX job, with this test file and
+its manifests in place of the ONNX ones); the scheduled run on `main` checks `all` on torch 2.9.1 and 2.15.0. Both
+conformance jobs run with `--timeout=600`.
 
 ---
 
@@ -319,14 +389,10 @@ and torch's own "matrix too large to stage in MPS threadgroup memory ... falling
 check triggers on *greater than* that limit, so an input sitting exactly on it neither falls
 back nor compiles. Shape is irrelevant -- `(128, 64)`, `(64, 128)`, `(8192, 1)` and `(1, 8192)`
 all raise, and 8191 and 8193 elements both pass -- which is why the guard counts elements and
-does not inspect batch rank. That ceiling is why `RANSAC`'s
-batched minimal solvers used to raise on MPS
-([#4201](https://github.com/kornia/kornia/issues/4201)). `_torch_svd_cast` and
-`_torch_linalg_svdvals` now route such inputs through the CPU, so the fundamental and
-homography solvers no longer hit it; `find_essential` still raises, for an unrelated
-reason -- `run_5point` calls `torch.linalg.eigvals`, which has no MPS kernel. The ceiling
-is *not* why those solvers are absent from the baseline below -- see the next section:
-they are skipped, because they abort the process before they can raise.
+does not inspect batch rank. `_torch_svd_cast` and `_torch_linalg_svdvals` route such inputs
+through the CPU, so `RANSAC`'s batched fundamental and homography solvers do not hit the ceiling.
+The RANSAC tests are skipped on MPS for a different reason -- see the next section: they abort the
+process before they can raise.
 
 **How Kornia handles these automatically.** The test infrastructure in `conftest.py` and `testing/base.py` skips known-unsupported test classes at collection time so you don't need per-test guards for the common cases:
 
@@ -345,11 +411,11 @@ they are skipped, because they abort the process before they can raise.
 
 The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to the outermost pixel *centers*, at `±(1 - 1/size)`, and using `padding_mode="zeros"`, which is exactly equivalent. Clamping to `[-1, 1]` is not: with `align_corners=False` that is the outer edge of the border pixel, where bilinear sampling blends it with the zero padding.
 
-**CI coverage.** Pull-request CI runs one blocking MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and the newest pinned PyTorch, `float32`, on the GitHub-hosted **`macos-15`** Apple-silicon image. The image is pinned deliberately. `macos-latest` is `macos-26-arm64`, whose GPU is paravirtualized, and on macOS 26 torch 2.14 emits Metal 4 `mpp::tensor_ops::matmul2d` cooperative-tensor shaders that this virtual GPU cannot compile — one specialization failed 664 tests across every subpackage, since `linalg.inv`, `linalg.solve`, `inv_ex`, `lu_factor_ex` and `F.conv3d` all route through it. The defect is the *virtual* GPU, not macOS 26: a physical M1 on macOS 26.5 compiled those shaders in the #4202 comparison. macOS 15 is Metal 3 and takes the older kernel path, which is the path that happens to work on the runner fleet. Two consequences worth knowing: no job in this repository now exercises the Metal 4 path that users on current macOS actually run, and when GitHub retires the `macos-15` image this leg stops scheduling and `collector` goes red with no fallback. Re-test `macos-latest` once upstream guards those kernels by device capability; `macos-14` segfaults inside MPS kernels and must never be used. The comparison is recorded in [#4159](https://github.com/kornia/kornia/issues/4159#issuecomment-5532655834). The exact known-failure baseline from [#4159](https://github.com/kornia/kornia/issues/4159) lives in `testing/known_failure_xfails/mps_float32.txt`: #4202 reduced it from 200 entries to 14, and #4185 then fixed the YUV420/YUV422 empty-input cases, leaving the current 12-entry baseline. `--xfail-known-failures` applies those entries as strict xfails with their exact exception types. A new failure, a different exception, a skipped recorded test, or a fixed test therefore makes CI red.
+**CI coverage.** Pull-request CI runs one blocking MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and PyTorch 2.14.0, `float32`, on the GitHub-hosted **`macos-15`** Apple-silicon image. PyTorch stays one release behind the CPU matrix: torch 2.15 uses only a GPU in `MTLGPUFamilyApple7`, and the paravirtual GPU of every GitHub-hosted arm64 image does not report that family, so on 2.15 the leg finds no MPS device ([#6390](https://github.com/kornia/kornia/issues/6390)). The image is pinned deliberately. `macos-latest` is `macos-26-arm64`, whose GPU is paravirtualized, and on macOS 26 torch 2.14 emits Metal 4 `mpp::tensor_ops::matmul2d` cooperative-tensor shaders that this virtual GPU cannot compile — one specialization failed 664 tests across every subpackage, since `linalg.inv`, `linalg.solve`, `inv_ex`, `lu_factor_ex` and `F.conv3d` all route through it. The defect is the *virtual* GPU, not macOS 26: a physical M1 on macOS 26.5 compiled those shaders in the #4202 comparison. macOS 15 is Metal 3 and takes the older kernel path, which is the path that happens to work on the runner fleet. Two consequences worth knowing: no job in this repository now exercises the Metal 4 path that users on current macOS actually run, and when GitHub retires the `macos-15` image this leg stops scheduling and `collector` goes red with no fallback. Re-test `macos-latest` once upstream guards those kernels by device capability; `macos-14` segfaults inside MPS kernels and must never be used. The comparison is recorded in [#4159](https://github.com/kornia/kornia/issues/4159#issuecomment-5532655834). The exact known-failure baseline lives in `testing/known_failure_xfails/mps_float32.txt`. `--xfail-known-failures` applies the manifest's entries as strict xfails with their exact exception types. A new failure, a different exception, a skipped recorded test, or a fixed test therefore makes CI red.
 
 Run the identical contract locally with `pixi run test-mps`. `PYTORCH_ENABLE_MPS_FALLBACK=1` silently routes missing MPS kernels to the CPU and invalidates the baseline, so unset it first. The manifest is a full-suite contract and is not intended for `-k` or partial-directory runs; use `pixi run test-module ... --device=mps --dtype=float32` for focused diagnosis without the manifest. "Full suite" means the suite as an `mps`-only run collects it: tests marked `device_agnostic` are deselected there and covered by the CPU jobs, so they never appear in the manifest.
 
-When an MPS failure is fixed, remove its line from `mps_float32.txt`. When a test is renamed or reparametrized, update its node ID. Treat an unlisted failure as a regression to fix; add it only when the new limitation is understood and documented in #4159. After a deliberate Python, PyTorch, or runner-image update, regenerate the full manifest from that CI job's final `short test summary info`, recording one exact exception type and node ID per `FAILED` line.
+When an MPS failure is fixed, remove its line from `mps_float32.txt`. When a test is renamed or reparametrized, update its node ID. Treat an unlisted failure as a regression to fix; add it only when the new limitation is understood and has its own tracking issue, named in a comment beside the entry. After a deliberate Python, PyTorch, or runner-image update, regenerate the full manifest from that CI job's final `short test summary info`, recording one exact exception type and node ID per `FAILED` line.
 
 **Writing new tests that work on MPS.** Follow these rules:
 

@@ -54,8 +54,10 @@ def mod(a: torch.Tensor, b: int) -> torch.Tensor:
 class DETRPostProcessor(nn.Module):
     """Convert raw DETR model outputs into final bounding box detections.
 
-    This module applies the softmax function to scores and transforms normalized
-    bounding box coordinates into the pixel coordinate system of the input image.
+    This module applies the sigmoid function to the class logits, as RT-DETR was trained with a focal loss, keeps the
+    ``num_top_queries`` highest (query, class) scores of each image, and transforms the normalized
+    ``(cx, cy, w, h)`` boxes into ``(x, y, w, h)`` in the pixel coordinate system of each input image, scaled by that
+    image's own size.
 
     Args:
         num_classes: The number of object classes.
@@ -89,16 +91,19 @@ class DETRPostProcessor(nn.Module):
         """Post-process outputs from DETR.
 
         Args:
-            logits: tensor with shape :math:`(N, Q, K)`, where :math:`N` is the batch size, :math:`Q` is the number of
+            logits: tensor with shape ``(N, Q, K)``, where :math:`N` is the batch size, :math:`Q` is the number of
                 queries, :math:`K` is the number of classes.
-            boxes: tensor with shape :math:`(N, Q, 4)`, where :math:`N` is the batch size, :math:`Q` is the number of
+            boxes: tensor with shape ``(N, Q, 4)``, where :math:`N` is the batch size, :math:`Q` is the number of
                 queries.
-            original_sizes: tensor with shape :math:`(N, 2)`, where :math:`N` is the batch size and each element
+            original_sizes: tensor with shape ``(N, 2)``, where :math:`N` is the batch size and each element
                 represents the image size of (img_height, img_width).
 
         Returns:
-            Processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
-            in that image, 6 represent (class_id, confidence_score, x, y, w, h).
+            Processed detections, each a row (class_id, confidence_score, x, y, w, h). A tensor of shape
+            ``(N, T, 6)``, :math:`T` = ``num_top_queries``, when ``confidence_filtering`` is ``False`` or
+            ``confidence_threshold`` is 0; with ``filter_as_zero``, the same tensor with the detections at or below the
+            threshold set to zero. Otherwise a list of :math:`N` tensors of shape ``(D, 6)``, where :math:`D` is the
+            number of detections above the threshold in that image.
 
         """
         # NOTE: consider using kornia BoundingBox
@@ -112,8 +117,8 @@ class DETRPostProcessor(nn.Module):
         cxcy, wh = boxes[..., :2], boxes[..., 2:]
         boxes_xy = torch.cat([cxcy - wh * 0.5, wh], -1)
 
-        # Get dynamic size from the input tensor itself
-        sizes_wh = original_sizes[0].flip(0).unsqueeze(0).unsqueeze(0).repeat(1, 1, 2)
+        # (B, 2) (H, W) -> (B, 1, 4) (W, H, W, H): each image is scaled by its own size
+        sizes_wh = original_sizes.flip(-1).repeat(1, 2).unsqueeze(1).to(boxes_xy.dtype)
 
         boxes_xy = boxes_xy * sizes_wh
         scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax

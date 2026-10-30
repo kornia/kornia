@@ -18,12 +18,12 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 import torch
 
-from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.ops import _device_literal
 
 
 def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False) -> None:
@@ -31,11 +31,52 @@ def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, a
         kernel_size = (kernel_size,)
 
     fmt = "even or odd" if allow_even else "odd"
-    for size in kernel_size:
-        KORNIA_CHECK(
-            isinstance(size, int) and (((size % 2 == 1) or allow_even) and size > min_value),
-            f"Kernel size must be an {fmt} integer bigger than {min_value}. Gotcha {size} on {kernel_size}",
-        )
+    invalid = [
+        size
+        for size in kernel_size
+        if not (isinstance(size, int) and (((size % 2 == 1) or allow_even) and size > min_value))
+    ]
+    KORNIA_CHECK(
+        not invalid,
+        lambda: f"Kernel size must be an {fmt} integer bigger than {min_value}. Got {invalid[0]} on {kernel_size}",
+    )
+
+
+def _check_laplacian_kernel_size(kernel_size: tuple[int, ...] | int) -> None:
+    # The Laplacian centre is 1 - prod(kernel_size), so a single tap is the all-zero kernel (0 / 0 once normalized).
+    if isinstance(kernel_size, int):
+        sizes: tuple[int, ...] = (kernel_size,)
+    else:
+        sizes = kernel_size
+
+    KORNIA_CHECK(
+        any(size != 1 for size in sizes),
+        lambda: (
+            "A Laplacian kernel needs a size of at least 3 along one axis: a single tap is all zeros. Got "
+            f"{kernel_size}"
+        ),
+    )
+
+
+def _check_kernel_dtype(dtype: Optional[torch.dtype], name: str, taps: Optional[tuple[int, int]] = None) -> None:
+    # An integer or bool dtype truncates fractional taps and wraps the ones outside its range (#5155). ``taps`` is
+    # the (lowest, highest) tap of a kernel whose taps are all integers; without it the kernel has fractional taps.
+    if dtype is None or dtype.is_floating_point or dtype.is_complex:
+        return
+    KORNIA_CHECK(
+        taps is not None,
+        lambda: (
+            f"{name} has fractional taps, which an integer dtype cannot hold. Got dtype={dtype}; use a floating dtype."
+        ),
+    )
+    low, high = (0, 1) if dtype == torch.bool else (torch.iinfo(dtype).min, torch.iinfo(dtype).max)
+    KORNIA_CHECK(
+        low <= taps[0] and taps[1] <= high,
+        lambda: (
+            f"{name} has taps from {taps[0]} to {taps[1]}, which dtype={dtype} cannot hold. Use a signed integer "
+            "dtype wide enough for them, or a floating one."
+        ),
+    )
 
 
 def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
@@ -105,34 +146,54 @@ def gaussian(
 ) -> torch.Tensor:
     r"""Compute the gaussian values based on the window and sigma values.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`, which validates the size and
+        calls this function; ``gaussian`` does not validate it. In a floating ``dtype``, for an even ``window_size``
+        the Gaussian is centred at ``mean - 0.5``: the default ``mean`` centres the kernel on the middle of the
+        window, halfway between the two middle samples, and an explicit ``mean=m`` centres it at ``m - 0.5``.
+
     Args:
         window_size: the size which drives the filter amount.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`.
-        mean: Mean of the Gaussian function (center). If not provided, it defaults to
-            ``window_size // 2``. If a tensor, should be in a shape :math:`(B, 1)`.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``.
+        mean: Mean of the Gaussian function (center); see the Convention block for an even
+            ``window_size``. If not provided, it defaults to ``window_size // 2``. A Python ``int`` is
+            treated as its ``float``. If a tensor, should be in a shape ``(B, 1)``.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         A tensor with shape :math:`(B, \text{kernel_size})`, with Gaussian values.
 
     .. note::
+        Float16 and bfloat16 kernels are computed in float32 and rounded once at return.
+
         A ``sigma`` of zero -- and any ``sigma`` too small for the window to hold a representable
         weight -- returns the unit-impulse limit of the kernel: all the mass on the sample nearest
         the mean, split evenly between the two centre taps when ``window_size`` is even. The
         gradient with respect to ``sigma`` is zero there, matching the continuous limit.
 
     """
-    if isinstance(sigma, float):
-        sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
+    output_dtype = sigma.dtype if isinstance(sigma, torch.Tensor) else dtype or torch.get_default_dtype()
+    if isinstance(sigma, (int, float)):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
+        compute_dtype = torch.float32 if output_dtype in (torch.float16, torch.bfloat16) else output_dtype
+        sigma = torch.tensor([[float(sigma)]], device=device, dtype=compute_dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
+    if not (sigma.dtype.is_floating_point or sigma.dtype.is_complex):
+        # as in `gaussian_discrete`: in a uint8 sigma's dtype the offsets below the mean would wrap (#5155)
+        sigma = sigma.to(torch.get_default_dtype())
+    if output_dtype in (torch.float16, torch.bfloat16):
+        sigma = sigma.float()
+        if isinstance(mean, torch.Tensor):
+            mean = mean.float()
     batch_size = sigma.shape[0]
 
     mean = float(window_size // 2) if mean is None else mean
-    if isinstance(mean, float):
-        mean = torch.tensor([[mean]], device=sigma.device, dtype=sigma.dtype)
+    if isinstance(mean, (int, float)):
+        # Filled on the device in eager mode, so a CUDA ``sigma`` gets no host copy that waits for queued work.
+        mean = _device_literal([[float(mean)]], device=sigma.device, dtype=sigma.dtype)
 
     KORNIA_CHECK_IS_TENSOR(mean)
     KORNIA_CHECK_SHAPE(mean, ["B", "1"])
@@ -150,7 +211,7 @@ def gaussian(
         dist = dist - dist.min(-1, keepdim=True)[0]
 
     # A zero denominator is the unit-impulse limit of the kernel: sigma == 0 exactly, or a sigma
-    # whose square underflows the dtype (float16 below ~1e-4). Either way the nearest samples
+    # whose square underflows the working dtype. Either way the nearest samples
     # divide 0 / 0. Repairing that after the fact leaves the division on the graph and the sigma
     # gradient still comes back NaN, so divide by a stand-in and select the impulse out of that
     # finite arm instead. The gradient is then the 0 of the continuous sigma -> 0 limit. A NaN
@@ -161,7 +222,8 @@ def gaussian(
     gauss = torch.exp(-dist / safe_denominator)
     gauss = torch.where(is_impulse, (dist == 0).to(dist.dtype), gauss)
 
-    return gauss / gauss.sum(-1, keepdim=True)
+    kernel = gauss / gauss.sum(-1, keepdim=True)
+    return kernel.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else kernel
 
 
 def gaussian_discrete_erf(
@@ -176,22 +238,26 @@ def gaussian_discrete_erf(
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     Args:
         window_size: the size which drives the filter amount.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by approximation of
         the error function.
 
     """
-    if isinstance(sigma, float):
-        sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
+    if isinstance(sigma, (int, float)):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
+        sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     batch_size = sigma.shape[0]
 
-    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - window_size // 2).expand(batch_size, -1)
+    # Centre the window at (window_size - 1) / 2: the middle tap of an odd window, and halfway between the two
+    # middle taps of an even one, as the sampled kernel in `gaussian` is.
+    centre = (window_size - 1) / 2
+    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - centre).expand(batch_size, -1)
 
     t = 0.70710678 / sigma.abs()
     # t = torch.tensor(2, device=sigma.device, dtype=sigma.dtype).sqrt() / (sigma.abs() * 2)
@@ -202,7 +268,7 @@ def gaussian_discrete_erf(
     return gauss / gauss.sum(-1, keepdim=True)
 
 
-def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
+def _modified_bessel_0(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
     """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Both polynomial branches are evaluated on the full tensor and merged with ``torch.where`` (instead
@@ -212,7 +278,8 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
     idx_a = ax < 3.75
 
     # small-argument branch (|x| < 3.75)
-    y = (x / 3.75) * (x / 3.75)
+    x_a = torch.where(idx_a, x, torch.zeros_like(x))
+    y = (x_a / 3.75) * (x_a / 3.75)
     out_a = 1.0 + y * (
         3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
     )
@@ -222,12 +289,14 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
     y = 3.75 / ax_b
     ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
     coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
-    out_b = (ax_b.exp() / ax_b.sqrt()) * coef
+    out_b = coef / ax_b.sqrt() if scaled else (ax_b.exp() / ax_b.sqrt()) * coef
+    if scaled:
+        out_a = out_a * (-x_a.abs()).exp()
 
     return torch.where(idx_a, out_a, out_b)
 
 
-def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
+def _modified_bessel_1(x: torch.Tensor, scaled: bool = False) -> torch.Tensor:
     """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Branch-free like :func:`_modified_bessel_0`.
@@ -236,29 +305,35 @@ def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
     idx_a = ax < 3.75
 
     # small-argument branch (|x| < 3.75)
-    y = (x / 3.75) * (x / 3.75)
+    x_a = torch.where(idx_a, x, torch.zeros_like(x))
+    y = (x_a / 3.75) * (x_a / 3.75)
     ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
-    out_a = ax * (0.5 + y * (0.87890594 + y * ans))
+    out_a = x_a.abs() * (0.5 + y * (0.87890594 + y * ans))
 
     # large-argument branch; clamp keeps the unused lanes finite (|x| = 0 would divide by zero)
     ax_b = torch.where(idx_a, torch.full_like(ax, 3.75), ax)
     y = 3.75 / ax_b
     ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
     ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
-    ans = ans * ax_b.exp() / ax_b.sqrt()
+    ans = ans / ax_b.sqrt() if scaled else ans * ax_b.exp() / ax_b.sqrt()
+    if scaled:
+        out_a = out_a * (-x_a.abs()).exp()
     out_b = torch.where(x < 0, -ans, ans)
 
     return torch.where(idx_a, out_a, out_b)
 
 
-def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
+def _modified_bessel_i(n: int, x: torch.Tensor, scaled: bool = False, max_order: Optional[int] = None) -> torch.Tensor:
     """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
     # I_n(0) = 0 for n >= 1. The zero lanes are computed on a safe placeholder and masked out at the
     # end instead of being compacted away, so the recurrence has no data-dependent control flow.
     is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
-    x_nz = torch.where(is_zero_mask, torch.ones_like(x), x)
+    order = n if max_order is None else max_order
+    # A ~1e-7 approximation mismatch here can make finite-difference gradcheck fail exactly at the branch switch.
+    use_forward = x.abs() > order * order / 4 if scaled else torch.zeros_like(x, dtype=torch.bool)
+    x_nz = torch.where(is_zero_mask | use_forward, torch.ones_like(x), x)
 
     tox = 2.0 / x_nz.abs()
 
@@ -266,7 +341,7 @@ def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
     bip = torch.zeros_like(x)
     bi = torch.ones_like(x)
 
-    m = int(2 * (n + int(math.sqrt(40.0 * n))))
+    m = int(2 * (order + int(math.sqrt(40.0 * order))))
     for j in range(m, 0, -1):
         bim = torch.addcmul(bip, tox, bi, value=j)
         bip, bi = bi, bim
@@ -280,9 +355,20 @@ def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
         if j == n:
             ans = bip
 
-    out = ans * _modified_bessel_0(x_nz) / bi
+    out = ans * _modified_bessel_0(x_nz, scaled=scaled) / bi
     if (n % 2) == 1:
         out = torch.where(x_nz < 0.0, -out, out)
+
+    if scaled:
+        # Upward recurrence is stable when all requested orders are small relative to sqrt(x).
+        x_up = torch.where(use_forward, x.abs(), torch.full_like(x, order * order / 4))
+        previous = _modified_bessel_0(x_up, scaled=True)
+        current = _modified_bessel_1(x_up, scaled=True)
+        for k in range(1, n):
+            previous, current = current, previous - (2.0 * k / x_up) * current
+        if (n % 2) == 1:
+            current = torch.where(x < 0, -current, current)
+        out = torch.where(use_forward, current, out)
 
     return torch.where(is_zero_mask, torch.zeros_like(x), out)
 
@@ -298,40 +384,66 @@ def gaussian_discrete(
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     Args:
-        window_size: the size which drives the filter amount.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        window_size: the size which drives the filter amount. It must be odd.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by modified Bessel
         function.
 
     """
-    if isinstance(sigma, float):
-        sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
+    if isinstance(sigma, (int, float)):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
+        sigma = torch.tensor([[float(sigma)]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
+    # The discrete Gaussian is defined at the integer offsets of the taps from the centre tap, so there is no even
+    # window: the window must be odd, and holds the offsets 0 .. window_size // 2 on either side of the centre.
+    KORNIA_CHECK(window_size % 2 == 1, lambda: f"The discrete Gaussian kernel needs an odd window. Got {window_size}")
 
+    output_dtype = sigma.dtype
+    if not (sigma.dtype.is_floating_point or sigma.dtype.is_complex):
+        # An integer sigma tensor gives a floating kernel, as it does in `gaussian` and `gaussian_discrete_erf`;
+        # casting the normalized taps back to its dtype would truncate them all to 0 (#5155).
+        output_dtype = torch.get_default_dtype()
+        sigma = sigma.to(output_dtype)
+    elif sigma.dtype in (torch.float16, torch.bfloat16):
+        sigma = sigma.float()
     sigma2 = sigma * sigma
     tail = int(window_size // 2) + 1
-    bessels = [
-        _modified_bessel_0(sigma2),
-        _modified_bessel_1(sigma2),
-        *(_modified_bessel_i(k, sigma2) for k in range(2, tail)),
-    ]
-    # NOTE: on monain is exp(-sig)
-    # https://github.com/Project-MONAI/MONAI/blob/dev/monai/networks/layers/convutils.py#L128
-    out = torch.cat(bessels[:0:-1] + bessels, -1) * sigma2.exp()
+    bessels = [_modified_bessel_0(sigma2, scaled=True)]
+    if tail > 1:
+        bessels.append(_modified_bessel_1(sigma2, scaled=True))
+    bessels.extend(_modified_bessel_i(k, sigma2, scaled=True, max_order=tail) for k in range(2, tail))
+    # The exp(-sigma²) factor is already included in the scaled Bessel terms.
+    out = torch.cat(bessels[:0:-1] + bessels, -1)
 
-    return out / out.sum(-1, keepdim=True)
+    return (out / out.sum(-1, keepdim=True)).to(output_dtype)
 
 
 def laplacian_1d(
     window_size: int, *, device: Optional[torch.device] = None, dtype: torch.dtype = torch.float32
 ) -> torch.Tensor:
-    """One could also use the Laplacian of Gaussian formula to design the filter."""
+    r"""Return the 1D Laplacian kernel of :func:`~kornia.filters.get_laplacian_kernel1d` without checking the size.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_laplacian_kernel1d`, which validates the size and
+        calls this function. ``laplacian_1d`` accepts any positive size; an even one puts the negative tap at
+        ``window_size // 2``, off the middle of the kernel.
+
+    Args:
+        window_size: the number of taps.
+        device: tensor device desired to create the kernel
+        dtype: tensor dtype desired to create the kernel
+
+    Returns:
+        1D tensor with shape :math:`(\text{window_size},)`.
+
+    """
     # TODO: add default dtype as None when kornia relies on torch > 1.12
+    _check_kernel_dtype(dtype, "The Laplacian kernel", (1 - window_size, 1))
     filter_1d = torch.ones(window_size, device=device, dtype=dtype)
     middle = window_size // 2
     filter_1d[middle] = 1 - window_size
@@ -343,6 +455,12 @@ def get_box_kernel1d(
 ) -> torch.Tensor:
     r"""Return a 1-D box filter.
 
+    Convention:
+        - For a floating ``dtype`` every tap is ``1 / kernel_size``; an even ``kernel_size`` is accepted.
+        - The kernel is a contiguous tensor, so an in-place edit changes only the taps it addresses.
+        - An integer or bool ``dtype`` raises: it would truncate ``1 / kernel_size`` to 0
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
     Args:
         kernel_size: the size of the kernel.
         device: the desired device of returned tensor.
@@ -350,11 +468,11 @@ def get_box_kernel1d(
 
     Returns:
         A tensor with shape :math:`(1, \text{kernel\_size})`, filled with the value
-        :math:`\frac{1}{\text{kernel\_size}}`.
+        :math:`\frac{1}{\text{kernel\_size}}` for a floating ``dtype``.
 
     """
-    scale = torch.tensor(1.0 / kernel_size, device=device, dtype=dtype)
-    return scale.expand(1, kernel_size)
+    _check_kernel_dtype(dtype, "The box kernel")
+    return torch.full((1, kernel_size), 1.0 / kernel_size, device=device, dtype=dtype)
 
 
 def get_box_kernel2d(
@@ -362,27 +480,45 @@ def get_box_kernel2d(
 ) -> torch.Tensor:
     r"""Return a 2-D box filter.
 
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_box_kernel1d`; ``kernel_size`` is ``(k_y, k_x)``.
+
     Args:
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel, an integer or ``(k_y, k_x)``.
         device: the desired device of returned tensor.
         dtype: the desired data type of returned tensor.
 
     Returns:
         A tensor with shape :math:`(1, \text{kernel\_size}[0], \text{kernel\_size}[1])`,
-        filled with the value :math:`\frac{1}{\text{kernel\_size}[0] \times \text{kernel\_size}[1]}`.
+        filled with the value :math:`\frac{1}{\text{kernel\_size}[0] \times \text{kernel\_size}[1]}` for a
+        floating ``dtype``.
 
     """
     ky, kx = _unpack_2d_ks(kernel_size)
-    scale = torch.tensor(1.0 / (kx * ky), device=device, dtype=dtype)
-    return scale.expand(1, ky, kx)
+    _check_kernel_dtype(dtype, "The box kernel")
+    return torch.full((1, ky, kx), 1.0 / (kx * ky), device=device, dtype=dtype)
 
 
 def get_binary_kernel2d(
     window_size: tuple[int, int] | int, *, device: Optional[torch.device] = None, dtype: torch.dtype = torch.float32
 ) -> torch.Tensor:
-    """Create a binary kernel to extract the patches.
+    r"""Create a binary kernel to extract the patches.
 
     If the window size is HxW will create a (H*W)x1xHxW kernel.
+
+    Convention:
+        Channel ``i`` is one-hot at ``(i // k_x, i % k_x)`` for ``window_size=(k_y, k_x)``, in row-major order, so
+        :func:`torch.nn.functional.conv2d` of an image with the kernel stacks each pixel's neighbourhood in that
+        order, the layout :func:`~kornia.filters.median_blur` builds on.
+
+    Args:
+        window_size: the window size, an integer or ``(k_y, k_x)``.
+        device: tensor device desired to create the kernel
+        dtype: tensor dtype desired to create the kernel
+
+    Returns:
+        the kernel with shape :math:`(k_y k_x, 1, k_y, k_x)`.
+
     """
     # TODO: add default dtype as None when kornia relies on torch > 1.12
 
@@ -442,6 +578,7 @@ def get_diff_kernel_3x3(*, device: Optional[torch.device] = None, dtype: Optiona
 
 def get_diff_kernel3d(device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
     """Return a first order derivative kernel of 3x3x3."""
+    _check_kernel_dtype(dtype, "The 3d first-order difference kernel")
     kernel = torch.tensor(
         [
             [
@@ -470,6 +607,7 @@ def get_diff_kernel3d_2nd_order(
     device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
     """Return second order derivative kernels of 3x3x3 for ``(dxx, dyy, dzz, dxy, dyz, dxz)``."""
+    _check_kernel_dtype(dtype, "The 3d second-order difference kernel")
     kernel = torch.tensor(
         [
             [
@@ -510,14 +648,24 @@ def get_diff_kernel3d_2nd_order(
 
 
 def get_sobel_kernel2d(*, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
-    """Return 1st order gradient for sobel operator."""
+    """Return 1st order gradient for sobel operator.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_spatial_gradient_kernel2d`; this is
+        ``get_spatial_gradient_kernel2d('sobel', 1)``, of shape ``(2, 3, 3)``.
+    """
     kernel_x = get_sobel_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return torch.stack([kernel_x, kernel_y])
 
 
 def get_diff_kernel2d(*, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
-    """Return 1st order gradient for diff operator."""
+    """Return 1st order gradient for diff operator.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_spatial_gradient_kernel2d`; this is
+        ``get_spatial_gradient_kernel2d('diff', 1)``, of shape ``(2, 3, 3)``.
+    """
     kernel_x = get_diff_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return torch.stack([kernel_x, kernel_y])
@@ -553,9 +701,33 @@ def get_spatial_gradient_kernel2d(
     r"""Return kernel for 1st or 2nd order image gradients.
 
     Uses one of the following operators: sobel, diff.
+
+    Convention:
+        - ``order=1`` stacks :math:`(\partial_x, \partial_y)` along the first axis and ``order=2`` stacks
+          :math:`(\partial_{xx}, \partial_{xy}, \partial_{yy})`. Correlated with an image, as
+          :func:`~kornia.filters.filter2d` does, an ``order=1`` channel is positive where the values increase with
+          the column (x) or the row (y), and an ``order=2`` channel is positive on :math:`x^2`, :math:`xy` and
+          :math:`y^2` respectively.
+        - The kernels are raw integer stencils, not derivative estimates. Per unit slope Sobel answers 8 and
+          ``'diff'`` answers 2; per unit second derivative Sobel answers 64 on all three channels, while ``'diff'``
+          answers 1 on :math:`\partial_{xx}` and :math:`\partial_{yy}` and 4 on :math:`\partial_{xy}`.
+        - ``mode`` is case-insensitive: ``'Sobel'`` is ``'sobel'``.
+
+    Args:
+        mode: ``'sobel'`` or ``'diff'``.
+        order: the derivative order, 1 or 2.
+        device: tensor device desired to create the kernel
+        dtype: tensor dtype desired to create the kernel
+
+    Returns:
+        the kernels with shape ``(2, 3, 3)`` for ``order=1``, and ``(3, 5, 5)`` (Sobel) or
+        ``(3, 3, 3)`` (diff) for ``order=2``.
+
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
-    KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
+    KORNIA_CHECK(order in {1, 2}, lambda: f"Order should be 1 or 2. Got {order}")
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    mode = mode.lower()
 
     if mode == "sobel" and order == 1:
         kernel: torch.Tensor = get_sobel_kernel2d(device=device, dtype=dtype)
@@ -574,12 +746,35 @@ def get_spatial_gradient_kernel2d(
 def get_spatial_gradient_kernel3d(
     mode: str, order: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
-    r"""Return kernel for 1st or 2nd order scale pyramid gradients.
+    r"""Return kernel for 1st or 2nd order gradients of a volume.
 
-    Uses one of the following operators: sobel, diff.
+    Convention:
+        - Only ``mode='diff'`` exists; ``'sobel'`` passes the mode check and raises ``NotImplementedError``.
+        - ``order=1`` stacks :math:`(\partial_x, \partial_y, \partial_z)` and ``order=2`` stacks
+          :math:`(\partial_{xx}, \partial_{yy}, \partial_{zz}, \partial_{xy}, \partial_{yz}, \partial_{xz})`, an
+          order that differs from the 2d :math:`(\partial_{xx}, \partial_{xy}, \partial_{yy})`. The stack has a
+          singleton second axis that :func:`~kornia.filters.get_spatial_gradient_kernel2d` lacks.
+        - In a floating ``dtype`` every channel is in derivative units: it answers 1 to a unit slope or a unit
+          second derivative, unlike the raw 2d stencils.
+        - ``mode`` is case-insensitive: ``'Diff'`` is ``'diff'``.
+        - An integer or bool ``dtype`` raises: it would truncate the half and quarter taps to 0, leaving the
+          first-order channels and the mixed second-order ones all zero
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
+    Args:
+        mode: ``'diff'``.
+        order: the derivative order, 1 or 2.
+        device: tensor device desired to create the kernel
+        dtype: tensor dtype desired to create the kernel
+
+    Returns:
+        the kernels with shape ``(3, 1, 3, 3, 3)`` for ``order=1`` and ``(6, 1, 3, 3, 3)`` for ``order=2``.
+
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
-    KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
+    KORNIA_CHECK(order in {1, 2}, lambda: f"Order should be 1 or 2. Got {order}")
+    # the check is case-insensitive, so dispatch on the lower-case spelling as well
+    mode = mode.lower()
 
     if mode == "diff" and order == 1:
         kernel = get_diff_kernel3d(device=device, dtype=dtype)
@@ -601,12 +796,26 @@ def get_gaussian_kernel1d(
 ) -> torch.Tensor:
     r"""Return Gaussian filter coefficients.
 
+    Convention:
+        - In a floating ``dtype`` the kernel samples :math:`\exp(-n^2 / 2\sigma^2)` at the offsets :math:`n` of its
+          taps from its centre, integers for an odd size and half-integers for an even one, and is normalized to
+          sum 1; :ref:`Filtering <filtering-conventions>` names the matching scipy and OpenCV kernels.
+          :func:`~kornia.filters.get_gaussian_erf_kernel1d` integrates the Gaussian over each pixel instead, and
+          :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is the discrete Gaussian.
+        - ``force_even=True`` also accepts an even ``kernel_size``, and in a floating ``dtype`` the kernel is then
+          symmetric about the middle of the window, ``(kernel_size - 1) / 2``.
+        - A tensor ``sigma`` of shape ``(B, 1)`` gives one kernel per row.
+        - A Python integer ``sigma`` is treated as its floating-point equivalent. With ``dtype=None``, both use
+          the default floating-point dtype.
+        - An integer or bool ``dtype`` raises: the taps are fractional, and an integer ``dtype`` would also
+          truncate a fractional ``sigma`` (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
     Args:
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation.
         force_even: overrides requirement for odd kernel size.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         gaussian filter coefficients with shape :math:`(B, \text{kernel_size})`.
@@ -646,15 +855,25 @@ def get_gaussian_discrete_kernel1d(
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
+    Convention:
+        - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. In a floating ``dtype`` this
+          kernel is Lindeberg's discrete Gaussian :math:`e^{-\sigma^2} I_{|n|}(\sigma^2)`, with :math:`I_n` the
+          modified Bessel function of the first kind, normalized over the window: the smoothing kernel of discrete
+          scale space. A float16 or bfloat16 kernel is computed in float32 and rounded to its ``dtype``.
+        - The kernel has ``kernel_size`` taps, and ``kernel_size=1`` is the single tap ``[1.0]``. The discrete
+          Gaussian is defined at integer offsets from the centre tap, so there is no even window: an even
+          ``kernel_size`` raises with and without ``force_even``.
+
     Args:
         kernel_size: filter size. It should be odd and positive.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
-        force_even: overrides requirement for odd kernel size.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
+        force_even: accepted for parity with the other Gaussian builders. The discrete Gaussian needs an odd
+            ``kernel_size`` either way.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
-        1D tensor with gaussian filter coefficients. With shape :math:`(B, \text{kernel_size})`
+        1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`
 
     Examples:
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
@@ -683,12 +902,20 @@ def get_gaussian_erf_kernel1d(
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
+    Convention:
+        - See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. In a floating ``dtype`` this
+          kernel integrates the Gaussian over each pixel, :math:`\Phi((n + 1/2) / \sigma) - \Phi((n - 1/2) / \sigma)`
+          with :math:`\Phi` the normal CDF, so it blurs more than the sampled kernel: for :math:`\sigma` of
+          about 1 or more, on a window wide enough for the tails, its variance is :math:`\sigma^2 + 1/12`.
+        - With ``force_even=True`` an even kernel is symmetric about the middle of the window,
+          ``(kernel_size - 1) / 2``, as the sampled kernel is.
+
     Args:
         kernel_size: filter size. It should be odd and positive.
-        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        sigma: gaussian standard deviation. If a tensor, should be in a shape ``(B, 1)``
         force_even: overrides requirement for odd kernel size.
-        device: This value will be used if sigma is a float. Device desired to compute.
-        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+        device: This value will be used if sigma is an int or float. Device desired to compute.
+        dtype: This value will be used if sigma is an int or float. Dtype desired for compute.
 
     Returns:
         1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`
@@ -716,7 +943,13 @@ def get_gaussian_kernel2d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Return Gaussian filter matrix coefficients.
+    r"""Return 2D Gaussian filter coefficients of shape (B, k_y, k_x), the outer product of two 1D kernels.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. ``kernel_size`` is
+        ``(k_y, k_x)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)`, y first as in the output
+        :math:`(B, k_y, k_x)`, which is the outer product of the two 1d kernels. A tensor ``sigma`` of shape
+        ``(B, 2)`` gives one kernel per row.
 
     Args:
         kernel_size: filter sizes in the y and x direction. Sizes should be odd and positive.
@@ -729,7 +962,7 @@ def get_gaussian_kernel2d(
         2D tensor with gaussian filter matrix coefficients.
 
     Shape:
-        - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y)`
+        - Output: :math:`(B, \text{kernel_size}_y, \text{kernel_size}_x)`
 
     Examples:
         >>> get_gaussian_kernel2d((5, 5), (1.5, 1.5))
@@ -751,6 +984,7 @@ def get_gaussian_kernel2d(
 
     """
     if isinstance(sigma, tuple):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
         sigma = torch.tensor([sigma], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
@@ -773,7 +1007,13 @@ def get_gaussian_kernel3d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Return Gaussian filter matrix coefficients.
+    r"""Return 3D Gaussian filter coefficients of shape (B, k_z, k_y, k_x), the outer product of three 1D kernels.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_gaussian_kernel1d`. ``kernel_size`` is
+        ``(k_z, k_y, k_x)`` and ``sigma`` is :math:`(\sigma_z, \sigma_y, \sigma_x)`, z first as in the output
+        :math:`(B, k_z, k_y, k_x)`, which is the outer product of the three 1d kernels. A tensor ``sigma`` of shape
+        ``(B, 3)`` gives one kernel per row.
 
     Args:
         kernel_size: filter sizes in the z, y and x direction. Sizes should be odd and positive.
@@ -786,7 +1026,7 @@ def get_gaussian_kernel3d(
         3D tensor with gaussian filter matrix coefficients.
 
     Shape:
-        - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y,  \text{kernel_size}_z)`
+        - Output: :math:`(B, \text{kernel_size}_z, \text{kernel_size}_y, \text{kernel_size}_x)`
 
     Examples:
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5))
@@ -810,6 +1050,7 @@ def get_gaussian_kernel3d(
 
     """
     if isinstance(sigma, tuple):
+        _check_kernel_dtype(dtype, "A Gaussian kernel")
         sigma = torch.tensor([sigma], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
@@ -830,16 +1071,29 @@ def get_laplacian_kernel1d(
 ) -> torch.Tensor:
     r"""Return the coefficients of a 1D Laplacian filter.
 
+    Convention:
+        - In a floating ``dtype``, or a signed integer one wide enough to hold ``1 - kernel_size``, the kernel is
+          all ones with the centre tap set to ``1 - kernel_size``, so it sums to 0. Size 3 is the second difference
+          ``[1, -2, 1]``; a larger size is not a wider second difference, and size 5 answers 5 to a unit second
+          derivative.
+        - The negative centre makes the response positive where the values curve upwards.
+        - An integer or bool ``dtype`` that cannot hold ``1 - kernel_size`` raises, so uint8 and bool always do,
+          rather than wrap the centre (to 252 for size 5 in uint8)
+          (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
     Args:
-        kernel_size: filter size. It should be odd and positive.
+        kernel_size: filter size. It should be odd and at least 3.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
     Returns:
         1D tensor with laplacian filter coefficients.
 
+    Raises:
+        BaseError: if ``kernel_size`` is even, not positive, or ``1``: a single tap is the all-zero kernel.
+
     Shape:
-        - Output: math:`(\text{kernel_size})`
+        - Output: :math:`(\text{kernel_size})`
 
     Examples:
         >>> get_laplacian_kernel1d(3)
@@ -851,6 +1105,7 @@ def get_laplacian_kernel1d(
     # TODO: add default dtype as None when kornia relies on torch > 1.12
 
     _check_kernel_size(kernel_size)
+    _check_laplacian_kernel_size(kernel_size)
 
     return laplacian_1d(kernel_size, device=device, dtype=dtype)
 
@@ -858,18 +1113,30 @@ def get_laplacian_kernel1d(
 def get_laplacian_kernel2d(
     kernel_size: tuple[int, int] | int, *, device: Optional[torch.device] = None, dtype: torch.dtype = torch.float32
 ) -> torch.Tensor:
-    r"""Return Gaussian filter matrix coefficients.
+    r"""Return Laplacian filter matrix coefficients.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_laplacian_kernel1d`: in a floating ``dtype``, or a
+        signed integer one wide enough to hold :math:`1 - k_y k_x`, all ones with the centre set to
+        :math:`1 - k_y k_x` for ``kernel_size=(k_y, k_x)``. Size 3 is the 8-neighbour stencil, which answers 3 to a
+        unit :math:`\partial_{xx}` or :math:`\partial_{yy}`, so it estimates :math:`3 \nabla^2`; size 5 estimates
+        :math:`25 \nabla^2`. :ref:`Filtering <filtering-conventions>` compares it with the scipy, OpenCV and
+        scikit-image Laplacians.
 
     Args:
-        kernel_size: filter size should be odd.
+        kernel_size: filter size should be odd, and at least 3 along one axis.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
     Returns:
         2D tensor with laplacian filter matrix coefficients.
 
+    Raises:
+        BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
+            it is ``1`` or ``(1, 1)``: a :math:`1 \times 1` kernel is the all-zero kernel.
+
     Shape:
-        - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
+        - Output: :math:`(\text{kernel_size}_y, \text{kernel_size}_x)`
 
     Examples:
         >>> get_laplacian_kernel2d(3)
@@ -888,6 +1155,8 @@ def get_laplacian_kernel2d(
 
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
+    _check_laplacian_kernel_size((ky, kx))
+    _check_kernel_dtype(dtype, "The Laplacian kernel", (1 - ky * kx, 1))
 
     kernel = torch.ones((ky, kx), device=device, dtype=dtype)
     mid_x = kx // 2
@@ -932,13 +1201,10 @@ def get_pascal_kernel_2d(
 
     """
     ky, kx = _unpack_2d_ks(kernel_size)
-    ax = get_pascal_kernel_1d(kx, device=device, dtype=dtype)
-    ay = get_pascal_kernel_1d(ky, device=device, dtype=dtype)
+    ax = get_pascal_kernel_1d(kx, norm=norm, device=device, dtype=dtype)
+    ay = get_pascal_kernel_1d(ky, norm=norm, device=device, dtype=dtype)
 
-    filt = ay[:, None] * ax[None, :]
-    if norm:
-        filt = filt / torch.sum(filt)
-    return filt
+    return ay[:, None] * ax[None, :]
 
 
 def get_pascal_kernel_1d(
@@ -982,6 +1248,11 @@ def get_pascal_kernel_1d(
                 cur[-j - 1] = value
         pre = cur
 
+    if norm and (dtype is None or dtype.is_floating_point or dtype.is_complex):
+        # Normalize before casting: even the row sum can overflow in the requested dtype.
+        total = sum(cur)
+        return torch.tensor([value / total for value in cur], device=device, dtype=dtype)
+
     out = torch.tensor(cur, device=device, dtype=dtype)
 
     if norm:
@@ -991,7 +1262,10 @@ def get_pascal_kernel_1d(
 
 
 def get_canny_nms_kernel(device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
-    """Return 3x3 kernels for the Canny Non-maximal suppression."""
+    """Return 3x3 kernels for the Canny Non-maximal suppression.
+
+    Not used by :func:`~kornia.filters.canny`, which compares the neighbours by slicing, so that ties compare exactly.
+    """
     return torch.tensor(
         [
             [[[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]]],
@@ -1029,21 +1303,23 @@ def get_hysteresis_kernel(device: Optional[torch.device] = None, dtype: Optional
 def get_hanning_kernel1d(
     kernel_size: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
-    r"""Return Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+    r"""Return Hanning (also known as Hann) kernel.
 
-    .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
-               \\qquad 0 \\leq n \\leq M-1
+    .. math::  w(n) = 0.5 - 0.5 \cos\left(\frac{2\pi n}{M - 1}\right) \qquad 0 \leq n \leq M - 1
 
-    See further in numpy docs https://numpy.org/doc/stable/reference/generated/numpy.hanning.html
+    Convention:
+        This is the symmetric window of size :math:`M`: both end taps are 0, so only :math:`M - 2` samples carry
+        weight, and it is not normalized, its taps summing to :math:`(M - 1) / 2`. An even size is accepted and is
+        symmetric about :math:`(M - 1) / 2`. :ref:`Filtering <filtering-conventions>` names the matching numpy and
+        torch windows.
 
     Args:
-        kernel_size: The size the of the kernel. It should be positive.
+        kernel_size: The size of the kernel, an integer greater than 2.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
     Returns:
-        1D tensor with Hanning filter coefficients. Shape math:`(\text{kernel_size})`
-        .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+        1D tensor with Hanning filter coefficients. Shape :math:`(\text{kernel_size})`.
 
     Examples:
         >>> get_hanning_kernel1d(4)
@@ -1053,6 +1329,11 @@ def get_hanning_kernel1d(
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
     x = torch.arange(kernel_size, device=device, dtype=dtype)
+    if dtype is None:
+        # The int64 ramp is converted to the default dtype explicitly, as the multiplication below promoted it on the
+        # CPU, without the int64-tensor-times-float ``aten.mul.Scalar`` that the torch 2.14 dynamo ONNX exporter cannot
+        # translate with onnxscript 0.7.1.
+        x = x.to(torch.get_default_dtype())
     return 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
 
 
@@ -1061,16 +1342,19 @@ def get_hanning_kernel2d(
     device: Optional[Union[str, torch.device]] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Return 2d Hanning kernel, used in signal processing and KCF tracker.
+    r"""Return 2d Hanning kernel.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.get_hanning_kernel1d`. For ``kernel_size=(k_y, k_x)``
+        the kernel is the outer product of the 1d windows of sizes ``k_y`` (along ``H``) and ``k_x`` (along ``W``).
 
     Args:
-        kernel_size: The size of the kernel for the filter. It should be positive.
+        kernel_size: The size of the kernel for the filter, an integer or ``(k_y, k_x)``, each greater than 2.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
     Returns:
-        2D tensor with Hanning filter coefficients. Shape: math:`(\text{kernel_size[0], kernel_size[1]})`
-        .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+        2D tensor with Hanning filter coefficients. Shape :math:`(k_y, k_x)`.
 
     """
     kernel_size = _unpack_2d_ks(kernel_size)
@@ -1079,18 +1363,3 @@ def get_hanning_kernel2d(
     ky = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
     kx = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
     return ky @ kx
-
-
-@deprecated(replace_with="get_gaussian_kernel1d", version="0.6.10")
-def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return get_gaussian_kernel1d(*args, **kwargs)
-
-
-@deprecated(replace_with="get_gaussian_kernel2d", version="0.6.10")
-def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return get_gaussian_kernel2d(*args, **kwargs)
-
-
-@deprecated(replace_with="get_gaussian_kernel3d", version="0.6.10")
-def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
-    return get_gaussian_kernel3d(*args, **kwargs)

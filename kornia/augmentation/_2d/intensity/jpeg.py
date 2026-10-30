@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import jpeg_codec_differentiable
 
 
@@ -34,6 +34,10 @@ class RandomJPEG(IntensityAugmentationBase2D):
     soft-clipping call uses bounds ``[0, 255]`` and leaves those RGB values unchanged. The input must have
     three channels: the codec works in YCbCr, and any other channel count raises a ``ShapeError``.
 
+    Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
+
     Args:
         jpeg_quality: The range of compression rates to be applied.
         p: probability of applying the transformation.
@@ -42,8 +46,8 @@ class RandomJPEG(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     .. note::
         This function internally uses :func:`kornia.enhance.jpeg_codec_differentiable`.
@@ -81,5 +85,15 @@ class RandomJPEG(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if (
+            params["jpeg_quality"].numel() == 0
+            and input.shape[0] == 0
+            and input.shape[1] == 3
+            and input.shape[-2] > 0
+            and input.shape[-1] > 0
+        ):
+            # An empty batch draws no quality and has no pixels to code; JPEG coding keeps the shape (#4429).
+            return input.clone()
+        input = _clamp_unit_range(input)
         jpeg_output: torch.Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output

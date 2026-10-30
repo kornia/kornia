@@ -18,7 +18,6 @@
 import pytest
 import torch
 
-import kornia.geometry.calibration.undistort as undistort_module
 from kornia.geometry.calibration.distort import distort_points
 from kornia.geometry.calibration.undistort import undistort_image, undistort_points
 from kornia.geometry.grid import create_meshgrid
@@ -88,30 +87,6 @@ class TestUndistortPoints(BaseTester):
         expected = torch.stack(
             [undistort_points(p, k, d) for p, k, d in zip(points.flatten(0, -3), K.flatten(0, -3), dist.flatten(0, -2))]
         ).reshape(2, 3, num_points, 2)
-
-        assert actual.shape == points.shape
-        self.assert_close(actual, expected)
-
-    def test_export_multi_axis_batch(self, monkeypatch, device, dtype):
-        points = torch.rand(2, 3, 5, 2, device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
-        dist = torch.tensor([0.01, -0.02, 0.001, -0.001], device=device, dtype=dtype).expand(2, 3, 4).clone()
-        expected = undistort_points(points, K, dist)
-
-        monkeypatch.setattr(undistort_module, "is_exporting", lambda: True)
-        actual = undistort_points(points, K, dist)
-
-        assert actual.shape == points.shape
-        self.assert_close(actual, expected)
-
-    def test_export_unbatched(self, monkeypatch, device, dtype):
-        points = torch.rand(5, 2, device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype)
-        dist = torch.tensor([0.01, -0.02, 0.001, -0.001], device=device, dtype=dtype)
-        expected = undistort_points(points, K, dist)
-
-        monkeypatch.setattr(undistort_module, "is_exporting", lambda: True)
-        actual = undistort_points(points, K, dist)
 
         assert actual.shape == points.shape
         self.assert_close(actual, expected)
@@ -459,34 +434,34 @@ class TestUndistortImage(BaseTester):
         self.assert_close(actual, expected)
 
     def test_exception(self, device, dtype):
+        im = torch.rand(5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(5, 5, device=device, dtype=dtype)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(4, 4, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(4, 4, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(6, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(6, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
-            K = torch.rand(3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
+        im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
-            K = torch.rand(1, 3, 3, device=device, dtype=dtype)
-            distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
             undistort_image(im, K, distCoeff)
 
     def test_opencv(self, device, dtype):

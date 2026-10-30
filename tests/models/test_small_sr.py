@@ -20,8 +20,8 @@ import os
 import pytest
 import torch
 
-from kornia.config import kornia_config
 from kornia.models.small_sr import SmallSRNet, SmallSRNetWrapper
+from kornia.models.small_sr import url as small_sr_url
 
 from testing.base import BaseTester
 
@@ -46,8 +46,8 @@ class TestSmallSRNet(BaseTester):
         model = SmallSRNet(upscale_factor=3, pretrained=False).to(device, dtype)
 
         # SmallSRNet expects 1 channel input (Y channel), not 3
+        x = torch.randn(1, 3, 16, 16, device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
-            x = torch.randn(1, 3, 16, 16, device=device, dtype=dtype)
             model(x)
 
     def test_smoke_upscale_factor_one(self, device, dtype):
@@ -98,7 +98,7 @@ class TestSmallSRNet(BaseTester):
         """Test that pretrained weights can be loaded (only upscale_factor=3 has pretrained weights)."""
         if upscale_factor == 3:
             # Check if pretrained weights are cached to avoid network download attempts in offline CI
-            cache_path = os.path.join(kornia_config.hub_onnx_dir, "small_sr.pth")
+            cache_path = os.path.join(torch.hub.get_dir(), "checkpoints", os.path.basename(small_sr_url))
             if not os.path.exists(cache_path):
                 pytest.skip(f"Pretrained weights not cached at {cache_path}. Skipping to avoid network download.")
 
@@ -164,8 +164,8 @@ class TestSmallSRNetWrapper(BaseTester):
         model = SmallSRNetWrapper(upscale_factor=3, pretrained=False).to(device, dtype)
 
         # SmallSRNetWrapper expects 3 channel RGB input, rgb_to_ycbcr will raise ValueError
+        x = torch.randn(1, 1, 16, 16, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Input size must have a shape of"):
-            x = torch.randn(1, 1, 16, 16, device=device, dtype=dtype)
             model(x)
 
     def test_exception_negative_values(self, device, dtype):
@@ -210,7 +210,7 @@ class TestSmallSRNetWrapper(BaseTester):
     def test_feature_pretrained_upscale_3x(self, device, dtype):
         """Test upscaling with pretrained weights (only available for upscale_factor=3)."""
         # Check if pretrained weights are cached to avoid network download attempts in offline CI
-        cache_path = os.path.join(kornia_config.hub_onnx_dir, "small_sr.pth")
+        cache_path = os.path.join(torch.hub.get_dir(), "checkpoints", os.path.basename(small_sr_url))
         if not os.path.exists(cache_path):
             pytest.skip(f"Pretrained weights not cached at {cache_path}. Skipping to avoid network download.")
 
@@ -293,3 +293,45 @@ class TestSmallSRNetWrapper(BaseTester):
         # Individual processing should match batch processing
         self.assert_close(output1, output_batch[0:1], rtol=1e-4, atol=1e-4)
         self.assert_close(output2, output_batch[1:2], rtol=1e-4, atol=1e-4)
+
+
+class TestSmallSRNetWeights:
+    """``load_from_file`` reads a local checkpoint itself and sends a URL through the hub cache."""
+
+    @pytest.mark.parametrize("spelling", ["absolute", "home"])
+    def test_a_local_checkpoint_is_read(self, monkeypatch, tmp_path, spelling):
+        source = SmallSRNet(upscale_factor=3, pretrained=False)
+        path = tmp_path / "weights.pth"
+        torch.save(source.state_dict(), path)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        loads = []
+        real_load = torch.load
+        monkeypatch.setattr(torch, "load", lambda *a, **kw: loads.append(kw.get("weights_only")) or real_load(*a, **kw))
+        model = SmallSRNet(upscale_factor=3, pretrained=False).train()
+        model.load_from_file(str(path) if spelling == "absolute" else "~/weights.pth")
+        assert all(torch.equal(v, source.state_dict()[k]) for k, v in model.state_dict().items())
+        assert not model.training
+        # A local checkpoint is unpickled with weights_only=True, as the hub path does.
+        assert loads == [True]
+
+    def test_a_url_goes_through_the_hub_cache(self, monkeypatch, tmp_path):
+        from kornia.models import small_sr
+
+        monkeypatch.chdir(tmp_path)
+        source = SmallSRNet(upscale_factor=3, pretrained=False)
+        calls = []
+
+        def _load(url, **kwargs):
+            # No model_dir and no file_name: the torch hub cache, under the URL's base name, which is the key
+            # .github/download-models-weights.py prefetches it by.
+            calls.append((url, kwargs.get("model_dir"), kwargs.get("file_name")))
+            return source.state_dict()
+
+        monkeypatch.setattr(small_sr, "load_state_dict_from_url", _load)
+        model = SmallSRNet(upscale_factor=3, pretrained=True)
+        # The torch hub cache: no ``model_dir`` overrides it.
+        assert calls == [(small_sr.url, None, None)]
+        assert all(torch.equal(v, source.state_dict()[k]) for k, v in model.state_dict().items())
+        # Not cached under the working directory, where each new one downloaded the weights again.
+        assert not any(tmp_path.iterdir())

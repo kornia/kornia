@@ -31,9 +31,55 @@ English | [简体中文](README_zh-CN.md)
 </p>
 </div>
 
-**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](), [auto-differentiation]() and [GPU acceleration](). Whether you're working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
+**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](https://kornia.readthedocs.io/en/latest/get-started/gpu-acceleration.html), [auto-differentiation](https://kornia.readthedocs.io/en/latest/get-started/differentiability.html) and [GPU acceleration](https://kornia.readthedocs.io/en/latest/get-started/gpu-acceleration.html). Whether you're working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
 
 > **📢 Direction**: Kornia is becoming the **reference implementation and executable specification** for differentiable computer vision and geometry in the PyTorch ecosystem — explicit conventions, conformance tests, and honest benchmarks over API growth. Read the [Roadmap](ROADMAP.md).
+
+## When to use Kornia
+
+Kornia pays off where a hand-written version gets long or fragile, or where the alternatives leave the GPU:
+
+- **Breadth.** 1,200+ public operators, most with no torchvision equivalent: camera models and
+  epipolar geometry, minimal solvers and RANSAC, feature detection, description and matching, edge detection,
+  morphology, Lab and Bayer color, image losses and metrics. torchvision overlaps mainly on resizing, cropping,
+  flipping, color jitter and blur.
+- **Per-sample parameters in one batched call.** `gaussian_blur2d(x, (9, 9), sigma)` takes a `(B, 2)` `sigma`;
+  `rotate` takes a `(B,)` angle, `warp_affine` / `warp_perspective` take `(B, 2, 3)` / `(B, 3, 3)` matrices and
+  `adjust_brightness` a `(B,)` factor. torchvision's functional ops apply one parameter per call. From Kornia 0.9.1,
+  a `sigma` tensor and the enhancement value checks (gamma, contrast, solarize) are validated on the device, so a
+  CUDA call, or an MPS call on PyTorch ≥ 2.13, needs no host synchronization for them.
+- **Batched minimal solvers and robust estimation.** `find_fundamental(x1, x2, method="7POINT")` solves `(B, 7, 2)`
+  samples and returns all real solutions in `(B, 3, 3, 3)`, with zero matrices in the unused slots; the 8-point,
+  5-point essential (`find_essential`), DLT homography and PnP (`solve_pnp_dlt`) solvers are there too. `RANSAC`
+  (homography, fundamental and essential models) samples and scores hypotheses on the device; by default its
+  refinement and final selection run on the host in float64, and `compile=True` (PyTorch ≥ 2.14, CPU and CUDA) runs
+  the whole estimation as one compiled graph on the device.
+- **Differentiable geometry.** Depth to 3D and back (`depth_to_3d_v2`, `unproject_points`, `project_points`),
+  `warp_frame_depth`, `remap`, camera models with Brown–Conrady and Kannala–Brandt distortion, and Lie groups (`So3`,
+  `Se3`) keep gradients with respect to depth, pose and camera parameters.
+- **Annotated augmentation.** `AugmentationSequential` applies one sampled transform to images, masks, boxes and
+  keypoints together and can invert it, in 2D; the 3D augmentations transform volumes, without annotations or an
+  inverse. On CUDA, augmentations move their sampled parameters to the
+  GPU without blocking it, and a sync-guard test keeps every public augmentation free of avoidable host
+  synchronizations.
+- **Local features on the GPU.** SIFT and HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue, with
+  mutual-nearest-neighbour and ratio-test matchers.
+- **Morphology** with arbitrary structuring elements on batched tensors.
+- **Compiles and exports.** Nearly all probed operator configurations run under `torch.compile` and match eager,
+  and over 1,000 export to ONNX; the result for every operator is on the
+  [export support page](https://kornia.readthedocs.io/en/latest/get-started/export-support.html).
+- **Fast where it is designed to be: batched tensors on a GPU.** In the published 0.9.0 flagship benchmarks (RTX 4090,
+  batch 32), many filters, warps, feature-matching steps and image metrics run about 10× to 70× faster in eager mode
+  than per-image OpenCV or scikit-image on the CPU, and `torch.compile` takes several of them past 100×. On the small
+  overlap with torchvision on the same GPU, eager Kornia is slower; compiled Kornia is faster for hue, color jitter
+  and Gaussian blur and still slower for flips, crops and brightness. OpenCV wins single-image `uint8` CPU work.
+  Results vary with hardware and workload; every number, win and loss is published on the
+  [performance page](https://kornia.readthedocs.io/en/latest/get-started/performance.html).
+
+These operators run on the input's device with no NumPy round trip, and most are differentiable; robust estimation
+(`RANSAC`) and the extraction methods of learned features such as DeDoDe and XFeat run without gradients. For a
+single fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are just as
+good.
 
 ## Key Components
 1. **Differentiable Image Processing**<br>
@@ -81,68 +127,96 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 </details>
 
-## Half-Precision Support
+## CUDA and Half-Precision Support
 
-The status below comes from the Linux CPU half-precision CI jobs, which run the whole test suite in `float16` and in
-`bfloat16` against strict known-failure manifests
+The module table below counts entries in the Linux CPU known-failure manifests
 ([`cpu_float16.txt`](testing/half_precision_xfails/cpu_float16.txt),
-[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)). The *known failures* column counts the manifest
-entries per module; the remaining work is tracked in [#4153](https://github.com/kornia/kornia/issues/4153). No CI job
-covers CUDA or MPS half precision.
+[`cpu_bfloat16.txt`](testing/half_precision_xfails/cpu_bfloat16.txt)), pinned to Python 3.11 and PyTorch 2.15.0.
+There are **243 float16 and 256 bfloat16 recorded failures**. These are parametrized test cases, not counts of
+unsupported functions. The remaining work is tracked in [#4153](https://github.com/kornia/kornia/issues/4153).
+No CI job covers CUDA or MPS half precision; CPU results do not establish support on those backends.
 
 | Module | float16 | bfloat16 | Known failures (fp16 / bf16) | Notes |
 |--------|:-------:|:--------:|:----------------------------:|-------|
-| `kornia.color` | ⚠️ | ⚠️ | 3 / 9 | float16: HLS JIT/module and RGB255 round-trip accuracy; bfloat16: Lab, Luv and RGB255 accuracy |
-| `kornia.filters` | ⚠️ | ⚠️ | 18 / 9 | Accuracy misses in Canny magnitudes, discrete Gaussian kernels and Otsu; on CPU `fft_conv` runs its FFTs in float32 |
-| `kornia.enhance` | ✅ | ⚠️ | 0 / 2 | bfloat16: `DiffJPEG` and ZCA accuracy |
-| `kornia.morphology` | ✅ | ✅ | 0 / 0 | |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 200 / 56 | float16: 108 entries are `CutmixGenerator`, whose Dirichlet sampling rejects float16 parameters; bfloat16: mostly 3D-augmentation gradient checks (28 of 56 entries are `RandomMotionBlur3D`/`RandomRotation3D` backward) |
-| `kornia.geometry.transform` | ⚠️ | ⚠️ | 43 / 58 | Accuracy misses in rotation matrices, affine/perspective warps, the homography warper and 3D crops |
-| `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Pinhole `cam2pixel`/`pixel2cam` consistency, distortion round trips, `StereoCamera` reprojection; 12 bfloat16 entries are a test-side dtype assertion |
-| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | `solve_pnp_dlt` rejects half inputs (float32/float64 only); `undistort_points` misses its OpenCV reference values |
-| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 58 / 56 | `find_fundamental`, `find_essential`, `decompose_essential_matrix`, `motion_from_essential*` and `KRt_from_projection` raise `NotImplementedError`: CPU `lu`, `eigh` and QR have no half kernels |
-| `kornia.geometry.homography` | ⚠️ | ⚠️ | 11 / 16 | The DLT solvers run (SVD is cast to float32) but miss the clean-point accuracy checks |
-| `kornia.geometry.liegroup` | ⚠️ | ⚠️ | 36 / 130 | `So2`/`Se2` use complex tensors: float16 hits missing `ComplexHalf` kernels, and most bfloat16 `So2`/`Se2` tests raise (119 entries); `So3`/`Se3` nearly all pass |
-| `kornia.geometry.solvers` | ⚠️ | ⚠️ | 2 / 2 | `solve_quartic` accuracy on random and one reference quartic |
-| `kornia.geometry.subpix` | ⚠️ | ⚠️ | 14 / 12 | `ConvSoftArgmax3d` raises (CPU `avg_pool3d` has no half kernel); the rest are accuracy |
-| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 72 / 60 | Angle-axis, quaternion and rotation-matrix round trips lose accuracy |
-| `kornia.geometry.ransac` | ⚠️ | ⚠️ | 4 / 4 | The essential and fundamental models raise through the epipolar solvers |
-| `kornia.geometry` (other) | ⚠️ | ⚠️ | 8 / 17 | Accuracy in boxes, depth and line utilities; bfloat16 `NamedPose` construction raises |
-| `kornia.image` | ⚠️ | ⚠️ | 4 / 4 | `draw_convex_polygon` fill accuracy |
-| `kornia.losses` | ⚠️ | ⚠️ | 3 / 4 | Dice averaging overflows to inf/NaN in float16; mutual information range check; bfloat16 Dice weighting and total variation |
-| `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual `cdist` fallback for half dtypes; LightGlue's float16 tests are skipped, so that path is unmeasured |
-| `kornia.metrics` | ✅ | ⚠️ | 0 / 1 | bfloat16: `ssim3d` accuracy |
-| `kornia.models` | ⚠️ | ⚠️ | 9 / 1 | EfficientViT raises dtype mismatches (float16); bfloat16 RT-DETR RepVGG fusion accuracy |
-| `contrib`, `core`, `io`, `onnx`, `sensors`, `tracking`, `utils` | ✅ | ⚠️ | 0 / 3 | bfloat16: histogram matching, `_torch_svd_cast`, camera-model projection |
+| `kornia.color` | ✅ | ✅ | 0 / 0 | Lab/Luv conversions and `rgb255_to_normals` compute half inputs in float32 and return the input dtype |
+| `kornia.filters` | ✅ | ✅ | 0 / 0 | Canny, Gaussian kernels/blur and CPU FFT convolution compute half inputs in float32 and return the input dtype |
+| `kornia.enhance` | ✅ | ✅ | 0 / 0 | ZCA keeps half-input fitted state in float32; whitening and JPEG return the input dtype after float32 computation |
+| `kornia.morphology` | ✅ | ✅ | 0 / 0 |  |
+| `kornia.augmentation` | ⚠️ | ⚠️ | 59 / 48 | float16: container autocast/runtime errors and accuracy; both dtypes: 3D backward and random-generator accuracy |
+| `kornia.geometry.transform` | ⚠️ | ⚠️ | 31 / 31 | Rotation matrices, affine/perspective warps and homography-warper accuracy |
+| `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Projection, distortion round trips and stereo reprojection; includes test-side dtype assertions |
+| `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | solve_pnp_dlt rejects half inputs; undistort_points accuracy |
+| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | 36 / 36 | Essential-matrix decomposition/motion and KRt_from_projection lack CPU half kernels; fundamental-matrix accuracy |
+| `kornia.geometry.homography` | ⚠️ | ⚠️ | 10 / 16 | DLT solver accuracy, including iterated and line-based variants |
+| `kornia.geometry.liegroup` | ✅ | ✅ | 0 / 0 | So2/Se2 reject bfloat16 rotation construction: PyTorch has no complex bfloat16 dtype; these expected errors/skips are outside the manifests |
+| `kornia.geometry.solvers` | ✅ | ✅ | 0 / 0 |  |
+| `kornia.geometry.subpix` | ⚠️ | ⚠️ | 6 / 3 | SpatialSoftArgmax2d and ConvQuadInterp3d accuracy; bfloat16: render_gaussian2d accuracy |
+| `kornia.geometry.conversions` | ⚠️ | ⚠️ | 65 / 65 | Angle-axis, quaternion and rotation-matrix accuracy; includes tests/integration/test_conversions.py |
+| `kornia.geometry.ransac` | ⚠️ | ⚠️ | 2 / 2 | Essential-model fitting raises in epipolar solvers |
+| `kornia.geometry (other)` | ⚠️ | ⚠️ | 6 / 13 | Box-transform and depth accuracy |
+| `kornia.image` | ⚠️ | ⚠️ | 2 / 2 | Circle/ellipse polygon-fill comparisons use vertices and reference masks computed in half precision |
+| `kornia.losses` | ✅ | ⚠️ | 0 / 2 | bfloat16: total-variation accuracy |
+| `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual cdist fallback for half dtypes; LightGlue's float16 tests are skipped |
+| `kornia.metrics` | ✅ | ✅ | 0 / 0 |  |
+| `kornia.models` | ✅ | ⚠️ | 0 / 1 | bfloat16: RT-DETR RepVGG fusion accuracy |
+| `contrib, core, io, onnx, sensors, tracking, utils` | ✅ | ⚠️ | 0 / 2 | bfloat16: histogram matching and _torch_svd_cast accuracy |
 
-✅ No known CPU failures &nbsp; ⚠️ Runs, with known failures (mostly accuracy; notes name the ops that raise)
+✅ No entries in the CPU known-failure manifest &nbsp; ⚠️ Has recorded CPU failures.
+Neither symbol promises complete dtype support: skips, expected exceptions and source-level xfails are outside
+these counts. Some operators compute internally in float32 or float64 and return the input dtype.
 
-**Test results:**
+**Observed CPU CI outcomes:**
 
-| Run | Passed | Failed | Skipped | Pass% | Measured |
-|-----|-------:|-------:|--------:|------:|----------|
-| CPU float32 *(baseline)* | 10398 | 0 | 3737 | **100.0%** | `ca5021eb`, 2026-09-14 |
-| CPU float16 | 9795 | 522 | 3821 | **94.9%** | `ca5021eb`, 2026-09-14 |
-| CPU bfloat16 | 9849 | 512 | 3774 | **95.1%** | `ca5021eb`, 2026-09-14 |
-| CUDA float32 *(baseline)* | 12193 | 22 | 3957 | **99.8%** | `f8449854`, 2026-09-23 |
-| CUDA float16 | 11738 | 451 | 3983 | **96.3%** | `f8449854`, 2026-09-23 |
-| CUDA bfloat16 | 11736 | 500 | 3936 | **95.9%** | `f8449854`, 2026-09-23 |
+The [scheduled run at `93f1376e`, 2026-10-21](https://github.com/kornia/kornia/actions/runs/39524889979)
+used Linux x86_64, Python 3.11 and PyTorch 2.14.0, without slow or compile tests:
 
-Pass% = passed ÷ (passed + failed). The CPU rows are the scheduled `main` CI jobs (Linux x86_64, Python 3.11,
-PyTorch 2.9.1, no `--runslow`). In the half jobs, *Failed* is the manifest's entry count: CI reports those tests as
-strict xfails, and it fails if any of them passes or fails differently. Tests marked `xfail` in the source are
-excluded from every row. Reproduce a CPU half row in that environment with
-`KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-float16`
-(or `cpu-bfloat16`), and the baseline with `pixi run test-f32`. `pixi run test-half` is an unseeded sweep of both
-dtypes whose counts can drift slightly from the manifests. The CUDA rows are a local run, not CI (RTX 4090,
-Python 3.11, PyTorch 2.14.0+cu130). The half rows run in-process with `KORNIA_TEST_IN_SUBPROCESS=1`; every failure,
-in all three rows, is then re-run on its own (with `--isolate-half-precision` for the half dtypes) and counted by that
-result. Eight of the float32 failures are cuDNN TF32 accuracy misses in convolutions
-([#4778](https://github.com/kornia/kornia/issues/4778)); the other 14 are tests that assume CPU behavior
-([#4779](https://github.com/kornia/kornia/issues/4779)). The CUDA rows deselect `TestFindHomographyDLT::test_nocrash`
-and `test_nocrash_lu`, which hang on CUDA ([#4770](https://github.com/kornia/kornia/issues/4770)).
+| Run | Passed | Failed | Skipped | XFAIL (all) | XPASS | Strict manifest entries |
+|-----|-------:|-------:|--------:|------------:|------:|------------------------:|
+| [CPU float16](https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300500) | 23905 | 0 | 5132 | 284 | 4 | 250 |
+| [CPU bfloat16](https://github.com/kornia/kornia/actions/runs/39524889979/job/118977300410) | 23726 | 0 | 5286 | 309 | 4 | 274 |
 
-See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
+Each job also deselected 3 ONNX conformance tests. XFAIL totals include both the strict manifest entries and
+source-level expected failures. The 4 XPASSes in each successful job are non-strict expected failures that passed;
+a passing **manifest** entry makes verification fail, as do a changed exception, a skipped entry or a stale node ID.
+A green job therefore means the recorded baseline reproduced, even though known failures and skips remain.
+These totals describe the linked revision; the module table describes the checked-in manifests.
+
+Verify the complete CPU profiles in the pinned environment with:
+
+```bash
+KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-float16
+KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ --verify-known-failures --known-failure-profile=cpu-bfloat16
+```
+
+`pixi run test-half` is an unseeded CPU sweep, without the strict profile baseline. See
+[TESTING.md](TESTING.md#7-half-precision-dtypes-float16--bfloat16) for focused checks and baseline maintenance.
+
+**CUDA support and measurement limits:**
+
+Kornia accepts CUDA tensors for GPU acceleration, subject to each operator's dtype and backend limitations.
+There is no blocking CUDA CI job or checked-in CUDA known-failure manifest, so the CPU xfail counts above do not
+provide a current CUDA pass rate. The previous local measurements are retained here as historical evidence only:
+
+| Historical run (`f8449854`, 2026-09-23) | Passed | Failed | Skipped |
+|------------------------------------------------|-------:|-------:|--------:|
+| CUDA float32 | 12193 | 22 | 3957 |
+| CUDA float16 | 11738 | 451 | 3983 |
+| CUDA bfloat16 | 11736 | 500 | 3936 |
+
+These used an RTX 4090, Python 3.11 and PyTorch 2.14.0+cu130. Source-marked xfails were excluded. Half tests ran
+in-process with `KORNIA_TEST_IN_SUBPROCESS=1`, followed by isolated retries of failures; two homography tests were
+deselected. They are not a measurement of the current branch. Those two tests (`TestFindHomographyDLT::test_nocrash`
+and `test_nocrash_lu`) now pass locally in all three CUDA dtypes at `649b3f86d`; a fresh full CUDA sweep is needed
+before quoting new totals.
+
+For CUDA half tests, use `--isolate-half-precision` so each test gets a fresh process. They are skipped by default
+without it; selecting a half dtype alone does not exercise CUDA half support:
+
+```bash
+pixi run test-module tests/color/ --device=cuda --dtype=float16,bfloat16 --isolate-half-precision
+```
+
+See the [full precision guide](https://kornia.readthedocs.io/en/latest/get-started/precision.html) for details.
 
 ## Sponsorship
 

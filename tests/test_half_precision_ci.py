@@ -48,7 +48,7 @@ pytest_plugins = ["pytester"]
 def _environment(**overrides: str) -> ManifestEnvironment:
     values = {
         "python": "3.11",
-        "pytorch": "2.9.1",
+        "pytorch": "2.14.0",
         "os": "Linux",
         "arch": "x86_64",
         "pytest": "9.0.3",
@@ -267,8 +267,10 @@ def test_describe_audit_drift_reports_moves_stales_missings_and_count_drift() ->
     )
 
     assert _describe_audit_drift(audited, discovered) == [
-        "audited entry tests/a.py:10 torch.rand has no call site; "
-        "tests/a.py:11 torch.rand is not audited (the same call moved?)",
+        (
+            "audited entry tests/a.py:10 torch.rand has no call site; "
+            "tests/a.py:11 torch.rand is not audited (the same call moved?)"
+        ),
         "audited entry tests/a.py:20 torch.randperm has no matching call site (stale entry)",
         "audited entry tests/c.py:49 torch.randn is audited 2x but found 1x at that line",
         "eager RNG call site tests/a.py:9 torch.randn is missing from the audit",
@@ -915,6 +917,13 @@ def test_upstream_probe_floor_is_consistent_across_jobs() -> None:
     }
 
     assert len(set(floors.values())) == 1, floors
+    root = Path(project_conftest.__file__).parent
+    blocking = (root / ".github" / "workflows" / "pr_test_cpu.yml").read_text(encoding="utf-8")
+    # Both the matrix entries (`pytorch-version: "2.15.0"`) and the JSON pins of single jobs (`'["2.15.0"]'`).
+    pins = re.findall(r"\n\s+pytorch-version: (.+)", blocking)
+    pinned = [version for pin in pins for version in re.findall(r'"(\d+\.\d+\.\d+)"', pin)]
+    latest = max(pinned, key=lambda version: tuple(map(int, version.split("."))))
+    assert set(floors.values()) == {latest}, floors
 
 
 def test_upstream_probe_record_jobs_match_the_blocking_python() -> None:

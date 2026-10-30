@@ -67,10 +67,10 @@ class HourglassBackbone(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_images: Input image batch with shape :math:`(B, C, H, W)`.
+            input_images: Input image batch with shape ``(B, C, H, W)``.
 
         Returns:
-            Feature map with shape :math:`(B, 256, H/4, W/4)`.
+            Feature map with shape ``(B, 256, H/4, W/4)``.
         """
         return self.net(input_images)
 
@@ -99,10 +99,10 @@ class MultitaskHead(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+            x: Input feature tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Concatenated predictions from all heads with shape :math:`(B, 5, H, W)`.
+            Concatenated predictions from all heads with shape ``(B, 5, H, W)``.
         """
         return torch.cat([head(x) for head in self.heads], dim=1)
 
@@ -133,7 +133,7 @@ class Bottleneck2D(nn.Module):
         r"""Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+            x: Input feature tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Residual block output tensor with shape :math:`(B, 2 \times \text{planes}, H', W')`.
@@ -196,15 +196,12 @@ class Hourglass(nn.Module):
         return nn.ModuleList(hgl)
 
     def _hour_glass_forward(self, n: int, x: torch.Tensor) -> torch.Tensor:
-        up1 = self.hg[n - 1][0](x)  # type: ignore[index]
+        up1 = self.hg[n - 1][0](x)
         low1 = F.max_pool2d(x, 2, stride=2)
-        low1 = self.hg[n - 1][1](low1)  # type: ignore[index]
+        low1 = self.hg[n - 1][1](low1)
 
-        if n > 1:
-            low2 = self._hour_glass_forward(n - 1, low1)
-        else:
-            low2 = self.hg[n - 1][3](low1)  # type: ignore[index]
-        low3 = self.hg[n - 1][2](low2)  # type: ignore[index]
+        low2 = self._hour_glass_forward(n - 1, low1) if n > 1 else self.hg[n - 1][3](low1)
+        low3 = self.hg[n - 1][2](low2)
         up2 = F.interpolate(low3, size=up1.shape[2:])
         return up1 + up2
 
@@ -212,10 +209,10 @@ class Hourglass(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input feature tensor with shape :math:`(B, C, H, W)`.
+            x: Input feature tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Hourglass output feature tensor with shape :math:`(B, C, H, W)`.
+            Hourglass output feature tensor with shape ``(B, C, H, W)``.
         """
         return self._hour_glass_forward(self.depth, x)
 
@@ -290,10 +287,10 @@ class HourglassNet(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            x: Input image tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Output feature map of the last stack with shape :math:`(B, 256, H/4, W/4)`.
+            Output feature map of the last stack with shape ``(B, 256, H/4, W/4)``.
         """
         out = []
         x = self.conv1(x)
@@ -356,10 +353,10 @@ class SuperpointDecoder(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+            input_features: Input feature map with shape ``(B, C, H/4, W/4)``.
 
         Returns:
-            Junction heatmap prediction with shape :math:`(B, H, W)`.
+            Junction heatmap prediction with shape ``(B, H, W)``.
         """
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
@@ -427,10 +424,10 @@ class PixelShuffleDecoder(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+            input_features: Input feature map with shape ``(B, C, H/4, W/4)``.
 
         Returns:
-            Line heatmap prediction with shape :math:`(B, H, W)`.
+            Line heatmap prediction with shape ``(B, H, W)``.
         """
         # Iterate til output block
         out = input_features
@@ -464,10 +461,10 @@ class SuperpointDescriptor(nn.Module):
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_features: Input feature map with shape :math:`(B, C, H/4, W/4)`.
+            input_features: Input feature map with shape ``(B, C, H/4, W/4)``.
 
         Returns:
-            Semi-dense descriptors with shape :math:`(B, 128, H/4, W/4)`.
+            Semi-dense descriptors with shape ``(B, 128, H/4, W/4)``.
         """
         feat = self.relu(self.convPa(input_features))
         return self.convPb(feat)
@@ -486,7 +483,7 @@ class SOLD2Net(nn.Module):
         a Dict with the following values:
             junctions: heatmap of junctions.
             heatmap: line heatmap.
-            descriptors: semi-dense descriptors.
+            descriptors: semi-dense descriptors, only when ``use_descriptor`` is true in ``model_cfg``.
 
     """
 
@@ -504,15 +501,33 @@ class SOLD2Net(nn.Module):
         # Line heatmap decoder
         self.heatmap_decoder = PixelShuffleDecoder(feat_channel, num_upsample=2)
 
-        # Descriptor decoder
-        if "use_descriptor" in self.cfg:
-            self.descriptor_decoder = SuperpointDescriptor(feat_channel)
+        # Descriptor decoder, only when the descriptors are used: SOLD2 sets use_descriptor, SOLD2_detector does not
+        self.descriptor_decoder = SuperpointDescriptor(feat_channel) if self.cfg.get("use_descriptor", False) else None
+
+    def _load_from_state_dict(
+        self,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+        strict: bool,
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        error_msgs: List[str],
+    ) -> None:
+        # The pretrained checkpoint, and state dicts saved from a detector that built the descriptor head, carry its
+        # weights; a network without the head loads the rest. ``load_state_dict`` passes a copy of the caller's dict.
+        if self.descriptor_decoder is None:
+            for key in [k for k in state_dict if k.startswith(prefix + "descriptor_decoder.")]:
+                del state_dict[key]
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def forward(self, input_images: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Run this SOLD2 backbone component forward.
 
         Args:
-            input_images: Input image batch with shape :math:`(B, 1, H, W)`.
+            input_images: Input image batch with shape ``(B, 1, H, W)``.
 
         Returns:
             Dictionary containing predicted junction heatmap, line heatmap, and optional descriptors.
@@ -529,7 +544,7 @@ class SOLD2Net(nn.Module):
         outputs = {"junctions": junctions, "heatmap": heatmaps}
 
         # Descriptor decoder
-        if "use_descriptor" in self.cfg:
+        if self.descriptor_decoder is not None:
             outputs["descriptors"] = self.descriptor_decoder(features)
 
         return outputs

@@ -16,7 +16,7 @@
 #
 
 import math
-from typing import NotRequired, Optional, Tuple, TypedDict, Union
+from typing import NotRequired, Optional, Sequence, Tuple, TypedDict, Union
 
 import torch
 
@@ -46,7 +46,8 @@ class AdalamConfig(TypedDict):
     force_seed_mnn: Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy
         at the cost of runtime
     device: Union[str, torch.device, None] to be used for running AdaLAM. Use GPU if available.
-    mnn: Default None. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
+    mnn: not read from the configuration: :func:`~kornia.feature.match_adalam` warns about this key and ignores it.
+        A mutual-nearest-neighbour mask goes to ``AdalamFilter.filter_matches`` as its ``mnn`` argument.
 
     """
 
@@ -68,8 +69,8 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Output empty tensors.
 
     Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+            - Descriptor distance of matching descriptors, shape of ``(0, 1)``.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of ``(0, 2)``.
 
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
@@ -266,6 +267,25 @@ def extract_local_patterns(
     return im1loc[sorting_perm], im2loc[sorting_perm], ransidx, tokp1[sorting_perm], tokp2[sorting_perm]
 
 
+def _merge_duplicate_matches(matches: torch.Tensor, dists: torch.Tensor, n2: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Keep each match once, with the smallest distance ratio of its copies.
+
+    Overlapping neighbourhoods accept the same match in several local RANSACs, each with its own confidence; the best
+    one is reported. The unique rows come sorted lexicographically, through a 1-D key: torch.unique(dim=0) has no MPS
+    kernel on torch 2.5 (https://stackoverflow.com/a/72005790).
+    """
+    keys, inverse = torch.unique(matches[:, 0] * n2 + matches[:, 1], return_inverse=True)
+    unique_matches = torch.stack([torch.div(keys, n2, rounding_mode="floor"), keys % n2], dim=1)
+    # The copies ordered by match, then by ratio, and the first of each match kept: scatter_reduce, the direct way to
+    # take a minimum per match, has no MPS kernel on torch 2.5.
+    by_ratio = torch.sort(dists, stable=True).indices
+    order = by_ratio[torch.sort(inverse[by_ratio], stable=True).indices]
+    grouped = inverse[order]
+    first = torch.ones_like(grouped, dtype=torch.bool)
+    first[1:] = grouped[1:] != grouped[:-1]
+    return unique_matches, dists[order][first]
+
+
 def adalam_core(
     k1: torch.Tensor,
     k2: torch.Tensor,
@@ -273,8 +293,8 @@ def adalam_core(
     scores1: torch.Tensor,
     config: AdalamConfig,
     mnn: Optional[torch.Tensor] = None,
-    im1shape: Optional[Tuple[int, int]] = None,
-    im2shape: Optional[Tuple[int, int]] = None,
+    im1shape: Optional[Sequence[int]] = None,
+    im2shape: Optional[Sequence[int]] = None,
     o1: Optional[torch.Tensor] = None,
     o2: Optional[torch.Tensor] = None,
     s1: Optional[torch.Tensor] = None,
@@ -301,11 +321,11 @@ def adalam_core(
              'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on seed
              point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
         im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of wasted
-                  runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of source
-                  image
+                  runtime. So please provide it. Expected a tuple or list with (width, height) or (height, width)
+                  of source image
         im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost of
-                  wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of
-                  destination image
+                  wasted runtime. So please provide it. Expected a tuple or list with (width, height) or
+                  (height, width) of destination image
         o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is
                set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
@@ -331,14 +351,14 @@ def adalam_core(
     SCALE_RATE_THR = config["scale_rate_threshold"]
     REFIT = config["refit"]
 
-    if isinstance(im1shape, tuple):
+    if im1shape is not None:
         _im1shape = torch.tensor(im1shape, device=k1.device, dtype=k1.dtype)
     else:
         k1mins = k1.min(dim=0).values
         k1maxs = k1.max(dim=0).values
         _im1shape = k1maxs - k1mins
 
-    if isinstance(im2shape, tuple):
+    if im2shape is not None:
         _im2shape = torch.tensor(im2shape, device=k2.device, dtype=k2.dtype)
     else:
         k2mins = k2.min(dim=0).values
@@ -384,7 +404,7 @@ def adalam_core(
             out_scores = scores1[score_mask].reshape(-1, 1)
             idxs = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
         else:
-            idxs, out_scores = _no_match(scores1)
+            out_scores, idxs = _no_match(scores1)
         if return_dist:
             return idxs, out_scores
         return idxs
@@ -413,13 +433,7 @@ def adalam_core(
 
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
-        # https://stackoverflow.com/a/72005790
-        final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
-        _, ind_sorted = torch.sort(idxs)
-        cum_sum = counts.cumsum(0)
-        cum_sum = torch.cat((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))
-        first_indicies = ind_sorted[cum_sum]
-        accepted_dist = accepted_dist[first_indicies]
+        final_matches, accepted_dist = _merge_duplicate_matches(final_matches, accepted_dist, k2.shape[0])
     if return_dist:
         return final_matches, accepted_dist.reshape(-1, 1)
     return final_matches

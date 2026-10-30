@@ -17,6 +17,8 @@
 
 import dis
 import inspect
+import io
+import math
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -26,13 +28,15 @@ from types import TracebackType
 import numpy as np
 import pytest
 import torch
+from torch.utils._python_dispatch import TorchDispatchMode
 
 import kornia
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import BaseError, ShapeError
+from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
+    ColmapQTVecs_to_ARKitQTVecs,
     Rt_to_matrix4x4,
     axis_angle_to_rotation_matrix,
     camtoworld_graphics_to_vision_4x4,
@@ -62,7 +66,7 @@ def seed_rng() -> None:
     torch.manual_seed(0)
 
 
-@pytest.fixture()
+@pytest.fixture
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if "cuda" in device.type and dtype == torch.float16:
@@ -70,7 +74,7 @@ def atol(device, dtype):
     return 1.0e-4
 
 
-@pytest.fixture()
+@pytest.fixture
 def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if "cuda" in device.type and dtype == torch.float16:
@@ -89,9 +93,8 @@ def _issue_msg(text: str):
 
 
 def _innermost_frame(err: BaseException) -> TracebackType | None:
-    # The frame an exception actually died in: the last link of its traceback chain. Two helpers
-    # below read that frame for different questions -- which routine failed, and which bytecode
-    # instruction raised -- so the walk itself is written once and cannot drift between them.
+    # The frame an exception actually died in: the last link of its traceback chain, read by the
+    # guard classifier below for the bytecode instruction that raised.
     frame = err.__traceback__
     while frame is not None and frame.tb_next is not None:
         frame = frame.tb_next
@@ -100,13 +103,10 @@ def _innermost_frame(err: BaseException) -> TracebackType | None:
 
 @cache
 def _dtype_allocation_error(device: torch.device, dtype: torch.dtype) -> str | None:
-    # "Can this backend hold this dtype at all?", as ONE probe with ONE exception set, shared by
-    # _skip_if_dtype_unavailable and _cross_is_unavailable below. Two copies of it with different
-    # exception tuples would mean a backend that starts rejecting an allocation with a new
-    # exception type makes one of them skip while the other errors, for the same fact. Cached
-    # because the answer is a property of the build, not of the caller, and the pins below ask it
-    # once per test; the message is returned rather than the exception so no traceback is kept
-    # alive between tests.
+    # "Can this backend hold this dtype at all?", as ONE probe with ONE exception set, for
+    # _skip_if_dtype_unavailable below. Cached because the answer is a property of the build, not
+    # of the caller, and the pins below ask it once per test; the message is returned rather than
+    # the exception so no traceback is kept alive between tests.
     try:
         torch.zeros(1, device=device, dtype=dtype)
     except (TypeError, RuntimeError, NotImplementedError) as err:
@@ -136,155 +136,6 @@ def _matmul_input_eps(device: torch.device, dtype: torch.dtype) -> float:
     if device.type == "cuda" and dtype == torch.float32 and torch.backends.cuda.matmul.allow_tf32:
         return 2.0**-10
     return torch.finfo(dtype).eps
-
-
-_healthy_closed_form_inverse_routes: set[tuple[torch.device, torch.dtype]] = set()
-
-
-def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.dtype) -> None:
-    # Visible skip for the pins that route through normalize_homography, one layer deeper than
-    # _skip_if_dtype_unavailable: a backend can REPRESENT a dtype and still have no kernel for an
-    # operation the route needs. kornia's cusolver-free 3x3 inverse dispatches to
-    # _inverse_3x3_cross (kornia/core/_small_linalg.py), which is three torch.linalg.cross calls, and
-    # MPS lacks a bfloat16 `cross` kernel in SOME builds -- executed: torch 2.5.1 raises
-    # `RuntimeError: Failed to create function state object for: cross_bfloat` there while torch
-    # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
-    # lets the pin fail with a message about torch's kernel coverage rather than about kornia's
-    # convention. Probed rather than version-gated: two builds are two data points, not a history.
-    # What is attempted is the PUBLIC operation, on a throwaway input, and a failure becomes a skip
-    # only when BOTH halves of the identification hold: the call died INSIDE the closed-form
-    # inverse (innermost frame, matched by code object rather than by name or message, so a rename
-    # is a re-raise and not a silent skip) AND the primitive that routine is built from raises on
-    # the same device and dtype. Every other failure is re-raised, so a kornia-side regression
-    # still fails the pin here rather than being skipped over. The frame half is what keeps an
-    # UNRELATED RuntimeError from riding the skip: on a backend that genuinely lacks the kernel the
-    # primitive probe always fails, so on its own it would turn any new failure raised before the
-    # inverse -- in the guard, in normal_transform_pixel, in the chain matmul -- into a skip, and
-    # the regression would be invisible exactly where the skip is live. The primitive half is what
-    # keeps the skip from outliving the limitation: the day kornia's inverse stops needing `cross`,
-    # these pins must run again on backends that lack it instead of skipping forever.
-    # Residual, stated rather than hidden: this identifies the failing KERNEL, not the individual
-    # `cross` line inside it. _inverse_3x3_cross is three `cross` calls, a multiply-sum and a
-    # divide, so a failure at one of the latter two on a backend whose `cross` is also missing
-    # would still skip. Narrowing further would mean pinning line numbers in another module.
-    # It reads the cross KERNEL rather than the mode dispatcher that calls it: the dispatcher owns
-    # only the eager/export choice, so its frame is never where a missing `cross` surfaces.
-    # Only the HEALTHY verdict is memoized, keyed by (device, dtype): a route that works is a
-    # property of the build, and four pins ask this question in every test configuration, each
-    # paying a matmul and a 3x3 inverse for the answer. A failing route is deliberately never
-    # memoized -- it has to be re-raised with its own traceback every time, and it is the branch
-    # this helper exists for.
-    # Imported here rather than at module scope on purpose: this is a PRIVATE kornia helper, and a
-    # module-level import of it would make the WHOLE file uncollectable if it is ever renamed --
-    # every test in it erroring over a rename that concerns the four pins routed through here.
-    # Inside the probe, the same rename is an ImportError on those four and nothing else.
-    from kornia.core._small_linalg import _inverse_3x3_cross
-
-    route = (device, dtype)
-    if route in _healthy_closed_form_inverse_routes:
-        return
-    try:
-        kornia.geometry.conversions.normalize_homography(torch.eye(3, device=device, dtype=dtype)[None], (2, 2), (2, 2))
-    except (RuntimeError, NotImplementedError) as err:
-        innermost = _innermost_frame(err)
-        died_in_the_closed_form_inverse = (
-            innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_cross.__code__
-        )
-        if died_in_the_closed_form_inverse and _cross_is_unavailable(device, dtype):
-            pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
-        raise
-    _healthy_closed_form_inverse_routes.add(route)
-
-
-@cache
-def _cross_is_unavailable(device: torch.device, dtype: torch.dtype) -> bool:
-    # "Can this build run torch.linalg.cross here?", for the helper above and the pin below.
-    # A dtype the backend cannot even allocate (mps rejects float8 outright) counts as unavailable
-    # rather than propagating as an error, and that half of the question is answered by the shared
-    # probe rather than by a second copy of it, so both helpers classify such a backend the same
-    # way. Cached for the same reason the probe is: it is a property of the build.
-    if _dtype_allocation_error(device, dtype) is not None:
-        return True
-    try:
-        probe = torch.ones(1, 3, device=device, dtype=dtype)
-        torch.linalg.cross(probe, probe, dim=-1)
-    except (RuntimeError, NotImplementedError, TypeError):
-        return True
-    return False
-
-
-def test_skip_probe_re_raises_everything_it_cannot_identify(monkeypatch):
-    # Direct pin for _skip_if_closed_form_inverse_unavailable above, for the same reason
-    # test_guard_classifier_reads_the_raising_instruction pins the guard classifier: four pins
-    # route their "does normalize_homography work here at all" question through that helper, and if
-    # it starts skipping too readily they go quiet instead of failing, which is the mode a skip
-    # helper fails in. Nothing else in this file would notice.
-    # Case B needs a REAL kernel gap rather than a patched `cross`: patching it with a Python
-    # function puts that function in the innermost frame, which is precisely what the helper reads,
-    # so a patch cannot reproduce the branch it is meant to exercise. torch has no `cross` kernel
-    # for bool or float8 on cpu (executed, torch 2.9.1: NotImplementedError, and the route dies
-    # inside _inverse_3x3_cross), which is the same shape as the mps bfloat16 gap on torch
-    # 2.5.1 that the helper exists for, reachable on the default device without that build. The
-    # candidate list is searched rather than asserted: mps DOES have a bool `cross`, so a build
-    # that grows the missing kernels must make this case skip visibly, not fail.
-    # Cases C and D patch normal_transform_pixel, which normalize_homography calls BEFORE the
-    # inverse, so the route dies without ever reaching `cross` and the patch stays out of the
-    # frame the helper reads. D is the one that matters: it is exactly C on a backend that also
-    # lacks the kernel, which a probe of the primitive alone cannot tell apart from a real gap --
-    # it would skip there, and a kornia-side regression would be invisible on exactly the backends
-    # where the skip is live.
-    # The helper's memo and the two cached probes are cleared first: they are performance
-    # shortcuts, and a pin whose whole subject is which branch the helper takes has to run the
-    # branches rather than a remembered verdict from an earlier test.
-    # The two globals that cases C and D patch go through monkeypatch rather than by hand: this is
-    # the one pin in the file that writes to torch and to the kornia module itself, and a leak from
-    # here would follow every later test in the process, so restoration belongs to pytest rather
-    # than to a nest of try/finally blocks that has to be read to be trusted.
-    cpu = torch.device("cpu")
-    conversions = kornia.geometry.conversions
-    _healthy_closed_form_inverse_routes.clear()
-    _cross_is_unavailable.cache_clear()
-    _dtype_allocation_error.cache_clear()
-
-    _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)  # A: healthy route, must not skip
-
-    # torch.float8_e4m3fn was added in torch 2.1 and kornia now declares torch>=2.5.1, so the
-    # getattr probe below is redundant; it is left in place with the rest of the sub-floor
-    # version guards rather than cleaned up piecemeal.
-    candidate_dtypes = (torch.bool, getattr(torch, "float8_e4m3fn", None))
-    unsupported = next(
-        (dtype for dtype in candidate_dtypes if dtype is not None and _cross_is_unavailable(cpu, dtype)),
-        None,
-    )
-    if unsupported is None:
-        pytest.skip("no dtype without a torch.linalg.cross cpu kernel on this build")
-    with pytest.raises(pytest.skip.Exception):  # B: the gap the helper exists for
-        _skip_if_closed_form_inverse_unavailable(cpu, unsupported)
-
-    def regression(*args, **kwargs):
-        raise RuntimeError("kornia-side regression")
-
-    def assert_the_injected_failure_propagates(case: str) -> None:
-        # NOT pytest.raises: a skip is a BaseException that pytest.raises(RuntimeError) lets
-        # through, so the regression this pin exists to catch would turn the pin itself yellow
-        # instead of red -- the same going-quiet the helper's own over-eager skip causes, one level
-        # up.
-        try:
-            _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)
-        except pytest.skip.Exception as skipped:
-            raise AssertionError(f"{case}: an unrelated failure was skipped over: {skipped}") from skipped
-        except RuntimeError as err:
-            assert "kornia-side regression" in str(err), f"{case}: wrong error re-raised: {err}"
-        else:
-            raise AssertionError(f"{case}: the injected failure did not propagate at all")
-
-    # Cleared again: case A memoized (cpu, float32) as healthy, and C/D have to reach the body.
-    _healthy_closed_form_inverse_routes.clear()
-    monkeypatch.setattr(conversions, "normal_transform_pixel", regression)
-    assert_the_injected_failure_propagates("C, cross available")
-
-    monkeypatch.setattr(torch.linalg, "cross", regression)
-    assert_the_injected_failure_propagates("D, cross unavailable too")
 
 
 # The four deprecated aliases of this module, as (deprecated name, replacement name, call input),
@@ -336,8 +187,8 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # semantic -- it would miss `raise(RuntimeError(...))`, whose missing space before the
     # parenthesis is not a semantic difference.
     # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
-    # covers the classifier itself, the #3960 convention pin asserts this is True (in any guard
-    # style), and the #3959 warts assert it is False.
+    # covers the classifier itself, the #3960 convention pin and the Rt side of the int64 Rt wart
+    # (#3959) assert this is True (in any guard style), and every other #3959 wart asserts it is False.
     # The instruction DECIDES; the type tuple is only the fallback for a frame whose instruction
     # cannot be read. ORing the two instead of falling back would make the instruction check
     # unreachable for exactly the types kornia's guards raise, so it would score any downstream
@@ -407,15 +258,15 @@ def test_guard_classifier_reads_the_raising_instruction():
         # ValueError, but raised by UNPACK_SEQUENCE rather than by a `raise`.
         first, second, third = [1, 2]  # noqa: F841
 
-    for guard in (
-        spaced_raise,
-        parenthesised_raise,
-        raise_a_bound_name,
-        kornia_shape_check,
-        kornia_value_check,
-        hand_rolled_value_error,
+    for guard, error_type in (
+        (spaced_raise, RuntimeError),
+        (parenthesised_raise, RuntimeError),
+        (raise_a_bound_name, RuntimeError),
+        (kornia_shape_check, ShapeError),
+        (kornia_value_check, BaseError),
+        (hand_rolled_value_error, ValueError),
     ):
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(error_type) as excinfo:
             guard()
         assert _raised_by_a_kornia_guard(excinfo.value), (
             f"{guard.__name__} rejects the input on kornia's side and must classify as a guard"
@@ -434,6 +285,7 @@ _WRONG_SIZE_CASES = [
     ("normalize_homography", 4),
     ("denormalize_homography", 4),
     ("normalize_homography3d", 3),
+    ("denormalize_homography3d", 3),
 ]
 _WRONG_SIZE_IDS = [op_name.replace("_homography", "") for op_name, _ in _WRONG_SIZE_CASES]
 
@@ -467,6 +319,24 @@ def _asymmetric_pose(device: torch.device, dtype: torch.dtype) -> tuple[torch.Te
     )
 
 
+_MATMUL_OPS = frozenset({"mm", "bmm", "baddbmm", "addmm", "addbmm", "matmul", "mv", "dot"})
+
+
+class _RecordMatmulOps(TorchDispatchMode):
+    # Records the matmul-family aten ops dispatched under it. CUDA has no integer kernel for any of them, so an
+    # integer pose that reaches one raises there; recording the dispatch lets a CPU run, which has the kernels and
+    # returns the right values regardless, see the same defect.
+    def __init__(self) -> None:
+        super().__init__()
+        self.matmul_ops: set[str] = set()
+
+    def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+        name = func.overloadpacket.__name__
+        if name in _MATMUL_OPS:
+            self.matmul_ops.add(name)
+        return func(*args, **(kwargs or {}))
+
+
 # Shared inputs for the same reason as _ASYMMETRIC_R above: pins cross-reference each other as
 # using "the same input", and a shared definition makes that true by construction instead of by
 # inspection of copied literals. Plain nested lists, materialised per test, no tensor shared.
@@ -478,6 +348,10 @@ def _asymmetric_pose(device: torch.device, dtype: torch.dtype) -> tuple[torch.Te
 # worked example cannot leave one pin silently testing a different pose.
 _DIRECTION_H = [[[2.0, 0.5, 2.0], [-0.25, 1.0, 1.0], [0.0, 0.0, 1.0]]]
 _ROUND_TRIP_H = [[[1.25, 0.25, 4.0], [-0.5, 0.75, 2.0], [0.0625, 0.125, 1.0]]]
+_DIRECTION_H3D = [[[2.0, 0.5, 0.25, 2.0], [-0.25, 1.0, 0.5, 1.0], [0.125, -0.5, 2.0, 3.0], [0.0, 0.0, 0.0, 1.0]]]
+_ROUND_TRIP_H3D = [
+    [[1.25, 0.25, 0.5, 4.0], [-0.5, 0.75, 0.25, 2.0], [0.25, -0.125, 1.5, 1.0], [0.0625, 0.125, 0.03125, 1.0]]
+]
 _ARKIT_WORKED_QVEC = [[0.0, 1.0, 0.0, 1.0]]
 _ARKIT_WORKED_TVEC = [[[1.0], [1.0], [1.0]]]
 
@@ -487,8 +361,7 @@ def _ambient_default_dtype(dtype: torch.dtype) -> Iterator[None]:
     # Swap the PROCESS-WIDE torch default dtype for the duration of a with-block, restoring it even
     # if the body raises. The finally-restore is the safety-critical part -- a leaked float64
     # default would silently change every later test's tolerances across the whole suite -- so it
-    # lives in one place instead of being hand-rolled at each ambient-default pin (the two #3958
-    # pins today; any future one should use this too).
+    # lives in one place instead of being hand-rolled at each ambient-default pin.
     previous = torch.get_default_dtype()
     torch.set_default_dtype(dtype)
     try:
@@ -544,7 +417,7 @@ class TestAngleAxisToQuaternion(BaseTester):
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.shape == (4,)
 
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         axis_angle = torch.zeros(batch_size, 3, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
@@ -598,7 +471,7 @@ class TestAngleAxisToQuaternion(BaseTester):
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize("input_dtype", (torch.int16, torch.int32, torch.int64, torch.uint8))
+    @pytest.mark.parametrize("input_dtype", [torch.int16, torch.int32, torch.int64, torch.uint8])
     def test_convention_integer_input_is_promoted_to_float_3948(self, input_dtype, device):
         # Convention, and the answer kornia#3948 settled: an integer axis-angle is PROMOTED, not
         # rejected. The output buffer used to be allocated with dtype=axis_angle.dtype, so an
@@ -625,7 +498,7 @@ class TestAngleAxisToQuaternion(BaseTester):
         expected = torch.tensor((np.cos(0.5), np.sin(0.5), 0.0, 0.0), device=device, dtype=quaternion.dtype)
         self.assert_close(quaternion, expected, atol=1.0e-4, rtol=1.0e-4)
 
-    @pytest.mark.parametrize("input_dtype", (torch.float16, torch.bfloat16, torch.float32, torch.float64))
+    @pytest.mark.parametrize("input_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
     def test_convention_float_input_keeps_its_dtype_3948(self, input_dtype, device):
         # The other side of the #3948 buffer change, and the regression it could have introduced:
         # taking the buffer dtype from the computed values must NOT widen a float input. float16
@@ -914,7 +787,7 @@ class TestQuaternionToAngleAxis(BaseTester):
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         assert axis_angle.shape == (3,)
 
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
@@ -1033,8 +906,9 @@ class TestQuaternionToAngleAxis(BaseTester):
         # property of atan2 plus the 2*theta/||v|| factor, not of the particular numbers (verified
         # bit-identical in 500/500 random float64 quaternions, seeded torch.Generator(7), for both
         # factors -- a non-power-of-two factor such as 3 is invariant to rounding only, 82/500).
-        # Contrast quaternion_exp_to_log, which does NOT normalise and is silently wrong on a
-        # non-unit input.
+        # quaternion_exp_to_log does not normalise and is invariant to a positive scale (for ||u|| >= eps), for the
+        # same reason: atan2(||u||, w) and u / ||u|| do not depend on the scale (q = (1, 2, 3, 4) scaled by 3, 1e-3
+        # or 1e3 stays within 2.2e-16 of the unscaled log in float64).
         quaternion = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
 
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
@@ -1044,7 +918,7 @@ class TestQuaternionToAngleAxis(BaseTester):
 
 
 class TestRotationMatrixToQuaternion(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         matrix = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
@@ -1328,7 +1202,7 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
 
 class TestQuaternionToRotationMatrix(BaseTester):
-    @pytest.mark.parametrize("batch_dims", ((), (1,), (3,), (8,), (1, 1), (5, 6)))
+    @pytest.mark.parametrize("batch_dims", [(), (1,), (3,), (8,), (1, 1), (5, 6)])
     def test_smoke_batch(self, batch_dims, device, dtype):
         quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
@@ -1510,34 +1384,14 @@ class TestQuaternionToRotationMatrix(BaseTester):
 
         assert_close(out, torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16))
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="normalize_quaternion returns a non-unit quaternion below eps -- kornia#3952",
-        strict=True,
-    )
-    def test_convention_normalize_quaternion_is_unit_below_eps_3952(self, device, dtype):
-        # Intended behavior: a unit quaternion, or an error. Below eps the output is scaled by
-        # ||q|| / eps instead (norm 0.1 at ||q|| = 1e-13, eps = 1e-12). Companion wart:
-        # test_wart_normalize_quaternion_scales_by_norm_over_eps_3952.
-        if dtype == torch.float16:
-            pytest.skip("float16 cannot represent the non-zero 1e-13 input used to pin the sub-eps behavior")
-
-        quaternion = torch.tensor([1e-13, 0.0, 0.0, 0.0], device=device, dtype=dtype)
-
-        out = kornia.geometry.conversions.normalize_quaternion(quaternion, eps=1e-12)
-
-        assert abs(out.norm().item() - 1.0) < 1e-2, (
-            "kornia#3952: normalize_quaternion returned a non-unit quaternion below eps"
-        )
-
     @pytest.mark.parametrize("quaternion_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
-    def test_wart_normalize_quaternion_scales_by_norm_over_eps_3952(self, device, quaternion_dtype):
-        # Wart pin for kornia#3952, companion to the strict xfail above. Two cells, each flipping
-        # under a different fix shape:
+    def test_convention_normalize_quaternion_floors_the_norm_at_eps_3952(self, device, quaternion_dtype):
+        # Convention (kornia#3952, kept by maintainer decision): the divisor is the norm floored at
+        # eps, so a quaternion below eps comes back as q / eps rather than a unit quaternion, and the
+        # zero quaternion comes back as zeros. Two cells:
         #   (1) ||q|| = 1e-13 with eps = 1e-12 comes back as [0.1, 0, 0, 0] (not float16, which
         #       cannot represent the input);
-        #   (2) the zero quaternion comes back as zeros -- a "leave sub-eps input alone" fix would
-        #       fix (1) and not this one.
+        #   (2) the zero quaternion comes back as zeros.
         # The dtypes are hardcoded so the float16 cell runs in every test configuration.
         # Snippet used to generate expected (torch, cpu, float64):
         #   normalize_quaternion(torch.tensor([1e-13, 0., 0., 0.], dtype=torch.float64), eps=1e-12)
@@ -1552,7 +1406,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
             assert_close(
                 sub_eps,
                 torch.tensor([0.1, 0.0, 0.0, 0.0], device=device, dtype=quaternion_dtype),
-                msg=_issue_msg("kornia#3952: a sub-eps quaternion is no longer scaled by ||q|| / eps"),
+                msg=_issue_msg("kornia#3952 convention: a sub-eps quaternion must come back as q / eps"),
             )
         zero = torch.zeros(4, device=device, dtype=quaternion_dtype)
         assert_close(
@@ -1560,7 +1414,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
             zero,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer passes through unchanged"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must pass through unchanged"),
         )
 
     @pytest.mark.parametrize("quaternion_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
@@ -1607,7 +1461,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
         assert torch.isfinite(q.grad).all()
         self.assert_close(q.grad, expected, atol=1e-3, rtol=1e-3)
 
-        # Confirm zeros(4) with eps=0.0 still returns all-NaN on the forward pass (pre-existing issue #3952 behavior).
+        # Confirm zeros(4) with eps=0.0 still returns all-NaN on the forward pass (the documented eps=0.0 behavior).
         zero_out = kornia.geometry.conversions.normalize_quaternion(torch.zeros(4, device=device, dtype=dtype), eps=0.0)
         assert torch.isnan(zero_out).all()
 
@@ -1619,16 +1473,12 @@ class TestQuaternionToRotationMatrix(BaseTester):
         assert torch.isnan(kornia.geometry.conversions.normalize_quaternion(q, eps=eps)).all()
         assert torch.isnan(kornia.geometry.conversions.quaternion_to_rotation_matrix(q)).all()
 
-    def test_wart_zero_quaternion_becomes_the_identity_matrix_3952(self, device, dtype):
-        # Wart pin for the downstream consequence of kornia#3952: because normalize_quaternion
-        # returns the zero vector unchanged for a zero input (cell 2 of the wart above),
+    def test_convention_zero_quaternion_gives_the_identity_matrix_3952(self, device, dtype):
+        # Convention (kornia#3952, kept by maintainer decision): normalize_quaternion returns the zero
+        # vector unchanged for a zero input (cell 2 of the convention above), so
         # quaternion_to_rotation_matrix(zeros(4)) evaluates 1 - 0 on the diagonal and returns the
-        # IDENTITY -- the zero quaternion, which is not a rotation at all, silently becomes "no
-        # rotation". Pinned separately from the normalize_quaternion cells because it flips under
-        # two independent fixes: fixing #3952 in normalize_quaternion, or giving
-        # quaternion_to_rotation_matrix its own guard while normalize_quaternion stays as it is.
-        # If it fails, one of those happened -- flip/remove the #3952 strict xfail above and check
-        # which. NOT a contract that the zero quaternion must map to the identity.
+        # identity rather than raising. Pinned separately from the normalize_quaternion cells because
+        # quaternion_to_rotation_matrix could also change it with a guard of its own.
         # Snippet used to generate expected (torch only, executed on cpu at every floating dtype):
         #   quaternion_to_rotation_matrix(torch.zeros(4, dtype=torch.float64))
         #     -> [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]
@@ -1637,12 +1487,12 @@ class TestQuaternionToRotationMatrix(BaseTester):
         assert_close(
             out,
             torch.eye(3, device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer maps to the identity matrix"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must map to the identity matrix"),
         )
 
 
 class TestQuaternionLogToExp(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         quaternion_log = torch.zeros(batch_size, 3, device=device, dtype=dtype)
         quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log)
@@ -1795,7 +1645,7 @@ class TestQuaternionLogToExp(BaseTester):
 
 
 class TestQuaternionExpToLog(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    @pytest.mark.parametrize("batch_size", [1, 3, 8])
     def test_smoke_batch(self, batch_size, device, dtype):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.zeros(batch_size, 4, device=device, dtype=dtype)
@@ -1870,16 +1720,25 @@ class TestQuaternionExpToLog(BaseTester):
         fn(non_unit).sum().backward()
         assert bool(torch.isfinite(non_unit.grad).all()), non_unit.grad
 
-        # the guard changes no forward value. At the boundary the identity's log is all zeros;
-        # off it the other branch of the torch.where runs and must equal the unguarded expression
-        # exactly -- that is the branch proving the guard is inert away from w = +-1, which an
-        # on-boundary input cannot exercise.
+        # the zero quaternion: atan2's derivative is 0/0 at (0, 0) -- nan on torch 2.5.1, 0 on
+        # 2.14 -- so this cell, too, discriminates on the 2.5.1 leg (kornia#3953 switched to atan2).
+        origin = torch.zeros(4, device=device, dtype=dtype, requires_grad=True)
+        origin_log = fn(origin)
+        origin_log.sum().backward()
+        self.assert_close(origin_log.detach(), torch.zeros(3, device=device, dtype=dtype))
+        assert bool(torch.isfinite(origin.grad).all()), origin.grad
+
+        # atan2(||v||, w) changes no forward value on unit input: the identity's log is all zeros,
+        # and off the boundary it equals the acos(w) expression the function used before
+        # kornia#3953.
         expected_identity = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         self.assert_close(fn(identity.detach()), expected_identity)
 
-        near_boundary = torch.tensor((1.0 - eps, 0.1, 0.0, 0.0), device=device, dtype=dtype)
+        near_boundary = kornia.geometry.conversions.normalize_quaternion(
+            torch.tensor((1.0 - eps, 0.1, 0.0, 0.0), device=device, dtype=dtype)
+        )
         work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-        work = near_boundary.to(work_dtype)
+        work = kornia.geometry.conversions.normalize_quaternion(near_boundary.to(work_dtype))
         unguarded = (
             work[1:4]
             * work[0:1].clamp(min=-1.0, max=1.0).acos()
@@ -1902,8 +1761,9 @@ class TestQuaternionExpToLog(BaseTester):
         # axis-angle vector -- so quaternion_exp_to_log(q) == quaternion_to_axis_angle(q) / 2, but
         # ONLY on the w >= 0 half. The two functions treat the double cover differently:
         # quaternion_to_axis_angle collapses q and -q onto the same |theta| <= pi vector, while
-        # quaternion_exp_to_log takes acos(w) at face value and returns (pi - theta/2) along the
-        # negated axis for w < 0. The second half of this pin states that divergence explicitly,
+        # quaternion_exp_to_log takes the angle atan2(||u||, w) of the quaternion as given (acos(w) for
+        # a unit one, u the vector part) and returns (pi - theta/2) along the negated axis for w < 0.
+        # The second half of this pin states that divergence explicitly,
         # because "log is half the axis-angle" is false without the restriction: over 500 random
         # float64 unit quaternions (seeded torch.Generator(3)) the two agree to 4.44e-16 on the
         # 243 with w >= 0 and disagree by up to 3.1367975802888637 on the 257 with w < 0.
@@ -1981,23 +1841,11 @@ class TestQuaternionExpToLog(BaseTester):
 
         self.assert_close(out, torch.zeros(3, device=device, dtype=torch.float64), atol=1e-7, rtol=0.0)
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="quaternion_exp_to_log does not normalise its input, so a non-unit quaternion gives "
-        "a silently wrong log — kornia#3953",
-        strict=True,
-    )
     def test_convention_exp_to_log_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the log of a quaternion depends only on the rotation it represents, so
         # a rescaled quaternion gives the same answer -- which is what its scale-safe siblings do
         # (quaternion_to_rotation_matrix normalises internally, quaternion_to_axis_angle is
-        # homogeneous by construction; both are pinned above). quaternion_exp_to_log does neither:
-        # it feeds the raw scalar part straight into acos, so q = (0.5, 0.5, 0, 0) -- the 90-degree
-        # rotation about x, scaled by 1/sqrt(2) -- returns 1.0471975511965976 instead of
-        # acos(1/sqrt(2)) = 0.7853981633974484, i.e. 33% too large, with no error and no warning.
-        # Marked xfail(strict=True) so fixing #3953 makes this XPASS and forces the mark out.
-        # Companion wart: test_wart_exp_to_log_ignores_the_quaternion_norm_3953; the
-        # euler_from_quaternion half of the same issue is pinned in TestEulerFromQuaternion.
+        # homogeneous by construction; both are pinned above).
         quaternion = torch.tensor([0.5, 0.5, 0.0, 0.0], device=device, dtype=dtype)
 
         out = kornia.geometry.conversions.quaternion_exp_to_log(quaternion, eps=1e-8)
@@ -2008,23 +1856,13 @@ class TestQuaternionExpToLog(BaseTester):
             msg=_issue_msg("kornia#3953: quaternion_exp_to_log did not normalise its input"),
         )
 
-    def test_wart_exp_to_log_ignores_the_quaternion_norm_3953(self, device, dtype):
-        # Wart pin for kornia#3953, companion to the strict xfail above: assert the CURRENT
-        # non-unit-input outputs. Two cells that discriminate the two plausible fix shapes:
-        #   (1) q = (0.5, 0.5, 0, 0) returns 1.0471975511965976 -- flips under a "normalise the
-        #       input" fix and under a "raise on non-unit input" fix alike;
-        #   (2) q = (2, 0, 0, 0) returns the origin because the scalar part is clamped into
-        #       [-1, 1] before the acos -- this does NOT flip under a normalising fix (the
-        #       normalised input is the identity, whose log is the origin), so it is the cell that
-        #       tells a normalising fix apart from a validating one.
-        # If either fails, #3953 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that non-unit input must keep these values. eps is passed explicitly so the
-        # literals do not silently track a later change of the default.
-        # Snippet used to generate expected (torch + stdlib, executed on cpu float64):
-        #   quaternion_exp_to_log(torch.tensor([0.5, 0.5, 0., 0.], dtype=torch.float64), eps=1e-8)
-        #     -> [1.0471975511965976, 0.0, 0.0]; math.acos(1 / math.sqrt(2)) -> 0.7853981633974484
-        #   quaternion_exp_to_log(torch.tensor([2., 0., 0., 0.], dtype=torch.float64), eps=1e-8)
-        #     -> [0.0, 0.0, 0.0]
+    def test_convention_exp_to_log_of_rescaled_quaternions_3953(self, device, dtype):
+        # Convention pin for kornia#3953: a non-unit input gives the log of its normalisation.
+        # Two cells:
+        #   (1) q = (0.5, 0.5, 0, 0) returns acos(1/sqrt(2)) = 0.7853981633974484;
+        #   (2) q = (2, 0, 0, 0) returns the origin under normalisation (the normalised input
+        #       is the identity, whose log is the origin).
+        # eps is passed explicitly so the literals do not silently track a later change of the default.
         exp_to_log = kornia.geometry.conversions.quaternion_exp_to_log
 
         scaled_down = exp_to_log(torch.tensor([0.5, 0.5, 0.0, 0.0], device=device, dtype=dtype), eps=1e-8)
@@ -2032,13 +1870,13 @@ class TestQuaternionExpToLog(BaseTester):
 
         assert_close(
             scaled_down,
-            torch.tensor([1.0471975511965976, 0.0, 0.0], device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3953: quaternion_exp_to_log no longer takes the raw scalar part at face value"),
+            torch.tensor([0.7853981633974484, 0.0, 0.0], device=device, dtype=dtype),
+            msg=_issue_msg("kornia#3953: quaternion_exp_to_log normalises its input"),
         )
         assert_close(
             scaled_up,
             torch.zeros(3, device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3953: the scalar-part clamp no longer sends an over-scaled quaternion to zero"),
+            msg=_issue_msg("kornia#3953: quaternion_exp_to_log of over-scaled identity is the origin"),
         )
 
     def test_convention_exp_to_log_of_the_identity_is_the_origin_in_float16_3966(self, device):
@@ -2060,7 +1898,7 @@ class TestQuaternionExpToLog(BaseTester):
 
 
 class TestAngleAxisToRotationMatrix(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rand_axis_angle_gradcheck(self, batch_size, device, atol, rtol):
         dtype = torch.float64
         # generate input data
@@ -2235,9 +2073,9 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         #       det = 0.9999974535249636 and max|R @ R.T - I| = 2.5464750363912714e-06;
         #   (2) theta = 1e-3 takes the low-angle branch, which returned the first-order Taylor
         #       matrix [[1, -rz, ry], [rz, 1, -rx], [-ry, rx, 1]] with det = 1 + theta**2 = 1.000001.
-        # The low-angle branch now returns the second-order Taylor expansion R = I + [v]x + [v]x^2/2,
-        # whose determinant is 1 + theta**4 / 4 -- at theta = 1e-3 that is 1 + 2.5e-13, a rotation
-        # to the working precision -- so both branches must now pass the same orthogonality checks.
+        # The low-angle branch now evaluates Rodrigues' formula with the theta**2 terms of its two
+        # coefficient series kept (kornia#4838), a rotation to float64 rounding, so both branches
+        # must now pass the same orthogonality checks.
         # The general branch must also agree with the quaternion route on a generic (non-axis
         # aligned) rotation, which is where the eps defect showed up as an axis-dependent error.
         # float64 is hardcoded and the dtype fixture dropped because both cells are float64 facts:
@@ -2250,8 +2088,9 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         #   (R @ R.T - torch.eye(3, dtype=torch.float64)).abs().max()   -> 0.0
         #   t = torch.tensor([[0., 0., 1e-3]], dtype=torch.float64)   # theta**2 == 1e-06 exactly
         #   axis_angle_to_rotation_matrix(t)[0].tolist()
-        #     -> [[0.9999995, -0.001, 0.0], [0.001, 0.9999995, 0.0], [0.0, 0.0, 1.0]]
-        #   torch.linalg.det(that).item()                               -> 1.00000000000025
+        #     -> [[0.9999995000000417, -0.0009999998333333332, 0.0],
+        #         [0.0009999998333333332, 0.9999995000000417, 0.0], [0.0, 0.0, 1.0]]
+        #   torch.linalg.det(that).item()                               -> 1.0
         #   g = torch.tensor([[1., 2., 3.]], dtype=torch.float64) * 0.6 / math.sqrt(14.0)  # generic axis
         #   Rg = axis_angle_to_rotation_matrix(g)[0]
         #   torch.linalg.det(Rg).item()                                 -> 1.0
@@ -2286,6 +2125,57 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         assert (generic - quat_route).abs().max().item() < 1e-12, (
             "kornia#3947: axis_angle_to_rotation_matrix disagrees with the quaternion route"
         )
+
+    def test_convention_low_angle_branch_matches_quaternion_route_4838(self, device):
+        # Regression test for kornia#4838. Below theta**2 = 1e-6 the function switches to a
+        # series form of Rodrigues' formula. That branch used to stop at sin(theta)/theta = 1 and
+        # (1 - cos(theta))/theta**2 = 1/2, an error of theta**3 / 6 per entry: 1.3e-10 at
+        # theta = 9.99e-4 in float64, next to 1.1e-16 on the general branch just above the switch,
+        # and 130 times the 1e-12 the general branch is held to against the quaternion route in
+        # test_convention_both_branches_are_orthogonal_3947. Keeping the theta**2 terms of both
+        # series puts the error below float64 rounding across the branch.
+        # float64 is hardcoded because in float32 the old truncation error (1.7e-10) is below
+        # rounding (3e-8 at these angles), so only float64 can tell the two apart.
+        # Snippet used to generate the old values (torch only, cpu float64, before the fix):
+        #   axis = torch.tensor([1., 2., 3.], dtype=torch.float64) / 14.0**0.5
+        #   v = (9.99e-4 * axis)[None]
+        #   (axis_angle_to_rotation_matrix(v)
+        #    - quaternion_to_rotation_matrix(axis_angle_to_quaternion(v))).abs().max()  -> 1.3e-10
+        _skip_if_dtype_unavailable(device, torch.float64)
+
+        axis = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64) / 14.0**0.5
+        zero = torch.zeros((), device=device, dtype=torch.float64)
+        skew = torch.stack(
+            [
+                torch.stack([zero, -axis[2], axis[1]]),
+                torch.stack([axis[2], zero, -axis[0]]),
+                torch.stack([-axis[1], axis[0], zero]),
+            ]
+        )
+        for theta in (1.1e-3, 9.99e-4, 5e-4, 1e-4, 1e-5):
+            v = (theta * axis)[None]
+            direct = axis_angle_to_rotation_matrix(v)
+            quat_route = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+                kornia.geometry.conversions.axis_angle_to_quaternion(v)
+            )
+            assert (direct - quat_route).abs().max().item() < 1e-12, (
+                f"kornia#4838: the low-angle branch disagrees with the quaternion route at theta={theta}"
+            )
+            round_trip = kornia.geometry.conversions.rotation_matrix_to_axis_angle(direct)
+            assert (round_trip - v).abs().max().item() < 1e-15, (
+                f"kornia#4838: the axis-angle round trip drifted at theta={theta}"
+            )
+            # Rodrigues' formula from sin and cos, 1 - cos(theta) written as 2 sin(theta / 2)**2 so it does not
+            # cancel. The (1 - cos(theta)) / theta**2 coefficient only shows at theta**4 / 24 (4e-14 at 1e-3), below
+            # the quaternion-route bound above, so this is the check that pins its theta**2 term.
+            expected = (
+                torch.eye(3, device=device, dtype=torch.float64)
+                + math.sin(theta) * skew
+                + 2.0 * math.sin(0.5 * theta) ** 2 * (skew @ skew)
+            )
+            assert (direct[0] - expected).abs().max().item() < 1e-15, (
+                f"kornia#4838: the low-angle branch is not the rotation of its input at theta={theta}"
+            )
 
     def test_convention_accepts_any_leading_batch_dimensions_3955(self, device):
         # Convention: axis_angle_to_rotation_matrix accepts (*, 3) and returns (*, 3, 3) -- what its
@@ -2369,7 +2259,7 @@ class TestAngleAxisToRotationMatrix(BaseTester):
 
 
 class TestRotationMatrixToAngleAxis(BaseTester):
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rand_quaternion_gradcheck(self, batch_size, device, dtype, atol, rtol):
         # generate input data
         quaternion = torch.rand(batch_size, 4, device=device, dtype=dtype)
@@ -2469,10 +2359,12 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         assert multi_batched.shape == (2, 5, 3)
         self.assert_close(multi_batched[1, 4], expected)
 
-    def test_wart_reflection_is_returned_as_the_identity_4773(self, device, dtype):
-        # Wart pin for kornia#4773: an improper matrix (det = -1) is not rejected, and the
-        # reflection diag(-1, 1, 1) comes back as the zero vector -- "no rotation". Flips when the
-        # function raises or returns anything else for it.
+    def test_convention_reflection_is_returned_as_the_identity_by_default(self, device, dtype):
+        # kornia#4773: with the default check_rotation=False an improper matrix
+        # (det = -1) is still not rejected, and the reflection diag(-1, 1, 1) comes back as the
+        # zero vector -- "no rotation". The call below deliberately omits the argument; passing
+        # check_rotation=True raises instead, which TestRotationMatrixToAxisAngleCheckRotation
+        # covers. Flips when the default raises or returns anything else for it.
         reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
 
         out = kornia.geometry.conversions.rotation_matrix_to_axis_angle(reflection)
@@ -2482,16 +2374,18 @@ class TestRotationMatrixToAngleAxis(BaseTester):
             torch.zeros(3, device=device, dtype=dtype),
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#4773: a reflection is no longer returned as the identity rotation"),
+            msg=_issue_msg("kornia#4773: the default no longer returns a reflection as the identity rotation"),
         )
 
     def test_convention_axis_angle_matrix_roundtrip_is_accurate_in_float64(self, device):
-        # rotation_matrix_to_axis_angle(axis_angle_to_rotation_matrix(v)) returns v to roundoff,
-        # except on the low-angle Taylor branch (theta**2 <= 1e-6), whose second-order truncation
-        # leaves about theta**3 / 6 (1.2e-10 at the 9e-4 row). 1e-9 keeps ~8x headroom over that
-        # and would catch a first-order branch (theta**2 / 2 = 4e-7). Measured over 2e5 float64
-        # axis-angles drawn in float64 (uniform, log-spaced small and near-pi angles): 1.6e-10 max,
-        # at theta just under 1e-3; 1.3e-15 max for theta near pi.
+        # rotation_matrix_to_axis_angle(axis_angle_to_rotation_matrix(v)) returns v to roundoff, the
+        # low-angle Taylor branch (theta**2 <= 1e-6) included: that branch keeps the theta**2 terms of
+        # both series (kornia#4838), so its truncation is theta**5 / 120, below float64 rounding (the
+        # second-order branch it replaced left theta**3 / 6, 1.2e-10 at the 9e-4 row, which
+        # test_convention_low_angle_branch_matches_quaternion_route_4838 pins). 1e-9 catches a
+        # first-order branch (theta**2 / 2 = 4e-7). Measured over 2e5 float64 axis-angles drawn in
+        # float64 (uniform, log-spaced small and near-pi angles): 7.9e-18 max on the Taylor branch, at
+        # theta just under 1e-3; 1.6e-15 max, for theta near pi.
         # Snippet used to generate the inputs (stdlib only):
         #   n = math.sqrt(14.0); axis = (1 / n, 2 / n, 3 / n)
         #   [[theta * a for a in axis] for theta in (9e-4, 1e-3, 0.7, 2.0, math.pi)]
@@ -2842,6 +2736,15 @@ class TestConvertPointsToHomogeneous(BaseTester):
         expected = op(points_h)
 
         self.assert_close(actual, expected)
+
+    def test_third_from_last_dim_of_2_pow_16(self, device, dtype):
+        # On MPS (torch 2.5.1 and 2.14) a constant F.pad with a non-zero value returns garbage once dim -3 reaches
+        # 2**16: RANSAC scored (B, N, 1, 2) segment endpoints with B * N >= 2**16 through it (#5443).
+        points = (torch.arange(2**17, device=device) % 7).reshape(2**16, 1, 2).to(dtype)
+        out = kornia.geometry.conversions.convert_points_to_homogeneous(points)
+        assert out.shape == (2**16, 1, 3)
+        assert torch.equal(out[..., :2], points)
+        assert bool((out[..., 2] == 1).all())
 
 
 class TestConvertAtoH(BaseTester):
@@ -3532,9 +3435,9 @@ class TestNormalTransformPixel(BaseTester):
         # Python ints rather than tensors. With dtype=None the matrix is built by torch.tensor()
         # from Python floats, so its dtype is torch's AMBIENT default rather than float32
         # unconditionally: changing the process default changes the result. That is the mechanism
-        # behind the float32 constants that leak into float64 homography pipelines (kornia#3958,
-        # pinned in TestNormalizeHomography): normalize_homography calls these helpers without
-        # passing dtype= through, so they materialise at the ambient default and are cast after.
+        # behind the former float32 constants in float64 homography pipelines: the public
+        # homography functions now pass a floating or complex input dtype through explicitly
+        # (an integer input still passes None and is cast afterwards, see kornia#3959).
         # The dtype fixture is dropped because the claim is about the *absence* of a dtype
         # argument, and the default is read back through torch.get_default_dtype() rather than
         # hardcoded, so the pin says "follows the ambient default" and not "is always float32".
@@ -3557,10 +3460,7 @@ class TestNormalTransformPixel(BaseTester):
         with _ambient_default_dtype(torch.float64):
             ambient_dtype = normal_transform_pixel(4, 5).dtype
 
-        assert ambient_dtype == torch.float64, (
-            "normal_transform_pixel no longer follows the ambient default dtype, so the kornia#3958 "
-            "mechanism pinned in TestNormalizeHomography has changed"
-        )
+        assert ambient_dtype == torch.float64, "normal_transform_pixel no longer follows the ambient default dtype"
 
     def test_convention_corner_aligned_scale_is_two_over_size_minus_one(self, device):
         # Convention pin: by default the matrix is diag(2/(width - 1), 2/(height - 1), 1) with a -1
@@ -3818,41 +3718,37 @@ class TestNormalTransformPixel(BaseTester):
 
 
 class TestNormalizeHomography(BaseTester):
-    # normalize_homography, denormalize_homography and normalize_homography3d have no test class of
-    # their own in this file -- their existing coverage lives in
-    # tests/geometry/transform/test_homography_warper.py. The convention pins live here, next to
-    # normal_transform_pixel, whose corner-aligned convention all three inherit.
+    # normalize_homography, denormalize_homography, normalize_homography3d and
+    # denormalize_homography3d have no test class of their own in this file -- their existing
+    # coverage lives in tests/geometry/transform/test_homography_warper.py. The convention pins live
+    # here, next to normal_transform_pixel, whose corner-aligned convention all four inherit.
     # The CONVENTION pins below (composition, direction, round-trip, batching, 3-D) use sizes of
     # the form 2**k + 1 (3, 5, 9, 17) so that every 2/(size - 1) is exact in every dtype and those
-    # pins compare at atol=rtol=0. That also keeps them independent of kornia#3958 (the float32
-    # constants leak, pinned separately below with non-dyadic sizes): a fix for #3958 must not flip
-    # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
+    # pins compare at atol=rtol=0. The exactness invariant is theirs alone -- the numerical pins below
     # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
     # atol=32*eps, the #3960 shape-guard cells), so a new atol=0 pin belongs here
     # only at these sizes AND with a literal whose intermediates are exact. The invariant also
     # leans on the SHAPE of the normalization matrices -- upper-triangular with power-of-two
     # pivots -- surviving BOTH inverse routes actually in play (the functions do NOT share one):
-    # normalize_homography inverts through _inverse_3x3_closed_form (cofactor arithmetic --
-    # products and sums of dyadic values, then division by a power-of-two determinant, all
-    # exact), while denormalize_homography and normalize_homography3d go through
-    # _torch_inverse_cast (torch.linalg.inv in eager mode, rounding-free on such triangular
-    # matrices, with a float32 upcast for half dtypes and a closed-form 3x3 fallback under
-    # tracing -- each exactness-preserving on these values). A future non-triangular
-    # normalization (a #3904 align_corners variant, say) voids the atol=0 claim on EVERY route
-    # and needs a tolerance instead.
-    # No pin asserts anything about kornia#3962 (no denormalize_homography3d, no
-    # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
+    # normalize_homography inverts through _inverse_3x3_closed_form (cofactor arithmetic, in
+    # float32 for half dtypes -- products and sums of dyadic values, then division by a
+    # power-of-two determinant, all exact), while denormalize_homography and both 3-D functions
+    # go through _torch_inverse_cast (torch.linalg.inv in eager mode,
+    # rounding-free on such triangular matrices, with a float32 upcast for half dtypes and a
+    # closed-form 3x3 fallback under tracing -- each exactness-preserving on these values). A
+    # future non-triangular normalization (a #3904 align_corners variant, say) voids the atol=0
+    # claim on EVERY route and needs a tolerance instead.
     # NOTE: kornia#3904 landed and moved none of these. normalize_homography and
     # denormalize_homography now take an align_corners argument and forward it to
     # normal_transform_pixel, but it defaults to True, so the composition, direction, round-trip,
-    # batching and 3-D pins here -- and the #3957 singleton and #3958 bug pins -- still see the
+    # batching and 3-D pins here -- and the #3957 singleton pin -- still see the
     # corner-aligned 2/(size - 1) constants they were written against. normalize_homography3d has no
-    # such argument at all. A change to that default, not the parameter, is what would flip them.
-    # They record current default behavior; none of them ratifies that choice as contract. (The
-    # #3958 pins would also flip on a #3958 fix, which is their point and is separate from this.)
+    # such argument at all, and neither has denormalize_homography3d. A change to that default, not
+    # the parameter, is what would flip them.
+    # They record current default behavior; none of them ratifies that choice as contract.
 
     def test_gradcheck(self, device):
-        # The three functions are on the warp_perspective path and are differentiable in their
+        # The four functions are on the warp paths and are differentiable in their
         # homography argument, and nothing in the suite checked that: neither this file nor
         # test_homography_warper.py had a gradcheck for any of them before this pin
         # (`grep -rn "normalize_homography" tests/ | grep gradcheck` was empty). Each is linear in
@@ -3879,6 +3775,46 @@ class TestNormalizeHomography(BaseTester):
             partial(kornia.geometry.conversions.normalize_homography3d, dsize_src=(2, 4, 5), dsize_dst=(3, 8, 9)),
             (homography3d,),
         )
+        self.gradcheck(
+            partial(kornia.geometry.conversions.denormalize_homography3d, dsize_src=(2, 4, 5), dsize_dst=(3, 8, 9)),
+            (homography3d,),
+        )
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    @pytest.mark.parametrize("dsize_dst", [(2, 2, 2), (2, 2, 5)])
+    def test_exception_denormalize_homography3d_rejects_integer_homography(self, device, int_dtype, dsize_dst):
+        # An integer homography used to cast the normalization matrices back to integers:
+        # torch.eye(4, dtype=int64) with sizes (2, 2, 2) returned diag(0, 0, 0, 1) and with
+        # dst (2, 2, 5) raised a singular-matrix error from the integer-truncated inverse.
+        # The function rejects the dtype up front; the caller casts (see #3959 for the siblings).
+        # Snippet used to generate the old behaviour (torch only):
+        #   denormalize_homography3d(torch.eye(4, dtype=torch.int64), (2, 2, 2), (2, 2, 2)) -> diag(0, 0, 0, 1)
+        #   denormalize_homography3d(torch.eye(4, dtype=torch.int64), (2, 2, 2), (2, 2, 5)) -> _LinAlgError
+        homography = torch.eye(4, device=device).to(int_dtype)
+        with pytest.raises(TypeCheckError, match=r"dst_pix_trans_src_pix.*floating point.*" + str(int_dtype)):
+            kornia.geometry.conversions.denormalize_homography3d(homography, (2, 2, 2), dsize_dst)
+        with pytest.raises(TypeError):
+            kornia.geometry.conversions.denormalize_homography3d(homography[None], (2, 2, 2), dsize_dst)
+
+    @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
+    def test_exception_denormalize_homography3d_rejects_complex_homography(self, complex_dtype):
+        # CPU tensors: the guard runs before any arithmetic and MPS has no complex128.
+        # _torch_inverse_cast inverts complex matrices in float32, so complex128 lost ~7e-8 on an
+        # identity transform (equal sizes, (8, 8, 8)). Only real floating point is accepted.
+        # Snippet used to generate the old behaviour (torch only):
+        #   H = torch.eye(4, dtype=torch.complex128)
+        #   (denormalize_homography3d(H, (8, 8, 8), (8, 8, 8)) - H).abs().max() -> 6.8e-08
+        homography = torch.eye(4, dtype=complex_dtype)
+        with pytest.raises(TypeCheckError, match=r"dst_pix_trans_src_pix.*real floating point.*" + str(complex_dtype)):
+            kornia.geometry.conversions.denormalize_homography3d(homography, (8, 8, 8), (8, 8, 8))
+
+    def test_dynamo_denormalize_homography3d(self, device, dtype, torch_optimizer):
+        homography = torch.eye(4, device=device, dtype=dtype)[None] + 0.125
+        op = partial(kornia.geometry.conversions.denormalize_homography3d, dsize_src=(3, 5, 9), dsize_dst=(5, 9, 17))
+        actual = torch_optimizer(op)(homography)
+        expected = op(homography)
+
+        self.assert_close(actual, expected)
 
     def test_convention_maps_normalized_src_to_normalized_dst(self, device, dtype):
         # Convention pin: the returned matrix has the SAME src -> dst direction as its input,
@@ -3894,7 +3830,6 @@ class TestNormalizeHomography(BaseTester):
         #   src (1, 1) -> (2*1/4 - 1, 2*1/2 - 1) = (-0.5, 0.0)
         #   dst (3, 1) -> (2*3/4 - 1, 2*1/2 - 1) = ( 0.5, 0.0)
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         translate_two_px = torch.tensor(
             [[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
@@ -3910,7 +3845,6 @@ class TestNormalizeHomography(BaseTester):
         # identity to within one float32 rounding step (2**-24); which sizes land on exactly 0 is a
         # property of the inverse-and-matmul chain and is not pinned.
         _skip_if_dtype_unavailable(device, torch.float32)
-        _skip_if_closed_form_inverse_unavailable(device, torch.float32)
         identity = torch.eye(3, device=device, dtype=torch.float32)[None]
 
         normalized = kornia.geometry.conversions.normalize_homography(identity, (size, size), (size, size))
@@ -3931,7 +3865,6 @@ class TestNormalizeHomography(BaseTester):
         #   normalize_homography(H, (5, 9), (3, 5))
         #     -> [[4.0, 0.5, 4.5], [-1.0, 2.0, 1.0], [0.0, 0.0, 1.0]]
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         homography = torch.tensor(_DIRECTION_H, device=device, dtype=dtype)
 
         normalized = kornia.geometry.conversions.normalize_homography(homography, (3, 5), (5, 9))
@@ -4001,7 +3934,6 @@ class TestNormalizeHomography(BaseTester):
         #   denormalize_homography(normalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
         #   normalize_homography(denormalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         homography = torch.tensor(_ROUND_TRIP_H, device=device, dtype=dtype)
@@ -4025,7 +3957,6 @@ class TestNormalizeHomography(BaseTester):
         # on a batch of two different homographies, comparing element 1 of the batched call against
         # the single-element call.
         _skip_if_dtype_unavailable(device, dtype)
-        _skip_if_closed_form_inverse_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         batch = torch.tensor([_DIRECTION_H[0], _ROUND_TRIP_H[0]], device=device, dtype=dtype)
@@ -4053,18 +3984,7 @@ class TestNormalizeHomography(BaseTester):
         #     -> [[4.0, 0.5, 0.125, 4.125], [-1.0, 2.0, 0.5, 1.0],
         #         [1.0, -2.0, 4.0, 5.0], [0.0, 0.0, 0.0, 1.0]]
         _skip_if_dtype_unavailable(device, dtype)
-        homography = torch.tensor(
-            [
-                [
-                    [2.0, 0.5, 0.25, 2.0],
-                    [-0.25, 1.0, 0.5, 1.0],
-                    [0.125, -0.5, 2.0, 3.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
+        homography = torch.tensor(_DIRECTION_H3D, device=device, dtype=dtype)
 
         normalized = kornia.geometry.conversions.normalize_homography3d(homography, (3, 5, 9), (5, 9, 17))
         swapped = kornia.geometry.conversions.normalize_homography3d(homography, (5, 9, 17), (3, 5, 9))
@@ -4104,28 +4024,92 @@ class TestNormalizeHomography(BaseTester):
             rtol=0.0,
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="the normalization matrices are built at the ambient default dtype and cast to the "
-        "input afterwards, so a float64 caller gets float32-rounded constants — kornia#3958",
-        strict=True,
-    )
-    def test_convention_float64_input_gets_float64_normalization_constants_3958(self, device):
-        # Intended behavior: a float64 homography is normalized with float64 constants, so the
-        # entries carry float64 accuracy. They do not: normalize_homography calls
-        # normal_transform_pixel() without passing dtype= through, so the constants materialise at
-        # the ambient default (float32) and are cast to float64 afterwards, leaving about eight
-        # significant digits. For sizes (4, 4) -> (6, 6) the (0, 0) entry is mathematically
+    def test_convention_3d_denormalize_is_the_mirror_composition(self, device, dtype):
+        # Convention pin: denormalize_homography3d(H, dsize_src, dsize_dst) composes
+        # N(dsize_dst)^-1 @ H @ N(dsize_src) -- the mirror of normalize_homography3d, with the same
+        # (depth, height, width) argument roles. Pinned on the same input and sizes as the 3-D
+        # normalize pin above, and with the size arguments exchanged, so the pin is about direction
+        # as well as values.
+        # Snippet used to generate expected (torch only, executed on cpu float64; the closed form
+        # inv(N_dst) @ H @ N_src with N = normal_transform_pixel3d matches it to 0.0):
+        #   H = [[2, 0.5, 0.25, 2], [-0.25, 1, 0.5, 1], [0.125, -0.5, 2, 3], [0, 0, 0, 1]]
+        #   denormalize_homography3d(H, (3, 5, 9), (5, 9, 17))
+        #     -> [[4.0, 2.0, 2.0, 2.0], [-0.25, 2.0, 2.0, 3.0],
+        #         [0.0625, -0.5, 4.0, 4.75], [0.0, 0.0, 0.0, 1.0]]
+        #   denormalize_homography3d(H, (5, 9, 17), (3, 5, 9))
+        #     -> [[1.0, 0.5, 0.5, 1.0], [-0.0625, 0.5, 0.5, 1.5],
+        #         [0.015625, -0.125, 1.0, 2.375], [0.0, 0.0, 0.0, 1.0]]
+        _skip_if_dtype_unavailable(device, dtype)
+        homography = torch.tensor(_DIRECTION_H3D, device=device, dtype=dtype)
+
+        denormalized = kornia.geometry.conversions.denormalize_homography3d(homography, (3, 5, 9), (5, 9, 17))
+        swapped = kornia.geometry.conversions.denormalize_homography3d(homography, (5, 9, 17), (3, 5, 9))
+
+        self.assert_close(
+            denormalized,
+            torch.tensor(
+                [[[4.0, 2.0, 2.0, 2.0], [-0.25, 2.0, 2.0, 3.0], [0.0625, -0.5, 4.0, 4.75], [0.0, 0.0, 0.0, 1.0]]],
+                device=device,
+                dtype=dtype,
+            ),
+            atol=0.0,
+            rtol=0.0,
+        )
+        self.assert_close(
+            swapped,
+            torch.tensor(
+                [
+                    [
+                        [1.0, 0.5, 0.5, 1.0],
+                        [-0.0625, 0.5, 0.5, 1.5],
+                        [0.015625, -0.125, 1.0, 2.375],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ]
+                ],
+                device=device,
+                dtype=dtype,
+            ),
+            atol=0.0,
+            rtol=0.0,
+        )
+
+    def test_convention_3d_normalize_and_denormalize_round_trip(self, device, dtype):
+        # Convention pin: the 3-D leg of test_convention_normalize_and_denormalize_round_trip, with
+        # the same two-leg structure and the same tolerance reasoning -- both compositions, bitwise
+        # at dyadic sizes on a literal whose intermediates are exact, and within atol = 32 * eps,
+        # rtol = 8 * eps at non-dyadic sizes, where each entry passes through four matrix products
+        # and two 4x4 inverses (both through _torch_inverse_cast here). Measured float32 deviations
+        # against a bound of 3.8e-06: 4.77e-07 for denormalize(normalize(H)) and 2.38e-07 for the
+        # reverse.
+        # Snippet used to generate expected (torch only, executed on cpu at every dtype):
+        #   H = [[1.25, 0.25, 0.5, 4], [-0.5, 0.75, 0.25, 2], [0.25, -0.125, 1.5, 1],
+        #        [0.0625, 0.125, 0.03125, 1]]
+        #   denormalize_homography3d(normalize_homography3d(H, s, d), s, d) == H  (bitwise)
+        #   normalize_homography3d(denormalize_homography3d(H, s, d), s, d) == H  (bitwise)
+        #   with s = (3, 5, 9), d = (5, 9, 17)
+        _skip_if_dtype_unavailable(device, dtype)
+        normalize_homography3d = kornia.geometry.conversions.normalize_homography3d
+        denormalize_homography3d = kornia.geometry.conversions.denormalize_homography3d
+        homography = torch.tensor(_ROUND_TRIP_H3D, device=device, dtype=dtype)
+
+        for src, dst, atol, rtol in (
+            ((3, 5, 9), (5, 9, 17), 0.0, 0.0),
+            ((4, 5, 7), (6, 8, 11), 32.0 * torch.finfo(dtype).eps, 8.0 * torch.finfo(dtype).eps),
+        ):
+            denorm_of_norm = denormalize_homography3d(normalize_homography3d(homography, src, dst), src, dst)
+            norm_of_denorm = normalize_homography3d(denormalize_homography3d(homography, src, dst), src, dst)
+
+            self.assert_close(denorm_of_norm, homography, atol=atol, rtol=rtol)
+            self.assert_close(norm_of_denorm, homography, atol=atol, rtol=rtol)
+
+    def test_convention_float64_input_gets_float64_normalization_constants(self, device):
+        # A float64 homography is normalized with float64 constants, so the entries carry float64
+        # accuracy. For sizes (4, 4) -> (6, 6) the (0, 0) entry is mathematically
         # 2/(6 - 1) * (4 - 1)/2 = 0.6 exactly, and any float64-native evaluation lands within an ulp
-        # of it; the tolerance 1e-12 sits four orders above float64 noise and three below the
-        # deviation the current implementation produces.
-        # Non-dyadic sizes are required here: with 2**k + 1 sizes the float32 constants are exact
-        # and there is nothing to leak, which is why the ordering pins above use them and this pin
-        # does not. float64 is hardcoded and the dtype fixture dropped because the claim is a
-        # float64 claim, and the skip is visible so that on MPS, which has no float64, a raw
-        # TypeError cannot satisfy the raises=AssertionError mark instead of the assertion.
-        # Marked xfail(strict=True) so fixing #3958 makes this XPASS and forces the mark out.
-        # Companion wart: test_wart_float32_constants_leak_into_float64_results_3958.
+        # of it; the tolerance 1e-12 sits four orders above float64 noise and nearly four below the
+        # 8.9e-9 deviation that float32-rounded constants gave. Non-dyadic sizes are required here: with 2**k + 1
+        # sizes the constants are exact. float64 is hardcoded and the dtype fixture dropped because
+        # the claim is a float64 claim.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         identity = torch.eye(3, device=device, dtype=torch.float64)[None]
@@ -4133,76 +4117,28 @@ class TestNormalizeHomography(BaseTester):
         normalized = kornia.geometry.conversions.normalize_homography(identity, (4, 4), (6, 6))
 
         assert abs(normalized[0, 0, 0].item() - 0.6) < 1e-12, (
-            "kornia#3958: normalize_homography did not use float64 normalization constants"
+            "normalize_homography did not use float64 normalization constants"
         )
 
-    def test_wart_float32_constants_leak_into_float64_results_3958(self, device):
-        # Wart pin for kornia#3958, companion to the strict xfail above: assert the CURRENT
-        # float32-rounded entries in a float64 result. Four cells:
-        #   (1) normalize_homography, whose src factor is inverted by the closed-form 3x3 inverse;
-        #   (2) denormalize_homography, whose dst factor is inverted by _torch_inverse_cast instead
-        #       -- a separate code path that could be fixed on its own;
-        #   (3) normalize_homography3d, which calls the 3-D helper and is a third call site;
-        #   (4) the control that proves the cause is the missing dtype= pass-through and not an
-        #       epsilon or a rounding choice: with the ambient default dtype set to float64 the
-        #       same call returns the float64-native value 0.6000000000000001, because the helper
-        #       now materialises in float64 before the cast. Cell (4) also fails if the helpers stop
-        #       reading the ambient default, which is the other half of the same mechanism.
-        # If any cell fails, #3958 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that float64 callers must keep receiving float32-rounded constants.
-        # atol 1e-10 pins the MAGNITUDE of the deviation, which is what the docstring warning
-        # promises ("the magnitude -- half the mantissa gone -- is the point ... rather than the
-        # digits"): it sits an order below the ~8.9e-09 deviation being discriminated (so a fix
-        # still flips these cells red) and six above the ~1.1e-16 ulp of the entries, so no
-        # backend's reassociation of the matmul-and-inverse chain can flip them. float64 is
-        # hardcoded for the same reason as the xfail above.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   normalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]     -> 0.5999999910593036
-        #   denormalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]   -> 1.6666666915019348
-        #   normalize_homography3d(eye(4, float64), (4, 4, 4), (6, 6, 6))[0, 0] -> 0.5999999910593036
-        #   with torch.set_default_dtype(torch.float64):
-        #     normalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]   -> 0.6000000000000001
-        _skip_if_dtype_unavailable(device, torch.float64)
+    @pytest.mark.parametrize(
+        ("op_name", "src", "dst"),
+        [
+            ("normalize_homography", (4, 4), (6, 6)),
+            ("denormalize_homography", (4, 4), (6, 6)),
+            ("normalize_homography3d", (4, 4, 7), (6, 6, 9)),
+            ("denormalize_homography3d", (4, 4, 7), (6, 6, 9)),
+        ],
+    )
+    def test_scripted_normalization_constants_match_eager(self, device, dtype, op_name, src, dst):
+        # TorchScript builds torch.tensor from a float list in float32 even for dtype=float64, so
+        # the scripted path must not use it: under float64 the scripted result drifted from eager
+        # by the same ~1e-8 as the old float32 constants. Non-dyadic sizes keep that drift visible.
+        _skip_if_dtype_unavailable(device, dtype)
+        op = getattr(kornia.geometry.conversions, op_name)
+        size = 4 if op_name.endswith("3d") else 3
+        homography = torch.eye(size, device=device, dtype=dtype)[None]
 
-        normalize_homography = kornia.geometry.conversions.normalize_homography
-        identity = torch.eye(3, device=device, dtype=torch.float64)[None]
-        identity3d = torch.eye(4, device=device, dtype=torch.float64)[None]
-
-        normalized = normalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
-        denormalized = kornia.geometry.conversions.denormalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
-        normalized3d = kornia.geometry.conversions.normalize_homography3d(identity3d, (4, 4, 4), (6, 6, 6))[0, 0, 0]
-
-        with _ambient_default_dtype(torch.float64):
-            with_float64_default = normalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
-
-        assert_close(
-            normalized,
-            torch.tensor(0.5999999910593036, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: normalize_homography no longer rounds its constants to float32"),
-        )
-        assert_close(
-            denormalized,
-            torch.tensor(1.6666666915019348, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: denormalize_homography no longer rounds its constants to float32"),
-        )
-        assert_close(
-            normalized3d,
-            torch.tensor(0.5999999910593036, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: normalize_homography3d no longer rounds its constants to float32"),
-        )
-        assert_close(
-            with_float64_default,
-            torch.tensor(0.6000000000000001, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: the ambient default dtype no longer decides the constants' precision"),
-        )
+        self.assert_close(torch.jit.script(op)(homography, src, dst), op(homography, src, dst), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("op_name", ["normalize_homography", "denormalize_homography"])
     def test_wart_integer_input_raises_or_nans_by_backend_3959(self, device, op_name):
@@ -4215,10 +4151,15 @@ class TestNormalizeHomography(BaseTester):
         identity = torch.eye(3, device=device, dtype=torch.int64)[None]
         op = getattr(kornia.geometry.conversions, op_name)
 
+        # Both a torch error and an all-NaN result are valid backend outcomes. Keep
+        # both branches, but check a caught error after the except block for PT017.
+        error: Exception | None = None
         try:
             out = op(identity, (4, 5), (8, 9))
         except Exception as err:
-            assert not _raised_by_a_kornia_guard(err), (
+            error = err
+        if error is not None:
+            assert not _raised_by_a_kornia_guard(error), (
                 f"kornia#3959: {op_name} now rejects integer input in a guard of its own -- update the warning"
             )
         else:
@@ -4226,7 +4167,7 @@ class TestNormalizeHomography(BaseTester):
 
     @pytest.mark.parametrize(("op_name", "wrong_size"), _WRONG_SIZE_CASES, ids=_WRONG_SIZE_IDS)
     def test_convention_the_shape_guard_accepts_rank_2_and_3_only_3960(self, op_name, wrong_size, device):
-        # Each of the three functions carries its own copy of the shape guard. It accepts an
+        # Each of the four functions carries its own copy of the shape guard. It accepts an
         # unbatched (N, N) or a batched (B, N, N) matrix -- both come back as (1, N, N) here -- and
         # rejects a wrong-sized matrix and a rank-4 one itself, with a ValueError naming the
         # argument and the expected BxNxN shape. _raised_by_a_kornia_guard tells that apart from a
@@ -4241,7 +4182,7 @@ class TestNormalizeHomography(BaseTester):
 
         wrong_sized = torch.eye(wrong_size, device=device, dtype=torch.float32)[None]
         for rejected in (wrong_sized, eye.expand(2, 1, size, size)):
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(ValueError) as excinfo:
                 op(rejected, *sizes)
             assert _raised_by_a_kornia_guard(excinfo.value), (
                 f"kornia#3960: {op_name} did not reject a {tuple(rejected.shape)} matrix in its guard"
@@ -4259,6 +4200,8 @@ class TestNormalizeHomography(BaseTester):
             kornia.geometry.conversions.denormalize_homography(identity, (4, 5), (4, 1)),
             kornia.geometry.conversions.normalize_homography3d(identity3d, (1, 4, 5), (3, 8, 9)),
             kornia.geometry.conversions.normalize_homography3d(identity3d, (3, 8, 9), (1, 4, 5)),
+            kornia.geometry.conversions.denormalize_homography3d(identity3d, (1, 4, 5), (3, 8, 9)),
+            kornia.geometry.conversions.denormalize_homography3d(identity3d, (3, 8, 9), (1, 4, 5)),
         ]
         assert all(torch.isfinite(output).all() for output in outputs)
 
@@ -4654,27 +4597,65 @@ class TestRt2Extrinsics(BaseTester):
 
         self.assert_close(extrinsics[0, :3, 3], torch.zeros(3, device=device, dtype=torch.float32), atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(
+        "requested_dtype", [torch.bool, torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64]
+    )
+    def test_Rt_rejects_nonfloating_dtype_3959(self, device, requested_dtype):
+        _skip_if_dtype_unavailable(device, requested_dtype)
+        rotation = torch.eye(3, device=device).to(requested_dtype)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=requested_dtype)
+        with pytest.raises(ValueError, match="R and t must promote to a floating point or complex dtype") as excinfo:
+            Rt_to_matrix4x4(rotation, translation)
+        assert str(excinfo.value).endswith(f"Got {requested_dtype}.")
+
+    def test_Rt_names_the_promoted_dtype_3959(self, device):
+        # uint8 and int8 promote to int16, the dtype of neither input, so the message must name the promoted dtype.
+        rotation = torch.eye(3, device=device).to(torch.uint8)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=torch.int8)
+        with pytest.raises(ValueError, match=r"Got torch\.int16\.$"):
+            Rt_to_matrix4x4(rotation, translation)
+
+    @pytest.mark.parametrize(
+        "rotation_dtype,translation_dtype",
+        [
+            (torch.int64, torch.float32),
+            (torch.bool, torch.float32),
+            (torch.float32, torch.int64),
+            (torch.float32, torch.float64),
+            (torch.complex64, torch.float32),
+            (torch.float32, torch.complex64),
+        ],
+    )
+    def test_Rt_preserves_promoted_dtype_3959(self, device, rotation_dtype, translation_dtype):
+        _skip_if_dtype_unavailable(device, rotation_dtype)
+        _skip_if_dtype_unavailable(device, translation_dtype)
+        try:  # MPS (torch 2.14, macOS 26.5) has no kernel to cat complex with real tensors
+            torch.cat([torch.zeros(1, device=device, dtype=d) for d in (rotation_dtype, translation_dtype)])
+        except RuntimeError as err:
+            pytest.skip(f"torch.cat cannot mix {rotation_dtype} and {translation_dtype} on {device}: {err}")
+        rotation = torch.eye(3, device=device, dtype=rotation_dtype)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=translation_dtype)
+        expected_dtype = torch.promote_types(rotation_dtype, translation_dtype)
+        expected = torch.eye(4, device=device, dtype=expected_dtype)[None]
+        expected[:, :3, 3:] = translation.to(expected_dtype)
+        self.assert_close(Rt_to_matrix4x4(rotation, translation), expected, atol=0.0, rtol=0.0)
+
     def test_wart_int64_Rt_raises_while_4x4_and_pose_forms_accept_3959(self, device):
-        # Wart pin for kornia#3959: no function in this family guards against an int64 pose.
-        # Rt_to_matrix4x4 and the two frame functions built on it fail inside torch (the appended
-        # float row cannot be cast to Long), while the _4x4 forms and the pose pair return int64
-        # wherever the backend has integer batched matmul, and fail inside torch elsewhere. Every
-        # failure is classified by _raised_by_a_kornia_guard rather than by its type or message, so
-        # the pin flips when a guard is added to either side or when integers are promoted.
-        # Snippet used to generate expected (torch only, executed on cpu):
-        #   Rt_to_matrix4x4(eye(3, int64)[None], ones(1, 3, 1, int64)) -> RuntimeError
-        #   camtoworld_graphics_to_vision_4x4(eye(4, int64)[None]).dtype -> torch.int64
-        #   camtoworld_to_worldtocam_Rt(eye(3, int64)[None], ones(1, 3, 1, int64)) -> (int64, int64)
+        _skip_if_dtype_unavailable(device, torch.int64)
+        # Wart pin for kornia#3959: Rt_to_matrix4x4 and the two frame functions built on it reject an int64
+        # pose in a kornia guard, while the _4x4 forms of the same map and the pose pair return int64 on every
+        # backend, CUDA (no integer matmul kernels) included. The pin flips when the _4x4 side gains a guard
+        # (classified by _raised_by_a_kornia_guard), fails inside torch, or promotes integers.
         rotation = torch.eye(3, device=device, dtype=torch.int64)[None]
         translation = torch.ones(1, 3, 1, device=device, dtype=torch.int64)
         extrinsics = torch.eye(4, device=device, dtype=torch.int64)[None]
 
         for op in (Rt_to_matrix4x4, camtoworld_graphics_to_vision_Rt, camtoworld_vision_to_graphics_Rt):
-            with pytest.raises(Exception) as excinfo:
+            with pytest.raises(
+                ValueError, match="R and t must promote to a floating point or complex dtype"
+            ) as excinfo:
                 op(rotation, translation)
-            assert not _raised_by_a_kornia_guard(excinfo.value), (
-                f"kornia#3959: {op.__name__} now rejects int64 (R, t) in a guard of its own -- update the warning"
-            )
+            assert _raised_by_a_kornia_guard(excinfo.value)
 
         accepting = [
             (camtoworld_graphics_to_vision_4x4, (extrinsics,)),
@@ -4682,18 +4663,22 @@ class TestRt2Extrinsics(BaseTester):
             (camtoworld_to_worldtocam_Rt, (rotation, translation)),
             (worldtocam_to_camtoworld_Rt, (rotation, translation)),
         ]
+        # Any raise fails the pin; a kornia guard fails it with the message naming the warning to update.
         for op, args in accepting:
+            error: Exception | None = None
             try:
                 out = op(*args)
             except Exception as err:
-                assert not _raised_by_a_kornia_guard(err), (
+                error = err
+            if error is not None:
+                assert not _raised_by_a_kornia_guard(error), (
                     f"kornia#3959: {op.__name__} now rejects int64 input in a guard of its own -- update the warning"
                 )
-            else:
-                outputs = out if isinstance(out, tuple) else (out,)
-                assert all(o.dtype == torch.int64 for o in outputs), (
-                    f"kornia#3959: {op.__name__} no longer returns int64 for int64 input"
-                )
+                raise AssertionError(f"{op.__name__} no longer accepts int64 input on {device}") from error
+            outputs = out if isinstance(out, tuple) else (out,)
+            assert all(o.dtype == torch.int64 for o in outputs), (
+                f"kornia#3959: {op.__name__} no longer returns int64 for int64 input"
+            )
 
     @pytest.mark.parametrize(
         ("op_name", "shapes"),
@@ -4721,34 +4706,58 @@ class TestRt2Extrinsics(BaseTester):
     def test_convention_shapes_are_strictly_batched(self, op_name, shapes, device):
         # Convention pin: both functions go through KORNIA_CHECK_SHAPE and accept exactly
         # (B, 3, 3) + (B, 3, 1) and (B, 4, 4) -- no unbatched form, no (B, 3) translation, no
-        # transposed (B, 1, 3) translation, no extra leading batch dimensions. This is the strict
-        # end of the family: camtoworld_to_worldtocam_Rt broadcasts a (1, 3, 1) translation across
-        # a (2, 3, 3) rotation where Rt_to_matrix4x4 raises, which
-        # test_wart_batch_size_mismatch_is_not_guarded_4774 below pins. Assertion policy and the
-        # float32 hardcoding are documented once on the shared _assert_strictly_batched helper.
+        # transposed (B, 1, 3) translation, no extra leading batch dimensions. The same-batch
+        # rule for (R, t) pairs is pinned by test_convention_batch_size_mismatch_raises_4774
+        # below. Assertion policy and the float32 hardcoding are documented once on the shared
+        # _assert_strictly_batched helper.
         _assert_strictly_batched(op_name, shapes, device)
 
-    def test_wart_batch_size_mismatch_is_not_guarded_4774(self, device):
-        # Wart pin for kornia#4774: no kornia guard compares the batch sizes of R and t.
-        # Rt_to_matrix4x4 fails inside torch.cat, while camtoworld_to_worldtocam_Rt broadcasts the
-        # same pair -- and with R of batch 1 and t of batch 2 returns outputs of different batch
-        # sizes. Flips under either fix: a shared guard (the Rt_to_matrix4x4 failure becomes a
-        # guard's, and the pose pair raises) or consistent broadcasting.
-        rotation_batch_2 = torch.eye(3, device=device, dtype=torch.float32).expand(2, 3, 3)
-        translation_batch_1 = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+    @pytest.mark.parametrize(
+        "op_name",
+        [
+            "Rt_to_matrix4x4",
+            "camtoworld_graphics_to_vision_Rt",
+            "camtoworld_vision_to_graphics_Rt",
+            "camtoworld_to_worldtocam_Rt",
+            "worldtocam_to_camtoworld_Rt",
+        ],
+    )
+    @pytest.mark.parametrize("batch_pair", [(2, 1), (1, 2)], ids=["R2-t1", "R1-t2"])
+    def test_convention_batch_size_mismatch_raises_4774(self, op_name, batch_pair, device):
+        # Convention pin: every (R, t) function in the family rejects a batch-size mismatch in a
+        # guard of its own -- a ShapeError naming the function and both shapes -- before torch.cat
+        # can fail or the matmul can broadcast. The graphics/vision pair calls Rt_to_matrix4x4,
+        # whose guard would raise too; matching the name pins each function's own guard.
+        ops = {
+            "Rt_to_matrix4x4": Rt_to_matrix4x4,
+            "camtoworld_graphics_to_vision_Rt": camtoworld_graphics_to_vision_Rt,
+            "camtoworld_vision_to_graphics_Rt": camtoworld_vision_to_graphics_Rt,
+            "camtoworld_to_worldtocam_Rt": camtoworld_to_worldtocam_Rt,
+            "worldtocam_to_camtoworld_Rt": worldtocam_to_camtoworld_Rt,
+        }
+        r_batch, t_batch = batch_pair
+        R = torch.eye(3, device=device, dtype=torch.float32).expand(r_batch, 3, 3)
+        t = torch.ones(t_batch, 3, 1, device=device, dtype=torch.float32)
 
-        with pytest.raises(Exception) as excinfo:
-            Rt_to_matrix4x4(rotation_batch_2, translation_batch_1)
-        assert not _raised_by_a_kornia_guard(excinfo.value), (
-            "kornia#4774: Rt_to_matrix4x4 now rejects mismatched batch sizes in a guard of its own"
-        )
+        with pytest.raises(ShapeError, match=f"^{op_name}: R and t must have the same batch size") as excinfo:
+            ops[op_name](R, t)
+        assert excinfo.value.actual_shape == [t_batch, 3, 1]
+        assert excinfo.value.expected_shape == [str(r_batch), "3", "1"]
 
-        inverted_R, inverted_t = camtoworld_to_worldtocam_Rt(
-            torch.eye(3, device=device, dtype=torch.float32)[None], torch.ones(2, 3, 1, device=device)
-        )
-        assert (inverted_R.shape[0], inverted_t.shape[0]) == (1, 2), (
-            "kornia#4774: camtoworld_to_worldtocam_Rt no longer returns mismatched batch sizes"
-        )
+    def test_convention_batch_size_guard_follows_disable_checks_4774(self, device):
+        # Convention pin: the same-batch guard is a kornia check, so disable_checks() turns it off
+        # together with the KORNIA_CHECK_SHAPE calls before it, and the pair reaches torch.cat.
+        R = torch.eye(3, device=device, dtype=torch.float32).expand(2, 3, 3)
+        t = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError) as excinfo:
+                Rt_to_matrix4x4(R, t)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert not _raised_by_a_kornia_guard(excinfo.value)
 
 
 class TestCamtoworldGraphicsToVision(BaseTester):
@@ -4884,6 +4893,32 @@ class TestCamtoworldGraphicsToVision(BaseTester):
             rtol=0.0,
         )
 
+    @pytest.mark.parametrize("op_name", ["camtoworld_graphics_to_vision_4x4", "camtoworld_vision_to_graphics_4x4"])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64])
+    def test_integer_input_keeps_its_dtype(self, op_name, int_dtype, device):
+        # An integer matrix is flipped in its own dtype on every device. CUDA has no integer matmul kernels, so
+        # extrinsics @ diag(1, -1, -1, 1) used to raise there ("baddbmm_cuda" not implemented for 'Long') while
+        # CPU returned this result. uint8 wraps the negated entries (-2 -> 254, -1 -> 255), like the
+        # int64 -> uint8 cast of the literal below. No matmul kernel may be dispatched, so CPU, which has
+        # integer matmul, fails where CUDA would.
+        # Snippet used to generate expected (torch only, executed on cpu, int64 matmul):
+        #   M = [[1, 2, 0, 1], [0, 1, 1, 2], [3, 0, 1, 3], [0, 0, 0, 1]]
+        #   M @ diag(1, -1, -1, 1) -> [[1, -2, 0, 1], [0, -1, -1, 2], [3, 0, -1, 3], [0, 0, 0, 1]]
+        op = getattr(kornia.geometry.conversions, op_name)
+        extrinsics = torch.tensor([[[1, 2, 0, 1], [0, 1, 1, 2], [3, 0, 1, 3], [0, 0, 0, 1]]], device=device)
+
+        recorder, float_recorder = _RecordMatmulOps(), _RecordMatmulOps()
+        with recorder:
+            flipped = op(extrinsics.to(int_dtype))
+        with float_recorder:  # the recorder sees the matmul that floating point input keeps
+            op(extrinsics.to(torch.float32))
+
+        expected = torch.tensor([[[1, -2, 0, 1], [0, -1, -1, 2], [3, 0, -1, 3], [0, 0, 0, 1]]], device=device)
+        assert recorder.matmul_ops == set()
+        assert float_recorder.matmul_ops != set()
+        assert flipped.dtype == int_dtype
+        assert torch.equal(flipped, expected.to(int_dtype))
+
     @pytest.mark.parametrize(
         ("forward_name", "backward_name"),
         [
@@ -5013,8 +5048,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
     )
     def test_convention_shapes_are_strictly_batched(self, op_name, shapes, device):
         # Convention pin: both functions accept exactly (B, 3, 3) + (B, 3, 1) -- no unbatched form,
-        # no (B, 3) translation, no extra leading batch dimensions. A mismatched batch size is not
-        # checked (kornia#4774, pinned in TestRt2Extrinsics).
+        # no (B, 3) translation, no extra leading batch dimensions. A mismatched batch size between
+        # R and t raises ShapeError (kornia#4774, pinned in TestRt2Extrinsics).
         # Assertion policy and the float32 hardcoding are documented once on the shared
         # _assert_strictly_batched helper.
         _assert_strictly_batched(op_name, shapes, device)
@@ -5117,10 +5152,65 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         out_R, out_t = fn(permutation, translation, check_rotation=True)
         expected_R, expected_t = fn(permutation, translation)
         assert out_R.dtype == torch.int64
-        assert torch.equal(out_R, expected_R) and torch.equal(out_t, expected_t)
+        assert torch.equal(out_R, expected_R)
+        assert torch.equal(out_t, expected_t)
         rotation = 2 * torch.eye(3, device=device, dtype=torch.int64)[None]
         with pytest.raises(ValueError, match="not a rotation matrix"):
             fn(rotation, translation, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64])
+    def test_integer_input_keeps_its_dtype(self, fn, int_dtype, device):
+        # An integer pose is computed in its own dtype on every device. CUDA has no integer matmul kernels, so
+        # -R^T @ t used to raise there ("baddbmm_cuda" not implemented for 'Long') while CPU returned this
+        # result. R is not a permutation, so every row of -R^T @ t sums several products; all values fit int8,
+        # and uint8 wraps -(10, 4, 5) to (246, 252, 251), like the int64 -> uint8 cast of the literal below.
+        # No matmul kernel may be dispatched, so CPU, which has integer matmul, fails where CUDA would.
+        # Snippet used to generate expected (torch only, executed on cpu, int64 matmul):
+        #   R = [[1, 2, 0], [0, 1, 1], [3, 0, 1]], t = (1, 2, 3)
+        #   -R.transpose(1, 2) @ t -> (-10, -4, -5)
+        rotation = torch.tensor([[[1, 2, 0], [0, 1, 1], [3, 0, 1]]], device=device).to(int_dtype)
+        translation = torch.tensor([[[1], [2], [3]]], device=device).to(int_dtype)
+        recorder, float_recorder = _RecordMatmulOps(), _RecordMatmulOps()
+        with recorder:
+            out_R, out_t = fn(rotation, translation)
+        with float_recorder:  # the recorder sees the matmul that floating point input keeps
+            fn(rotation.to(torch.float32), translation.to(torch.float32))
+        assert recorder.matmul_ops == set()
+        assert float_recorder.matmul_ops != set()
+        assert out_R.dtype == int_dtype
+        assert out_t.dtype == int_dtype
+        assert torch.equal(out_R, rotation.transpose(1, 2))
+        assert torch.equal(out_t, torch.tensor([[[-10], [-4], [-5]]], device=device).to(int_dtype))
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize(("r_dtype", "t_dtype"), [(torch.int64, torch.float32), (torch.int32, torch.int64)])
+    def test_mixed_dtype_pair_keeps_the_matmul_error(self, fn, r_dtype, t_dtype, device):
+        # Only a pair of one integer dtype is summed in that dtype. A mixed pair keeps -R^T @ t and the error torch
+        # raises for it, rather than an int64 R truncating a float32 t.
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device).to(r_dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device).to(t_dtype)
+        with pytest.raises(RuntimeError) as excinfo:
+            fn(rotation, translation)
+        assert not _raised_by_a_kornia_guard(excinfo.value)
+
+    @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
+    @pytest.mark.parametrize("pair_dtype", [torch.int64, torch.float32])
+    def test_row_translation_raises_with_checks_disabled(self, fn, pair_dtype, device):
+        # disable_checks() turns the shape guards off, so a (1, 1, 3) row translation reaches -R^T @ t, whose inner
+        # sizes (3 and 1) do not match. Integer input must raise there like float input does, instead of
+        # broadcasting the size-1 dimension into a (1, 3, 3) "translation".
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device).to(pair_dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device).to(pair_dtype).transpose(1, 2)
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError) as excinfo:
+                fn(rotation, translation)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+        assert not _raised_by_a_kornia_guard(excinfo.value)
 
     @pytest.mark.parametrize("fn", [camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt])
     @pytest.mark.parametrize(
@@ -5297,10 +5387,8 @@ class TestCARKitToColmap(BaseTester):
         # Convention pin: the input quaternion does not have to be unit -- the pipeline normalizes
         # it -- and q and -q describe the same rotation, so both give the same pose. Two legs
         # because they are independent: scaling exercises the normalizer, negating exercises the
-        # double cover. What this pin does NOT decide is the zero quaternion, which is absorbed by
-        # the normalizer's eps guard and silently produces a plausible pose (documented, not pinned:
-        # the intended answer there is a maintainer decision, tracked in kornia#3952 -- this is the
-        # downstream reach of that issue's sub-eps clamp).
+        # double cover. The zero quaternion, which the normalizer's eps floor absorbs into the
+        # identity's pose, has its own convention pin below (kornia#3952).
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   ARKitQTVecs_to_ColmapQTVecs(q * 1000, t) == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
         #   ARKitQTVecs_to_ColmapQTVecs(-q, t)       == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
@@ -5317,20 +5405,17 @@ class TestCARKitToColmap(BaseTester):
         self.assert_close(q_negated, q_reference)
         self.assert_close(t_negated, t_reference)
 
-    def test_wart_zero_quaternion_is_absorbed_3952(self, device, dtype):
-        # Wart pin for the downstream reach of kornia#3952 into this function, companion to its
-        # zero-quaternion warning: the all-zero input is not rejected. normalize_quaternion's
-        # ‖q‖ < eps clamp absorbs the zero at every dtype, the internal rotation comes back as the
-        # identity, and the call returns exactly what the IDENTITY quaternion returns -- a
-        # plausible pose, silently, for an input that is not a rotation at all.
+    def test_convention_zero_quaternion_is_absorbed_3952(self, device, dtype):
+        # Convention pin (kornia#3952, kept by maintainer decision), companion to the docstring's
+        # zero-quaternion bullet: the all-zero input is not rejected. normalize_quaternion's eps
+        # floor keeps the zero at every dtype, the internal rotation comes back as the identity,
+        # and the call returns exactly what the IDENTITY quaternion returns.
         # The first two legs assert against the IDENTITY input's own output rather than against a
         # literal, so the claim the docstring makes -- "the same answer as the identity input" --
         # is what runs, at every dtype and on every backend, with no constant to re-measure per
-        # build. The third leg pins the one value the warning quotes outright, t = (-1, 1, 1),
+        # build. The third leg pins the one value the docstring quotes outright, t = (-1, 1, 1),
         # which is exact in every dtype here; without it the first two would still pass if BOTH
         # routes moved together.
-        # If this fails, #3952 was (partly) fixed, or this function grew a guard -- check which.
-        # NOT a contract that absorbing the zero quaternion is correct.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(1, 4), torch.ones(1, 3, 1))
         #     -> q [0., 1., 0., 0.], t [-1., 1., 1.]         (float64 q_x: 1.0000000012499999)
@@ -5348,21 +5433,21 @@ class TestCARKitToColmap(BaseTester):
             q_identity,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's rotation"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's rotation"),
         )
         assert_close(
             t_zero,
             t_identity,
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's translation"),
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's translation"),
         )
         assert_close(
             t_zero,
             torch.tensor([[[-1.0], [1.0], [1.0]]], device=device, dtype=dtype),
             atol=0.0,
             rtol=0.0,
-            msg=_issue_msg("kornia#3952: the absorbed zero quaternion no longer produces the documented pose"),
+            msg=_issue_msg("kornia#3952 convention: the absorbed zero quaternion must produce the documented pose"),
         )
 
     def test_convention_input_is_camtoworld_graphics_and_output_is_worldtocam_vision(self, device, dtype):
@@ -5412,31 +5497,195 @@ class TestCARKitToColmap(BaseTester):
         self.assert_close(q_colmap[1:], single_q, atol=0.0, rtol=0.0)
         self.assert_close(t_colmap[1:], single_t, atol=0.0, rtol=0.0)
 
-    def test_convention_shapes_are_strictly_batched(self, device):
+    @pytest.mark.parametrize("op", [ARKitQTVecs_to_ColmapQTVecs, ColmapQTVecs_to_ARKitQTVecs])
+    def test_convention_shapes_are_strictly_batched(self, op, device):
         # Convention pin: the inputs are strictly qvec (B, 4) and tvec (B, 3, 1) -- an unbatched
         # (4,) quaternion is rejected, and so is a flat (B, 3) translation. The two rejections come
-        # from different guards, which the pin keeps visible: both ShapeErrors are raised by
-        # camtoworld_graphics_to_vision_Rt's OWN KORNIA_CHECK_SHAPE guards (traceback-verified:
-        # ARKitQTVecs_to_ColmapQTVecs -> camtoworld_graphics_to_vision_Rt -> KORNIA_CHECK_SHAPE;
+        # from different guards, which the pin keeps visible: both ShapeErrors are raised by the
+        # first Rt conversion's OWN KORNIA_CHECK_SHAPE guards (traceback-verified:
+        # ARKitQTVecs_to_ColmapQTVecs -> camtoworld_graphics_to_vision_Rt -> KORNIA_CHECK_SHAPE, and
+        # ColmapQTVecs_to_ARKitQTVecs -> worldtocam_to_camtoworld_Rt -> KORNIA_CHECK_SHAPE;
         # Rt_to_matrix4x4 is never reached -- its guards do not back these rejections and cannot be
         # deduplicated on the strength of this pin), while a (B, 3) quaternion is caught even
         # earlier by quaternion_to_rotation_matrix's own "(*, 4)" ValueError.
         # float32 is hardcoded and the dtype fixture dropped because these guards run before any
         # arithmetic and cannot depend on the dtype.
-        # Snippet used to generate expected (torch only, executed on cpu float32):
-        #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(4), torch.ones(1, 3, 1))   -> ShapeError
-        #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(1, 4), torch.ones(1, 3))   -> ShapeError
-        #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(1, 3), torch.ones(1, 3, 1))
+        # Snippet used to generate expected (torch only, executed on cpu float32), for either op:
+        #   op(torch.zeros(4), torch.ones(1, 3, 1))   -> ShapeError
+        #   op(torch.zeros(1, 4), torch.ones(1, 3))   -> ShapeError
+        #   op(torch.zeros(1, 3), torch.ones(1, 3, 1))
         #     -> ValueError: Input must be a tensor of shape (*, 4). Got torch.Size([1, 3])
         quaternion = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float32)
         translation = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
 
         with pytest.raises(ShapeError):
-            ARKitQTVecs_to_ColmapQTVecs(quaternion[0], translation)
+            op(quaternion[0], translation)
         with pytest.raises(ShapeError):
-            ARKitQTVecs_to_ColmapQTVecs(quaternion, translation[..., 0])
+            op(quaternion, translation[..., 0])
         with pytest.raises(ValueError, match=r"shape \(\*, 4\)"):
-            ARKitQTVecs_to_ColmapQTVecs(quaternion[:, :3], translation)
+            op(quaternion[:, :3], translation)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    @pytest.mark.parametrize("which", ["qvec", "tvec"])
+    def test_exception_colmap_to_arkit_rejects_non_floating_inputs(self, device, int_dtype, which):
+        # Integer or bool inputs used to surface as a bare torch RuntimeError from linalg.vector_norm
+        # ("Expected a floating point or complex tensor") or from the matmul dtype mismatch, naming
+        # no kornia argument. Both arguments are now rejected up front by name.
+        # Snippet used to generate the old behaviour (torch only):
+        #   ColmapQTVecs_to_ARKitQTVecs(torch.tensor([[1, 0, 0, 0]]), torch.ones(1, 3, 1)) -> RuntimeError
+        #   ColmapQTVecs_to_ARKitQTVecs(torch.tensor([[1., 0, 0, 0]]), torch.ones(1, 3, 1, dtype=torch.int64))
+        #     -> RuntimeError: expected scalar type Float but found Long
+        qvec = torch.tensor([[1, 0, 0, 0]], device=device).to(torch.float32)
+        tvec = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+        if which == "qvec":
+            qvec = qvec.to(int_dtype)
+        else:
+            tvec = tvec.to(int_dtype)
+        with pytest.raises(TypeCheckError, match=rf"{which}.*floating point.*{int_dtype}"):
+            ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+    @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
+    @pytest.mark.parametrize("which", ["qvec", "tvec"])
+    def test_exception_colmap_to_arkit_rejects_complex_inputs(self, complex_dtype, which):
+        # CPU tensors: the guard runs before any arithmetic and MPS has no complex128.
+        qvec = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        tvec = torch.ones(1, 3, 1)
+        if which == "qvec":
+            qvec = qvec.to(complex_dtype)
+        else:
+            tvec = tvec.to(complex_dtype)
+        with pytest.raises(TypeCheckError, match=rf"{which}.*real floating point.*{complex_dtype}"):
+            ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+    def test_dynamo_colmap_to_arkit(self, device, dtype, torch_optimizer):
+        qvec = torch.tensor([[0.7071, 0.0, 0.7071, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        tvec = torch.tensor([[[1.0], [2.0], [3.0]], [[-1.0], [0.5], [2.0]]], device=device, dtype=dtype)
+        actual = torch_optimizer(ColmapQTVecs_to_ARKitQTVecs)(qvec, tvec)
+        expected = ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
+
+    def test_convention_reverse_input_is_worldtocam_vision_and_output_is_camtoworld_graphics(self, device, dtype):
+        # Convention pin for ColmapQTVecs_to_ARKitQTVecs: the frames are the forward's, exchanged.
+        # The input is a WORLDTOCAM pose in the VISION frame and the output a CAMTOWORLD pose in
+        # the GRAPHICS frame, so the output translation is the camera centre -R^T @ t and the
+        # output rotation is R^T @ diag(1, -1, -1). The input rotation is the 120-degree turn about
+        # (1, 1, 1) -- q = [0.5, 0.5, 0.5, 0.5], exact in every dtype and NOT symmetric, so a
+        # missing transpose or a flip on the wrong side gives a different matrix -- and the
+        # translation is asymmetric. The output quaternion is not asserted: its sign is not part of
+        # the contract (see test_convention_output_quaternion_sign_is_not_canonical).
+        # Snippet used to generate expected (stdlib only, q = [0.5]*4 wxyz, t = (1, 2, 3)):
+        #   R_colmap = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
+        #   R_arkit  = R_colmap.T @ diag(1, -1, -1) = [[0, -1, 0], [0, 0, -1], [1, 0, 0]]
+        #   t_arkit  = -R_colmap.T @ (1, 2, 3) = (-2, -3, -1)
+        _skip_if_dtype_unavailable(device, dtype)
+        qvec = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        tvec = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+
+        q_arkit, t_arkit = ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+        rotation = kornia.geometry.conversions.quaternion_to_rotation_matrix(q_arkit)
+
+        self.assert_close(
+            rotation,
+            torch.tensor([[[0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0]]], device=device, dtype=dtype),
+        )
+        self.assert_close(t_arkit, torch.tensor([[[-2.0], [-3.0], [-1.0]]], device=device, dtype=dtype))
+        _assert_proper_rotation(rotation)
+
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_round_trip(self, batch_size, device, dtype):
+        # The two conversions invert each other in both orders. Rotations are compared, not raw
+        # quaternions: the output sign is not canonical, and a random pose comes back with the
+        # opposite sign about half the time (35 of 64 at float64).
+        _skip_if_dtype_unavailable(device, dtype)
+        q_arkit = kornia.geometry.axis_angle_to_quaternion(
+            torch.tensor([[0.4, -0.6, 0.8]], device=device, dtype=dtype).repeat(batch_size, 1)
+        )
+        t_arkit = torch.tensor([[[1.0], [-2.0], [3.0]]], device=device, dtype=dtype).repeat(batch_size, 1, 1)
+
+        q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(q_arkit, t_arkit)
+        q_arkit_back, t_arkit_back = ColmapQTVecs_to_ARKitQTVecs(q_colmap, t_colmap)
+
+        assert q_arkit_back.shape == (batch_size, 4)
+        assert t_arkit_back.shape == (batch_size, 3, 1)
+        self.assert_close(
+            kornia.geometry.quaternion_to_rotation_matrix(q_arkit_back),
+            kornia.geometry.quaternion_to_rotation_matrix(q_arkit),
+        )
+        self.assert_close(t_arkit_back, t_arkit)
+
+        q_colmap_back, t_colmap_back = ARKitQTVecs_to_ColmapQTVecs(q_arkit_back, t_arkit_back)
+        self.assert_close(
+            kornia.geometry.quaternion_to_rotation_matrix(q_colmap_back),
+            kornia.geometry.quaternion_to_rotation_matrix(q_colmap),
+        )
+        self.assert_close(t_colmap_back, t_colmap)
+
+    def test_convention_reverse_zero_quaternion_is_absorbed_3952(self, device, dtype):
+        # Convention pin (kornia#3952, kept by maintainer decision) for ColmapQTVecs_to_ARKitQTVecs,
+        # companion to its zero-quaternion docstring bullet; same mechanism and same structure as
+        # test_convention_zero_quaternion_is_absorbed_3952 above. The documented pose
+        # t = (-1, -1, -1) is exact in every dtype.
+        # Snippet used to generate expected (torch only, executed on cpu):
+        #   ColmapQTVecs_to_ARKitQTVecs(torch.zeros(1, 4), torch.ones(1, 3, 1))
+        #     -> q [0., 1., 0., 0.], t [-1., -1., -1.]
+        _skip_if_dtype_unavailable(device, dtype)
+        zeros = torch.zeros(1, 4, device=device, dtype=dtype)
+        identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
+
+        q_zero, t_zero = ColmapQTVecs_to_ARKitQTVecs(zeros, tvec)
+        q_identity, t_identity = ColmapQTVecs_to_ARKitQTVecs(identity, tvec)
+
+        assert_close(
+            q_zero,
+            q_identity,
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's rotation"),
+        )
+        assert_close(
+            t_zero,
+            t_identity,
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3952 convention: the zero quaternion must give the identity input's translation"),
+        )
+        assert_close(
+            t_zero,
+            torch.tensor([[[-1.0], [-1.0], [-1.0]]], device=device, dtype=dtype),
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3952 convention: the absorbed zero quaternion must produce the documented pose"),
+        )
+
+    @pytest.mark.parametrize("op", [ARKitQTVecs_to_ColmapQTVecs, ColmapQTVecs_to_ARKitQTVecs])
+    def test_gradcheck(self, op, device):
+        # Both conversions are differentiable in the quaternion and the translation; the pose is
+        # the generic axis-angle one of test_round_trip.
+        _skip_if_dtype_unavailable(device, torch.float64)
+        qvec = kornia.geometry.axis_angle_to_quaternion(
+            torch.tensor([[0.4, -0.6, 0.8]], device=device, dtype=torch.float64)
+        )
+        tvec = torch.tensor([[[1.0], [-2.0], [3.0]]], device=device, dtype=torch.float64)
+
+        self.gradcheck(op, (qvec, tvec))
+
+
+def _euler_roundtrip_rotation_error(quaternion, euler) -> torch.Tensor:
+    """Per-sample max |R(q) - R(q_back)| for a batch, with both rotations built in float64 on the CPU.
+
+    ``q_back`` is ``quaternion_from_euler(*euler)``. The comparison is of rotation matrices, not angles, so any
+    triple that is a correct decomposition passes. float64 and the CPU keep the metric itself exact and let it
+    run on MPS, which has no float64.
+    """
+    rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+        torch.stack([c.detach().cpu().double() for c in quaternion], dim=-1)
+    )
+    back = quaternion_from_euler(*[a.detach().cpu().double() for a in euler])
+    rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(back, dim=-1))
+    return (rot_in - rot_back).abs().flatten(1).amax(1)
 
 
 class TestEulerFromQuaternion(BaseTester):
@@ -5447,7 +5696,7 @@ class TestEulerFromQuaternion(BaseTester):
         assert roll.shape == pitch.shape
         assert pitch.shape == yaw.shape
 
-    @pytest.mark.parametrize("batch_size", ((1, 3, 4)))
+    @pytest.mark.parametrize("batch_size", ([1, 3, 4]))
     def test_cardinality(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size=batch_size)
         q = q.to(device, dtype)
@@ -5459,7 +5708,7 @@ class TestEulerFromQuaternion(BaseTester):
     def test_exception(self, device, dtype):
         q = Quaternion.random(batch_size=2)
         q = q.to(device, dtype)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             euler_from_quaternion(q.w, torch.rand(1), q.y, q.z)
 
     def test_gradcheck(self, device):
@@ -5471,10 +5720,11 @@ class TestEulerFromQuaternion(BaseTester):
         # gimbal lock (pitch = +-pi/2); the guard mirrors quaternion_exp_to_log's own acos
         # boundary fix. As there, asin's boundary derivative is inf on every supported torch
         # version and it is clamp's backward that differs, so the torch 2.5.1 leg is the one that
-        # fails on base. w=1, x=0, y=0.5, z=0 gives sinp = 2*(w*y - z*x) = 1.0 exactly.
-        w = torch.tensor(1.0, device=device, dtype=dtype, requires_grad=True)
+        # fails on base. w=y=1/sqrt(2), x=z=0 gives sinp = 2*(w*y - z*x) = 1.0 exactly.
+        val = torch.tensor(0.5**0.5, device=device, dtype=dtype)
+        w = val.clone().detach().requires_grad_(True)
         x = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
-        y = torch.tensor(0.5, device=device, dtype=dtype, requires_grad=True)
+        y = val.clone().detach().requires_grad_(True)
         z = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
 
         _, pitch, _ = euler_from_quaternion(w, x, y, z)
@@ -5509,7 +5759,7 @@ class TestEulerFromQuaternion(BaseTester):
         # naming could reproduce. The return is a TUPLE of three separate tensors, not a stacked
         # (*, 3) tensor, so it cannot be indexed or sliced like one; that is pinned first.
         # The angle is 0.6 rad rather than a quarter turn so the pin stays far from the pitch =
-        # +-pi/2 gimbal lock where this function does not recover the input at all.
+        # +-pi/2 gimbal lock, where roll and yaw cannot be recovered individually.
         # Snippet used to generate the inputs (stdlib only):
         #   import math
         #   for each axis: q = (cos(0.3), sin(0.3) * axis) with 0.3 = theta / 2
@@ -5541,7 +5791,8 @@ class TestEulerFromQuaternion(BaseTester):
         # invert each other exactly -- the same three angles come back, with their signs, and so
         # do the same four quaternion coefficients. Pinned at |pitch| = 0.7 < pi/4-ish and three
         # distinct non-symmetric angles so neither a permutation nor a sign flip survives. (At
-        # pitch = +-pi/2 the pair is NOT a mutual inverse; that failure is out of scope here.)
+        # pitch = +-pi/2 only the rotation round-trips, not the triple; see
+        # test_convention_roundtrip_holds_at_gimbal_lock_3950.)
         # Snippet used to generate expected (stdlib only):
         #   the round-trip is the identity on (roll, pitch, yaw) = (0.3, 0.7, 1.1)
         #   quaternion_from_euler(0.3, 0.7, 1.1) at float64 ->
@@ -5594,146 +5845,207 @@ class TestEulerFromQuaternion(BaseTester):
             f"roll for the w = {zero_sign} half-turn is {roll.item()}, not the exact {expected_roll} endpoint"
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="euler_from_quaternion has no gimbal-lock branch, so at pitch = ±pi/2 the returned "
-        "triple does not represent the input rotation — kornia#3950",
-        strict=True,
-    )
-    def test_convention_roundtrip_holds_at_gimbal_lock_3950(self, device):
-        # Intended behavior: euler_from_quaternion returns *a* triple representing the input
-        # rotation. At pitch = ±pi/2 (gimbal lock) roll and yaw are individually undetermined --
-        # only their sum or difference is -- so no library can return the input triple back, but a
-        # correct implementation still returns a triple whose rotation matrix is the input's, which
-        # is what this pin asserts. There is no gimbal-lock branch at all: roll and yaw come from
-        # atan2 of two quantities that both cancel there, and the result is simply wrong. For
-        # (roll, pitch, yaw) = (0.1, pi/2, 0.2) in float64 the reconstructed rotation is far from
-        # the input -- by a margin that varies with rounding, so no figure is quoted here -- and
-        # random (roll, yaw) at pitch = +pi/2 fail the same way, while |pitch| < pi/4 round trips
-        # to rounding. float64 is hardcoded and the dtype fixture
-        # dropped because the returned triple is wildly dtype-dependent here (see the companion
-        # wart), and the skip is visible so a raw TypeError on MPS, which has no float64, cannot
-        # satisfy the raises=AssertionError mark instead of the assertion. Marked xfail(strict=True)
-        # so fixing #3950 makes this XPASS and forces the mark out. Companion wart:
-        # test_wart_gimbal_lock_returns_a_wrong_triple_3950.
-        _skip_if_dtype_unavailable(device, torch.float64)
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_convention_roundtrip_holds_at_gimbal_lock_3950(self, device, dtype, sign):
+        # Convention pin for kornia#3950. At pitch = +-pi/2 (gimbal lock) roll and yaw are individually
+        # undetermined -- only yaw - roll (at +pi/2) or yaw + roll (at -pi/2) is -- so no function can return the
+        # input triple. A correct one still returns a triple whose rotation is the input's, so the pin compares
+        # rotation matrices, never angles. One fixed probe per sign and dtype; the randomized sweep below covers
+        # other (roll, yaw), because a fixed probe can pass while a detector misses poles elsewhere.
+        # The tolerance scales with the dtype (16 eps): the measured worst case over 10000 random poles per dtype
+        # and sign is 1.2 to 4.5 eps, while the defect is O(1) (2.0 at worst).
+        _skip_if_dtype_unavailable(device, dtype)
 
-        roll = torch.tensor(0.1, device=device, dtype=torch.float64)
-        pitch = torch.tensor(torch.pi / 2, device=device, dtype=torch.float64)
-        yaw = torch.tensor(0.2, device=device, dtype=torch.float64)
-
+        roll = torch.tensor([0.1], device=device, dtype=dtype)
+        pitch = torch.tensor([sign * math.pi / 2], device=device, dtype=dtype)
+        yaw = torch.tensor([0.2], device=device, dtype=dtype)
         quaternion = quaternion_from_euler(roll, pitch, yaw)
-        roundtrip = quaternion_from_euler(*euler_from_quaternion(*quaternion))
 
-        rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion))
-        rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip))
-        assert (rot_in - rot_back).abs().max().item() < 1e-12, (
-            "kornia#3950: the euler triple returned at pitch = pi/2 does not represent the input rotation"
+        error = _euler_roundtrip_rotation_error(quaternion, euler_from_quaternion(*quaternion))
+
+        assert error.item() < 16 * torch.finfo(dtype).eps, (
+            f"kornia#3950: the euler triple returned at pitch = {sign}*pi/2 does not represent the input rotation "
+            f"(max |R_in - R_back| = {error.item()})"
         )
 
     @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
-    def test_wart_gimbal_lock_returns_a_wrong_triple_3950(self, device, sign):
-        # Wart pin for kornia#3950, companion to the strict xfail above. It pins the two facts about
-        # gimbal lock that are STABLE, and deliberately pins no exact triple.
-        #
-        # Pinning the returned triples themselves ((pi/2, pi/2, pi/2) at +pi/2 and (0, -pi/2, pi/2)
-        # at -pi/2 on this build) is not an option: those values are not reproducible. roll and yaw
-        # come from atan2 of two quantities that cancel to ~1e-17 there, so which way they
-        # cancel is decided by rounding. Perturbing the input pitch by a single ulp on this very
-        # build changes the +pi/2 triple to (0.15500, pi/2, 0.35877) at -2 ulp and to
-        # (-3.12597, pi/2, -3.07917) at +1 ulp; a review on torch 2.12.0 saw different triples again
-        # on the unperturbed input. Kornia declares torch>=2.5.1, so pinning any one of them makes
-        # the suite red on builds the pin was never measured against, for a value that is not the
-        # defect being tracked.
-        #
-        # What this pin asserts instead:
-        #   1. pitch_back is +-pi/2 to a tolerance -- the asin saturates. Note this fact SURVIVES a
-        #      fix to #3950 (a correct gimbal-lock branch still reports pitch = +-pi/2); it is
-        #      pinned as the structural claim the strict xfail above does not make, not as a defect
-        #      indicator.
-        #   2. the round-tripped rotation is far from the input -- this is the defect, and the half
-        #      of this pin that flips when #3950 is fixed.
-        #
-        # Assertion 1 is a TOLERANCE and not exact equality, which matters. At gimbal lock the asin
-        # argument is 1 - O(eps), and asin(1 - d) ~= pi/2 - sqrt(2d), so one ulp of slack in the
-        # argument amplifies to a sqrt-scale error in the output: sqrt(2 * eps_f64) = 2.107e-08.
-        # Whether the argument rounds to exactly 1.0 or to one ulp below is decided by the last bit
-        # of the sin/cos computation upstream, so it moves between torch builds, backends and
-        # vectorisation paths. torch 2.12.0 reports -1.5707963057214724 for the -pi/2 cell, which is
-        # pi/2 - 2.1073424116835326e-08 -- agreeing with sqrt(2 * eps) to eight significant figures.
-        # Exact equality here is therefore red on 2.12; the tolerance is what keeps the cell green.
-        # Reproducing the 2.12 value locally needs the right probe: perturbing the input pitch, or any component
-        # by a single ulp, does NOT move pitch_back at all (a +-1 ulp sweep over all four quaternion
-        # components returns one distinct value, as does a +-200 ulp input-pitch sweep). Perturbing
-        # w -- the component the saturation actually depends on -- by two or more ulps walks up the
-        # same sqrt-scale family and reproduces the 2.12.0 figure bit-for-bit: w - 2 ulp gives
-        # -1.5707963057214724 on the -pi/2 cell, and w - 3 ulp gives +1.5707963057214724 on the
-        # +pi/2 cell. The rule for the next pin here is therefore to perturb the intermediate the
-        # branch depends on, and to go wider than one ulp -- not to assume the input is the probe.
-        # Tolerance sizing stays mechanism-based rather than sampled: dev = sqrt(2 * k * eps) for an
-        # argument k ulps below 1.0, so 1e-6 is only reached at k ~ 2250, far beyond the one-to-few
-        # ulps a cross-build rounding difference can move it, and far below any real defect, which
-        # would move pitch by O(1). Note the deviation is NOT bounded by the values above: pushing w
-        # to -20000 ulp reaches 2.5e-06 and does cross the tolerance. That is not a realistic
-        # rounding difference, but it is why the sizing argument is the mechanism and the measured
-        # figures here (2.1e-08 at w - 2 ulp, 5.4e-08 at w - 10 ulp) are sample points, not bounds.
-        #
-        # The 1e-9 floor in 2 is likewise a chosen threshold with margin, NOT a measured bound:
-        # a correct gimbal-lock branch round trips to ~1e-16, and widening the probe drives the
-        # sample minimum steadily toward 0, which is why no sampled extremum is quoted as a bound.
-        #
-        # Two cells, one per sign, because a fix could plausibly add a gimbal-lock branch for one
-        # sign only or get the roll/yaw split sign wrong; the strict xfail above only covers +pi/2,
-        # so the -pi/2 cell here is the only coverage of that sign. If either cell fails, #3950 was
-        # (partly) fixed -- flip/remove the strict xfail above. NOT a contract that the current
-        # output is correct: any triple whose rotation matrix matches the input is an acceptable
-        # replacement, and such a triple would fail assertion 2 as intended.
-        # float64 is hardcoded and the dtype fixture dropped because the round-trip margin is a
-        # float64 fact; the skip is visible so a raw TypeError on MPS, which has no float64, cannot
-        # pass for the assertion.
-        _skip_if_dtype_unavailable(device, torch.float64)
+    def test_convention_gimbal_lock_triple_is_roll_zero_and_the_determined_yaw_3950(self, device, dtype, sign):
+        # Convention pin for what euler_from_quaternion returns at gimbal lock, over 2000 random (roll, yaw) per
+        # sign: pitch is exactly +-pi/2, roll is exactly 0, and yaw carries the one determined combination --
+        # yaw - roll at +pi/2, yaw + roll at -pi/2, from Ry(+-pi/2) Rx(r) = Rz(-+r) Ry(+-pi/2) -- wrapped into
+        # [-pi, pi]. The rotation reconstructs to the dtype's rounding, and q and -q return the identical triple.
+        # A sweep and not one probe on purpose, and over RESCALED quaternions (the function normalises its input,
+        # kornia#3953): a detector that reads cos(pitch) as sqrt(1 - sinp**2) cancels an already-rounded sinp
+        # against itself, so at a true pole it lands within a few ulps of its threshold and misses ~0.3% of
+        # randomly rescaled poles in both dtypes (and, before the input was normalised, 2-4% of unscaled ones)
+        # while a single fixed (roll, yaw) passes. hypot(sinr_cosp, cosr_cosp) has no cancellation and misses none.
+        # Snippet used to generate the expected yaw (stdlib only):
+        #   wrap = lambda a: (a + math.pi) % (2 * math.pi) - math.pi
+        #   expected_yaw = wrap(yaw - roll) at +pi/2, wrap(yaw + roll) at -pi/2
+        _skip_if_dtype_unavailable(device, dtype)
 
-        pitch_in = sign * torch.pi / 2
-        quaternion = quaternion_from_euler(
-            torch.tensor(0.1, device=device, dtype=torch.float64),
-            torch.tensor(pitch_in, device=device, dtype=torch.float64),
-            torch.tensor(0.2, device=device, dtype=torch.float64),
+        generator = torch.Generator().manual_seed(3950)
+        roll_in = (torch.rand(2000, generator=generator, dtype=torch.float64) * 2 - 1) * math.pi
+        yaw_in = (torch.rand(2000, generator=generator, dtype=torch.float64) * 2 - 1) * math.pi
+        pitch_in = torch.full((2000,), sign * math.pi / 2, dtype=torch.float64)
+        scale = (torch.rand(2000, generator=generator, dtype=torch.float64) * 19.95 + 0.05).to(device, dtype)
+        quaternion = [
+            component * scale
+            for component in quaternion_from_euler(
+                roll_in.to(device, dtype), pitch_in.to(device, dtype), yaw_in.to(device, dtype)
+            )
+        ]
+        tolerance = 16 * torch.finfo(dtype).eps
+
+        roll, pitch, yaw = euler_from_quaternion(*quaternion)
+
+        assert bool((roll == 0).all()), "kornia#3950: roll is not pinned to 0 at gimbal lock"
+        assert bool((pitch == sign * math.pi / 2).all()), "kornia#3950: pitch is not exactly +-pi/2 at gimbal lock"
+        assert bool((yaw.abs() <= math.pi).all()), "kornia#3950: yaw left [-pi, pi] at gimbal lock"
+
+        wrapped = torch.remainder((yaw_in - sign * roll_in) + math.pi, 2 * math.pi) - math.pi
+        gap = (yaw.cpu().double() - wrapped).abs()
+        assert torch.minimum(gap, 2 * math.pi - gap).max().item() < tolerance, (
+            "kornia#3950: yaw is not wrap(yaw -+ roll) at gimbal lock"
         )
 
-        roll_back, pitch_back, yaw_back = euler_from_quaternion(*quaternion)
+        error = _euler_roundtrip_rotation_error(quaternion, (roll, pitch, yaw))
+        assert error.max().item() < tolerance, f"kornia#3950: round trip off by {error.max().item()}"
 
-        assert abs(pitch_back.item() - pitch_in) < 1e-6, (
-            f"kornia#3950: pitch no longer saturates to {pitch_in} at gimbal lock (got {pitch_back.item()!r})"
+        negated = euler_from_quaternion(*[-component for component in quaternion])
+        for got, expected in zip(negated, (roll, pitch, yaw)):
+            assert torch.equal(got, expected), "kornia#3950: q and -q return different triples at gimbal lock"
+
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_convention_gimbal_lock_snap_band_is_narrow_3950(self, device, dtype, sign):
+        # Convention pin for the width of the gimbal-lock band, which is cos(pitch) < 2 * sqrt(eps). A pitch inside
+        # it is snapped to the pole and so is off by exactly its distance d to it; a pitch outside it keeps the
+        # plain formulas, whose float rounding is smaller than d there. Two cells per dtype, 200 random
+        # (roll, yaw) each, bounded by what moving the band changes:
+        #   inside:  d = 1e-4 (float32) / 1e-8 (float64): snapped, error d. Without the branch the error is
+        #            2e-3 / 4e-8 or worse, so a detector that is too narrow fails here.
+        #   outside: d = 1e-3 (float32) / 5e-8 (float64): not snapped, error 3.4e-4 / 1.3e-8 at the worst of 30
+        #            seeds. A band widened to 4 * sqrt(eps) or more snaps it and the error becomes d, so a detector
+        #            that is too wide fails here -- the widening kornia#3993's first review measured as 6.5x worse
+        #            than no fix at float32 d = 1e-3.
+        # Only float32 and float64 are characterised: the band is a few ulps wide in the half dtypes.
+        _skip_if_dtype_unavailable(device, dtype)
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the snap band is only characterised for float32 and float64")
+        inside, tol_inside, outside, tol_outside = (
+            (1e-4, 4e-4, 1e-3, 6e-4) if dtype == torch.float32 else (1e-8, 2e-8, 5e-8, 3e-8)
         )
 
-        roundtrip = quaternion_from_euler(roll_back, pitch_back, yaw_back)
-        rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion))
-        rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip))
-        error = (rot_in - rot_back).abs().max().item()
+        generator = torch.Generator().manual_seed(3950)
+        for distance, tolerance, region in ((inside, tol_inside, "inside"), (outside, tol_outside, "outside")):
+            roll_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * math.pi
+            yaw_in = (torch.rand(200, generator=generator, dtype=torch.float64) * 2 - 1) * math.pi
+            pitch_in = torch.full((200,), sign * (math.pi / 2 - distance), dtype=torch.float64)
+            quaternion = quaternion_from_euler(
+                roll_in.to(device, dtype), pitch_in.to(device, dtype), yaw_in.to(device, dtype)
+            )
 
-        assert error > 1e-9, (
-            f"kornia#3950: the triple returned at pitch = {pitch_in} now reproduces the input "
-            f"rotation to {error} -- the gimbal-lock defect looks fixed"
+            error = _euler_roundtrip_rotation_error(quaternion, euler_from_quaternion(*quaternion))
+
+            assert error.max().item() < tolerance, (
+                f"kornia#3950: at {distance} from +-pi/2 ({region} the gimbal band) the round trip is off by "
+                f"{error.max().item()}, expected below {tolerance}"
+            )
+
+    def test_convention_gradient_is_finite_at_gimbal_lock_and_half_turns_3950(self, device, dtype):
+        # Convention pin: d(roll + pitch + yaw)/d(w, x, y, z) is finite on every probe below. Two families.
+        # (1) The gimbal-lock quaternions, where roll and yaw used to come from atan2(0, 0).
+        # (2) Rotations with w = x = 0 -- every half-turn about an axis in the y-z plane -- which are NOT
+        # singular: the gimbal branch's yaw is built from atan2(2*x*w, w*w - x*x), and a torch.where around it
+        # would still differentiate atan2(0, 0) there. That derivative is nan on torch < 2.14 even under a zero
+        # cotangent (AGENTS.md, safe arguments), so (2) only discriminates on that older half of the supported
+        # range; on 2.14 it passes either way, as does the rest of this pin.
+        # Inside the branch pitch and roll are constants, so their gradient is exactly 0 and all of it is in yaw.
+        _skip_if_dtype_unavailable(device, dtype)
+
+        def pole(pitch):
+            return quaternion_from_euler(
+                torch.tensor(0.1, dtype=dtype), torch.tensor(pitch, dtype=dtype), torch.tensor(0.2, dtype=dtype)
+            )
+
+        probes = {
+            "pole +pi/2": tuple(float(c) for c in pole(math.pi / 2)),
+            "pole -pi/2": tuple(float(c) for c in pole(-math.pi / 2)),
+            "pole, exact atan2(0, 0) quaternion": (0.5, 0.5, 0.5, -0.5),
+            "yaw = pi": (0.0, 0.0, 0.0, 1.0),
+            "half-turn about (0, .6, .8)": (0.0, 0.0, 0.6, 0.8),
+            "half-turn about (0, -.6, .8)": (0.0, 0.0, -0.6, 0.8),
+        }
+        for name, values in probes.items():
+            leaves = [torch.tensor(v, device=device, dtype=dtype, requires_grad=True) for v in values]
+            roll, pitch, yaw = euler_from_quaternion(*leaves)
+            (roll + pitch + yaw).backward()
+            for coefficient, leaf in zip("wxyz", leaves):
+                assert bool(torch.isfinite(leaf.grad)), (
+                    f"kornia#3950: gradient wrt {coefficient} is {leaf.grad} at {name}"
+                )
+
+        leaves = [torch.tensor(v, device=device, dtype=dtype, requires_grad=True) for v in probes["pole +pi/2"]]
+        roll, pitch, yaw = euler_from_quaternion(*leaves)
+        for angle, name, expected_zero in ((roll, "roll", True), (pitch, "pitch", True), (yaw, "yaw", False)):
+            grads = torch.autograd.grad(angle, leaves, retain_graph=True, allow_unused=True)
+            all_zero = all(g is None or bool((g == 0).all()) for g in grads)
+            assert all_zero == expected_zero, f"kornia#3950: unexpected gradient of {name} at gimbal lock: {grads}"
+
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_gradcheck_at_gimbal_lock_3950(self, device, sign):
+        # The analytic gradient inside the gimbal branch is the derivative of the branch. The finite-difference
+        # step is eps = 1e-9, well inside the branch (cos(pitch) < 2*sqrt(eps_f64) = 3e-8): at the default
+        # eps = 1e-6 the step leaves the branch, where roll and yaw jump discontinuously across the pole, and
+        # gradcheck fails by construction there -- on main as well as with this fix.
+        roll = torch.tensor([0.1], device=device, dtype=torch.float64)
+        pitch = torch.tensor([sign * math.pi / 2], device=device, dtype=torch.float64)
+        yaw = torch.tensor([0.2], device=device, dtype=torch.float64)
+        w, x, y, z = quaternion_from_euler(roll, pitch, yaw)
+
+        self.gradcheck(euler_from_quaternion, (w, x, y, z), eps=1e-9, atol=1e-5, rtol=1e-4)
+
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy_matches_eager_at_gimbal_lock_3950(self, dtype):
+        # The gimbal check must stay exportable: neither ONNX exporter supports torch.hypot, which an earlier
+        # version of this fix used (kornia#3993).
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Euler(torch.nn.Module):
+            def forward(self, q: torch.Tensor) -> torch.Tensor:
+                return torch.stack(euler_from_quaternion(q[..., 0], q[..., 1], q[..., 2], q[..., 3]), -1)
+
+        half = math.sqrt(0.5)
+        q = torch.tensor(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.9, 0.1, -0.3, 0.2],
+                [0.0, 0.0, 0.0, 1.0],  # half-turn about z
+                [half, 0.0, half, 0.0],  # pitch +pi/2
+                [-0.5, 0.5, -0.5, -0.5],  # pitch +pi/2, negative w
+                [half, 0.0, -half, 0.0],  # pitch -pi/2
+            ],
+            dtype=dtype,
         )
+        model = Euler()
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (q,), buffer, input_names=["q"], opset_version=17, dynamo=False)
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        exported = torch.from_numpy(session.run(None, {"q": q.numpy()})[0])
+        # compare modulo 2*pi: at the half-turn eager returns yaw = pi and the exported atan2 -pi, as on main
+        difference = torch.remainder(exported - model(q) + math.pi, 2 * math.pi) - math.pi
+        self.assert_close(difference, torch.zeros_like(difference))
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="euler_from_quaternion does not normalise its input, so a non-unit quaternion gives "
-        "a silently wrong triple — kornia#3953",
-        strict=True,
-    )
     def test_convention_euler_from_quaternion_normalizes_its_input_3953(self, device, dtype):
         # Intended behavior: the euler angles of a quaternion depend only on the rotation it
         # represents, so rescaling the quaternion must not change them -- which is what the
         # scale-safe siblings do (quaternion_to_rotation_matrix normalises internally and returns a
         # bit-identical matrix for 2q; quaternion_to_axis_angle is homogeneous by construction).
-        # euler_from_quaternion does not normalise and does not check: feeding 2q returns
-        # [1.6560585860248003, 1.5707963267948966, 2.1048169977173687] instead of the (0.3, 0.7,
-        # 1.1) the unit quaternion gives -- and note the middle component, which is exactly pi/2:
-        # the unnormalised argument saturates the asin, so a merely-scaled input is reported as
-        # gimbal-locked. Marked xfail(strict=True) so fixing #3953 makes this XPASS and forces the
-        # mark out. Companion wart: test_wart_euler_from_quaternion_ignores_the_norm_3953; the
-        # quaternion_exp_to_log half of the same issue is pinned in TestQuaternionExpToLog.
         roll = torch.tensor(0.3, device=device, dtype=dtype)
         pitch = torch.tensor(0.7, device=device, dtype=dtype)
         yaw = torch.tensor(1.1, device=device, dtype=dtype)
@@ -5747,25 +6059,9 @@ class TestEulerFromQuaternion(BaseTester):
             msg=_issue_msg("kornia#3953: euler_from_quaternion did not normalise its input"),
         )
 
-    def test_wart_euler_from_quaternion_ignores_the_norm_3953(self, device, dtype):
-        # Wart pin for kornia#3953, companion to the strict xfail above: assert the CURRENT triple
-        # for a scaled-up quaternion. This is a separate cell from the quaternion_exp_to_log cells
-        # in TestQuaternionExpToLog because the two functions are independent code paths and a fix
-        # to one leaves the other broken, which would leave the other strict xfail silently XFAIL.
-        # If it fails, the euler half of #3953 was fixed -- flip/remove the strict xfail above.
-        # NOT a contract that a scaled quaternion must keep producing this triple.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   t = lambda x: torch.tensor(x, dtype=torch.float64)
-        #   q = quaternion_from_euler(t(0.3), t(0.7), t(1.1))
-        #     -> [0.8186292656554958, -0.057539988180335386, 0.3624200943552256, 0.44179967222724353]
-        #   [x.item() for x in euler_from_quaternion(*q)]
-        #     -> [0.2999999999999999, 0.6999999999999998, 1.0999999999999999]     (the unit input)
-        #   [x.item() for x in euler_from_quaternion(*[2 * c for c in q])]
-        #     -> [1.6560585860248003, 1.5707963267948966, 2.1048169977173687]
-        #   (float32: [1.656058430671692, 1.5707963705062866, 2.1048169136047363];
-        #    float16:  [1.6572265625, 1.5703125, 2.10546875];
-        #    bfloat16: [1.6484375, 1.5703125, 2.109375] -- all within the dtype's default tolerance
-        #    of the float64 literals below)
+    def test_convention_euler_from_quaternion_of_a_rescaled_quaternion_3953(self, device, dtype):
+        # Convention pin for kornia#3953: the triple for 2q is the triple of the unit q; before the
+        # fix it was [1.6560585860248003, 1.5707963267948966, 2.1048169977173687].
         quaternion = quaternion_from_euler(
             torch.tensor(0.3, device=device, dtype=dtype),
             torch.tensor(0.7, device=device, dtype=dtype),
@@ -5776,8 +6072,8 @@ class TestEulerFromQuaternion(BaseTester):
 
         assert_close(
             out,
-            torch.tensor([1.6560585860248003, 1.5707963267948966, 2.1048169977173687], device=device, dtype=dtype),
-            msg=_issue_msg("kornia#3953: euler_from_quaternion no longer ignores the quaternion norm"),
+            torch.tensor([0.3, 0.7, 1.1], device=device, dtype=dtype),
+            msg=_issue_msg("kornia#3953: euler_from_quaternion normalises its input"),
         )
 
 
@@ -5789,7 +6085,7 @@ class TestQuaternionFromEuler(BaseTester):
         assert qx.shape == qy.shape
         assert qy.shape == qz.shape
 
-    @pytest.mark.parametrize("batch_size", ((1, 3, 4)))
+    @pytest.mark.parametrize("batch_size", ([1, 3, 4]))
     def test_cardinality(self, device, dtype, batch_size):
         roll, pitch, yaw = torch.rand(3, batch_size, device=device, dtype=dtype)
         qw, qx, qy, qz = quaternion_from_euler(roll, pitch, yaw)
@@ -5800,7 +6096,7 @@ class TestQuaternionFromEuler(BaseTester):
 
     def test_exception(self, device, dtype):
         _, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             quaternion_from_euler(torch.rand(1), pitch, yaw)
 
     def test_gradcheck(self, device):
@@ -5936,7 +6232,7 @@ class TestQuaternionFromEuler(BaseTester):
         assert (rot - rot_x @ rot_z @ rot_y).abs().max() > 0.2
 
 
-@pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+@pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
 def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
     if batch_size is None:
         vector = torch.rand(3, device=device, dtype=dtype)
@@ -6055,3 +6351,62 @@ def test_convention_deprecated_alias_leaves_the_global_warning_filters_alone_395
         after = list(warnings.filters)
 
     assert after == [], f"kornia#3956: {alias_name} mutated the global DeprecationWarning filters; got {after}"
+
+
+class TestRotationMatrixToAxisAngleCheckRotation:
+    # kornia#4773: by default an improper matrix is reported as a rotation, and check_rotation=True
+    # rejects it, following the opt-in introduced in kornia#3961 for camtoworld/worldtocam Rt.
+    fns = [
+        kornia.geometry.conversions.rotation_matrix_to_axis_angle,
+        kornia.geometry.conversions.rotation_matrix_to_quaternion,
+    ]
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_default_is_unchanged(self, fn, device, dtype):
+        # The default path still accepts the reflection, so the flag is opt-in only.
+        _skip_if_dtype_unavailable(device, dtype)
+        reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
+        fn(reflection)  # must not raise
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_accepts_rotation_unchanged(self, fn, device, dtype):
+        # A genuine rotation passes and the result is bitwise the unchecked one.
+        _skip_if_dtype_unavailable(device, dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        assert_close(fn(rotation, check_rotation=True), fn(rotation), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_accepts_rounding_error(self, fn, device, dtype):
+        # Rotations carrying only their dtype's rounding must pass.
+        _skip_if_dtype_unavailable(device, dtype)
+        build_dtype = dtype if dtype in (torch.float32, torch.float64) else torch.float32
+        generator = torch.Generator().manual_seed(0)
+        axis_angle = torch.randn(64, 3, generator=generator, dtype=build_dtype) * 3
+        rotation = axis_angle_to_rotation_matrix(axis_angle.to(device)).to(dtype)
+        fn(rotation, check_rotation=True)  # must not raise
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_rejects_reflection(self, fn, device, dtype):
+        # A mirror is orthogonal (R @ R^T = I) but det = -1, so only the determinant test catches it.
+        _skip_if_dtype_unavailable(device, dtype)
+        reflection = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))
+        with pytest.raises(ValueError, match="reflection"):
+            fn(reflection, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_rejects_non_orthogonal(self, fn, device, dtype):
+        # 2 * I is exact in every dtype and has det = 8, so it fails the orthogonality test first.
+        _skip_if_dtype_unavailable(device, dtype)
+        scaled = 2.0 * torch.eye(3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="not a rotation matrix"):
+            fn(scaled, check_rotation=True)
+
+    @pytest.mark.parametrize("fn", fns)
+    def test_check_rotation_rejects_one_bad_matrix_in_batch(self, fn, device, dtype):
+        # One improper matrix among good ones is enough to raise, at any batch rank.
+        _skip_if_dtype_unavailable(device, dtype)
+        good = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        bad = torch.diag(torch.tensor([-1.0, 1.0, 1.0], device=device, dtype=dtype))[None]
+        batch = torch.cat([good, bad, good]).reshape(3, 1, 3, 3)
+        with pytest.raises(ValueError, match="reflection"):
+            fn(batch, check_rotation=True)

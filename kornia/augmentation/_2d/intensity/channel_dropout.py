@@ -22,10 +22,11 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
-    r"""Apply random channel dropout to a batch of images.
+    r"""Set random channels to ``fill_value`` (channel dropout) per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomChannelDropout.png
 
@@ -35,15 +36,16 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_drop_channels: Number of channels to drop randomly. Default is 1.
         fill_value: Value to fill the dropped channels with. Default is 0.0.
         same_on_batch: Apply the same transformation across the batch. Defaults to False.
-        p: Probability of applying the transformation. Defaults to 0.5.
+        p: Probability of applying the transformation to each sample. Defaults to 0.5.
         keepdim: Whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``. Defaults to False.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(C, H, W)`` or ``(B, C, H, W)``
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``, an
           ``int`` or ``float`` in ``[0, 1]`` checked at construction. Every other channel is left exactly as it
           came in, so the input's value range is carried through.
@@ -130,8 +132,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         )
 
         out = input.clone()
-        out[params["batch_idx"], params["channel_idx"], ...] = self.fill_value.to(
-            device=input.device, dtype=input.dtype
-        )
+        batch_idx = _to_device_nonblocking(params["batch_idx"], input.device)
+        channel_idx = _to_device_nonblocking(params["channel_idx"], input.device)
+        out[batch_idx, channel_idx, ...] = _to_device_nonblocking(self.fill_value, input.device, input.dtype)
 
         return out

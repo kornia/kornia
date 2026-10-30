@@ -24,6 +24,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.constants import DataKey
 from kornia.core.exceptions import BaseError
 
 from testing.base import BaseTester
@@ -52,7 +53,8 @@ class TestTransplantationConventions(BaseTester):
         image = torch.rand(3, 2, *spatial)
         mask = torch.randint(0, 3, (3, *spatial))
         out_image, out_mask = K.RandomTransplantation(p=1.0)(image, mask)
-        assert out_image.shape == image.shape and out_mask.shape == mask.shape
+        assert out_image.shape == image.shape
+        assert out_mask.shape == mask.shape
 
     @pytest.mark.device_agnostic
     def test_convention_the_first_mask_drives_the_transplant(self):
@@ -70,8 +72,11 @@ class TestTransplantationConventions(BaseTester):
         image, mask = image.to(device=device, dtype=dtype), mask.to(device)
         aug = K.RandomTransplantation(p=1.0, excluded_labels=[0])  # the exclusion list starts on the CPU
         out_image, out_mask = aug(image, mask)
-        assert out_image.dtype is dtype and out_image.device == image.device and out_mask.device == mask.device
-        assert torch.equal(out_image, image.roll(1, dims=0)) and torch.equal(out_mask, mask.roll(1, dims=0))
+        assert out_image.dtype is dtype
+        assert out_image.device == image.device
+        assert out_mask.device == mask.device
+        assert torch.equal(out_image, image.roll(1, dims=0))
+        assert torch.equal(out_mask, mask.roll(1, dims=0))
         assert aug._params["selection"].device == mask.device
         assert aug._params["selected_labels"].device == mask.device
 
@@ -95,7 +100,7 @@ class TestTransplantationConventions(BaseTester):
             cls(p=1.0)(torch.rand(2, 4, 5), torch.randint(0, 3, (4, 5)))
         mask = torch.randint(0, 3, (3, 4, 5))
         for image in (torch.rand(3, 4, 5), torch.rand(3, 2, 4, 5, 6)):
-            with pytest.raises(BaseError, match="one additional dimension"):
+            with pytest.raises(BaseError, match="one fewer dimension"):
                 cls(p=1.0)(image, mask)
 
     @pytest.mark.device_agnostic
@@ -228,7 +233,8 @@ class TestTransplantationConventions(BaseTester):
         mask = torch.zeros(2, 0, 4, dtype=torch.long)
         image = torch.rand(2, 3, 0, 4)
         out_image, out_mask = K.RandomTransplantation(p=1.0, excluded_labels=excluded)(image, mask)
-        assert out_image.shape == image.shape and out_mask.shape == mask.shape
+        assert out_image.shape == image.shape
+        assert out_mask.shape == mask.shape
 
     @pytest.mark.device_agnostic
     def test_convention_params_keys_and_selection_semantics(self):
@@ -286,7 +292,8 @@ class TestTransplantationConventions(BaseTester):
         torch.manual_seed(999)
         redrawn_image, _ = aug(image, mask, params=redrawn)
         self.assert_close(redrawn_image, fresh_image, rtol=0, atol=0)
-        assert "selected_labels" in redrawn and aug._params is redrawn
+        assert "selected_labels" in redrawn
+        assert aug._params is redrawn
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("excluded_donor", [False, True])
@@ -308,7 +315,8 @@ class TestTransplantationConventions(BaseTester):
         before = torch.get_rng_state()
         replayed_image, _ = aug(image, mask, params=partial)
         assert torch.equal(torch.get_rng_state(), before)
-        assert "selected_labels" not in partial and also_dropped in partial
+        assert "selected_labels" not in partial
+        assert also_dropped in partial
         assert partial["acceptor_indices"].tolist() == ([0, 1, 3] if excluded_donor else [0, 1, 2, 3])
         self.assert_close(replayed_image, expected_image, rtol=0, atol=0)
 
@@ -327,7 +335,8 @@ class TestTransplantationConventions(BaseTester):
         assert torch.equal(params["selection"][0], mask[2] == 0)  # the EXCLUDED label 0 of donor 2 was moved
         assert torch.equal(params["selection"][1], mask[0] == 1)
         assert torch.equal(out_mask[2], mask[2])  # no third label: acceptor 2 is untouched
-        assert int((out_mask[1] == 1).sum()) == 6 and int((out_mask[0] == 3).sum()) == 0
+        assert int((out_mask[1] == 1).sum()) == 6
+        assert int((out_mask[0] == 3).sum()) == 0
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("p", [0.0, 1.0])
@@ -341,7 +350,8 @@ class TestTransplantationConventions(BaseTester):
         for dtype in (torch.bool, torch.uint8, *signed, *floating):
             aug = K.RandomTransplantation(p=p, excluded_labels=[0])
             _, out_mask = aug(torch.rand(2, 1, 4, 5), mask.to(dtype))
-            assert out_mask.dtype is dtype and aug._params["selected_labels"].dtype is dtype
+            assert out_mask.dtype is dtype
+            assert aug._params["selected_labels"].dtype is dtype
         image, mask = _labelled_batch(batch=3)
         for image_dtype in floating:
             out_image, _ = K.RandomTransplantation(p=p)(image.to(image_dtype), mask)
@@ -366,13 +376,20 @@ class TestTransplantationConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("cls", [K.RandomTransplantation, K.RandomTransplantation3D])
-    def test_wart_a_missing_mask_raises_a_python_lookup_error_4777(self, cls):
-        # #4777: flips when kornia checks for the mask itself instead of failing in tuple / list lookups.
+    def test_convention_a_missing_mask_raises_a_kornia_error_naming_it_4777(self, cls):
         image = torch.rand(2, 1, 4, 5)
-        with pytest.raises(IndexError):
-            cls(p=1.0)(image)  # the default data_keys name a mask that was not passed
-        with pytest.raises(ValueError, match="not in list"):  # Python 3.14 reworded list.index's message
+        # the default data_keys name a mask that was not passed: the error gives the key count and names the mask
+        with pytest.raises(
+            BaseError,
+            match=rf"Length of keys \(2\) does not match number of inputs \(1\)\. {cls.__name__} needs a mask to draw "
+            r"its parameters: .* Got data_keys=\['image', 'mask'\]\.",
+        ):
+            cls(p=1.0)(image)
+        with pytest.raises(BaseError, match=rf"{cls.__name__} needs a mask to draw its parameters"):
             cls(p=1.0)(image, data_keys=["input"])
+        # params_from_input, the entry AugmentationSequential uses, raises the same error
+        with pytest.raises(BaseError, match=rf"{cls.__name__} needs a mask to draw its parameters"):
+            cls(p=1.0).params_from_input(image, data_keys=[DataKey.INPUT], params={})
 
     @pytest.mark.device_agnostic
     def test_convention_a_mask_is_required_only_to_derive_the_parameters(self):
@@ -386,7 +403,8 @@ class TestTransplantationConventions(BaseTester):
         self.assert_close(image_only, expected_image, rtol=0, atol=0)
         # Outputs follow the input order, whatever it is.
         swapped = K.RandomTransplantation(p=1.0)(mask, image, params=recorded, data_keys=["mask", "input"])
-        assert torch.equal(swapped[0], expected_mask) and torch.equal(swapped[1], expected_image)
+        assert torch.equal(swapped[0], expected_mask)
+        assert torch.equal(swapped[1], expected_image)
 
     @pytest.mark.device_agnostic
     def test_convention_selected_labels_length_is_validated(self):
@@ -408,7 +426,9 @@ class TestTransplantationConventions(BaseTester):
         torch.manual_seed(999)
         fresh_image, _ = K.RandomTransplantation(p=1.0, excluded_labels=[0])(image, mask)
         assert not torch.equal(fresh_image, expected_image)  # a redraw under the replay's seed would show
-        assert not aug.state_dict() and not list(aug.parameters()) and not list(aug.buffers())
+        assert not aug.state_dict()
+        assert not list(aug.parameters())
+        assert not list(aug.buffers())
         for restored in (pickle.loads(pickle.dumps(aug)), copy.deepcopy(aug)):  # noqa: S301
             assert torch.equal(restored.excluded_labels, aug.excluded_labels)
             torch.manual_seed(999)
@@ -463,6 +483,43 @@ class TestTransplantationConventions(BaseTester):
         self.assert_close(out_image, direct_image)
         assert torch.equal(out_mask[:, 0], direct_mask)
         assert not torch.equal(direct_mask, mask)  # something really moved
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("keepdim", [None, False, True])
+    @pytest.mark.parametrize("has_following_step", [False, True])
+    def test_convention_container_transplant_mask_rank_is_consistent_4750(self, keepdim, has_following_step):
+        image, mask = _labelled_batch(batch=3)
+        modules = [K.RandomTransplantation(p=1.0)]
+        if has_following_step:
+            modules.append(K.RandomHorizontalFlip(p=0.0))
+        aug = K.AugmentationSequential(*modules, data_keys=["image", "mask"], keepdim=keepdim)
+
+        _, out_mask = aug(image, mask)
+
+        expected_shape = mask.shape if keepdim else (mask.shape[0], 1, *mask.shape[1:])
+        assert out_mask.shape == expected_shape
+        actual_mask = out_mask if keepdim else out_mask[:, 0]
+        assert torch.equal(actual_mask, mask.roll(1, dims=0))
+
+    @pytest.mark.device_agnostic
+    def test_convention_invalid_mask_rank_error_names_mask_4750(self):
+        image = torch.rand(3, 2, 4, 6)
+        mask = torch.randint(0, 3, (3, 2, 4, 6))
+
+        with pytest.raises(BaseError, match="Every segmentation mask must have one fewer dimension"):
+            K.RandomTransplantation(p=1.0)(image, mask)
+
+    @pytest.mark.device_agnostic
+    def test_convention_container_child_keepdim_keeps_the_mask_rank_4750(self):
+        # The promotion belongs to the transplant: a child with keepdim=True under the container's keepdim=None
+        # still returns the caller's rank, for a batched mask and for per-sample masks in a list.
+        image, mask = _labelled_batch(batch=3)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0, keepdim=True), data_keys=["image", "mask"])
+        _, out_mask = aug(image, mask)
+        assert out_mask.shape == mask.shape
+        masks = [mask[:1], torch.cat([mask[1:2], mask[1:2]]), mask[2:]]
+        _, out_masks = aug(image, masks)
+        assert [m.shape for m in out_masks] == [m.shape for m in masks]
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize(

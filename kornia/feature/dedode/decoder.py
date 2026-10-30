@@ -30,7 +30,7 @@ class Decoder(nn.Module):
         num_prototypes: The number of prototypes for the output head.
     """
 
-    def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.layers = layers
         self.scales = self.layers.keys()
@@ -43,7 +43,7 @@ class Decoder(nn.Module):
         r"""Run this DeDoDe module forward.
 
         Args:
-            features: Encoded feature map with shape :math:`(B, C, H, W)`, or concatenated with context.
+            features: Encoded feature map with shape ``(B, C, H, W)``, or concatenated with context.
             context: Optional context feature map from previous scale, shape
                 :math:`(B, C_{\text{ctx}}, H, W)`, or ``None``.
             scale: String key selecting the decoder layer for this scale (e.g. ``"8"``, ``"4"``, ``"2"``, ``"1"``).
@@ -73,7 +73,7 @@ class ConvRefiner(nn.Module):
         amp_dtype: The data type for automatic mixed precision.
     """
 
-    def __init__(  # type: ignore[no-untyped-def]
+    def __init__(
         self,
         in_dim=6,
         hidden_dim=16,
@@ -108,7 +108,7 @@ class ConvRefiner(nn.Module):
         self.amp_dtype = amp_dtype
         self.residual = residual
 
-    def create_block(  # type: ignore[no-untyped-def]
+    def create_block(
         self,
         in_dim,
         out_dim,
@@ -131,9 +131,8 @@ class ConvRefiner(nn.Module):
             Decoder block (``nn.Sequential``) configured for the requested channels.
         """
         num_groups = 1 if not dw else in_dim
-        if dw:
-            if out_dim % in_dim != 0:
-                raise Exception("outdim must be divisible by indim for depthwise")
+        if dw and out_dim % in_dim != 0:
+            raise ValueError("out_dim must be divisible by in_dim for depthwise convolution")
         conv1 = nn.Conv2d(
             in_dim,
             out_dim,

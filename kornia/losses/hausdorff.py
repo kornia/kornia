@@ -17,27 +17,31 @@
 
 from __future__ import annotations
 
+import math
+import operator
 from typing import Callable
 
 import torch
 from torch import nn
 
-from kornia.core.utils import is_exporting
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
+from kornia.core.ops import _is_numpy_bool
+from kornia.core.utils import is_compiling
 
 
 class _HausdorffERLossBase(nn.Module):
-    """Base class for binary Hausdorff loss based on morphological erosion.
+    """Base class for the Hausdorff losses based on morphological erosion, one binary map per class channel.
 
     This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
     a differentiable approximation of Hausdorff distance as stated in :cite:`karimi2019reducing`.
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
-        blob/master/hausdorff_loss.py>`__.
+    blob/master/hausdorff_loss.py>`__.
 
     Args:
-        alpha: controls the erosion rate in each iteration.
+        alpha: the exponent of the weight ``(i + 1) ** alpha`` of erosion ``i = 0, ..., k - 1``.
         k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'none': no reduction will be applied, 'mean': the mean of the output is taken,
             'sum': the output will be summed.
 
     Returns:
@@ -50,6 +54,22 @@ class _HausdorffERLossBase(nn.Module):
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
+        # NaN and +inf weights make the loss NaN. -inf weights only the first erosion (the limit of the weights), and
+        # an alpha tensor of shape (B, 1, 1, 1) gives each sample its own exponent, so neither is rejected.
+        if not torch.as_tensor(alpha < math.inf).all():
+            raise ValueError(f"alpha must not be NaN or +inf. Got {alpha}.")
+        # operator.index reads a bool, a boolean tensor and, on NumPy 1.x, a NumPy bool as 0 or 1.
+        if isinstance(k, bool) or (isinstance(k, torch.Tensor) and k.dtype == torch.bool) or _is_numpy_bool(k):
+            raise TypeError("k must be an integer. Got bool.")
+        try:
+            # NumPy integers and integer 0-d tensors are integers too.
+            k = operator.index(k)
+        except TypeError:
+            raise TypeError(f"k must be an integer. Got {type(k).__name__}.") from None
+        if k < 0:
+            raise ValueError(f"k must be non-negative. Got {k}.")
+        if reduction not in ("mean", "sum", "none"):
+            raise NotImplementedError(f"reduction `{reduction}` has not been implemented yet.")
         self.alpha = alpha
         self.k = k
         self.reduction = reduction
@@ -99,23 +119,30 @@ class _HausdorffERLossBase(nn.Module):
         """Compute Hausdorff loss.
 
         Args:
-            pred: predicted torch.Tensor with a shape of :math:`(B, C, H, W)` or :math:`(B, C, D, H, W)`.
+            pred: predicted torch.Tensor with a shape of ``(B, C, H, W)`` or ``(B, C, D, H, W)``.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, C, D, H, W)`.
+            target: target torch.Tensor with a shape of ``(B, 1, H, W)`` or ``(B, 1, D, H, W)``.
 
         Returns:
             Estimated Hausdorff Loss.
 
         """
+        KORNIA_CHECK_SAME_DEVICE(pred, target)
+
         if not (pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1):
             raise ValueError(
                 "Prediction and target need to be of same size, and target should not be one-hot."
                 f"Got {pred.shape} and {target.shape}."
             )
 
-        # The range check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and pred.size(1) < target.max().item():
-            raise ValueError("Invalid target value.")
+        if target.dtype != torch.long:
+            raise ValueError(f"Expect long type target value in range [0, {pred.size(1)}). Got {target.dtype}.")
+        # The range check reads the data, which graph capture cannot do; skip it under any capture.
+        # Neither Hausdorff loss scripts on main (its ``super().forward``), so no TorchScript guard is needed.
+        if not is_compiling() and target.numel() > 0 and not (target.max() < pred.size(1) and target.min() >= 0):
+            raise ValueError(
+                f"Expect long type target value in range [0, {pred.size(1)}). ({target.min()}, {target.max()})"
+            )
 
         out = torch.stack(
             [
@@ -144,7 +171,7 @@ class _HausdorffERLossBase(nn.Module):
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
-    r"""Binary Hausdorff loss based on morphological erosion.
+    r"""Hausdorff loss based on morphological erosion, one binary map per class channel.
 
     Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
     the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
@@ -165,16 +192,29 @@ class HausdorffERLoss(_HausdorffERLossBase):
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
     blob/master/hausdorff_loss.py>`__.
 
+    Convention:
+        - ``pred`` holds per-class probabilities ``(B, C, H, W)`` and nothing is applied to it, unlike the logits of
+          :func:`~kornia.losses.focal_loss`: pass a softmax. ``target`` holds int64 labels ``(B, 1, H, W)`` in
+          ``[0, C)``. Channel ``c`` is compared with ``target == c``, class 0 included.
+        - The ``[0, C)`` check reads the data, so it is skipped wherever the call captures a graph
+          (``torch.compile`` or ``torch.export``). A captured call whose target holds an out-of-range label scores
+          those voxels in no class and returns a finite loss instead of raising; an eager call still raises.
+        - ``reduction='none'`` returns ``(C, B, 1, H, W)``, class axis first; the default ``'mean'`` is the plain
+          mean of that tensor.
+        - Each of the ``k`` erosions is min-max normalised per image and class and weighted by
+          :math:`(i + 1)^\alpha` for :math:`i = 0, \dots, k - 1`: the value is a unitless surrogate, not a distance
+          in pixels.
+
     Args:
-        alpha: controls the erosion rate in each iteration.
+        alpha: the exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
         k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'none': no reduction will be applied, 'mean': the mean of the output is taken,
             'sum': the output will be summed.
 
     Examples:
         >>> hdloss = HausdorffERLoss()
-        >>> input = torch.randn(5, 3, 20, 20)
+        >>> input = torch.randn(5, 3, 20, 20).softmax(1)
         >>> target = (torch.rand(5, 1, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
 
@@ -184,7 +224,8 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
     @staticmethod
     def max_pool(x: torch.Tensor) -> torch.Tensor:
-        # Global max over the spatial dims; equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
+        """Take the global maximum over the spatial dimensions, keeping them with size one."""
+        # Equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:
@@ -197,29 +238,26 @@ class HausdorffERLoss(_HausdorffERLossBase):
         """Compute Hausdorff loss.
 
         Args:
-            pred: predicted torch.Tensor with a shape of :math:`(B, C, H, W)`.
+            pred: predicted torch.Tensor with a shape of ``(B, C, H, W)``.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)`.
+            target: target torch.Tensor with a shape of ``(B, 1, H, W)``.
 
         Returns:
             Estimated Hausdorff Loss.
 
         """
+        if not isinstance(pred, torch.Tensor):
+            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
+        if not isinstance(target, torch.Tensor):
+            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
 
-        if target.dtype != torch.long:
-            raise ValueError(f"Expect long type target value in range (0, {pred.size(1)}). Got {target.dtype}.")
-        # The range check reads the data, which graph capture cannot do; skip it under export.
-        if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
-            raise ValueError(
-                f"Expect long type target value in range (0, {pred.size(1)}). ({target.min()}, {target.max()})"
-            )
         return super().forward(pred, target)
 
 
 class HausdorffERLoss3D(_HausdorffERLossBase):
-    r"""Binary 3D Hausdorff loss based on morphological erosion.
+    r"""3D Hausdorff loss based on morphological erosion, one binary map per class channel.
 
     Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
     the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
@@ -240,16 +278,22 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
     blob/master/hausdorff_loss.py>`__.
 
+    Convention:
+        - As in :class:`~kornia.losses.HausdorffERLoss` (see its Convention block), for ``pred`` of shape
+          ``(B, C, D, H, W)`` and ``target`` of shape ``(B, 1, D, H, W)``; ``reduction='none'`` returns
+          ``(C, B, 1, D, H, W)``. The erosion kernel is the voxel and its six face neighbours, so the erosion also
+          runs along ``D``.
+
     Args:
-        alpha: controls the erosion rate in each iteration.
+        alpha: the exponent of the weight :math:`(i + 1)^\alpha` of erosion :math:`i = 0, \dots, k - 1`.
         k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
-            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'none': no reduction will be applied, 'mean': the mean of the output is taken,
             'sum': the output will be summed.
 
     Examples:
         >>> hdloss = HausdorffERLoss3D()
-        >>> input = torch.randn(5, 3, 20, 20, 20)
+        >>> input = torch.randn(5, 3, 20, 20, 20).softmax(1)
         >>> target = (torch.rand(5, 1, 20, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
 
@@ -259,7 +303,8 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
 
     @staticmethod
     def max_pool(x: torch.Tensor) -> torch.Tensor:
-        # Global max over the volume dims; equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
+        """Take the global maximum over the volume dimensions, keeping them with size one."""
+        # Equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
         return x.amax(dim=(-3, -2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:
@@ -276,14 +321,18 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         """Compute 3D Hausdorff loss.
 
         Args:
-            pred: predicted torch.Tensor with a shape of :math:`(B, C, D, H, W)`.
+            pred: predicted torch.Tensor with a shape of ``(B, C, D, H, W)``.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target torch.Tensor with a shape of :math:`(B, 1, D, H, W)`.
+            target: target torch.Tensor with a shape of ``(B, 1, D, H, W)``.
 
         Returns:
             Estimated Hausdorff Loss.
 
         """
+        if not isinstance(pred, torch.Tensor):
+            raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}.")
+        if not isinstance(target, torch.Tensor):
+            raise TypeError(f"target type is not a torch.Tensor. Got {type(target)}.")
         if pred.dim() != 5:
             raise ValueError(f"Only 3D images supported. Got {pred.dim()}.")
 

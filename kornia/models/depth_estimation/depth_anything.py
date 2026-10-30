@@ -17,7 +17,9 @@
 
 from typing import Optional
 
+from kornia.core import ImageSequential
 from kornia.models._hf_models import HFONNXComunnityModelLoader
+from kornia.models._hf_models.preprocessor import _DPTResize
 
 from .base import DepthEstimation
 
@@ -29,9 +31,21 @@ class DepthAnythingONNXBuilder:
 
     @staticmethod
     def build(
-        model_name: str = "depth-anything-v2-small", model_type: str = "model", cache_dir: Optional[str] = None
+        model_name: str = "depth-anything-v2-small",
+        model_type: str = "model",
+        cache_dir: Optional[str] = None,
+        *,
+        force_download: bool = False,
     ) -> DepthEstimation:
-        """Export a DepthAnything model to an ONNX model file.
+        """Build a ``DepthEstimation`` around the onnx-community graph (downloaded on first use).
+
+        The returned model resizes each image to the size transformers' ``DPTImageProcessor`` computes from the
+        repository's ``preprocessor_config.json``: it keeps the aspect ratio and makes each side a multiple of
+        ``ensure_multiple_of`` when the config asks for it. The filter is the one of transformers' DPT image
+        processor (its torchvision backend, ``torchvision.transforms.v2.functional.resize`` with ``antialias=True``),
+        which approximates PIL's ``Image.resize``. The output size depends on the input size, so the resize runs in
+        torch, as the model's ``resize`` stage. The rescale and normalize steps are exported to an ONNX graph that
+        runs before the model's.
 
         Args:
             model_name: The name of the model to be loaded. Valid model names include:
@@ -49,12 +63,16 @@ class DepthAnythingONNXBuilder:
                     - `model_uint8`
             cache_dir:
                 The directory where the model should be cached.
+            force_download:
+                Whether to download the model and its ``preprocessor_config.json`` again and replace the cached
+                files, even when they are cached. By default a cached file is used as it is, however old, and one
+                that does not load fails every time until it is deleted.
 
         Returns:
             DepthEstimation: The depth estimation model.
 
         Note:
-            To use this model, load an image tensor (shape: ``(1, C, H, W)``) and call ``model.save(image)``.
+            To use this model, load an image tensor (shape: ``(B, 3, H, W)``) and call ``model.save(image)``.
 
         """
         if model_name not in [
@@ -67,6 +85,10 @@ class DepthAnythingONNXBuilder:
         onnx_model = loader.load_model(
             download=True,
             io_name_mapping={"pixel_values": "input", "predicted_depth": "output"},
+            force_download=force_download,
         )
-        preproc = loader.load_preprocessing().to_onnx(save=False)
-        return DepthEstimation(onnx_model, pre_processor=preproc, name=f"{model_name}_{model_type}")
+        preprocessing = loader.load_preprocessing(force_download=force_download)
+        resize = next((m for m in preprocessing if isinstance(m, _DPTResize)), None)
+        others = [m for m in preprocessing if not isinstance(m, _DPTResize)]
+        preproc = ImageSequential(*others).to_onnx(save=False) if others else None
+        return DepthEstimation(onnx_model, pre_processor=preproc, name=f"{model_name}_{model_type}", resize=resize)

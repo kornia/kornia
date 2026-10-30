@@ -27,6 +27,8 @@ from typing import ClassVar
 import torch
 from torch import nn
 
+from kornia.core.utils import _autocast_disabled
+
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
 
@@ -39,12 +41,18 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
 
+    Convention:
+        Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
+        Input is nonlinear sRGB in RGB order at axis -3. Output is CIE L*u*v* with D65 / 2°
+        reference white.
+
     Args:
-        image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing.
+        image: RGB Image to be converted to Luv with shape ``(*, 3, H, W)``.
+        eps: For numerical stability when dividing. Half inputs use float32 arithmetic, so the default
+            epsilon remains representable without a dtype-dependent floor.
 
     Returns:
-        Luv version of the image with shape :math:`(*, 3, H, W)`.
+        Luv version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -57,6 +65,17 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
+    if image.dtype in (torch.float16, torch.bfloat16):
+        if torch.jit.is_scripting():
+            return _rgb_to_luv(image.float(), eps).to(image.dtype)
+        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        with _autocast_disabled(image.device.type):
+            return _rgb_to_luv(image.float(), eps).to(image.dtype)
+    return _rgb_to_luv(image, eps)
+
+
+def _rgb_to_luv(image: torch.Tensor, eps: float) -> torch.Tensor:
+    """Compute the conversion in the working dtype."""
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
 
@@ -90,12 +109,18 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Convert a Luv image to RGB.
 
+    Convention:
+        Float16 and bfloat16 inputs are computed in float32 and rounded to the input dtype at return.
+        Input channels are CIE L*, u*, v* at axis -3 with D65 / 2° reference white. The result
+        is nonlinear sRGB.
+
     Args:
-        image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
-        eps: for numerically stability when dividing.
+        image: Luv image to be converted to RGB with shape ``(*, 3, H, W)``.
+        eps: For numerical stability when dividing. Half inputs use float32 arithmetic, so the default
+            epsilon remains representable without a dtype-dependent floor.
 
     Returns:
-        Luv version of the image with shape :math:`(*, 3, H, W)`.
+        Luv version of the image with shape ``(*, 3, H, W)``.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -108,6 +133,17 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
+    if image.dtype in (torch.float16, torch.bfloat16):
+        if torch.jit.is_scripting():
+            return _luv_to_rgb(image.float(), eps).to(image.dtype)
+        # Color matrices use einsum/convolution, which an enclosing autocast would downcast again.
+        with _autocast_disabled(image.device.type):
+            return _luv_to_rgb(image.float(), eps).to(image.dtype)
+    return _luv_to_rgb(image, eps)
+
+
+def _luv_to_rgb(image: torch.Tensor, eps: float) -> torch.Tensor:
+    """Compute the conversion in the working dtype."""
     L: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]
@@ -138,6 +174,8 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 class RgbToLuv(nn.Module):
     r"""Convert an image from RGB to Luv.
 
+    See the Convention block on :func:`rgb_to_luv`.
+
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
 
@@ -145,8 +183,8 @@ class RgbToLuv(nn.Module):
         Luv version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -169,12 +207,12 @@ class RgbToLuv(nn.Module):
         """Convert an RGB tensor to Luv.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
-            Luv tensor with shape :math:`(*, 3, H, W)`.
+            Luv tensor with shape ``(*, 3, H, W)``.
         """
         return rgb_to_luv(image)
 
@@ -182,12 +220,14 @@ class RgbToLuv(nn.Module):
 class LuvToRgb(nn.Module):
     r"""Convert an image from Luv to RGB.
 
+    See the Convention block on :func:`luv_to_rgb`.
+
     Returns:
         RGB version of the image.
 
     Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
+        - image: ``(*, 3, H, W)``
+        - output: ``(*, 3, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -210,11 +250,11 @@ class LuvToRgb(nn.Module):
         """Convert a Luv tensor to RGB.
 
         Args:
-            image: Input tensor with shape :math:`(*, 3, H, W)`.
+            image: Input tensor with shape ``(*, 3, H, W)``.
                 Here, ``*`` means any number of leading dimensions (for example, batch size),
                 ``3`` corresponds to Luv channels, and ``H``/``W`` are height and width.
 
         Returns:
-            RGB tensor with shape :math:`(*, 3, H, W)`.
+            RGB tensor with shape ``(*, 3, H, W)``.
         """
         return luv_to_rgb(image)

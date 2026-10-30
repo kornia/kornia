@@ -53,10 +53,13 @@ Optional extras
 A few Kornia features wrap third-party packages that are not installed with the base wheel. They are
 declared as `extras <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#extras>`_,
 so you only pay for the ones you use. If one of the extras below is missing, the corresponding Kornia
-object tells you which extra to install: by default it offers to install the package for you on the
-terminal (``kornia.config.kornia_config.lazyloader.installation_mode``, ``"ask"``; set it to ``"auto"``
-to install without asking or ``"raise"`` to never install), and in ``"raise"`` mode, or when the offer
-is declined, it raises an ``ImportError`` naming the extra.
+object raises an ``ImportError`` naming the extra to install. The installation mode changes this: set
+``kornia.config.kornia_config.lazyloader.installation_mode``, or the ``KORNIA_INSTALLATION_MODE``
+environment variable before Kornia is imported, to ``"ask"`` to be asked on an interactive terminal
+whether to install the extra, or to ``"auto"`` to install the declared extra with
+``pip install "kornia[<extra>]"`` without asking. Without an interactive terminal, ``"ask"`` raises the
+same ``ImportError``: for example in a CI job, when output is redirected to a file, or in a Jupyter
+notebook, whose kernel's stdin is not a terminal (use ``"auto"`` there). The default is ``"raise"``.
 
 .. list-table::
    :header-rows: 1
@@ -66,7 +69,7 @@ is declined, it raises an ``ImportError`` naming the extra.
      - What it enables
      - Install command
    * - ``image``
-     - Pillow-backed PIL input/output and display helpers, plus remote image decoding in :func:`kornia.io.get_sample_images`
+     - Pillow-backed PIL input/output and display helpers
      - ``pip install "kornia[image]"``
    * - ``onnx``
      - :doc:`kornia.onnx </onnx>`, ONNX export of Kornia modules, and :class:`~kornia.feature.OnnxLightGlue`

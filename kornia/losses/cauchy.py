@@ -30,7 +30,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
 
     .. math::
 
-        \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
+        \text{loss}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
 
     Where:
        - :math:`x` is the prediction.
@@ -40,8 +40,12 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         [1] https://arxiv.org/pdf/1701.03077.pdf
         [2] https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
 
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with
+        :math:`\alpha = 0`.
+
     Args:
-        img1: the predicted torch.Tensor with shape :math:`(*)`.
+        img1: the predicted torch.Tensor with shape ``(*)``.
         img2: the target torch.Tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -50,7 +54,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
           summed.
 
     Return:
-        a scalar with the computed loss.
+        the computed loss, with the shape of the inputs for ``reduction='none'`` and a scalar otherwise.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -71,8 +75,10 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         reduction in ("mean", "sum", "none", None), f"Given type of reduction is not supported. Got: {reduction}"
     )
 
-    # compute loss
-    loss = torch.log1p(0.5 * torch.square(img1 - img2))
+    # Keep the square and its backward in float32 for half-precision residuals.
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    compute_diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
+    loss = torch.log1p(0.5 * torch.square(compute_diff))
 
     # perform reduction
     if reduction == "mean":
@@ -84,7 +90,7 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class CauchyLoss(nn.Module):
@@ -94,7 +100,7 @@ class CauchyLoss(nn.Module):
 
     .. math::
 
-        \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
+        \text{loss}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
 
     Where:
        - :math:`x` is the prediction.
@@ -104,6 +110,9 @@ class CauchyLoss(nn.Module):
         [1] https://arxiv.org/pdf/1701.03077.pdf
         [2] https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
 
+    Convention:
+        See the Convention block of :func:`~kornia.losses.cauchy_loss`.
+
     Args:
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -112,7 +121,7 @@ class CauchyLoss(nn.Module):
           summed.
 
     Shape:
-        - img1: the predicted torch.Tensor with shape :math:`(*)`.
+        - img1: the predicted torch.Tensor with shape ``(*)``.
         - img2: the target torch.Tensor with the same shape as img1.
 
     Example:

@@ -145,7 +145,7 @@ class DistributionWithMapper(Distribution):
         self.dist = dist
         self.map_fn = map_fn
 
-    def rsample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
+    def rsample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:
         """Draw a reparameterized sample and apply ``map_fn`` when provided.
 
         Args:
@@ -159,7 +159,7 @@ class DistributionWithMapper(Distribution):
             out = self.map_fn(out)
         return out
 
-    def sample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
+    def sample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:
         """Draw a sample and apply ``map_fn`` when provided.
 
         Args:
@@ -188,10 +188,11 @@ class DistributionWithMapper(Distribution):
         return out
 
     def __getattr__(self, attr: str) -> Any:
-        try:
-            return getattr(self, attr)
-        except AttributeError:
-            return getattr(self.dist, attr)
+        # Special methods stay on the wrapper: delegating a probe such as ``__deepcopy__`` would copy the wrapped
+        # distribution and drop ``map_fn``.
+        if attr.startswith("__") and attr.endswith("__"):
+            raise AttributeError(attr)
+        return getattr(object.__getattribute__(self, "dist"), attr)
 
 
 class UniformDistribution(MultiprocessWrapper, Uniform):

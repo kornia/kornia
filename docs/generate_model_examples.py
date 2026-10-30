@@ -51,7 +51,7 @@ torch.manual_seed(0)
 
 OUT = Path(__file__).absolute().parent / "source/_static/img/models"
 DATA = "https://raw.githubusercontent.com/kornia/data/main/"
-KNCHURCH = "https://github.com/kornia/data_test/raw/8b98f44abbe92b7a84631ed06613b08fee7dae14/knchurch_disk.pt"
+KNCHURCH = "https://github.com/kornia/data_test/raw/4ffed08df3d82af85aa9012d3104f19ca4b62604/knchurch_disk.safetensors"
 IMAGENET_CLASSES = "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
 
 FIGURES: dict = {}
@@ -69,7 +69,7 @@ def sample(name: str, size: tuple[int, int] | None = None) -> torch.Tensor:
 
 
 def knchurch() -> tuple[torch.Tensor, torch.Tensor]:
-    d = torch.hub.load_state_dict_from_url(KNCHURCH, map_location="cpu")
+    d = K.core.load_safetensors(K.core.download_file_from_url(KNCHURCH, validate=K.core.check_safetensors))
     return d["img1"], d["img2"]
 
 
@@ -190,8 +190,10 @@ def figure_efficient_vit() -> None:
 
     image = sample("panda.jpg", (224, 224))
     model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224)).eval()
+    # the backbones were trained on images normalized with the ImageNet mean and standard deviation
+    x = K.enhance.normalize(image, torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225]))
     with torch.no_grad():
-        feats = model(image)  # dict of feature maps: "input", "stage0" ... "stage_final"
+        feats = model(x)  # dict of feature maps: "input", "stage0" ... "stage_final"
 
     stages = [k for k in feats if k.startswith("stage")]
     fig, axs = plt.subplots(1, 1 + len(stages), figsize=(2.3 * (1 + len(stages)), 2.6))
@@ -214,8 +216,10 @@ def figure_tiny_vit() -> None:
 
     image = sample("panda.jpg", (224, 224))
     model = TinyViT.from_config("5m", pretrained=True).eval()  # ImageNet-1k weights
+    # the checkpoints were trained on images normalized with the ImageNet mean and standard deviation
+    x = K.enhance.normalize(image, torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225]))
     with torch.no_grad():
-        logits = model(image)  # (1, 1000)
+        logits = model(x)  # (1, 1000)
 
     fig, axs = plt.subplots(1, 2, figsize=(9, 3), width_ratios=[1, 1.6])
     show(axs[0], image, "input 224x224")
@@ -230,8 +234,10 @@ def figure_vit() -> None:
 
     image = sample("panda.jpg", (224, 224))
     vit = VisionTransformer.from_config("vit_b/16", pretrained=True).eval()  # AugReg ImageNet-21k weights
+    # the AugReg weights were trained on images normalized with mean = std = 0.5, i.e. in [-1, 1]
+    x = K.enhance.normalize(image, torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]))
     with torch.no_grad():
-        tokens = vit(image)  # (1, 197, 768): class token + 14x14 patch tokens
+        tokens = vit(x)  # (1, 197, 768): class token + 14x14 patch tokens
 
     fig, axs = plt.subplots(1, 3, figsize=(11, 3.2), width_ratios=[1, 1, 1.3])
     show(axs[0], image, "input 224x224 → 14x14 patches of 16 px")

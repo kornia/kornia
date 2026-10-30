@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import contextlib
 import os
 import random
 import subprocess
@@ -28,16 +29,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-
-try:
-    from pytest import CallInfo, TestReport  # public since pytest 7.x
-except ImportError:  # pragma: no cover
-    from _pytest.reports import TestReport  # type: ignore[no-redef]
-    from _pytest.runner import CallInfo  # type: ignore[no-redef]
+from torch.distributions import Distribution
 
 import kornia
 from kornia.core.download import load_state_dict_from_url
 
+from testing import conformance, conformance_promise
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
     FailureRecorder,
@@ -47,7 +44,7 @@ from testing.half_precision_ci import (
     seed_test_rng,
 )
 from testing.known_failures import mark_known_failures
-from testing.reference_data import TEST_DATA_URLS
+from testing.reference_data import TEST_CHECKPOINT_URLS, TEST_DATA_URLS, load_reference_data
 
 try:
     import torch._dynamo
@@ -108,7 +105,7 @@ TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 
 
-@pytest.fixture()
+@pytest.fixture
 def device(device_name) -> torch.device:
     """Return device for testing, skipping if device is unavailable."""
     if device_name not in TEST_DEVICES:
@@ -116,7 +113,7 @@ def device(device_name) -> torch.device:
     return TEST_DEVICES[device_name]
 
 
-@pytest.fixture()
+@pytest.fixture
 def restore_torch_rng():
     """Keep explicitly opted-in tests from shifting later CPU/CUDA/MPS random draws (#4446)."""
     cpu_state = torch.random.get_rng_state()
@@ -133,13 +130,30 @@ def restore_torch_rng():
             torch.mps.set_rng_state(mps_state)
 
 
-@pytest.fixture()
+@pytest.fixture
 def dtype(dtype_name) -> torch.dtype:
     """Return dtype for testing."""
     return TEST_DTYPES[dtype_name]
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
+def keep_distribution_validation():
+    """Leave ``torch.distributions`` argument validation as each test found it.
+
+    The first Dynamo entry in a process, ``torch.compile`` included, runs a one-time setup that calls
+    ``Distribution.set_default_validate_args(False)`` process-wide. Without this fixture every test after
+    that entry runs with validation off, so a test pinned on a validation error passes or fails depending
+    on whether a compile test ran before it in the session.
+    """
+    validate_args = Distribution._validate_args
+    try:
+        yield
+    finally:
+        if Distribution._validate_args != validate_args:
+            Distribution.set_default_validate_args(validate_args)
+
+
+@pytest.fixture
 def torch_optimizer(optimizer_backend):
     """Return torch optimizer based on backend selection.
 
@@ -159,39 +173,11 @@ def torch_optimizer(optimizer_backend):
     return partial(torch.compile, backend=optimizer_backend)
 
 
-@pytest.fixture()
+@pytest.fixture
 def cudnn_tf32_follows_option(request):
-    """Compute convolutions in real float32 on CUDA, so a float32 tolerance means float32.
-
-    The root ``conftest.py``'s ``--tf32`` option drives only ``set_float32_matmul_precision``, which
-    does not reach cuDNN: ``torch.backends.cudnn.allow_tf32`` keeps PyTorch's ``True`` default in
-    every run. TF32 rounds a convolution's inputs to 10 mantissa bits, and eager and inductor do not
-    have to pick the same kernel, so on a deep conv stack the two disagree by ~2e-4 -- twenty times
-    ``assert_close``'s float32 ``atol`` -- while the same comparison agrees to 6e-7 once cuDNN is in
-    real float32. A compile-vs-eager test that does not take TF32 out of the picture is measuring the
-    backend rather than the graph.
-
-    The flag follows ``--tf32`` rather than being forced off, so a ``--tf32`` run still gets TF32 in
-    cuDNN as well as in matmul. The repo-wide fix is for ``pytest_sessionstart`` to set
-    ``cudnn.allow_tf32`` from the same option; ``tests/color/test_yuv.py`` carries the same local
-    workaround for the same reason.
-
-    The alternative -- keeping TF32 on and widening the CUDA float32 bound to ~1e-3, TF32's own
-    mantissa -- was tried and dropped: it leaves the assertion a hundred times looser than the signal
-    it exists to check, so a genuine compile-vs-eager divergence below 1e-3 would pass. The objection
-    to this route is that inductor's on-disk FX graph cache is not keyed on ``allow_tf32``, so a
-    context entered after a TF32-on compile in the same process can raise out of
-    ``assert_tensor_metadata``. That applies to ``torch.backends.cudnn.flags(...)``, which swaps
-    several flags at once; assigning the single attribute, as here and in ``test_yuv.py``, does not
-    reproduce it -- ``tests/feature -k "dynamo or compile"`` on CUDA float32 is green with this fixture
-    on both a cold and a warm inductor cache.
-    """
-    previous = torch.backends.cudnn.allow_tf32
-    torch.backends.cudnn.allow_tf32 = bool(request.config.getoption("--tf32"))
-    try:
-        yield
-    finally:
-        torch.backends.cudnn.allow_tf32 = previous
+    """Assert that cuDNN precision follows the session's opt-in TF32 setting."""
+    if torch.backends.cudnn.allow_tf32 != request.config.getoption("--tf32"):
+        pytest.fail("cuDNN TF32 setting does not match --tf32")
 
 
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
@@ -248,10 +234,8 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
     for arg in config.args:
         target = Path(arg.split("::", maxsplit=1)[0])
         if target.is_absolute():
-            try:
+            with contextlib.suppress(ValueError):
                 target = target.relative_to(config.rootpath)
-            except ValueError:
-                pass
         normalized_args.add(target.as_posix().removeprefix("./").rstrip("/"))
     if normalized_args != {"tests"}:
         raise pytest.UsageError(f"{option} requires exactly the full tests/ target")
@@ -276,6 +260,15 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
 
 def pytest_configure(config) -> None:
     """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
+    config._conformance = {}
+    for promise in conformance_promise.PROMISES:
+        try:
+            config._conformance[promise.marker] = conformance.selection(config, promise)
+        except ValueError as error:
+            raise pytest.UsageError(str(error)) from error
+        if config._conformance[promise.marker]:
+            plugin = conformance.KnownFailurePlugin(promise)
+            config.pluginmanager.register(plugin, f"{promise.field}-conformance-known-failures")
     profile = _configure_known_failure_profile(config)
     config._known_failure_profile = profile
     if profile is None:
@@ -414,6 +407,18 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
+    # The ONNX and torch.compile conformance tests (#5819) are opt-in: --onnx-conformance and --compile-conformance
+    # name the packages whose promised operators they run. When one is given, conformance.KnownFailurePlugin turns its
+    # known failures into strict xfails.
+    for promise in conformance_promise.PROMISES:
+        if config._conformance[promise.marker]:
+            continue
+        conformance_items = [item for item in items if item.get_closest_marker(promise.marker) is not None]
+        if conformance_items:
+            config.hook.pytest_deselected(items=conformance_items)
+            conformance_ids = {id(item) for item in conformance_items}
+            items[:] = [item for item in items if id(item) not in conformance_ids]
+
     if config.getoption("--xfail-known-failures") and getattr(config, "_known_failure_profile", None) is None:
         devices = _parse_test_option(config, "--device", TEST_DEVICES)
         dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
@@ -514,8 +519,7 @@ def pytest_addoption(parser):
         action="store_true",
         default=os.environ.get("KORNIA_TEST_TF32", "false").lower() == "true",
         help=(
-            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications "
-            "(torch.set_float32_matmul_precision('high')). "
+            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications and cuDNN convolutions. "
             "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
             "(env: KORNIA_TEST_TF32)"
         ),
@@ -566,6 +570,18 @@ def pytest_addoption(parser):
             "(env: KORNIA_TEST_RUN_MPS_PROCESS_ABORT)"
         ),
     )
+    for promise in conformance_promise.PROMISES:
+        parser.addoption(
+            promise.option,
+            action="store",
+            default=os.environ.get(promise.env_var, ""),
+            metavar="PACKAGES",
+            help=(
+                f"Run the {promise.name} conformance test ({promise.test_file}, #5819) for these stable-core "
+                "packages, comma-separated (geometry,color,...), or 'all'; it is deselected without this option. "
+                f"(env: {promise.env_var})"
+            ),
+        )
     parser.addoption(
         "--xfail-known-failures",
         action="store_true",
@@ -604,6 +620,8 @@ def pytest_sessionstart(session):
     # and to run the @pytest.mark.tf32-marked tests.
     if session.config.getoption("--tf32"):
         torch.set_float32_matmul_precision("high")
+    # cuDNN allows TF32 by default independently of matmul precision; keep it opt-in too.
+    torch.backends.cudnn.allow_tf32 = session.config.getoption("--tf32")
 
     # Warm torch.compile only for explicit optimizer jobs. Ordinary jobs deselect compile tests,
     # while subprocess mode also avoids startup overhead and captured-output pollution.
@@ -713,7 +731,7 @@ main deps:
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
-        - nvidia-driver: {env_info["nvidia"] if "nvidia" in env_info else None}
+        - nvidia-driver: {env_info.get("nvidia")}
 x deps:
     - {accelerate_info}
 dev deps:
@@ -838,8 +856,8 @@ def pytest_runtest_protocol(item, nextitem):
         outcome = "failed"
         longrepr = _extract_failure_output(output)
 
-    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> TestReport:
-        return TestReport(
+    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> pytest.TestReport:
+        return pytest.TestReport(
             nodeid=item.nodeid,
             location=item.location,
             keywords=dict(item.keywords),
@@ -860,7 +878,7 @@ def pytest_runtest_protocol(item, nextitem):
     # Capture finalizer failures as teardown errors rather than aborting the runner.
     if item.session.shouldfail or item.session.shouldstop:
         nextitem = None
-    teardown = CallInfo.from_call(
+    teardown = pytest.CallInfo.from_call(
         lambda: item.session._setupstate.teardown_exact(nextitem),
         when="teardown",
         reraise=(KeyboardInterrupt, pytest.exit.Exception),
@@ -889,7 +907,7 @@ def _isolated_test_rng(seed: int):
         torch.random.set_rng_state(torch_state)
 
 
-@pytest.fixture()
+@pytest.fixture
 def test_rng_seed(request) -> int:
     """Return the stable seed for this pytest node without changing global RNG state."""
     return seed_test_rng(request.node.nodeid)
@@ -1052,6 +1070,8 @@ def data(request):
 
     Use with @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     """
-    if request.param not in TEST_DATA_URLS:
-        raise ValueError(f"Unknown test data: {request.param}. Available: {list(TEST_DATA_URLS.keys())}")
-    return load_state_dict_from_url(TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))
+    if request.param in TEST_DATA_URLS:
+        return load_reference_data(request.param)
+    if request.param in TEST_CHECKPOINT_URLS:
+        return load_state_dict_from_url(TEST_CHECKPOINT_URLS[request.param], map_location=torch.device("cpu"))
+    raise ValueError(f"Unknown test data: {request.param}. Available: {[*TEST_DATA_URLS, *TEST_CHECKPOINT_URLS]}")

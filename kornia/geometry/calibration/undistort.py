@@ -23,7 +23,6 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -58,8 +57,8 @@ def undistort_points(
         `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
 
     Args:
-        points: Input image points with shape :math:`(*, N, 2)`.
-        K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
+        points: Input image points with shape ``(*, N, 2)``.
+        K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
@@ -68,11 +67,11 @@ def undistort_points(
             :math:`z = 1` plane -- the mirror image of the two roles in
             :func:`~kornia.geometry.calibration.distort_points`. By default it is the same as ``K``, in which
             case both steps use the same camera; a different matrix rescales and shifts the **result**.
-            Shape: :math:`(*, 3, 3)`. Default: None.
+            Shape: ``(*, 3, 3)``. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
 
     Returns:
-        Undistorted 2D points with shape :math:`(*, N, 2)`.
+        Undistorted 2D points with shape ``(*, N, 2)``.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -100,6 +99,7 @@ def undistort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
+    has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = F.pad(dist, [0, 14 - dist.shape[-1]])
@@ -114,12 +114,9 @@ def undistort_points(
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
 
-    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
-    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
-    capture = is_exporting()
-    if not torch.jit.is_scripting():
-        capture = capture or is_compiling()
-    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
+    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
+    if has_tilt:
         inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
         if inv_tilt.dim() == 2:
             inv_tilt = inv_tilt.unsqueeze(0)
@@ -172,21 +169,21 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     Convention:
         - the leading dimensions of ``image`` (in front of ``C, H, W``), ``K`` (in front of :math:`3 \times 3`)
           and ``dist`` (in front of its ``n`` coefficients) must match exactly; the one exception is the
-          legacy unbatched call, a :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)`
+          legacy unbatched call, a ``(1, C, H, W)`` image with a ``(3, 3)`` ``K`` and an :math:`(n,)`
           ``dist``.
         - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
           centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
           a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
 
     Args:
-        image: Input image with shape :math:`(*, C, H, W)`.
-        K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
+        image: Input image with shape ``(*, C, H, W)``.
+        K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
 
     Returns:
-        Undistorted image with shape :math:`(*, C, H, W)`.
+        Undistorted image with shape ``(*, C, H, W)``.
 
     Example:
         >>> img = torch.rand(1, 3, 5, 5)
@@ -209,14 +206,15 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     if not image.is_floating_point():
         raise ValueError(f"Invalid input image data type. Input should be float. Got {image.dtype}.")
 
-    if image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]:
-        # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4)
-        # allowed to avoid a breaking change.
-        if not all((image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())):
-            raise ValueError(
-                "Input shape is invalid. Input batch dimensions should match. "
-                f"Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}."
-            )
+    # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4)
+    # allowed to avoid a breaking change.
+    if (image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]) and not all(
+        (image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())
+    ):
+        raise ValueError(
+            "Input shape is invalid. Input batch dimensions should match. "
+            f"Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}."
+        )
 
     channels, rows, cols = image.shape[-3:]
     B = image.numel() // (channels * rows * cols)

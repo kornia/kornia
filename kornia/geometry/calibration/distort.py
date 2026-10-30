@@ -20,8 +20,6 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core.utils import is_compiling, is_exporting
-
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
@@ -32,7 +30,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
           ``return_inverse=False`` returns ``Pz @ R`` (OpenCV's tilt projection) and ``return_inverse=True`` its
           inverse, the branch :func:`~kornia.geometry.calibration.undistort_points` applies. Zero angles give
           ``eye(3)``.
-        - scalar angles return :math:`(3, 3)`; otherwise a trailing singleton angle axis, if present, is
+        - scalar angles return ``(3, 3)``; otherwise a trailing singleton angle axis, if present, is
           consumed and the remaining dimensions are the batch shape.
 
     Args:
@@ -42,7 +40,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
     Returns:
         torch.Tensor: Tilt projection matrix, or the inverse tilt projection matrix when ``return_inverse`` is
-        True, with shape :math:`(3, 3)` for scalar angles or :math:`(*, 3, 3)` for non-scalar angles, where a
+        True, with shape ``(3, 3)`` for scalar angles or ``(*, 3, 3)`` for non-scalar angles, where a
         trailing singleton angle-component axis is omitted from :math:`*`.
 
     """
@@ -126,8 +124,8 @@ def distort_points(
         - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
 
     Args:
-        points: Input image points with shape :math:`(*, N, 2)`.
-        K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
+        points: Input image points with shape ``(*, N, 2)``.
+        K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
@@ -135,10 +133,10 @@ def distort_points(
             :math:`z = 1` plane -- the opposite of what the argument order suggests, since ``K`` is the one
             that maps the distorted normalized point back to pixels. By default it is the same as ``K``, in
             which case both steps use the same camera; a different matrix rescales and shifts the **input**,
-            not the result. Shape: :math:`(*, 3, 3)`. Default: None.
+            not the result. Shape: ``(*, 3, 3)``. Default: None.
 
     Returns:
-        Distorted 2D points with shape :math:`(*, N, 2)`.
+        Distorted 2D points with shape ``(*, N, 2)``.
 
     Example:
         >>> points = torch.rand(1, 1, 2)
@@ -161,6 +159,7 @@ def distort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
+    has_tilt = dist.shape[-1] == 14
     # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = F.pad(dist, [0, 14 - dist.shape[-1]])
@@ -198,12 +197,9 @@ def distort_points(
         + dist[..., 11:12] * r4
     )
 
-    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
-    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
-    capture = is_exporting()
-    if not torch.jit.is_scripting():
-        capture = capture or is_compiling()
-    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Zero tilt is the identity but has nonzero angle derivatives. Branch on the model's
+    # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
+    if has_tilt:
         tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])

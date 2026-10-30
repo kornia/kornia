@@ -19,6 +19,8 @@ Intensity transformations and normalization on batched ``(B, C, H, W)`` tensors.
      - Mean/std normalization, min-max scaling, ZCA whitening and linear transforms.
    * - :doc:`enhance.codec`
      - A differentiable JPEG encoder/decoder.
+   * - :doc:`enhance.integral`
+     - Integral images and cumulative sums over chosen axes.
 
 .. toctree::
    :hidden:
@@ -27,3 +29,4 @@ Intensity transformations and normalization on batched ``(B, C, H, W)`` tensors.
    equalization <enhance.equalization>
    normalization <enhance.normalization>
    codec <enhance.codec>
+   integral <enhance.integral>

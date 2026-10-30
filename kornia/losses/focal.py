@@ -17,17 +17,152 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_autocast_enabled, is_compiling, is_exporting
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.losses.one_hot import one_hot
+from kornia.losses.one_hot import _check_class_labels, one_hot
 
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py
+
+# Logits per batch chunk of the CPU target log-probability, at least one sample: a chunk's temporary is reused from
+# the heap instead of being a fresh, page-faulted buffer, and stays in the cache between its passes.
+_CPU_CHUNK_BYTES = 2 * 1024 * 1024
+# Measured forward + backward, 4 threads: the custom function's fixed cost (about 25 us) loses below about 2**18
+# logits (0.8x for a handful) and breaks even up to 21 x 128 x 128; from 2**19 the full-size buffers it avoids
+# dominate.
+_CPU_MIN_NUMEL = 1 << 19
+
+
+def _focal_loss_cpu_eligible(pred: torch.Tensor) -> bool:
+    """Select large native-precision CPU logits, whose full-size log-softmax buffers are fresh memory on every call."""
+    # Keep log_softmax where it is what the caller captures or transforms: the exporters and the legacy tracer record
+    # it, functorch transforms (vmap, grad, jvp) need no custom function, and autocast chooses its precision.
+    # Forward-mode AD keeps it too: Dynamo cannot capture an autograd function that defines a jvp, so a jvp would
+    # break every compiled training graph, and a jvp built on the saved statistics is not differentiable again.
+    return (
+        pred.device.type == "cpu"
+        and pred.dtype in (torch.float32, torch.float64)
+        # Before the size check: torch.export would turn it into a guard of the exported program, which then fails at
+        # run time for logits on the other side of the threshold although its dynamic shapes allow them.
+        and not is_exporting()
+        # Before the size check, which the legacy tracer would record as a constant with a TracerWarning.
+        and not torch.jit.is_tracing()
+        and pred.numel() >= _CPU_MIN_NUMEL
+        and not torch._C._are_functorch_transforms_active()
+        and not is_autocast_enabled()
+        and torch.autograd.forward_ad.unpack_dual(pred).tangent is None
+    )
+
+
+def _batch_chunks(pred: torch.Tensor, *tensors: Optional[torch.Tensor]) -> list[tuple[Any, ...]]:
+    """Split ``pred`` and ``tensors`` (``None`` stays ``None``) into the same batch chunks of about 2 MB of logits."""
+    sample_bytes = pred.numel() // max(1, pred.shape[0]) * pred.element_size()
+    step = max(1, _CPU_CHUNK_BYTES // max(1, sample_bytes))
+    if step >= pred.shape[0]:
+        return [(pred, *tensors)]
+    splits = [t.split(step) if t is not None else None for t in (pred, *tensors)]
+    return [tuple(s[i] if s is not None else None for s in splits) for i in range(len(splits[0]))]
+
+
+def _target_log_softmax_values(
+    pred: torch.Tensor, target: torch.Tensor, valid: Optional[torch.Tensor], inplace: bool
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``log_softmax(where(valid, pred, 0), 1).gather(1, target)``, and the maximum and log-sum of each position.
+
+    The log-probability is ``(x - max) - log(sum(exp(x - max)))``, in that order, as in ``log_softmax``'s CPU kernel.
+    """
+    x = pred if valid is None else torch.where(valid, pred, 0.0)
+    # A NaN or +inf logit, or a position whose logits are all -inf, makes the log-sum NaN, as in log_softmax.
+    x_max = x.amax(1, keepdim=True)
+    x_target = x.gather(1, target)
+    if inplace:
+        # x is a temporary of this function unless it is pred itself.
+        log_sum = (x.sub_(x_max) if valid is not None else x - x_max).exp_().sum(1, keepdim=True).log_()
+    else:
+        log_sum = (x - x_max).exp().sum(1, keepdim=True).log()
+    return (x_target - x_max) - log_sum, x_max, log_sum
+
+
+class _TargetLogSoftmax(torch.autograd.Function):
+    r"""Target-class log-probability ``log_softmax(where(valid, pred, 0), 1).gather(1, target)`` of CPU logits.
+
+    ``log_softmax`` saves a full-size output for its backward, and the ``gather`` and ``masked_fill`` backwards each
+    allocate another full-size gradient: on a large CPU batch, fresh memory that is faulted in on every call. This
+    saves ``pred`` itself and the maximum and log-sum of each position, and the backward writes
+    :math:`(\text{onehot}(t) - \text{softmax}) \cdot g` straight into the one gradient buffer, a batch chunk at a time.
+    The logits are masked as ``log_softmax``'s input was, so NaN and infinity positions are the same, and the gradient
+    at a position that is not ``valid`` is exactly 0, as ``masked_fill``'s backward made it. ``torch.compile`` and
+    functorch get the same arithmetic out of place and unchunked; a double backward differentiates a softmax
+    recomputed from ``pred``. Forward-mode AD never reaches it (see :func:`_focal_loss_cpu_eligible`).
+    """
+
+    @staticmethod
+    def forward(ctx: Any, pred: torch.Tensor, target: torch.Tensor, valid: Optional[torch.Tensor]) -> torch.Tensor:
+        if is_compiling() or torch._C._are_functorch_transforms_active():
+            log_prob, x_max, log_sum = _target_log_softmax_values(pred, target, valid, inplace=False)
+        else:
+            parts = [
+                _target_log_softmax_values(p, t, v, inplace=True) for p, t, v in _batch_chunks(pred, target, valid)
+            ]
+            if len(parts) == 1:
+                log_prob, x_max, log_sum = parts[0]
+            else:
+                log_prob, x_max, log_sum = (torch.cat([part[i] for part in parts]) for i in range(3))
+        ctx.save_for_backward(pred, target, valid, x_max, log_sum)
+        return log_prob
+
+    @staticmethod
+    def backward(ctx: Any, grad_output: torch.Tensor) -> tuple[torch.Tensor, None, None]:
+        pred, target, valid, x_max, log_sum = ctx.saved_tensors
+        if torch.is_grad_enabled():
+            # create_graph: the saved maximum and log-sum have no history, so differentiate a softmax recomputed from
+            # pred.
+            x = pred if valid is None else torch.where(valid, pred, 0.0)
+            grad = (x.softmax(1) * -grad_output).scatter_add(1, target, grad_output)
+            return (grad if valid is None else torch.where(valid, grad, 0.0)), None, None
+        # Out of place under compile and functorch, and for a batched (autograd.grad(is_grads_batched=True), legacy
+        # vmap) or dual (forward-over-reverse) incoming gradient, which cannot be written into one plain buffer.
+        if (
+            is_compiling()
+            or torch._C._are_functorch_transforms_active()
+            or torch._C._functorch.is_legacy_batchedtensor(grad_output)
+            or torch.autograd.forward_ad.unpack_dual(grad_output).tangent is not None
+        ):
+            grad = (((pred - x_max) - log_sum).exp() * -grad_output).scatter_add(1, target, grad_output)
+            return (grad if valid is None else torch.where(valid, grad, 0.0)), None, None
+        # Contiguous for any layout of pred, as the gather backward of the log_softmax path makes its gradient.
+        grad = torch.empty_like(pred, memory_format=torch.contiguous_format)
+        neg_grad_output = -grad_output
+        for p, g, t, v, m, ls, go, neg_go in _batch_chunks(
+            pred, grad, target, valid, x_max, log_sum, grad_output, neg_grad_output
+        ):
+            torch.sub(p, m, out=g)
+            g.sub_(ls).exp_().mul_(neg_go).scatter_add_(1, t, go)
+            if v is not None:
+                g.masked_fill_(~v, 0.0)
+        return grad, None, None
+
+
+def _masked_log_softmax(
+    pred: torch.Tensor, target: torch.Tensor, target_mask: Optional[torch.Tensor], reduced: bool
+) -> torch.Tensor:
+    """Log-softmax over dim 1 of ``pred``, positions outside ``target_mask`` set to 0; at ``target`` if reduced."""
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript only skips a bare is_scripting() guard
+        if reduced and _focal_loss_cpu_eligible(pred):
+            return _TargetLogSoftmax.apply(pred, target.unsqueeze(1), target_mask)
+    if target_mask is not None:
+        # Exclude ignored logits before log-softmax: an overflowing log probability times zero is NaN.
+        pred = pred.masked_fill(~target_mask, 0.0)
+    log_pred_soft = pred.log_softmax(1)
+    if reduced:
+        log_pred_soft = log_pred_soft.gather(1, target.unsqueeze(1))
+    return log_pred_soft
 
 
 def focal_loss(
@@ -39,7 +174,7 @@ def focal_loss(
     weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Criterion that computes Focal loss.
+    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -48,13 +183,41 @@ def focal_loss(
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
     Where:
-       - :math:`p_t` is the model's estimated probability for each class.
+       - :math:`p_t` is the softmax probability of the target class.
+       - :math:`\alpha_t` is :math:`1 - \alpha` for class 0 and :math:`\alpha` for every other class.
+
+    Convention:
+        - ``pred`` holds logits ``(B, C, *)`` and the softmax over dim 1 is taken inside. ``target`` holds int64
+          class indices ``(B, *)`` in ``[0, C)``; its batch and spatial sizes must equal those of ``pred``.
+        - Class 0 is the background: ``alpha`` weights it by :math:`1 - \alpha` and classes :math:`1, \dots, C - 1`
+          by :math:`\alpha`, so a relabelling that moves class 0 changes the loss. ``alpha=None`` weights every class
+          by 1. With ``C = 2`` the target slice equals :func:`~kornia.losses.binary_focal_loss_with_logits` of the
+          logit difference ``pred[:, 1:] - pred[:, :1]`` and the target ``target[:, None]``, with the same ``alpha``
+          and ``gamma``: class 1 is the positive class.
+        - The default ``reduction='none'`` returns a ``(B, C, *)`` map whose target slice holds the focal term above
+          and whose other slices are 0, also where their log-probability overflows to ``-inf``. ``'mean'`` divides
+          its sum by every element of that map, ``C`` times the pixel count, so with ``gamma=0`` and ``alpha=None``
+          it is the mean cross entropy divided by ``C``.
+        - ``weight`` multiplies the slice of class ``c`` by ``weight[c]``; ``'mean'`` is not normalised by the
+          weights.
+        - A pixel labelled ``ignore_index`` (default ``-100``) is 0 in every slice and still counts in the ``'mean'``
+          denominator, where :func:`~kornia.losses.dice_loss` and :func:`~kornia.losses.tversky_loss` drop it.
+          :ref:`Losses and metrics <losses-metrics-conventions>` ports
+          :func:`~torch.nn.functional.cross_entropy` to this loss.
+        - ``alpha`` outside ``[0, 1]`` and a negative ``gamma`` are not validated.
+        - On the CPU, ``'mean'`` and ``'sum'`` without ``weight``, with a finite ``gamma >= 0`` and ``alpha`` ``None``
+          or a number in ``[0, 1]``, of float32 or float64 logits with at least :math:`2^{19}` values compute the
+          target-class log-probability with a custom autograd function, a batch chunk at a time, instead of a
+          full-size ``log_softmax``, unless ``torch.export`` or ``torch.jit.trace`` captures the call, a functorch
+          transform or forward-mode AD runs, or autocast is on. It agrees with ``log_softmax`` to rounding, with the
+          same NaN and infinity positions and a zero gradient at ignored pixels, and supports double backward.
 
     Args:
-        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels torch.Tensor with shape :math:`(N, *)` where each value is an integer
+        pred: logits torch.Tensor with shape ``(N, C, *)`` where C = number of classes.
+        target: labels torch.Tensor with shape ``(N, *)`` where each value is an integer
           representing correct classification :math:`target[i] \in [0, C)`.
-        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]` of classes :math:`1, \dots, C - 1`; class 0 is weighted by
+          :math:`1 - \alpha`. ``None`` weights every class by 1.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -62,7 +225,7 @@ def focal_loss(
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: labels with this value are ignored in the loss computation.
+        ignore_index: labels with this value contribute 0 to the loss but stay in the ``'mean'`` denominator.
 
     Return:
         the computed loss.
@@ -89,34 +252,67 @@ def focal_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.Tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # Reduced, unweighted losses only need the target-class terms. Keep the dense path for parameters whose
+    # non-target zero slices can become NaN (e.g. an infinite class weight or a negative focusing exponent), and for
+    # an alpha that is not a Python number, such as a tensor: checking its range would be data-dependent.
+    reduced = (
+        reduction in ("mean", "sum")
+        and weight is None
+        and 0 <= gamma < float("inf")
+        and (alpha is None or (isinstance(alpha, (int, float)) and 0 <= alpha <= 1))
+    )
+    target_one_hot: Optional[torch.Tensor] = None
+    if reduced:
+        KORNIA_CHECK(target.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {target.dtype}")
+        KORNIA_CHECK(pred.shape[1] >= 1, f"The number of classes must be >= 1. Got pred of shape {pred.shape}")
+        # one_hot's errors before the gather below, whose compiled CPU kernel aborts on a label outside the classes.
+        target = _check_class_labels(target, pred.shape[1])
+    else:
+        target_one_hot = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
-    # mask ignore pixels
     if target_mask is not None:
-        target_mask.unsqueeze_(1)
-        target_one_hot = target_one_hot * target_mask
+        target_mask = target_mask.unsqueeze(1)
+        if target_one_hot is not None:
+            target_one_hot = target_one_hot * target_mask
 
-    # compute F.softmax over the classes axis
-    log_pred_soft: torch.Tensor = pred.log_softmax(1)
+    log_pred_soft = _masked_log_softmax(pred, target, target_mask, reduced)
 
     # compute the actual focal loss
-    loss_tmp: torch.Tensor = -torch.pow(1.0 - log_pred_soft.exp(), gamma) * log_pred_soft * target_one_hot
+    # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0, so a probability that rounds to 1 gives a
+    # NaN gradient. The loss term (1 - p) ** gamma * log(p) has a zero derivative at p = 1, so saturated entries take
+    # the factor's value from a detached copy and pass no gradient through it.
+    base = 1.0 - log_pred_soft.exp()
+    saturated = base == 0
+    focal_weight = torch.where(saturated, base.detach().pow(gamma), base.masked_fill(saturated, 1.0).pow(gamma))
+    # Mask before multiplying: a non-target log probability of -inf otherwise gives NaN values and gradients.
+    if target_one_hot is not None:
+        log_pred_soft = log_pred_soft.masked_fill(target_one_hot == 0, 0.0)
+        loss_tmp = -focal_weight * log_pred_soft * target_one_hot
+    else:
+        if target_mask is not None:
+            log_pred_soft = log_pred_soft.masked_fill(~target_mask, 0.0)
+        loss_tmp = -focal_weight * log_pred_soft
 
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if alpha is not None:
-        alpha_fac = torch.tensor(
-            [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
-        )
-        alpha_fac = alpha_fac.view(broadcast_dims)
+        if reduced:
+            # Fill the two factors on the device: a per-call class vector would be a blocking host-to-device copy.
+            alpha_fac = torch.where(
+                target.unsqueeze(1) == 0, loss_tmp.new_full((), 1 - alpha), loss_tmp.new_full((), alpha)
+            )
+        else:
+            alpha_fac = torch.tensor(
+                [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
+            ).view(broadcast_dims)
         loss_tmp = alpha_fac * loss_tmp
 
     if weight is not None:
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+            f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
+            f"{pred.shape}",
         )
         KORNIA_CHECK(
             weight.device == pred.device,
@@ -129,7 +325,12 @@ def focal_loss(
     if reduction == "none":
         loss = loss_tmp
     elif reduction == "mean":
-        loss = torch.mean(loss_tmp)
+        if reduced:
+            # Accumulate before dividing by C: summing in half precision can overflow even when the mean is finite.
+            acc_dtype = torch.float32 if loss_tmp.dtype in (torch.float16, torch.bfloat16) else loss_tmp.dtype
+            loss = (loss_tmp.mean(dtype=acc_dtype) / num_of_classes).to(loss_tmp.dtype)
+        else:
+            loss = torch.mean(loss_tmp)
     elif reduction == "sum":
         loss = torch.sum(loss_tmp)
     else:
@@ -138,7 +339,7 @@ def focal_loss(
 
 
 class FocalLoss(nn.Module):
-    r"""Criterion that computes Focal loss.
+    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -147,10 +348,15 @@ class FocalLoss(nn.Module):
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
     Where:
-       - :math:`p_t` is the model's estimated probability for each class.
+       - :math:`p_t` is the softmax probability of the target class.
+       - :math:`\alpha_t` is :math:`1 - \alpha` for class 0 and :math:`\alpha` for every other class.
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.focal_loss`.
 
     Args:
-        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]` of classes :math:`1, \dots, C - 1`; class 0 is weighted by
+          :math:`1 - \alpha`. ``None`` weights every class by 1.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -158,11 +364,11 @@ class FocalLoss(nn.Module):
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: labels with this value are ignored in the loss computation.
+        ignore_index: labels with this value contribute 0 to the loss but stay in the ``'mean'`` denominator.
 
     Shape:
-        - Pred: :math:`(N, C, *)` where C = number of classes.
-        - Target: :math:`(N, *)` where each value is an integer
+        - Pred: ``(N, C, *)`` where C = number of classes.
+        - Target: ``(N, *)`` where each value is an integer
           representing correct classification :math:`target[i] \in [0, C)`.
 
     Example:
@@ -188,22 +394,24 @@ class FocalLoss(nn.Module):
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.weight: Optional[torch.Tensor] = weight
+        if isinstance(weight, nn.Parameter):
+            self.weight = weight
+        else:
+            self.register_buffer("weight", weight, persistent=False)
         self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute multi-class focal loss from class logits.
 
         Args:
-            pred: Logit tensor with shape :math:`(B, C, *)`, where :math:`B`
+            pred: Logit tensor with shape ``(B, C, *)``, where :math:`B`
                 is batch size, :math:`C` is number of classes, and ``*`` is
                 any number of spatial dimensions.
-            target: Integer class-label tensor with shape :math:`(B, *)`.
+            target: Integer class-label tensor with shape ``(B, *)``.
 
         Returns:
-            Focal-loss tensor reduced according to ``self.reduction``. The
-            focusing factor ``self.gamma`` down-weights easy examples, while
-            ``self.alpha`` and ``self.weight`` provide optional class weighting.
+            Focal-loss tensor reduced according to ``self.reduction``. See :func:`~kornia.losses.focal_loss` for
+            the class weighting by ``self.alpha`` and ``self.weight``.
         """
         return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
 
@@ -218,7 +426,7 @@ def binary_focal_loss_with_logits(
     weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Criterion that computes Binary Focal loss.
+    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -226,24 +434,41 @@ def binary_focal_loss_with_logits(
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    Where:
-       - :math:`p_t` is the model's estimated probability for each class.
+    Where, for a target of 0 or 1:
+       - :math:`p_t` is the sigmoid probability of the target value.
+       - :math:`\alpha_t` is :math:`\alpha` for a target of 1 and :math:`1 - \alpha` for a target of 0.
+
+    Convention:
+        - Every element of ``pred`` is an independent binary logit: ``pred`` is ``(B, C, *)`` with at least two
+          dimensions and ``target`` has its shape, with values in ``[0, 1]``. The default ``reduction='none'``
+          returns that shape; ``'mean'`` and ``'sum'`` reduce it as in :func:`~kornia.losses.focal_loss`.
+        - ``alpha`` (default ``0.25``) weights the positive term and :math:`1 - \alpha` the negative term. A
+          fractional target :math:`t` weights the two terms by :math:`t` and :math:`1 - t`:
+          :math:`t \alpha (1 - p)^\gamma (-\log p) + (1 - t) (1 - \alpha) p^\gamma (-\log (1 - p))`, where :math:`p`
+          is the sigmoid of the logit.
+        - ``pos_weight`` and ``weight`` are ``(C,)`` vectors applied along dim 1: ``pos_weight[c]`` scales the
+          positive term of channel ``c`` and ``weight[c]`` its whole loss.
+        - A target entry equal to ``ignore_index`` (default ``-100``) contributes 0 and still counts in the
+          ``'mean'`` denominator, as in :func:`~kornia.losses.focal_loss`.
+        - :ref:`Losses and metrics <losses-metrics-conventions>` maps this loss onto torchvision's
+          ``sigmoid_focal_loss`` and torch's ``pos_weight``.
 
     Args:
-        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels torch.Tensor with the same shape as pred :math:`(N, C, *)`
+        pred: logits torch.Tensor with shape ``(N, C, *)`` where C = number of classes.
+        target: labels torch.Tensor with the same shape as pred ``(N, C, *)``
           where each value is between 0 and 1.
-        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]` of the positive term; the negative term is weighted by
+          :math:`1 - \alpha`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        pos_weight: a weight of positive examples with shape :math:`(num\_of\_classes,)`.
-          It is possible to trade off recall and precision by adding weights to positive examples.
+        pos_weight: a weight of the positive term of each channel, with shape :math:`(num\_of\_classes,)`.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: labels with this value are ignored in the loss computation.
+        ignore_index: target entries with this value contribute 0 to the loss but stay in the ``'mean'``
+          denominator.
 
     Returns:
         the computed loss.
@@ -274,8 +499,8 @@ def binary_focal_loss_with_logits(
         log_probs_neg = log_probs_neg * target_mask
         log_probs_pos = log_probs_pos * target_mask
 
-    pos_term: torch.Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
-    neg_term: torch.Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+    pos_term: torch.Tensor = -(gamma * log_probs_neg).exp() * target * log_probs_pos
+    neg_term: torch.Tensor = -(gamma * log_probs_pos).exp() * (1.0 - target) * log_probs_neg
     if alpha is not None:
         pos_term = alpha * pos_term
         neg_term = (1.0 - alpha) * neg_term
@@ -286,7 +511,8 @@ def binary_focal_loss_with_logits(
         KORNIA_CHECK_IS_TENSOR(pos_weight, "pos_weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (pos_weight.shape[0] == num_of_classes and pos_weight.numel() == num_of_classes),
-            f"pos_weight shape must be (num_of_classes,): ({num_of_classes},), got {pos_weight.shape}",
+            f"pos_weight must hold one value per class of pred: got pos_weight of shape {pos_weight.shape} for pred "
+            f"of shape {pred.shape}",
         )
         KORNIA_CHECK(
             pos_weight.device == pred.device,
@@ -301,7 +527,8 @@ def binary_focal_loss_with_logits(
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+            f"weight must hold one value per class of pred: got weight of shape {weight.shape} for pred of shape "
+            f"{pred.shape}",
         )
         KORNIA_CHECK(
             weight.device == pred.device,
@@ -323,7 +550,7 @@ def binary_focal_loss_with_logits(
 
 
 class BinaryFocalLossWithLogits(nn.Module):
-    r"""Criterion that computes Focal loss.
+    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -331,25 +558,31 @@ class BinaryFocalLossWithLogits(nn.Module):
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    where:
-       - :math:`p_t` is the model's estimated probability for each class.
+    where, for a target of 0 or 1:
+       - :math:`p_t` is the sigmoid probability of the target value.
+       - :math:`\alpha_t` is :math:`\alpha` for a target of 1 and :math:`1 - \alpha` for a target of 0.
+
+    Convention:
+        See the Convention block of :func:`~kornia.losses.binary_focal_loss_with_logits`. Unlike the function,
+        ``alpha`` has no default here.
 
     Args:
-        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]` of the positive term; the negative term is weighted by
+          :math:`1 - \alpha`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        pos_weight: a weight of positive examples with shape :math:`(num\_of\_classes,)`.
-          It is possible to trade off recall and precision by adding weights to positive examples.
+        pos_weight: a weight of the positive term of each channel, with shape :math:`(num\_of\_classes,)`.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
-        ignore_index: labels with this value are ignored in the loss computation.
+        ignore_index: target entries with this value contribute 0 to the loss but stay in the ``'mean'``
+          denominator.
 
     Shape:
-        - Pred: :math:`(N, C, *)` where C = number of classes.
-        - Target: the same shape as Pred :math:`(N, C, *)`
+        - Pred: ``(N, C, *)`` where C = number of classes.
+        - Target: the same shape as Pred ``(N, C, *)``
           where each value is between 0 and 1.
 
     Examples:
@@ -376,21 +609,27 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.pos_weight: Optional[torch.Tensor] = pos_weight
-        self.weight: Optional[torch.Tensor] = weight
+        if isinstance(pos_weight, nn.Parameter):
+            self.pos_weight = pos_weight
+        else:
+            self.register_buffer("pos_weight", pos_weight, persistent=False)
+        if isinstance(weight, nn.Parameter):
+            self.weight = weight
+        else:
+            self.register_buffer("weight", weight, persistent=False)
         self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute binary focal loss from logits.
 
         Args:
-            pred: Logit tensor for binary predictions with arbitrary shape.
+            pred: Logit tensor with shape ``(B, C, *)``, at least two dimensions.
             target: Binary target tensor with the same shape as ``pred``.
 
         Returns:
             Binary focal-loss tensor reduced according to ``self.reduction``.
-            Positive examples may be reweighted by ``self.pos_weight`` and
-            examples matching ``self.ignore_index`` are ignored when configured.
+            Positive terms may be reweighted by ``self.pos_weight``, and entries
+            matching ``self.ignore_index`` contribute 0 when configured.
         """
         return binary_focal_loss_with_logits(
             pred, target, self.alpha, self.gamma, self.reduction, self.pos_weight, self.weight, self.ignore_index

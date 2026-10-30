@@ -42,8 +42,12 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         [2] https://www.tandfonline.com/doi/abs/10.1080/03610917808812083
         [3] https://link.springer.com/article/10.1007/BF00054839
 
+    Convention:
+        See the Convention block of :func:`~kornia.losses.charbonnier_loss`; this is Barron's loss with
+        :math:`\alpha = -\infty`.
+
     Args:
-        img1: the predicted torch.Tensor with shape :math:`(*)`.
+        img1: the predicted torch.Tensor with shape ``(*)``.
         img2: the target torch.Tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -52,7 +56,7 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
           summed.
 
     Return:
-        a scalar with the computed loss.
+        the computed loss, with the shape of the inputs for ``reduction='none'`` and a scalar otherwise.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -71,8 +75,14 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
 
     KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
 
-    # compute loss
-    loss = 1.0 - (-0.5 * (img1 - img2) ** 2).exp()
+    # 1 - exp(-s) cancels for small s = r^2 / 2. There it equals 2 t / (1 + t) with t = tanh(s / 2), which does not
+    # cancel; torch.expm1 has only the precision of exp(x) - 1 on MPS (pytorch/pytorch#198708) and in ONNX export.
+    # The exp form is kept for r^2 >= 1, where it is accurate and keeps the gradient of the saturating loss.
+    output_dtype = torch.promote_types(img1.dtype, img2.dtype)
+    diff = img1.float() - img2.float() if output_dtype in (torch.float16, torch.bfloat16) else img1 - img2
+    squared = diff**2
+    t = torch.tanh(0.25 * squared)
+    loss = torch.where(squared < 1.0, 2.0 * t / (1.0 + t), 1.0 - (-0.5 * squared).exp())
 
     # perform reduction
     if reduction == "mean":
@@ -84,7 +94,7 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return loss
+    return loss.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else loss
 
 
 class WelschLoss(nn.Module):
@@ -105,6 +115,9 @@ class WelschLoss(nn.Module):
         [2] https://www.tandfonline.com/doi/abs/10.1080/03610917808812083
         [3] https://link.springer.com/article/10.1007/BF00054839
 
+    Convention:
+        See the Convention block of :func:`~kornia.losses.welsch_loss`.
+
     Args:
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -113,7 +126,7 @@ class WelschLoss(nn.Module):
           summed.
 
     Shape:
-        - img1: the predicted torch.Tensor with shape :math:`(*)`.
+        - img1: the predicted torch.Tensor with shape ``(*)``.
         - img2: the target torch.Tensor with the same shape as img1.
 
     Example:

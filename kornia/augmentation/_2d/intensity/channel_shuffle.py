@@ -21,22 +21,29 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
-    r"""Shuffle the channels of a batch of multi-dimensional images.
+    r"""Randomly permute the channels of images, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomChannelShuffle.png
+
+    .. note::
+        Unlike torchvision's ``RandomChannelPermutation``, which permutes the channels of every image, this class
+        permutes the channels of each sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one
+        draw decides for the whole batch. Pass ``p=1.0`` to permute every sample.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the drawn ``channels`` index the source, not the destination: output channel ``c`` of sample
           ``b`` is input channel ``channels[b][c]``.
         - the permutation is drawn independently per sample; ``same_on_batch=True`` shares one
@@ -76,4 +83,4 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         # a Python loop over the batch (which launched a kernel per sample and blocked
         # torch.compile). `channels` is (B, C); indexing input[(B,1), (B,C)] gives (B, C, H, W).
         batch_index = torch.arange(input.shape[0], device=input.device).view(-1, 1)
-        return input[batch_index, params["channels"]]
+        return input[batch_index, _to_device_nonblocking(params["channels"], input.device)]

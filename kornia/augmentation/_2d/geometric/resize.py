@@ -23,8 +23,9 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core.utils import is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_compiling
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
+from kornia.geometry.transform._crop import _half_pixel_resize_transform
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
@@ -49,9 +50,12 @@ class Resize(GeometricAugmentationBase2D):
         ``"horz"`` the width. The derived side is truncated toward zero; if it becomes zero, the resize raises
         ``AssertionError`` (for example, ``Resize(4, side="long")`` or ``LongestMaxSize(4)`` on a 1-by-10 image).
         This class uses :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and
-        bicubic sampling, and at ``align_corners=False`` the image does not follow ``transform_matrix``
-        (`#4804 <https://github.com/kornia/kornia/issues/4804>`_). :meth:`inverse` resamples to the prior canvas
-        and cannot recover values discarded by a resize.
+        bicubic sampling, and ``transform_matrix`` follows the grid they sample: at ``align_corners=False`` it is
+        the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
+        the corner pixel centres onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
+        ``nearest-exact`` interpolation.
+        :meth:`inverse` resamples to the prior canvas and cannot recover
+        values discarded by a resize.
 
     """
 
@@ -83,14 +87,20 @@ class Resize(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        if flags["resample"] == Resample.NEAREST or (
+            not flags["align_corners"] and flags["resample"] in (Resample.BILINEAR, Resample.BICUBIC)
+        ):
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
+            return _half_pixel_resize_transform(src, dst).expand(input.shape[0], -1, -1)
         # NOTE: a former `if params["output_size"] == input.shape[-2:]: return eye_like(...)`
         # short-circuit was dead code — comparing a tensor to a ``torch.Size`` falls back to
         # identity ``==`` and is *always* Python ``False``, so the branch never ran. It also
         # graph-broke torch.compile (a Python ``if`` on a would-be tensor). Dropped; the
         # perspective transform below already yields identity when src == dst, so behaviour is
         # byte-identical.
-        transform: torch.Tensor = torch.as_tensor(
-            get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
+        transform: torch.Tensor = _to_device_nonblocking(
+            get_perspective_transform(params["src"], params["dst"]), input.device, input.dtype
         )
         return transform.expand(input.shape[0], -1, -1)
 
@@ -108,8 +118,10 @@ class Resize(GeometricAugmentationBase2D):
         # data-dependent `output_size` param).
         if isinstance(flags["size"], (tuple, list)):
             out_size: Tuple[int, int] = (int(flags["size"][0]), int(flags["size"][1]))
-        elif is_exporting():
-            # `output_size` is a function of the (static) input shape; recompute it rather than read the tensor.
+        elif is_compiling() or input.shape[0] == 0:
+            # `output_size` is a function of the (static) input shape; recompute it rather than read the tensor,
+            # which graph capture (torch.compile, torch.export) cannot do.
+            # An empty batch has no row to read it from, and the generator returns no `output_size` for it (#4429).
             h, w = input.shape[-2:]
             out_size = _side_to_image_size(int(flags["size"]), w / h, flags["side"])
         else:
@@ -117,7 +129,7 @@ class Resize(GeometricAugmentationBase2D):
         return resize(
             input,
             out_size,
-            interpolation=flags["resample"].name.lower(),
+            interpolation="nearest-exact" if flags["resample"] == Resample.NEAREST else flags["resample"].name.lower(),
             align_corners=(
                 flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
             ),
@@ -132,13 +144,23 @@ class Resize(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
         if not isinstance(size, tuple):
-            raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
+            raise TypeError(f"Expected the size be a tuple. Got {type(size)}")
 
         if not isinstance(transform, torch.Tensor):
             raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
+        if flags["resample"] == Resample.NEAREST:
+            # ``grid_sample`` only supports legacy ``nearest``. The forward path uses
+            # ``nearest-exact``, so invert a resize with the same interpolation rule.
+            return resize(input, size, interpolation="nearest-exact")
+
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            "zeros",
+            flags["align_corners"],
         )
 
 

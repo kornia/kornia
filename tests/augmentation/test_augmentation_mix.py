@@ -24,6 +24,7 @@ from kornia.augmentation import (
     AugmentationSequential,
     PatchMix,
     RandomCutMixV2,
+    RandomHorizontalFlip,
     RandomJigsaw,
     RandomMixUpV2,
     RandomMosaic,
@@ -294,6 +295,18 @@ class TestRandomMixUpV2(BaseTester):
 
 
 class TestRandomCutMixV2(BaseTester):
+    # A model moved to half precision moves its augmentations too. CutMix's Beta draw used to raise there on CPU
+    # ("dirichlet" has no Half kernel), on 0.8.3 as well for a direct .to(); it now draws in float32.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_module_moved_to_half_precision(self, device, half_dtype):
+        torch.manual_seed(0)
+        aug = RandomCutMixV2(p=1.0, data_keys=["input", "class"]).to(device=device, dtype=half_dtype)
+        image = torch.rand(2, 3, 8, 8, device=device, dtype=half_dtype)
+        out_image, out_labels = aug(image, torch.tensor([0, 1], device=device))
+        assert out_image.dtype == half_dtype
+        assert torch.isfinite(out_image).all()
+        assert torch.isfinite(out_labels).all()
+
     def test_smoke(self):
         f = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         expected_repr = "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
@@ -518,9 +531,11 @@ class TestRandomCutMixV2(BaseTester):
         _, out_label = f(input, label)
 
         w, h = infer_bbox_shape(f._params["crop_src"][0])
-        expected_lambda = w.to(torch.float64) * h.to(torch.float64) / (15 * 17)
+        expected_lambda = (
+            w.to(device=device, dtype=torch.float64) * h.to(device=device, dtype=torch.float64) / (15 * 17)
+        )
 
-        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
+        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=1e-15)
 
     def test_cutmix_prob_single_gate(self, device, dtype):
         # Regression test for #4649: p must not be applied twice
@@ -663,6 +678,61 @@ class TestRandomMosaic(BaseTester):
         torch.testing.assert_close(output[0], boxes[0])
         torch.testing.assert_close(output[2], boxes[2])
 
+    @pytest.mark.parametrize("sequential", [False, True])
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_mosaic_filtered_exports_4714(self, sequential, data_key, device, dtype):
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 4.0, 4.0]]])
+        mode = {"bbox_xyxy": "xyxy", "bbox_xywh": "xywh", "bbox": "vertices_plus"}[data_key]
+        if data_key == "bbox" and not sequential:
+            mode = "vertices"
+        boxes = Boxes.from_tensor(xyxy).to_tensor(mode)
+        mosaic = RandomMosaic(p=1.0, min_bbox_size=99.0)
+        aug = AugmentationSequential(mosaic, data_keys=["input", data_key]) if sequential else mosaic
+        if sequential:
+            aug(image, boxes)
+            params = aug._params
+            params[0].data["batch_prob"] = image.new_tensor([0.0, 1.0])
+            _, output = aug(image, boxes, params=params)
+        else:
+            params = mosaic.forward_parameters(image.shape)
+            params["batch_prob"] = image.new_tensor([0.0, 1.0])
+            _, output = aug(image, boxes, params=params, data_keys=["input", data_key])
+        self.assert_close(output[0, :1], boxes[0], atol=0.0, rtol=0.0)
+        assert output[0, 1:].count_nonzero() == 0
+        assert output[1].count_nonzero() == 0
+
+    def test_annotation_filter_validity_follows_gate_4714(self, device, dtype):
+        class FilterBoxes(RandomHorizontalFlip):
+            def apply_transform_box(self, input, params, flags, transform=None):
+                return input.filter_boxes_by_area(2.0)
+
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 2.0, 2.0]]])
+        boxes = Boxes.from_tensor(xyxy)
+        aug = FilterBoxes(p=0.5)
+        params = aug.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0.0, 1.0])
+        output = aug.transform_boxes(boxes, params, aug.flags)
+        self.assert_close(output.to_tensor("xyxy")[0], xyxy[0])
+        assert output.to_tensor("xyxy")[1].count_nonzero() == 0
+        self.assert_close(boxes.to_tensor("xyxy"), xyxy)
+
+    def test_mosaic_permutates_filtered_validity_4714(self, device, dtype):
+        image = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(
+            image.new_tensor([[[1.0, 1.0, 2.0, 2.0]], [[1.0, 1.0, 4.0, 4.0]]])
+        ).filter_boxes_by_area(2.0)
+        aug = RandomMosaic(p=1.0, output_size=(12, 16), start_ratio_range=(0.0, 0.0))
+        params = aug.forward_parameters(image.shape)
+        params["permutation"] = torch.tensor([[0, 1, 0, 1], [1, 0, 1, 0]], device=device)
+        output = aug.apply_transform_boxes(boxes, params, aug.flags).to_tensor("xyxy")
+        invalid = params["permutation"] == 0
+        assert output[invalid].count_nonzero() == 0
+        # Select whole boxes before slicing coordinates; mixed mask/slice indexing differs across torch versions.
+        valid_boxes = output[~invalid]
+        assert (valid_boxes[:, 2:] > valid_boxes[:, :2]).all()
+
     def test_partial_batch_preserves_unselected_filtered_boxes_4679(self, device, dtype):
         input = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
         boxes = torch.tensor(
@@ -690,6 +760,61 @@ class TestRandomMosaic(BaseTester):
 
         torch.testing.assert_close(output[0], boxes[0])
         torch.testing.assert_close(output[2], boxes[2])
+
+    @pytest.mark.parametrize("sequential", [False, True])
+    @pytest.mark.parametrize("gate", [(1.0, 1.0, 1.0, 1.0), (1.0, 0.0, 1.0, 0.0)])
+    @pytest.mark.parametrize("data_key", ["bbox_xyxy", "bbox_xywh", "bbox"])
+    def test_list_boxes_follow_tile_sources_4715(self, data_key, gate, sequential, device, dtype):
+        # The samples carry 1, 3, 2 and 1 boxes, so each tile's padding depends on its source image. The window
+        # starts at the canvas origin and spans the whole 2x2 canvas, so every box is translated and none is clipped.
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        xyxy = [
+            torch.tensor(sample, device=device, dtype=dtype)
+            for sample in (
+                [[1.0, 1.0, 3.0, 3.0]],
+                [[1.0, 1.0, 3.0, 3.0], [2.0, 1.0, 6.0, 5.0], [0.5, 0.5, 2.0, 2.0]],
+                [[1.0, 1.0, 4.0, 4.0], [2.0, 2.0, 5.0, 5.0]],
+                [[0.0, 0.0, 2.0, 2.0]],
+            )
+        ]
+        permutation = torch.tensor([[0, 2, 2, 1], [1, 1, 3, 3], [2, 0, 0, 0], [3, 2, 1, 3]], device=device)
+
+        def convert(boxes: torch.Tensor) -> torch.Tensor:
+            if data_key == "bbox_xywh":
+                return torch.cat([boxes[:, :2], boxes[:, 2:] - boxes[:, :2]], -1)
+            if data_key == "bbox":
+                x1, y1, x2, y2 = boxes.unbind(-1)
+                return torch.stack([torch.stack(v, -1) for v in ((x1, y1), (x2, y1), (x2, y2), (x1, y2))], -2)
+            return boxes
+
+        boxes = [convert(b) for b in xyxy]
+        kwargs = {"output_size": (12, 16), "start_ratio_range": (0.0, 0.0), "p": 1.0}
+        if sequential:
+            aug = AugmentationSequential(RandomMosaic(**kwargs), data_keys=["input", data_key])
+            aug(image, boxes)
+            params = aug._params
+            params[0].data["permutation"] = permutation
+            params[0].data["batch_prob"] = params[0].data["batch_prob"].new_tensor(gate)
+        else:
+            aug = RandomMosaic(**kwargs, data_keys=["input", data_key])
+            aug(image, boxes)
+            params = dict(aug._params)
+            params["permutation"] = permutation
+            params["batch_prob"] = params["batch_prob"].new_tensor(gate)
+        _, out = aug(image, boxes, params=params)
+
+        assert isinstance(out, list)
+        assert len(out) == 4
+        for b, selected in enumerate(gate):
+            if not selected:
+                self.assert_close(out[b], boxes[b])
+                continue
+            tiles = []
+            for i in range(2):
+                for j in range(2):
+                    offset = torch.tensor([8.0 * i, 6.0 * j] * 2, device=device, dtype=dtype)
+                    tiles.append(xyxy[int(permutation[b, 2 * i + j])] + offset)
+            self.assert_close(out[b], convert(torch.cat(tiles)))
 
     @pytest.mark.parametrize(("keepdim", "expected_shape"), [(False, (1, 1, 6, 8)), (True, (1, 6, 8))])
     def test_non_square_unbatched_keepdim_4438(self, keepdim, expected_shape):
@@ -724,6 +849,32 @@ class TestRandomMosaic(BaseTester):
                 region = out_image[n, 0, y1:y2, x1:x2]
                 assert region.numel() > 0, (n, (x1, y1, x2, y2))
                 assert bool((region > 0).all()), (n, (x1, y1, x2, y2), out_image[n, 0])
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_unknown_padding_mode_rejected_at_construction_5914(self, cropping_mode):
+        with pytest.raises(
+            ValueError,
+            match=r"'bogus' is not a valid padding_mode\. Expected one of 'constant', 'reflect', 'replicate'\.",
+        ):
+            RandomMosaic(padding_mode="bogus", cropping_mode=cropping_mode)
+
+    @pytest.mark.parametrize("padding_mode", ["zeros", "border", "reflection", "Constant"])
+    def test_grid_sample_padding_names_rejected_5914(self, padding_mode):
+        # `cropping_mode="resample"` used to pass grid_sample's own names through; names are matched as given.
+        with pytest.raises(ValueError, match=f"'{padding_mode}' is not a valid padding_mode"):
+            RandomMosaic(padding_mode=padding_mode, cropping_mode="resample")
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize("padding_mode", ["constant", "reflect", "replicate"])
+    def test_valid_padding_mode_forward_5914(self, cropping_mode, padding_mode, device, dtype):
+        image = torch.rand(2, 3, 32, 48, device=device, dtype=dtype)
+        output = RandomMosaic(
+            output_size=(32, 48),
+            p=1.0,
+            padding_mode=padding_mode,
+            cropping_mode=cropping_mode,
+        )(image)
+        assert output.shape == (2, 3, 32, 48)
 
     def test_smoke(self):
         f = RandomMosaic(data_keys=["input", "class"])
@@ -776,27 +927,29 @@ class TestRandomMosaic(BaseTester):
             dtype=dtype,
         )
 
+        # The start corner is floored to the integer the slice crop uses (issue #5464), so boxes are
+        # translated by whole pixels and land on integer coordinates.
         expected_box = torch.tensor(
             [
                 [
-                    [0.7074, 0.7099, 2.7074, 2.7099],
+                    [1.0000, 1.0000, 3.0000, 3.0000],
                     [0.0000, 0.0000, 1.0000, 1.0000],
-                    [0.0000, 5.7099, 2.7074, 8.0000],
-                    [0.0000, 2.7099, 1.0000, 4.7099],
-                    [7.0000, 0.7099, 8.0000, 2.7099],
-                    [5.7074, 0.0000, 7.7074, 1.0000],
+                    [0.0000, 6.0000, 3.0000, 8.0000],
+                    [0.0000, 3.0000, 1.0000, 5.0000],
+                    [7.0000, 1.0000, 8.0000, 3.0000],
+                    [6.0000, 0.0000, 8.0000, 1.0000],
                     [7.0000, 7.0000, 8.0000, 8.0000],
-                    [5.7074, 5.7099, 7.7074, 7.7099],
+                    [6.0000, 6.0000, 8.0000, 8.0000],
                 ],
                 [
-                    [0.0000, 0.0000, 1.0000, 2.8313],
+                    [0.0000, 0.0000, 1.0000, 3.0000],
                     [0.0000, 0.0000, 1.0000, 1.0000],
                     [0.0000, 7.0000, 1.0000, 8.0000],
-                    [0.0000, 6.8313, 1.0000, 8.0000],
-                    [4.5036, 0.0000, 8.0000, 2.8313],
-                    [1.5036, 0.0000, 3.5036, 1.0000],
-                    [4.5036, 6.8313, 8.0000, 8.0000],
-                    [1.5036, 3.8313, 3.5036, 5.8313],
+                    [0.0000, 7.0000, 1.0000, 8.0000],
+                    [5.0000, 0.0000, 8.0000, 3.0000],
+                    [2.0000, 0.0000, 4.0000, 1.0000],
+                    [5.0000, 7.0000, 8.0000, 8.0000],
+                    [2.0000, 4.0000, 4.0000, 6.0000],
                 ],
             ],
             device=device,
@@ -1107,14 +1260,18 @@ class TestRandomTransplantation(BaseTester):
         image_out2, mask_out2 = AugmentationSequential(f)(image, mask, data_keys=["image", "mask"])
 
         self.assert_close(image_out, image_out2)
-        self.assert_close(mask_out, mask_out2)
+        if n_spatial == 2:
+            assert mask_out2.shape == (mask.shape[0], 1, *mask.shape[1:])
+            self.assert_close(mask_out, mask_out2[:, 0])
+        else:
+            self.assert_close(mask_out, mask_out2)
 
     @pytest.mark.parametrize(
         "input_shape_image, input_shape_mask, target_shape_image",
         [
-            [(1, 2, 3, 4), (1, 3, 4), (1, 2, 3, 4)],  # (B, C, H, W)
-            [(1, 2, 5, 3, 4), (1, 5, 3, 4), (1, 2, 5, 3, 4)],  # (B, C, D, H, W)
-            [(1, 1, 1, 1), (1, 1, 1), (1, 1, 1, 1)],  # (B, C, H, W)
+            ((1, 2, 3, 4), (1, 3, 4), (1, 2, 3, 4)),  # (B, C, H, W)
+            ((1, 2, 5, 3, 4), (1, 5, 3, 4), (1, 2, 5, 3, 4)),  # (B, C, D, H, W)
+            ((1, 1, 1, 1), (1, 1, 1), (1, 1, 1, 1)),  # (B, C, H, W)
         ],
     )
     def test_cardinality(self, input_shape_image, input_shape_mask, target_shape_image, device, dtype):
@@ -1148,25 +1305,25 @@ class TestRandomTransplantation(BaseTester):
         with pytest.raises(Exception, match="excluded_labels must be a 1-dimensional"):
             RandomTransplantation(p=1.0, excluded_labels=torch.tensor([[0, 1]], device=device, dtype=dtype))
 
+        f = RandomTransplantation(p=1.0)
         with pytest.raises(Exception, match=r"Length of keys.*does not match number of inputs"):
-            f = RandomTransplantation(p=1.0)
             f(image, mask, data_keys=["input", "mask", "mask"])
 
+        params_copy = copy.deepcopy(params)
+        params_copy["selected_labels"] = torch.tensor([[0, 1]], device=device, dtype=dtype)
+        del params_copy["selection"]
         with pytest.raises(Exception, match=r"selected_labels must be a 1-dimensional torch\.tensor"):
-            params_copy = copy.deepcopy(params)
-            params_copy["selected_labels"] = torch.tensor([[0, 1]], device=device, dtype=dtype)
-            del params_copy["selection"]
             f(image, mask, params=params_copy)
 
+        params_copy = copy.deepcopy(params)
+        params_copy["selected_labels"] = torch.tensor([0, 1], device=device, dtype=dtype)
+        del params_copy["selection"]
         with pytest.raises(Exception, match="There cannot be more selected labels"):
-            params_copy = copy.deepcopy(params)
-            params_copy["selected_labels"] = torch.tensor([0, 1], device=device, dtype=dtype)
-            del params_copy["selection"]
             f(image, mask, params=params_copy)
 
-        with pytest.raises(Exception, match="Every image input must have one additional dimension"):
+        with pytest.raises(Exception, match="Every segmentation mask must have one fewer dimension"):
             f(image.unsqueeze(dim=-1), mask)
 
+        image = torch.rand(1, 3, 2, 5, device=device, dtype=torch.float64)
         with pytest.raises(Exception, match="The dimensions of the input image and segmentation mask must match"):
-            image = torch.rand(1, 3, 2, 5, device=device, dtype=torch.float64)
             f(image, mask)

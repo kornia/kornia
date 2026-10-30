@@ -23,15 +23,21 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core.utils import _as_tensor_nonblocking
 
 # from kornia.geometry.conversions import deg2rad (use torch.deg2rad instead)
 from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 
 
 class RandomShear(GeometricAugmentationBase2D):
-    r"""Apply a random 2D shear transformation to a torch.Tensor image.
+    r"""Shear images by random angles in degrees, applied per sample with probability ``p`` (default 0.5).
 
     The transformation is computed so that the image center is kept invariant.
+
+    .. note::
+        Unlike torchvision's ``RandomAffine(degrees=0, shear=...)``, which shears every image, this class shears each
+        sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch.
+        Pass ``p=1.0`` to shear every sample.
 
     Args:
         shear: Range of degrees to select from.
@@ -43,12 +49,12 @@ class RandomShear(GeometricAugmentationBase2D):
         padding_mode: padding mode from "torch.zeros" (0), "border" (1) or "reflection" (2).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
@@ -107,10 +113,10 @@ class RandomShear(GeometricAugmentationBase2D):
         # Inline ``deg2rad`` so the trace lowers to plain multiply (legacy ONNX has
         # no symbolic for ``aten::deg2rad`` at opset 20).
         deg2rad_factor: float = math.pi / 180.0
-        shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor
-        shear_y = torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype) * deg2rad_factor
+        shear_x = _as_tensor_nonblocking(params["shear_x"], input.device, input.dtype) * deg2rad_factor
+        shear_y = _as_tensor_nonblocking(params["shear_y"], input.device, input.dtype) * deg2rad_factor
         return get_shear_matrix2d(
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
+            _as_tensor_nonblocking(params["center"], input.device, input.dtype),
             shear_x,
             shear_y,
         )

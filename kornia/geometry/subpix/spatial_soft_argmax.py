@@ -17,17 +17,18 @@
 
 from __future__ import annotations
 
+import math
+import warnings
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.utils import is_exporting
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
-from .dsnt import spatial_expectation2d, spatial_softmax2d
+from .dsnt import _check_positive_temperature, spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
 # Flat offsets for gathering the full 3x3x3 neighbourhood of a voxel.
@@ -48,6 +49,17 @@ _PATCH_DW = torch.tensor(
 )
 
 
+def _warn_strict_maxima_bonus() -> None:
+    # stacklevel 3 names the caller of the public function or module constructor that received the argument.
+    warnings.warn(
+        "`strict_maxima_bonus` is deprecated since kornia 0.9.0 and is ignored: no bonus is added to the returned "
+        "values. The argument will be removed in a future release. To keep only strict maxima, select them with a "
+        "`kornia.geometry.subpix.nms3d` mask.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> torch.Tensor:
     r"""Generate a kernel to with window coordinates, residual to window center.
 
@@ -62,8 +74,9 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
     """
     if device is None:
         device = torch.device("cpu")
+    # pixel offsets from the window center, (k - 1) / 2 per axis, as _get_center_kernel2d averages to
     window_grid2d = create_meshgrid(h, w, False, device=device)
-    window_grid2d = normalize_pixel_coordinates(window_grid2d, h, w)
+    window_grid2d = window_grid2d - torch.tensor([(w - 1) / 2, (h - 1) / 2], device=device, dtype=window_grid2d.dtype)
     return window_grid2d.permute(3, 0, 1, 2)
 
 
@@ -155,11 +168,10 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
     """
     if device is None:
         device = torch.device("cpu")
-    grid2d = create_meshgrid(h, w, True, device=device)
-    if d > 1:
-        z = torch.linspace(-1, 1, d, device=device).view(d, 1, 1, 1)
-    else:  # only onr channel with index == 0
-        z = torch.zeros(1, 1, 1, 1, device=device)
+    # voxel offsets from the window center, (k - 1) / 2 per axis, as _get_center_kernel3d averages to
+    grid2d = create_meshgrid(h, w, False, device=device)
+    grid2d = grid2d - torch.tensor([(w - 1) / 2, (h - 1) / 2], device=device, dtype=grid2d.dtype)
+    z = (torch.arange(d, device=device, dtype=grid2d.dtype) - (d - 1) / 2).view(d, 1, 1, 1)
     grid3d = torch.cat([z.repeat(1, h, w, 1).contiguous(), grid2d.repeat(d, 1, 1, 1)], 3)
     return grid3d.permute(3, 0, 1, 2).unsqueeze(1)
 
@@ -167,8 +179,8 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
 class ConvSoftArgmax2d(nn.Module):
     r"""nn.Module that calculates soft argmax 2d per window.
 
-    See
-    :func: `~kornia.geometry.subpix.conv_soft_argmax2d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_soft_argmax2d`.
     """
 
     def __init__(
@@ -210,7 +222,7 @@ class ConvSoftArgmax2d(nn.Module):
         window coordinates, which gives differentiable subpixel coordinates.
 
         Args:
-            x: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+            x: Heatmap tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is the number of heatmap
                 channels, :math:`H` is height, and :math:`W` is width.
 
@@ -234,8 +246,8 @@ class ConvSoftArgmax2d(nn.Module):
 class ConvSoftArgmax3d(nn.Module):
     r"""nn.Module that calculates soft argmax 3d per window.
 
-    See
-    :func: `~kornia.geometry.subpix.conv_soft_argmax3d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_soft_argmax3d`.
     """
 
     def __init__(
@@ -247,9 +259,11 @@ class ConvSoftArgmax3d(nn.Module):
         normalized_coordinates: bool = False,
         eps: float = 1e-8,
         output_value: bool = True,
-        strict_maxima_bonus: float = 0.0,
+        strict_maxima_bonus: Optional[float] = None,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
@@ -257,7 +271,6 @@ class ConvSoftArgmax3d(nn.Module):
         self.normalized_coordinates = normalized_coordinates
         self.eps = eps
         self.output_value = output_value
-        self.strict_maxima_bonus = strict_maxima_bonus
 
     def __repr__(self) -> str:
         return (
@@ -268,7 +281,6 @@ class ConvSoftArgmax3d(nn.Module):
             f"temperature={self.temperature}, "
             f"normalized_coordinates={self.normalized_coordinates}, "
             f"eps={self.eps}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"output_value={self.output_value})"
         )
 
@@ -276,7 +288,7 @@ class ConvSoftArgmax3d(nn.Module):
         """Estimate local 3D coordinates from response-volume windows.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`D` is depth or scale level, :math:`H` is height, and
                 :math:`W` is width.
@@ -295,8 +307,29 @@ class ConvSoftArgmax3d(nn.Module):
             self.normalized_coordinates,
             self.eps,
             self.output_value,
-            self.strict_maxima_bonus,
         )
+
+
+def _unfold3d(padded: torch.Tensor, kernel_size: tuple[int, int, int], stride: tuple[int, int, int]) -> torch.Tensor:
+    """Unfold an already padded ``(N, 1, D, H, W)`` volume into ``(N, D_out, kz * ky * kx, H_out * W_out)`` windows.
+
+    Each depth slice is unfolded like an image, then the slices are unfolded along depth, so the window values are in
+    (depth, row, column) order.
+    """
+    n, _, d_p, h_p, w_p = padded.shape
+    kz, ky, kx = kernel_size
+    sz, sy, sx = stride
+    columns = F.unfold(padded.reshape(n * d_p, 1, h_p, w_p), (ky, kx), stride=(sy, sx))
+    num_windows = columns.shape[-1]
+    columns = columns.view(n, d_p, ky * kx, num_windows)
+    if torch.onnx.is_in_onnx_export():
+        # The legacy TorchScript ONNX exporter cannot lower Tensor.unfold here. Strided depth slices give the same
+        # windows, but they copy more than the view below, so only the export takes this path.
+        last = sz * ((d_p - kz) // sz)
+        columns = torch.stack([columns[:, i : i + last + 1 : sz] for i in range(kz)], dim=2)  # (N, D_out, kz, ky*kx, L)
+        return columns.reshape(n, columns.shape[1], kz * ky * kx, num_windows)
+    columns = columns.unfold(1, kz, sz)  # (N, D_out, ky * kx, L, kz)
+    return columns.permute(0, 1, 4, 2, 3).reshape(n, columns.shape[1], kz * ky * kx, num_windows)
 
 
 def conv_soft_argmax2d(
@@ -312,22 +345,34 @@ def conv_soft_argmax2d(
     r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
-        ij(X) = \frac{\sum{(i,j)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
+        xy(X) = \frac{\sum_{p \in X} (x_p, y_p) \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
     .. math::
-        val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
+        val(X) = \frac{\sum_{p \in X} v_p \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
-    where :math:`T` is temperature.
+    where :math:`X` is a window, :math:`(x_p, y_p)` the column and row of its pixel :math:`p`, :math:`v_p` the
+    heatmap value there and :math:`T` the temperature.
+
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. This function defaults to
+          normalized, corner-aligned coordinates.
+          :func:`conv_soft_argmax3d` defaults to pixel coordinates and ``output_value=True`` instead.
+        - ``padding`` adds positions of zero weight, as if the input were padded with ``-inf``: a window that
+          overhangs the border averages over its in-image pixels only.
+        - Each window is the softmax of its own values: the exponent is shifted by the window's maximum, so a
+          window's coordinates and value do not depend on the rest of the map, in float16 either. ``eps`` is
+          accepted and has no effect (`#5020 <https://github.com/kornia/kornia/issues/5020>`_).
 
     Args:
         input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
         kernel_size: the size of the window.
         stride: the stride of the window.
-        padding: input zero padding.
-        temperature: factor to apply to input.
+        padding: the padding added to each side of the input, at most half of ``kernel_size`` on every axis.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
-        eps: small value to avoid zero division.
+        eps: accepted for backward compatibility and ignored; every window's softmax denominator is at least 1.
         output_value: if True, val is output, if False, only ij.
 
     Returns:
@@ -356,49 +401,50 @@ def conv_soft_argmax2d(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
-    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
-    if not is_exporting() and temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    _check_positive_temperature(temperature)
 
     b, c, h, w = input.shape
     ky, kx = kernel_size
+    sy, sx = (stride, stride) if isinstance(stride, int) else stride
+    py, px = (padding, padding) if isinstance(padding, int) else padding
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
-    input = input.view(b * c, 1, h, w)
+    input = input.reshape(b * c, 1, h, w)
 
     center_kernel: torch.Tensor = _get_center_kernel2d(ky, kx, device).to(dtype)
     window_kernel: torch.Tensor = _get_window_grid_kernel2d(ky, kx, device).to(dtype)
 
-    # applies exponential normalization trick
-    # https://timvieira.github.io/blog/post/2014/02/11/exp-F.normalize-trick/
-    # https://github.com/pytorch/pytorch/blob/bcb0bb7e0e03b386ad837015faba6b4b16e3bfb9/aten/src/ATen/native/SoftMax.cpp#L44
-    x_max = input.amax(dim=(-2, -1), keepdim=True)  # faster than F.adaptive_max_pool2d(input, (1,1))
+    if not (0 <= 2 * py <= ky and 0 <= 2 * px <= kx):
+        raise ValueError(
+            f"padding must be non-negative and at most half of kernel_size. Got {padding} for kernel_size {kernel_size}"
+        )
 
-    # max is detached to prevent undesired backprop loops in the graph
-    x_exp = ((input - x_max.detach()) / temperature).exp()
-
-    # F.avg_pool2d(.., divisor_override = 1.0) - proper way for sum pool in PyTorch 1.2.
-    # Not available yet in version 1.0, so let's do manually
-    pool_coef: float = float(kx * ky)
-
-    # F.softmax denominator
-    den = pool_coef * F.avg_pool2d(x_exp, kernel_size, stride=stride, padding=padding) + eps
-
-    x_softmaxpool = pool_coef * F.avg_pool2d(x_exp * input, kernel_size, stride=stride, padding=padding) / den
-    x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3))
+    # Softmax over each window on its own: `softmax` shifts every window by its own maximum, so the denominator is
+    # at least 1 whatever the rest of the map holds and no `eps` is needed. A single `exp` map shifted by the
+    # map-wide maximum underflowed for windows far below it and `eps` then pulled them to their centre (#5020).
+    # The unfolded windows hold `kernel_size` values per output position. The map is divided by the temperature
+    # before it is unfolded, so a tensor temperature broadcasts against the map as before, and padded with `-inf`
+    # logits, which carry no weight.
+    n = b * c
+    h_out = (h + 2 * py - ky) // sy + 1
+    w_out = (w + 2 * px - kx) // sx + 1
+    logits = F.unfold(F.pad(input / temperature, [px, px, py, py], value=float("-inf")), kernel_size, stride=stride)
+    weights = torch.softmax(logits, dim=1)
 
     # We need to output also coordinates
-    # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid(h, w, False, device).to(dtype).permute(0, 3, 1, 2)
+    # Pooled window center coordinates. The grid covers the padded input and carries the coordinates on into the
+    # padding: with an even kernel_size and padding = k / 2, a border window's centre straddles a padded pixel,
+    # and a zero-padded grid would average 0 into it instead of -1 or W. The offset is applied before the cast, so a
+    # float16 or bfloat16 coordinate is rounded once, as on an unpadded grid.
+    grid_global: torch.Tensor = create_meshgrid(h + 2 * py, w + 2 * px, False, device)
+    grid_global = grid_global - torch.tensor([px, py], device=device, dtype=grid_global.dtype)
+    grid_global = grid_global.to(dtype).permute(0, 3, 1, 2)
 
-    grid_global_pooled = F.conv2d(grid_global, center_kernel, stride=stride, padding=padding)
+    grid_global_pooled = F.conv2d(grid_global, center_kernel, stride=stride)
 
-    # Coordinates of maxima residual to window center
-    # prepare kernel
-    coords_max: torch.Tensor = F.conv2d(x_exp, window_kernel, stride=stride, padding=padding)
-
-    coords_max = coords_max / den.expand_as(coords_max)
-    coords_max = coords_max + grid_global_pooled.expand_as(coords_max)
+    # Coordinates of maxima residual to window center: the softmax-weighted pixel offsets of each window
+    offsets = window_kernel.reshape(2, ky * kx)
+    coords_max = (offsets @ weights).view(n, 2, h_out, w_out) + grid_global_pooled.expand(n, 2, h_out, w_out)
     # [:,:, 0, ...] is x
     # [:,:, 1, ...] is y
 
@@ -409,9 +455,13 @@ def conv_soft_argmax2d(
     # Back B*C -> (b, c)
     coords_max = coords_max.view(b, c, 2, coords_max.size(2), coords_max.size(3))
 
-    if output_value:
-        return coords_max, x_softmaxpool
-    return coords_max
+    if not output_value:
+        return coords_max
+
+    # Padded positions have value 0 here and weight 0, so they do not enter the pooled value.
+    windows = F.unfold(F.pad(input, [px, px, py, py]), kernel_size, stride=stride)
+    x_softmaxpool = (weights * windows).sum(1).view(b, c, h_out, w_out)
+    return coords_max, x_softmaxpool
 
 
 def conv_soft_argmax3d(
@@ -423,30 +473,36 @@ def conv_soft_argmax3d(
     normalized_coordinates: bool = False,
     eps: float = 1e-8,
     output_value: bool = True,
-    strict_maxima_bonus: float = 0.0,
+    strict_maxima_bonus: Optional[float] = None,
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
-             ijk(X) = \frac{\sum{(i,j,k)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
+        dxy(X) = \frac{\sum_{p \in X} (d_p, x_p, y_p) \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
     .. math::
-             val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
+        val(X) = \frac{\sum_{p \in X} v_p \exp(v_p / T)}{\sum_{p \in X} \exp(v_p / T)}
 
-    where ``T`` is temperature.
+    where :math:`X` is a window, :math:`(d_p, x_p, y_p)` the depth, column and row of its voxel :math:`p`,
+    :math:`v_p` the heatmap value there and :math:`T` the temperature.
+
+    Convention:
+        - See the convention block of :func:`conv_soft_argmax2d`. Coordinates follow
+          :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to pixel coordinates.
 
     Args:
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
         kernel_size:  size of the window.
         stride: stride of the window.
-        padding: input zero padding.
-        temperature: factor to apply to input.
-        normalized_coordinates: whether to return the coordinates normalized in the range of :math:[-1, 1]`.
+        padding: the padding added to each side of the input, at most half of ``kernel_size`` on every axis.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          A tensor temperature is not checked under ``torch.compile`` or export.
+        normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
-        eps: small value to avoid zero division.
+        eps: accepted for backward compatibility and ignored; every window's softmax denominator is at least 1.
         output_value: if True, val is output, if False, only ij.
-        strict_maxima_bonus: pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
-          This is needed for mimic behavior of strict NMS in classic local features
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+          :class:`DeprecationWarning`. Select strict maxima with :func:`~kornia.geometry.subpix.nms3d` instead.
 
     Returns:
         Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
@@ -472,50 +528,57 @@ def conv_soft_argmax3d(
         >>> nms_coords, nms_val = conv_soft_argmax3d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
 
     """
+    if strict_maxima_bonus is not None:
+        _warn_strict_maxima_bonus()
+
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 5:
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
-    # A tensor temperature is read here, which graph capture cannot do; skip the value check under export.
-    if not is_exporting() and temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
+    _check_positive_temperature(temperature)
 
     b, c, d, h, w = input.shape
     kz, ky, kx = kernel_size
+    sz, sy, sx = (stride, stride, stride) if isinstance(stride, int) else stride
+    pz, py, px = (padding, padding, padding) if isinstance(padding, int) else padding
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
-    input = input.view(b * c, 1, d, h, w)
+    input = input.reshape(b * c, 1, d, h, w)
 
     center_kernel: torch.Tensor = _get_center_kernel3d(kz, ky, kx, device).to(dtype)
     window_kernel: torch.Tensor = _get_window_grid_kernel3d(kz, ky, kx, device).to(dtype)
 
-    # applies exponential normalization trick
-    # https://timvieira.github.io/blog/post/2014/02/11/exp-F.normalize-trick/
-    # https://github.com/pytorch/pytorch/blob/bcb0bb7e0e03b386ad837015faba6b4b16e3bfb9/aten/src/ATen/native/SoftMax.cpp#L44
-    x_max = input.amax(dim=(-3, -2, -1), keepdim=True)  # faster than F.adaptive_max_pool3d(input, (1,1,1))
+    if not (0 <= 2 * pz <= kz and 0 <= 2 * py <= ky and 0 <= 2 * px <= kx):
+        raise ValueError(
+            f"padding must be non-negative and at most half of kernel_size. Got {padding} for kernel_size {kernel_size}"
+        )
 
-    # max is detached to prevent undesired backprop loops in the graph
-    x_exp = ((input - x_max.detach()) / temperature).exp()
-
-    pool_coef: float = float(kx * ky * kz)
-
-    # F.softmax denominator
-    den = pool_coef * F.avg_pool3d(x_exp.view_as(input), kernel_size, stride=stride, padding=padding) + eps
+    # Softmax over each window on its own, as in conv_soft_argmax2d (#5020): the windows are unfolded slice by
+    # slice and then along depth, holding `kernel_size` values per output position, in (depth, row, column) order
+    # like the window kernel.
+    n = b * c
+    d_out = (d + 2 * pz - kz) // sz + 1
+    h_out = (h + 2 * py - ky) // sy + 1
+    w_out = (w + 2 * px - kx) // sx + 1
+    pad = [px, px, py, py, pz, pz]
+    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, stride)
+    weights = torch.softmax(logits, dim=2)
 
     # We need to output also coordinates
-    # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid3d(d, h, w, False, device=device).to(dtype).permute(0, 4, 1, 2, 3)
+    # Pooled window center coordinates, over the padded input as in conv_soft_argmax2d
+    grid_global: torch.Tensor = create_meshgrid3d(d + 2 * pz, h + 2 * py, w + 2 * px, False, device=device)
+    # channels are (depth, x, y)
+    grid_global = grid_global - torch.tensor([pz, px, py], device=device, dtype=grid_global.dtype)
+    grid_global = grid_global.to(dtype).permute(0, 4, 1, 2, 3)
 
-    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride, padding=padding)
+    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride)
 
-    # Coordinates of maxima residual to window center
-    # prepare kernel
-    coords_max: torch.Tensor = F.conv3d(x_exp, window_kernel, stride=stride, padding=padding)
-
-    coords_max = coords_max / den.expand_as(coords_max)
-    coords_max = coords_max + grid_global_pooled.expand_as(coords_max)
+    # Coordinates of maxima residual to window center: the softmax-weighted voxel offsets of each window
+    offsets = window_kernel.reshape(3, kz * ky * kx)
+    coords_max = (offsets @ weights).view(n, d_out, 3, h_out, w_out).transpose(1, 2)
+    coords_max = coords_max + grid_global_pooled.expand(n, 3, d_out, h_out, w_out)
     # [:,:, 0, ...] is depth (scale)
     # [:,:, 1, ...] is x
     # [:,:, 2, ...] is y
@@ -530,34 +593,32 @@ def conv_soft_argmax3d(
     if not output_value:
         return coords_max
 
-    x_softmaxpool = (
-        pool_coef * F.avg_pool3d(x_exp.view(input.size()) * input, kernel_size, stride=stride, padding=padding) / den
-    )
-    if strict_maxima_bonus > 0:
-        in_levels: int = input.size(2)
-        out_levels: int = x_softmaxpool.size(2)
-        skip_levels: int = (in_levels - out_levels) // 2
-        strict_maxima: torch.Tensor = F.avg_pool3d(nms3d(input, kernel_size), 1, stride, 0)
-        strict_maxima = strict_maxima[:, :, skip_levels : out_levels - skip_levels]
-        x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
-    x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3), x_softmaxpool.size(4))
+    windows = _unfold3d(F.pad(input, pad), kernel_size, stride)
+    x_softmaxpool = (weights * windows).sum(2).view(b, c, d_out, h_out, w_out)
     return coords_max, x_softmaxpool
 
 
 def spatial_soft_argmax2d(
-    input: torch.Tensor, temperature: Optional[torch.Tensor] = None, normalized_coordinates: bool = True
+    input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None, normalized_coordinates: bool = True
 ) -> torch.Tensor:
     r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
+    Convention:
+        - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`; this function defaults to
+          normalized, corner-aligned coordinates.
+        - It is ``spatial_expectation2d(spatial_softmax2d(input, temperature))``: the expected coordinate under the
+          softmax of each whole :math:`H \times W` map, so two equal peaks that dominate the map give their midpoint,
+          not either peak.
+
     Args:
-        input: the given heatmap with shape :math:`(B, N, H, W)`.
-        temperature: factor to apply to input.
+        input: the given heatmap with shape ``(B, N, H, W)``.
+        temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
+          ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
 
     Returns:
-        the index of the maximum 2d coordinates of the give map :math:`(B, N, 2)`.
-        The output order is x-coord and y-coord.
+        the expected coordinates of each map with shape ``(B, N, 2)``.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -568,8 +629,6 @@ def spatial_soft_argmax2d(
         tensor([[[1.0000, 1.0000]]])
 
     """
-    if temperature is None:
-        temperature = torch.tensor(1.0)
     input_soft: torch.Tensor = spatial_softmax2d(input, temperature)
     output: torch.Tensor = spatial_expectation2d(input_soft, normalized_coordinates)
     return output
@@ -578,14 +637,15 @@ def spatial_soft_argmax2d(
 class SpatialSoftArgmax2d(nn.Module):
     r"""Compute the Spatial Soft-Argmax 2D of a given heatmap.
 
-    See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.spatial_soft_argmax2d`.
     """
 
-    def __init__(self, temperature: Optional[torch.Tensor] = None, normalized_coordinates: bool = True) -> None:
+    def __init__(self, temperature: Optional[torch.Tensor | float] = None, normalized_coordinates: bool = True) -> None:
         super().__init__()
         if temperature is None:
             temperature = torch.tensor(1.0)
-        self.temperature: torch.Tensor = temperature
+        self.temperature: torch.Tensor | float = temperature
         self.normalized_coordinates: bool = normalized_coordinates
 
     def __repr__(self) -> str:
@@ -603,7 +663,7 @@ class SpatialSoftArgmax2d(nn.Module):
         taking the hard argmax of each heatmap.
 
         Args:
-            input: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+            input: Heatmap tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`H` is height, and :math:`W` is width.
 
@@ -613,6 +673,52 @@ class SpatialSoftArgmax2d(nn.Module):
             ``self.normalized_coordinates``.
         """
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
+
+
+def _scale_to_unit_hessian(
+    dxx: torch.Tensor,
+    dyy: torch.Tensor,
+    dss: torch.Tensor,
+    dxy: torch.Tensor,
+    dxs: torch.Tensor,
+    dys: torch.Tensor,
+    r0: torch.Tensor,
+    r1: torch.Tensor,
+    r2: torch.Tensor,
+) -> tuple[torch.Tensor, ...]:
+    """Scale a Cramer system by the power of two that brings its largest Hessian magnitude to about 1.
+
+    On a flat float32 image the Hessian entries are rounding noise of about 1e-15. Their determinants reach float32's
+    smallest subnormal, and the relative floor ``eps * m**3`` underflows to 0, so tiny determinants count as solved,
+    their shifts are inaccurate, and the backward of ``num / det``, ``(num / det) / det``, is inf: NaN behind the
+    callers' masks, which then spreads to every pixel. Scaled, the largest Hessian magnitude is about 1. Cramer's shifts
+    do not change when H and the right-hand side are scaled together, and a power of two scales every product exactly,
+    so wherever the unscaled solve neither underflows nor overflows, the shifts and the ``solved`` mask stay the same,
+    bit for bit. A factor above 1 is capped so that it takes the right-hand side no higher than ``2**64``: a tiny
+    Hessian next to a large finite right-hand side would otherwise scale it to inf. The cap never scales a system
+    down, so a large right-hand side alone leaves the system as it is.
+    """
+
+    def _exponent(*entries: torch.Tensor) -> torch.Tensor:
+        magnitude = torch.stack([t.abs() for t in entries]).amax(0).detach()
+        usable = torch.isfinite(magnitude) & (magnitude > 0)
+        exponent = torch.floor(torch.log2(torch.where(usable, magnitude, torch.ones_like(magnitude))))
+        # An unusable magnitude imposes no cap on the right-hand side.
+        return torch.where(usable, exponent, torch.full_like(exponent, -math.inf))
+
+    # The largest exponent whose power of two and its reciprocal are both normal numbers: 126 in float32.
+    limit = -math.log2(torch.finfo(dxx.dtype).tiny)
+    hessian = _exponent(dxx, dyy, dss, dxy, dxs, dys)
+    hessian = torch.where(torch.isfinite(hessian), hessian, torch.zeros_like(hessian))
+    # 2**-exponent scales max |H| to [1, 2). An upward factor stops at 2**(63 - exponent_r), which keeps max |r| below
+    # 2**64; the cap is at most 0, so it never scales down a system the Hessian alone would leave as it is.
+    exponent = torch.maximum(hessian, (_exponent(r0, r1, r2) - 63).clamp(max=0)).clamp(-limit, limit)
+    # 2**-exponent. In eager mode, exp2 of a negative integer is one ulp below its power of two on MPS, and exp2 of a
+    # non-negative integer and its reciprocal are exact: build the factor from those. (MPS inductor's exp2 is inexact
+    # from 2**13; the refiners do not compile on MPS today.)
+    power = torch.exp2(exponent.abs())
+    factor = torch.where(exponent > 0, power.reciprocal(), power)
+    return tuple(t * factor for t in (dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2))
 
 
 def _solve_cramer_sym3x3_cuda(
@@ -636,7 +742,7 @@ def _solve_cramer_sym3x3_cuda(
     All inputs must be 1-D tensors of the same length: the packed layout indexes
     a single batch dimension and silently reshapes anything wider.
     """
-    system = torch.stack((dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2), 1)
+    system = torch.stack(_scale_to_unit_hessian(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2), 1)
     # Row-major H followed by H with successive columns replaced by the RHS.
     indices = torch.tensor(
         (
@@ -651,8 +757,11 @@ def _solve_cramer_sym3x3_cuda(
     a, b, c, d, e, f, g, h, i = system.index_select(1, indices).reshape(-1, 4, 9).unbind(2)
     determinants = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     det = determinants[:, 0:1]
-    solved = det.abs() > eps
+    scale = system[:, :6].abs().amax(1, keepdim=True)
+    solved = det.abs() > eps * scale * scale * scale
     shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
+    # An unsolved shift is 0, as in the scalar solve.
+    shifts = torch.where(solved, shifts, torch.zeros_like(shifts))
     sx, sy, ss = shifts.unbind(1)
     return sx, sy, ss, solved[:, 0]
 
@@ -698,13 +807,14 @@ def _solve_cramer_sym3x3(
         r0: right-hand side component along x.
         r1: right-hand side component along y.
         r2: right-hand side component along s.
-        eps: determinant magnitude below which the system is treated as singular.
+        eps: relative determinant floor. The system is treated as singular when
+            ``|det| <= eps * m**3``, where ``m`` is the largest magnitude among the
+            Hessian entries, so the test does not depend on the response amplitude.
             Near-singular systems can produce numerically unstable (huge) shifts.
 
     Returns:
         (sx, sy, ss, solved) where ``solved`` is a bool mask for well-conditioned
-        systems (``|det| > eps``).  Outputs for unsolved entries are numerically
-        meaningless and should be discarded by the caller.
+        systems (``|det| > eps * m**3``). The shifts of an unsolved system are 0.
     """
     # The packed solve indexes one batch dimension, while the scalar code below
     # is rank-agnostic. Dispatch only where the two agree, so a wider caller
@@ -712,29 +822,33 @@ def _solve_cramer_sym3x3(
     if dxx.is_cuda and dxx.ndim == 1 and dxx.dtype in (torch.float32, torch.float64):
         return _solve_cramer_sym3x3_cuda(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2, eps)
 
-    # float16 cannot carry this solve. The determinant is a product of three
-    # second derivatives, so for a [0, 1] response it lands around 1e-4 and
-    # below — still above ``eps``, so ``solved`` admits it. The forward divides
-    # by it once and stays finite, but the backward of ``num / safe_det``
-    # scales by ``1 / safe_det**2``, and that square is not representable in
-    # float16 (finfo.tiny is 6.1e-5), so the gradient becomes inf and reduces
-    # to NaN. bfloat16 keeps float32's exponent range and is unaffected.
+    # float16 is solved in float32 and the shifts are rounded once: the relative
+    # floor of the scaled system, about 1e-7, is below float16's smallest normal
+    # number (finfo.tiny is 6.1e-5). bfloat16 keeps float32's exponent range and
+    # is solved in its own dtype, as before.
     in_dtype = dxx.dtype
     if in_dtype == torch.float16:
         dxx, dyy, dss = dxx.float(), dyy.float(), dss.float()
         dxy, dxs, dys = dxy.float(), dxs.float(), dys.float()
         r0, r1, r2 = r0.float(), r1.float(), r2.float()
+    dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2 = _scale_to_unit_hessian(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2)
 
     cf00 = dyy * dss - dys * dys  # cofactor M00
     cf01 = dxy * dss - dys * dxs  # cofactor M01
     cf02 = dxy * dys - dyy * dxs  # cofactor M02
     det = dxx * cf00 - dxy * cf01 + dxs * cf02
-    solved = det.abs() > eps
+    # The determinant is cubic in the response amplitude, so the floor is relative to the largest Hessian entry:
+    # an absolute floor rejected every well-conditioned fit of a low-amplitude response.
+    scale = torch.stack((dxx.abs(), dyy.abs(), dss.abs(), dxy.abs(), dxs.abs(), dys.abs())).amax(0)
+    solved = det.abs() > eps * scale * scale * scale
     # Avoid division by zero for singular/near-singular cases; outputs are discarded via solved.
     safe_det = torch.where(solved, det, torch.ones_like(det))
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
     sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
     ss = (dxx * (dyy * r2 - r1 * dys) - dxy * (dxy * r2 - r1 * dxs) + r0 * cf02) / safe_det
+    # An unsolved shift is 0, not the numerator: on the scaled system that can exceed float16's range, and the callers
+    # multiply it by the gradient before masking, where an inf would make the backward NaN.
+    sx, sy, ss = (torch.where(solved, t, torch.zeros_like(t)) for t in (sx, sy, ss))
 
     if in_dtype == torch.float16:
         sx, sy, ss = sx.to(in_dtype), sy.to(in_dtype), ss.to(in_dtype)
@@ -744,7 +858,7 @@ def _solve_cramer_sym3x3(
 def conv_quad_interp3d(
     input: torch.Tensor,
     n_iters: int = 5,
-    strict_maxima_bonus: float = 10.0,
+    strict_maxima_bonus: Optional[float] = None,
     max_subpixel_shift: float = 0.6,
     precomputed_nms_mask: Optional[torch.Tensor] = None,
     dilation_radius: int = 1,
@@ -770,18 +884,31 @@ def conv_quad_interp3d(
     default ``max_subpixel_shift=0.6`` almost all keypoints converge within 1 move,
     so the default ``dilation_radius=1`` (i.e. :math:`3^3 = 27` positions per
     maximum) is sufficient.  Use ``dilation_radius=2`` (:math:`5^3 = 125`) for
-    extra safety.  Setting it equal to ``n_iters`` recovers the original behaviour
-    but is much slower on large images.
+    extra safety.  Setting it to ``n_iters`` gives the result of
+    :func:`iterative_quad_interp3d`, but is much slower on large images.
+
+    Convention:
+        - ``coords_max`` follows :ref:`Coordinates and sizes <coordinate-conventions>` and holds absolute voxel
+          indices of the input: only refined maxima move off their own grid index. At a refined maximum ``y_max`` is
+          the quadratic fit's value at the refined point; non-maxima keep their input value.
+        - A maximum is not refined, and keeps its grid coordinates, when the determinant of its fit's Hessian is at
+          most ``1e-7 * m**3`` in magnitude, where ``m`` is the largest magnitude among the Hessian entries (so the
+          test does not depend on the response amplitude), when a move would reach the border voxels, when its centre
+          leaves the voxels precomputed for ``dilation_radius``, when the final shift exceeds ``1.5`` voxels on any
+          axis, or when it still requires an integer-centre move on the last iteration. A volume with a side shorter
+          than 3 is returned unrefined.
 
     Args:
-        input: response pyramid with shape :math:`(B, C, D, H, W)`.
-        n_iters: maximum number of localization iterations per keypoint.
-        strict_maxima_bonus: value added to ``y_max`` at NMS-maximum positions
-            so that strict maxima are preferred during top-K selection.
+        input: response pyramid with shape ``(B, C, D, H, W)``.
+        n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
+            last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`. Select strict maxima with ``precomputed_nms_mask`` or
+            :func:`~kornia.geometry.subpix.nms3d` instead.
         max_subpixel_shift: threshold above which the integer centre is
             moved one step and another iteration is run.
         precomputed_nms_mask: optional bool tensor of shape
-            :math:`(B, C, D, H, W)` — pass the result of
+            ``(B, C, D, H, W)`` — pass the result of
             :func:`~kornia.geometry.subpix.nms3d` to skip the internal NMS call.
         dilation_radius: L\ :math:`\infty` radius (in voxels) of the neighbourhood
             around each NMS maximum where the Hessian solve is precomputed.
@@ -793,11 +920,11 @@ def conv_quad_interp3d(
     Returns:
         Tuple ``(coords_max, y_max)``:
 
-        * ``coords_max`` — shape :math:`(B, C, 3, D, H, W)`, refined
+        * ``coords_max`` — shape ``(B, C, 3, D, H, W)``, refined
           ``[scale, x(width), y(height)]`` coordinates for each NMS maximum;
           non-maximum positions keep their grid coordinates.
-        * ``y_max`` — shape :math:`(B, C, D, H, W)`, quadratically corrected
-          response with optional strict-maxima bonus.
+        * ``y_max`` — shape ``(B, C, D, H, W)``, quadratically corrected
+          response at each NMS maximum; other positions keep the input value.
 
     Example:
         >>> input = torch.randn(2, 3, 5, 64, 64)
@@ -808,6 +935,8 @@ def conv_quad_interp3d(
         torch.Size([2, 3, 5, 64, 64])
 
     """
+    if strict_maxima_bonus is not None:
+        _warn_strict_maxima_bonus()
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if input.ndim != 5:
@@ -831,7 +960,7 @@ def conv_quad_interp3d(
 
     # ── Step 1: NMS maxima ────────────────────────────────────────────────────
     nms_mask = precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)
-    bc_idx, d_idx, h_idx, w_idx = torch.where(nms_mask.view(BC, D, H, W))
+    bc_idx, d_idx, h_idx, w_idx = torch.where(nms_mask.reshape(BC, D, H, W))
     N = bc_idx.shape[0]
     # Note: no early-return for N==0 — empty tensors flow through all ops as no-ops.
 
@@ -870,7 +999,7 @@ def conv_quad_interp3d(
     #     quadratic system), so last-write-wins in the LUT is correct.
 
     # ── Step 3: gather 3x3x3 neighbourhood for all kept dilated positions ────
-    inp_flat = input.view(-1)
+    inp_flat = input.reshape(-1)
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)  # (27,)
     center_flat = bc_u * DHW + d_u * HW + h_u * W + w_u
     patch = inp_flat[center_flat.unsqueeze(1) + patch_offsets.unsqueeze(0)]  # (NU, 27)
@@ -937,6 +1066,7 @@ def conv_quad_interp3d(
     shift_y = torch.zeros(N, device=device, dtype=dtype)
     shift_s = torch.zeros(N, device=device, dtype=dtype)
     grad_dot_shift = torch.zeros(N, device=device, dtype=dtype)
+    moved = torch.zeros(N, dtype=torch.bool, device=device)
 
     for _ in range(n_iters):
         di = d_cur.clamp(1, D - 2)
@@ -967,12 +1097,14 @@ def conv_quad_interp3d(
 
         move_px = valid & (sx > max_subpixel_shift)
         move_nx = valid & (sx < -max_subpixel_shift)
+        moved = move_px | move_nx
         new_w = w_cur + move_px.long() - move_nx.long()
         valid = valid & (new_w >= 1) & (new_w <= W - 2)
         w_cur = new_w.clamp(0, W - 1)
 
         move_py = valid & (sy > max_subpixel_shift)
         move_ny = valid & (sy < -max_subpixel_shift)
+        moved = moved | move_py | move_ny
         new_h = h_cur + move_py.long() - move_ny.long()
         valid = valid & (new_h >= 1) & (new_h <= H - 2)
         h_cur = new_h.clamp(0, H - 1)
@@ -980,11 +1112,14 @@ def conv_quad_interp3d(
         if allow_scale_steps:
             move_ps = valid & (ss > max_subpixel_shift)
             move_ns = valid & (ss < -max_subpixel_shift)
+            moved = moved | move_ps | move_ns
             new_d = d_cur + move_ps.long() - move_ns.long()
             valid = valid & (new_d >= 1) & (new_d <= D - 2)
             d_cur = new_d.clamp(0, D - 1)
 
-    valid = valid & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
+    # A point the last iteration moved has not converged: its shift was solved at the previous centre, so
+    # reject it rather than report it one voxel beyond that fit.
+    valid = valid & ~moved & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
 
     # ── Write refined coordinates and corrected response ──────────────────────
     b_idx = bc_idx // C
@@ -995,11 +1130,12 @@ def conv_quad_interp3d(
     coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = torch.where(valid, h_cur.to(dtype) + shift_y, h_idx.to(dtype))
 
     val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
-    # Use the final recentered position for val_center (h_cur/w_cur may have moved during iteration)
-    val_center = input.view(BC, D, H, W)[bc_idx, d_cur, h_cur, w_cur]
+    # Read the value where the point is reported: the recentered voxel, or the NMS voxel of a rejected point
+    d_cur = torch.where(valid, d_cur, d_idx)
+    h_cur = torch.where(valid, h_cur, h_idx)
+    w_cur = torch.where(valid, w_cur, w_idx)
+    val_center = inp_flat.view(BC, D, H, W)[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
-    if strict_maxima_bonus > 0:
-        y_max[b_idx, c_idx, d_idx, h_idx, w_idx] += strict_maxima_bonus * valid.to(dtype)
 
     return coords_max, y_max
 
@@ -1013,23 +1149,28 @@ class ConvQuadInterp3d(nn.Module):
     table lookup with no GPU→CPU synchronisation — making the module compatible
     with ``torch.compile`` and CUDA graphs.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
+
     Args:
         n_iters: maximum localization iterations per keypoint.
-        strict_maxima_bonus: score bonus at NMS-maximum positions.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`.
         max_subpixel_shift: shift threshold that triggers integer centre move.
     """
 
     def __init__(
         self,
         n_iters: int = 5,
-        strict_maxima_bonus: float = 10.0,
+        strict_maxima_bonus: Optional[float] = None,
         max_subpixel_shift: float = 0.6,
         dilation_radius: int = 1,
         allow_scale_steps: bool = True,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         self.n_iters = n_iters
-        self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.dilation_radius = dilation_radius
         self.allow_scale_steps = allow_scale_steps
@@ -1038,7 +1179,6 @@ class ConvQuadInterp3d(nn.Module):
         return (
             f"{self.__class__.__name__}("
             f"n_iters={self.n_iters}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
             f"dilation_radius={self.dilation_radius}, "
             f"allow_scale_steps={self.allow_scale_steps})"
@@ -1054,7 +1194,7 @@ class ConvQuadInterp3d(nn.Module):
         offset gives a subpixel position in scale, x, and y coordinates.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`D` is the scale/depth dimension.
             precomputed_nms_mask: Optional boolean NMS mask with the same shape
                 as ``x``. Passing it avoids recomputing local maxima.
@@ -1067,18 +1207,17 @@ class ConvQuadInterp3d(nn.Module):
         return conv_quad_interp3d(
             x,
             self.n_iters,
-            self.strict_maxima_bonus,
-            self.max_subpixel_shift,
-            precomputed_nms_mask,
-            self.dilation_radius,
-            self.allow_scale_steps,
+            max_subpixel_shift=self.max_subpixel_shift,
+            precomputed_nms_mask=precomputed_nms_mask,
+            dilation_radius=self.dilation_radius,
+            allow_scale_steps=self.allow_scale_steps,
         )
 
 
 def iterative_quad_interp3d(
     input: torch.Tensor,
     n_iters: int = 5,
-    strict_maxima_bonus: float = 10.0,
+    strict_maxima_bonus: Optional[float] = None,
     max_subpixel_shift: float = 0.6,
     allow_scale_steps: bool = True,
     precomputed_nms_mask: Optional[torch.Tensor] = None,
@@ -1091,21 +1230,26 @@ def iterative_quad_interp3d(
     function explicitly re-extracts the :math:`3 \times 3 \times 3` patch at each
     NMS maximum and iterates up to ``n_iters`` times. When the estimated subpixel
     shift along any spatial or scale axis exceeds ``max_subpixel_shift`` the integer
-    center is moved one step in that direction and the solve is repeated — matching
-    the localization loop from the HessAff / SIFT family of detectors.
+    center is moved one step in that direction and the solve is repeated.
+
+    Convention:
+        - See the convention block of :func:`conv_quad_interp3d`; here a maximum is not limited to a
+          ``dilation_radius`` neighbourhood.
 
     Args:
-        input: response pyramid with shape :math:`(B, C, D, H, W)`.
-        n_iters: maximum number of localization iterations per keypoint.
-        strict_maxima_bonus: value added to ``y_max`` at NMS-maximum positions so
-            that strict maxima are preferred when selecting the top-K keypoints.
+        input: response pyramid with shape ``(B, C, D, H, W)``.
+        n_iters: maximum number of localization iterations per keypoint. A keypoint that still moves on the
+            last iteration has not converged and is rejected: it keeps its grid coordinates and input value.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`. Select strict maxima with ``precomputed_nms_mask`` or
+            :func:`~kornia.geometry.subpix.nms3d` instead.
         max_subpixel_shift: if the estimated shift along any axis is larger than this
             threshold the integer center is displaced and another iteration is run.
         allow_scale_steps: if ``True`` (default), the iterative shift is also
             applied along the scale (depth) axis; set to ``False`` to keep the
             keypoint on its original scale level.
         precomputed_nms_mask: optional bool tensor of shape
-            :math:`(B, C, D, H, W)` — pass the result of
+            ``(B, C, D, H, W)`` — pass the result of
             :func:`~kornia.geometry.subpix.nms3d` to skip the internal NMS call.
         max_candidates: if given, only the top-``max_candidates`` NMS maxima (ranked by
             pre-refinement response) are processed.  The rest keep their grid-coordinate
@@ -1119,11 +1263,11 @@ def iterative_quad_interp3d(
     Returns:
         A tuple ``(coords_max, y_max)`` where
 
-        * ``coords_max`` has shape :math:`(B, C, 3, D, H, W)` and stores the refined
+        * ``coords_max`` has shape ``(B, C, 3, D, H, W)`` and stores the refined
           coordinates ``[scale, x, y]`` for every position in the input.
           Non-NMS positions keep their original grid coordinates.
-        * ``y_max`` has shape :math:`(B, C, D, H, W)` and stores the quadratically
-          corrected response values (with the optional strict-maxima bonus added).
+        * ``y_max`` has shape ``(B, C, D, H, W)`` and stores the quadratically
+          corrected response values.
 
     Example:
         >>> input = torch.randn(2, 3, 3, 8, 8)
@@ -1134,6 +1278,8 @@ def iterative_quad_interp3d(
         torch.Size([2, 3, 3, 8, 8])
 
     """
+    if strict_maxima_bonus is not None:
+        _warn_strict_maxima_bonus()
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if input.ndim != 5:
@@ -1158,7 +1304,7 @@ def iterative_quad_interp3d(
     DHW = D * H * W
     HW = H * W
 
-    nms_flat = (precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)).view(
+    nms_flat = (precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)).reshape(
         B * C, D, H, W
     )
 
@@ -1206,6 +1352,7 @@ def iterative_quad_interp3d(
     shift_y = torch.zeros(N, device=device, dtype=dtype)
     shift_s = torch.zeros(N, device=device, dtype=dtype)
     grad_dot_shift = torch.zeros(N, device=device, dtype=dtype)
+    moved = torch.zeros(N, dtype=torch.bool, device=device)
 
     inp_flat = inp.reshape(-1)
     bc_base = bc_idx * DHW
@@ -1266,12 +1413,14 @@ def iterative_quad_interp3d(
 
         move_pos_x = valid & (sx > max_subpixel_shift)
         move_neg_x = valid & (sx < -max_subpixel_shift)
+        moved = move_pos_x | move_neg_x
         new_w = w_cur + move_pos_x.long() - move_neg_x.long()
         valid = valid & (new_w >= 1) & (new_w <= W - 2)
         w_cur = new_w.clamp(0, W - 1)
 
         move_pos_y = valid & (sy > max_subpixel_shift)
         move_neg_y = valid & (sy < -max_subpixel_shift)
+        moved = moved | move_pos_y | move_neg_y
         new_h = h_cur + move_pos_y.long() - move_neg_y.long()
         valid = valid & (new_h >= 1) & (new_h <= H - 2)
         h_cur = new_h.clamp(0, H - 1)
@@ -1279,11 +1428,14 @@ def iterative_quad_interp3d(
         if allow_scale_steps:
             move_pos_s = valid & (ss > max_subpixel_shift)
             move_neg_s = valid & (ss < -max_subpixel_shift)
+            moved = moved | move_pos_s | move_neg_s
             new_d = d_cur + move_pos_s.long() - move_neg_s.long()
             valid = valid & (new_d >= 1) & (new_d <= D - 2)
             d_cur = new_d.clamp(0, D - 1)
 
-    valid = valid & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
+    # A point the last iteration moved has not converged: its shift was solved at the previous centre, so
+    # reject it rather than report it one voxel beyond that fit.
+    valid = valid & ~moved & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
 
     b_idx = bc_idx // C
     c_idx = bc_idx % C
@@ -1297,12 +1449,12 @@ def iterative_quad_interp3d(
     coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = final_y
 
     val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
-    # Use the final recentered position for val_center (h_cur/w_cur may have moved during iteration)
+    # Read the value where the point is reported: the recentered voxel, or the NMS voxel of a rejected point
+    d_cur = torch.where(valid, d_cur, d_idx)
+    h_cur = torch.where(valid, h_cur, h_idx)
+    w_cur = torch.where(valid, w_cur, w_idx)
     val_center = inp[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
-
-    if strict_maxima_bonus > 0:
-        y_max[b_idx, c_idx, d_idx, h_idx, w_idx] += strict_maxima_bonus * valid.to(dtype)
 
     return coords_max, y_max
 
@@ -1310,20 +1462,22 @@ def iterative_quad_interp3d(
 class IterativeQuadInterp3d(nn.Module):
     r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
 
-    See :func:`~kornia.geometry.subpix.iterative_quad_interp3d` for details.
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.iterative_quad_interp3d`.
     """
 
     def __init__(
         self,
         n_iters: int = 5,
-        strict_maxima_bonus: float = 10.0,
+        strict_maxima_bonus: Optional[float] = None,
         max_subpixel_shift: float = 0.6,
         allow_scale_steps: bool = True,
         max_candidates: Optional[int] = None,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         self.n_iters = n_iters
-        self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.allow_scale_steps = allow_scale_steps
         self.max_candidates = max_candidates
@@ -1332,7 +1486,6 @@ class IterativeQuadInterp3d(nn.Module):
         return (
             f"{self.__class__.__name__}("
             f"n_iters={self.n_iters}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
             f"allow_scale_steps={self.allow_scale_steps}, "
             f"max_candidates={self.max_candidates})"
@@ -1346,7 +1499,7 @@ class IterativeQuadInterp3d(nn.Module):
         """Refine 3D extrema by iteratively fitting local quadratic patches.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            x: Response tensor with shape ``(B, C, D, H, W)``.
             precomputed_nms_mask: Optional boolean local-maxima mask with the
                 same shape as ``x``.
 
@@ -1358,9 +1511,8 @@ class IterativeQuadInterp3d(nn.Module):
         return iterative_quad_interp3d(
             x,
             self.n_iters,
-            self.strict_maxima_bonus,
-            self.max_subpixel_shift,
-            self.allow_scale_steps,
+            max_subpixel_shift=self.max_subpixel_shift,
+            allow_scale_steps=self.allow_scale_steps,
             precomputed_nms_mask=precomputed_nms_mask,
             max_candidates=self.max_candidates,
         )
@@ -1380,6 +1532,9 @@ class AdaptiveQuadInterp3d(nn.Module):
     * **CPU** — :func:`iterative_quad_interp3d` is faster for large images because
       it processes only the NMS maxima directly without any dilation/dedup overhead.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.conv_quad_interp3d`.
+
     Args:
         mode: backend selection strategy.
 
@@ -1389,7 +1544,8 @@ class AdaptiveQuadInterp3d(nn.Module):
               ``"patch"`` otherwise.
 
         n_iters: maximum localization iterations per keypoint.
-        strict_maxima_bonus: score bonus added at NMS-maximum positions.
+        strict_maxima_bonus: deprecated since kornia 0.9.0 and ignored; passing it emits a
+            :class:`DeprecationWarning`.
         max_subpixel_shift: integer-centre move threshold.
         dilation_radius: L\ :math:`\infty` precompute radius for ``"conv"`` mode
             (ignored in ``"patch"`` mode).
@@ -1415,18 +1571,19 @@ class AdaptiveQuadInterp3d(nn.Module):
         self,
         mode: str = "auto",
         n_iters: int = 5,
-        strict_maxima_bonus: float = 10.0,
+        strict_maxima_bonus: Optional[float] = None,
         max_subpixel_shift: float = 0.6,
         dilation_radius: int = 1,
         allow_scale_steps: bool = True,
         max_candidates: Optional[int] = None,
     ) -> None:
         super().__init__()
+        if strict_maxima_bonus is not None:
+            _warn_strict_maxima_bonus()
         if mode not in self.MODES:
             raise ValueError(f"mode must be one of {self.MODES}, got '{mode}'")
         self.mode = mode
         self.n_iters = n_iters
-        self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.dilation_radius = dilation_radius
         self.allow_scale_steps = allow_scale_steps
@@ -1437,7 +1594,6 @@ class AdaptiveQuadInterp3d(nn.Module):
             f"{self.__class__.__name__}("
             f"mode='{self.mode}', "
             f"n_iters={self.n_iters}, "
-            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
             f"dilation_radius={self.dilation_radius}, "
             f"allow_scale_steps={self.allow_scale_steps}, "
@@ -1456,7 +1612,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         :func:`conv_quad_interp3d` or :func:`iterative_quad_interp3d`.
 
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            x: Response tensor with shape ``(B, C, D, H, W)``.
             precomputed_nms_mask: Optional boolean local-maxima mask with the
                 same shape as ``x``.
 
@@ -1469,18 +1625,16 @@ class AdaptiveQuadInterp3d(nn.Module):
             return conv_quad_interp3d(
                 x,
                 self.n_iters,
-                self.strict_maxima_bonus,
-                self.max_subpixel_shift,
-                precomputed_nms_mask,
-                self.dilation_radius,
-                self.allow_scale_steps,
+                max_subpixel_shift=self.max_subpixel_shift,
+                precomputed_nms_mask=precomputed_nms_mask,
+                dilation_radius=self.dilation_radius,
+                allow_scale_steps=self.allow_scale_steps,
             )
         return iterative_quad_interp3d(
             x,
             self.n_iters,
-            self.strict_maxima_bonus,
-            self.max_subpixel_shift,
-            self.allow_scale_steps,
+            max_subpixel_shift=self.max_subpixel_shift,
+            allow_scale_steps=self.allow_scale_steps,
             precomputed_nms_mask=precomputed_nms_mask,
             max_candidates=self.max_candidates,
         )

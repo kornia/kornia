@@ -1091,6 +1091,27 @@ html[data-theme="dark"] .compat-fail {
     border-color: rgba(248, 113, 113, 0.35);
 }
 
+/* The "promised" marker of a configuration the CI-checked promise covers; in a survey table it sits under the status
+   pill, so it does not widen the column. The class has no "compat-" in it: custom.js reads a cell's status from the
+   first class that does. */
+.kornia-promised {
+    display: inline-block;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+    color: var(--pst-color-primary);
+    border: 1px solid var(--pst-color-primary);
+}
+
+.kornia-compat-table .kornia-promised {
+    display: block;
+    width: fit-content;
+    margin-top: 0.25rem;
+}
+
 /* Search box and status filter; ``hidden`` until custom.js wires them up. */
 .kornia-compat-controls {
     position: sticky;

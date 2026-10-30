@@ -22,12 +22,13 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey
+from kornia.core.utils import _to_device_nonblocking
 
 __all__ = ["RandomJigsaw"]
 
 
 class RandomJigsaw(MixAugmentationBaseV2):
-    r"""RandomJigsaw augmentation.
+    r"""Shuffle the tiles of each image like a jigsaw puzzle, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomJigsaw.png
 
@@ -108,7 +109,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
             .reshape(c, -1, piece_size_h, piece_size_w)
         )
         perm = (perm + torch.arange(0, b, device=perm.device)[:, None] * perm.shape[1]).view(-1)
-        input = input[:, perm, :, :]
+        input = input[:, _to_device_nonblocking(perm, input.device), :, :]
         return (
             input.reshape(-1, b, self.flags["grid"][1], h, piece_size_w)
             .permute(0, 1, 2, 4, 3)

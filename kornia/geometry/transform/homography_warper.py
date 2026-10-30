@@ -15,27 +15,55 @@
 # limitations under the License.
 #
 
+"""Warp images by homographies in module form, optionally reusing a precomputed sampling grid.
+
+A warper reads ``src_homo_dst`` as the destination→source homography; :class:`HomographyWarper` takes it in
+normalized :math:`[-1, 1]` coordinates by default, as :func:`~kornia.geometry.transform.homography_warp` does.
+
+Which class to use:
+
+- Warp ``(N, C, H, W)`` images to a fixed ``(height, width)``, optionally reusing one precomputed grid:
+  :class:`HomographyWarper`.
+- Write another warper for :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`: subclass
+  :class:`BaseWarper`.
+- For a source→destination homography in pixel coordinates, use
+  :func:`~kornia.geometry.transform.warp_perspective` instead.
+"""
+
 from __future__ import annotations
 
 from abc import abstractmethod
 from typing import Any, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import _torch_grid_sample
 from kornia.geometry.grid import create_meshgrid
 
-from .imgwarp import homography_warp, warp_grid
+from .imgwarp import _normalize_warped_pixel_grid, _warp_pixel_grid, homography_warp, warp_grid
 
 __all__ = ["BaseWarper", "HomographyWarper"]
 
 
 class BaseWarper(nn.Module):
-    """Provide a base class for homography-based image warping.
+    """Declare the interface of a homography warper module that ImageRegistrator can call.
+
+    ``BaseWarper(height, width)`` only stores the destination ``height`` and ``width``. A subclass implements
+    ``warper(patch_src, src_homo_dst)``, which samples a ``(B, C, H, W)`` source on that destination grid by a
+    ``(B, 3, 3)`` destination→source homography, and ``precompute_warp_grid(src_homo_dst)``, which caches the grid.
+    :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator` takes such a class as ``warper`` and calls
+    it as ``warper(height, width)``. The two methods are marked abstract, but :class:`torch.nn.Module` does not enforce
+    it: ``BaseWarper`` itself constructs, and its ``forward`` returns ``None``
+    (`#6399 <https://github.com/kornia/kornia/issues/6399>`_). To warp images, use :class:`HomographyWarper`.
 
     Convention:
         - subclasses receive ``src_homo_dst`` as the destination→source homography
+
+    See Also:
+        - :class:`HomographyWarper`: the implementation kornia ships, in normalized or pixel coordinates.
+        - :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`: registers two images by
+          optimizing a transform, and warps with a warper class of this interface.
 
     """
 
@@ -50,10 +78,10 @@ class BaseWarper(nn.Module):
 
         Args:
             patch_src: Source image or patch tensor with shape
-                :math:`(B, C, H, W)`, where :math:`B` is batch size,
+                ``(B, C, H, W)``, where :math:`B` is batch size,
                 :math:`C` is channels, :math:`H` is source height, and
                 :math:`W` is source width.
-            src_homo_dst: Optional homography with shape :math:`(B, 3, 3)`
+            src_homo_dst: Optional homography with shape ``(B, 3, 3)``
                 mapping destination coordinates into the source image. Concrete
                 implementations may also use a grid precomputed from this
                 matrix.
@@ -68,14 +96,24 @@ class BaseWarper(nn.Module):
         """Precompute a sampling grid for repeated homography warps.
 
         Args:
-            src_homo_dst: Homography tensor with shape :math:`(B, 3, 3)` used
+            src_homo_dst: Homography tensor with shape ``(B, 3, 3)`` used
                 to transform destination grid points into source coordinates.
         """
         ...
 
 
 class HomographyWarper(BaseWarper):
-    r"""Warp tensors by homographies.
+    r"""Warp images to a fixed size by a normalized destination→source homography (module form).
+
+    Build ``warper = HomographyWarper(height, width)``, then ``out = warper(patch_src, src_homo_dst)`` warps
+    ``(N, C, H, W)`` images by ``(N, 3, 3)`` destination→source homographies in normalized :math:`[-1, 1]`
+    coordinates and returns ``(N, C, height, width)``, as :func:`homography_warp` with ``dsize=(height, width)`` does.
+    To reuse one homography, call ``warper.precompute_warp_grid(src_homo_dst)`` once and then ``warper(patch_src)``; a
+    homography passed to the call takes precedence over the cached grid, and a call with neither raises
+    ``RuntimeError``. For a source→destination homography in pixel coordinates, as
+    :class:`~kornia.geometry.ransac.RANSAC` and :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
+    :func:`~kornia.geometry.transform.warp_perspective`. This class has no ``normalized_homography`` switch:
+    ``normalized_coordinates=False`` still reads a destination→source homography, in pixels.
 
     .. math::
 
@@ -86,6 +124,9 @@ class HomographyWarper(BaseWarper):
         coordinates and sampling conventions.
 
         - See the convention block of :func:`homography_warp`.
+        - with ``normalized_coordinates=False`` a grid from ``precompute_warp_grid`` holds source pixel
+          coordinates computed as in :func:`homography_warp` (in at least float32, unaffected by autocast), normalized
+          at sampling time with the size of the patch passed to ``forward`` and then cast to the homography's dtype
 
     Args:
         height: The height of the destination torch.Tensor.
@@ -93,12 +134,23 @@ class HomographyWarper(BaseWarper):
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
-        normalized_coordinates: whether to use a grid with normalized coordinates.
+        normalized_coordinates: whether the homographies are in normalized :math:`[-1, 1]` coordinates
+          (``True``) or in pixel coordinates (``False``), as in :func:`homography_warp`.
         align_corners: interpolation flag.
+
+    See Also:
+        - :func:`homography_warp`: the one-call form, with a ``normalized_homography`` switch for pixel
+          source→destination homographies.
+        - :func:`warp_perspective`: takes the source→destination homography in pixel coordinates.
+        - :class:`BaseWarper`: the interface this class implements, for
+          :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`.
+        - :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator`: fits a homography between two
+          images, warping with this class by default.
 
     """
 
     _warped_grid: Optional[torch.Tensor]
+    _warped_grid_dtype: Optional[torch.dtype]
 
     def __init__(
         self,
@@ -120,8 +172,9 @@ class HomographyWarper(BaseWarper):
             height, width, normalized_coordinates=normalized_coordinates, align_corners=align_corners
         )
 
-        # initialice the warped destination grid
+        # initialice the warped destination grid, and in pixel mode the dtype forward() returns it to
         self._warped_grid = None
+        self._warped_grid_dtype = None
 
     def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
         r"""Compute and store internally the transformations of the points.
@@ -131,12 +184,19 @@ class HomographyWarper(BaseWarper):
         Args:
             src_homo_dst: Homography or homographies (stacked) to
               transform all points in the grid. Shape of the homography
-              has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
+              has to be ``(1, 3, 3)``, ``(N, 3, 3)`` or ``(N, 1, 3, 3)``.
               The homography assumes normalized coordinates [-1, 1] if
-              normalized_coordinates is True.
+              normalized_coordinates is True, and pixel coordinates otherwise.
 
         """
-        self._warped_grid = warp_grid(self.grid, src_homo_dst)
+        if self.normalized_coordinates:
+            self._warped_grid = warp_grid(self.grid, src_homo_dst)
+            return
+        # Source pixels, from a pixel grid built and warped as in homography_warp (in at least float32, unaffected by
+        # autocast; not from self.grid, which a half default dtype has already rounded), kept until forward()
+        # normalizes them with the patch size; the normalized grid then returns to the homography's dtype.
+        self._warped_grid = _warp_pixel_grid(src_homo_dst, self.height, self.width)
+        self._warped_grid_dtype = src_homo_dst.dtype
 
     def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
         r"""Warp a torch.Tensor from source into reference frame.
@@ -145,14 +205,15 @@ class HomographyWarper(BaseWarper):
             patch_src: The torch.Tensor to warp.
             src_homo_dst: The homography or torch.stack of
               homographies from destination to source. The homography assumes
-              normalized coordinates [-1, 1] if normalized_coordinates is True.
+              normalized coordinates [-1, 1] if normalized_coordinates is True,
+              and pixel coordinates otherwise.
 
         Return:
             Patch sampled at locations from source to destination.
 
         Shape:
-            - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`
-            - Output: :math:`(N, C, H, W)`
+            - Input: ``(N, C, H, W)`` and ``(N, 3, 3)``
+            - Output: ``(N, C, H, W)``
 
         Example:
             >>> input = torch.rand(1, 3, 32, 32)
@@ -184,7 +245,16 @@ class HomographyWarper(BaseWarper):
                     " precompute_warp_grid() with the correct device for the homograhy"
                     " or change the patch device."
                 )
-            warped_patch = F.grid_sample(
+            if not self.normalized_coordinates:
+                # the cached grid holds source pixels; normalize them with the size of the patch being sampled
+                _warped_grid = _normalize_warped_pixel_grid(
+                    _warped_grid, patch_src.shape[-2], patch_src.shape[-1], self.align_corners
+                )
+                # getattr: a module pickled before this attribute existed has no _warped_grid_dtype
+                warped_grid_dtype = getattr(self, "_warped_grid_dtype", None)
+                if warped_grid_dtype is not None:
+                    _warped_grid = _warped_grid.to(warped_grid_dtype)
+            warped_patch = _torch_grid_sample(
                 patch_src,
                 _warped_grid,
                 mode=self.mode,

@@ -31,7 +31,8 @@ default_policy: List[SUBPOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("rotate", -30.0, 30.0)],
-    [("posterize", 0.0, 4)],
+    # Bits kept, as in RandAugment and AutoAugment.
+    [("posterize", 4.0, 8.0)],
     [("solarize", 0.0, 1.0)],
     # (Color, 0.1, 1.9),
     [("contrast", 0.1, 1.9)],
@@ -57,7 +58,10 @@ class TrivialAugment(PolicyAugmentBase):
           independently for every batch row.
         - the operation wrapper's magnitude mapping applies, as under
           :class:`~kornia.augmentation.auto.RandAugment`. A ``("rotate", -30, 30)`` candidate draws angles in
-          ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``0.3 * 180`` degrees.
+          ``[-30, 30]`` with a random sign, and ``("shear_x", -0.3, 0.3)`` shears by up to ``rad2deg(atan(0.3))``,
+          about ``16.7`` degrees.
+        - the default ``posterize`` candidate keeps ``4`` to ``8`` bits, the range of the paper's RA
+          augmentation space (Table 8) and of :class:`~kornia.augmentation.auto.RandAugment`.
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
@@ -83,10 +87,7 @@ class TrivialAugment(PolicyAugmentBase):
     def __init__(
         self, policy: Optional[List[SUBPOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
     ) -> None:
-        if policy is None:
-            _policy = default_policy
-        else:
-            _policy = policy
+        _policy = default_policy if policy is None else policy
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))

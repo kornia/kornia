@@ -37,7 +37,7 @@ def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, par
           pixel, and ``params`` is the flat vector ``[fx, fy, cx, cy]``; the result is in pixels (integer pixel
           centres; see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`).
         - :func:`~kornia.geometry.calibration.distort_points` is the same camera parametrized by a
-          :math:`(*, 3, 3)` ``K`` and an OpenCV coefficient vector; it takes a **pixel** input instead.
+          ``(*, 3, 3)`` ``K`` and an OpenCV coefficient vector; it takes a **pixel** input instead.
         - :func:`undistort_points_affine` is the closed-form inverse.
 
     Args:
@@ -122,9 +122,11 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, 
         \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
 
     Convention:
-        - the result is the :math:`(..., 2, 2)` Jacobian of :func:`distort_points_affine` with respect to the
+        - the result is the ``(..., 2, 2)`` Jacobian of :func:`distort_points_affine` with respect to the
           **point**: rows are the output components ``(u, v)``, columns the input components ``(x, y)``.
         - the map is affine, so that Jacobian is ``diag(fx, fy)`` and does not depend on the point.
+        - ``...`` is the broadcast of the points' and the params' leading shapes, as in
+          :func:`distort_points_affine`: ``N`` points with one set of params give ``N`` Jacobians.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
@@ -145,7 +147,8 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, 
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "4"])
 
-    fx, fy = params[..., 0], params[..., 1]
+    # Broadcast against the points as well, so a batch of points with shared params gets one Jacobian per point.
+    fx, fy, _ = torch.broadcast_tensors(params[..., 0], params[..., 1], projected_points_in_camera_z1_plane[..., 0])
 
     zeros = torch.zeros_like(fx)
 

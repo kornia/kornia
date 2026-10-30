@@ -24,17 +24,17 @@ from kornia.enhance import equalize3d
 
 
 class RandomEqualize3D(IntensityAugmentationBase3D):
-    r"""Apply random equalization to 3D volumes (5D tensor).
+    r"""Equalize the histogram of 3D volumes, applied per sample with probability ``p`` (default 0.5).
 
     Args:
-        p: probability of the image being equalized.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input tensor must be float and normalized into [0, 1].
@@ -72,6 +72,8 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
         tensor(True)
 
     """
+
+    SUBSTITUTE_SKIPPED_SAMPLES = True
 
     def __init__(self, p: float = 0.5, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)

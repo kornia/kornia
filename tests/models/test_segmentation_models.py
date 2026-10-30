@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import re
+
 import pytest
 import torch
 from torch import nn
@@ -54,7 +56,8 @@ class TestSegmentationModelsBuilder(BaseTester):
         out = model(images)
         assert isinstance(out, torch.Tensor)
         assert out.shape == (2, 2, 8, 12)
-        assert out.device == images.device and out.dtype == dtype
+        assert out.device == images.device
+        assert out.dtype == dtype
         assert torch.isfinite(out).all()
         # The softmax head normalizes over the class axis, so the output is not a degenerate map.
         self.assert_close(out.sum(dim=1), torch.ones(2, 8, 12, device=device, dtype=dtype))
@@ -63,8 +66,10 @@ class TestSegmentationModelsBuilder(BaseTester):
         model = SegmentationModelsBuilder.build(_stand_in_network(), IMAGENET_PARAMS).to(device, dtype)
         images = [torch.rand(3, 8, 12, device=device, dtype=dtype), torch.rand(3, 6, 6, device=device, dtype=dtype)]
         out = model(images)
-        assert isinstance(out, list) and len(out) == 2
-        assert out[0].shape == (2, 8, 12) and out[1].shape == (2, 6, 6)
+        assert isinstance(out, list)
+        assert len(out) == 2
+        assert out[0].shape == (2, 8, 12)
+        assert out[1].shape == (2, 6, 6)
         self.assert_close(out[0], model(images[0][None])[0])
 
     def test_default_name(self):
@@ -93,7 +98,9 @@ class TestSegmentationModelsBuilder(BaseTester):
         expected = (x64.flip(1) * 255.0 - mean_t) / std_t
         out64 = out.cpu().to(torch.float64)
 
-        assert out.shape == x.shape and out.dtype == dtype and out.device == x.device
+        assert out.shape == x.shape
+        assert out.dtype == dtype
+        assert out.device == x.device
         # The pipeline chains three rounding ops in the working dtype at magnitudes up to ~1100, so the
         # accumulated error reaches ~2 eps (measured over 50 draws: 1.9 float32, 1.3 float16, 1.4 bfloat16)
         # while BaseTester's half-precision defaults are rtol ~1 eps and fail here. The pipeline builds its
@@ -114,7 +121,8 @@ class TestSegmentationModelsBuilder(BaseTester):
         x = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype).view(1, 3, 1, 1).expand(1, 3, 2, 2)
         expected = torch.tensor([0.0, 127.5, 255.0], device=device, dtype=dtype).view(1, 3, 1, 1).expand(1, 3, 2, 2)
         out = pipeline(x)
-        assert out.dtype == dtype and out.device == x.device
+        assert out.dtype == dtype
+        assert out.device == x.device
         assert torch.equal(out, expected)
 
     def test_preprocessing_rgb_unit_range(self, device, dtype):
@@ -171,8 +179,10 @@ class TestSemanticSegmentation(BaseTester):
         assert torch.isfinite(vis).all()
         # Same through the per-image list path, which draws a colormap per mask.
         vis_list = model.visualize([images[0], images[1]])
-        assert isinstance(vis_list, list) and len(vis_list) == 2
-        assert vis_list[0].shape == (3, 6, 6) and vis_list[0].device == images.device
+        assert isinstance(vis_list, list)
+        assert len(vis_list) == 2
+        assert vis_list[0].shape == (3, 6, 6)
+        assert vis_list[0].device == images.device
         self.assert_close(vis_list[0], vis[0])
 
     def test_visualize_rejects_logits(self, device, dtype):
@@ -183,6 +193,37 @@ class TestSemanticSegmentation(BaseTester):
         model = SegmentationModelsBuilder.build(logits_net, IMAGENET_PARAMS).to(device, dtype)
         with pytest.raises(ValueError, match="softmax"):
             model.visualize(torch.rand(1, 3, 6, 6, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("as_list", [False, True])
+    def test_save_writes_the_same_files_for_every_output_type(self, device, dtype, as_list, tmp_path):
+        model = SegmentationModelsBuilder.build(_stand_in_network(3), IMAGENET_PARAMS).to(device, dtype)
+        images = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        if as_list:
+            images = list(images)
+
+        written = {}
+        for output_type in ("torch", "pil"):
+            directory = tmp_path / output_type
+            model.save(images, directory=str(directory), output_type=output_type, manual_seed=7)
+            # file names carry a "_YYYYmmdd_HHMMSS" timestamp, which may differ between the two calls
+            written[output_type] = {re.sub(r"_\d{8}_\d{6}", "", p.name): p.read_bytes() for p in directory.iterdir()}
+
+        # source, mask and overlay of each of the two images
+        assert len(written["torch"]) == 6
+        assert written["pil"] == written["torch"]
+
+        # the mask files are the visualization with the colormap seed given to save
+        reference = tmp_path / "reference"
+        model._save_outputs(model.visualize(images, manual_seed=7), str(reference), suffix="_mask")
+        masks = {name: data for name, data in written["torch"].items() if "_mask_" in name}
+        assert masks == {re.sub(r"_\d{8}_\d{6}", "", p.name): p.read_bytes() for p in reference.iterdir()}
+        # and the colormap reaches it too: "random" is the only one there is
+        with pytest.raises(ValueError, match="Unsupported colormap"):
+            model.save(images, directory=str(tmp_path / "jet"), colormap="jet")
+
+        with pytest.raises(RuntimeError, match="Output type numpy is not supported"):
+            model.save(images, directory=str(tmp_path / "numpy"), output_type="numpy")
+        assert not (tmp_path / "numpy").exists()
 
     def test_preprocessing_onnx_export(self, device):
         # The pipeline is documented as ONNX-friendly: export it and compare the runtime against eager.

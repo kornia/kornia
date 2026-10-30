@@ -23,14 +23,34 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils._crop import _compiled_slice_resize
+from kornia.augmentation.base import _mixed_gate_shape_error
 from kornia.augmentation.utils.helpers import _constant_tensor, _pad_with_fill
 from kornia.constants import Resample
-from kornia.core.utils import is_compiling, is_exporting
+from kornia.core.utils import _to_device_nonblocking, is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat
-from kornia.geometry.transform.crop2d import _crop_translation
+from kornia.geometry.transform._crop import _compiled_slice_resize
+from kornia.geometry.transform.crop2d import _crop_inverse_by_transform_mat, _crop_translation
+
+
+def _remove_padding(
+    input: torch.Tensor, padding: List[int], fill: Union[float, Sequence[float], torch.Tensor], padding_mode: str
+) -> torch.Tensor:
+    """Undo ``precrop_padding`` with its ``[left, right, top, bottom]`` padding.
+
+    A border the forward call added is sliced off, which needs no fill: an image's per-channel ``fill`` does not
+    fit a one-channel mask. A negative entry cropped the input, and that border is padded back as the forward call
+    pads; a per-channel ``fill`` that does not match the channels (a mask) pads it with zeros.
+    """
+    left, right, top, bottom = (max(side, 0) for side in padding)
+    output = input[..., top : input.shape[-2] - bottom, left : input.shape[-1] - right]
+    regrow = [max(-side, 0) for side in padding]
+    if any(regrow):
+        if not isinstance(fill, (int, float)) and torch.as_tensor(fill).numel() != output.shape[1]:
+            fill = 0.0
+        output = _pad_with_fill(output, regrow, fill, padding_mode)
+    return output
 
 
 class RandomCrop(GeometricAugmentationBase2D):
@@ -65,21 +85,20 @@ class RandomCrop(GeometricAugmentationBase2D):
                        differentiability.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
         - Output: :math:`(B, C, out_h, out_w)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        Additionally, this function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Convention:
         See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
         ``size`` is an ``(height, width)`` tuple; a bare integer raises, unlike :class:`CenterCrop`
         (`#4417 <https://github.com/kornia/kornia/issues/4417>`_). ``p`` selects or skips the whole batch
-        together; a skipped batch is returned unchanged and unpadded. With ``padding`` or ``pad_if_needed``,
-        ``transform_matrix`` maps the padded canvas, not the input, to the crop
-        (`#4801 <https://github.com/kornia/kornia/issues/4801>`_).
+        together; a skipped batch is returned unchanged and unpadded. ``transform_matrix`` maps original input
+        coordinates to the crop, including the translation from ``padding`` or ``pad_if_needed``.
 
         Explicit ``padding`` is applied before sampling, in ``(left, top, right, bottom)`` order after its scalar
         or two-value shorthand is expanded. ``pad_if_needed=True`` pads each side by the maximum of that padding
@@ -88,16 +107,21 @@ class RandomCrop(GeometricAugmentationBase2D):
         and the mask is padded with zero unless ``extra_args[DataKey.MASK]`` sets its ``fill``; a scalar ``fill``
         applies to both.
 
-        With ``pad_if_needed=False``, an oversized request does not raise: slice mode resizes the available slice,
-        and resample mode uses a mis-scaled warp that rescales both matrix axes and can blend in zero padding
-        (`#4414 <https://github.com/kornia/kornia/issues/4414>`_). The scale is computed against the padded canvas,
-        so a crop that fits after explicit padding gets no scale correction.
+        With ``pad_if_needed=False``, a ``size`` larger than the canvas after explicit ``padding`` raises
+        ``ValueError`` on either axis, whether or not the batch is selected; it used to return an upscale of the
+        input. A crop that fits once padded is unaffected. Replayed ``params`` whose ``src`` box exceeds the canvas
+        are not checked: slice mode resizes the available slice and scales only the matrix axes along which the box
+        exceeds the canvas, on the resize's half-pixel grid, ``x' = (x + 0.5) * W_out / W_in - 0.5`` along a
+        stretched axis (likewise for ``y``), and resample mode uses a warp that rescales both matrix axes and can
+        blend in zero padding.
 
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and
         ``align_corners`` and maps constant, replicate and reflect pre-padding to zero, border and reflection
-        sampler padding. Only resample mode supports :meth:`inverse`, which removes the pre-crop padding but cannot
-        restore cropped or interpolated content.
+        sampler padding. Both modes support :meth:`inverse`, for images, masks, boxes and keypoints: it warps with
+        the inverse of the mode's ``transform_matrix``, removes the pre-crop padding, and cannot restore cropped or
+        interpolated content.
+        For an empty batch, ``forward_input_shape`` records the original, unpadded canvas for inverse replay.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
@@ -195,12 +219,28 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         return input
 
+    def _padding_offset(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        padding = params.get("padding_size")
+        if is_exporting() or not isinstance(padding, torch.Tensor):
+            # Recompute the canvas from the module flags, as ``precrop_padding`` does for the pixels.
+            padding = _constant_tensor(tuple(self.compute_padding(tuple(input.shape))), dtype=torch.long)[None]
+        return _to_device_nonblocking(padding[:, ::2], input.device, input.dtype)
+
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        transform = self._compute_crop_transformation(input, params, flags)
+        # Column vectors: M = crop @ padding, including the existing oversized-crop scale.
+        offset = self._padding_offset(input, params)
+        transform[:, :2, 2] += (transform[:, :2, :2] @ offset[..., None]).squeeze(-1)
+        return transform
+
+    def _compute_crop_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            src = params["src"].to(input)
-            dst = params["dst"].to(input)
+            src = _to_device_nonblocking(params["src"], input.device, input.dtype)
+            dst = _to_device_nonblocking(params["dst"], input.device, input.dtype)
             transform = _crop_translation(src, dst)
 
             # Scale against the canvas represented by the effective replay parameters.
@@ -212,28 +252,47 @@ class RandomCrop(GeometricAugmentationBase2D):
                 h += padding[2] + padding[3]
                 w += padding[0] + padding[1]
                 h_out, w_out = flags["size"]
-                if h_out > h or w_out > w:
+                if flags["cropping_mode"] == "slice":
+                    # The slice resize of an oversized axis is on the half-pixel grid: x' = (x + 0.5) * scale - 0.5.
+                    if w_out > w:
+                        transform[:, 0, 0] *= w_out / w
+                        transform[:, 0, 2] += (w_out / w - 1) / 2
+                    if h_out > h:
+                        transform[:, 1, 1] *= h_out / h
+                        transform[:, 1, 2] += (h_out / h - 1) / 2
+                elif h_out > h or w_out > w:
                     transform[:, 0, 0] *= w_out / w
                     transform[:, 1, 1] *= h_out / h
                 return transform
 
-            padding_size = padding_size.to(device=input.device)
-            padded_h = input.shape[-2] + padding_size[:, 2] + padding_size[:, 3]
-            padded_w = input.shape[-1] + padding_size[:, 0] + padding_size[:, 1]
+            padding_size = _to_device_nonblocking(padding_size, input.device)
+            canvas = params.get("forward_input_shape")
+            if isinstance(canvas, torch.Tensor) and input.shape[0] > 0:
+                # The recorded padded canvas: an inverse passes the crop output as ``input``, and its shape would
+                # lose the scale of an oversized crop. A forward call records the canvas it is given, so it agrees.
+                canvas = _to_device_nonblocking(canvas, input.device)
+                padded_h = canvas[-2].expand(input.shape[0])
+                padded_w = canvas[-1].expand(input.shape[0])
+            else:
+                padded_h = input.shape[-2] + padding_size[:, 2] + padding_size[:, 3]
+                padded_w = input.shape[-1] + padding_size[:, 0] + padding_size[:, 1]
             h_out, w_out = flags["size"]
             needs_scale = (h_out > padded_h) | (w_out > padded_w)
             scale_w = torch.where(
-                needs_scale,
+                (w_out > padded_w) if flags["cropping_mode"] == "slice" else needs_scale,
                 torch.full_like(padded_w, w_out, dtype=transform.dtype) / padded_w.to(dtype=transform.dtype),
                 torch.ones_like(padded_w, dtype=transform.dtype),
             )
             scale_h = torch.where(
-                needs_scale,
+                (h_out > padded_h) if flags["cropping_mode"] == "slice" else needs_scale,
                 torch.full_like(padded_h, h_out, dtype=transform.dtype) / padded_h.to(dtype=transform.dtype),
                 torch.ones_like(padded_h, dtype=transform.dtype),
             )
             transform[:, 0, 0] *= scale_w
             transform[:, 1, 1] *= scale_h
+            if flags["cropping_mode"] == "slice":
+                transform[:, 0, 2] += (scale_w - 1) / 2
+                transform[:, 1, 2] += (scale_h - 1) / 2
 
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
@@ -245,10 +304,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> Keypoints:
-        """Pad and transform keypoints without modifying the skipped branch."""
-        padding_size = params["padding_size"].to(device=input.device)
-        # pad mutates its input; keep the original coordinates for the non-transform branch.
-        input = input.clone().pad(padding_size)
+        """Transform original keypoints without modifying the skipped branch."""
+        input = input.clone()
         return super().apply_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
 
     def apply_transform_box(
@@ -258,10 +315,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
-        """Pad and transform boxes without modifying the skipped branch."""
-        padding_size = params["padding_size"]
-        # pad mutates its input; keep the original coordinates for the non-transform branch.
-        input = input.clone().pad(padding_size)
+        """Transform original boxes without modifying the skipped branch."""
+        input = input.clone()
         return super().apply_transform_box(input=input, params=params, flags=flags, transform=transform)
 
     def apply_transform(
@@ -272,12 +327,24 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         padding_size: Optional[List[int]] = None
-        if is_exporting():
+        if is_exporting() or is_compiling():
             # ``padding_size`` is a function of the input shape (see ``forward_parameters``), so let
             # ``precrop_padding`` recompute it from the static shape instead of reading the tensor back.
             padding_size = None
         elif "padding_size" in params and isinstance(params["padding_size"], torch.Tensor):
             padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
+        if flags["cropping_mode"] == "resample" and isinstance(transform, torch.Tensor):
+            # Pixels are padded below; sample with the padded-canvas crop matrix.
+            offset = self._padding_offset(input, params).to(transform)
+            if not (self.p == 1.0 and self.p_batch == 1.0):
+                # Only selected matrices include padding. Keep skipped rows as identity.
+                applied = _to_device_nonblocking(
+                    torch.atleast_1d(params["batch_prob"] > 0.5), offset.device, offset.dtype
+                )
+                applied = applied if applied.shape[0] == transform.shape[0] else applied.any()
+                offset = offset * applied.reshape(-1, 1)
+            transform = transform.clone()
+            transform[:, :2, 2] -= (transform[:, :2, :2] @ offset[..., None]).squeeze(-1)
         input = self.precrop_padding(input, padding_size, flags)
 
         flags = self.flags if flags is None else flags
@@ -315,10 +382,6 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> torch.Tensor:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
         if size is None:
             raise RuntimeError("`size` has to be a tuple. Got None.")
         if not isinstance(transform, torch.Tensor):
@@ -332,9 +395,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding_mode = "reflection"
         else:
             padding_mode = flags["padding_mode"]
-        return crop_by_transform_mat(
+        return _crop_inverse_by_transform_mat(
             input,
-            transform[:, :2, :],
+            transform,
             size,
             flags["resample"].name.lower(),
             padding_mode=padding_mode,
@@ -349,52 +412,34 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> torch.Tensor:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
+        if isinstance(transform, torch.Tensor):
+            # The inverse matrix returns original coordinates. The image inverse still renders
+            # onto forward_input_shape (the padded canvas), then removes its border below.
+            transform = transform.clone()
+            transform[:, :2, 2] += _to_device_nonblocking(
+                params["padding_size"][:, ::2], transform.device, transform.dtype
             )
-        out = super().inverse_inputs(input, params, flags, transform, **kwargs)
-        if not params["batch_prob"].all():
-            return out
+        to_apply = self._gate(params)
+        if not to_apply.any():
+            return super().inverse_inputs(input, params, flags, transform, **kwargs)
         padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
-        padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
-        return self.precrop_padding(out, padding_size)
-
-    def inverse_boxes(
-        self,
-        input: Boxes,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-        **kwargs: Any,
-    ) -> Boxes:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
-        output = super().inverse_boxes(input, params, flags, transform, **kwargs)
-        if not params["batch_prob"].all():
-            return output
-
-        return output.unpad(params["padding_size"])
-
-    def inverse_keypoints(
-        self,
-        input: Keypoints,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-        **kwargs: Any,
-    ) -> Keypoints:
-        if flags["cropping_mode"] != "resample":
-            raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
-            )
-        output = super().inverse_keypoints(input, params, flags, transform, **kwargs)
-        if not params["batch_prob"].all():
-            return output
-
-        return output.unpad(params["padding_size"].to(device=input.device))
+        if to_apply.all():
+            out = super().inverse_inputs(input, params, flags, transform, **kwargs)
+            return _remove_padding(out, padding_size, flags["fill"], flags["padding_mode"])
+        # A mixed gate: the applied rows come back at the unpadded input size, so invert and unpad them on
+        # their own, and judge the shape change the caller sees, not the padded canvas.
+        in_tensor = self.transform_tensor(input)
+        canvas = params["forward_input_shape"].tolist()
+        unpadded = (canvas[-2] - padding_size[2] - padding_size[3], canvas[-1] - padding_size[0] - padding_size[1])
+        if tuple(in_tensor.shape[-2:]) != unpadded:
+            raise _mixed_gate_shape_error(in_tensor.shape[1:], (*in_tensor.shape[1:-2], *unpadded), inverse=True)
+        applied_params = dict(params)
+        applied_params["batch_prob"] = params["batch_prob"][to_apply]
+        applied_transform = transform[to_apply] if isinstance(transform, torch.Tensor) else transform
+        out = super().inverse_inputs(in_tensor[to_apply], applied_params, flags, applied_transform, **kwargs)
+        output = in_tensor.clone()
+        output[to_apply] = _remove_padding(out, padding_size, flags["fill"], flags["padding_mode"])
+        return output
 
     # Override parameters for precrop
     def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
@@ -406,7 +451,25 @@ class RandomCrop(GeometricAugmentationBase2D):
                 batch_shape[3] + input_pad[0] + input_pad[1],  # original width + left + right padding
             )
         )
+        size = self.flags["size"]
+        # A malformed ``size`` is left to the crop generator, whose message names the argument. With
+        # ``pad_if_needed=True``, negative explicit padding can still leave the canvas short of ``size``; that case
+        # keeps its resize, as before.
+        if (
+            not self.flags["pad_if_needed"]
+            and isinstance(size, (tuple, list))
+            and len(size) == 2
+            and (size[0] > batch_shape_new[2] or size[1] > batch_shape_new[3])
+        ):
+            # A crop box past the canvas would be resampled into an upscale of the whole input.
+            raise ValueError(
+                f"RandomCrop size {tuple(size)} is larger than the input "
+                f"{tuple(batch_shape[2:4])} (padded canvas {tuple(batch_shape_new[2:4])}) with "
+                "pad_if_needed=False. Pass pad_if_needed=True to pad the input up to the crop size, "
+                "or crop to a smaller size."
+            )
         padding_size = _constant_tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
-        _params = super().forward_parameters(batch_shape_new)
+        # An empty batch has no padding rows and no pixels to pad. Keep its original canvas for inverse replay.
+        _params = super().forward_parameters(batch_shape if batch_shape[0] == 0 else batch_shape_new)
         _params.update({"padding_size": padding_size})
         return _params

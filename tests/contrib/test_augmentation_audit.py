@@ -38,6 +38,19 @@ class TestAugmentationAudit(BaseTester):
         assert contrib.AugmentationAuditReport.__module__ == "kornia.contrib.augmentation_audit"
         assert not hasattr(K.AugmentationSequential, "audit")
 
+    def test_bhw_mask_is_accepted_like_bchw(self, device, dtype):
+        # AugmentationSequential takes (B, H, W) masks (#5602); audit rejected them as "not batched".
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        img = torch.rand(2, 3, 30, 40, device=device, dtype=dtype)
+        mask = (torch.rand(2, 30, 40, device=device) > 0.5).to(dtype)
+        out3, report3 = audit(seq, img, mask)
+        out4, report4 = audit(seq, img, mask[:, None])
+        assert report3.steps
+        assert len(report3.steps) == len(report4.steps)
+        assert report3.inputs[1]["shape"] == (2, 30, 40)
+        assert report4.inputs[1]["shape"] == (2, 1, 30, 40)
+        self.assert_close(out3[1].reshape(2, 30, 40), out4[1].reshape(2, 30, 40))
+
     def test_flip_and_actual_keypoints(self, device, dtype):
         image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
         points = torch.tensor([[[1.0, 2.0], [11.0, 4.0]]], device=device, dtype=dtype).expand(2, -1, -1)
@@ -141,20 +154,16 @@ class TestAugmentationAudit(BaseTester):
         assert torch.equal(actual[0], expected[0])
         assert torch.equal(actual[1], expected[1])
 
-    def test_shape_changing_mixed_application_is_unsupported(self, device, dtype):
+    def test_shape_changing_mixed_application_raises(self, device, dtype):
         image = torch.zeros(2, 1, 8, 10, device=device, dtype=dtype)
-        image[:, 0, 2, 4] = 1
         points = image.new_tensor([[[4, 2]], [[4, 2]]])
         resize = K.Resize((4, 5), resample="nearest", p=0.5)
         params = resize.forward_parameters(image.shape)
         params["batch_prob"] = image.new_tensor([0, 1])
         aug = K.AugmentationSequential(resize, data_keys=["input", "keypoints"])
-        outputs, report = audit(aug, image, points, params=[ParamItem("Resize_0", params)])
-        assert outputs[0][0, 0, 1, 2].item() == 1
-        self.assert_close(outputs[1][0], points[0])
-        assert report.geometry_status == "unsupported"
-        assert report.matrix is None and report.inverse_matrix is None
-        assert "mixed-application shape-changing" in report.summary()
+        # The audit matches the ordinary forward call, which rejects a mixed gate here (#4497).
+        with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+            audit(aug, image, points, params=[ParamItem("Resize_0", params)])
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     def test_crop_padding_and_content_loss(self, device, dtype, cropping_mode):
@@ -207,17 +216,21 @@ class TestAugmentationAudit(BaseTester):
         self.assert_close(report.spatial[0].roundtrip_max, torch.tensor([7], device=device, dtype=diagnostic_dtype))
         assert "round-trip error" in report.summary()
 
-    def test_nonrigid_silent_identity_is_not_supported(self, device, dtype):
+    def test_nonrigid_geometry_is_not_supported(self, device, dtype):
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "mask"])
+        _, report = audit(aug, image, torch.ones_like(image))
+        assert report.geometry_status == "unsupported"
+        assert report.matrix is None
+        assert report.inverse_matrix is None
+        assert "non-rigid" in report.summary()
+
+    def test_nonrigid_keypoints_are_refused(self, device, dtype):
+        # The sequence refuses keypoints through a non-rigid warp (#4420); they used to come back unchanged.
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "keypoints"])
-        points = image.new_tensor([[[1, 2]]])
-        outputs, report = audit(aug, image, points)
-        self.assert_close(outputs[1], points)
-        assert report.geometry_status == "unsupported"
-        assert report.matrix is None and report.inverse_matrix is None
-        assert report.spatial[0].roundtrip_valid_count.item() == 0
-        assert torch.isnan(report.spatial[0].roundtrip_max).all()
-        assert "non-rigid" in report.summary()
+        with pytest.raises(NotImplementedError, match="RandomElasticTransform does not support keypoints"):
+            audit(aug, image, image.new_tensor([[[1, 2]]]))
 
     def test_singular_and_nonfinite_matrices(self, device, dtype):
         class SingularFlip(K.RandomHorizontalFlip):
@@ -251,8 +264,11 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(torch.nn.Identity(), data_keys=["input", "keypoints"])
         _, report = audit(aug, image, points)
         item = report.spatial[0]
-        assert item.count.item() == 4 and item.out_of_frame.item() == 1 and item.nonfinite.item() == 1
-        assert item.out_of_frame_fraction.item() == 0.25 and item.roundtrip_valid_count.item() == 3
+        assert item.count.item() == 4
+        assert item.out_of_frame.item() == 1
+        assert item.nonfinite.item() == 1
+        assert item.out_of_frame_fraction.item() == 0.25
+        assert item.roundtrip_valid_count.item() == 3
         json.loads(report.to_json())
 
     def test_snapshots_and_gradients(self, device, dtype):
@@ -324,7 +340,8 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         output, report = audit(K.AugmentationSequential(), image)
         self.assert_close(output, image)
-        assert report.steps == [] and report.params == []
+        assert report.steps == []
+        assert report.params == []
         assert report.geometry_status == "available"
         self.assert_close(report.matrix, torch.eye(3, device=device, dtype=report.matrix.dtype).unsqueeze(0))
 
@@ -430,11 +447,13 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(policy, data_keys=["input", "keypoints"])
         outputs, report = audit(aug, image, points)
         assert report.geometry_status == "unsupported"
-        assert report.matrix is None and report.inverse_matrix is None
+        assert report.matrix is None
+        assert report.inverse_matrix is None
         assert not report.invertible.any()
         assert report.spatial[0].roundtrip_valid_count.item() == 0
         assert report.steps == []
-        assert policy_name in report.summary() and "capture" in report.summary()
+        assert policy_name in report.summary()
+        assert "capture" in report.summary()
         replay = aug(image, points, params=report.params)
         for actual, expected in zip(outputs, replay):
             self.assert_close(actual, expected)
@@ -525,7 +544,8 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         output, report = audit(aug, image, params=None if nested else [])
         self.assert_close(output, image)
-        assert report.steps == [] and report.geometry_status == "available"
+        assert report.steps == []
+        assert report.geometry_status == "available"
         assert not report.warnings
 
     @pytest.mark.parametrize("name", ["Resize", "LongestMaxSize"])
@@ -544,7 +564,6 @@ class TestAugmentationAudit(BaseTester):
             (0.0, None),
             (1.0, None),
             (0.5, [0.0, 0.0]),
-            (0.5, [0.0, 1.0]),
             (0.5, [1.0, 1.0]),
             (1.0, [0.0, 1.0]),
         ],
@@ -554,6 +573,7 @@ class TestAugmentationAudit(BaseTester):
         [
             ((4, 8), None, False),
             ((4, 8), (1, 2), False),
+            ((4, 8), (1, 2, 3, 0), False),
             ((6, 10), (1, 2, 3, 0), False),
             ((8, 12), None, True),
         ],
@@ -581,49 +601,95 @@ class TestAugmentationAudit(BaseTester):
         )
         aug = K.AugmentationSequential(module, data_keys=["input", "keypoints", "bbox"])
         outputs, report = audit(aug, image, points, boxes, params=[ParamItem("RandomCrop_0", params)])
-        selected = params["batch_prob"] > 0.5
-        static = p == 1.0
-        all_transformed = static or (size != image.shape[-2:] and bool(selected.any()))
-        transformed = torch.ones_like(selected) if all_transformed else selected
+        # Static p=1 transforms every row whatever an overridden batch_prob holds (#5585).
+        selected = (params["batch_prob"] > 0.5).to(device=image.device) | (p == 1.0)
+        # Public matrices include padding; the dynamic gate leaves skipped rows as identity.
+        public_shift = image.new_tensor([pad[0] - x, pad[2] - y]).expand(2, -1)
+        public_shift = torch.where(selected[:, None], public_shift, 0)
+        self.assert_close(module.transform_matrix[:, :2, 2], public_shift)
+        # Labels follow the same decision as the image and the matrix.
+        self.assert_close(outputs[1], points + public_shift[:, None])
+        self.assert_close(outputs[2].data, boxes.data + public_shift[:, None, None])
+        transformed = selected
         padded = torch.nn.functional.pad(image, pad)
         expected_images = []
         image_shift = image.new_zeros((2, 2))
         for row in range(2):
             if transformed[row]:
-                # Slice ignores the cached matrix; resample uses its per-row identity/crop selection.
-                use_crop = cropping_mode == "slice" or static or bool(selected[row])
-                left, top = (x, y) if use_crop else (0, 0)
-                expected_images.append(padded[row, :, top : top + size[0], left : left + size[1]])
-                image_shift[row] = image.new_tensor([pad[0] - left, pad[2] - top])
+                expected_images.append(padded[row, :, y : y + size[0], x : x + size[1]])
+                image_shift[row] = image.new_tensor([pad[0] - x, pad[2] - y])
             else:
                 expected_images.append(image[row])
         self.assert_close(outputs[0], torch.stack(expected_images))
         for row in range(2):
             destination = points[row, 0] + image_shift[row]
             assert outputs[0][row, 0, int(destination[1]), int(destination[0])].item() == 1
-        ambiguous_slice = cropping_mode == "slice" and all_transformed and not static and not bool(selected.all())
-        if ambiguous_slice:
-            assert report.geometry_status == "unsupported"
-            assert report.matrix is None and "slice" in report.summary()
-        else:
-            assert report.geometry_status == "available"
-            diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-            self.assert_close(report.matrix[:, :2, 2], image_shift.to(diagnostic_dtype))
-            # Measure against the observed pixel mapping. Manually mixed rows can still
-            # return untransformed labels beside a transformed image.
-            restored_points = outputs[1][:, 0].to(diagnostic_dtype) - image_shift.to(diagnostic_dtype)
-            error = torch.linalg.vector_norm(restored_points - points[:, 0].to(diagnostic_dtype), dim=-1)
-            self.assert_close(report.spatial[0].roundtrip_max, error)
-            restored_boxes = outputs[2].data.to(diagnostic_dtype) - image_shift[:, None, None, :].to(diagnostic_dtype)
-            box_error = (
-                torch.linalg.vector_norm(restored_boxes - boxes.data.to(diagnostic_dtype), dim=-1).amax(-1).amax(-1)
-            )
-            self.assert_close(report.spatial[1].roundtrip_max, box_error)
-            if bool((error > report.roundtrip_tolerance).any()):
-                assert "round-trip error exceeds" in report.summary()
-            if batch_prob is None or bool(selected.all()) or not bool(selected.any()):
-                # Whole-batch application or skip keeps labels aligned with the image (#4473).
-                self.assert_close(error, torch.zeros_like(error))
+        assert report.geometry_status == "available"
+        diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        self.assert_close(report.matrix[:, :2, 2], image_shift.to(diagnostic_dtype))
+        # Measure against the observed pixel mapping.
+        restored_points = outputs[1][:, 0].to(diagnostic_dtype) - image_shift.to(diagnostic_dtype)
+        error = torch.linalg.vector_norm(restored_points - points[:, 0].to(diagnostic_dtype), dim=-1)
+        self.assert_close(report.spatial[0].roundtrip_max, error)
+        restored_boxes = outputs[2].data.to(diagnostic_dtype) - image_shift[:, None, None, :].to(diagnostic_dtype)
+        box_error = torch.linalg.vector_norm(restored_boxes - boxes.data.to(diagnostic_dtype), dim=-1).amax(-1).amax(-1)
+        self.assert_close(report.spatial[1].roundtrip_max, box_error)
+        # Whole-batch application or skip keeps labels aligned with the image (#4473).
+        self.assert_close(error, torch.zeros_like(error))
+
+    def test_roundtrip_error_warning_for_tensor_boxes_under_rotation(self, device, dtype):
+        # Tensor boxes keep only the axis-aligned envelope of a rotated box, so the round trip is lossy and the
+        # audit warns. This keeps the warning covered now that no crop gate produces an image/label mismatch.
+        image = torch.zeros(2, 1, 20, 20, device=device, dtype=dtype)
+        boxes = image.new_tensor([[[[4, 6], [14, 6], [14, 10], [4, 10]]]]).expand(2, -1, -1, -1).clone()
+        aug = K.AugmentationSequential(K.RandomRotation((45.0, 45.0), p=1.0), data_keys=["input", "bbox"])
+        _, report = audit(aug, image, boxes)
+        assert float(report.spatial[0].roundtrip_max.max()) > report.roundtrip_tolerance
+        assert "round-trip error exceeds" in report.summary()
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize(
+        "size, padding, pad_if_needed",
+        [
+            ((4, 8), None, False),
+            ((4, 8), (1, 2), False),
+            ((4, 8), (1, 2, 3, 0), False),
+            ((6, 10), (1, 2, 3, 0), False),
+            ((8, 12), None, True),
+        ],
+    )
+    def test_crop_mixed_gate(self, device, dtype, cropping_mode, size, padding, pad_if_needed):
+        image = torch.zeros(2, 1, 6, 10, device=device, dtype=dtype)
+        image[:, 0, 1, 3] = 1
+        points = image.new_tensor([[[3, 1]], [[3, 1]]])
+        module = K.RandomCrop(
+            size, padding=padding, pad_if_needed=pad_if_needed, p=0.5, cropping_mode=cropping_mode, resample="nearest"
+        )
+        params = module.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0, 1])
+        pad = params["padding_size"][0].tolist()
+        x = min(1, image.shape[-1] + pad[0] + pad[1] - size[1])
+        y = min(1, image.shape[-2] + pad[2] + pad[3] - size[0])
+        params["src"] = (
+            image.new_tensor([[[x, y], [x + size[1] - 1, y], [x + size[1] - 1, y + size[0] - 1], [x, y + size[0] - 1]]])
+            .expand(2, -1, -1)
+            .clone()
+        )
+        aug = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
+        item = [ParamItem("RandomCrop_0", params)]
+        if size != image.shape[-2:]:
+            # Skipped rows cannot keep their shape in a cropped batch (#4497).
+            with pytest.raises(ValueError, match="mixes applied and skipped rows"):
+                audit(aug, image, points, params=item)
+            return
+        outputs, report = audit(aug, image, points, params=item)
+        padded = torch.nn.functional.pad(image, pad)
+        self.assert_close(outputs[0][0], image[0])
+        self.assert_close(outputs[0][1], padded[1, :, y : y + size[0], x : x + size[1]])
+        assert report.geometry_status == "available"
+        shift = report.matrix.new_tensor([[0, 0], [pad[0] - x, pad[2] - y]])
+        self.assert_close(report.matrix[:, :2, 2], shift)
+        self.assert_close(report.spatial[0].roundtrip_max, torch.zeros_like(report.spatial[0].roundtrip_max))
 
     @pytest.mark.parametrize("configured, effective", [("resample", "slice"), ("slice", "resample")])
     def test_crop_effective_mode_override(self, device, dtype, configured, effective):
@@ -631,7 +697,8 @@ class TestAugmentationAudit(BaseTester):
         image[:, 0, 1, 3] = 1
         module = K.RandomCrop((4, 8), padding=(1, 2), p=0.5, cropping_mode=configured, resample="nearest")
         params = module.forward_parameters(image.shape)
-        params["batch_prob"] = image.new_tensor([0, 1])
+        # A whole-batch gate: a mixed gate on this crop raises (#4497).
+        params["batch_prob"] = image.new_tensor([1, 1])
         params["src"] = image.new_tensor([[[1, 1], [8, 1], [8, 4], [1, 4]]]).expand(2, -1, -1).clone()
         aug = K.AugmentationSequential(
             module, data_keys=["input", "keypoints"], extra_args={DataKey.INPUT: {"cropping_mode": effective}}
@@ -641,11 +708,7 @@ class TestAugmentationAudit(BaseTester):
         )
         assert report.steps[0].flags["cropping_mode"] == effective
         assert module.flags["cropping_mode"] == configured
+        assert outputs[0][0, 0, 2, 3].item() == 1
         assert outputs[0][1, 0, 2, 3].item() == 1
-        if effective == "slice":
-            assert outputs[0][0, 0, 2, 3].item() == 1
-            assert report.geometry_status == "unsupported" and report.matrix is None
-        else:
-            assert outputs[0][0, 0, 3, 4].item() == 1
-            assert report.geometry_status == "available"
-            self.assert_close(report.matrix[:, :2, 2], report.matrix.new_tensor([[1, 2], [0, 1]]))
+        assert report.geometry_status == "available"
+        self.assert_close(report.matrix[:, :2, 2], report.matrix.new_tensor([[0, 1], [0, 1]]))

@@ -61,12 +61,12 @@ class TestTransformParameters(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_exception(self, batch_size, device, dtype):
+        src = torch.rand(batch_size, 5, 2).numpy()
         with pytest.raises(TypeError):
-            src = torch.rand(batch_size, 5, 2).numpy()
             assert kornia.geometry.transform.get_tps_transform(src, src)
 
+        src = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            src = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.get_tps_transform(src, src)
 
     def test_kernel_distance_values(self, device, dtype):
@@ -137,20 +137,20 @@ class TestWarpPoints(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel, affine.numpy())
 
+        src_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            src_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_points_tps(src_bad, src, kernel, affine)
 
+        src_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            src_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_points_tps(src, src_bad, kernel, affine)
 
+        kernel_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            kernel_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel_bad, affine)
 
+        affine_bad = torch.rand(batch_size, 3)
         with pytest.raises(ValueError):
-            affine_bad = torch.rand(batch_size, 3)
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel, affine_bad)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -225,20 +225,20 @@ class TestWarpImage(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine.numpy())
 
+        image_bad = torch.rand(batch_size, 32, 32)
         with pytest.raises(ValueError):
-            image_bad = torch.rand(batch_size, 32, 32)
             assert kornia.geometry.transform.warp_image_tps(image_bad, dst, kernel, affine)
 
+        dst_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            dst_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_image_tps(image, dst_bad, kernel, affine)
 
+        kernel_bad = torch.rand(batch_size, 5)
         with pytest.raises(ValueError):
-            kernel_bad = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel_bad, affine)
 
+        affine_bad = torch.rand(batch_size, 3)
         with pytest.raises(ValueError):
-            affine_bad = torch.rand(batch_size, 3)
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine_bad)
 
     @pytest.mark.parametrize("batch_size", [1, 3])

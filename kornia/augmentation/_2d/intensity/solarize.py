@@ -20,19 +20,19 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.enhance import solarize
 
 
 class RandomSolarize(IntensityAugmentationBase2D):
-    r"""Solarize given torch.Tensor image or a batch of torch.Tensor images randomly.
+    r"""Solarize images at a random threshold and addition, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomSolarize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         thresholds:
             If float x, threshold will be generated from (0.5 - x, 0.5 + x).
             If tuple (x, y), threshold will be generated from (x, y).
@@ -44,10 +44,12 @@ class RandomSolarize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the addition comes first: the drawn ``additions`` value is added to the whole image and the sum
           is clamped into ``[0, 1]``, and only then is everything at or above the drawn ``thresholds``
           replaced by ``1 - value``.
@@ -56,12 +58,6 @@ class RandomSolarize(IntensityAugmentationBase2D):
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
         - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, so a
           range that reaches an endpoint is applied rather than rejected.
-
-    .. warning::
-        An all-negative input comes back as an all-zero image unless the drawn addition lifts it above zero or
-        the drawn threshold is ``0``, and an input whose values are all at least ``1.5`` comes back as an
-        all-zero image on every draw. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.solarize`.
@@ -105,10 +101,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        input = _clamp_unit_range(input)
         thresholds = params["thresholds"]
         additions: Optional[torch.Tensor]
-        if "additions" in params:
-            additions = params["additions"]
-        else:
-            additions = None
+        additions = params.get("additions")
         return solarize(input, thresholds, additions)

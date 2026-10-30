@@ -26,7 +26,7 @@ from kornia.filters import box_blur
 
 
 class RandomBoxBlur(IntensityAugmentationBase2D):
-    """Add random blur with a box filter to an image tensor.
+    """Blur images with a box filter, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomBoxBlur.png
 
@@ -42,11 +42,12 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
           as two 1D passes (``separable=True``), ``False`` as one 2D pass. The kernel is L1-normalized either
           way, so both return the mean of each window, never its sum, and differ only by float rounding.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.box_blur`. An even
           entry is accepted and shifts the image half a pixel toward the top-left -- for an even extent ``k``, output
           ``i`` averages inputs ``i - k // 2 + 1`` to ``i + k // 2`` -- where :class:`RandomGaussianBlur` raises.

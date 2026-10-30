@@ -59,12 +59,7 @@ def _default_init_weights(
     modules = [module_list] if isinstance(module_list, nn.Module) else list(module_list)
     for module in modules:
         for m in module.modules():
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight)
-                m.weight.data *= scale
-                if m.bias is not None:
-                    m.bias.data.fill_(bias_fill)
-            elif isinstance(m, nn.Linear):
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
                 init.kaiming_normal_(m.weight)
                 m.weight.data *= scale
                 if m.bias is not None:
@@ -98,7 +93,7 @@ class ResidualDenseBlock(nn.Module):
         _default_init_weights([self.conv1, self.conv2, self.conv3, self.conv4, self.conv5], 0.1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the dense block on ``x`` of shape :math:`(B, C, H, W)`."""
+        """Run the dense block on ``x`` of shape ``(B, C, H, W)``."""
         x1 = self.lrelu(self.conv1(x))
         x2 = self.lrelu(self.conv2(torch.cat((x, x1), 1)))
         x3 = self.lrelu(self.conv3(torch.cat((x, x1, x2), 1)))
@@ -124,7 +119,7 @@ class RRDB(nn.Module):
         self.rdb3 = ResidualDenseBlock(num_feat, num_grow_ch)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the three stacked dense blocks on ``x`` of shape :math:`(B, C, H, W)`."""
+        """Run the three stacked dense blocks on ``x`` of shape ``(B, C, H, W)``."""
         out = self.rdb1(x)
         out = self.rdb2(out)
         out = self.rdb3(out)

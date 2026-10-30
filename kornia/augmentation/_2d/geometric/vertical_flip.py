@@ -21,23 +21,25 @@ import torch
 
 from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.core.ops import _device_literal
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.transform import vflip
 
 
 class RandomVerticalFlip(GeometricAugmentationBase2D):
-    r"""Apply a random vertical flip to a torch.Tensor image or a batch of torch.Tensor images with a given probability.
+    r"""Flip images vertically, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomVerticalFlip.png
 
     Args:
-        p: probability of the image being flipped.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         A selected flip maps ``(x, y)`` to ``(x, H - 1 - y)`` with the exact discrete
@@ -78,13 +80,12 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        # Build the 3x3 flip matrix as a constant literal plus the (tensor) height, rather than
-        # `int(h)`. `int(tensor)` lowers to `.item()`, which breaks torch.compile fullgraph on
-        # some torch versions; a Python-float literal is fine (constant-folded) and adding the
-        # height tensor into entry [1, 2] gives `h - 1` — numerically identical to
-        # `[[1, 0, 0], [0, -1, h - 1], [0, 0, 1]]`, and ~1.8x cheaper than stacking 9 scalars.
-        h = params["forward_input_shape"][-2].to(device=input.device, dtype=input.dtype)
-        flip_mat: torch.Tensor = torch.tensor(
+        # Build the 3x3 flip matrix as a literal filled on the device plus the (tensor) height, rather than
+        # `int(h)`, which lowers to `.item()` and breaks torch.compile fullgraph, or a `torch.tensor` literal,
+        # which copies from the host and waits for the queued kernels. Entry [1, 2] becomes `-1 + h` in the input
+        # dtype, as before.
+        h = _to_device_nonblocking(params["forward_input_shape"][-2], input.device, input.dtype)
+        flip_mat: torch.Tensor = _device_literal(
             [[1.0, 0.0, 0.0], [0.0, -1.0, -1.0], [0.0, 0.0, 1.0]], device=input.device, dtype=input.dtype
         )
         flip_mat[1, 2] = flip_mat[1, 2] + h

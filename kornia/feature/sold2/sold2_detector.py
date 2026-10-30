@@ -17,21 +17,24 @@
 
 import math
 import warnings
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.download import load_state_dict_from_url
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 from kornia.geometry.bbox import nms
 
 from .backbones import SOLD2Net
 
-urls: Dict[str, str] = {}
-urls["wireframe"] = "https://cvg-data.inf.ethz.ch/SOLD2/sold2_wireframe.tar"
+urls: Dict[str, List[str]] = {}
+urls["wireframe"] = [
+    hf_url("sold2", "sold2_wireframe.pth"),
+    "https://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+]
 
 
 class SOLD2_detector(nn.Module):
@@ -40,10 +43,21 @@ class SOLD2_detector(nn.Module):
     This is based on the original code from the paper "SOLD²: Self-supervised
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
+    Convention:
+        - The input is a grayscale image ``(B, 1, H, W)``, in :math:`[0, 1]` for the pretrained weights, with
+          ``H`` and ``W`` multiples of 8; other sizes raise an error or give heatmaps of another size.
+          ``junction_heatmap`` and ``line_heatmap`` are ``(B, H, W)``.
+        - ``line_segments`` holds one ``(N, 2, 2)`` tensor per image: the two endpoints of each segment as
+          ``(row, col)`` in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`), so ``flip(-1)`` gives ``(x, y)``. The endpoints
+          of a segment, and the segments by their first endpoint, are in raster order: the smaller row first or, on
+          the same row, the smaller column, whatever the junction scores.
+        - The endpoints are junction pixels. The default junction refinement (``use_junction_refinement`` of
+          ``LineDetectorCfg``) moves each of them by at most 1 pixel per axis, in 0.25 pixel steps.
+
     Args:
         config (DetectorCfg): Configuration object containing all parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px. Using a dataclass ensures type safety and clearer
-            parameter management.
+            which are tuned for images in the range 400~800 px.
         pretrained (bool): If True, download and set pretrained weights to the model.
 
     Returns:
@@ -51,7 +65,7 @@ class SOLD2_detector(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 1, 128, 128)
-        >>> sold2_detector = SOLD2_detector(pretrained=False)
+        >>> sold2_detector = SOLD2_detector(pretrained=False).eval()
         >>> line_segments = sold2_detector(img)["line_segments"]
 
     """
@@ -61,7 +75,7 @@ class SOLD2_detector(nn.Module):
             warnings.warn(
                 "Usage of config as a plain dictionary is deprecated in favor of"
                 "`kornia.features.sold2.structures.DetectorCfg`. The support of plain"
-                "dictionaries as config will be removed in kornia v0.8.0 (December 2024).",
+                "dictionaries as config will be removed in a future release.",
                 category=DeprecationWarning,
                 stacklevel=2,
             )
@@ -80,10 +94,11 @@ class SOLD2_detector(nn.Module):
             pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
-        self.eval()
 
         # Initialize the line detector with a configuration from the dataclass
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
+        if pretrained:
+            self.eval()
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Adapt pretrained checkpoint keys to this module implementation.
@@ -107,12 +122,12 @@ class SOLD2_detector(nn.Module):
         """Run forward.
 
         Args:
-            img: batched images with shape :math:`(B, 1, H, W)`.
+            img: batched images with shape ``(B, 1, H, W)``.
 
         Returns:
             line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
-            junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
-            line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
+            junction_heatmap: raw junction heatmap of shape ``(B, H, W)``.
+            line_heatmap: raw line heatmap of shape ``(B, H, W)``.
 
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
@@ -272,7 +287,7 @@ class LineSegmentDetectionModule:
             num_iter = math.ceil(num_cand / group_size)
             sampled_feat_lst = []
             for iter_idx in range(num_iter):
-                if not iter_idx == num_iter - 1:
+                if iter_idx != num_iter - 1:
                     cand_h_ = cand_h[iter_idx * group_size : (iter_idx + 1) * group_size, :]
                     cand_w_ = cand_w[iter_idx * group_size : (iter_idx + 1) * group_size, :]
                     normalized_seg_length_ = normalized_seg_length[iter_idx * group_size : (iter_idx + 1) * group_size]
@@ -412,7 +427,7 @@ class LineSegmentDetectionModule:
         if not isinstance(self.junction_refine_cfg, JunctionRefineCfg):
             raise TypeError(
                 "Expected to have dataclass of type JunctionRefineCfg for junction."
-                f"Gotcha {type(self.junction_refine_cfg)}"
+                f"Got {type(self.junction_refine_cfg)}"
             )
         num_perturbs = self.junction_refine_cfg.num_perturbs
         perturb_interval = self.junction_refine_cfg.perturb_interval
@@ -495,19 +510,27 @@ class LineSegmentDetectionModule:
         return line_map
 
     def detect_bilinear(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor) -> torch.Tensor:
-        """Detect by bilinear sampling."""
-        # Get the floor and ceiling locations
+        """Detect by bilinear sampling.
+
+        The reference SOLD2 implementation takes ``ceil`` as the second neighbour, so at an integer coordinate, where
+        ``floor`` and ``ceil`` coincide, both weights of that axis are 0 and the sample scores 0. kornia takes
+        ``floor + 1`` (clipped at the image border) instead: an integer sample keeps its pixel value, and the junction
+        refinement no longer moves horizontal and vertical segments off the pixels that support them.
+        """
+        # Use the next pixel even at integer coordinates, where floor and ceil coincide.
         cand_h_floor = torch.floor(cand_h).to(torch.long)
-        cand_h_ceil = torch.ceil(cand_h).to(torch.long)
+        cand_h_ceil = (cand_h_floor + 1).clamp(max=heatmap.shape[0] - 1)
         cand_w_floor = torch.floor(cand_w).to(torch.long)
-        cand_w_ceil = torch.ceil(cand_w).to(torch.long)
+        cand_w_ceil = (cand_w_floor + 1).clamp(max=heatmap.shape[1] - 1)
+        h_weight = cand_h - cand_h_floor
+        w_weight = cand_w - cand_w_floor
 
         # Perform the bilinear sampling
         return (
-            heatmap[cand_h_floor, cand_w_floor] * (cand_h_ceil - cand_h) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_floor, cand_w_ceil] * (cand_h_ceil - cand_h) * (cand_w - cand_w_floor)
-            + heatmap[cand_h_ceil, cand_w_floor] * (cand_h - cand_h_floor) * (cand_w_ceil - cand_w)
-            + heatmap[cand_h_ceil, cand_w_ceil] * (cand_h - cand_h_floor) * (cand_w - cand_w_floor)
+            heatmap[cand_h_floor, cand_w_floor] * (1 - h_weight) * (1 - w_weight)
+            + heatmap[cand_h_floor, cand_w_ceil] * (1 - h_weight) * w_weight
+            + heatmap[cand_h_ceil, cand_w_floor] * h_weight * (1 - w_weight)
+            + heatmap[cand_h_ceil, cand_w_ceil] * h_weight * w_weight
         )
 
     def detect_local_max(
@@ -574,16 +597,33 @@ def line_map_to_segments(junctions: torch.Tensor, line_map: torch.Tensor) -> tor
 
 
 def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01, top_k: int = 0) -> torch.Tensor:
-    """Extract junctions from a probability map, apply NMS, and extract the top k candidates."""
+    """Extract junctions from a probability map, apply NMS, and extract the top k candidates.
+
+    The strongest junction is kept first and suppresses every other junction within ``dist`` pixels of it along both
+    axes, ``dist`` itself included, like ``super_nms`` of the SOLD2 reference implementation. The ``top_k`` strongest
+    survivors are returned in raster order (by row, then by column), so the first endpoint of a line segment built
+    from the junction indices is the one with the smaller row or, on the same row, the smaller column.
+
+    Args:
+        prob: junction probability map with shape ``(H, W)``.
+        dist: suppression distance in pixels.
+        prob_thresh: minimum probability of a junction.
+        top_k: number of junctions to keep; ``0`` keeps all.
+
+    Returns:
+        Junction locations in ``(row, col)`` order with shape ``(N, 2)``.
+    """
     # Extract the junctions
     junctions = torch.stack(torch.where(prob >= prob_thresh), -1).float()
     if len(junctions) == 0:
         return junctions
 
-    # Perform NMS
-    boxes = torch.cat([junctions - dist / 2, junctions + dist / 2], 1)
+    # Perform NMS. Boxes of side ``floor(dist) + 0.5`` around the integer locations overlap exactly when both
+    # coordinates differ by at most ``dist``; ``nms`` then drops every overlapping box.
+    side = math.floor(dist) + 0.5
+    boxes = torch.cat([junctions - side / 2, junctions + side / 2], 1)
     scores = prob[prob >= prob_thresh]
-    remainings = nms(boxes, scores, 0.001)
+    remainings = nms(boxes, scores, 0.0)
     junctions = junctions[remainings]
 
     # Keep only the topk values
@@ -591,4 +631,5 @@ def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01
         k = min(len(junctions), top_k)
         junctions = junctions[:k]
 
-    return junctions
+    # Raster order: the line map, and so the endpoints of each segment, follow the junction indices
+    return junctions[torch.argsort(junctions[:, 0].long() * prob.shape[-1] + junctions[:, 1].long())]

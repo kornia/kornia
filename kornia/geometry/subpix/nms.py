@@ -101,9 +101,10 @@ def _neighbourhood_max3d(x: torch.Tensor, kd: int, ky: int, kx: int) -> torch.Te
 
 
 class NonMaximaSuppression2d(nn.Module):
-    r"""Apply non maxima suppression to filter.
+    r"""Keep only the strict local maxima of a (B, C, H, W) map in a 2D window; the module form of nms2d.
 
-    Flag `minima_are_also_good` is useful, when you want to detect both maxima and minima, e.g. for DoG
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
     """
 
     def __init__(self, kernel_size: tuple[int, int]) -> None:
@@ -140,11 +141,8 @@ class NonMaximaSuppression2d(nn.Module):
         neighbors are suppressed. This is commonly used to turn dense corner or
         keypoint response maps into sparse candidate locations.
 
-        A location within ``(k - 1) // 2`` of an edge is never a maximum: its window does not fit
-        inside the input, so the comparisons that would decide it cannot be made.
-
         Args:
-            x: Response tensor with shape :math:`(B, C, H, W)`, where
+            x: Response tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 response channels, :math:`H` is height, and :math:`W` is width.
             mask_only: If ``True``, return the boolean maxima mask. If
@@ -152,7 +150,7 @@ class NonMaximaSuppression2d(nn.Module):
 
         Returns:
             If ``mask_only`` is ``True``, a boolean tensor with shape
-            :math:`(B, C, H, W)`. Otherwise, a tensor with the same shape and
+            ``(B, C, H, W)``. Otherwise, a tensor with the same shape and
             dtype as ``x`` where non-maxima have been set to zero.
         """
         if len(x.shape) != 4:
@@ -289,11 +287,15 @@ class NonMaximaSuppression2d(nn.Module):
 
         if mask_only:
             return mask
-        return x * (mask.to(x.dtype))
+        return torch.where(mask, x, 0)
 
 
 class NonMaximaSuppression3d(nn.Module):
-    r"""Apply non maxima suppression to filter."""
+    r"""Keep only the strict local maxima of a (B, C, D, H, W) volume in a 3D window; the module form of nms3d.
+
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+    """
 
     def __init__(self, kernel_size: tuple[int, int, int]) -> None:
         super().__init__()
@@ -310,11 +312,8 @@ class NonMaximaSuppression3d(nn.Module):
         width. This is used by scale-space detectors to keep responses that are
         locally maximal both in image position and in scale/depth.
 
-        As in :meth:`NonMaximaSuppression2d.forward`, a voxel within ``(k - 1) // 2`` of a boundary
-        in any axis is never a maximum: its window does not fit inside the input.
-
         Args:
-            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+            x: Response tensor with shape ``(B, C, D, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channel count,
                 :math:`D` is depth or scale level, :math:`H` is height, and
                 :math:`W` is width.
@@ -322,7 +321,7 @@ class NonMaximaSuppression3d(nn.Module):
                 return suppressed responses.
 
         Returns:
-            Boolean maxima mask with shape :math:`(B, C, D, H, W)` when
+            Boolean maxima mask with shape ``(B, C, D, H, W)`` when
             ``mask_only`` is ``True``. Otherwise, an NMS-filtered tensor with
             the same shape and dtype as ``x``.
         """
@@ -381,25 +380,34 @@ class NonMaximaSuppression3d(nn.Module):
                 mask[..., cd : D - bd, cy : H - by, cx : W - bx] = centre > _neighbourhood_max3d(x, kd, ky, kx)
         if mask_only:
             return mask
-        return x * (mask.to(x.dtype))
+        return torch.where(mask, x, 0)
 
 
 # functional api
 
 
 def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Apply non maxima suppression to filter.
+    r"""Keep only the strict local maxima of a (B, C, H, W) map in a 2D ``kernel_size`` window, zeroing the rest.
 
-    See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
+    Convention:
+        - Only strict maxima survive: a position must be greater than every other value in its ``kernel_size``
+          window, so with ``k >= 3`` on every axis every pixel of a plateau is suppressed, even a plateau at the top
+          of the map. :ref:`Coordinates and sizes <coordinate-conventions>` compares this with scikit-image, scipy
+          and OpenCV.
+        - The window spans ``(k - 1) // 2`` positions before the centre and ``k // 2`` after it on each axis, so an
+          even ``k`` reaches one further forward, and the first ``(k - 1) // 2`` and last ``k // 2`` positions of
+          each axis are never maxima.
+        - The default output keeps the input value at each maximum and is ``0`` elsewhere, which is larger than a
+          negative maximum, so use ``mask_only=True`` for a signed response.
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
 
 def nms3d(input: torch.Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Apply non maxima suppression to filter.
+    r"""Keep only the strict local maxima of a (B, C, D, H, W) volume in a 3D ``kernel_size`` window, zeroing the rest.
 
-    See
-    :class: `~kornia.feature.NonMaximaSuppression3d` for details.
+    Convention:
+        - See the convention block of :func:`nms2d`, applied over depth, height and width.
     """
     return NonMaximaSuppression3d(kernel_size)(input, mask_only)
 
@@ -415,8 +423,12 @@ def nms3d_minmax(input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     comparison-and-reduction ops are visible to the compiler at trace time,
     allowing full fusion into a minimal number of kernels.
 
+    Convention:
+        - The strict and border rules of :func:`nms2d` with a :math:`3 \times 3 \times 3` window, for maxima and
+          minima alike.
+
     Args:
-        input: 5-D tensor of shape :math:`(B, C, D, H, W)`.
+        input: 5-D tensor of shape ``(B, C, D, H, W)``.
 
     Returns:
         A pair ``(max_mask, min_mask)`` of bool tensors with the same shape as

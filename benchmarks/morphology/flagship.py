@@ -48,7 +48,10 @@ library's default: kornia's ``geodesic`` border and OpenCV's default border valu
 out-of-image pixels out of the max/min; torchmorph and scikit-image follow SciPy and reflect at the
 border (``mode="reflect"``). torchmorph's flat ``size=5`` element is the same 5x5 square.
 scikit-image has no gradient operator, so its row is ``dilation - erosion`` in int16, which is the
-definition. Throughput is img/s.
+definition. kornia-rs runs uint8 HWC CPU images with a 5x5 box and replicate borders, which
+produce the same extrema as geodesic borders for this full square. Opening composes its public
+erode/dilate calls; gradient subtracts their uint8 outputs (dilation >= erosion, so no underflow).
+Throughput is img/s.
 
 Usage:
     python benchmarks/morphology/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -77,6 +80,7 @@ from common import (
     finish_run,
     image_batch,
     image_row_fields,
+    kornia_rs_fn,
     optional_import,
     run_batch_sweep,
     setup_run,
@@ -132,6 +136,16 @@ def build_ops(
         dilated = skm.dilation(channel, footprint).astype(np.int16)
         return dilated - skm.erosion(channel, footprint).astype(np.int16)
 
+    rs_dilate, rs_erode = kornia_rs_fn("dilate"), kornia_rs_fn("erode")
+    rs_kwargs = {"kernel": "box", "size": (KERNEL_SIZE, KERNEL_SIZE), "border": "replicate"}
+    rs_ops = {
+        "dilation": (lambda im: rs_dilate(im, **rs_kwargs)) if rs_dilate else None,
+        "erosion": (lambda im: rs_erode(im, **rs_kwargs)) if rs_erode else None,
+        "opening": (lambda im: rs_dilate(rs_erode(im, **rs_kwargs), **rs_kwargs)) if rs_dilate and rs_erode else None,
+        "gradient": (lambda im: rs_dilate(im, **rs_kwargs) - rs_erode(im, **rs_kwargs))
+        if rs_dilate and rs_erode
+        else None,
+    }
     cv_ops = {
         "dilation": (lambda im: cv2.dilate(im, kernel_np)) if cv2 else None,
         "erosion": (lambda im: cv2.erode(im, kernel_np)) if cv2 else None,
@@ -165,6 +179,8 @@ def build_ops(
         alb_t = alb_ops.get(name)
         row["albumentations"] = (lambda alb_t=alb_t: [alb_t(image=im)["image"] for im in imgs_u8]) if alb_t else None
         row["scikit-image"] = per_channel(sk_fn) if sk_fn else None
+        rs_fn = rs_ops[name]
+        row["kornia-rs"] = (lambda rs_fn=rs_fn: [rs_fn(im) for im in imgs_u8]) if rs_fn else None
         ops[name] = row
 
     return ops, kornia_row.compile_failures
@@ -194,13 +210,25 @@ def main() -> None:
         device,
         units="img/s",
         regimes=[
-            f"{KERNEL_SIZE}x{KERNEL_SIZE} square element; kornia: batched float BCHW; "
-            "torchmorph: batched float32 BCHW (CUDA only); "
-            "opencv/albumentations: uint8 HWC per-image loop (CPU); scikit-image: uint8 per-image, per-channel loop"
+            (
+                f"{KERNEL_SIZE}x{KERNEL_SIZE} square element; kornia: batched float BCHW; "
+                "torchmorph: batched float32 BCHW (CUDA only); "
+                "opencv/albumentations/kornia-rs: uint8 HWC per-image loop (CPU); "
+                "scikit-image: uint8 per-image, per-channel loop"
+            )
         ],
-        missing=[(name, err) for lib, name, err in libs if lib is None],
+        missing=[(name, err) for lib, name, err in libs if lib is None]
+        + [(f"kornia-rs/{fn}", "API unavailable") for fn in ("dilate", "erode") if kornia_rs_fn(fn) is None],
     )
-    backends = ["kornia (eager)", "kornia (compiled)", "torchmorph", "albumentations", "scikit-image", "opencv"]
+    backends = [
+        "kornia (eager)",
+        "kornia (compiled)",
+        "torchmorph",
+        "albumentations",
+        "scikit-image",
+        "opencv",
+        "kornia-rs",
+    ]
     results = run_batch_sweep(
         batch_list(args),
         lambda b: build_ops(

@@ -47,22 +47,28 @@ Kornia augmentations generally follow a `sample-apply` routine.
 - `apply`: with the generated (or user-provided) parameters, the augmentation is performed accordingly.
   Apart from transforming image tensors, Kornia also supports inverse operations that revert the transform,
   and transforms of other data modalities (`data keys` in Kornia) such as masks, keypoints, and bounding boxes.
-  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` dispatches
-  geometric coordinate transforms by the geometric base type; implementing a matrix on a custom rigid base alone
-  does not enable that dispatch (`#4481 <https://github.com/kornia/kornia/issues/4481>`_). Non-rigid coordinate
-  transforms are not supplied automatically (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+  These features depend on the concrete operation and its data-key handlers. `AugmentationSequential` passes the
+  matrix of the call's parameters to the mask, box and keypoint handlers of geometric children and of custom
+  `RigidAffineAugmentationBase2D` subclasses, recomputing it from replayed ``params`` that the child did not last
+  apply to an image or that were edited since. An in-place edit made inside ``torch.inference_mode`` is not seen,
+  because inference tensors have no version counter; replace the value instead.
+  `RandomElasticTransform`, `RandomThinPlateSpline` and `RandomFisheye` have no matrix, so a forward call through
+  a pipeline that contains one refuses keypoint and box data keys. The container does not call the box and
+  keypoint handlers of a custom child that subclasses `AugmentationBase2D` directly, so those keys come back
+  unchanged; subclass `GeometricAugmentationBase2D` to move them
+  (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
 Custom Augmentation Classes
 ---------------------------
 
 `IntensityAugmentationBase2D` supplies an identity matrix and default passthrough handlers for most annotations.
-Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct intensity
-`transform_boxes` calls return the boxes unchanged; the container skips intensity transforms for boxes.
+Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct and container
+calls pass masks, boxes, and keypoints through unchanged unless a subclass overrides
+`apply_transform_mask`, `apply_transform_box`, or `apply_transform_keypoint`.
 `GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
 For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion
-also requires `inverse_transform`; the base provides matrix inversion. Some configurations, such as slice-mode
-crops, reject inversion.
+also requires `inverse_transform`; the base provides matrix inversion.
 
 .. autoclass:: GeometricAugmentationBase2D
 
@@ -129,9 +135,9 @@ The following example only illustrates the method signatures, not an invertible 
    import torch
    from torch import Tensor
 
-   import kornia as K
    from kornia.augmentation import GeometricAugmentationBase2D
    from kornia.augmentation import random_generator as rg
+   from kornia.core.ops import eye_like
 
    class MyRandomTransform(GeometricAugmentationBase2D):
 
@@ -148,7 +154,7 @@ The following example only illustrates the method signatures, not an invertible 
       def compute_transformation(self, input, params, flags):
          # return the (B, 3, 3) transform matrix for this augmentation
          # identity shown only to illustrate the required matrix shape
-         return K.eye_like(3, input)
+         return eye_like(3, input)
 
       def apply_transform(
          self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -206,10 +212,16 @@ Some Further Notes
 
 Probabilities
 ^^^^^^^^^^^^^
-:class:`AugmentationBase2D` states the ``p`` / ``p_batch`` model. A concrete constructor can map its public ``p``
-to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual samples
-(`#4425 <https://github.com/kornia/kornia/issues/4425>`_). When ``0 < p_batch < 1``, the base draws the batch
-Bernoulli before the per-sample gate; endpoints skip that draw, and ``p=1.0, p_batch=0.0`` selects no sample.
+:class:`AugmentationBase2D` states the ``p`` / ``p_batch`` model. Every augmentation honours ``p_batch``, and it can
+be set as an attribute (``aug.p_batch = 0.5``). Only `RandomHorizontalFlip`, `RandomVerticalFlip`,
+`RandomTransplantation` and `RandomTransplantation3D` also take it in the constructor. A concrete constructor can map
+its public ``p`` to either gate: `RandomMixUpV2` gates the batch and `RandomJigsaw` individual samples. When
+``0 < p_batch < 1``, the base draws the batch Bernoulli before the per-sample gate; endpoints skip that draw, and
+``p=1.0, p_batch=0.0`` selects no sample.
+
+With static ``p=1.0, p_batch=1.0`` every sample is transformed: a ``batch_prob`` put into ``params`` is not consulted
+by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs alike
+(`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Pass ``p < 1`` to skip samples by hand.
 
 Random Generators
 ^^^^^^^^^^^^^^^^^
@@ -226,7 +238,7 @@ See :class:`AugmentationBase2D` for where parameters are sampled and what ``para
 Serialization
 ^^^^^^^^^^^^^
 - Several constructors that accept ``nn.Parameter`` ranges propagate gradients to them.
-- The default ``kornia.augmentation.auto`` policies cannot be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+- A ``kornia.augmentation.auto`` policy pickles when every operation wrapper in it does, and a wrapper does when
+  its magnitude mapping is picklable; the built-in mappings are.
 - :class:`AugmentationBase2D` covers the range buffers in ``state_dict()``, and
   :class:`RigidAffineAugmentationBase2D` what a lazily built matrix keeps.

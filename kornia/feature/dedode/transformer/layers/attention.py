@@ -25,6 +25,7 @@
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
+import torch.nn.functional as F
 from torch import Tensor, nn
 
 
@@ -36,7 +37,8 @@ class Attention(nn.Module):
         num_heads: Number of attention heads.
         qkv_bias: If True, add a bias term to the query, key, and value projections.
         proj_bias: If True, add a bias term to the output projection.
-        attn_drop: Dropout probability applied to the attention weights.
+        attn_drop: Dropout probability applied to the attention weights. A non-zero value makes the training-mode
+            forward materialise the ``(B, num_heads, N, N)`` weights.
         proj_drop: Dropout probability applied to the output projection.
     """
 
@@ -63,22 +65,25 @@ class Attention(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input token sequence with shape :math:`(B, N, C)`, where ``B`` is batch size,
+            x: Input token sequence with shape ``(B, N, C)``, where ``B`` is batch size,
                ``N`` is number of tokens (patches + class token), and ``C`` is the embedding dimension.
 
         Returns:
-            Attention output with shape :math:`(B, N, C)`.
+            Attention output with shape ``(B, N, C)``.
         """
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
 
-        q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
-        attn = q @ k.transpose(-2, -1)
-
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        if self.training and self.attn_drop.p > 0.0:
+            # The dropout of ``attn_drop`` acts on the weights, so they are materialised here:
+            # ``scaled_dot_product_attention`` has no dropout on MPS.
+            attn = self.attn_drop(((q * self.scale) @ k.transpose(-2, -1)).softmax(dim=-1))
+            x = attn @ v
+        else:
+            # softmax(q k^T * scale) v; the fused kernels do not materialise the N x N weights of every head.
+            x = F.scaled_dot_product_attention(q, k, v, scale=self.scale)
+        x = x.transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         return self.proj_drop(x)
 
@@ -91,15 +96,15 @@ class MemEffAttention(Attention):
     DINOv2 signature. Nothing in kornia passes it, and it must be ``None``.
     """
 
-    def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
+    def forward(self, x: Tensor, attn_bias=None) -> Tensor:
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input token sequence with shape :math:`(B, N, C)`.
+            x: Input token sequence with shape ``(B, N, C)``.
             attn_bias: Unsupported; must be ``None``.
 
         Returns:
-            Attention output with shape :math:`(B, N, C)`.
+            Attention output with shape ``(B, N, C)``.
         """
         if attn_bias is not None:
             raise NotImplementedError("attn_bias is not supported")

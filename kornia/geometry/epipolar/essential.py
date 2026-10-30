@@ -15,17 +15,19 @@
 # limitations under the License.
 #
 
-"""Module containing functionalities for the Essential matrix."""
+"""Essential matrices: estimate them, convert from and to other models, recover the pose."""
 
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
-from kornia.core.utils import _torch_svd_cast
-from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2, coefficient_map, multiplication_indices, signs
+from kornia.core.utils import _autocast_disabled, _torch_svd_cast
+from kornia.geometry.solvers.homogeneous import _null_space_householder
+from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2
 
+from .fundamental import _epipolar_design_rows, _hat_basis, _sampson_cost, _sampson_normal_equations, _solve_dtype
 from .numeric import cross_product_matrix, matrix_cofactor_tensor
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
@@ -50,68 +52,59 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     and the solver implemented referred to [@barath2020magsac++][@wei2023generalized][@wang2023vggsfm].
 
     Args:
-        points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
-        weights: Not used, kept for compatibility.
+        points1: A set of calibrated points in the first image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
+        points2: A set of points in the second image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
+        weights: Not used, kept for compatibility, including for :math:`N > 5`. Positive weights leave the null
+          space of an exact five-point sample unchanged; for larger sets they can affect the least-squares fit.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
+        the computed essential matrix with shape ``(B, 10, 3, 3)``.
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
     KORNIA_CHECK(points1.shape[1] >= 5, "Number of points should be >=5")
-
-    batch_size, _, _ = points1.shape
-    x1, y1 = points1[..., 0:1], points1[..., 1:2]
-    x2, y2 = points2[..., 0:1], points2[..., 1:2]
-    ones = torch.ones_like(x1)
-    # build the equation system and find the null space.
-    # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
-    # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
-    # BxNx9
-    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
-    # use Nister's 5PC to solve essential matrix
-    E = null_to_Nister_solution(X, batch_size)
-    bad = torch.isnan(E).flatten(-2).all(-1).all(-1)  # (B,)
-    if bad.any():
-        eye3 = torch.eye(3, device=E.device, dtype=E.dtype).view(1, 1, 3, 3).expand(batch_size, 10, 3, 3)
-        E = torch.where(bad.view(batch_size, 1, 1, 1), eye3, E)
-    return E
+    # Rows vec(x2 x1^T), so that a null vector reshapes row-major to E.
+    design = _epipolar_design_rows(points1, points2)
+    # A sample without a real root keeps ten NaN slots, like the complex slots of any other sample.
+    if design.shape[1] == 5:
+        candidates, _ = _five_point_candidates(design)
+    else:
+        candidates = _least_squares_candidates(design)
+    return candidates
 
 
-def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
-    # a, b: (..., 4)
-    product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 4, 4)
-    product_vector = product_basis.flatten(start_dim=-2)  # (..., 16)
-    return product_vector @ T_deg1  # (..., 10)
+def _polynomial_product_table(m: int, n: int, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
+    """``T[i, j, i + j] = 1``: the coefficients of a product of polynomials with ``m`` and ``n`` coefficients."""
+    i, j = torch.meshgrid(torch.arange(m, device=device), torch.arange(n, device=device), indexing="ij")
+    table = torch.zeros(m, n, m + n - 1, dtype=dtype, device=device)
+    table[i, j, i + j] = 1.0
+    return table
 
 
-def _multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg2: torch.Tensor) -> torch.Tensor:
-    # a: (..., 10), b: (..., 4)
-    product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 10, 4)
-    product_vector = product_basis.flatten(start_dim=-2)  # (..., 40)
-    return product_vector @ T_deg2  # (..., 20)
+def _determinant_to_polynomial_jit(A: torch.Tensor) -> torch.Tensor:
+    """Coefficients ``(B, 11)``, of ``z^0`` first, of the determinant of Nister's hidden-variable matrix ``(B, 3, 13)``.
 
-
-def _determinant_to_polynomial_jit(
-    A: torch.Tensor,
-    multiplication_indices: torch.Tensor,
-    signs: torch.Tensor,
-    coefficient_map: torch.Tensor,
-) -> torch.Tensor:
-    # A: (B, 3, 13) -> (B, 11)
-    B = A.shape[0]
-    A_flat = A.view(B, -1)  # (B, 39)
-
-    gathered_values = A_flat[:, multiplication_indices]  # (B, 486, 3)
-    products = torch.prod(gathered_values, dim=-1)  # (B, 486)
-    signed_products = products * signs  # (B, 486)
-
-    cs = torch.zeros(B, 11, device=A.device, dtype=A.dtype)
-    batch_coefficient_map = coefficient_map.unsqueeze(0).expand(B, -1)  # (B, 486)
-    cs.scatter_add_(1, batch_coefficient_map, signed_products)
-    return cs
+    Each row of ``A`` holds three polynomials in ``z``, highest degree first: two cubics (columns 0-3 and 4-7) and a
+    quartic (8-12). The determinant is the sum over the six permutations of the rows of signed products of one
+    polynomial of each kind, expanded with polynomial product tables: a few matrix products, deterministic on every
+    backend, where the explicit expansion into 486 triple products cost five times as much.
+    """
+    device, dtype = A.device, A.dtype
+    levi_civita = torch.zeros(3, 3, 3, dtype=dtype, device=device)
+    for (a, b, c), sign in (
+        ((0, 1, 2), 1.0),
+        ((1, 2, 0), 1.0),
+        ((2, 0, 1), 1.0),
+        ((0, 2, 1), -1.0),
+        ((2, 1, 0), -1.0),
+        ((1, 0, 2), -1.0),
+    ):
+        levi_civita[a, b, c] = sign
+    cubic1, cubic2, quartic = A[..., 0:4].flip(-1), A[..., 4:8].flip(-1), A[..., 8:13].flip(-1)
+    sextics = torch.einsum("xai,xbj,ijm->xabm", cubic1, cubic2, _polynomial_product_table(4, 4, dtype, device))
+    signed = torch.einsum("xabm,abc->xcm", sextics, levi_civita)
+    return torch.einsum("xcm,xck,mkn->xn", signed, quartic, _polynomial_product_table(7, 5, dtype, device))
 
 
 def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -188,266 +181,312 @@ def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-1
     return x, bad
 
 
-# --- fun_select inline, to keep it JIT-simple ---
-def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
-    return mat[:, ratio * j + i]
+class _NullSpaceBasis(torch.autograd.Function):
+    r"""The four right singular vectors of ``X`` with the smallest singular values, differentiably.
+
+    ``torch.linalg.svd`` leaves the right singular vectors past ``min(N, 9)`` without a gradient, and
+    for fewer than 9 points some or all of the four the 5-point solver uses are exactly those, so the
+    backward pass silently dropped their gradient (all of it for ``N = 5``). This is used for
+    ``N < 9`` only.
+
+    The candidates depend only on the subspace the four vectors span, not on the basis chosen within
+    it, so the backward differentiates the subspace. With
+    :math:`X^\top X = \sum_j \lambda_j v_j v_j^\top`, each basis vector :math:`v_i` moves only out of
+    the subspace :math:`S`, by
+    :math:`dv_i = \sum_{j \notin S} v_j \, v_j^\top d(X^\top X) \, v_i / (\lambda_i - \lambda_j)`.
+    That needs a gap between the fourth and fifth smallest singular values. Without one the subspace
+    itself is not unique, and a nonzero incoming gradient gives no usable gradient, as for
+    ``torch.linalg.svd``: one that is not finite where the SVD returns the missing gap as exactly zero,
+    as LAPACK does, and a finite one many orders of magnitude past ``1 / eps`` where it leaves the gap at
+    rounding level, as cuSOLVER's Jacobi SVD, torch's default on CUDA, does. A zero incoming gradient, as
+    from a sample whose candidates were discarded, gives zero. The forward pass is the same
+    ``_torch_svd_cast`` call as before, so its result is unchanged.
+    """
+
+    # forward and setup_context are separate, so torch.func transforms (grad, vjp, jacrev) accept it
+    @staticmethod
+    def forward(X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        _, S, V = _torch_svd_cast(X)  # V: (B, 9, 9)
+        return V[:, :, -4:].contiguous(), S, V  # (B, 9, 4); S and V are returned only to be saved
+
+    @staticmethod
+    def setup_context(ctx: Any, inputs: Tuple[torch.Tensor], output: Tuple[torch.Tensor, ...]) -> None:
+        (X,) = inputs
+        _, S, V = output
+        ctx.mark_non_differentiable(S, V)
+        ctx.save_for_backward(X, S, V)
+
+    @staticmethod
+    def backward(ctx: Any, grad_basis: torch.Tensor, _grad_S: Any, _grad_V: Any) -> torch.Tensor:
+        X, S, V = ctx.saved_tensors
+        work = torch.float64 if X.dtype == torch.float32 and X.device.type != "mps" else X.dtype
+        X_, S_, V_, g = X.to(work), S.to(work), V.to(work), grad_basis.to(work)
+        # eigenvalues of X^T X in the order of V's columns; the columns past min(N, 9) have eigenvalue 0
+        lam = torch.cat((S_ * S_, S_.new_zeros(S_.shape[0], V_.shape[-1] - S_.shape[-1])), dim=-1)
+        V_out, V_in = V_[:, :, :-4], V_[:, :, -4:]
+        gap = lam[:, -4:].unsqueeze(-2) - lam[:, :-4].unsqueeze(-1)  # (B, 5, 4): lambda_i - lambda_j
+        num = V_out.transpose(-1, -2) @ g
+        # A zero incoming gradient contributes nothing, also where there is no gap: a sample whose
+        # candidates were discarded then gets a zero gradient instead of 0 / 0.
+        K = torch.where(num == 0, torch.zeros_like(num), num / gap)
+        M = V_out @ K @ V_in.transpose(-1, -2)  # dL = <dG, M>
+        return (X_ @ (M + M.transpose(-1, -2))).to(X.dtype)
 
 
-def _null_to_Nister_solution_script(
-    X: torch.Tensor,
-    batch_size: int,
-    T_deg1: torch.Tensor,
-    T_deg2: torch.Tensor,
-    multiplication_indices: torch.Tensor,
-    signs: torch.Tensor,
-    coefficient_map: torch.Tensor,
-    idx_ij: torch.Tensor,  # kept for signature compatibility (unused)
-    i_idx: torch.Tensor,
-    j_idx: torch.Tensor,
-    idx3: torch.Tensor,
-    top_idx: torch.Tensor,
-    bot_idx: torch.Tensor,
-) -> torch.Tensor:
-    original_dtype = X.dtype
+def _least_squares_basis(design: torch.Tensor) -> torch.Tensor:
+    """Least-squares null space ``(B, 9, 4)`` of design rows ``(B, N, 9)`` with ``N > 5``.
 
-    _, _, V = _torch_svd_cast(X)  # V: (B, 9, 9)
-    null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
-    nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
+    The four right singular vectors with the smallest singular values, in
+    :func:`~kornia.geometry.epipolar.fundamental._solve_dtype`.
+    """
+    design = design.to(_solve_dtype(design.device))
+    if design.shape[-2] < 9:
+        return _NullSpaceBasis.apply(design)[0]
+    # every right singular vector has a gradient in torch.linalg.svd itself
+    # N >= 9 here, so reduced SVD still returns all 9 right singular vectors. The full U is unused.
+    _, _, V = _torch_svd_cast(design, full_matrices=False)
+    return V[:, :, -4:]
 
-    B = batch_size
-    device = X.device
-    dtype = X.dtype
 
-    coeffs = torch.zeros(B, 10, 20, device=device, dtype=dtype)
+def _least_squares_candidates(design: torch.Tensor) -> torch.Tensor:
+    """Nister's candidates ``(B, 10, 3, 3)`` of design rows ``(B, N, 9)`` with ``N > 5``, on the design's device.
 
-    # (B,9,4) -> (B,3,3,4) with column-major fix
-    null_ij = null_.view(B, 3, 3, 4).transpose(1, 2).contiguous()  # (B, 3, 3, 4)
+    MPS inputs are solved on the host, as in :func:`_five_point_candidates`.
+    """
+    if design.device.type == "mps":
+        return _least_squares_candidates(design.cpu()).to(design.device)
+    return _nister_candidates(_least_squares_basis(design), design.dtype)[0]
 
-    # ---- determinant constraint ----
-    n00 = null_ij[:, 0, 0, :]
-    n01 = null_ij[:, 0, 1, :]
-    n02 = null_ij[:, 0, 2, :]
-    n10 = null_ij[:, 1, 0, :]
-    n11 = null_ij[:, 1, 1, :]
-    n12 = null_ij[:, 1, 2, :]
-    n20 = null_ij[:, 2, 0, :]
-    n21 = null_ij[:, 2, 1, :]
-    n22 = null_ij[:, 2, 2, :]
 
-    # small reuse to reduce launches
-    p01_12 = _multiply_deg_one_poly(n01, n12, T_deg1)
-    p02_11 = _multiply_deg_one_poly(n02, n11, T_deg1)
-    p02_10 = _multiply_deg_one_poly(n02, n10, T_deg1)
-    p00_12 = _multiply_deg_one_poly(n00, n12, T_deg1)
-    p00_11 = _multiply_deg_one_poly(n00, n11, T_deg1)
-    p01_10 = _multiply_deg_one_poly(n01, n10, T_deg1)
+def _five_point_candidates(design: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Nister's five-point solver on the epipolar design rows ``(B, 5, 9)`` of minimal samples.
 
-    coeffs[:, 9] = (
-        _multiply_deg_two_one_poly(p01_12 - p02_11, n20, T_deg2)
-        + _multiply_deg_two_one_poly(p02_10 - p00_12, n21, T_deg2)
-        + _multiply_deg_two_one_poly(p00_11 - p01_10, n22, T_deg2)
+    The four-dimensional null space comes from batched Householder reflections,
+    :func:`~kornia.geometry.solvers.homogeneous._null_space_householder`, and everything up to the roots is computed
+    in float64, so a float32 sample does not lose its true solution to rounding.
+
+    A sample whose design rows are rank deficient, such as one with a repeated correspondence or points collinear in
+    both images, has a null space of more than four dimensions and no unique solution: all ten of its slots are NaN.
+    It is found by a partial-pivoted LU factorization of the detached rows. Rounding rarely leaves an exactly zero
+    pivot, so rank deficiency is a pivot below ``1e3`` epsilons of the largest one: repeated correspondences measure
+    at most about 1e-16 relative, regular samples above 1e-8 even with all five points in a patch 1e-4 wide.
+    Collinear points rounded to float32 are no longer collinear, and are solved like any other sample. A rank-deficient
+    sample is swapped for a constant full-rank design before the null space is taken, whose normalizations would
+    otherwise divide by a vanishing norm, so that its gradient is zero.
+
+    Note:
+        MPS has no float64, so an MPS sample is solved on the host and its candidates are copied back; autograd
+        follows both copies. Solved in float32 on the device instead, an exact sample could miss its true solution
+        by more than 1e-3, and on an Apple M1 (torch 2.14) the host solve was also faster: 8 ms against 37 ms for 256
+        samples, 45 ms against 75 ms for 2048, and about the same at 8192.
+
+    Returns:
+        Candidates ``(B, 10, 3, 3)`` of unit Frobenius norm in the design's dtype, NaN where the slot holds no
+        real root, and the ``(B, 10)`` mask of the real ones.
+    """
+    if design.device.type == "mps":
+        candidates, valid = _five_point_candidates(design.cpu())
+        return candidates.to(design.device), valid.to(design.device)
+    A = design.to(_solve_dtype(design.device))
+    lu, _, info = torch.linalg.lu_factor_ex(A.detach().mT)
+    pivots = lu.diagonal(dim1=-2, dim2=-1).abs()
+    rank_deficient = (info > 0) | (pivots.amin(-1) <= 1e3 * torch.finfo(A.dtype).eps * pivots.amax(-1))
+    A = torch.where(rank_deficient[:, None, None], torch.eye(5, 9, device=A.device, dtype=A.dtype), A)
+    candidates, valid = _nister_candidates(_null_space_householder(A), design.dtype)
+    valid = valid & ~rank_deficient[:, None]
+    return torch.where(valid[..., None, None], candidates, torch.full_like(candidates, float("nan"))), valid
+
+
+# Monomial product tables of Nister's constraints: linear x linear -> quadratic (x^2, xy, xz, x, y^2, yz, y, z^2, z,
+# 1), and quadratic x linear -> the twenty cubic monomials, in the order the elimination below expects.
+_LINEAR_PRODUCTS = T_deg1.view(4, 4, 10)
+_CUBIC_PRODUCTS = T_deg2.view(10, 4, 20)
+
+
+def _scaled_polynomial_powers(roots: torch.Tensor) -> torch.Tensor:
+    """Return ``z**d / max(1, abs(z))**10`` for ``d = 0, ..., 10`` without large powers.
+
+    For ``abs(z) > 1`` these are the powers of ``1/z`` in reverse order (the degree ten is even).
+    Every multiplication therefore has magnitude at most one. Cumulative products avoid the two general
+    tensor exponentiations in the Newton correction, which dominate its CPU cost.
+    """
+    large = roots.abs() > 1.0
+    bounded = torch.where(large, torch.where(large, roots, 1.0).reciprocal(), roots)
+    powers = bounded[..., None].expand(*bounded.shape, 10).cumprod(-1)
+    powers = torch.cat((torch.ones_like(bounded[..., None]), powers), -1)
+    return torch.where(large[..., None], powers.flip(-1), powers)
+
+
+def _nister_candidates(basis: torch.Tensor, out_dtype: torch.dtype) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Essential matrices ``E = x X + y Y + z Z + W`` in the span of ``basis`` ``(B, 9, 4)`` (columns X, Y, Z, W).
+
+    Nister's method: the cubic constraints ``det E = 0`` and ``2 E E^T E - tr(E E^T) E = 0`` as a ``(10, 20)``
+    coefficient matrix, Gauss-Jordan elimination of its first ten monomials, a degree-ten polynomial in ``z`` from
+    the determinant of the ``(3, 13)`` hidden-variable matrix, its real roots, and ``x``, ``y`` by
+    back-substitution.
+
+    The roots are the eigenvalues of the polynomial's companion matrix, from LAPACK on the host in float64 for every
+    device: ``torch.linalg.eigvals`` has no batched CUDA kernel and none at all on MPS, and it is faster in
+    float64 than in float32. They carry no gradient themselves: one Newton step on the differentiable polynomial
+    polishes each root and supplies its derivative by the implicit function theorem, and is skipped at a multiple
+    root, where the derivative does not exist.
+    """
+    B = basis.shape[0]
+    device, dtype = basis.device, basis.dtype
+    linear = _LINEAR_PRODUCTS.to(device, dtype)
+    cubic = _CUBIC_PRODUCTS.to(device, dtype)
+    N = basis.reshape(B, 3, 3, 4)  # entries of E as linear forms in (x, y, z, 1)
+
+    # ---- constraints ----
+    # det E, expanded along the third row: its cofactors are the cross product of the first two.
+    rows01 = torch.einsum("bja,bkc,acm->bjkm", N[:, 0], N[:, 1], linear)
+    cofactors = torch.stack(
+        [rows01[:, 1, 2] - rows01[:, 2, 1], rows01[:, 2, 0] - rows01[:, 0, 2], rows01[:, 0, 1] - rows01[:, 1, 0]], 1
     )
+    determinant = torch.einsum("bjm,bjc,mcn->bn", cofactors, N[:, 2], cubic)
+    # 2 E E^T E - tr(E E^T) E = 2 (E E^T - tr(E E^T) I / 2) E
+    EEt = torch.einsum("bika,bjkc,acm->bijm", N, N, linear)
+    half_trace = 0.5 * EEt.diagonal(dim1=1, dim2=2).sum(-1)
+    EEt = EEt - torch.eye(3, device=device, dtype=dtype)[None, :, :, None] * half_trace[:, None, None, :]
+    trace_constraints = torch.einsum("bikm,bkjc,mcn->bijn", EEt, N, cubic).reshape(B, 9, 20)
+    coeffs = torch.cat([trace_constraints, determinant[:, None]], 1)  # (B, 10, 20)
 
-    # ---- EE^T constraints ----
-    a_data = null_ij[:, i_idx, :, :]  # (B,9,3,4)
-    b_data = null_ij[:, j_idx, :, :]  # (B,9,3,4)
-    prods = _multiply_deg_one_poly(a_data.reshape(-1, 4), b_data.reshape(-1, 4), T_deg1).view(B, 9, 3, 10)
-    D_blocks = prods.sum(dim=2).view(B, 3, 3, 10).contiguous()
+    # ---- elimination ----
+    # An exactly singular elimination matrix means the sample has no solution. Its elements are factorized against
+    # the identity instead, so that nothing below overflows or raises in the forward pass or gives a NaN gradient
+    # in the backward, and all ten of their slots are NaN.
+    A10, b10 = coeffs[..., :10], coeffs[..., 10:]
+    eye10 = torch.eye(10, device=device, dtype=dtype)
+    lu, pivots, info = torch.linalg.lu_factor_ex(A10.detach() if A10.requires_grad else A10)
+    singular = info > 0
+    if A10.requires_grad:
+        # The backward of a singular factorization is 0 * inf even in the rows whose result is replaced (x86 LAPACK):
+        # differentiate the factorization of the substituted matrix instead.
+        lu, pivots, _ = torch.linalg.lu_factor_ex(torch.where(singular[:, None, None], eye10, A10))
+    else:
+        # The factorization of the identity is the identity without row exchanges: substituting it costs no second
+        # factorization, and no host synchronization, which would split a compiled graph.
+        lu = torch.where(singular[:, None, None], eye10, lu)
+        pivots = torch.where(singular[:, None], torch.arange(1, 11, device=device, dtype=pivots.dtype), pivots)
+    eliminated = torch.linalg.lu_solve(lu, pivots, b10)  # (B, 10, 10)
 
-    # trace removal
-    diag = D_blocks[:, idx3, idx3, :]  # (B,3,10)
-    t = 0.5 * diag.sum(dim=1, keepdim=True)  # (B,1,10)
-    D_blocks[:, idx3, idx3, :] = D_blocks[:, idx3, idx3, :] - t
-
-    # first 9 rows of coeffs
-    D_for_i = D_blocks[:, i_idx, :, :]  # (B,9,3,10)
-    Null_for_j = null_ij[:, :, j_idx, :].permute(0, 2, 1, 3).contiguous()  # (B,9,3,4)
-    prods2 = _multiply_deg_two_one_poly(D_for_i.reshape(-1, 10), Null_for_j.reshape(-1, 4), T_deg2).view(B, 9, 3, 20)
-    coeffs[:, :9, :] = prods2.sum(dim=2)  # (B,9,20)
-
-    # ---- elimination: solve A10 * X = b_poly ----
-    A10 = coeffs[:, :, :10]  # (B, 10, 10)
-    b_poly = coeffs[:, :, 10:]  # (B, 10, 10)
-
-    eye10 = torch.eye(10, device=device, dtype=dtype).unsqueeze(0).expand(B, 10, 10)
-
-    # An exactly singular A10 means the sample has no solution. torch.linalg.solve raises on such an
-    # element rather than returning NaN, so the singular elements are found first with lu_factor_ex,
-    # which reports a zero pivot through ``info`` instead of raising, and are solved against the
-    # identity so that nothing below can raise or overflow on them in the forward pass. Their
-    # candidates are set to NaN at the end, which run_5point maps to its identity fallback. Every
-    # other element keeps A10: the replacement is made in ``coeffs`` and sliced like A10, because
-    # torch.linalg.solve can round a contiguous copy differently from the strided slice.
-    _, _, info = torch.linalg.lu_factor_ex(A10)
-    singular = info > 0  # (B,)
-    A_solve = A10
-    if singular.any():
-        A_solve = torch.where(singular.view(B, 1, 1), torch.cat((eye10, b_poly), dim=-1), coeffs)[:, :, :10]
-
-    # Try direct solve first
-    eliminated = torch.linalg.solve(A_solve, b_poly)  # (B,10,10)
-
-    # Detect NaN/Inf from an ill-conditioned solve and fix with damping solve
-    bad = torch.isnan(eliminated).flatten(-2).any(-1) | torch.isinf(eliminated).flatten(-2).any(-1)  # (B,)
-    if bad.any():
-        # Damped solve only for bad rows but WITHOUT compaction:
-        # build damped A = A10 + λI, where λ depends on scale
-        # (use per-batch scalar to avoid huge allocations)
-        diagA = torch.diagonal(A10, dim1=-2, dim2=-1).abs().mean(dim=-1)  # (B,)
-        lam = (diagA * 1e-8 + 1e-8).to(dtype)  # (B,)
-        # built from A_solve, not A10, so a singular element in the same batch cannot raise here
-        A_damped = A_solve + eye10 * lam.view(B, 1, 1)
-        eliminated_d = torch.linalg.solve(A_damped, b_poly)
-        eliminated = torch.where(bad.view(B, 1, 1), eliminated_d, eliminated)
-
-    coeffs_ = torch.cat((A10, eliminated), dim=-1)  # (B,10,20)
-
-    # ---- build A (B,3,13) ----
+    # ---- hidden-variable matrix (B, 3, 13) and its determinant, a polynomial of degree ten in z ----
+    top, bottom = eliminated[:, [4, 6, 8]], eliminated[:, [5, 7, 9]]
     A = torch.zeros(B, 3, 13, device=device, dtype=dtype)
+    A[:, :, 1:4] = top[..., 0:3]
+    A[:, :, 0:3] = A[:, :, 0:3] - bottom[..., 0:3]
+    A[:, :, 5:8] = top[..., 3:6]
+    A[:, :, 4:7] = A[:, :, 4:7] - bottom[..., 3:6]
+    A[:, :, 9:13] = top[..., 6:10]
+    A[:, :, 8:12] = A[:, :, 8:12] - bottom[..., 6:10]
+    cs = _determinant_to_polynomial_jit(A)  # (B, 11), z^0 first
 
-    A[:, :, 1:4] = coeffs_[:, top_idx, 10:13]
-    A[:, :, 0:3] = A[:, :, 0:3] - coeffs_[:, bot_idx, 10:13]
+    # ---- real roots ----
+    # A polynomial that is not finite, or whose leading coefficient is exactly zero (its degree is below ten, #4831),
+    # has no usable companion matrix: its sample gets the identity instead and NaN slots.
+    lead = cs[:, -1]
+    usable = ~singular & torch.isfinite(cs).all(1) & (lead != 0)
+    detached = cs.detach().cpu().double()
+    companion = torch.zeros(B, 10, 10, dtype=torch.float64)
+    companion[:, :9, 1:] = torch.eye(9, dtype=torch.float64)
+    companion[:, 9] = -detached[:, :10] / torch.where(detached[:, 10:] == 0, 1.0, detached[:, 10:])
+    host_usable = usable.cpu() & torch.isfinite(companion).flatten(1).all(1)
+    companion = torch.where(host_usable[:, None, None], companion, torch.eye(10, dtype=torch.float64))
+    eigenvalues = torch.linalg.eigvals(companion)
+    real = eigenvalues.imag.abs() <= 1e-10 * eigenvalues.abs().clamp(min=1.0)
+    # A root beyond the fifth root of the dtype's largest number could overflow the z^4 terms of the back-substitution,
+    # and a masked infinity still turns the backward into 0 * inf = NaN: its slot is dropped, and a zero stands in for
+    # it. That only binds for a float32 solve, at |z| > 5.5e7, where the basis matrix W no longer shows in E.
+    in_range = eigenvalues.real.abs() < torch.finfo(dtype).max ** 0.2
+    valid = (real & in_range & host_usable[:, None]).to(device)
+    root0 = torch.where(real & in_range, eigenvalues.real, 0.0).to(device, dtype)
 
-    A[:, :, 5:8] = coeffs_[:, top_idx, 13:16]
-    A[:, :, 4:7] = A[:, :, 4:7] - coeffs_[:, bot_idx, 13:16]
+    # ---- Newton step: the root's polish and its gradient ----
+    # The polynomial and its slope are evaluated divided by s^10 with s = max(1, |z|): the same step, without the
+    # overflow of z^10 for large roots in float32.
+    degrees = torch.arange(11, device=device, dtype=dtype)
+    powers = _scaled_polynomial_powers(root0)  # (B, 10, 11); root0 carries no gradient
+    value = (powers * cs[:, None]).sum(-1)
+    slope_terms = powers[..., :10] * (degrees[1:] * cs[:, 1:])[:, None]
+    slope = slope_terms.sum(-1)
+    # At a multiple root rounding leaves a tiny slope: dividing two rounding errors would move an accurate root.
+    simple = valid & (slope.abs() > 8 * torch.finfo(dtype).eps * slope_terms.abs().sum(-1))
+    simple = simple & torch.isfinite(value) & torch.isfinite(slope)
+    step = value / torch.where(simple, slope, torch.ones_like(slope))
+    z = root0 - torch.where(simple, step, torch.zeros_like(step))
 
-    A[:, :, 9:13] = coeffs_[:, top_idx, 16:20]
-    A[:, :, 8:12] = A[:, :, 8:12] - coeffs_[:, bot_idx, 16:20]
-
-    # ---- determinant polynomial -> companion ----
-    cs = _determinant_to_polynomial_jit(A, multiplication_indices, signs, coefficient_map)  # (B,11)
-
-    C = torch.zeros(B, 10, 10, device=device, dtype=dtype)
-    C[:, 0:9, 1:10] = torch.eye(9, device=device, dtype=dtype)
-
-    cs_de = cs[:, -1].clamp_min(1e-8)
-    C[:, -1, :] = -cs[:, :-1] / cs_de.unsqueeze(-1)
-
-    roots_eig = torch.linalg.eigvals(C)  # (B,10), complex
-    roots = torch.real(roots_eig)
-    is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
-
-    roots_unsqu = roots.unsqueeze(1)  # (B,1,10)
-
+    # ---- back-substitution for x and y ----
+    zz = z[:, None]  # (B, 1, 10)
     Bs = torch.stack(
         (
-            A[:, :3, :1] * (roots_unsqu**3)
-            + A[:, :3, 1:2] * roots_unsqu.square()
-            + A[:, :3, 2:3] * roots_unsqu
-            + A[:, :3, 3:4],
-            A[:, :3, 4:5] * (roots_unsqu**3)
-            + A[:, :3, 5:6] * roots_unsqu.square()
-            + A[:, :3, 6:7] * roots_unsqu
-            + A[:, :3, 7:8],
+            A[:, :3, :1] * zz**3 + A[:, :3, 1:2] * zz.square() + A[:, :3, 2:3] * zz + A[:, :3, 3:4],
+            A[:, :3, 4:5] * zz**3 + A[:, :3, 5:6] * zz.square() + A[:, :3, 6:7] * zz + A[:, :3, 7:8],
         ),
         dim=1,
-    ).transpose(1, -1)  # (B,10,3,2)
-
-    bs_vec = (
-        (
-            A[:, :3, 8:9] * (roots_unsqu**4)
-            + A[:, :3, 9:10] * (roots_unsqu**3)
-            + A[:, :3, 10:11] * roots_unsqu.square()
-            + A[:, :3, 11:12] * roots_unsqu
-            + A[:, :3, 12:13]
-        )
-        .transpose(1, 2)
-        .unsqueeze(-1)
-    )  # (B,10,3,1)
-
-    A2 = Bs[:, :, 0:2, 0:2]  # (B,10,2,2)
-    b2 = bs_vec[:, :, 0:2, :]  # (B,10,2,1)
-
-    xzs, bad2 = _solve_2x2_tikhonov_safe(A2, b2, 1e-12)  # never throws
-
-    # ---- build Es ----
-    xzs_sq = xzs.squeeze(-1)  # (B,10,2)
-    x = -xzs_sq[:, :, 0]
-    y = -xzs_sq[:, :, 1]
-    z = roots
-
-    N0 = nullSpace[:, 0, :].unsqueeze(1)  # (B,1,9)
-    N1 = nullSpace[:, 1, :].unsqueeze(1)
-    N2 = nullSpace[:, 2, :].unsqueeze(1)
-    N3 = nullSpace[:, 3, :].unsqueeze(1)
-
-    Es_vec = x.unsqueeze(-1) * N0 + y.unsqueeze(-1) * N1 + z.unsqueeze(-1) * N2 + N3  # (B,10,9)
-    inv_norm = torch.rsqrt(x * x + y * y + z * z + 1.0)
-    Es_vec = Es_vec * inv_norm.unsqueeze(-1)
-
-    Es = Es_vec.view(B, 10, 3, 3).transpose(-1, -2)
-    # after Es is created (B,10,3,3)
-    if bad2.any():
-        Es[bad2] = torch.nan
-    # a singular elimination matrix has no candidates
-    if singular.any():
-        Es[singular] = torch.nan
-    # mark complex roots as NaN (keeps shape, no compaction)
-    if is_real.logical_not().any():
-        Es[~is_real] = torch.nan
-
-    return Es.to(dtype=original_dtype)
-
-
-# Indices for null_ij reshaping
-IDX_IJ = torch.tensor([[0, 3, 6], [1, 4, 7], [2, 5, 8]], dtype=torch.long)
-I_IDX = torch.tensor([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=torch.long)
-J_IDX = torch.tensor([0, 1, 2, 0, 1, 2, 0, 1, 2], dtype=torch.long)
-IDX3 = torch.tensor([0, 1, 2], dtype=torch.long)
-
-TOP_IDX = torch.tensor([4, 6, 8], dtype=torch.long)
-BOT_IDX = torch.tensor([5, 7, 9], dtype=torch.long)
+    ).transpose(1, -1)  # (B, 10, 3, 2)
+    bs = (
+        (A[:, :3, 8:9] * zz**4 + A[:, :3, 9:10] * zz**3 + A[:, :3, 10:11] * zz.square() + A[:, :3, 11:12] * zz)
+        + A[:, :3, 12:13]
+    ).transpose(1, 2)[..., None]  # (B, 10, 3, 1)
+    # Each 2x2 system is divided by its largest entry, which leaves its solution unchanged: entries of size A z^3 would
+    # otherwise overflow the squares of the regularized fallback in float32, and a masked infinity still gives a NaN
+    # gradient. The scale is detached; the solution does not depend on it.
+    system = torch.cat([Bs[:, :, :2, :2].flatten(2), bs[:, :, :2, 0]], -1)
+    system_scale = system.detach().abs().amax(-1).clamp(min=torch.finfo(dtype).tiny)[..., None, None]
+    xy, bad2 = _solve_2x2_tikhonov_safe(Bs[:, :, :2, :2] / system_scale, bs[:, :, :2] / system_scale, 1e-12)
+    coefficients = torch.stack([-xy[..., 0, 0], -xy[..., 1, 0], z, torch.ones_like(z)], -1)  # (B, 10, 4)
+    Es = torch.einsum("bijk,brk->brij", N, coefficients)
+    norm = Es.flatten(2).norm(dim=-1)[..., None, None]
+    Es = Es / torch.where(norm > 0, norm, torch.ones_like(norm))
+    valid = valid & ~bad2 & torch.isfinite(Es).flatten(2).all(-1)
+    Es = torch.where(valid[..., None, None], Es, torch.full_like(Es, float("nan")))
+    return Es.to(out_dtype), valid
 
 
 def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
     return null_mat[:, ratio * j + i]
 
 
+# vec(x1 x2^T) -> vec(x2 x1^T): the column order of the historical design rows in terms of _epipolar_design_rows'.
+_TRANSPOSED_ROWS = [0, 3, 6, 1, 4, 7, 2, 5, 8]
+
+
 def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
-    device = X.device
-    dtype_internal = X.dtype
-
-    T1 = T_deg1.to(device=device, dtype=dtype_internal)
-    T2 = T_deg2.to(device=device, dtype=dtype_internal)
-    mult_idx = multiplication_indices.to(device=device)
-    sgns = signs.to(device=device, dtype=dtype_internal)
-    coeff_map = coefficient_map.to(device=device)
-    i_idx_dev = I_IDX.to(device=device)
-    j_idx_dev = J_IDX.to(device=device)
-    idx3_dev = IDX3.to(device=device)
-    top_idx_dev = TOP_IDX.to(device=device)
-    bot_idx_dev = BOT_IDX.to(device=device)
-    idx_ij_dev = IDX_IJ.to(device=device)
-
-    return _null_to_Nister_solution_script(
-        X,
-        batch_size,
-        T1,
-        T2,
-        mult_idx,
-        sgns,
-        coeff_map,
-        idx_ij_dev,
-        i_idx_dev,
-        j_idx_dev,
-        idx3_dev,
-        top_idx_dev,
-        bot_idx_dev,
-    )
+    """Candidates ``(B, 10, 3, 3)`` of design rows ``X`` ``(B, N, 9)`` in the column order ``vec(x1 x2^T)``."""
+    design = X[..., _TRANSPOSED_ROWS]
+    if design.shape[1] == 5:
+        return _five_point_candidates(design)[0]
+    return _least_squares_candidates(design)
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
-    r"""Get Essential matrix from Fundamental and Camera matrices.
+    r"""Convert a fundamental matrix and the intrinsics of its two cameras to their essential matrix.
 
-    Uses the method from Hartley/Zisserman 9.6 pag 257 (formula 9.12).
+    ``E = essential_from_fundamental(F_mat, K1, K2)`` takes a fundamental matrix ``(*, 3, 3)`` in the
+    :math:`x_2^\top F x_1 = 0` order of :func:`find_fundamental` and the pixel intrinsics ``(*, 3, 3)`` of the
+    first and the second camera, and returns :math:`E = K_2^\top F K_1`, ``(*, 3, 3)`` with the leading dimensions
+    broadcast, for which :math:`x_2^\top E x_1 = 0` in normalized camera coordinates (Hartley and Zisserman, 9.6,
+    p. 257, eq. 9.12). It keeps the scale of ``F_mat`` and does not enforce the constraints of an essential matrix:
+    pass an estimated one through :func:`project_to_essential` before decomposing it with
+    :func:`decompose_essential_matrix_no_svd`; :func:`decompose_essential_matrix` does not need it. For the reverse, use
+    :func:`fundamental_from_essential`.
+
+    Convention:
+        - ``K1`` is the camera of the first image, so ``E`` follows the :math:`x_2^\top E x_1 = 0` order of
+          :func:`find_essential`.
 
     Args:
-        F_mat: The fundamental matrix with shape of :math:`(*, 3, 3)`.
-        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
+        F_mat: The fundamental matrix with shape of ``(*, 3, 3)``.
+        K1: The camera matrix from first camera with shape ``(*, 3, 3)``.
+        K2: The camera matrix from second camera with shape ``(*, 3, 3)``.
 
     Returns:
-        The essential matrix with shape :math:`(*, 3, 3)`.
+        The essential matrix with shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`fundamental_from_essential`: the reverse conversion, :math:`F = K_2^{-\top} E K_1^{-1}`.
+        - :func:`project_to_essential`: the nearest matrix that satisfies the essential constraints.
+        - :func:`find_essential`: an essential matrix fitted to calibrated correspondences directly.
 
     """
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
@@ -457,23 +496,51 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
 
 def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
-    r"""Project a matrix onto the essential-matrix manifold.
+    r"""Project 3x3 matrices onto the nearest essential matrices in Frobenius norm.
 
-    An essential matrix must be of the form :math:`U \text{diag}(s, s, 0) V^T`. Matrices estimated
-    by other means (e.g. a fundamental matrix fitted with the 8-point DLT) generally violate this
-    constraint, which silently breaks tools that rely on it, such as
-    :func:`decompose_essential_matrix` and :func:`motion_from_essential`. The projection averages
-    the two largest singular values and zeroes the smallest one.
+    ``E = project_to_essential(E_mat)`` takes matrices ``(*, 3, 3)`` and returns the closest matrices ``(*, 3, 3)``
+    of the essential form :math:`U \text{diag}(s, s, 0) V^T`: the two largest singular values of ``E_mat`` averaged
+    and the smallest one set to zero. Matrices estimated by other means, such as an 8-point fit of
+    :func:`find_fundamental` on normalized camera coordinates or :func:`essential_from_fundamental` of an estimated
+    ``F``, generally violate this constraint. :func:`decompose_essential_matrix_no_svd` then returns matrices that are
+    not rotations, while :func:`decompose_essential_matrix` and :func:`motion_from_essential` return the same
+    candidates for a matrix and for its projection, because the projection keeps its singular vectors. Their order can
+    differ, though: on about half of noisy inputs the projection swaps the two rotations and flips the translation,
+    so pick a candidate by its triangulated points, as :func:`motion_from_essential_choose_solution` does, not by its
+    index. The candidates of :func:`find_essential` have this form only up to rounding, which on unlucky samples
+    leaves a relative gap of order ``1e-4`` between their two largest singular values;
+    :class:`~kornia.geometry.ransac.RANSAC` projects its essential matrix for that reason
+    (`#3874 <https://github.com/kornia/kornia/issues/3874>`_).
+
+    Convention:
+        - The result is not normalised to unit Frobenius norm, unlike the candidates of :func:`find_essential`.
+        - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
-        E_mat: The matrices to project with shape :math:`(*, 3, 3)`.
+        E_mat: The matrices to project with shape ``(*, 3, 3)``.
 
     Returns:
         The closest matrices (in Frobenius norm) satisfying the essential-matrix constraint,
-        with shape :math:`(*, 3, 3)`.
+        with shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`decompose_essential_matrix_no_svd`: the closed-form decomposition, which needs this projection of
+          an estimate.
+        - :func:`decompose_essential_matrix`: the SVD decomposition, which gives the same candidates with or without
+          it.
+        - :func:`essential_from_fundamental`: an essential matrix that usually needs this projection.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    # A caller's autocast region would run the products below in half precision and return a half-precision matrix.
+    # TorchScript has no context managers; a scripted call keeps the products in the caller's precision.
+    if torch.jit.is_scripting():
+        return _project_to_essential(E_mat)
+    with _autocast_disabled(E_mat.device.type):
+        return _project_to_essential(E_mat)
+
+
+def _project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
     U, S, V = _torch_svd_cast(E_mat)
     S_new = torch.zeros_like(S)
     mean_sv = 0.5 * (S[..., 0] + S[..., 1])
@@ -483,21 +550,50 @@ def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
 
 
 def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Decompose an essential matrix to possible rotations and translation.
+    r"""Decompose an essential matrix into its two candidate rotations and its translation direction by SVD.
 
-    This function decomposes the essential matrix E using svd decomposition [96]
-    and give the possible solutions: :math:`R1, R2, t`.
+    ``R1, R2, t = decompose_essential_matrix(E_mat)`` takes essential matrices ``(*, 3, 3)`` and returns the two
+    rotations ``(*, 3, 3)`` and the unit translation ``(*, 3, 1)`` of their SVD factorization (Hartley and
+    Zisserman, section 9.6.2): the relative motion of camera 2 to camera 1, :math:`X_2 = R X_1 + t` as in
+    :func:`relative_camera_motion`, is one of :math:`(R_1, \pm t)` and :math:`(R_2, \pm t)`, with the translation
+    known only up to scale. It does not tell which; :func:`motion_from_essential` stacks the four candidates and
+    :func:`motion_from_essential_choose_solution` picks the one that puts the points in front of both cameras. For
+    the same candidates in closed form, without an SVD, use :func:`decompose_essential_matrix_no_svd`.
+
+    Convention:
+        - :math:`(R_1, -t)` and :math:`(R_2, t)` give :math:`[t]_\times R` with the sign
+          of ``E_mat``, :math:`(R_1, t)` and :math:`(R_2, -t)` the opposite sign. Which of the four is the true
+          pose is not fixed: it can change when ``E_mat`` is negated or rescaled. Select by cheirality with
+          :func:`motion_from_essential_choose_solution`; :ref:`two-view geometry <two-view-conventions>`
+          compares OpenCV's labels.
+        - A caller's autocast region does not change the result, outside TorchScript: a float32 ``E_mat`` gives
+          float32 rotations.
 
     Args:
-       E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+       E_mat: The essential matrix in the form of ``(*, 3, 3)``.
 
     Returns:
-       A tuple containing the first and second possible rotation matrices and the translation vector.
-       The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+       A tuple containing the first and second possible rotation matrices and the translation vector,
+       with shapes ``(*, 3, 3)``, ``(*, 3, 3)`` and ``(*, 3, 1)``: the same leading dims as the input.
+
+    See Also:
+        - :func:`decompose_essential_matrix_no_svd`: the same candidates in closed form, exact essential
+          matrices only, with the leading dims flattened.
+        - :func:`motion_from_essential`: the four candidate poses stacked on one axis.
+        - :func:`motion_from_essential_choose_solution`: the one candidate with the points in front of both
+          cameras.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    # A caller's autocast region would run the products below in half precision: half-precision rotations, no longer
+    # orthogonal, next to a translation in the input dtype. TorchScript has no context managers.
+    if torch.jit.is_scripting():
+        return _decompose_essential_matrix(E_mat)
+    with _autocast_disabled(E_mat.device.type):
+        return _decompose_essential_matrix(E_mat)
 
+
+def _decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # decompose matrix by its singular values
     U, _, V = _torch_svd_cast(E_mat)
     Vt = V.transpose(-2, -1)
@@ -511,8 +607,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
     Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
-    W = cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
-    W[..., 2, 2] += 1.0
+    # W = [e_z]_x + diag(0, 0, 1), built unbatched so that it does not add a batch dim to an unbatched U.
+    W = torch.tensor([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], device=E_mat.device, dtype=E_mat.dtype)
 
     # reconstruct rotations and retrieve translation vector
     U_W_Vt = U @ W @ Vt
@@ -526,21 +622,45 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
 
 def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Decompose the essential matrix to rotation and translation.
+    r"""Decompose an essential matrix into candidate rotations and translation in closed form.
 
-       Recover rotation and translation from essential matrices without SVD
-      reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J].
-      J. Opt. Soc. Am, 1990, 110.
+    ``R1, R2, t = decompose_essential_matrix_no_svd(E_mat)`` takes essential matrices ``(*, 3, 3)`` and returns the
+    candidates of :func:`decompose_essential_matrix`, two rotations and a unit translation, from cross products of
+    the columns of ``E_mat`` and its cofactor matrix (Horn, Recovering baseline and orientation from essential
+    matrix, J. Opt. Soc. Am., 1990). Every leading dimension is flattened into one batch dimension ``B``, so a
+    ``(3, 3)`` input returns a batch of one. The closed form holds only for an exact essential matrix: for one off
+    the essential manifold, such as an estimate, the returned matrices are in general not rotations, so pass it
+    through :func:`project_to_essential` first or use :func:`decompose_essential_matrix`, whose rotations are
+    orthogonal for any input.
+
+    Convention:
+        - For an exact essential matrix, the same candidate set as :func:`decompose_essential_matrix`, with ``t``
+          of unit norm.
+        - A caller's autocast region does not change the result, outside TorchScript.
 
     Args:
-       E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+       E_mat: The essential matrix in the form of ``(*, 3, 3)``.
 
     Returns:
-       A tuple containing the first and second possible rotation matrices and the translation vector.
-       The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+       A tuple containing the first and second possible rotation matrices and the translation vector, with
+       shapes ``(B, 3, 3)``, ``(B, 3, 3)`` and ``(B, 3, 1)``: all leading dims are flattened into one batch dim.
+
+    See Also:
+        - :func:`decompose_essential_matrix`: the same candidates by SVD, with orthogonal rotations for any input
+          and the leading dims kept.
+        - :func:`motion_from_essential`: the four candidate poses stacked on one axis.
+        - :func:`project_to_essential`: the nearest exact essential matrix, to decompose an estimate.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    # A caller's autocast region would run the products below in half precision. TorchScript has no context managers.
+    if torch.jit.is_scripting():
+        return _decompose_essential_matrix_no_svd(E_mat)
+    with _autocast_disabled(E_mat.device.type):
+        return _decompose_essential_matrix_no_svd(E_mat)
+
+
+def _decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if len(E_mat.shape) != 3:
         E_mat = E_mat.view(-1, 3, 3)
 
@@ -564,14 +684,13 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
     # B, to select which b1
     largest = torch.argmax(norms, dim=-2)
 
-    # B, 3, 3
-    e_cross_products = scale_factor[:, None, None] * cross_products / norms
-
     # broadcast the index
-    index_expanded = largest.unsqueeze(-1).expand(-1, -1, e_cross_products.size(-1))
+    index_expanded = largest.unsqueeze(-1).expand(-1, -1, cross_products.size(-1))
 
-    # slice at dim=1, select for each batch one b (e1*e2 or e2*e3 or e3*e1), B, 1, 3
-    b1 = torch.gather(e_cross_products, dim=1, index=index_expanded).squeeze(1)
+    # Select before dividing: unused zero cross products would give 0/0 and NaN gradients.
+    b1 = torch.gather(cross_products, dim=1, index=index_expanded).squeeze(1)
+    selected_norm = torch.gather(norms, dim=1, index=largest.unsqueeze(-1)).squeeze(1)
+    b1 = scale_factor[:, None] * b1 / selected_norm
     # normalization
     b1_ = b1 / torch.norm(b1, dim=-1, keepdim=True)
 
@@ -588,25 +707,36 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     # Eq.24, recover R
     # (bb)R = Cofactors(E)^T - BE
-    R1 = (matrix_cofactor_tensor(E_mat) - B1 @ E_mat) / (b1 * b1).sum().unsqueeze(-1)
-    R2 = (matrix_cofactor_tensor(E_mat) - B2 @ E_mat) / (b2 * b2).sum().unsqueeze(-1)
+    R1 = (matrix_cofactor_tensor(E_mat) - B1 @ E_mat) / (b1 * b1).sum(-1)[:, None, None]
+    R2 = (matrix_cofactor_tensor(E_mat) - B2 @ E_mat) / (b2 * b2).sum(-1)[:, None, None]
 
     return (R1, R2, b1_.unsqueeze(-1))
 
 
 def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor) -> torch.Tensor:
-    r"""Get the Essential matrix from Camera motion (Rs and ts).
+    r"""Build the essential matrix of two cameras from their world-to-camera rotations and translations.
 
-    Reference: Hartley/Zisserman 9.6 pag 257 (formula 9.12)
+    ``E = essential_from_Rt(R1, t1, R2, t2)`` takes the world-to-camera extrinsics of the first and the second
+    camera, :math:`X_{cam} = R X + t`, as rotations ``(*, 3, 3)`` and translations ``(*, 3, 1)``, and returns
+    :math:`E = [t]_\times R`, ``(*, 3, 3)``, for their relative motion ``(R, t)`` from :func:`relative_camera_motion`,
+    so that :math:`x_2^\top E x_1 = 0` in normalized camera coordinates (Hartley and Zisserman, 9.6, p. 257,
+    eq. 9.12). It is not normalized: :math:`\|E\|_F = \sqrt{2} \|t\|`, unlike the unit-norm candidates of
+    :func:`find_essential`. For the fundamental matrix of two projection matrices, use
+    :func:`fundamental_from_projections`.
 
     Args:
-        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape ``(*, 3, 3)``.
+        t1: The first camera translation vector with shape ``(*, 3, 1)``.
+        R2: The second camera rotation matrix with shape ``(*, 3, 3)``.
+        t2: The second camera translation vector with shape ``(*, 3, 1)``.
 
     Returns:
-        The Essential matrix with the shape :math:`(*, 3, 3)`.
+        The Essential matrix with the shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`relative_camera_motion`: the relative motion ``(R, t)`` that this matrix encodes.
+        - :func:`fundamental_from_projections`: the uncalibrated counterpart, from two projection matrices.
+        - :func:`decompose_essential_matrix`: the reverse, the motion candidates of an essential matrix.
 
     """
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
@@ -624,17 +754,29 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 
 
 def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Get Motion (R's and t's ) from Essential matrix.
+    r"""List the four candidate relative poses of an essential matrix, stacked on one axis.
 
-    Computes and return four possible poses exist for the decomposition of the Essential
-    matrix. The possible solutions are :math:`[R1,t], [R1,-t], [R2,t], [R2,-t]`.
+    ``Rs, ts = motion_from_essential(E_mat)`` takes essential matrices ``(*, 3, 3)`` and returns the four candidate
+    motions of camera 2 relative to camera 1 that the matrix allows, rotations ``(*, 4, 3, 3)`` and unit translations
+    ``(*, 4, 3, 1)``, in the order :math:`(R_1, t), (R_1, -t), (R_2, t), (R_2, -t)` of the candidates of
+    :func:`decompose_essential_matrix`. Only one of them puts the scene in front of both cameras; to select it from
+    point correspondences, use :func:`motion_from_essential_choose_solution`.
+
+    Convention:
+        - The candidates are stacked on dim ``-3``; which index is the true pose is not fixed.
+        - A caller's autocast region does not change the result, as for :func:`decompose_essential_matrix`.
 
     Args:
-        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+        E_mat: The essential matrix in the form of ``(*, 3, 3)``.
 
     Returns:
-        The rotation and translation containing the four possible combination for the retrieved motion.
-        The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
+        The rotation and translation containing the four possible combination for the retrieved motion,
+        with shapes ``(*, 4, 3, 3)`` and ``(*, 4, 3, 1)``.
+
+    See Also:
+        - :func:`motion_from_essential_choose_solution`: the one candidate that passes the cheirality test.
+        - :func:`decompose_essential_matrix`: the two rotations and the translation the candidates combine.
+        - :func:`decompose_essential_matrix_no_svd`: the same rotations and translation without an SVD.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -656,30 +798,50 @@ def motion_from_essential_choose_solution(
     x1: torch.Tensor,
     x2: torch.Tensor,
     mask: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Recover the relative camera rotation and the translation from an estimated essential matrix.
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    r"""Pick the relative pose of an essential matrix that puts the points in front of both cameras.
 
-    The method checks the corresponding points in two images and also returns the triangulated
-    3d points. Internally uses :py:meth:`~kornia.geometry.epipolar.decompose_essential_matrix` and then chooses
-    the best solution based on the combination that gives more 3d points in front of the camera plane from
-    :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
+    ``R, t, points3d, count = motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2)`` takes essential matrices
+    ``(B, 3, 3)`` with :math:`x_2^\top E x_1 = 0` in normalized camera coordinates, the pixel intrinsics
+    ``(B, 3, 3)`` of the first and the second camera, and pixel correspondences ``(B, N, 2)`` of the first and the
+    second image. Of the four candidates of :func:`motion_from_essential` it keeps the one that puts the most points
+    at positive depth in both cameras. It returns that candidate's rotation ``(B, 3, 3)`` and unit translation
+    ``(B, 3, 1)`` of camera 2 relative to camera 1, :math:`X_2 = R X_1 + t` as in :func:`relative_camera_motion`. It
+    also returns the points triangulated by :func:`triangulate_points` in the frame of camera 1 at the scale
+    :math:`\|t\| = 1`, ``(B, N, 3)``, and the number of points that passed, ``(B,)``, the count that
+    ``cv2.recoverPose`` also returns. For all four candidates, use :func:`motion_from_essential`.
+
+    Convention:
+        - ``K1`` and ``K2`` are applied inside, so ``x1`` and ``x2`` are pixel coordinates.
+        - The count is the number of points at positive depth in both cameras for the returned
+          candidate. A count of ``0`` means no point passed, and the returned pose is then candidate 0 of
+          :func:`motion_from_essential`, not a recovered motion.
+        - A caller's autocast region does not change the result. ``K1`` and ``K2`` are cast to the dtype of
+          ``E_mat``.
 
     Args:
-        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
-        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
-        x1: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
-        x2: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+        E_mat: The essential matrix in the form of ``(B, 3, 3)``, or ``(3, 3)`` with every other input
+            unbatched too.
+        K1: The camera matrix from first camera with shape ``(B, 3, 3)``.
+        K2: The camera matrix from second camera with shape ``(B, 3, 3)``.
+        x1: The set of points in the first image with shape ``(B, N, 2)``.
+        x2: The set of points in the second image with shape ``(B, N, 2)``.
         mask: A boolean mask which can be used to exclude some points from choosing
           the best solution. This is useful for using this function with sets of points of
           different cardinality (for instance after filtering with RANSAC) while keeping batch
-          semantics. Mask is of shape :math:`(*, N)`.
+          semantics. Mask is of shape ``(B, N)``.
 
     Returns:
-        The rotation and translation plus the 3d triangulated points.
-        The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
+        The rotation, translation, 3d triangulated points, and the number of points
+        with positive depth in both cameras for the selected candidate.
+        The tuple is as following ``(B, 3, 3)``, ``(B, 3, 1)``, ``(B, N, 3)`` and ``(B,)``,
+        without ``B`` for unbatched inputs.
+
+    See Also:
+        - :func:`motion_from_essential`: all four candidate poses, without a cheirality test.
+        - :func:`decompose_essential_matrix`: the rotations and translation the candidates combine.
+        - :func:`triangulate_points`: the triangulation it tests the candidates with.
+        - :func:`find_essential`: the essential matrices to pass, from normalized camera coordinates.
 
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
@@ -706,72 +868,98 @@ def motion_from_essential_choose_solution(
         if mask is not None:
             mask = mask[None]
 
-    # compute four possible pose solutions
-    Rs, ts = motion_from_essential(E_mat)
+    # Autocast is off below, so the intrinsics are cast to the dtype of ``E_mat`` here, as autocast casts
+    # half-precision intrinsics and a float32 ``E_mat`` to one dtype.
+    K1, K2 = K1.to(E_mat.dtype), K2.to(E_mat.dtype)
 
-    # set reference view pose and compute projection matrix
-    R1 = eye_like(3, E_mat)  # Bx3x3
-    t1 = vec_like(3, E_mat)  # Bx3x1
+    # A caller's autocast region would build the projection matrices and the depths in half precision, which moves
+    # the triangulated points and can change the chosen candidate, and would return a half-precision rotation.
+    with _autocast_disabled(E_mat.device.type):
+        # compute four possible pose solutions
+        Rs, ts = motion_from_essential(E_mat)
 
-    # compute the projection matrices for first camera
-    R1 = R1[:, None].expand(-1, 4, -1, -1)
-    t1 = t1[:, None].expand(-1, 4, -1, -1)
-    K1 = K1[:, None].expand(-1, 4, -1, -1)
-    P1 = projection_from_KRt(K1, R1, t1)  # 1x4x4x4
+        # set reference view pose and compute projection matrix
+        R1 = eye_like(3, E_mat)  # Bx3x3
+        t1 = vec_like(3, E_mat)  # Bx3x1
 
-    # compute the projection matrices for second camera
-    R2 = Rs
-    t2 = ts
-    K2 = K2[:, None].expand(-1, 4, -1, -1)
-    P2 = projection_from_KRt(K2, R2, t2)  # Bx4x4x4
+        # compute the projection matrices for first camera
+        R1 = R1[:, None].expand(-1, 4, -1, -1)
+        t1 = t1[:, None].expand(-1, 4, -1, -1)
+        K1 = K1[:, None].expand(-1, 4, -1, -1)
+        P1 = projection_from_KRt(K1, R1, t1)  # 1x4x4x4
 
-    # triangulate the points
-    x1 = x1[:, None].expand(-1, 4, -1, -1)
-    x2 = x2[:, None].expand(-1, 4, -1, -1)
-    X = triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
+        # compute the projection matrices for second camera
+        R2 = Rs
+        t2 = ts
+        K2 = K2[:, None].expand(-1, 4, -1, -1)
+        P2 = projection_from_KRt(K2, R2, t2)  # Bx4x4x4
 
-    # project points and compute their depth values
-    d1 = depth_from_point(R1, t1, X)
-    d2 = depth_from_point(R2, t2, X)
+        # triangulate the points
+        x1 = x1[:, None].expand(-1, 4, -1, -1)
+        x2 = x2[:, None].expand(-1, 4, -1, -1)
+        X = triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
 
-    # verify the point values that have a positive depth value
-    depth_mask = (d1 > 0.0) & (d2 > 0.0)
-    if mask is not None:
-        depth_mask &= mask.unsqueeze(1)
+        # project points and compute their depth values
+        d1 = depth_from_point(R1, t1, X)
+        d2 = depth_from_point(R2, t2, X)
 
-    mask_indices = torch.max(depth_mask.sum(-1), dim=-1, keepdim=True)[1]
+        # verify the point values that have a positive depth value
+        depth_mask = (d1 > 0.0) & (d2 > 0.0)
+        if mask is not None:
+            depth_mask &= mask.unsqueeze(1)
 
-    # get pose and points 3d and return
-    R_out = Rs[:, mask_indices][:, 0, 0]
-    t_out = ts[:, mask_indices][:, 0, 0]
-    points3d_out = X[:, mask_indices][:, 0, 0]
+        valid_count, mask_indices = torch.max(depth_mask.sum(-1), dim=-1)
+
+        # get pose and points 3d and return
+        batch_idx = torch.arange(mask_indices.shape[0], device=mask_indices.device)
+        R_out = Rs[batch_idx, mask_indices]
+        t_out = ts[batch_idx, mask_indices]
+        points3d_out = X[batch_idx, mask_indices]
 
     if unbatched:
         R_out = R_out[0]
         t_out = t_out[0]
         points3d_out = points3d_out[0]
+        valid_count = valid_count[0]
 
-    return R_out, t_out, points3d_out
+    return R_out, t_out, points3d_out, valid_count
 
 
 def relative_camera_motion(
     R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Compute the relative camera motion between two cameras.
+    r"""Compute the motion from camera 1 to camera 2 from their world-to-camera rotations and translations.
 
-    Given the motion parameters of two cameras, computes the motion parameters of the second
-    one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,
-    the computed relative motion is :math:`T = T_{2}T^{-1}_{1}`.
+    ``R, t = relative_camera_motion(R1, t1, R2, t2)`` takes the world-to-camera extrinsics of two cameras,
+    rotations ``(*, 3, 3)`` and translations ``(*, 3, 1)``, and returns the rotation ``(*, 3, 3)`` and translation
+    ``(*, 3, 1)`` that take camera-1 coordinates to camera-2 coordinates, :math:`X_2 = R X_1 + t`: the pose of the
+    second camera when the first one is at the origin. This is the motion that :func:`essential_from_Rt` encodes and
+    :func:`motion_from_essential_choose_solution` recovers. For the same motion from ``4 x 4`` extrinsics, compute
+    ``E2 @ inverse_transformation(E1)`` with :func:`~kornia.geometry.linalg.inverse_transformation`;
+    :func:`~kornia.geometry.linalg.relative_transformation` composes in the other order.
+
+    Convention:
+        - Inputs are world-to-camera extrinsics, :math:`x_{cam} = R X + t` (see :doc:`camera and world
+          conventions </get-started/camera-conventions>`); the result is :math:`R = R_2 R_1^\top` and
+          :math:`t = t_2 - R_2 R_1^\top t_1`, the motion from camera 1 to camera 2. As 4x4 matrices this is
+          :math:`E_2 E_1^{-1}`, whereas :func:`~kornia.geometry.linalg.relative_transformation` of :math:`E_1` and
+          :math:`E_2` returns :math:`E_1^{-1} E_2`.
 
     Args:
-        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape ``(*, 3, 3)``.
+        t1: The first camera translation vector with shape ``(*, 3, 1)``.
+        R2: The second camera rotation matrix with shape ``(*, 3, 3)``.
+        t2: The second camera translation vector with shape ``(*, 3, 1)``.
 
     Returns:
         A tuple with the relative rotation matrix and
-        translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
+        translation vector with the shapes ``(*, 3, 3)`` and ``(*, 3, 1)``.
+
+    See Also:
+        - :func:`essential_from_Rt`: the essential matrix of this motion.
+        - :func:`~kornia.geometry.linalg.relative_transformation`: the relative pose of two 4x4 matrices,
+          :math:`E_1^{-1} E_2` rather than :math:`E_2 E_1^{-1}`.
+        - :func:`motion_from_essential_choose_solution`: the same motion, up to scale, from an essential matrix.
 
     """
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
@@ -791,17 +979,119 @@ def relative_camera_motion(
 def find_essential(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Find essential matrices.
+    r"""Estimate up to ten essential matrices from calibrated points with Nister's five-point solver.
+
+    ``Es = find_essential(points1, points2)`` takes correspondences ``(B, N, 2)``, ``N >= 5``, of the first and the
+    second image in normalized camera coordinates :math:`K^{-1} [u, v, 1]^\top`, not pixels (see
+    :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`), and returns ``(B, 10, 3, 3)``: one slot
+    per root of Nister's degree-ten polynomial, a candidate of unit Frobenius norm for each real root and ``NaN`` for
+    each complex one. Five points satisfy :math:`x_2^\top E x_1 = 0` exactly for every candidate; with more, the null
+    space of the epipolar constraints is fitted by least squares first, so the candidates satisfy it only
+    approximately. Pick a candidate by its :func:`sampson_epipolar_distance` on other
+    correspondences, ignoring the ``NaN`` slots. For one essential matrix from correspondences with outliers, use
+    :class:`~kornia.geometry.ransac.RANSAC` with ``model_type="essential"``; for pixel correspondences of unknown
+    cameras, :func:`find_fundamental`.
+
+    Convention:
+        - :ref:`Two-view geometry <two-view-conventions>` maps the argument order and the candidate layout onto
+          OpenCV.
+        - All ten slots are always returned, so a sample with no real solution returns ten ``NaN`` slots.
+        - The solve runs in float64 whatever the input dtype, and the degree-ten polynomial's roots come from LAPACK
+          on the host for every device. MPS has no float64, so MPS inputs are solved on the host and the candidates
+          copied back, which on an Apple M1 was also faster than a float32 solve on the device. A sample whose five
+          design rows are rank deficient, such as one with a repeated correspondence, has no unique solution: ten
+          ``NaN`` slots and a zero gradient.
 
     Args:
-         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
-         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+         points1: A set of points in the first image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
+         points2: A set of points in the second image with a tensor shape ``(B, N, 2)``, ``N >= 5``.
+         weights: Accepted with a shape of ``(B, N)`` and ignored for compatibility, including for :math:`N > 5`.
+           Positive weights leave the null space of an exact five-point sample unchanged; for larger sets they can
+           affect the least-squares fit.
 
     Returns:
-         the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
-         Note that all possible solutions are returned, i.e., 10 essential matrices for each image pair.
-         To choose the best one out of 10, try to check the one with the lowest Sampson distance.
+         the computed essential matrices with shape ``(B, 10, 3, 3)``.
+         To choose the best one out of 10, try to check the one with the lowest Sampson distance, ignoring the
+         ``NaN`` slots.
+
+    See Also:
+        - :func:`find_fundamental`: the model of uncalibrated cameras, from pixel correspondences.
+        - :func:`~kornia.geometry.homography.find_homography_dlt`: a homography instead, for a planar scene or a
+          camera that only rotates.
+        - :class:`~kornia.geometry.ransac.RANSAC`: one essential matrix, robust to wrong correspondences.
+        - :func:`motion_from_essential_choose_solution`: the relative pose of a chosen candidate.
+        - :func:`essential_from_fundamental`: an essential matrix from a fundamental matrix and both intrinsics.
 
     """
     return run_5point(points1, points2, weights).to(points1.dtype)
+
+
+def _refine_essential_lm(
+    E: torch.Tensor,
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    mask: Optional[torch.Tensor],
+    loss: str,
+    scale2: Union[float, torch.Tensor],
+    iters: int,
+) -> torch.Tensor:
+    """Levenberg-Marquardt on the Sampson distance, batched over essential matrices ``(K, 3, 3)``.
+
+    ``E = U diag(1, 1, 0) V^T / sqrt(2)`` with ``U`` and ``V`` in SO(3): the factorization of
+    :func:`~kornia.geometry.epipolar.fundamental._refine_fundamental_lm` with its singular-value ratio fixed to one.
+    Five parameters, as many as the rotation and translation direction of PoseLib's ``refine_relpose``: Cayley
+    rotations of ``U`` about the three axes and of ``V`` about ``V e_1`` and ``V e_2``. Rotating both about their third
+    axes by the same angle leaves ``E`` unchanged, so that direction is left out and the normal equations stay regular.
+    Residuals, losses, masks and step acceptance as for the fundamental matrix; ``x1`` and ``x2`` are homogeneous
+    ``(N, 3)`` calibrated points. Returns matrices of unit Frobenius norm. For RANSAC, under ``torch.no_grad``.
+    """
+    K = E.shape[0]
+    dtype, device = E.dtype, E.device
+    cpu = K > 0 and device.type == "cpu" and not torch.is_grad_enabled()
+    if cpu and K == 1 and mask is not None and mask.dtype == torch.bool:
+        x1, x2, mask = x1[mask[0]], x2[mask[0]], None
+    H = _hat_basis(dtype, device)
+    eye3 = torch.eye(3, dtype=dtype, device=device)
+    eye5 = torch.eye(5, dtype=dtype, device=device)
+    algebraic = _epipolar_design_rows(x1, x2).T  # (9, N)
+    quadratic = torch.cat([_epipolar_design_rows(x1, x1), _epipolar_design_rows(x2, x2)], 1).T  # (18, N)
+    U, _, Vh = torch.linalg.svd(E)
+    V = Vh.mT
+    # Proper rotations: the third singular vectors do not enter E, so their signs are free.
+    U = torch.cat([U[..., :2], U[..., 2:] * torch.linalg.det(U).sign()[:, None, None]], -1)
+    V = torch.cat([V[..., :2], V[..., 2:] * torch.linalg.det(V).sign()[:, None, None]], -1)
+    damping = torch.full((K, 1, 1), 1e-3, dtype=dtype, device=device)
+
+    def compose(U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
+        return (U[..., :2] @ V[..., :2].mT) * 0.5**0.5
+
+    def normal_equations(E: torch.Tensor, V: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Directions dE/dp: H_a E (rotations of U), -E [V e_k]_x (rotations of V about its first two axes).
+        axes = (V[..., :2].mT.reshape(K * 2, 3) @ H.reshape(3, 9)).reshape(K, 2, 3, 3)
+        tangent = torch.cat([H @ E[:, None], (E[:, None] @ axes).neg()], 1)
+        return _sampson_normal_equations(E, tangent, algebraic, quadratic, mask, loss, scale2)
+
+    def cayley(half: torch.Tensor) -> torch.Tensor:
+        # The rotation by the vector 2 * half: Cayley transform of the half-angle skew matrix.
+        skew = (half @ H.reshape(3, 9)).reshape(-1, 3, 3)
+        factor = (2.0 / (1.0 + half.square().sum(1)))[:, None, None]
+        return eye3 + factor * (skew + skew @ skew)
+
+    E = compose(U, V)
+    system, cost = normal_equations(E, V)
+    for iteration in range(iters):
+        delta = -torch.linalg.solve_ex(system[..., :5] + damping * eye5, system[..., 5:])[0][..., 0]
+        U_new = cayley(0.5 * delta[:, :3]) @ U
+        V_new = cayley(0.5 * (V[..., :2] @ delta[:, 3:, None])[..., 0]) @ V
+        E_new = compose(U_new, V_new)
+        if cpu and iteration + 1 == iters:
+            cost_new = _sampson_cost(E_new, algebraic, quadratic, mask, loss, scale2)
+            accepted = cost_new < cost
+            return torch.where(accepted[:, None, None], E_new, E)
+        system_new, cost_new = normal_equations(E_new, V_new)
+        accept = (cost_new < cost)[:, None, None]
+        U, V = torch.where(accept, U_new, U), torch.where(accept, V_new, V)
+        E, system = torch.where(accept, E_new, E), torch.where(accept, system_new, system)
+        cost = torch.where(accept[:, 0, 0], cost_new, cost)
+        damping = damping * torch.where(accept, 0.1, 10.0)
+    return E

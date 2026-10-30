@@ -23,6 +23,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SIZES
+
 from .config import MoonViTConfig
 
 
@@ -39,7 +41,7 @@ def apply_rotary_pos_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) 
     """
     # Complex ops require at least float32; preserve float64 inputs for numerical accuracy.
     compute_dtype = torch.float64 if x.dtype == torch.float64 else torch.float32
-    x_complex = torch.view_as_complex(x.to(compute_dtype).reshape(*x.shape[:-1], -1, 2))
+    x_complex = torch.view_as_complex(x.to(compute_dtype).reshape(*x.shape[:-1], x.shape[-1] // 2, 2))
     freqs_cis = torch.complex(cos.to(compute_dtype), sin.to(compute_dtype))
     return torch.view_as_real(x_complex * freqs_cis).flatten(-2).to(x.dtype)
 
@@ -84,6 +86,50 @@ class MoonViTRotaryEmbedding(nn.Module):
         return freqs_cis.real, freqs_cis.imag
 
 
+def _sdpa_attention_mask(attention_mask: torch.Tensor, batch_size: int, seq_len: int) -> torch.Tensor:
+    """Return an attention mask of :class:`MoonViTAttention` in the 4-D layout of scaled dot-product attention.
+
+    A non-float mask becomes boolean. A 2-D or 3-D mask holds one mask per sample, broadcast over the heads:
+    ``(B, N) -> (B, 1, 1, N)`` masks keys and ``(B, N, N) -> (B, 1, N, N)`` query-key pairs. A 4-D mask is returned as
+    is, so a mask this function returned passes through it again unchanged and uncopied. Every form has the ``N`` keys
+    as its last dimension, and a 3-D or 4-D mask ``N`` queries or 1 before it.
+    """
+    if not attention_mask.is_floating_point():
+        attention_mask = attention_mask.bool()
+    if attention_mask.dim() >= 2:
+        # A key dimension of 1 would broadcast one value over every patch: the same as no mask on the CPU, and SDPA's
+        # unrelated "last dimension must be contiguous" error in CUDA float32 and half.
+        sizes: list[Optional[int]] = [None] * attention_mask.dim()
+        sizes[-1] = seq_len
+        if attention_mask.dim() > 2:
+            sizes[-2] = 1 if attention_mask.shape[-2] == 1 else seq_len
+        KORNIA_CHECK_SIZES(
+            attention_mask,
+            sizes,
+            lambda: (
+                f"MoonViTAttention reads an attention mask over the {seq_len} patches: the keys are its last "
+                f"dimension, and in a 3-D or 4-D mask the queries, {seq_len} or 1, the one before it."
+            ),
+        )
+    if attention_mask.dim() in (2, 3):
+        # Passed as is, SDPA would line a 3-D mask's leading dimension up with the heads and read a 2-D one as an
+        # N x N query x key mask, so an (H, N, N) or (N, N) mask would mean something else whenever B happened to equal
+        # H or N: such masks raise and go in as 4-D. The message is a function, formatted only on failure: an f-string
+        # evaluated on every call makes Dynamo specialize the batch size and the patch count, so a dynamic-shape
+        # torch.compile would recompile for each new input shape.
+        KORNIA_CHECK(
+            attention_mask.shape[0] in (1, batch_size),
+            lambda: (
+                f"MoonViTAttention reads a {attention_mask.dim()}-D attention mask per sample, as (B, N) padding or "
+                f"(B, N, N), but the leading dimension of the {tuple(attention_mask.shape)} mask is neither the batch "
+                f"size {batch_size} nor 1. For a per-head or a shared query x key mask, pass it as 4-D: (1, H, N, N) "
+                "or (1, 1, N, N)."
+            ),
+        )
+        attention_mask = attention_mask[:, None, None] if attention_mask.dim() == 2 else attention_mask[:, None]
+    return attention_mask
+
+
 class MoonViTAttention(nn.Module):
     """Multi-head self-attention layer used by the MoonViT vision encoder.
 
@@ -120,19 +166,26 @@ class MoonViTAttention(nn.Module):
         """Apply rotary self-attention to a sequence of visual patch tokens.
 
         Args:
-            hidden_states: Input token tensor with shape :math:`(B, N, D)`, where
+            hidden_states: Input token tensor with shape ``(B, N, D)``, where
                 ``B`` is the batch size, ``N`` is the number of flattened image
                 patches, and ``D`` is the hidden size.
             cos: Cosine component of the rotary positional embedding with shape
                 :math:`(N, d / 2)`, where ``d = D / H`` is the per-head dimension.
             sin: Sine component of the rotary positional embedding with shape
                 :math:`(N, d / 2)`.
-            attention_mask: Optional mask broadcastable to the scaled dot-product
-                attention scores. It can be used to prevent selected tokens from
-                attending to one another.
+            attention_mask: Optional boolean mask, ``True`` where a query may attend to a key. A 2-D or 3-D mask
+                holds one mask per sample, shared by the heads, as
+                :class:`~kornia.models.siglip2.attention.SigLip2Attention` reads it: ``(B, N)`` masks keys
+                (padding) and ``(B, N, N)`` query-key pairs; a leading dimension of 1 shares the mask across the
+                batch, and any other raises. A 4-D mask, such as ``(B, 1, N, N)`` or a per-head
+                ``(1, H, N, N)``, is passed as is and broadcasts against the ``(B, H, N, N)`` attention scores
+                of :func:`~torch.nn.functional.scaled_dot_product_attention`. The last dimension of every form is the
+                :math:`N` keys, and in a 3-D or 4-D mask the one before it is the :math:`N` queries or 1, which
+                shares the key mask across the queries; other sizes raise. An integer mask is read as boolean; a
+                float mask is added to the scores.
 
         Returns:
-            Tensor with shape :math:`(B, N, D)` containing the attended visual token
+            Tensor with shape ``(B, N, D)`` containing the attended visual token
             features after the output projection.
         """
         batch_size, seq_len, _ = hidden_states.shape
@@ -153,6 +206,8 @@ class MoonViTAttention(nn.Module):
 
         query = apply_rotary_pos_emb(query, cos, sin)
         key = apply_rotary_pos_emb(key, cos, sin)
+        if attention_mask is not None:
+            attention_mask = _sdpa_attention_mask(attention_mask, batch_size, seq_len)
         attn_output = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=self.dropout.p if self.training else 0.0
         )
@@ -188,12 +243,12 @@ class MoonViTMLP(nn.Module):
         """Project token features through the MoonViT feed-forward network.
 
         Args:
-            x: Input token features with shape :math:`(B, N, D)`, where ``B`` is the
+            x: Input token features with shape ``(B, N, D)``, where ``B`` is the
                 batch size, ``N`` is the number of patch tokens, and ``D`` is the model
                 hidden size.
 
         Returns:
-            Tensor with shape :math:`(B, N, D)` after expansion to the intermediate
+            Tensor with shape ``(B, N, D)`` after expansion to the intermediate
             hidden size, GELU activation, projection back to ``D``, and dropout.
         """
         x = self.fc1(x)
@@ -232,7 +287,7 @@ class MoonViTLayer(nn.Module):
         pre-normalization and residual pattern for the MLP sub-block.
 
         Args:
-            x: Token tensor with shape :math:`(B, N, D)`, where ``B`` is the batch
+            x: Token tensor with shape ``(B, N, D)``, where ``B`` is the batch
                 size, ``N`` is the number of flattened image patches, and ``D`` is the
                 hidden size.
             cos: Cosine rotary embedding table with shape :math:`(N, d / 2)`, where ``d``
@@ -242,7 +297,7 @@ class MoonViTLayer(nn.Module):
                 layer.
 
         Returns:
-            Tensor with shape :math:`(B, N, D)` after attention, MLP processing, and
+            Tensor with shape ``(B, N, D)`` after attention, MLP processing, and
             residual updates.
         """
         x = x + self.attn(self.norm1(x), cos, sin, attention_mask)
@@ -268,17 +323,19 @@ class MoonViTEncoder(nn.Module):
         """Encode visual patch tokens through the full MoonViT transformer stack.
 
         Args:
-            x: Input token tensor with shape :math:`(B, N, D)`, where ``B`` is batch
+            x: Input token tensor with shape ``(B, N, D)``, where ``B`` is batch
                 size, ``N`` is the flattened patch count, and ``D`` is hidden size.
             cos: Cosine rotary embedding table shared by all encoder layers.
             sin: Sine rotary embedding table shared by all encoder layers.
-            attention_mask: Optional attention mask passed unchanged to every
-                transformer layer.
+            attention_mask: Optional attention mask in any form :class:`MoonViTAttention` reads, brought into the 4-D
+                layout once and shared by every transformer layer.
 
         Returns:
-            Tensor with shape :math:`(B, N, D)` containing the encoded patch sequence
+            Tensor with shape ``(B, N, D)`` containing the encoded patch sequence
             after all MoonViT layers have been applied.
         """
+        if attention_mask is not None:
+            attention_mask = _sdpa_attention_mask(attention_mask, x.shape[0], x.shape[1])
         for layer in self.layers:
             x = layer(x, cos, sin, attention_mask)
         return x
@@ -307,8 +364,15 @@ class MoonViT(nn.Module):
         """Forward pass.
 
         Args:
-            pixel_values: (B, C, H, W)
-            attention_mask: (B, 1, N, N) or (B, N, N) optional mask.
+            pixel_values: (B, C, H, W) image normalized with mean = std = 0.5 per channel, i.e. ``2 * x - 1`` for an
+                image ``x`` in ``[0, 1]``, as the Kimi-VL checkpoint's ``preprocessor_config.json`` specifies. H and W
+                should be multiples of ``2 * patch_size`` (28 for the released checkpoint), which
+                :class:`~kornia.models.kimi_vl.KimiVLModel` needs to merge the patches 2 x 2: the patch embedding crops
+                a size that is not a multiple of ``patch_size`` silently.
+            attention_mask: (B, N), (B, N, N) or (B, 1, N, N) optional boolean mask over the N patches, ``True`` where
+                a patch may attend to another. A (B, N) mask marks the patches every patch may attend to (padding is
+                ``False``), and a (B, N, N) mask holds one mask per sample; both are shared by the heads. See
+                :class:`MoonViTAttention` for the other forms.
 
         Returns:
             (B, seq_len, hidden_size)

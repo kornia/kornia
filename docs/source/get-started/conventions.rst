@@ -30,6 +30,107 @@ Image tensors
     np_img = (np.random.rand(48, 64, 3) * 255).astype(np.uint8)  # (H, W, C) uint8
     t = kornia.image.image_to_tensor(np_img)[None].float() / 255.0  # (1, 3, 48, 64) in [0, 1]
 
+.. _image-io-conventions:
+
+Files and arrays
+^^^^^^^^^^^^^^^^
+
+:func:`kornia.io.load_image` returns a ``(C, H, W)`` tensor in RGB order, with alpha last. The load type fixes its
+channels, dtype and range, whatever the file holds:
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``ImageLoadType``
+     - channels
+     - dtype and range
+   * - ``GRAY8``, ``RGB8``, ``RGBA8``
+     - 1, 3, 4
+     - ``uint8`` in ``[0, 255]``
+   * - ``GRAY32``, ``RGB32`` (the default)
+     - 1, 3
+     - ``float32`` in ``[0, 1]``
+   * - ``UNCHANGED``
+     - the file's
+     - the file's: ``uint8``, ``uint16`` or ``float32``
+
+- Every type except ``UNCHANGED`` loads an 8-bit palette PNG as its colours and raises for a file of more than 8 bits;
+  ``RGBA8`` keeps the alpha, and the other types composite it over white. ``UNCHANGED`` returns a palette PNG's indices,
+  keeps an alpha channel as stored and ignores a ``tRNS`` chunk.
+- The EXIF orientation is ignored: the pixels come back as stored.
+- :func:`kornia.io.write_image` writes the tensor as it is, channels first, RGB with alpha last, without scaling: JPEG
+  takes ``uint8``, PNG ``uint8`` and ``uint16``, and TIFF ``uint8``, ``uint16`` and ``float32``, each with 1 or 3
+  channels, and PNG also with 4.
+- :func:`kornia.image.image_to_tensor` and :func:`kornia.image.tensor_to_image` do not rescale the values and, by
+  default, share memory with a CPU array instead of copying it; their Convention blocks list the exceptions.
+  :func:`kornia.image.image_list_to_tensor` copies.
+
+The same tasks in OpenCV, Pillow and torchvision:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - Their call
+     - kornia
+     - Difference
+   * - ``cv2.imread(p)``
+     - ``load_image(p, ImageLoadType.RGB8)``
+     - OpenCV returns ``(H, W, 3)`` BGR, turns the image by its EXIF orientation and drops alpha; kornia returns
+       ``(3, H, W)`` RGB as stored, with alpha composited over white.
+   * - ``cv2.imread(p, cv2.IMREAD_GRAYSCALE)``
+     - ``load_image(p, ImageLoadType.GRAY8)``
+     - kornia converts the decoded RGB image as ``cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)`` does; ``IMREAD_GRAYSCALE``
+       converts while decoding and can differ. OpenCV's default and ``IMREAD_GRAYSCALE`` reduce a 16-bit file to 8
+       bits, where kornia raises: load it with ``UNCHANGED`` and scale it yourself.
+   * - ``cv2.imread(p, cv2.IMREAD_UNCHANGED)``
+     - ``load_image(p, ImageLoadType.UNCHANGED)``
+     - Both keep 16-bit data and alpha, OpenCV in BGR(A) order. OpenCV expands a palette PNG into colours; kornia
+       returns its indices.
+   * - ``cv2.imwrite(p, img)``
+     - ``write_image(p, image_to_tensor(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)))``
+     - OpenCV takes ``(H, W, C)`` BGR or BGRA, or ``(H, W)`` gray. Convert BGRA with ``cv2.COLOR_BGRA2RGBA`` and
+       pass gray as it is. Its JPEG quality defaults to 95, kornia's to 80.
+   * - Pillow ``Image.open(p).convert("RGB")`` or ``.convert("L")``
+     - ``load_image(p, ImageLoadType.RGB8)`` or ``ImageLoadType.GRAY8``
+     - Pillow drops alpha instead of compositing it, and its gray can differ from kornia's by one level. Neither turns
+       the image by its EXIF orientation; ``ImageOps.exif_transpose`` does.
+   * - Pillow ``Image.open(p)`` of a palette (``"P"``) PNG
+     - ``load_image(p, ImageLoadType.UNCHANGED)``
+     - Both give the palette indices of an 8-bit palette PNG; kornia raises for 1, 2 or 4 bits per pixel.
+   * - Pillow ``Image.save(p)`` as JPEG
+     - ``write_image(p, img)``
+     - Pillow's JPEG quality defaults to 75, kornia's to 80.
+   * - torchvision ``ToTensor()(img)``
+     - ``image_to_tensor(img).float() / 255`` for a ``uint8`` ``img``
+     - ``ToTensor`` copies a ``uint8`` array into ``float32`` in ``[0, 1]`` and keeps the values of any other array;
+       ``image_to_tensor`` keeps the dtype and shares the memory.
+   * - torchvision ``make_grid(t, nrow=n)``
+     - ``make_grid(t, n_row=n)``
+     - ``n`` images per row in both. torchvision defaults to 8 per row, pads the outer border too, turns one channel
+       into three and uses at most ``B`` columns; kornia defaults to :math:`\lceil \sqrt{B} \rceil` per row, pads
+       between the images only, keeps the channels and always uses ``n_row`` columns.
+
+.. _drawing-conventions:
+
+Drawing
+^^^^^^^
+
+The :doc:`drawing functions </image.drawing>` take points as ``(x, y)`` in the pixel frame of `Coordinates and
+sizes`_, draw into the image they are given and return it, and cast the colour to the image's dtype without
+rescaling it, so a ``[0, 1]`` colour on a ``uint8`` image draws black or almost black. Clone the image first to keep
+the original; a leaf tensor that requires grad cannot be drawn on.
+
+- :func:`~kornia.image.draw_point2d`, :func:`~kornia.image.draw_line` and :func:`~kornia.image.draw_rectangle` put a
+  fractional coordinate on the pixel whose centre is nearest, halfway rounding up, as OpenCV's fixed-point ``shift``
+  argument does; Pillow and torchvision truncate, so their shapes can sit one pixel up or to the left of kornia's.
+  :func:`~kornia.image.draw_convex_polygon` does not round its vertices.
+- A point or a line endpoint outside the image raises ``ValueError``, where OpenCV and Pillow clip the line;
+  rectangles and polygons are clipped to the image.
+- A single-value colour is written to every channel, where OpenCV's and Pillow's scalar colours fill only the first.
+
+.. _coordinate-conventions:
+
 Coordinates and sizes
 ---------------------
 
@@ -39,16 +140,33 @@ Coordinates and sizes
 - Sizes and ``dsize`` arguments are ``(h, w)`` — the *opposite* order from
   points. ``warp_perspective(img, M, dsize=(2, 8))`` produces a 2-row,
   8-column image.
-- Normalized coordinates, where used, are ``[-1, 1]`` in both axes,
-  identical to :func:`torch.nn.functional.grid_sample` **called with**
-  ``align_corners=True`` — not to its default, ``align_corners=False``,
-  which places the same values up to half a pixel off — exactly half a
-  pixel at the image borders, and identically at the image center.
-  :func:`kornia.geometry.grid.create_meshgrid` returns a normalized grid by
-  default (``normalized_coordinates=True``).
+- Normalized coordinates, where used, are ``[-1, 1]`` in both axes.
+  :func:`kornia.geometry.grid.create_meshgrid` defaults to a corner-aligned
+  normalized grid (``normalized_coordinates=True``, ``align_corners=True``),
+  matching :func:`torch.nn.functional.grid_sample` with ``align_corners=True``:
+  the first and last pixel centres map to the endpoints. Passing
+  ``align_corners=False`` to ``create_meshgrid`` uses the half-pixel mapping
+  that matches ``grid_sample(..., align_corners=False)`` instead, where the
+  endpoints are the outer pixel edges. Use the same flag in both calls.
 - 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
   ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
   order and the ``*_pixel_coordinates3d`` conversions consume it.
+  :func:`torch.nn.functional.grid_sample` reads a 3D grid as ``(x, y, z)``:
+  pass ``grid[..., [1, 2, 0]]`` and ``align_corners=True``, because the
+  normalized 3D grid is corner-aligned and has no ``align_corners`` argument
+  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+- Sub-pixel outputs follow the same orders: the soft-argmax functions of
+  :doc:`kornia.geometry.subpix </geometry.subpix>` return ``(x, y)`` in 2D
+  and ``(d, x, y)`` in 3D, and the quadratic refiners
+  (``conv_quad_interp3d``, ``iterative_quad_interp3d``) return ``(d, x, y)``
+  voxel indices of their input. Normalized outputs are corner-aligned, as
+  above.
+- Non-maximum suppression is **strict** in
+  :func:`kornia.geometry.subpix.nms2d`, ``nms3d``, ``nms3d_minmax`` and the
+  detectors built on them: with a window of at least 3 on every axis, every
+  pixel of a plateau is suppressed. ``skimage.feature.peak_local_max`` at its
+  default ``min_distance=1``, ``scipy.ndimage.maximum_filter(x, size=k) == x``
+  and ``cv2.dilate(x, kernel) == x`` keep every pixel of the plateau instead.
 - Pixel ``(0, 0)`` is centred at ``(0, 0)`` — the OpenCV "integer" convention,
   not COLMAP's half-pixel one. :doc:`camera-conventions` catalogues the
   pixel-centre and camera-frame conventions of the surrounding ecosystem and
@@ -100,6 +218,64 @@ Angles and rotations
     q = Quaternion.identity()
     assert q.data.tolist() == [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
 
+.. _rotation-conventions:
+
+Rotations and rigid motions
+---------------------------
+
+:class:`~kornia.geometry.quaternion.Quaternion` multiplies by the Hamilton product, so ``(q1 * q2).matrix()`` is
+``q1.matrix() @ q2.matrix()``: the right operand acts first. The Lie groups :class:`~kornia.geometry.liegroup.So3`,
+:class:`~kornia.geometry.liegroup.Se3`, :class:`~kornia.geometry.liegroup.So2` and
+:class:`~kornia.geometry.liegroup.Se2` compose the same way and act on a point as ``R p + t``, with ``R`` the
+``matrix()`` of the rotation part. ``So2`` and ``Se2`` do so for any complex number, and a non-unit one also scales by
+its modulus; ``So3`` and ``Se3`` rotate by the direction :math:`q / |q|` of a non-unit quaternion, without scaling,
+like ``Quaternion.matrix()``. The tangent vectors of ``Se3`` and ``Se2`` put the
+rotation part, in radians, last: ``[υ, ω]`` and ``[vx, vy, θ]``. ``log`` is principal: its rotation angle is at most
+:math:`\pi` in magnitude. The Jacobians of ``So3`` satisfy
+:math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`. A transform
+``trans_01`` maps frame-1 coordinates into frame 0, and
+:func:`~kornia.geometry.linalg.relative_transformation` of ``trans_01`` and ``trans_02`` is ``trans_12``;
+:class:`~kornia.geometry.pose.NamedPose` names the same transform ``dst_from_src``.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - scipy
+     - Sophus
+     - Eigen
+   * - quaternion storage
+     - ``(w, x, y, z)``
+     - ``Rotation.from_quat`` reads ``(x, y, z, w)`` unless ``scalar_first=True``
+     - ``SO3::data()`` exposes Eigen's ``coeffs()`` order: ``(x, y, z, w)``
+     - the ``Quaternion(w, x, y, z)`` constructor is scalar first, ``coeffs()`` is ``(x, y, z, w)``
+   * - composition
+     - ``a * b``, ``b`` acts first
+     - ``r1 * r2``, the same
+     - ``a * b``, the same
+     - ``q1 * q2``, the same
+   * - SE(3) tangent
+     - ``[υ, ω]``, translation first
+     - ``RigidTransform.as_exp_coords`` returns ``[ω, υ]``, rotation first
+     - ``SE3::log`` returns ``[υ, ω]``, the same (GTSAM's ``Pose3`` is ``[ω, υ]``)
+     - ``Isometry3d`` has no tangent or ``log``
+   * - rotation ``log``
+     - principal
+     - ``as_rotvec``, principal
+     - ``SO3::log``, principal
+     - ``AngleAxis(q)``, angle in :math:`[0, \pi]`
+   * - ``slerp``
+     - the short arc
+     - ``Slerp``, the short arc
+     - ``interpolate``, the short arc
+     - ``Quaternion::slerp``, the short arc
+   * - frame naming
+     - ``trans_01`` and ``dst_from_src`` map frame 1 (``src``) into frame 0 (``dst``)
+     - ``tf_A_B`` maps ``B`` into ``A``
+     - ``foo_T_bar`` maps ``bar`` into ``foo``
+     - no frames
+
 Transformation matrices and homographies
 ----------------------------------------
 
@@ -110,8 +286,24 @@ Transformation matrices and homographies
   **source→destination** homography in **pixel** coordinates.
 - :func:`kornia.geometry.transform.homography_warp` is different on every
   axis: it takes the **destination→source** homography, **normalized** to
-  ``[-1, 1]`` by default (``normalized_homography=True``), and defaults to
-  ``align_corners=False``. Convert a pixel source→destination homography by
+  ``[-1, 1]`` by default (``normalized_coordinates=True``), and defaults to
+  ``align_corners=False``. ``normalized_coordinates=False`` takes the same
+  destination→source homography in pixels, and
+  ``normalized_homography=False`` takes a pixel source→destination
+  homography instead and hands it to ``warp_perspective``.
+  :func:`~kornia.geometry.transform.homography_warp3d` and
+  :class:`~kornia.geometry.transform.HomographyWarper` read the homography the
+  same way but have no ``normalized_homography`` switch. For a pixel
+  source→destination homography, as :class:`~kornia.geometry.ransac.RANSAC`
+  and :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
+  :func:`~kornia.geometry.transform.warp_perspective`, or in 3D
+  :func:`~kornia.geometry.transform.warp_perspective3d` with
+  ``align_corners=True``, because its default ``align_corners=False``
+  resamples even an identity
+  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Passed to
+  ``homography_warp`` unchanged, such a homography usually samples outside
+  the source and the warp comes back mostly or entirely as zeros. To keep
+  ``homography_warp``, convert a pixel source→destination homography by
   normalizing it FIRST with
   :func:`kornia.geometry.conversions.normalize_homography` (which expects
   the forward src→dst homography) and inverting AFTER — inverting first
@@ -232,64 +424,141 @@ Bounding boxes
   ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in
   ``(x, y)``.
 
+.. _color-conventions:
+
 Color
 -----
 
-- ``rgb_to_hsv`` returns hue in **radians** ``[0, 2π)`` — not degrees, not
-  ``[0, 1]``:
+Color-space conversions use channel axis ``-3`` in ``(*, C, H, W)``. The color space determines
+channel units; converted data is not generally a unit-range RGB image.
 
-.. code-block:: python
+.. list-table:: Color channel units
+   :header-rows: 1
+   :widths: 22 42 36
 
-    import torch
-    import kornia
+   * - Space
+     - Channels
+     - Input encoding
+   * - HSV and HLS
+     - Hue in radians; saturation and value or lightness in unit range
+     - Nonlinear RGB in unit range
+   * - XYZ
+     - X, Y, Z
+     - Linear RGB; :func:`kornia.color.rgb_to_xyz` does not remove the sRGB transfer function
+   * - Lab and Luv
+     - L*, a*, b* or L*, u*, v*, with L* on the 0–100 scale
+     - Nonlinear sRGB, linearized internally; D65 / 2° reference white
+   * - YCbCr
+     - Y, Cb, Cr; chroma is offset by 0.5
+     - RGB in unit range
+   * - YUV
+     - Y, U, V; chroma is signed
+     - RGB in unit range
 
-    green = torch.zeros(1, 3, 1, 1)
-    green[0, 1] = 1.0
-    hue = kornia.color.rgb_to_hsv(green)[0, 0].item()
-    assert abs(hue - 2.0943951) < 1e-4  # 120 degrees = 2*pi/3 radians
+Use :func:`kornia.color.rgb_to_linear_rgb` and :func:`kornia.color.linear_rgb_to_rgb` to change
+transfer encoding. :func:`kornia.color.lab_to_rgb` clips its final RGB output unless ``clip=False``;
+:func:`kornia.color.luv_to_rgb` does not clip its output. :func:`kornia.color.ycbcr_to_rgb`
+clips its final RGB output to the unit range.
+
+See the individual :doc:`color conversion pages </color.conversions>` for RAW mosaic layouts,
+chroma subsampling, and known defects.
+
+.. _enhancement-conventions:
+
+Enhancement
+-----------
+
+- :func:`kornia.enhance.adjust_brightness` adds its factor, while
+  :func:`kornia.enhance.adjust_brightness_accumulative` multiplies by it.
+  :func:`kornia.enhance.adjust_contrast` multiplies pixel values; the mean-subtraction variant
+  adjusts contrast around an image mean. torchvision and PIL brightness, contrast and saturation
+  correspond to the ``_accumulative``, ``_with_mean_subtraction`` and ``_with_gray_subtraction``
+  variants.
+- :func:`kornia.enhance.adjust_hue` and :func:`kornia.enhance.adjust_hue_raw` take radians
+  (torchvision's ``hue_factor`` is ``factor / (2 * pi)``); the raw hue and saturation helpers
+  operate on HSV data.
+- :func:`kornia.enhance.normalize` and :func:`kornia.enhance.denormalize` use channel axis 1
+  in ``(B, C, ...)``. :func:`kornia.enhance.normalize_min_max` takes ``(*, C, H, W)`` and rescales
+  each ``H x W`` plane independently.
+- :func:`kornia.enhance.integral_image` sums inclusively over the last two axes. The returned
+  image has the input shape, without an extra zero border.
+- :class:`kornia.enhance.ZCAWhitening` uses ``dim`` as the sample axis and flattens all other
+  axes into features. ``unbiased=True`` selects the ``N - 1`` covariance denominator.
+
+See the :doc:`enhancement API </enhance>` for clipping, histogram ranges, and known defects.
 
 Augmentations
 -------------
 
+- Most augmentations apply per sample with probability ``p`` and default to
+  ``p=0.5``: ``RandomRotation(degrees=30.0)`` leaves about half the batch
+  unrotated. :class:`kornia.augmentation.RandomGrayscale` defaults to ``0.1``
+  and :class:`kornia.augmentation.RandomMosaic` to ``0.7``; every class
+  exported from ``kornia.augmentation`` with a default below ``1`` states it
+  on its first docstring line. These default to ``p=1.0``: ``CenterCrop``,
+  ``CenterCrop3D``, ``ColorJiggle``, ``ColorJitter``, ``Denormalize``,
+  ``LongestMaxSize``, ``Normalize``, ``PatchMix``, ``RandomAutoContrast``,
+  ``RandomBrightness``, ``RandomContrast``, ``RandomCrop``, ``RandomCrop3D``,
+  ``RandomCutMixV2``, ``RandomGamma``, ``RandomHue``, ``RandomJPEG``,
+  ``RandomMixUpV2``, ``RandomResizedCrop``, ``RandomSaturation``,
+  ``RandomSnow``, ``Resize`` and ``SmallestMaxSize``.
+- The crop, resize and mix classes (``RandomCrop``, ``CenterCrop``,
+  ``RandomResizedCrop``, ``Resize``, ``LongestMaxSize``, ``SmallestMaxSize``,
+  ``RandomCrop3D``, ``CenterCrop3D``, ``RandomMixUpV2``, ``RandomCutMixV2``,
+  ``PatchMix``) take their ``p`` as one draw for the whole batch;
+  ``Normalize``, ``Denormalize`` and
+  :class:`kornia.augmentation.RandomDissolving` share one draw across the
+  batch, and ``same_on_batch=True`` shares the draw for any class (see
+  *Randomness in augmentations* below).
+- torchvision's ``RandomRotation``, ``RandomAffine``, ``ElasticTransform``,
+  ``GaussianBlur``, ``GaussianNoise`` and ``RandomChannelPermutation`` always
+  apply: pass ``p=1.0`` for that behaviour. The reverse holds for
+  ``RandomAutoContrast``, which defaults to ``p=1.0`` while torchvision's
+  ``RandomAutocontrast`` defaults to ``p=0.5``.
 - Use one :class:`kornia.augmentation.container.AugmentationSequential` call
   for an image and its annotations. Geometric children that implement a data
   key's handler share their recorded parameters across the inputs; a transform
   matrix alone does not mean every data key is supported.
 - ``.inverse()`` restores keypoints to numerical precision when every
-  geometric step is invertible. Slice-mode crops and the 3D geometric
-  augmentations raise (crops accept ``cropping_mode="resample"`` for
-  inversion); intensity and non-rigid children are skipped, so their effect
+  geometric step is invertible. The 3D geometric augmentations raise;
+  intensity and non-rigid children are skipped, so their effect
   stays. Tensor box outputs are axis-aligned enclosures, so a rotation round
   trip does not restore a box.
-- Non-rigid children do not move coordinate annotations:
-  :class:`kornia.augmentation.RandomElasticTransform` warps masks but leaves
-  keypoints and boxes unchanged, and
-  :class:`kornia.augmentation.RandomThinPlateSpline` and
-  :class:`kornia.augmentation.RandomFisheye` leave coordinates unchanged and
-  raise on masks (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+- Non-rigid children cannot move coordinate annotations, so a pipeline that
+  contains :class:`kornia.augmentation.RandomElasticTransform`,
+  :class:`kornia.augmentation.RandomThinPlateSpline` or
+  :class:`kornia.augmentation.RandomFisheye` raises ``NotImplementedError`` on
+  a keypoint or box data key, even at ``p=0``. Elastic warps masks; the other
+  two raise on masks (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 - Intensity augmentations leave masks unchanged, except
   :class:`kornia.augmentation.RandomErasing`, which erases the same rectangle
   in the mask and fills it with ``0`` (background) whatever ``value`` fills
   the image.
 - Geometric children normally resample masks with nearest interpolation, so
   labels are not blended, but padding can introduce its fill value. The container
-  processes a mask in the dtype of the image it is working on (the most recent
+  processes a floating mask in the dtype of the image it is working on (the most recent
   image argument before the mask, or the call's first image when the mask
-  comes first) and returns it in the mask's own dtype, so
-  integer labels outside that dtype's exact range change even through a flip:
-  ``2049`` becomes ``2048`` in ``float16``
-  (`#4478 <https://github.com/kornia/kornia/issues/4478>`_). A direct
+  comes first) and returns it in the mask's own dtype. Integer masks use at least
+  float32, or float64 with a float64 image, so half-precision images do not round
+  their class labels. Labels not exactly representable in that working dtype raise
+  ``RuntimeError``; remap them to smaller integers or use a float64 image where
+  supported. On accelerators the asynchronous assertion may report at the next
+  synchronization; MPS before torch 2.13 checks on the host. A direct
   geometric ``transform_masks`` call requires a floating tensor.
-- A list of masks is not a substitute for separate full-batch tensors: list
-  index ``i`` selects sample ``i``'s gate, so full-batch entries desynchronize
-  under mixed gates and per-sample entries can fail in warps or reuse the wrong
-  crop window. Pass separate ``mask`` keys instead
-  (`#4477 <https://github.com/kornia/kornia/issues/4477>`_).
+- A mask list has one tensor per image sample, in sample order. Entries may
+  have different channel counts and use their sample's gate, parameters and
+  matrix in forward, replay and inverse, including nested image sequences and
+  auto-augment policies. Video, mix and 3D children, and a geometric
+  ``PatchSequential``, do not support mask lists and raise ``NotImplementedError``.
+  Each entry is ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)`` with the image's
+  spatial size. Invalid lengths or shapes raise ``ValueError``. Use separate
+  ``mask`` keys for multiple full-batch masks.
 - Boxes use the inclusive ``xyxy_plus`` convention of
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
-- The outer ``.transform_matrix`` of a nested container can be missing or
-  stale, even with only rigid children
+- Nested ``AugmentationSequential`` children contribute matrices from the
+  current call. A plain ``ImageSequential`` child is still omitted from an
+  outer ``AugmentationSequential`` matrix
   (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
 - Dictionary keys match a data-key name exactly or before an ``_``/``-``
   suffix, the longest match winning. Unrecognized keys are returned unchanged
@@ -299,20 +568,17 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-- The 2D intensity augmentations assume float input in ``[0, 1]``, and no
-  base-class check enforces it. Outside that range each class follows its own
-  policy -- some clamp, rescale or round-trip through ``uint8``, some do not
-  clamp, :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
-  upper end, and :class:`kornia.augmentation.RandomGamma` does not clamp, so a
-  negative input gives NaN for a non-integer ``gamma``. Several classes return
-  an all-zero image for an all-negative input, and
-  :class:`kornia.augmentation.RandomSolarize` does so when every value is at
-  least ``1.5``. :class:`kornia.augmentation.RandomEqualize` and
-  :class:`kornia.augmentation.RandomClahe` raise an error naming the range; the
-  check is asynchronous, so on an accelerator the error can surface at a later
-  synchronizing call (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
-  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
-  documentation.
+- A 2D intensity augmentation whose arithmetic assumes unit-range images clamps
+  its input into ``[0, 1]`` before operating, and clamps its output too. This
+  includes colour adjustments, illumination, snow, JPEG and histogram
+  equalization. Samples skipped by the probability gate retain their original
+  values. Range-independent operations, such as blurs, noise, channel operations,
+  erasing, grayscale, inversion, ``Normalize`` and ``Denormalize``, do not clamp
+  their input. ``RandomAutoContrast`` rescales each channel's full input range
+  instead of clipping it. ``RandomBrightness`` and ``RandomContrast`` preserve
+  raw arithmetic with ``clip_output=False``. See each class's Convention block.
+  The functional ``kornia.enhance.equalize`` and ``equalize_clahe`` APIs retain
+  their strict range checks; their augmentation wrappers clamp first.
 
 .. code-block:: python
 
@@ -363,12 +629,20 @@ Randomness in augmentations
   order of ``ColorJiggle`` and ``ColorJitter`` is shared across the batch
   regardless. On ``AugmentationSequential``, ``same_on_batch=None`` keeps each
   child's setting, and ``True`` or ``False`` overwrites it.
-- Whether a constructor's ``p`` sets the per-sample or the whole-batch gate,
-  and whether it exposes ``p_batch``, depends on the concrete class
-  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). The gate selects
-  after the transform has run on the whole batch, so a skipped sample can still
-  raise or carry a NaN gradient
-  (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+- Every augmentation honours ``p_batch`` as an attribute, and only
+  ``RandomHorizontalFlip``, ``RandomVerticalFlip``, ``RandomTransplantation``
+  and ``RandomTransplantation3D`` take it in the constructor; whether a
+  constructor's ``p`` sets the per-sample or the whole-batch gate depends on
+  the concrete class. A sample the gate
+  skips comes back with its input values, its values cannot make the call
+  raise, and where they are finite its gradient is the identity. Below ``p=1``
+  the transform still runs on the whole batch before the gate selects; classes
+  whose transform checks input values or has an unbounded derivative
+  (``RandomEqualize``, ``RandomEqualize3D``, ``RandomClahe``, ``RandomGamma``)
+  run it on the value 0.5 for skipped samples. An augmentation that changes the
+  sample shape, such as ``RandomCrop`` or ``Resize``, still raises
+  ``ValueError`` when the gate mixes applied and skipped samples
+  (`#4497 <https://github.com/kornia/kornia/issues/4497>`_).
 
 Serializing an augmentation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -382,11 +656,11 @@ Serializing an augmentation
   ``_param_generator.*`` buffers that loading does not feed back into the
   samplers (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - ``pickle`` and ``copy.deepcopy`` keep the configuration and the recorded
-  ``_params``, which replay on the same input. The default
-  ``kornia.augmentation.auto`` policies cannot be pickled (a policy can be
-  pickled only when every operation wrapper in it can), though they deep-copy
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). What lazily
-  computed matrices retain is described in :doc:`/augmentation.base`.
+  ``_params``, which replay on the same input. This includes the
+  ``kornia.augmentation.auto`` policies: a policy pickles when every operation
+  wrapper in it does, and a wrapper does when its magnitude mapping is
+  picklable (the built-in mappings are). What lazily computed matrices retain
+  is described in :doc:`/augmentation.base`.
 
 Morphology
 ----------
@@ -461,11 +735,611 @@ is a ``[row, col]`` index and ``border_type`` takes torch's pad names. Below, ``
      - ``circular``
      - ``wrap``
      - ``wrap``
-     - rejected (``BORDER_WRAP``)
+     - no equivalent: ``BORDER_WRAP`` raises, except on uint8, where the result is not a wrap
 
-The equivalences hold on every window that holds an in-image kernel cell while :math:`|x|` stays well below
-``max_val``: an empty ``geodesic`` window returns an infinity in scipy and scikit-image and a finite value built
-from ``max_val`` in kornia (`#4734 <https://github.com/kornia/kornia/issues/4734>`_).
+The equivalences cover empty ``geodesic`` windows too: scipy, scikit-image and kornia all return ``-inf`` from
+such a window in a dilation and ``+inf`` in an erosion, whatever the data range.
+
+.. _filtering-conventions:
+
+Filtering
+---------
+
+:doc:`kornia.filters </filters>` follows torch's vocabulary: its kernels are correlated by default, ``border_type``
+takes the :func:`torch.nn.functional.pad` mode names, and an even kernel is anchored where
+``F.conv2d(padding='same')`` anchors it. The correlation matches ``cv2.filter2D`` and ``scipy.ndimage.correlate``; the
+border names and the even-kernel anchor do not. :func:`~kornia.filters.filter2d`,
+:func:`~kornia.filters.filter2d_separable`, :func:`~kornia.filters.filter3d`, :func:`~kornia.filters.fft_conv`,
+:func:`~kornia.filters.box_blur`, :func:`~kornia.filters.gaussian_blur2d`, :func:`~kornia.filters.laplacian`,
+:func:`~kornia.filters.motion_blur`, :func:`~kornia.filters.bilateral_blur`,
+:func:`~kornia.filters.joint_bilateral_blur`, :func:`~kornia.filters.guided_blur`, :func:`~kornia.filters.canny`,
+:func:`~kornia.filters.unsharp_mask`, :func:`~kornia.filters.median_blur`, :func:`~kornia.filters.spatial_gradient`,
+:func:`~kornia.filters.spatial_gradient3d`, :func:`~kornia.filters.sobel` and their modules filter an integer or bool
+image in float32 and return
+float32 on its own scale, neither rescaled to :math:`[0, 1]` nor rounded and clamped to its dtype, where
+``cv2.filter2D(img, -1, k)``, ``cv2.GaussianBlur`` and ``cv2.blur`` return a uint8 image rounded and saturated to
+uint8; a floating image keeps its dtype. :func:`~kornia.filters.guided_blur` returns the promoted dtype of its
+``guidance`` and ``input``, an integer one counting as float32. The blur pools are network layers and expect a
+floating input: they raise a :class:`~kornia.core.exceptions.TypeCheckError` (a ``TypeError``) for a non-floating
+input instead of promoting it.
+
+- :func:`~kornia.filters.filter2d`, :func:`~kornia.filters.filter3d` and :func:`~kornia.filters.fft_conv`
+  **correlate** by default, as ``cv2.filter2D`` and ``scipy.ndimage.correlate`` do; ``behaviour='conv'`` flips the
+  kernel first, as ``scipy.ndimage.convolve`` does. :func:`~kornia.filters.correlate2d` and
+  :func:`~kornia.filters.convolve2d` are :func:`~kornia.filters.filter2d` with ``behaviour`` fixed to ``'corr'`` and
+  ``'conv'``; :func:`~kornia.filters.correlate3d` and :func:`~kornia.filters.convolve3d` are the same for
+  :func:`~kornia.filters.filter3d`.
+- :func:`~kornia.filters.filter2d_separable` takes ``kernel_x`` (along ``W``) before ``kernel_y``, the order of
+  ``cv2.sepFilter2D(src, ddepth, kernelX, kernelY)``.
+
+The border modes, shown padding ``a b c d`` by two samples on each side. :doc:`kornia.morphology </morphology>` uses
+the same names for its non-``geodesic`` borders:
+
+.. list-table::
+   :header-rows: 1
+
+   * - kornia ``border_type`` (the ``F.pad`` mode)
+     - pads ``a b c d`` to
+     - ``scipy.ndimage`` ``mode``
+     - OpenCV ``borderType``
+   * - ``reflect``, the default of ``filter2d``, ``filter2d_separable`` and ``fft_conv``
+     - ``c b | a b c d | c b``
+     - ``mirror``
+     - ``BORDER_REFLECT_101``, the ``cv2.filter2D`` default
+   * - ``replicate``, the default of ``filter3d``
+     - ``a a | a b c d | d d``
+     - ``nearest``
+     - ``BORDER_REPLICATE``
+   * - ``circular``
+     - ``c d | a b c d | a b``
+     - ``wrap``
+     - ``BORDER_WRAP``, which ``cv2.filter2D`` rejects for small kernels
+   * - ``constant``
+     - ``0 0 | a b c d | 0 0``
+     - ``constant`` with ``cval=0``
+     - ``BORDER_CONSTANT`` with value 0
+   * - no kornia mode
+     - ``b a | a b c d | d c``
+     - ``reflect``, the scipy default
+     - ``BORDER_REFLECT``
+
+An even kernel has no centre tap. The filters anchor a kernel ``k`` taps long at ``(k - 1) // 2``, the anchor of
+``F.conv2d(padding='same')``. OpenCV and scipy anchor it at ``k // 2`` by default, and so does the default ``origin`` of
+:func:`~kornia.morphology.erosion` (see `Morphology`_), so along every even axis a correlated output sits one pixel
+before theirs; ``behaviour='conv'`` needs no shift (below). An odd kernel is anchored at its centre by all of them.
+For a kernel ``K`` of shape ``(kh, kw)``, with the border mapped by the table above:
+
+- ``filter2d(x, K[None])`` equals ``scipy.ndimage.correlate(x, K, origin=o)`` with ``o = -1`` on each even axis and
+  ``0`` on each odd one, and ``cv2.filter2D(x, -1, K, anchor=((kw - 1) // 2, (kh - 1) // 2))``.
+- ``filter2d(x, K[None], behaviour='conv')`` equals ``scipy.ndimage.convolve(x, K)`` at scipy's default origin, even
+  for an even ``K``.
+
+The kernel builders against their references:
+
+- :func:`~kornia.filters.get_gaussian_kernel1d` samples the Gaussian: for an odd ``k`` and ``sigma > 0`` it equals
+  ``cv2.getGaussianKernel(k, sigma)`` and the weights ``scipy.ndimage.gaussian_filter1d`` applies with
+  ``radius=k // 2``. :func:`~kornia.filters.get_gaussian_erf_kernel1d` is the pixel-integrated Gaussian and
+  :func:`~kornia.filters.get_gaussian_discrete_kernel1d` is Lindeberg's discrete Gaussian,
+  ``scipy.special.ive(abs(n), sigma**2)`` normalized.
+- :func:`~kornia.filters.get_hanning_kernel1d` is the symmetric window of ``numpy.hanning(k)``,
+  ``scipy.signal.windows.hann(k)`` and ``torch.hann_window(k, periodic=False)``; torch's default periodic window
+  differs.
+- :func:`~kornia.filters.get_spatial_gradient_kernel2d` with ``('sobel', 1)`` stacks the outer products of OpenCV's
+  ``getDerivKernels(1, 0, 3)`` and ``getDerivKernels(0, 1, 3)``, and answers 8 to a unit slope, as ``cv2.Sobel`` and
+  ``scipy.ndimage.sobel`` do; scikit-image's ``sobel_h`` and ``sobel_v`` answer 2.
+- :func:`~kornia.filters.get_laplacian_kernel2d` of size 3 is the 8-neighbour stencil and estimates :math:`3 \nabla^2`,
+  where ``scipy.ndimage.laplace`` and ``cv2.Laplacian(ksize=1)`` return :math:`\nabla^2`, ``cv2.Laplacian(ksize=3)``
+  :math:`4 \nabla^2` and ``skimage.filters.laplace`` :math:`-\nabla^2`.
+- A builder raises for an integer or bool ``dtype`` that cannot hold its taps instead of truncating or wrapping them.
+  The box, Gaussian and 3-D difference kernels have fractional taps, so they raise for every integer ``dtype``, as
+  ``cv2.getGaussianKernel`` accepts only ``CV_32F`` and ``CV_64F``. The Laplacian kernels accept a signed integer
+  ``dtype`` wide enough for their negative centre, and raise for uint8, bool and a narrower one
+  (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
+
+The derivative filters apply those kernels at different scales, and :func:`~kornia.filters.canny` thresholds the raw
+one:
+
+- :func:`~kornia.filters.spatial_gradient` and :func:`~kornia.filters.sobel` use normalized first-order gradients
+  by default: an interior axis-aligned unit slope gives 1 in the corresponding ``spatial_gradient`` channel, and
+  ``sobel`` returns :math:`\sqrt{1 + \epsilon}`. ``normalized=False`` returns the raw Sobel response above.
+  :func:`~kornia.filters.spatial_gradient` always replicates the border, so
+  ``cv2.Sobel(x, cv2.CV_64F, 1, 0, borderType=cv2.BORDER_REPLICATE)`` and
+  ``scipy.ndimage.sobel(x, axis=-1, mode='nearest')`` equal channel 0 of ``spatial_gradient(x, normalized=False)``;
+  OpenCV's default ``BORDER_REFLECT_101`` differs on the outermost rows and columns.
+  ``skimage.filters.sobel(x, mode='nearest')`` equals ``sqrt(2) * sobel(x, eps=0)``.
+- :func:`~kornia.filters.laplacian` is normalized by default too, but by the stencil's absolute sum, 16 for size 3:
+  ``laplacian(x, 3)`` estimates :math:`3 \nabla^2 / 16`, and ``normalized=False`` the :math:`3 \nabla^2` above.
+- :func:`~kornia.filters.canny` compares its thresholds with the **unnormalized** Sobel magnitude of the blurred
+  image, about eight times what :func:`~kornia.filters.sobel` returns by default, up to the ``eps`` inside the square
+  root. For a **single-channel grayscale** uint8 image ``img``, ``cv2.Canny(img, t1, t2, L2gradient=True)`` corresponds
+  to ``canny(x, t1 / 255, t2 / 255, kernel_size=1, eps=0)`` for edge-map comparison, with ``x`` the float32 or float64
+  tensor ``img / 255``: the thresholds scale with the image and ``kernel_size=1`` skips the Gaussian blur that
+  OpenCV does not apply. OpenCV's default L1 magnitude :math:`|g_x| + |g_y|` has no kornia counterpart.
+  :func:`~kornia.filters.canny` resolves ties along the gradient as OpenCV does, but floating-point rounding of
+  ``img / 255``, the gradient and threshold comparisons can still change a near-tie or near-threshold decision.
+  With the default ``eps=1e-6``, the square root raises the magnitude above its ``eps=0`` value, when retained by
+  the dtype's precision: it can promote a pixel even when the threshold is slightly above the raw magnitude,
+  without an exact tie. Color images need separate preprocessing: Kornia converts RGB to grayscale, while
+  OpenCV's color Canny selects the channel with the strongest gradient, so this correspondence does not apply
+  directly to a 3-channel image.
+- ``skimage.feature.canny`` thresholds the same unnormalized magnitude of a floating-point image and has the same
+  defaults, 0.1 and 0.2, so thresholds carry over; its Gaussian blur and its interpolating suppression differ from
+  :func:`~kornia.filters.canny`'s, so the edge maps do not match.
+
+The blurs give sizes and standard deviations rows first, as torch orders ``(H, W)``: ``kernel_size`` is
+``(kh, kw)`` and ``sigma`` is :math:`(\sigma_y, \sigma_x)` in :func:`~kornia.filters.gaussian_blur2d`,
+:func:`~kornia.filters.box_blur`, :func:`~kornia.filters.median_blur` and the filters built on them. OpenCV passes
+both pairs x first, so swap them when porting; scipy uses kornia's order. For odd ``kh`` and ``kw``, with the border
+mapped by the table above (OpenCV accepts ``BORDER_WRAP`` in these calls only for some dtypes and sizes):
+
+- ``gaussian_blur2d(x, (kh, kw), (sy, sx))`` equals ``cv2.GaussianBlur(x, (kw, kh), sigmaX=sx, sigmaY=sy)`` and
+  ``scipy.ndimage.gaussian_filter(x, sigma=(sy, sx), radius=(kh // 2, kw // 2))``.
+- ``box_blur(x, (kh, kw))`` equals ``cv2.blur(x, (kw, kh))`` and ``scipy.ndimage.uniform_filter(x, size=(kh, kw))``.
+
+The edge-preserving filters, the sharpening and the blur pools against their references:
+
+- :func:`~kornia.filters.bilateral_blur` with ``'l1'`` uses the colour distance of ``cv2.bilateralFilter``, but
+  weighs the whole ``kernel_size`` rectangle where OpenCV weighs only the disc of radius ``d // 2``, so the two differ
+  even for ``kernel_size=(d, d)``.
+- ``guided_blur(guide, src, 2 * r + 1, eps)`` equals ``cv2.ximgproc.guidedFilter(guide, src, r, eps)`` away from the
+  border: ``eps`` is the same quantity, but OpenCV pads with ``BORDER_REFLECT``, which has no kornia mode.
+  :func:`~kornia.filters.joint_bilateral_blur` takes its guide second, where
+  ``cv2.ximgproc.jointBilateralFilter(joint, src, ...)`` takes it first.
+- ``unsharp_mask(x, (k, k), (r, r))`` with ``k = 2 * int(4 * r + 0.5) + 1``, the window scikit-image truncates its
+  Gaussian to, equals ``skimage.filters.unsharp_mask(x, radius=r, amount=1, preserve_range=True)`` away from the
+  border. scikit-image pads with scipy's ``reflect``, which has no kornia mode, and with its default
+  ``preserve_range=False`` it clips the result, which :func:`~kornia.filters.unsharp_mask` never does.
+- ``blur_pool2d(x, k, s)`` equals the antialiased-cnns ``BlurPool(channels, pad_type='zero', filt_size=k, stride=s)``,
+  which defines ``filt_size`` up to 7. The reference's default ``pad_type='reflect'`` keeps a constant map constant
+  where :func:`~kornia.filters.blur_pool2d` zero-pads and darkens its border.
+- ``blur_pool2d(x, 5, 2)`` blurs with the 5 x 5 binomial kernel of :func:`~kornia.geometry.transform.pyrdown` but
+  samples differently: it zero-pads and keeps every second pixel from index 0, :math:`\lceil H / 2 \rceil` rows,
+  where ``pyrdown`` reflects the border and interpolates between pixels, :math:`\lfloor H / 2 \rfloor` rows.
+
+.. _losses-metrics-conventions:
+
+Losses and metrics
+------------------
+
+:doc:`kornia.losses </losses>` and :doc:`kornia.metrics </metrics>` take the prediction first and the target second,
+as torch's losses do. The order does not change the value of the symmetric functions, among them SSIM, MS-SSIM, PSNR,
+the robust losses and the Jensen-Shannon divergence, but it does for others: :func:`~kornia.losses.kl_div_loss_2d` takes
+``pred`` first and returns :math:`\mathrm{KL}(\text{target} \,\|\, \text{pred})`, and
+:func:`~kornia.losses.inverse_depth_smoothness_loss` takes the inverse depth it penalises first and the image that
+weights it second.
+
+What the families take:
+
+- :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d`, :func:`~kornia.metrics.psnr`, the SSIM losses and
+  :class:`~kornia.losses.MS_SSIMLoss` compare images with values in ``[0, L]``, where ``L`` is the data range:
+  ``max_val`` everywhere except in :class:`~kornia.losses.MS_SSIMLoss`, which calls it ``data_range`` as scikit-image,
+  pytorch-msssim and torchmetrics do. ``L`` sets the SSIM constants :math:`C_1 = (0.01 L)^2` and
+  :math:`C_2 = (0.03 L)^2` and the PSNR peak :math:`\text{MAX}_I`. Pixel values are never rescaled, so images in
+  ``[0, 255]`` need ``max_val=255.0`` or ``data_range=255.0``. The default is ``1.0`` (``psnr``, ``psnr_loss`` and
+  ``PSNRLoss`` have none), where pytorch-msssim defaults to 255.
+- The robust losses take two tensors of the same, arbitrary shape; the residual is in the units of the data.
+- :func:`~kornia.losses.total_variation` takes one image ``(*, H, W)``.
+- :func:`~kornia.losses.kl_div_loss_2d` and :func:`~kornia.losses.js_div_loss_2d` take probabilities: every
+  ``(b, n)`` slice of a ``(B, N, H, W)`` input is a distribution over ``H x W``.
+- The losses on the segmentation page take raw logits (see `Dense-prediction losses`_) and
+  :class:`~kornia.losses.HausdorffERLoss` takes probabilities; the mutual-information losses take intensities of any
+  range, which they normalise per signal: per channel of each sample for an image batch.
+
+Where a function takes ``reduction``, the names are torch's: ``'none'``, ``'mean'`` and ``'sum'``. What is averaged or
+added and the default differ between families, so each Convention block states both; the table lists the defaults. A
+string outside a function's vocabulary raises, ``BaseError`` from the robust losses and
+:func:`~kornia.losses.total_variation` and ``NotImplementedError`` from the others.
+
+.. list-table::
+   :header-rows: 1
+
+   * - functions
+     - default ``reduction``
+     - default output
+   * - :func:`~kornia.losses.charbonnier_loss`, :func:`~kornia.losses.cauchy_loss`,
+       :func:`~kornia.losses.geman_mcclure_loss`, :func:`~kornia.losses.welsch_loss`,
+       :func:`~kornia.losses.focal_loss`, :func:`~kornia.losses.binary_focal_loss_with_logits`
+     - ``'none'``
+     - one value per element, in the shape of the prediction
+   * - :func:`~kornia.losses.ssim_loss`, :func:`~kornia.losses.ssim3d_loss`, :class:`~kornia.losses.MS_SSIMLoss`,
+       :func:`~kornia.losses.kl_div_loss_2d`, :func:`~kornia.losses.js_div_loss_2d`,
+       :class:`~kornia.losses.HausdorffERLoss`, :class:`~kornia.losses.HausdorffERLoss3D`,
+       :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.mean_absolute_disparity_error` and the other disparity
+       metrics
+     - ``'mean'``
+     - a scalar
+   * - :func:`~kornia.losses.total_variation`
+     - ``'sum'``, with ``'mean'`` the only alternative
+     - one value per leading index, ``(*,)``: ``(B, C)`` for an image batch
+   * - :func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_hinge_loss`,
+       :func:`~kornia.losses.lovasz_softmax_loss`, :func:`~kornia.metrics.psnr`, :func:`~kornia.losses.psnr_loss`,
+       :func:`~kornia.losses.inverse_depth_smoothness_loss`
+     - no ``reduction``
+     - a scalar
+   * - :func:`~kornia.losses.mutual_information_loss` and the other mutual-information losses
+     - no ``reduction``
+     - one value per signal: ``(B, C)`` for an image batch in the 2-D and 3-D variants
+   * - :func:`~kornia.metrics.ssim`, :func:`~kornia.metrics.ssim3d` and the other metrics
+     - no ``reduction``
+     - stated by each function
+
+The modules take the ``reduction`` of their functions, except :class:`~kornia.losses.TotalVariation`, which has none
+and always sums.
+
+Porting from other libraries:
+
+- ``ssim(x, y, 11, max_val=L, eps=0.0, padding='valid').mean()`` for one image matches scikit-image's
+  ``structural_similarity(x, y, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=L,
+  channel_axis=-1)`` on the ``(H, W, C)`` arrays up to floating-point differences, and over a batch it matches
+  pytorch-msssim's ``ssim(x, y, data_range=L)``. Set ``eps=0.0`` to remove Kornia's added denominator term when
+  matching these implementations. The default ``eps=1e-12`` can matter: identical black images score about
+  ``0.99998889`` at ``L=1.0``, ``0.9`` at ``L=0.1`` and ``0.00089919`` at ``L=0.01``, where the references give 1.
+  scikit-image's defaults, a 7 x 7 uniform window with the sample covariance, give another value. torchmetrics'
+  ``structural_similarity_index_measure(x, y, data_range=L)`` averages over a reflected ``'same'`` map instead;
+  it has no added denominator epsilon and clamps negative variance estimates from roundoff to zero.
+- :func:`~kornia.losses.ssim_loss` is the structural dissimilarity ``(1 - SSIM) / 2``, clamped to ``[0, 1]``. The
+  ``1 - SSIM`` loss is twice that: ``1 - ssim(x, y, w).mean()`` equals ``2 * ssim_loss(x, y, w)`` wherever the clamp
+  does not act. :func:`~kornia.losses.ssim3d_loss` uses the same clamped DSSIM formula for volumes.
+- :class:`~kornia.losses.MS_SSIMLoss` filters with one Gaussian per entry of ``sigmas`` at full resolution, the
+  approximation of Zhao et al.; pytorch-msssim's ``ms_ssim`` and torchmetrics'
+  ``multiscale_structural_similarity_index_measure`` downsample through a dyadic pyramid, so ``1 - ms_ssim(x, y)`` is
+  not ``MS_SSIMLoss(alpha=1.0, compensation=1.0)(x, y)``.
+- :func:`~kornia.metrics.psnr` of a batch pools one MSE over all its images: it equals scikit-image's
+  ``peak_signal_noise_ratio(x, y, data_range=L)`` on the whole batch array and torchmetrics'
+  ``peak_signal_noise_ratio(x, y, data_range=L)`` at its default ``dim=None``. The mean of per-image PSNRs is
+  scikit-image's value averaged over the images, or torchmetrics' with ``dim=(1, 2, 3)``.
+- ``general.lossfun(x - y, alpha, scale)`` of Barron's ``robust_loss_pytorch`` equals the kornia robust loss of
+  ``x / scale`` and ``y / scale`` with the same ``alpha``: 1 for :func:`~kornia.losses.charbonnier_loss`, 0 for
+  :func:`~kornia.losses.cauchy_loss`, -2 for :func:`~kornia.losses.geman_mcclure_loss` and ``-inf`` for
+  :func:`~kornia.losses.welsch_loss`.
+- torchmetrics' ``total_variation(img, reduction='none')`` equals ``total_variation(img).sum(-1)`` for a
+  ``(B, C, H, W)`` batch. Its ``'mean'`` averages those per-image sums over the batch, where the ``'mean'`` of
+  :func:`~kornia.losses.total_variation` averages each difference term over its own count.
+- For strictly positive probabilities, ``kl_div_loss_2d(pred, target)`` equals
+  ``F.kl_div(pred.log(), target, reduction='batchmean')`` on the ``(B * N, H * W)`` reshape; torch's
+  ``reduction='mean'`` divides by every element instead. Kornia defines zero-target cells with finite nonnegative
+  predictions as contributing zero, including shared zero cells, where the raw PyTorch recipe returns NaN. Replace
+  both arguments with 1 in these cells before taking the logarithm to reproduce Kornia's handling. torchmetrics'
+  ``kl_divergence(target, pred)`` on the reshape matches Kornia's value, including shared zeros. For scipy, reshape
+  ``pred`` and ``target`` to NumPy arrays ``p`` and ``q`` of shape ``(B, N, H * W)``. Then
+  ``scipy.stats.entropy(q, p, axis=-1).mean()`` matches the default KL loss, and
+  ``(scipy.spatial.distance.jensenshannon(p, q, axis=-1) ** 2).mean()`` matches
+  :func:`~kornia.losses.js_div_loss_2d`, using scipy's default natural logarithm. Without the final ``mean()``, each
+  returns ``(B, N)``, matching ``reduction='none'``. SciPy normalises its inputs, so these mappings require each
+  spatial slice to sum to one.
+- :func:`~kornia.losses.inverse_depth_smoothness_loss` does not normalise the inverse depth, where Monodepth2 divides
+  the disparity by its mean plus ``1e-7`` before its smoothness term: pass
+  ``idepth / (idepth.mean((2, 3), keepdim=True) + 1e-7)`` to port it, keeping zero inverse depth finite.
+
+Dense-prediction losses
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The losses on the :doc:`segmentation page </losses.segmentation>` take raw logits, not probabilities;
+:func:`~kornia.losses.focal_loss` documents the multi-class input, with the classes on axis 1 and an integer label map
+as the target.
+
+**Class 0 is the background** wherever a loss or a metric singles one class out:
+:func:`~kornia.losses.focal_loss` weights class 0 by ``1 - alpha`` and classes ``1`` to ``C - 1`` by ``alpha``, and
+:func:`~kornia.metrics.mean_average_precision` never scores class 0, which its ``n_classes`` still counts. Keep the
+background at label 0 when porting a label map: moving it changes both results. ``focal_loss`` with ``alpha=None``,
+:func:`~kornia.losses.dice_loss`, :func:`~kornia.losses.tversky_loss`, :func:`~kornia.losses.lovasz_softmax_loss` and
+:class:`~kornia.losses.HausdorffERLoss` treat class 0 like every other class.
+
+With ``alpha=None`` and ``gamma=0``, the target slice of :func:`~kornia.losses.focal_loss` is the cross entropy, but
+its ``'mean'`` is not that of :func:`~torch.nn.functional.cross_entropy`. It divides the sum by every element of the
+``(B, C, *)`` output, ``C`` times the pixel count, ignored pixels included, and it does not normalise ``weight``, where
+``cross_entropy`` divides by the summed weights of the target classes of the non-ignored pixels. To port
+``F.cross_entropy(pred, target, weight=w, ignore_index=i)``, divide
+``focal_loss(pred, target, alpha=None, gamma=0.0, reduction='sum', weight=w, ignore_index=i)`` by
+``w[target[target != i]].sum()``, or by the number of non-ignored pixels when there is no ``w``.
+
+The other dense-prediction losses against their references:
+
+- :func:`~kornia.losses.binary_focal_loss_with_logits` with its defaults, ``alpha=0.25`` on the positive term,
+  ``gamma=2`` and ``reduction='none'``, equals ``torchvision.ops.sigmoid_focal_loss`` on targets of 0 and 1. On a
+  fractional target ``t`` they differ: kornia weights its positive and negative focal terms by ``t`` and ``1 - t``,
+  torchvision applies ``alpha_t * (1 - p_t) ** gamma`` to the whole binary cross entropy. Its ``pos_weight`` of shape
+  ``(C,)`` runs along dim 1: ``binary_focal_loss_with_logits(pred, target, alpha=None, gamma=0.0, pos_weight=pw)``
+  equals ``F.binary_cross_entropy_with_logits(pred, target, pos_weight=pw.view(C, 1, 1), reduction='none')`` on
+  ``(B, C, H, W)``, where torch broadcasts a ``(C,)`` ``pos_weight`` along the last axis.
+- The Lovász losses score each image on its own, as the reference implementation of Berman et al.
+  (``bermanmaxim/LovaszSoftmax``) does with ``per_image=True``: :func:`~kornia.losses.lovasz_hinge_loss` is its
+  ``lovasz_hinge(pred[:, 0], target, per_image=True)``, the reference default, and
+  :func:`~kornia.losses.lovasz_softmax_loss` is ``lovasz_softmax(pred.softmax(1), target, classes='all',
+  per_image=True)``. The ``lovasz_softmax`` defaults, ``classes='present'`` and ``per_image=False``, score only the
+  classes present and flatten the batch into one image, which gives another value.
+
+A class absent from the target has no overlap to score, and the per-class functions treat it differently:
+
+- :func:`~kornia.metrics.mean_iou` returns IoU 1 for a class absent from both the target and the prediction, through
+  its ``eps``, and leaves the averaging over classes to the caller: drop the classes that occur in neither map before
+  averaging its ``(B, K)`` output. scikit-learn's ``jaccard_score`` leaves such a class out unless ``labels`` names it,
+  and then scores it 0, or 1 with ``zero_division=1.0``.
+- ``dice_loss(average='macro')`` and :func:`~kornia.losses.tversky_loss` leave it out of the sample's mean, whether
+  it is predicted or not.
+- :func:`~kornia.metrics.mean_average_precision` pools the images and leaves out a class without a ground-truth object
+  in any of them, detected or not; its entry in the per-class dictionary is ``-1``.
+
+Task metrics
+^^^^^^^^^^^^
+
+:func:`~kornia.metrics.confusion_matrix` puts the target class on the rows and the predicted class on the columns, and
+:func:`~kornia.metrics.mean_iou` reads its per-class IoU from that matrix.
+
+The task metrics differ in what they return, in what they pool and in their scale: percent, fraction, pixels or
+degrees. Each Convention block states its own, and the table collects them. For the background class 0 and for a
+class absent from a sample, see `Dense-prediction losses`_.
+
+.. list-table::
+   :header-rows: 1
+
+   * - functions
+     - output
+     - pooled over
+     - scale
+   * - :func:`~kornia.metrics.accuracy`
+     - a list of 0-d tensors, one per entry of ``topk``
+     - the batch
+     - percent, ``[0, 100]``
+   * - :func:`~kornia.metrics.confusion_matrix`
+     - ``(B, K, K)``, rows the target and columns the prediction
+     - nothing: one matrix per sample
+     - counts
+   * - :func:`~kornia.metrics.mean_iou`
+     - ``(B, K)``
+     - nothing: one IoU per sample and class
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.mean_iou_bbox`
+     - ``(B1, B2)``
+     - nothing: one IoU per pair of boxes
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.mean_average_precision`
+     - a 0-d tensor and a ``{class id: AP}`` dict
+     - the detections of all images, per class, then a mean over the classes with objects
+     - fraction, ``[0, 1]``; ``-1`` for a class without objects, and for the mAP when no image has a foreground
+       object
+   * - :func:`~kornia.metrics.aepe`, :func:`~kornia.metrics.average_endpoint_error`, :class:`~kornia.metrics.AEPE`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every position of every sample
+     - the units of the flow
+   * - :func:`~kornia.metrics.mean_absolute_disparity_error`,
+       :func:`~kornia.metrics.root_mean_squared_disparity_error`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every valid pixel of every image
+     - pixels
+   * - :func:`~kornia.metrics.mean_bad_pixel_error`, :func:`~kornia.metrics.kitti_d1_error`
+     - 0-d, or ``(*)`` for ``reduction='none'``
+     - every valid pixel of every image
+     - fraction, ``[0, 1]``
+   * - :func:`~kornia.metrics.angle_error_mat`, :func:`~kornia.metrics.angle_error_vec`
+     - ``(*)``, 0-d for one pair
+     - nothing: one angle per pair
+     - degrees
+   * - :func:`~kornia.metrics.pose_errors`
+     - a dict of ``(B,)`` tensors, ``(1,)`` for one pose
+     - nothing: one error per pose
+     - degrees
+   * - :func:`~kornia.metrics.translation_ate`
+     - ``(*)``, ``(1,)`` for one translation
+     - nothing: one distance per sample
+     - the units of the translations
+   * - :func:`~kornia.metrics.auc_from_errors`
+     - a ``{threshold: AUC}`` dict of Python floats
+     - all errors
+     - percent, ``[0, 100]``
+   * - :class:`~kornia.metrics.AverageMeter`
+     - ``avg``, a Python float
+     - every update, weighted by its ``n``
+     - the scale of the values passed
+
+Porting the task metrics from other libraries:
+
+- scikit-learn takes the target first and kornia the prediction; both put the target on the rows:
+  ``confusion_matrix(pred, target, K)[b]`` equals
+  ``sklearn.metrics.confusion_matrix(target[b].ravel(), pred[b].ravel(), labels=range(K))``. ``normalized=True`` is
+  ``normalize='true'`` up to the ``1e-6`` added to every row sum, not the per-prediction ``normalize='pred'``. Without
+  tied scores, ``accuracy(pred, target, topk=(k,))[0]`` is 100 times
+  ``top_k_accuracy_score(target, pred, k=k, labels=range(C))`` for more than two classes, and 100 times
+  ``accuracy_score(target, pred.argmax(1))`` for ``k=1``.
+- The IoU of a whole batch or dataset, which
+  ``jaccard_score(target.ravel(), pred.ravel(), labels=range(K), average=None)`` and torchmetrics'
+  ``MulticlassJaccardIndex(num_classes=K, average='none')`` report, is the IoU of the summed matrix
+  ``confusion_matrix(pred, target, K).sum(0)``, not the mean of :func:`~kornia.metrics.mean_iou` over the batch.
+- :func:`~kornia.metrics.mean_average_precision` matches a detection to an object only when their IoU is strictly
+  greater than ``threshold``, as ``voc_eval`` of py-faster-rcnn does, and computes that IoU on exclusive boxes, as
+  :func:`~kornia.metrics.mean_iou_bbox` does, where py-faster-rcnn and the PASCAL VOC devkit add 1 to every box width
+  and height. The devkit (``VOCevaldet.m``) matches at ``IoU >= 0.5``, so a detection whose IoU equals the threshold
+  is a false positive in kornia and a true positive there.
+- COCO's evaluation, run as torchmetrics' ``MeanAveragePrecision(iou_thresholds=[0.5],
+  rec_thresholds=[i / 10 for i in range(11)], backend='pycocotools')``, pools the detections of all images,
+  interpolates at kornia's 11 recall levels and leaves a class without objects out of the mean, with AP ``-1`` where it
+  lists one, as kornia does. It reproduces kornia's AP except in five cases: it matches at ``IoU >= 0.5``; it gives a
+  detection whose best object is already matched to the best object still free; it scores class 0 like every other
+  class; it scores only the 100 highest-scoring detections of a class in each image; and it ranks detections of equal
+  score by image, then in input order, where kornia leaves their order to ``torch.sort``.
+- torchvision's RAFT models return a list of ``(B, 2, H, W)`` flows, channel first, where
+  :func:`~kornia.metrics.aepe` takes ``(B, H, W, 2)``. The endpoint error of RAFT's training code,
+  ``((pred - gt) ** 2).sum(1).sqrt()`` on channel-first flows (``sum(0)`` on one flow in its evaluation code), equals
+  ``aepe(pred.permute(0, 2, 3, 1), gt.permute(0, 2, 3, 1), reduction='none')``. Its mean is the default ``'mean'``
+  where every pixel is valid, as in RAFT's Chairs and Sintel evaluation; RAFT's training metrics and its KITTI
+  evaluation average only the valid pixels, KITTI image by image, so take those means of the ``'none'`` map.
+- :func:`~kornia.metrics.kitti_d1_error` applies the outlier rule of the KITTI 2015 devkit (``evaluate_scene_flow.cpp``)
+  and pools like it: the devkit adds up outliers and valid pixels over all images before dividing, so its value is not
+  the mean of per-image D1. The devkit also reads a ground-truth disparity of 0 as invalid and scores its own
+  interpolated version of the estimate: pass a dense prediction and ``valid_mask=target > 0`` to reproduce its
+  number.
+- SuperGlue's ``pose_auc`` and the ``cal_error_auc`` of glue-factory, the evaluation code of LightGlue, return the pose
+  AUC as a fraction, glue-factory's rounded to four decimals. Both equal :func:`~kornia.metrics.auc_from_errors`
+  divided by 100 for errors without NaN: the references count a NaN as a failure, kornia propagates it. SuperGlue's
+  ``match_pairs.py`` prints 100 times that fraction, a percentage like kornia's; glue-factory reports the fraction
+  itself. glue-factory's pose error, the larger of the rotation angle and the folded translation angle, is the
+  ``"max_err"`` of :func:`~kornia.metrics.pose_errors` with the default ``fold_translation=True``. For a zero
+  ground-truth translation glue-factory reads a translation error of 90 degrees, where
+  :func:`~kornia.metrics.pose_errors` returns NaN.
+
+.. _two-view-conventions:
+
+Two-view geometry
+-----------------
+
+The two-view estimators take the first image's points first and follow OpenCV's order:
+:func:`~kornia.geometry.epipolar.find_fundamental` returns an ``F`` with :math:`x_2^\top F x_1 = 0` in image
+coordinates and :func:`~kornia.geometry.epipolar.find_essential` an ``E`` with :math:`x_2^\top E x_1 = 0` in
+normalised camera coordinates, and :func:`~kornia.geometry.homography.find_homography_dlt` and
+:class:`~kornia.geometry.ransac.RANSAC` with ``model_type="homography"`` return an ``H`` that maps ``points1`` to
+``points2``. Extrinsics are world-to-camera, as in :doc:`/get-started/camera-conventions`. Side by side:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - OpenCV
+   * - fundamental matrix
+     - ``find_fundamental(points1, points2)``, scaled to ``F[2, 2] = 1`` unless that entry is numerically zero;
+       ``method="7POINT"`` returns three candidates ``(B, 3, 3, 3)`` in no particular order, padded with zero
+       matrices when the cubic has one real root
+     - ``findFundamentalMat(points1, points2)``, the same ``F``; ``FM_7POINT`` stacks only the real solutions as
+       ``(3k, 3)``
+   * - essential matrix
+     - ``find_essential`` takes normalised camera coordinates :math:`K^{-1} [u, v, 1]^\top` and returns ten
+       slots, ``NaN`` for complex roots (all ten for a sample with no real solution)
+     - ``findEssentialMat`` takes pixels and ``cameraMatrix`` (or one matrix per camera); with exactly 5 points it
+       stacks the real solutions as ``(3k, 3)``, with more it returns the single ``E`` its RANSAC or LMedS selects
+   * - homography
+     - ``find_homography_dlt(points1, points2)`` maps ``points1`` to ``points2``
+     - ``findHomography(src, dst)``, the same direction
+   * - pose from ``E``
+     - ``decompose_essential_matrix`` returns ``R1``, ``R2`` and a unit ``t``; which candidate is the true pose is
+       not fixed.
+       ``motion_from_essential_choose_solution`` selects it by cheirality from pixel coordinates and also returns
+       the number of points that passed; ``0`` means none did
+     - ``decomposeEssentialMat`` returns the same candidate set, whose labels are not fixed either and differ from
+       kornia's, so a candidate index does not port; ``recoverPose`` selects the same pose and also returns the
+       inlier count
+   * - projection matrix
+     - ``KRt_from_projection`` returns the translation ``t`` of ``P = K [R | t]``; ``P`` and ``-P`` give the same
+       positive-diagonal ``K``, rotation ``R`` and ``t``
+     - ``decomposeProjectionMatrix`` returns the homogeneous camera centre :math:`C = -R^\top t`; for
+       ``det P[:, :3] < 0`` it keeps ``det R = 1`` and returns ``K[2, 2] < 0``
+   * - triangulation
+     - ``triangulate_points`` returns Euclidean points ``(*, N, 3)``
+     - ``triangulatePoints`` returns homogeneous points ``(4, N)``
+   * - epipolar lines
+     - ``compute_correspond_epilines(x1, F)`` for first-image points; pass ``F.transpose(-2, -1)`` for
+       second-image points
+     - ``computeCorrespondEpilines(x1, 1, F)``; ``whichImage=2`` for second-image points
+   * - Sampson distance
+     - ``sampson_epipolar_distance(pts1, pts2, F)``, squared by default
+     - ``sampsonDistance(pt1, pt2, F)``, the same argument order
+   * - RANSAC threshold
+     - ``inl_th`` is a point distance in the keypoints' units, calibrated units for ``model_type="essential"``;
+       for line segments, the mean distance of the transferred endpoints from the target segment's line, which
+       local optimization re-weights by as well
+     - ``ransacReprojThreshold`` of ``findHomography``, the same unit for points
+   * - polynomial roots
+     - ``solve_quadratic``, ``solve_cubic`` and ``solve_quartic`` take coefficients highest degree first and
+       return only the real roots, a missing root padded with ``0.0``; ``solve_quartic`` returns its roots in
+       descending order before the padding, and its lower-degree rows keep ``solve_cubic``'s order; a zero
+       leading coefficient lowers the degree
+     - ``numpy.roots`` takes the same coefficient order, returns the complex roots too and drops leading zeros
+
+.. _local-features-conventions:
+
+Local features
+--------------
+
+The learned models in ``kornia.feature`` that take a ``pretrained`` flag (``HardNet``, ``HardNet8``, ``HyNet``,
+``SOSNet``, ``TFeat``, ``OriNet``, ``LAFAffNetShapeEstimator``, ``KeyNet``, ``KeyNetDetector``, ``DeFMO``,
+``SOLD2``, ``SOLD2_detector``) default to their pretrained weights, downloaded on first use. ``KeyNetDetector`` puts
+only its ``KeyNet`` network in evaluation mode: the detector itself stays in training mode, and an ``ori_module`` or
+``aff_module`` you pass keeps its own mode. ``DISK``, ``DeDoDe``, ``ALIKED`` and ``XFeat`` build their learned
+weights at random in their constructor and load them with ``from_pretrained``. ``DeDoDe`` with its default ``G``
+descriptor also downloads a frozen, pretrained DINOv2 backbone in its constructor, and ``DeDoDe.detect`` and
+``describe`` switch the model to evaluation mode themselves. ``LoFTR(pretrained=None)`` and
+``LightGlue(features=None)`` are random. Until ``.eval()`` is called, a random ``LoFTR`` runs its supervised training
+branch, which raises without ground-truth matches. See :ref:`pretrained-models-conventions` for the shared mode rule.
+
+A local affine frame (LAF) describes a keypoint by a ``2 x 3`` matrix ``[A | c]``, and a set of them is a
+``(B, N, 2, 3)`` tensor. The centre ``c = (x, y)`` is in the pixel frame of
+:ref:`Coordinates and sizes <coordinate-conventions>`, with pixel centres at integers: the centre of a 5-pixel axis is
+``2``, not ``2.5``. ``A`` maps the patch frame onto the image, in pixels: its first column is the image of the patch's
+x axis and its second column that of the patch's y axis. The Convention blocks of
+:func:`~kornia.feature.laf_from_center_scale_ori` and :func:`~kornia.feature.extract_patches_from_pyramid` give the
+full rules.
+
+- The scale is :math:`\sqrt{|\det A|}` and the orientation is ``atan2(a12, a11)`` in degrees. A positive orientation
+  turns the patch's x axis counter-clockwise on screen, with image y pointing down: with an orientation of ``90``, the
+  ``+x`` side of the patch shows what lies above the centre.
+- The region of a LAF is the ellipse ``c + A u`` over the unit vectors ``u``, and a ``PS x PS`` patch covers the
+  square ``c + A [-1, 1]^2``: patch row 0 is on the patch's ``-y`` side, the top for an upright LAF, and the columns
+  run along the patch's x axis.
+- :func:`~kornia.feature.normalize_laf` divides the centre by ``max(W - 1, 1)`` and ``max(H - 1, 1)`` and ``A`` by
+  the smaller of the two; its Convention block covers moving a LAF to an image of another size.
+- kornia's LAF detectors pad the slots that no detection filled with an all-zero LAF and a zero response, so that a
+  batch is one tensor. Drop those slots with :func:`~kornia.feature.laf_is_filled` before matching.
+- The ``match_*`` functions return ``(dists, idxs)``, one row per match; a lower ``dists`` is a better match.
+  See the Convention block of :func:`~kornia.feature.match_nn` for each matcher's distance definition.
+- ``idxs`` holds ``(index in desc1, index in desc2)`` for unbatched matchers. :func:`~kornia.feature.match_smnn_batched`
+  prepends the batch index: ``(batch_index, index in desc1, index in desc2)``.
+- :class:`~kornia.feature.LightGlueMatcher` returns a score in place of ``dists``; a higher score is a better match.
+
+OpenCV keypoints and SIFT descriptors convert as follows:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Topic
+     - kornia
+     - OpenCV
+   * - centre
+     - ``c``, read by :func:`~kornia.feature.get_laf_center`
+     - ``KeyPoint.pt``, in the same pixel frame: copy it unchanged. The default upscaling of ``cv2.SIFT`` biases
+       ``pt`` by a fraction of a pixel; ``enable_precise_upscale=True`` removes the bias
+   * - orientation
+     - degrees, counter-clockwise on screen, read by :func:`~kornia.feature.get_laf_orientation`
+     - ``KeyPoint.angle``, degrees clockwise on screen: ``angle = (-orientation) mod 360`` and
+       ``orientation = -angle``
+   * - scale
+     - :math:`\sqrt{|\det A|}`, read by :func:`~kornia.feature.get_laf_scale`; the frames of
+       :class:`~kornia.feature.SIFTFeatureScaleSpace` have the scale :math:`6 \sigma` for the detection scale
+       :math:`\sigma`
+     - ``KeyPoint.size``, a diameter, is :math:`2 \sigma` for ``cv2.SIFT``, so ``scale = 3 * size`` gives the frames
+       of ``SIFTFeatureScaleSpace``; other detectors define ``size`` differently
+   * - SIFT descriptor
+     - kornia's bin layout
+     - OpenCV's bin layout; :func:`~kornia.feature.convert_sift_descriptor_layout` converts between the two
+
+For example, from the ``pt``, ``size`` and ``angle`` of ``cv2.SIFT`` keypoints:
+
+.. code-block:: python
+
+    import torch
+    import kornia.feature as KF
+
+    pt = torch.tensor([[70.0, 40.0], [21.5, 13.0]])  # KeyPoint.pt
+    size = torch.tensor([5.3, 7.1])  # KeyPoint.size
+    angle = torch.tensor([296.5, 32.2])  # KeyPoint.angle
+    lafs = KF.laf_from_center_scale_ori(pt[None], 3.0 * size.view(1, -1, 1, 1), -angle.view(1, -1, 1))
+    assert torch.allclose(-KF.get_laf_orientation(lafs).flatten() % 360.0, angle)
+
+.. _pretrained-models-conventions:
+
+Pretrained models
+-----------------
+
+- A model built with complete pretrained weights comes back in evaluation mode (``model.training`` is ``False``).
+  A randomly initialised model stays in PyTorch's default training mode. So does a model whose weights are only partly
+  pretrained, such as a pretrained backbone with a newly initialised classification head. Call ``.train()`` to
+  fine-tune a pretrained model, and ``.eval()`` before running inference on a random one. ``KeyNetDetector`` and
+  ``LAFDescriptor`` are the exceptions: they put only their default pretrained ``KeyNet`` and ``HardNet`` networks in
+  evaluation mode and report ``training`` as ``True`` themselves, so that an ``ori_module``, ``aff_module`` or
+  ``patch_descriptor_module`` you pass keeps its own mode (see :ref:`local-features-conventions`).
+- Constructors, ``from_config``, ``from_pretrained`` and the builders set the mode once, when they build the model.
+  ``load_checkpoint`` and ``load_state_dict`` on an existing module leave its mode as it is: after loading your own
+  weights, call ``.eval()``.
+- Task wrappers that take a model (``ObjectDetector``, ``EdgeDetector``, ``SuperResolution``, ``SemanticSegmentation``)
+  put that model in evaluation mode: they run inference.
 
 Pitfall checklist
 -----------------
@@ -483,7 +1357,8 @@ Quick self-review for generated code, most common first:
 7. Uint8 ``[0, 255]`` values where float ``[0, 1]`` is expected.
 8. Image and mask augmented through two separate augmentation calls.
 9. ``homography_warp`` fed a source→destination pixel homography — it wants
-   destination→source, normalized (or pass ``normalized_homography=False``).
+   destination→source, normalized; use ``warp_perspective`` (or pass
+   ``normalized_homography=False``).
 10. Mixing ``axis_angle_to_rotation_matrix`` (math convention; screen-
     clockwise for +z) with ``rotate`` (screen-counter-clockwise) without
     negating the angle.
@@ -500,9 +1375,9 @@ Quick self-review for generated code, most common first:
 16. Expecting ``RandomElasticTransform``, ``RandomThinPlateSpline`` or
     ``RandomFisheye`` to move boxes and keypoints with the image — they do not.
 17. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
-    through an intensity augmentation — some clamp, some rescale,
-    ``RandomEqualize`` and ``RandomClahe`` raise, and several return zeros
-    (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+    through a range-dependent intensity augmentation — input clamping discards
+    out-of-range information and can produce zeros for an all-negative image.
+    Normalize after augmenting instead.
 
 .. tip::
 

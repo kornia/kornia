@@ -15,13 +15,18 @@
 # limitations under the License.
 #
 
+import math
 from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import (
+    IntensityAugmentationBase2D,
+    _clamp_unit_range,
+    _PicklableCompileMixin,
+)
 from kornia.augmentation._2d.intensity.color_jiggle import (
     _adjust_hue,
     _apply_order_cond,
@@ -29,7 +34,6 @@ from kornia.augmentation._2d.intensity.color_jiggle import (
     _dispatch_color_steps,
     _Steps,
 )
-from kornia.constants import pi
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,
@@ -50,8 +54,7 @@ def _adjust_saturation(input: torch.Tensor, factor: torch.Tensor) -> torch.Tenso
     return _contiguous_output(adjust_saturation_with_gray_subtraction(input, factor))
 
 
-# The brightness step tests its factor against 0 instead of the neutral 1 (#4785).
-_NEUTRAL = (0.0, 1.0, 1.0, 0.0)
+_NEUTRAL = (1.0, 1.0, 1.0, 0.0)
 _BRANCHES: _Steps = (_adjust_brightness, _adjust_contrast, _adjust_saturation, _adjust_hue)
 
 
@@ -59,8 +62,8 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
     return _apply_order_cond(_BRANCHES, _NEUTRAL, order, input, factors)
 
 
-class ColorJitter(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
+class ColorJitter(_PicklableCompileMixin, IntensityAugmentationBase2D):
+    r"""Randomly adjust brightness, contrast, saturation and hue using torchvision-compatible formulas.
 
     The four steps are torchvision's formulas -- brightness multiplies the image by the factor, contrast blends it
     with its grayscale mean, saturation with its grayscale, and hue is torchvision's ``adjust_hue`` shift -- so this
@@ -86,33 +89,19 @@ class ColorJitter(IntensityAugmentationBase2D):
           The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
           entry is ignored, including on replay.
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - see :class:`ColorJiggle` for how the two classes relate. This class takes the brightness factor as
           drawn, a multiplier whose identity is ``1``, and a scalar ``brightness`` above ``1`` draws from
           ``[0, 1 + brightness]``, as torchvision does.
-        - a step is skipped when every factor in the batch equals its guard value -- ``1`` for contrast and
-          saturation, ``0`` for hue and, as the #4785 warning below states, for brightness -- so a skipped step
-          accepts any channel count. Otherwise the step runs on the whole batch, and the brightness, contrast and
-          (three-channel) saturation steps clamp the whole batch into ``[0, 1]``. A fixed ``order`` without
-          index ``0`` skips the brightness step.
-
-    .. warning::
-        The brightness step is skipped for a factor of ``0`` instead of the neutral ``1``: a batch whose factors
-        are all ``0`` comes back unchanged instead of black, and ``ColorJitter(0, 0, 0, 0)`` clamps an
-        out-of-range input. Tracked in
-        `#4785 <https://github.com/kornia/kornia/issues/4785>`_.
-
-    .. warning::
-        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
-        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
-
-    .. warning::
-        Because the brightness, contrast and saturation steps clamp, an all-negative input can come back as an
-        all-zero image, depending on the draw and the order. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        - a step is skipped when every factor in the batch equals its neutral value -- ``1`` for brightness,
+          contrast and saturation, ``0`` for hue -- so a skipped step accepts any channel count. Otherwise the
+          step runs on the whole batch, and the brightness, contrast and (three-channel) saturation steps clamp
+          the whole batch into ``[0, 1]``. A fixed ``order`` without index ``0`` skips the brightness step.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness_accumulative`,
@@ -178,9 +167,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             if len(order) != len(set(order)):
                 raise ValueError(f"`order` must not repeat an index; each adjustment applies at most once. Got {order}")
         self._fixed_order: Optional[Tuple[int, ...]] = order
-        # torch.cond raises where Dynamo is unavailable (torch 2.5.1 on Python 3.13), so a fixed order keeps
-        # the Python dispatch there. Checked here because Dynamo cannot trace the check inside forward.
-        self._cond_fn = _apply_cond if order is not None and torch._dynamo.is_dynamo_supported() else None
+        self._cond_fn = _apply_cond if order is not None else None
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
@@ -195,13 +182,16 @@ class ColorJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # The same dispatch as ColorJiggle: a fixed order on an RGB input runs torch.cond in eager and compiled
-        # mode, every other call the Python guards, which accept any channel count for a skipped step.
+        # The same branch-free dispatch as ColorJiggle for fixed RGB orders; other inputs use Python guards,
+        # which accept any channel count for a skipped step.
+        input = _clamp_unit_range(input)
         steps: _Steps = (self._brightness_fn, self._contrast_fn, self._saturation_fn, self._adjust_hue_turns)
-        return _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps)
+        return _clamp_unit_range(
+            _dispatch_color_steps(input, params, self._fixed_order, self._cond_fn, _NEUTRAL, steps)
+        )
 
     def _adjust_hue_turns(self, input: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-        return self._hue_fn(input, factor * 2 * pi)
+        return self._hue_fn(input, factor * 2 * math.pi)
 
     def compile(
         self,
@@ -213,8 +203,19 @@ class ColorJitter(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "ColorJitter":
-        # A fixed order on an RGB input runs every step through the torch.cond dispatcher, which is compiled
-        # as one graph; the four helpers serve the random order and non-RGB inputs.
+        self._record_compile(
+            ["_cond_fn", "_brightness_fn", "_contrast_fn", "_saturation_fn", "_hue_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
+        # A fixed order on an RGB input runs every step through the branch-free dispatcher; the four helpers
+        # serve the random order and non-RGB inputs.
         if self._cond_fn is not None:
             self._cond_fn = torch.compile(
                 self._cond_fn,

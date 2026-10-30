@@ -18,12 +18,14 @@
 import torch
 from torch.nn.functional import mse_loss as mse
 
+# Unlike Python's numeric tower, TorchScript unions need int explicitly to keep integer ranges accepted.
+_PSNRMaxVal = float | int | torch.Tensor
 
-def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
+
+def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> torch.Tensor:
     r"""Create a function that calculates the PSNR between 2 images.
 
-    PSNR is Peek Signal to Noise Ratio, which is similar to mean squared error.
-    Given an m x n image, the PSNR is:
+    PSNR is the Peak Signal to Noise Ratio. For one m x n image, the PSNR is:
 
     .. math::
 
@@ -38,13 +40,32 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     and :math:`\text{MAX}_I` is the maximum possible input value
     (e.g for floating point images :math:`\text{MAX}_I=1`).
 
+    Convention:
+        - One MSE is pooled over every element, batch and channels included. A scalar range gives one PSNR: for a
+          batch it is the PSNR of the pooled MSE, not the mean of per-image PSNRs, so compute per-image values one
+          image at a time. :ref:`Losses and metrics <losses-metrics-conventions>` maps both onto scikit-image and
+          torchmetrics.
+        - ``max_val`` is :math:`\text{MAX}_I`, the data range of the images (``1.0`` for ``[0, 1]``, ``255.0`` for
+          ``[0, 255]``), not the maximum of the tensor; pixel values are not rescaled.
+        - ``image`` and ``target`` must have the same shape, without broadcasting; the value is symmetric in them.
+          Identical inputs give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
+        - Integer and bool images are converted to float32 before computing the MSE; pixel values are not rescaled.
+        - Float16 and bfloat16 inputs are evaluated in float32; the result retains their promoted input dtype,
+          also promoted with ``max_val.dtype`` when the data range is a tensor. A float32 tensor data range therefore
+          gives a float32 result for half-precision images.
+
     Args:
-        image: the input image with arbitrary shape :math:`(*)`.
-        target: the labels image with arbitrary shape :math:`(*)`.
-        max_val: The maximum value in the input tensor.
+        image: the input image with arbitrary shape ``(*)``.
+        target: the labels image with arbitrary shape ``(*)``.
+        max_val: the data range of the images, :math:`\text{MAX}_I`, as a float, integer or tensor.
 
     Return:
-        the computed loss as a scalar.
+        the PSNR as a scalar for a scalar range, or with the shape of a tensor range.
+
+    .. note::
+        Integer and bool images are converted to float32, as in :func:`~kornia.metrics.ssim`, and the two images are
+        compared in their promoted dtype. An integer image paired with a float16 or bfloat16 image therefore gives a
+        float32 result. Pixel values are not rescaled.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -64,4 +85,33 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     if image.shape != target.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {image.shape} and {target.shape}")
 
-    return 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))
+    # mse has no integer kernel; compute integer images in float32 as ssim does.
+    if not image.is_floating_point() and not image.is_complex():
+        image = image.to(torch.float32)
+    if not target.is_floating_point() and not target.is_complex():
+        target = target.to(torch.float32)
+    # Give mse_loss one dtype: on two dtypes it aborts the process on MPS, and its backward raises on torch 2.5.1.
+    dtype = torch.promote_types(image.dtype, target.dtype)
+    compute_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    image, target = image.to(compute_dtype), target.to(compute_dtype)
+    result_dtype = dtype
+    if dtype in (torch.float16, torch.bfloat16) and isinstance(max_val, torch.Tensor):
+        result_dtype = torch.promote_types(dtype, max_val.dtype)
+        # Keep the tensor data range's square and division out of half precision too, without narrowing float64.
+        max_val = max_val.to(torch.promote_types(compute_dtype, max_val.dtype))
+
+    # The legacy (TorchScript) ONNX exporter writes ``log10`` as a division by a ``(1,)`` constant, which turns a 0-d
+    # result into a one-element vector. Reshaping to the shape of the ratio keeps the eager shape there (``()`` for a
+    # scalar ``max_val``, the shape of a tensor one) and is a no-op view eagerly.
+    mse_value = mse(image, target, reduction="mean")
+    # TorchScript needs the union refined before selecting a pow overload.
+    if isinstance(max_val, torch.Tensor):
+        ratio = torch.pow(max_val, 2) / mse_value
+    elif isinstance(max_val, int):
+        ratio = max_val**2 / mse_value
+    else:
+        ratio = max_val**2 / mse_value
+    result = 10.0 * torch.log10(ratio)
+    if dtype in (torch.float16, torch.bfloat16):
+        result = result.to(result_dtype)
+    return result.reshape(ratio.shape)

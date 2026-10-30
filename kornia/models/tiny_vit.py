@@ -28,7 +28,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils import checkpoint
 
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SIZE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.models.common import DropPath, LayerNorm2d, window_partition, window_unpartition
 
@@ -116,7 +116,7 @@ class MBConv(nn.Module):
         """Apply the MBConv residual block to a feature map.
 
         Args:
-            x: Feature map tensor with shape :math:`(B, C, H, W)`, where
+            x: Feature map tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is channels, :math:`H` is
                 height, and :math:`W` is width.
 
@@ -149,6 +149,8 @@ class PatchMerging(nn.Module):
         KORNIA_CHECK(stride in (1, 2), "stride must be either 1 or 2")
         super().__init__()
         self.input_resolution = _make_pair(input_resolution)
+        # The token grid the next stage is built for (TinyViT.__init__ divides the resolution the same way).
+        self.output_resolution = (self.input_resolution[0] // stride, self.input_resolution[1] // stride)
         self.conv1 = ConvBN(dim, out_dim, 1, activation=activation)
         self.conv2 = ConvBN(out_dim, out_dim, 3, stride, 1, groups=out_dim, activation=activation)
         self.conv3 = ConvBN(out_dim, out_dim, 1)
@@ -157,17 +159,29 @@ class PatchMerging(nn.Module):
         """Merge or project patch tokens for TinyViT downsampling.
 
         Args:
-            x: Either token tensor with shape :math:`(B, H * W, C)` or feature
-                map tensor with shape :math:`(B, C, H, W)`.
+            x: Either token tensor with shape ``(B, H * W, C)`` or feature
+                map tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Token tensor with shape :math:`(B, H_{out} * W_{out}, C_{out})`.
             The spatial size is reduced when this layer was configured with
             stride ``2``.
+
+        Raises:
+            ValueError: if :math:`(H_{out}, W_{out})` is not the grid the next stage is built for: the input of a
+                :class:`TinyViT` is not ``img_size`` (the first patch merging reads the image's own grid from a
+                ``(B, C, H, W)`` map), or ``img_size`` is not a multiple of 32 (of 16 with ``mobile_sam=True``),
+                so the stride-2 convolution rounds an odd grid up where the stages were built for it rounded down.
         """
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
+        if tuple(x.shape[-2:]) != self.output_resolution:
+            raise ValueError(
+                f"The input gives a {x.shape[-2]}x{x.shape[-1]} token grid, but the TinyViT stages are built for the "
+                f"{self.output_resolution[0]}x{self.output_resolution[1]} grid of an img_size x img_size image "
+                "(img_size must be a multiple of 32, of 16 with mobile_sam=True)."
+            )
         return x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
 
 
@@ -292,7 +306,6 @@ class Attention(nn.Module):
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, attn_offset_size))
         self.register_buffer("attention_bias_idxs", indices, persistent=False)
         self.attention_bias_idxs: torch.Tensor
-        self.ab: Optional[torch.Tensor] = None
 
     @staticmethod
     def build_attention_bias(resolution: tuple[int, int]) -> tuple[torch.Tensor, int]:
@@ -320,40 +333,24 @@ class Attention(nn.Module):
         attn_offset_size = unique_keys.numel()
         return indices, attn_offset_size
 
-    # is this really necessary?
-    @torch.no_grad()
-    def train(self, mode: bool = True) -> Attention:
-        """Switch training/evaluation mode and refresh cached attention bias.
-
-        Args:
-            mode: ``True`` for training mode, ``False`` for evaluation mode.
-
-        Returns:
-            ``self`` after updating the module mode. In evaluation mode the
-            relative attention bias lookup is cached for reuse.
-        """
-        super().train(mode)
-        self.ab = None if (mode and self.ab is not None) else self.attention_biases[:, self.attention_bias_idxs]
-        return self
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply relative-position self-attention to token features.
 
         Args:
-            x: Token tensor with shape :math:`(B, N, C)`, where :math:`B` is
+            x: Token tensor with shape ``(B, N, C)``, where :math:`B` is
                 batch size, :math:`N` is number of tokens, and :math:`C` is
                 embedding dimension.
 
         Returns:
-            Tensor with shape :math:`(B, N, C)` after attention and projection.
+            Tensor with shape ``(B, N, C)`` after attention and projection.
         """
         B, N, _ = x.shape
         x = self.norm(x)
         qkv = self.qkv(x)
-        qkv = qkv.view(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        qkv = qkv.unflatten(-1, (self.num_heads, -1)).permute(0, 2, 1, 3)
         q, k, v = qkv.split([self.key_dim, self.key_dim, self.d], dim=3)
 
-        bias = self.attention_biases[:, self.attention_bias_idxs] if self.training else self.ab
+        bias = self.attention_biases[:, self.attention_bias_idxs]
         attn = (q @ k.transpose(-2, -1)) * self.scale + bias
 
         attn = attn.softmax(dim=-1)
@@ -406,7 +403,7 @@ class TinyViTBlock(nn.Module):
         """Apply one TinyViT window-attention block.
 
         Args:
-            x: Token tensor with shape :math:`(B, H * W, C)`, where
+            x: Token tensor with shape ``(B, H * W, C)``, where
                 :math:`H` and :math:`W` match ``self.input_resolution``.
 
         Returns:
@@ -419,7 +416,7 @@ class TinyViTBlock(nn.Module):
 
         x = x.view(B, H, W, C)
         x, pad_hw = window_partition(x, self.window_size)  # (B * num_windows, window_size, window_size, C)
-        x = self.attn(x.flatten(1, 2))
+        x = self.attn(x.flatten(1, 2)).unflatten(1, (self.window_size, self.window_size))
         x = window_unpartition(x, self.window_size, pad_hw, (H, W))
         x = x.view(B, L, C)
 
@@ -495,7 +492,7 @@ class BasicLayer(nn.Module):
         """Run a TinyViT stage made of several blocks.
 
         Args:
-            x: Token tensor with shape :math:`(B, H * W, C)`.
+            x: Token tensor with shape ``(B, H * W, C)``.
 
         Returns:
             Tensor after all TinyViT blocks and optional patch merging. The
@@ -512,8 +509,13 @@ class BasicLayer(nn.Module):
 class TinyViT(nn.Module):
     """TinyViT model, as described in https://arxiv.org/abs/2207.10666.
 
+    The pretrained checkpoints of :meth:`from_config` were trained on images normalized with the ImageNet mean and
+    standard deviation, so a :math:`[0, 1]` image goes in as
+    ``kornia.enhance.normalize(image, torch.tensor([0.485, 0.456, 0.406]), torch.tensor([0.229, 0.224, 0.225]))``.
+
     Args:
-        img_size: Size of input image.
+        img_size: Size of the square input image, a multiple of 32 (of 16 with ``mobile_sam=True``). The attention
+            stages are built for the token grid of an ``img_size`` image (see :meth:`forward`).
         in_chans: Number of input image's channels.
         num_classes: Number of output classes.
         embed_dims: List of embedding dimensions.
@@ -527,7 +529,7 @@ class TinyViT(nn.Module):
         mbconv_expand_ratio: Expansion ratio used in MBConv block.
         local_conv_size: Kernel size of convolution used in TinyViTBlock
         activation: activation function.
-        mobile_same: Whether to use modifications for MobileSAM.
+        mobile_sam: Whether to use modifications for MobileSAM.
 
     """
 
@@ -621,14 +623,23 @@ class TinyViT(nn.Module):
         self.head = nn.Linear(embed_dims[-1], num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Classify images if ``mobile_sam=False``, produce feature maps if ``mobile_sam=True``."""
+        """Classify images if ``mobile_sam=False``, produce feature maps if ``mobile_sam=True``.
+
+        Args:
+            x: images ``(B, C, H, W)`` with :math:`H = W =` ``img_size``. The strided convolutions before the
+                first attention stage round up, so :math:`H` and :math:`W` from ``img_size - 7`` to ``img_size`` give
+                the same token grid and run too.
+
+        Raises:
+            ValueError: if the input gives a token grid other than that of an ``img_size`` image.
+        """
         x = self.patch_embed(x)
         x = self.layers(x)
 
         if self.mobile_sam:
             # MobileSAM
             x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
-            x = self.neck(x)  # type: ignore
+            x = self.neck(x)
         else:
             # classification
             x = x.mean(1)
@@ -639,16 +650,38 @@ class TinyViT(nn.Module):
     def from_config(variant: str, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
         """Create a TinyViT model from pre-defined variants.
 
+        Returns the model in evaluation mode when ``pretrained`` loads the complete weights, classification head
+        included, and in training mode otherwise (see :ref:`pretrained-models-conventions`).
+
         Args:
             variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
             pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``,
-                ``'in1k'``. For TinyViT-21M (``variant='21m'``), ``'in1k_384'``, ``'in1k_512'`` are also available.
-            **kwargs: other keyword arguments that will be passed to :class:`TinyViT`.
+                ``'in1k'``. For TinyViT-21M (``variant='21m'``), ``'in1k_384'``, ``'in1k_512'`` are also available;
+                named, they build at the ``img_size`` you pass (224 by default), so pass ``img_size=384`` or ``512``
+                to run them at their resolution.
+            **kwargs: other keyword arguments that will be passed to :class:`TinyViT`. They override the variant's
+                ``embed_dims``, ``depths``, ``num_heads``, ``window_sizes`` and ``drop_path_rate``.
 
         .. note::
-            When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on
-            attention biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used.
-            For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
+            ``pretrained=True`` loads the ImageNet-1k checkpoint (``'in1k'``); for TinyViT-21M it loads ``'in1k_384'``
+            when ``img_size`` is at least 384 and ``'in1k_512'`` when it is at least 512. For feature extraction or
+            fine-tuning, the ImageNet-22k checkpoint (``'in22k'``) is preferred.
+
+            ``img_size`` does not change the window sizes: they are the 224-px ``[7, 7, 14, 7]`` at every
+            ``img_size``, except that the TinyViT-21M ``'in1k_384'`` and ``'in1k_512'`` checkpoints get the windows
+            they were trained with, ``[12, 12, 24, 12]`` and ``[16, 16, 32, 16]``, and the stochastic depth rate
+            they were fine-tuned with, ``drop_path_rate=0.1`` instead of TinyViT-21M's 0.2. A ``window_sizes`` or
+            ``drop_path_rate`` argument overrides them. The checkpoint's attention biases are interpolated (bicubic)
+            only when the window sizes differ from the checkpoint's. ``img_size`` must be a multiple of 32 (of 16 with
+            ``mobile_sam=True``), and a checkpoint's accuracy is not preserved away from the resolution it was trained
+            at: on the panda image of the :doc:`/models/tiny_vit` example, TinyViT-5M's probability of the right class
+            drops from 0.37 at 224 px to 0.02 at ``img_size=256``.
+
+            With ``pretrained`` and a ``num_classes`` other than the checkpoint's, the classification head is reset to
+            zeros, and the model, a pretrained backbone to fine-tune, stays in training mode. The ``'in22k'``
+            checkpoints have a 21841-class head: pass ``num_classes=21841`` to get the complete model in evaluation
+            mode. With the default ``num_classes=1000`` the head is reset and the model stays in training mode, so call
+            ``.eval()`` before extracting features.
 
         """
         KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
@@ -689,13 +722,17 @@ urls: dict[str, dict[str, list[str]]] = {
         ],
         "in1k_384": [
             hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
-            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
-            "tiny_vit_21m_22kto1k_384_distill.pth",
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_384_distill.pth"
+            ),
         ],
         "in1k_512": [
             hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
-            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
-            "tiny_vit_21m_22kto1k_512_distill.pth",
+            (
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/"
+                "tiny_vit_21m_22kto1k_512_distill.pth"
+            ),
         ],
     },
 }
@@ -711,11 +748,13 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
 
     # https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/utils.py#L163
     # bicubic interpolate attention biases
-    ab_keys = [k for k in state_dict.keys() if "attention_biases" in k]
+    ab_keys = [k for k in state_dict if "attention_biases" in k]
     for k in ab_keys:
         n_heads1, L1 = state_dict[k].shape
         n_heads2, L2 = model_state_dict[k].shape
-        KORNIA_CHECK(n_heads1 == n_heads2, f"Fail to load {k}. Pre-trained checkpoint should have num_heads={n_heads1}")
+        KORNIA_CHECK_SAME_SIZE(
+            state_dict[k], model_state_dict[k], msg=f"Fail to load {k}: the checkpoint has a different number of heads."
+        )
 
         if L1 != L2:
             S1 = int(L1**0.5)
@@ -724,25 +763,28 @@ def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
             attention_biases = F.interpolate(attention_biases, size=(S2, S2), mode="bicubic")
             state_dict[k] = attention_biases.view(n_heads2, L2)
 
-    if state_dict["head.weight"].shape[0] != model.head.out_features:
+    head_loaded = state_dict["head.weight"].shape[0] == model.head.out_features
+    if not head_loaded:
         msg = "Number of classes does not match pre-trained checkpoint's. Resetting classification head to zeros"
         warnings.warn(msg, stacklevel=1)
         state_dict["head.weight"] = torch.zeros_like(model.head.weight)
         state_dict["head.bias"] = torch.zeros_like(model.head.bias)
 
     model.load_state_dict(state_dict)
+    # Complete weights are returned in evaluation mode. A reset head leaves a pretrained backbone to fine-tune, which
+    # stays in training mode.
+    if head_loaded:
+        model.eval()
     return model
 
 
 def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    model = TinyViT(
-        embed_dims=[64, 128, 160, 320],
-        depths=[2, 2, 6, 2],
-        num_heads=[2, 4, 5, 10],
-        window_sizes=[7, 7, 14, 7],
-        drop_path_rate=0.0,
-        **kwargs,
-    )
+    kwargs.setdefault("embed_dims", [64, 128, 160, 320])
+    kwargs.setdefault("depths", [2, 2, 6, 2])
+    kwargs.setdefault("num_heads", [2, 4, 5, 10])
+    kwargs.setdefault("window_sizes", [7, 7, 14, 7])
+    kwargs.setdefault("drop_path_rate", 0.0)
+    model = TinyViT(**kwargs)
 
     if pretrained:
         if pretrained is True:
@@ -755,14 +797,12 @@ def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
 
 
 def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    model = TinyViT(
-        embed_dims=[64, 128, 256, 448],
-        depths=[2, 2, 6, 2],
-        num_heads=[2, 4, 8, 14],
-        window_sizes=[7, 7, 14, 7],
-        drop_path_rate=0.1,
-        **kwargs,
-    )
+    kwargs.setdefault("embed_dims", [64, 128, 256, 448])
+    kwargs.setdefault("depths", [2, 2, 6, 2])
+    kwargs.setdefault("num_heads", [2, 4, 8, 14])
+    kwargs.setdefault("window_sizes", [7, 7, 14, 7])
+    kwargs.setdefault("drop_path_rate", 0.1)
+    model = TinyViT(**kwargs)
 
     if pretrained:
         if pretrained is True:
@@ -774,25 +814,31 @@ def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
     return model
 
 
+# The window sizes the TinyViT-21M 384 and 512 checkpoints were trained with (Cream ``tiny_vit_21m_384`` and
+# ``tiny_vit_21m_512``), which also set drop_path_rate 0.1; the other 21M checkpoints use the 224-px windows
+# (7, 7, 14, 7) and 0.2, as Cream ``tiny_vit_21m_224`` does.
+_TINY_VIT_21M_WINDOW_SIZES = {"in1k_384": (12, 12, 24, 12), "in1k_512": (16, 16, 32, 16)}
+
+
 def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    model = TinyViT(
-        embed_dims=[96, 192, 384, 576],
-        depths=[2, 2, 6, 2],
-        num_heads=[3, 6, 12, 18],
-        window_sizes=[7, 7, 14, 7],
-        drop_path_rate=0.2,
-        **kwargs,
-    )
+    # The checkpoint is resolved before the model is built, which takes that checkpoint's window sizes.
+    if pretrained is True:
+        img_size = kwargs.get("img_size", 224)
+        pretrained = "in1k_512" if img_size >= 512 else "in1k_384" if img_size >= 384 else "in1k"
+    window_sizes = (7, 7, 14, 7)
+    drop_path_rate = 0.2
+    if isinstance(pretrained, str) and pretrained in _TINY_VIT_21M_WINDOW_SIZES:
+        window_sizes = _TINY_VIT_21M_WINDOW_SIZES[pretrained]
+        drop_path_rate = 0.1
+
+    kwargs.setdefault("embed_dims", [96, 192, 384, 576])
+    kwargs.setdefault("depths", [2, 2, 6, 2])
+    kwargs.setdefault("num_heads", [3, 6, 12, 18])
+    kwargs.setdefault("window_sizes", list(window_sizes))
+    kwargs.setdefault("drop_path_rate", drop_path_rate)
+    model = TinyViT(**kwargs)
 
     if pretrained:
-        if pretrained is True:
-            pretrained = "in1k"
-            img_size = kwargs.get("img_size", 224)
-            if img_size >= 384:
-                pretrained = "in1k_384"
-            if img_size >= 512:
-                pretrained = "in1k_512"
-
         url = urls["21m"][pretrained]
         model = _load_pretrained(model, url)
 

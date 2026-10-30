@@ -30,7 +30,6 @@ import torch
 from torch import Tensor, nn
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation._2d.geometric.crop import RandomCrop
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.augmentation.container.image import ImageSequential
@@ -101,6 +100,9 @@ class AugmentationAuditStep:
     Parameters and flags are detached copies; ``occurrence`` is zero-based for
     each qualified module name. Shapes describe the image path. Flags include
     keyword overrides observed on that image call.
+
+    Convention:
+        See :ref:`augmentation-audit`.
     """
 
     name: str
@@ -131,6 +133,9 @@ class SpatialAudit:
     Statistics cover only finite errors, in pixels; a batch with no valid errors
     has NaN statistics and zero ``roundtrip_valid_count``. Diagnostics use float32
     for half inputs, otherwise the image dtype.
+
+    Convention:
+        See :ref:`augmentation-audit`.
     """
 
     input_index: int
@@ -162,6 +167,9 @@ class AugmentationAuditReport:
     ``inverse_matrix`` has NaNs for singular/nonfinite batches. No image inverse
     is evaluated: coordinate invertibility does not imply pixel reconstruction,
     particularly after cropping, interpolation or intensity changes.
+
+    Convention:
+        See :ref:`augmentation-audit`.
     """
 
     inputs: list[dict[str, Any]]
@@ -244,31 +252,6 @@ def _capture_warnings(sequence: AugmentationSequential, steps: list[Augmentation
     return []
 
 
-def _crop_matrix(
-    module: RandomCrop,
-    matrix: Tensor,
-    params: dict[str, Any],
-    flags: dict[str, Any],
-    image: Tensor,
-    output: Tensor,
-) -> tuple[Tensor | None, str | None]:
-    applied = params["batch_prob"] > 0.5
-    static = module.p == 1.0 and module.p_batch == 1.0
-    changed_shape = output.shape[-2:] != image.shape[-2:]
-    if not static and changed_shape and flags["cropping_mode"] == "slice" and not bool(applied.all()):
-        # The shape-changing blend returns every transformed row, but slice uses
-        # src indices even where the cached per-row matrix is the identity.
-        return None, "mixed-application slice crop has no reliable per-row image matrix after changing shape"
-    if static or changed_shape:
-        # These paths return the entire transformed branch, including prepadding.
-        applied = torch.ones_like(applied)
-    padding = params["padding_size"].to(matrix)
-    translation = torch.eye(3, device=matrix.device, dtype=matrix.dtype).expand_as(matrix).clone()
-    translation[:, 0, 2] = padding[:, 0] * applied.to(matrix)
-    translation[:, 1, 2] = padding[:, 2] * applied.to(matrix)
-    return matrix @ translation, None
-
-
 def _coordinates(value: DataType, key: DataKey) -> Tensor:
     if (isinstance(value, Boxes) and key not in _BOX_MODES) or (
         isinstance(value, Keypoints) and key != DataKey.KEYPOINTS
@@ -306,22 +289,8 @@ def _capture(
     reason = None
     if isinstance(module, (GeometricAugmentationBase2D, IntensityAugmentationBase2D)):
         # Materialize lazy matrices in the caller's context so the ordinary spatial
-        # outputs remain identical, then adjust diagnostics outside autocast.
+        # outputs remain identical.
         matrix = _snapshot(module.transform_matrix)
-        with torch.autocast(device_type=image.device.type, enabled=False):
-            if matrix is not None and isinstance(module, RandomCrop):
-                matrix, reason = _crop_matrix(module, matrix, params, flags, image, output)
-            elif (
-                matrix is not None
-                and output.shape[-2:] != image.shape[-2:]
-                and not (module.p == 1.0 and module.p_batch == 1.0)
-                and not bool((params["batch_prob"] > 0.5).all())
-            ):
-                # A shape-changing image blend returns the transformed branch for
-                # every row when any row is selected. Matrices and spatial labels
-                # remain blended per row, so they cannot certify the returned image.
-                matrix = None
-                reason = "mixed-application shape-changing operation has no reliable per-row image matrix"
         if matrix is not None and matrix.shape != (image.shape[0], 3, 3):
             matrix = None
             reason = "operation produced a matrix with an unsupported shape"
@@ -438,15 +407,21 @@ def audit(
 ) -> tuple[DataType | list[DataType] | dict[str, DataType], AugmentationAuditReport]:
     """Run an augmentation sequence once and return its outputs plus a geometry audit report.
 
-    The sequence must use one BCHW image first, followed by batched masks, boxes or
+    The sequence must use one BCHW image first, followed by batched masks (``(B, C, H, W)`` or ``(B, H, W)``), boxes or
     keypoints described by positional ``data_keys``. ``params`` and ``data_keys``
     have the same meaning as in :meth:`kornia.augmentation.AugmentationSequential.forward`.
-    Unknown or non-rigid operations run normally and make composed geometry unavailable.
+    Unknown or non-rigid operations run normally and make composed geometry unavailable. Keypoints and boxes through
+    ``RandomElasticTransform``, ``RandomThinPlateSpline`` or ``RandomFisheye`` raise ``NotImplementedError``, as in
+    the sequence (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
     Reporting is an eager diagnostic operation. It snapshots executed operations and
     parameters, checks spatial round trips, and never evaluates image reconstruction.
     The returned outputs retain the ordinary forward structure, values and gradients.
     Do not audit the same stateful sequence concurrently.
+
+    Convention:
+        :ref:`augmentation-audit` states the direction of ``report.matrix``, the pixel-centre rectangle of the
+        out-of-frame test, the dtypes of the diagnostics and the inputs it accepts.
 
     Args:
         sequence: The 2D augmentation sequence to execute and inspect.
@@ -482,8 +457,8 @@ def audit(
             raise ValueError(f"audit does not support the data key {key.name}.")
         tensor = _coordinates(value, key)
         # All box coordinates have been converted to (B, N, 4, 2).
-        expected_ndim = 3 if key == DataKey.KEYPOINTS else 4
-        if tensor.ndim != expected_ndim or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
+        expected_ndims = (3,) if key == DataKey.KEYPOINTS else (3, 4) if key == DataKey.MASK else (4,)
+        if tensor.ndim not in expected_ndims or tensor.shape[0] != image.shape[0] or tensor.device != image.device:
             raise ValueError("audit inputs must be batched with the same batch size and device as the image.")
         original = value.data if isinstance(value, (Boxes, Keypoints)) else cast(Tensor, value)
         metadata.append(

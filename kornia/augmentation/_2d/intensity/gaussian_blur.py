@@ -21,19 +21,24 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _PicklableCompileMixin
 from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType
 from kornia.filters import gaussian_blur2d
 from kornia.filters.kernels import _check_kernel_size, _unpack_2d_ks
 
 
-class RandomGaussianBlur(IntensityAugmentationBase2D):
-    r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
+class RandomGaussianBlur(_PicklableCompileMixin, IntensityAugmentationBase2D):
+    r"""Blur images with a Gaussian kernel of random sigma, applied per sample with probability ``p`` (default 0.5).
 
     The standard deviation is sampled for each instance.
 
     .. image:: _static/img/RandomGaussianBlur.png
+
+    .. note::
+        Unlike torchvision's ``GaussianBlur``, which blurs every image, this class blurs each sample with probability
+        ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass ``p=1.0`` to blur
+        every sample.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -44,15 +49,16 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
           The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
         separable: run as composition of two 1d-convolutions.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``kernel_size`` is ``(kH, kW)``: rows, then columns, as in :func:`kornia.filters.gaussian_blur2d`. An
           even entry is not rounded up: the forward pass raises that function's odd-size error.
         - ``sigma`` is drawn once per sample, as a single scalar used for both axes, and a drawn ``0`` raises on
@@ -68,10 +74,6 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         the kernel's radius along it, and at ``"circular"`` at least that long; a smaller image raises a
         ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` run
         down to a single pixel.
-
-    .. warning::
-        After this class's own ``.compile()`` the module no longer pickles or passes through ``torch.save``.
-        Tracked in `#4807 <https://github.com/kornia/kornia/issues/4807>`_.
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.
@@ -156,6 +158,17 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "RandomGaussianBlur":
+        self._record_compile(
+            ["_gaussian_blur2d_fn"],
+            {
+                "fullgraph": fullgraph,
+                "dynamic": dynamic,
+                "backend": backend,
+                "mode": mode,
+                "options": options,
+                "disable": disable,
+            },
+        )
         self._gaussian_blur2d_fn = torch.compile(
             self._gaussian_blur2d_fn,
             fullgraph=fullgraph,

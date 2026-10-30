@@ -23,12 +23,13 @@ from torch import float16, float32, float64
 import kornia
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
 
 
 class AugmentationBase3D(_AugmentationBase):
-    r"""AugmentationBase3D base class for customized augmentation implementations.
+    r"""Base class for custom 3D augmentations, applied per sample with probability ``p`` (default 0.5).
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -47,7 +48,8 @@ class AugmentationBase3D(_AugmentationBase):
           only.
         - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
           values. Of the concrete 3D constructors only :class:`~kornia.augmentation.RandomTransplantation3D`
-          exposes ``p_batch`` (`#4425 <https://github.com/kornia/kornia/issues/4425>`_); :class:`CenterCrop3D` and
+          exposes ``p_batch`` in its constructor, though it can be set as an attribute on any 3D augmentation;
+          :class:`CenterCrop3D` and
           :class:`RandomCrop3D` instead map their own ``p`` onto the call-wide gate. Parameters use the common
           augmentation RNG and ``forward(x, params=...)`` replays a complete generated dictionary. See
           :doc:`/get-started/conventions` for the canonical sampling, seeding, and serialization contract.
@@ -82,7 +84,7 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
-    r"""AugmentationBase3D base class for rigid/affine augmentation implementations.
+    r"""Base class for 3D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
     RigidAffineAugmentationBase3D enables routined transformation with given transformation matrices
     for different data types like masks, boxes, and keypoints.
@@ -115,8 +117,7 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
+        to_apply = self._gate(params)
 
         in_tensor = self.transform_tensor(input)
 
@@ -124,8 +125,8 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         trans_matrix_identity = self.identity_matrix(in_tensor)
 
         if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))).to(
-                trans_matrix_applied.device
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))), trans_matrix_applied.device
             )
             trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:

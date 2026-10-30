@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import math
 import sys
+import types
+from contextlib import contextmanager
 from functools import cache
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 import pytest
 import torch
@@ -39,6 +41,27 @@ DYNAMIC_EXPORT_UNAVAILABLE_REASON = (
 )
 
 
+@contextmanager
+def deterministic_algorithms_on_cuda(device: torch.device) -> Iterator[None]:
+    """Run the block with deterministic algorithms on CUDA, and restore the caller's mode afterwards.
+
+    Some CUDA backward kernels accumulate with atomics, so two backward passes of one graph can round differently.
+    Deterministic algorithms fix the accumulation order (CPU kernels already have one). ``warn_only`` keeps an op
+    without a deterministic CUDA kernel running, as it does by default; it only warns. A strict mode the caller
+    already set is kept.
+    """
+    if device.type != "cuda":
+        yield
+        return
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(True, warn_only=warn_only if enabled else True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
+
 def dynamo_is_available() -> bool:
     """Return whether this Torch/Python pair can run Dynamo-backed capture."""
     return not (
@@ -53,6 +76,22 @@ def dynamic_export_is_available() -> bool:
     ``torch.export.Dim`` and the ``dynamic_shapes`` argument both landed in PyTorch 2.2.
     """
     return dynamo_is_available() and hasattr(getattr(torch, "export", None), "Dim")
+
+
+def script_uncached(fn: Callable[..., Any]) -> torch.jit.ScriptFunction:
+    """``torch.jit.script`` a fresh copy of ``fn``, with no profiling history from earlier calls.
+
+    ``torch.jit.script`` caches one compiled function per Python function, and the profiling executor specializes
+    and fuses it on the shapes of the calls it has seen, so a test that scripts a shared function inherits whatever
+    other tests ran before it. A copy with the same code object, globals and annotations compiles to the same
+    graph but starts its own history, which makes a test of a call sequence deterministic.
+    """
+    copy = types.FunctionType(fn.__code__, fn.__globals__, fn.__name__, fn.__defaults__, fn.__closure__)
+    copy.__annotations__ = dict(fn.__annotations__)
+    copy.__kwdefaults__ = fn.__kwdefaults__
+    copy.__module__ = fn.__module__
+    copy.__qualname__ = fn.__qualname__
+    return torch.jit.script(copy)
 
 
 # {dtype: (rtol, atol)}
@@ -208,6 +247,36 @@ def supports_bilinear_2d_grid_sample_backward(device: torch.device, dtype: torch
     return _supports_kernel_probe(_bilinear_2d_grid_sample_backward_op, device.type, dtype)
 
 
+def _nearest_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
+    F.grid_sample(inp, grid, mode="nearest", align_corners=True)
+
+
+def supports_nearest_2d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports nearest interpolation in 2D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_nearest_2d_grid_sample_op, device.type, dtype)
+
+
+def _arange_op(device_type: str, dtype: torch.dtype) -> None:
+    _probe_zeros(device_type, dtype, 1)
+    torch.arange(2, device=device_type, dtype=dtype)
+
+
+def supports_arange(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a ``torch.arange`` kernel for ``dtype``.
+
+    :func:`kornia.filters.get_motion_kernel2d` builds its taps with ``arange`` in the dtype of ``direction``;
+    torch 2.5.1 has no bfloat16 ``arange`` on MPS. Probed at runtime and cached per (device type, dtype), so it
+    auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_arange_op, device.type, dtype)
+
+
 def _bicubic_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
     inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
     grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
@@ -290,6 +359,20 @@ def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool
     (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
     """
     return _supports_kernel_probe(_replicate_padding_op, device.type, dtype)
+
+
+def _replicate_padding_3d_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2, 2), (1, 1, 1, 1, 1, 1), mode="replicate")
+
+
+def supports_replicate_padding_3d(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 3D ``mode="replicate"`` pad kernel (``replication_pad3d``) for ``dtype``.
+
+    :func:`kornia.filters.filter3d` and :func:`kornia.filters.motion_blur3d` pad that way by default.
+    torch 2.5.1 has no float16 CPU ``replication_pad3d`` (bfloat16 is fine). Probed at runtime and cached per
+    (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_replicate_padding_3d_op, device.type, dtype)
 
 
 def _conv2d_op(device_type: str, dtype: torch.dtype) -> None:

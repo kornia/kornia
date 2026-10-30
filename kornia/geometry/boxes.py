@@ -17,13 +17,16 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, cast
+from typing import Any, Optional, Tuple, cast
 
 import torch
 from torch import Size
 
+from kornia.core._compat import _emit_deprecation_warning
+from kornia.core.check import _check_async
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
+from kornia.geometry._coordinate import _cast_to_floating_point
 from kornia.geometry.linalg import transform_points
 
 __all__ = ["Boxes", "Boxes3D", "VideoBoxes"]
@@ -55,17 +58,17 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
 
     Args:
         boxes: 2D quadrilaterals or 3D hexahedrons in kornia format.
-        M: the transformation matrix of shape :math:`(3, 3)` or :math:`(B, 3, 3)` for 2D and :math:`(4, 4)` or
-            :math:`(B, 4, 4)` for 3D hexahedron.
+        M: the transformation matrix of shape ``(3, 3)`` or ``(B, 3, 3)`` for 2D and ``(4, 4)`` or
+            ``(B, 4, 4)`` for 3D hexahedron.
 
     """
-    M = M if M.is_floating_point() else M.to(torch.get_default_dtype())
+    M = _cast_to_floating_point(M)
 
     # Work with batch as kornia.transform_points only supports a batch of points.
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
     if boxes_per_batch == 0:
         return boxes
-    points = boxes.view(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
+    points = boxes.reshape(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
     M = M if M.ndim == 3 else M.unsqueeze(0)
 
     if points.shape[0] != M.shape[0]:
@@ -95,6 +98,23 @@ def _boxes_to_polygons(
     return polygons
 
 
+def _validate_box_values(boxes: torch.Tensor, width: torch.Tensor, height: torch.Tensor) -> None:
+    """Raise the first of the non-finite, width and height errors, reading all three checks in one host transfer.
+
+    The three reductions run on the device of ``boxes`` and come back together, so a CUDA box costs one device
+    synchronization instead of three. The errors, their messages and their order are those of the separate checks.
+    """
+    non_finite, bad_width, bad_height = torch.stack(
+        ((~torch.isfinite(boxes)).any(), (width <= 0).any(), (height <= 0).any())
+    ).tolist()
+    if non_finite:
+        raise ValueError("Some boxes have non-finite coordinates.")
+    if bad_width:
+        raise ValueError("Some boxes have negative widths or 0.")
+    if bad_height:
+        raise ValueError("Some boxes have negative heights or 0.")
+
+
 def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> torch.Tensor:
     """Convert from boxes to quadrilaterals."""
     mode = mode.lower()
@@ -110,8 +130,14 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
     else:
         raise ValueError(f"Unknown mode {mode}")
 
-    boxes = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
+    boxes = _cast_to_floating_point(boxes)
     boxes = boxes if batched else boxes.unsqueeze(0)
+
+    # Value validation reads the data, which graph capture cannot do; skip it under export. The vertex modes check
+    # finiteness asynchronously so that they stay fullgraph-compilable.
+    # The coordinate modes check finiteness together with the extents below, in one host read.
+    if validate_boxes and not is_exporting() and boxes.numel() > 0 and mode.startswith("vertices"):
+        _check_async(torch.isfinite(boxes).all(), "Some boxes have non-finite coordinates.")
 
     if mode.startswith("vertices"):
         if mode == "vertices":
@@ -126,6 +152,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
             quadrilaterals = boxes.clone()
         else:
             raise ValueError(f"Unknown mode {mode}")
+
     elif mode.startswith("xy"):
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
@@ -136,14 +163,10 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        # Value validation reads the data, which graph capture cannot do; skip it under export.
-        if validate_boxes and not is_exporting():
-            if not torch.isfinite(boxes).all():
-                raise ValueError("Some boxes have non-finite coordinates.")
-            if (width <= 0).any():
-                raise ValueError("Some boxes have negative widths or 0.")
-            if (height <= 0).any():
-                raise ValueError("Some boxes have negative heights or 0.")
+        # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
+        # torch.export).
+        if validate_boxes and not is_compiling():
+            _validate_box_values(boxes, width, height)
 
         xmin, ymin = boxes[..., 0], boxes[..., 1]
         quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
@@ -187,17 +210,18 @@ class Boxes:
     r"""2D boxes containing N or BxN boxes.
 
     Args:
-        boxes: 2D boxes, shape of :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)` or a list of :math:`(N, 4, 2)`.
+        boxes: 2D boxes, shape of ``(N, 4, 2)``, ``(B, N, 4, 2)`` or a list of ``(N, 4, 2)``.
             See below for more details.
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a
             floating point tensor. True to raise an error when `boxes` isn't a floating point tensor, False
-            to cast to float.
+            to cast to ``float32``, or ``float64`` when that is the default dtype.
+            Floating-point input keeps its dtype.
         mode: Representation label reused as the default output mode by :meth:`to_tensor`. The constructor does not
             convert ``boxes``; use :meth:`from_tensor` to import another representation.
 
     Convention:
-        - A box is a quadrilateral of four floating-point ``(x, y)`` vertices, :math:`(N, 4, 2)` or
-          :math:`(B, N, 4, 2)`, built in clockwise top-left, top-right, bottom-right, bottom-left order;
+        - A box is a quadrilateral of four floating-point ``(x, y)`` vertices, ``(N, 4, 2)`` or
+          ``(B, N, 4, 2)``, built in clockwise top-left, top-right, bottom-right, bottom-left order;
           :meth:`transform_boxes` can make it an arbitrary (rotated) quadrilateral.
         - The stored form is **inclusive** (``'vertices_plus'``): ``width = xmax - xmin + 1``. The exclusive
           ``'xyxy'``, ``'xywh'`` and ``'vertices'`` modes are converted by :meth:`from_tensor` and
@@ -209,10 +233,14 @@ class Boxes:
         - :func:`~kornia.geometry.bbox.infer_bbox_shape` and :func:`~kornia.geometry.bbox.bbox_to_mask` read
           their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
-        - With ``validate_boxes=True``, the ``'xy*'`` modes reject a non-finite coordinate and non-positive
-          extents.
+        - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
+          ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
+          ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
+          ``fullgraph``-compilable, and take no extent or shape check, so the arbitrary quadrilaterals of
+          :meth:`transform_boxes` import unchanged.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
-          checked by its first element's dtype); :meth:`from_tensor` casts integer input to the default dtype.
+          checked by its first element's dtype); :meth:`from_tensor` casts integer input to ``float32``,
+          or ``float64`` when that is the default dtype.
         - :meth:`merge` and :meth:`index_put` are non-mutating by default.
 
     .. warning::
@@ -224,11 +252,12 @@ class Boxes:
         stored inclusive vertices, ``(width - 1) * (height - 1)``:
         `#4010 <https://github.com/kornia/kornia/issues/4010>`_. :func:`~kornia.geometry.bbox.nms` is exclusive:
         `#4008 <https://github.com/kornia/kornia/issues/4008>`_. :meth:`to_mask` and
-        :func:`~kornia.geometry.bbox.bbox_to_mask` take opposite size orders:
+        :func:`~kornia.geometry.bbox.bbox_to_mask` agree on ``(height, width)`` once that function is called with
+        ``size``; its deprecated ``width, height`` form takes the opposite order:
         `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input split is
-        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. Vertex modes are not validated and
-        ``'vertices'`` can deform the input: `#4177 <https://github.com/kornia/kornia/issues/4177>`_. ``trim``,
-        ``translate(method='fast')`` and tuple-bound ``clamp`` are unimplemented:
+        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. ``'vertices'`` subtracts the inclusive offset at
+        fixed vertex slots, so it deforms a quadrilateral that is not an axis-aligned rectangle in clockwise order:
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim`` was never implemented and is deprecated:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
     """
@@ -251,7 +280,7 @@ class Boxes:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
 
-            boxes = boxes.to(torch.get_default_dtype())
+            boxes = _cast_to_floating_point(boxes)
 
         if len(boxes.shape) == 0:
             boxes = boxes.reshape((-1, 4))
@@ -259,18 +288,31 @@ class Boxes:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
 
-        self._is_batched = False if boxes.ndim == 3 else True
+        self._is_batched = boxes.ndim != 3
 
         self._data = boxes
         self._mode = mode
+        # Filtering can leave holes; _N only describes trailing list padding.
+        self._valid = torch.ones(boxes.shape[:-2], device=boxes.device, dtype=torch.bool)
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        if "_valid" not in state:  # pickled before filtering kept validity: every box is valid
+            self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
         new_box._mode = self._mode
+        new_box._valid = self._valid[key]
+        # Select padding metadata with the same key as the box batch, including boolean masks.
+        if self._N is not None:
+            selected = torch.as_tensor(self._N, device=self._data.device)[key]
+            new_box._N = None if selected.ndim == 0 else [int(n) for n in selected]
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
         self._data[key] = value._data
+        self._valid[key] = value._valid
         return self
 
     @property
@@ -279,9 +321,9 @@ class Boxes:
 
         Returns:
             Shape of :attr:`data`. For unbatched boxes this is usually
-            :math:`(N, 4, 2)`, where :math:`N` is the number of boxes, ``4``
+            ``(N, 4, 2)``, where :math:`N` is the number of boxes, ``4``
             is the number of corner vertices, and ``2`` stores ``(x, y)``.
-            For batched boxes the shape is usually :math:`(B, N, 4, 2)`, where
+            For batched boxes the shape is usually ``(B, N, 4, 2)``, where
             :math:`B` is the batch size.
         """
         return self.data.shape
@@ -292,8 +334,8 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Returns:
-            - Boxes heights, shape of :math:`(N,)` or :math:`(B,N)`.
-            - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
+            - Boxes heights, shape of ``(N,)`` or ``(B,N)``.
+            - Boxes widths, shape of ``(N,)`` or ``(B,N)``.
 
         Example:
             >>> boxes_xyxy = torch.tensor([[[1,1,2,2],[1,1,3,2]]])
@@ -311,13 +353,13 @@ class Boxes:
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
-        For batched boxes, if the current instance holds :math:`(B, N, 4, 2)` and
-        the incoming boxes holds :math:`(B, M, 4, 2)`, the merge results in
-        :math:`(B, N + M, 4, 2)`.
+        For batched boxes, if the current instance holds ``(B, N, 4, 2)`` and
+        the incoming boxes holds ``(B, M, 4, 2)``, the merge results in
+        ``(B, N + M, 4, 2)``.
 
-        For unbatched boxes, if the current instance holds :math:`(N, 4, 2)` and
-        the incoming boxes holds :math:`(M, 4, 2)`, the merge results in
-        :math:`(N + M, 4, 2)`.
+        For unbatched boxes, if the current instance holds ``(N, 4, 2)`` and
+        the incoming boxes holds ``(M, 4, 2)``, the merge results in
+        ``(N + M, 4, 2)``.
 
         Args:
             boxes: 2D boxes.
@@ -351,18 +393,34 @@ class Boxes:
                     for i, (self_pad, boxes_pad) in enumerate(zip(self_padding, boxes_padding))
                 ]
             )
+            valid = torch.stack(
+                [
+                    torch.cat(
+                        [
+                            self._valid[i, : self._valid.shape[-1] - self_pad],
+                            boxes._valid[i, : boxes._valid.shape[-1] - boxes_pad],
+                            self._valid[i, self._valid.shape[-1] - self_pad :],
+                            boxes._valid[i, boxes._valid.shape[-1] - boxes_pad :],
+                        ]
+                    )
+                    for i, (self_pad, boxes_pad) in enumerate(zip(self_padding, boxes_padding))
+                ]
+            )
             padding = [self_pad + boxes_pad for self_pad, boxes_pad in zip(self_padding, boxes_padding)]
         else:
             data = torch.cat([self._data, boxes.data], dim=-3)
+            valid = torch.cat([self._valid, boxes._valid], dim=-1)
 
         if inplace:
             self._data = data
             self._N = padding
+            self._valid = valid
             return self
 
         obj = self.clone()
         obj._data = data
         obj._N = padding
+        obj._valid = valid
         return obj
 
     def index_put(
@@ -382,9 +440,10 @@ class Boxes:
         Args:
             indices: Index tuple or list accepted by ``Tensor.index_put_``.
                 The indices address entries in the stored tensor, commonly
-                shaped :math:`(B, N, 4, 2)` or :math:`(N, 4, 2)`.
+                shaped ``(B, N, 4, 2)`` or ``(N, 4, 2)``.
             values: Replacement coordinates. If a :class:`Boxes` object is
-                passed, its :attr:`data` tensor is used.
+                passed, its coordinates and filtering validity are copied. Raw tensor writes
+                change only coordinates and preserve the existing filtering validity.
             inplace: If ``True``, update this object and return ``self``. If
                 ``False``, clone the current data first and return a new
                 :class:`Boxes` instance.
@@ -392,21 +451,12 @@ class Boxes:
         Returns:
             :class:`Boxes` containing the updated coordinates.
         """
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
-
+        obj = self if inplace else self.clone()
         if isinstance(values, Boxes):
-            _data.index_put_(indices, values.data)
+            obj._data.index_put_(indices, values.data)
+            obj._valid.index_put_(indices, values._valid)
         else:
-            _data.index_put_(indices, values)
-
-        if inplace:
-            return self
-
-        obj = self.clone()
-        obj._data = _data
+            obj._data.index_put_(indices, values)
         return obj
 
     def _broadcast_over_vertices(self, values: torch.Tensor) -> torch.Tensor:
@@ -433,19 +483,13 @@ class Boxes:
         ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
         ``left`` and ``top`` change the coordinate origin; this method returns
         ``self`` after adding those two values to every vertex. Both the batched
-        :math:`(B, N, 4, 2)` and the unbatched :math:`(N, 4, 2)` container are
+        ``(B, N, 4, 2)`` and the unbatched ``(N, 4, 2)`` container are
         supported; the unbatched form carries a single image, so ``padding_size``
         must have exactly one row.
 
-        Note:
-            Padded :class:`~kornia.augmentation.RandomCrop` routes bounding boxes
-            through this method, and so accepts either container: a rank-3
-            :math:`(B, N, 4)` ``bbox`` builds a batched one, and a rank-2
-            :math:`(N, 4)` ``bbox`` for a single image builds an unbatched one.
-
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
-                order, shaped :math:`(B, 4)`. A single row broadcasts across the
+                order, shaped ``(B, 4)``. A single row broadcasts across the
                 batch.
 
         """
@@ -464,13 +508,13 @@ class Boxes:
         ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
         ``left`` and ``top`` change the coordinate origin; this method returns
         ``self`` after subtracting those two values from every vertex. Both the
-        batched :math:`(B, N, 4, 2)` and the unbatched :math:`(N, 4, 2)` container
+        batched ``(B, N, 4, 2)`` and the unbatched ``(N, 4, 2)`` container
         are supported; the unbatched form carries a single image, so
         ``padding_size`` must have exactly one row.
 
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
-                order, shaped :math:`(B, 4)`. A single row broadcasts across the
+                order, shaped ``(B, 4)``. A single row broadcasts across the
                 batch.
 
         """
@@ -483,8 +527,8 @@ class Boxes:
 
     def clamp(
         self,
-        topleft: Optional[torch.Tensor | tuple[int, int]] = None,
-        botright: Optional[torch.Tensor | tuple[int, int]] = None,
+        topleft: Optional[torch.Tensor] = None,
+        botright: Optional[torch.Tensor] = None,
         inplace: bool = False,
     ) -> Boxes:
         """Clamp every box vertex inside per-image coordinate limits.
@@ -497,10 +541,10 @@ class Boxes:
             outside the bounds collapses onto the boundary instead of being removed.
 
         Args:
-            topleft: Tensor of shape :math:`(B, 2)` containing the minimum
+            topleft: Required tensor of shape ``(B, 2)`` containing the minimum
                 ``x`` and ``y`` coordinate allowed for each batch item. A single
                 row broadcasts across the batch.
-            botright: Tensor of shape :math:`(B, 2)` containing the maximum
+            botright: Required tensor of shape ``(B, 2)`` containing the maximum
                 ``x`` and ``y`` coordinate allowed for each batch item. A single
                 row broadcasts across the batch.
             inplace: If ``True``, clamp this object in place. Otherwise, return
@@ -515,10 +559,7 @@ class Boxes:
                 "`Boxes.clamp` accepts `topleft` and `botright` as `(B, 2)` torch.Tensor bounds; "
                 f"got topleft={type(topleft).__name__} and botright={type(botright).__name__}."
             )
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        _data = self._data if inplace else self._data.clone()
         # Broadcast the per-image bounds rather than materialising them at the data's shape: the
         # masked assignment this replaces needed a bound tensor of exactly the mask's shape, which
         # is what tied it to the batched (B, N, 4) indexing. ``torch.where`` on the same comparison
@@ -544,7 +585,7 @@ class Boxes:
         return obj
 
     def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> Boxes:
-        """Raise because trimming padded boxes is not implemented.
+        """Deprecated since 0.9.1 and never implemented: raises ``NotImplementedError``.
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
@@ -556,6 +597,9 @@ class Boxes:
             NotImplementedError: Always.
 
         """
+        _emit_deprecation_warning(
+            "Boxes.trim", None, "0.9.1", "It has never been implemented and raises NotImplementedError (kornia#4017)."
+        )
         raise NotImplementedError("`Boxes.trim` is not implemented.")
 
     def filter_boxes_by_area(
@@ -569,7 +613,8 @@ class Boxes:
         ``min_area`` or larger than ``max_area`` are not dropped from the
         tensor; their coordinates are replaced with zeros so the original batch
         and box dimensions stay unchanged. See :meth:`compute_area` for the
-        area convention used by the thresholds.
+        area convention used by the thresholds. Filtered boxes export as exact zeros in every
+        mode and draw no mask pixels, including after subsequent coordinate transforms.
 
         Args:
             min_area: Optional lower inclusive area threshold. Boxes with area
@@ -584,19 +629,15 @@ class Boxes:
             out-of-range boxes replaced by zero coordinates.
         """
         area = self.compute_area()
-        if inplace:
-            _data = self._data
-        else:
-            _data = self._data.clone()
+        keep = torch.ones_like(area, dtype=torch.bool)
         if min_area is not None:
-            _data[area < min_area] = 0.0
+            keep &= ~(area < min_area)
         if max_area is not None:
-            _data[area > max_area] = 0.0
-        if inplace:
-            return self
-
-        obj = self.clone()
-        obj._data = _data
+            keep &= ~(area > max_area)
+        obj = self if inplace else self.clone()
+        obj._valid &= keep
+        if min_area is not None or max_area is not None:
+            obj._data.masked_fill_(~keep[..., None, None], 0.0)
         return obj
 
     def compute_area(self) -> torch.Tensor:
@@ -612,9 +653,9 @@ class Boxes:
             ``width * height`` of :meth:`get_boxes_shape`: `#4010 <https://github.com/kornia/kornia/issues/4010>`_.
 
         Returns:
-            Area for each box, shaped :math:`(N,)` or :math:`(B, N)`.
+            Area for each box, shaped ``(N,)`` or ``(B, N)``.
         """
-        coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
+        coords = self._data.flatten(0, 1) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
         # calculate the angle from centroid to each corner
@@ -629,33 +670,35 @@ class Boxes:
         return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
 
     @classmethod
-    def from_tensor(
-        cls, boxes: torch.Tensor | list[torch.Tensor], mode: str = "xyxy", validate_boxes: bool = True
-    ) -> Boxes:
+    def from_tensor(cls, boxes: torch.Tensor | list, mode: str = "xyxy", validate_boxes: bool = True) -> Boxes:
         r"""Create :class:`Boxes` from boxes stored in another format.
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Args:
-            boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or
-                :math:`(B, N, 4, 2)`, or a list of :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``.
+            boxes: 2D boxes, shape of ``(N, 4)``, ``(B, N, 4)``, ``(N, 4, 2)`` or
+                ``(B, N, 4, 2)``, a nested numeric list with one of those shapes, or a list of
+                ``(N, 4)`` or ``(N, 4, 2)`` tensors matching ``mode``. Integer input is cast to ``float32``,
+                or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
             mode: The format in which the boxes are provided:
 
-                * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent. With shape :math:`(N, 4)`,
-                  :math:`(B, N, 4)`.
-                * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent. With shape :math:`(N, 4)`,
-                  :math:`(B, N, 4)`.
-                * 'xywh': ``xmin, ymin, width, height`` with exclusive extent. With shape :math:`(N, 4)`,
-                  :math:`(B, N, 4)`.
+                * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent. With shape ``(N, 4)``,
+                  ``(B, N, 4)``.
+                * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent. With shape ``(N, 4)``,
+                  ``(B, N, 4)``.
+                * 'xywh': ``xmin, ymin, width, height`` with exclusive extent. With shape ``(N, 4)``,
+                  ``(B, N, 4)``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. This is
-                  the exclusive input form. With shape :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)`.
-                * 'vertices_plus': the inclusive stored vertex form. With shape :math:`(N, 4, 2)`,
-                  :math:`(B, N, 4, 2)`.
+                  the exclusive input form. With shape ``(N, 4, 2)``, ``(B, N, 4, 2)``.
+                * 'vertices_plus': the inclusive stored vertex form. With shape ``(N, 4, 2)``,
+                  ``(B, N, 4, 2)``.
 
-            validate_boxes: For the ``'xy*'`` modes, reject a non-finite coordinate and non-positive extents in
-                each mode's convention. The vertex modes are not validated; see the warning on
-                :class:`~kornia.geometry.boxes.Boxes`.
+            validate_boxes: Reject a non-finite coordinate in every mode: ``ValueError`` for the ``'xy*'`` modes,
+                which also reject non-positive extents in each mode's convention, and ``RuntimeError`` from
+                ``torch._assert_async`` for the vertex modes, which take no extent or shape check.
+                The ``'xy*'`` checks read the data, so graph capture (``torch.compile``, ``torch.export``) skips
+                them.
 
         Returns:
             :class:`Boxes` containing the converted inclusive vertex representation.
@@ -678,8 +721,15 @@ class Boxes:
         quadrilaterals: torch.Tensor | list[torch.Tensor]
         if isinstance(boxes, torch.Tensor):
             quadrilaterals = _boxes_to_quadrilaterals(boxes, mode=mode, validate_boxes=validate_boxes)
-        else:
+        elif len(boxes) == 0:
+            # An empty list holds no boxes, like an empty (0, 4) or (0, 4, 2) tensor; converting one checks ``mode``.
+            empty = torch.zeros(0, 4, 2) if mode.lower().startswith("vertices") else torch.zeros(0, 4)
+            quadrilaterals = _boxes_to_quadrilaterals(empty, mode=mode, validate_boxes=validate_boxes)
+        elif isinstance(boxes[0], torch.Tensor):
             quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes) for box in boxes]
+        else:
+            # A nested numeric list converts as the tensor it spells.
+            quadrilaterals = _boxes_to_quadrilaterals(torch.as_tensor(boxes), mode=mode, validate_boxes=validate_boxes)
 
         return cls(quadrilaterals, False, mode)
 
@@ -712,15 +762,15 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form.
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
-                Indexing with ``[]`` drops the list metadata, so a sliced object always returns the padded tensor;
-                see `#4179 <https://github.com/kornia/kornia/issues/4179>`_.
+                Batch slicing, index tensors, and boolean masks preserve the list metadata. Selecting a single
+                batch element with an integer or scalar tensor returns an unbatched object without list metadata.
 
         Returns:
             Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
             ``as_padded_sequence=False``. The tensor shape depends on the ``mode`` value:
 
-                * 'vertices' or 'vertices_plus': :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-                * Any other value: :math:`(N, 4)` or :math:`(B, N, 4)`.
+                * 'vertices' or 'vertices_plus': ``(N, 4, 2)`` or ``(B, N, 4, 2)``.
+                * Any other value: ``(N, 4)`` or ``(B, N, 4)``.
 
         Examples:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
@@ -758,6 +808,10 @@ class Boxes:
         if mode.startswith("vertices"):
             boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
 
+        valid = self._valid if self._is_batched else self._valid.unsqueeze(0)
+        valid = valid.reshape(valid.shape + (1,) * (boxes.ndim - valid.ndim))
+        boxes = boxes.masked_fill(~valid, 0.0)
+
         if self._N is not None and not as_padded_sequence:
             boxes = [torch.nn.functional.pad(o, (len(o.shape) - 1) * [0, 0] + [0, -n]) for o, n in zip(boxes, self._N)]
         else:
@@ -777,8 +831,9 @@ class Boxes:
             ``RuntimeError``.
 
         .. warning::
-            :func:`~kornia.geometry.bbox.bbox_to_mask` takes ``(width, height)``
-            (`#4014 <https://github.com/kornia/kornia/issues/4014>`_) and does not round, so a fractional box can
+            :func:`~kornia.geometry.bbox.bbox_to_mask` takes ``(height, width)`` through its ``size`` argument,
+            like this method (`#4014 <https://github.com/kornia/kornia/issues/4014>`_); its deprecated
+            ``width, height`` form takes the opposite order. It also does not round, so a fractional box can
             fill a different area (`#4015 <https://github.com/kornia/kornia/issues/4015>`_).
 
         Args:
@@ -828,8 +883,11 @@ class Boxes:
         # -----------------
         # CPU Hotpath (loop)
         # -----------------
-        # The loop slices with data-dependent bounds, which graph capture cannot do; export takes the vectorized path.
-        if device.type != "cuda" and not is_exporting():
+        # The loop slices with data-dependent bounds, which graph capture cannot do; any capture (torch.compile,
+        # torch.export) takes the vectorized path, which fills the same mask. So does the legacy ONNX exporter, which
+        # traces outside ``is_compiling()``: it loses the loop's in-place writes into the mask and exports a constant
+        # all-zero mask with no graph input.
+        if device.type != "cuda" and not is_compiling() and not torch.jit.is_tracing():
             if self._is_batched:  # (B, N, 4, 2)
                 mask = torch.zeros(
                     (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
@@ -837,11 +895,10 @@ class Boxes:
             else:  # (N, 4, 2)
                 mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
 
-            # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
+            # Flatten mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them. ``flatten`` rather than
+            # ``view(-1, height, width)``, which cannot infer BxN when a side of the image is 0.
             # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-            for mask_channel, box_xyxy in zip(
-                mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()
-            ):
+            for mask_channel, box_xyxy in zip(mask.flatten(0, -3), clipped_boxes_xyxy.view(-1, 4).round().int()):
                 # Mask channel dimensions: (height, width)
                 mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
 
@@ -851,10 +908,7 @@ class Boxes:
         # GPU Hotpath (vectorized)
         # -----------------
         out_shape: Tuple[int, ...]
-        if is_batched:
-            out_shape = (self.shape[0], self.shape[1], height, width)
-        else:
-            out_shape = (self.shape[0], height, width)
+        out_shape = (self.shape[0], self.shape[1], height, width) if is_batched else (self.shape[0], height, width)
 
         xyxy = clipped_boxes_xyxy.view(-1, 4).round().long()
 
@@ -879,7 +933,7 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Args:
-            M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
+            M: The transformation matrix to be applied, shape of ``(3, 3)`` or ``(B, 3, 3)``.
             inplace: do transform in-place and return self.
 
         Returns:
@@ -918,24 +972,20 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         ``size`` supplies one ``(x, y)`` translation per batch item. Only the
-        ``"warp"`` method is implemented; ``"fast"`` raises
+        ``"warp"`` method is supported; any other method raises
         :class:`NotImplementedError`.
 
         Args:
-            size: translate size for x, y direction, shape of :math:`(B, 2)`.
-            method: "warp" or "fast".
+            size: translate size for x, y direction, shape of ``(B, 2)``.
+            method: only "warp" is supported.
             inplace: do transform in-place and return self.
 
         Returns:
             The transformed boxes.
 
         """
-        if method == "fast":
-            raise NotImplementedError(
-                "`Boxes.translate(method='fast')` is not implemented; use `method='warp'` instead."
-            )
         if method != "warp":
-            raise NotImplementedError
+            raise NotImplementedError(f"`Boxes.translate` accepts `method='warp'`; got method={method!r}.")
 
         M: torch.Tensor = eye_like(3, size)
         M[:, :2, 2] = size
@@ -947,8 +997,8 @@ class Boxes:
 
         Returns:
             Tensor storing four vertices per box in ``(x, y)`` order. The
-            common shapes are :math:`(N, 4, 2)` for unbatched boxes and
-            :math:`(B, N, 4, 2)` for batched boxes, where :math:`B` is batch
+            common shapes are ``(N, 4, 2)`` for unbatched boxes and
+            ``(B, N, 4, 2)`` for batched boxes, where :math:`B` is batch
             size and :math:`N` is the number of boxes.
         """
         return self._data
@@ -980,6 +1030,7 @@ class Boxes:
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
         self._data = self._data.to(device=device, dtype=dtype)
+        self._valid = self._valid.to(device=self._data.device)
         return self
 
     def clone(self) -> Boxes:
@@ -993,6 +1044,7 @@ class Boxes:
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
+        obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         return obj
 
@@ -1006,6 +1058,7 @@ class Boxes:
             ``self`` after converting :attr:`data` in place.
         """
         self._data = self._data.type(dtype)
+        self._valid = self._valid.to(device=self._data.device)
         return self
 
 
@@ -1013,7 +1066,7 @@ class VideoBoxes(Boxes):
     r"""2D boxes with an explicit temporal channel for video sequences.
 
     Accepts and returns box corners for a batch of videos as
-    :math:`(B, T, N, 4, 2)` in ``vertices_plus`` mode. Internally the corners
+    ``(B, T, N, 4, 2)`` in ``vertices_plus`` mode. Internally the corners
     are stored flattened as :math:`(B \cdot T, N, 4, 2)`.
     :class:`~kornia.augmentation.AugmentationSequential` uses this wrapper when
     the pipeline contains a video sequential so that ``to_tensor`` restores the
@@ -1022,21 +1075,21 @@ class VideoBoxes(Boxes):
     See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
     Convention:
-        - :meth:`from_tensor` stores :math:`(B, T, N, 4, 2)` input unchanged as :math:`(B \cdot T, N, 4, 2)`
-          ``'vertices_plus'`` data, with no mode, conversion or validation; integer input is cast to the default
-          dtype, and another shape or a list raises ``ValueError``.
+        - :meth:`from_tensor` stores ``(B, T, N, 4, 2)`` input unchanged as :math:`(B \cdot T, N, 4, 2)`
+          ``'vertices_plus'`` data, with no mode or conversion; integer input is cast to ``float32``,
+          or ``float64`` when that is the default dtype. Another shape or a list raises ``ValueError``.
+          ``validate_boxes=True`` rejects a non-finite coordinate as
+          :meth:`Boxes.from_tensor` does for ``'vertices_plus'``.
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
-          (``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`).
-        - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a :math:`(3, 3)` matrix raises ``ValueError``
+          (``to_tensor('xyxy')`` is ``(B, T, N, 4)``).
+        - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
+          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`. Index
+          assignment, ``video_boxes[key] = other``, writes the same whole videos.
+        - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a ``(3, 3)`` matrix raises ``ValueError``
           unless :math:`B \cdot T = 1`.
         - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area` and
           :meth:`merge` return a new :class:`VideoBoxes`; :meth:`pad`, :meth:`unpad`, :meth:`to` and
           :meth:`type` update ``self`` in place.
-
-    .. warning::
-        Indexing returns a wrapper without :attr:`temporal_channel_size`, so its :meth:`to_tensor` raises
-        ``AttributeError``: `#4249 <https://github.com/kornia/kornia/issues/4249>`_. ``validate_boxes`` is inert:
-        `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
 
     Attributes:
         temporal_channel_size: Number of frames :math:`T` stored with the boxes.
@@ -1046,19 +1099,19 @@ class VideoBoxes(Boxes):
     temporal_channel_size: int
 
     @classmethod
-    def from_tensor(  # type: ignore[override]
-        cls, boxes: torch.Tensor | list[torch.Tensor], validate_boxes: bool = True
-    ) -> VideoBoxes:
+    def from_tensor(cls, boxes: torch.Tensor | list[torch.Tensor], validate_boxes: bool = True) -> VideoBoxes:
         r"""Create :class:`VideoBoxes` from a video box tensor.
 
         Args:
-            boxes: Box corners with shape :math:`(B, T, N, 4, 2)` in
+            boxes: Box corners with shape ``(B, T, N, 4, 2)`` in
                 ``vertices_plus`` order (top-left, top-right, bottom-right,
                 bottom-left), stored unchanged; integer input is cast to
-                ``torch.get_default_dtype()``. Lists of tensors are not supported yet.
-            validate_boxes: Forwarded to ``_boxes_to_quadrilaterals``. The
-                ``vertices_plus`` path used here builds corners directly and
-                performs no size check, so this flag currently has no effect.
+                ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
+                Lists of tensors are not supported yet.
+            validate_boxes: Reject a non-finite coordinate with ``RuntimeError``
+                (``torch._assert_async``). There is no extent or shape
+                check, as for ``'vertices_plus'`` in
+                :meth:`~kornia.geometry.boxes.Boxes.from_tensor`.
 
         Returns:
             :class:`VideoBoxes` with :attr:`temporal_channel_size` set to
@@ -1066,7 +1119,7 @@ class VideoBoxes(Boxes):
 
         Raises:
             ValueError: If ``boxes`` is a list or does not have shape
-                :math:`(B, T, N, 4, 2)`.
+                ``(B, T, N, 4, 2)``.
         """
         if isinstance(boxes, (list,)) or (boxes.dim() != 5 or boxes.shape[-2:] != torch.Size([4, 2])):
             raise ValueError("Input box type is not yet supported. Please input an `BxTxNx4x2` tensor directly.")
@@ -1074,13 +1127,41 @@ class VideoBoxes(Boxes):
         temporal_channel_size = boxes.size(1)
 
         quadrilaterals = _boxes_to_quadrilaterals(
-            boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3), boxes.size(4)),
+            boxes.reshape(boxes.size(0) * boxes.size(1), boxes.size(2), boxes.size(3), boxes.size(4)),
             mode="vertices_plus",
             validate_boxes=validate_boxes,
         )
         out = cls(quadrilaterals, False, "vertices_plus")
         out.temporal_channel_size = temporal_channel_size
         return out
+
+    def __getitem__(self, key: slice | int | torch.Tensor) -> VideoBoxes:
+        r"""Select videos while preserving the temporal axis.
+
+        An integer or scalar tensor keeps a singleton video-batch dimension. Slices, integer tensors, and boolean
+        tensors follow the corresponding PyTorch indexing behavior on the video-batch axis.
+        """
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        video_data = self._data.view(batch_size, self.temporal_channel_size, *self._data.shape[1:])
+        selected = video_data[key]
+        if selected.ndim == self._data.ndim:
+            selected = selected.unsqueeze(0)
+
+        out = type(self)(selected.flatten(0, 1), False)
+        out._mode = self._mode
+        selected_valid = self._valid.view(batch_size, self.temporal_channel_size, self._valid.shape[-1])[key]
+        out._valid = selected_valid.reshape(out._data.shape[:-2])
+        out.temporal_channel_size = self.temporal_channel_size
+        return out
+
+    def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> VideoBoxes:
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`."""
+        size = self.temporal_channel_size
+        # Explicit video counts: a clip with no boxes has 0 elements, so a -1 in the view would be ambiguous.
+        n, m = self._data.shape[0] // size, value.data.shape[0] // size
+        self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
+        self._valid.view(n, size, self._valid.shape[-1])[key] = value._valid.view(m, size, value._valid.shape[-1])
+        return self
 
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False
@@ -1092,7 +1173,7 @@ class VideoBoxes(Boxes):
                 ``None``, uses the stored mode (``vertices_plus`` by default).
             as_padded_sequence: Forwarded to :meth:`Boxes.to_tensor`. It only
                 changes the result of a list-backed container; a
-                :class:`VideoBoxes` built from a :math:`(B, T, N, 4, 2)` tensor
+                :class:`VideoBoxes` built from a ``(B, T, N, 4, 2)`` tensor
                 is not list-backed, so the value makes no difference there. The
                 keyword is accepted because the inherited :meth:`get_boxes_shape`
                 and :meth:`to_mask` pass it.
@@ -1102,8 +1183,9 @@ class VideoBoxes(Boxes):
             :attr:`temporal_channel_size`.
         """
         out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
+        batch_size = self._data.shape[0] // self.temporal_channel_size
         if isinstance(out, torch.Tensor):
-            return out.view(-1, self.temporal_channel_size, *out.shape[1:])
+            return out.reshape(batch_size, self.temporal_channel_size, *out.shape[1:])
         # If returns a list of boxes.
         return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
 
@@ -1117,6 +1199,7 @@ class VideoBoxes(Boxes):
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
+        obj._valid = self._valid.clone()
         obj._is_batched = self._is_batched
         obj.temporal_channel_size = self.temporal_channel_size
         return obj
@@ -1126,18 +1209,19 @@ class Boxes3D:
     r"""3D boxes containing N or BxN boxes.
 
     Args:
-        boxes: 3D boxes, shape of :math:`(N,8,3)` or :math:`(B,N,8,3)`. See below for more details.
+        boxes: 3D boxes, shape of ``(N,8,3)`` or ``(B,N,8,3)``. See below for more details.
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
-            point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
+            point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to
+            ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
         mode: Representation label reported by :attr:`mode`. The constructor does not convert ``boxes`` and
             :meth:`to_tensor` does not consult the label; use :meth:`from_tensor` to import another representation.
 
     Convention:
         - A box is a `hexahedron <https://en.wikipedia.org/wiki/Hexahedron>`_ of eight floating-point
-          ``(x, y, z)`` vertices, :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`: front-top-left, front-top-right,
+          ``(x, y, z)`` vertices, ``(N, 8, 3)`` or ``(B, N, 8, 3)``: front-top-left, front-top-right,
           front-bottom-right, front-bottom-left, then the same four back vertices.
         - The stored form is **inclusive** (``depth = zmax - zmin + 1``), as for :class:`Boxes`. :meth:`from_tensor`
-          takes :math:`(N, 6)` or :math:`(B, N, 6)` in ``'xyzxyz'``, ``'xyzwhd'`` (exclusive) or
+          takes ``(N, 6)`` or ``(B, N, 6)`` in ``'xyzxyz'``, ``'xyzwhd'`` (exclusive) or
           ``'xyzxyz_plus'``; the vertex modes exist for :meth:`to_tensor` only. Modes are case-insensitive.
         - :meth:`to_tensor` exports the ``amin``/``amax`` axis-aligned bounding box and defaults to ``'xyzxyz'``
           whatever the stored label.
@@ -1147,7 +1231,8 @@ class Boxes3D:
         - With ``validate_boxes=True``, :meth:`from_tensor` rejects a non-finite coordinate and extents that are
           not positive in the given mode (``xmax == xmin`` fails in ``'xyzxyz'``, passes in ``'xyzxyz_plus'``).
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``;
-          :meth:`from_tensor` casts integer input to the default dtype.
+          :meth:`from_tensor` casts integer input to ``float32``,
+          or ``float64`` when that is the default dtype.
         - :meth:`transform_boxes` returns a new object labelled ``'xyzxyz_plus'``; :meth:`transform_boxes_`
           rebinds the internal tensor of ``self`` and keeps the label.
 
@@ -1156,9 +1241,7 @@ class Boxes3D:
         export trap `#4009 <https://github.com/kornia/kornia/issues/4009>`_. The integer-input split is
         `#4012 <https://github.com/kornia/kornia/issues/4012>`_ and the validator split with
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
-        Boxes from :func:`~kornia.geometry.bbox.bbox_generator3d` measure one larger than requested:
-        `#4018 <https://github.com/kornia/kornia/issues/4018>`_. The :meth:`to_tensor` default differs from
-        :meth:`Boxes.to_tensor`, which defaults to the stored mode:
+        The :meth:`to_tensor` default differs from :meth:`Boxes.to_tensor`, which defaults to the stored mode:
         `#4251 <https://github.com/kornia/kornia/issues/4251>`_.
 
     """
@@ -1173,7 +1256,7 @@ class Boxes3D:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}.")
 
-            boxes = boxes.to(torch.get_default_dtype())
+            boxes = _cast_to_floating_point(boxes)
 
         if len(boxes.shape) == 0:
             boxes = boxes.reshape((-1, 6))
@@ -1181,7 +1264,7 @@ class Boxes3D:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (8, 3)):
             raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
-        self._is_batched = False if boxes.ndim == 3 else True
+        self._is_batched = boxes.ndim != 3
 
         self._data = boxes
         self._mode = mode
@@ -1201,9 +1284,9 @@ class Boxes3D:
 
         Returns:
             Shape of :attr:`data`. For unbatched boxes this is usually
-            :math:`(N, 8, 3)`, where :math:`N` is the number of boxes, ``8`` is
+            ``(N, 8, 3)``, where :math:`N` is the number of boxes, ``8`` is
             the number of cuboid corners, and ``3`` stores ``(x, y, z)``. For
-            batched boxes the shape is usually :math:`(B, N, 8, 3)`.
+            batched boxes the shape is usually ``(B, N, 8, 3)``.
         """
         return self.data.shape
 
@@ -1213,9 +1296,9 @@ class Boxes3D:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes3D`.
 
         Returns:
-            - Boxes depths, shape of :math:`(N,)` or :math:`(B,N)`.
-            - Boxes heights, shape of :math:`(N,)` or :math:`(B,N)`.
-            - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
+            - Boxes depths, shape of ``(N,)`` or ``(B,N)``.
+            - Boxes heights, shape of ``(N,)`` or ``(B,N)``.
+            - Boxes widths, shape of ``(N,)`` or ``(B,N)``.
 
         Example:
             >>> boxes_xyzxyz = torch.tensor([[ 0,  1,  2, 10, 21, 32], [3, 4, 5, 43, 54, 65]])
@@ -1235,8 +1318,8 @@ class Boxes3D:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes3D`.
 
         Args:
-            boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`. Integer input is cast to
-                ``torch.get_default_dtype()``.
+            boxes: 3D boxes, shape of ``(N,6)`` or ``(B,N,6)``. Integer input is cast to
+                ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
             mode: The format in which the 3D boxes are provided, matched case-insensitively.
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
@@ -1248,7 +1331,8 @@ class Boxes3D:
 
             validate_boxes: reject boxes with a non-finite coordinate, and boxes whose width, height or depth
                 is not positive when measured in the given mode's convention, so ``xmax == xmin`` is rejected in
-                ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``.
+                ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``. The checks read the data, so graph capture
+                (``torch.compile``, ``torch.export``) skips them.
 
         Returns:
             :class:`Boxes3D` containing the converted inclusive vertex representation, labelled with ``mode``.
@@ -1281,7 +1365,7 @@ class Boxes3D:
 
         batched = boxes.ndim == 3
         boxes = boxes if batched else boxes.unsqueeze(0)
-        boxes = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
+        boxes = _cast_to_floating_point(boxes)
 
         xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
         mode = mode.lower()
@@ -1298,8 +1382,9 @@ class Boxes3D:
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        # Value validation reads the data, which graph capture cannot do; skip it under export.
-        if validate_boxes and not is_exporting():
+        # Value validation reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
+        # torch.export).
+        if validate_boxes and not is_compiling():
             if not torch.isfinite(boxes).all():
                 raise ValueError("Some boxes have non-finite coordinates.")
             if (width <= 0).any():
@@ -1344,8 +1429,8 @@ class Boxes3D:
         Returns:
             3D Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
 
-                * 'vertices' or 'vertices_plus': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
-                * Any other value: :math:`(N, 6)` or :math:`(B, N, 6)`.
+                * 'vertices' or 'vertices_plus': ``(N, 8, 3)`` or ``(B, N, 8, 3)``.
+                * Any other value: ``(N, 6)`` or ``(B, N, 6)``.
 
         Note:
             The ``amin``/``amax`` reduction ties on every face of an axis-aligned box (4 vertices share each
@@ -1479,9 +1564,11 @@ class Boxes3D:
         # Cast boxes coordinates to be integer to use them as bounds. Use round to handle decimal values.
         xyzxyz = clipped_boxes_xyzxyz.view(-1, 6).round().long()
 
-        if is_exporting():
-            # The loop below slices with data-dependent bounds, which graph capture cannot do; compare a
-            # coordinate grid against the bounds instead.
+        if is_compiling() or torch.jit.is_tracing():
+            # The loop below slices with data-dependent bounds, which graph capture (torch.compile, torch.export)
+            # cannot do; compare a coordinate grid against the bounds instead, which fills the same mask. The legacy
+            # ONNX exporter traces outside ``is_compiling()`` and loses the loop's in-place writes, exporting a
+            # constant all-zero mask.
             device = self._data.device
             zs = torch.arange(depth, device=device)
             ys = torch.arange(height, device=device)
@@ -1492,8 +1579,9 @@ class Boxes3D:
             masks = z_mask[:, :, None, None] & y_mask[:, None, :, None] & x_mask[:, None, None, :]
             return masks.to(mask.dtype).view(mask.shape)
 
-        # Reshape mask to (BxN, D, H, W) and boxes to (BxN, 6) to iterate over all of them.
-        for mask_channel, box_xyzxyz in zip(mask.view(-1, depth, height, width), xyzxyz):
+        # Flatten mask to (BxN, D, H, W) to iterate over the (BxN, 6) boxes. ``flatten`` rather than
+        # ``view(-1, depth, height, width)``, which cannot infer BxN when a side of the volume is 0.
+        for mask_channel, box_xyzxyz in zip(mask.flatten(0, -4), xyzxyz):
             # Mask channel dimensions: (depth, height, width)
             mask_channel[
                 box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]
@@ -1507,7 +1595,7 @@ class Boxes3D:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes3D`.
 
         Args:
-            M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`, where ``B``
+            M: The transformation matrix to be applied, shape of ``(4, 4)`` or ``(B, 4, 4)``, where ``B``
                 must equal the box batch size and an unbatched box counts as one.
             inplace: do transform in-place and return self.
 
@@ -1546,7 +1634,7 @@ class Boxes3D:
 
         Returns:
             Tensor containing eight 3D corner coordinates per box, usually
-            shaped :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
+            shaped ``(N, 8, 3)`` or ``(B, N, 8, 3)``.
         """
         return self._data
 

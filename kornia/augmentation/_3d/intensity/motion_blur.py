@@ -21,15 +21,16 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur3d
 
 
 class RandomMotionBlur3D(IntensityAugmentationBase3D):
-    r"""Apply random motion blur on 3D volumes (5D torch.Tensor).
+    r"""Blur 3D volumes with a random motion-blur kernel, applied per sample with probability ``p`` (default 0.5).
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
@@ -53,8 +54,8 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -62,9 +63,12 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
     Convention:
         See :class:`~kornia.augmentation.IntensityAugmentationBase3D` for the shared 3D intensity contract.
 
-        - ``angle`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A positive
-          roll turns the blur kernel clockwise as displayed, as :class:`RandomRotation3D` does and
-          opposite to the 2D :class:`~kornia.augmentation.RandomMotionBlur`
+        - each sampled ``angle`` triple ``(yaw, pitch, roll) = (rx, ry, rz)`` is **one axis-angle vector**
+          in degrees and is converted into a single Rodrigues rotation, not composed as per-axis Euler
+          rotations; see :class:`RandomRotation3D` for the convention.
+        - A positive roll turns the blur kernel clockwise as displayed, as
+          :class:`RandomRotation3D` does and opposite to the 2D
+          :class:`~kornia.augmentation.RandomMotionBlur`
           (`#4408 <https://github.com/kornia/kornia/issues/4408>`_). Its default resampling is
           nearest-neighbour, unlike the geometric 3D defaults.
         - an integer ``kernel_size`` is one odd scalar applied to all three spatial axes. A tuple ``kernel_size``
@@ -72,6 +76,11 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
           likely, bounds included, so ``(3, 5)`` draws ``3`` and ``5`` and ``(3, 20)`` draws ``3, 5, ..., 19``.
           A range holding no odd size is rounded **up** out of the requested range instead, so ``(4, 4)`` draws
           ``5``; a reversed pair such as ``(20, 3)`` raises a ``ValueError`` at construction.
+        - a volume smaller than the kernel is accepted, down to ``1 x 1 x 1``, at the default
+          ``border_type="constant"`` and at ``"replicate"``. ``"reflect"`` needs each of depth, height and width
+          longer than the kernel radius, and ``"circular"`` at least that long; below that both raise a
+          ``ValueError`` naming the class, the drawn kernel, the axis and the input shape, as
+          :class:`~kornia.augmentation.RandomMotionBlur` does for an image.
         - this class fixes ``p_batch=1``; its ``p`` remains the per-sample gate.
 
     Examples:
@@ -144,14 +153,19 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
             # Fixed kernel size: static value, no device-to-host read -> stays capturable by graph export.
             kernel_size = self._fixed_kernel_size
         else:
+            if params["ksize_factor"].numel() == 0 and input.shape[0] == 0:
+                # An empty batch draws no kernel size and has nothing to blur; motion blur keeps the shape (#4429).
+                return input.clone()
             kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
         direction = params["direction_factor"]
+        border_type = self.flags["border_type"].name.lower()
+        _check_filter_min_size("RandomMotionBlur3D", input, kernel_size, border_type=border_type, spatial_dims=3)
         return motion_blur3d(
             input,
             kernel_size,
             angle,
             direction,
-            self.flags["border_type"].name.lower(),
+            border_type,
             self.flags["resample"].name.lower(),
         )

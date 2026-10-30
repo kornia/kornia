@@ -33,6 +33,7 @@ from typing import Any, Optional
 
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -75,16 +76,22 @@ class SamConfig:
     Args:
         model_type: the available models are:
 
-            - 0, 'vit_h' or :func:`kornia.contrib.sam.SamModelType.vit_h`
-            - 1, 'vit_l' or :func:`kornia.contrib.sam.SamModelType.vit_l`
-            - 2, 'vit_b' or :func:`kornia.contrib.sam.SamModelType.vit_b`
-            - 3, 'mobile_sam', or :func:`kornia.contrib.sam.SamModelType.mobile_sam`
+            - 0, 'vit_h' or :attr:`kornia.models.sam.SamModelType.vit_h`
+            - 1, 'vit_l' or :attr:`kornia.models.sam.SamModelType.vit_l`
+            - 2, 'vit_b' or :attr:`kornia.models.sam.SamModelType.vit_b`
+            - 3, 'mobile_sam', or :attr:`kornia.models.sam.SamModelType.mobile_sam`
 
+            With ``None``, the image encoder is a ViT built from the four ``encoder_*`` fields below, which are
+            ignored when ``model_type`` is set.
         checkpoint: URL or a path for a file with the weights of the model
+        pretrained: load the released weights of ``model_type``, which must then be set. A ``checkpoint`` takes
+            precedence, with a warning. With ``False`` (the default) and no ``checkpoint``, the weights are randomly
+            initialised.
         encoder_embed_dim: Patch embedding dimension.
         encoder_depth: Depth of ViT.
         encoder_num_heads: Number of attention heads in each ViT block.
-        encoder_global_attn_indexes: Encoder indexes for blocks using global attention.
+        encoder_global_attn_indexes: Encoder indexes for blocks using global attention: a tuple or a list of
+            indexes, or one index as an ``int``.
 
     """
 
@@ -95,7 +102,7 @@ class SamConfig:
     encoder_embed_dim: Optional[int] = None
     encoder_depth: Optional[int] = None
     encoder_num_heads: Optional[int] = None
-    encoder_global_attn_indexes: Optional[tuple[int, ...]] = None
+    encoder_global_attn_indexes: Optional[int | tuple[int, ...] | list[int]] = None
 
 
 class Sam(ONNXExportMixin, ModelBase[SamConfig]):
@@ -125,7 +132,9 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
 
     @staticmethod
     def from_name(name: str) -> Sam:
-        """Build/load the SAM model based on it's name.
+        """Build a randomly initialised SAM of the given type.
+
+        Use ``Sam.from_config(SamConfig(name, pretrained=True))`` for the released weights.
 
         Args:
             name: The name of the SAM model. Valid names are:
@@ -151,7 +160,8 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
                     the parameters set.
 
         Returns:
-            The respective SAM model
+            The respective SAM model, in evaluation mode when it loads weights (``config.pretrained`` or
+            ``config.checkpoint``) and in training mode otherwise (see :ref:`pretrained-models-conventions`).
 
         Example:
             >>> from kornia.models.sam import SamConfig
@@ -222,13 +232,16 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
             isinstance(config.encoder_embed_dim, int)
             and isinstance(config.encoder_depth, int)
             and isinstance(config.encoder_num_heads, int)
-            and isinstance(config.encoder_global_attn_indexes, int)
+            and isinstance(config.encoder_global_attn_indexes, (int, tuple, list))
         ):
+            global_attn_indexes = config.encoder_global_attn_indexes
             model = _build_sam(
                 encoder_embed_dim=config.encoder_embed_dim,
                 encoder_depth=config.encoder_depth,
                 encoder_num_heads=config.encoder_num_heads,
-                encoder_global_attn_indexes=config.encoder_global_attn_indexes,
+                encoder_global_attn_indexes=(
+                    (global_attn_indexes,) if isinstance(global_attn_indexes, int) else tuple(global_attn_indexes)
+                ),
             )
 
         else:
@@ -237,12 +250,18 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         checkpoint = config.checkpoint
         if config.pretrained:
             if checkpoint is None:
+                KORNIA_CHECK(
+                    isinstance(model_type, SamModelType),
+                    "SamConfig(pretrained=True) needs a model_type: the released weights exist only for 'vit_h', "
+                    "'vit_l', 'vit_b' and 'mobile_sam'. Give a checkpoint to load weights into a custom encoder.",
+                )
                 checkpoint = urls[model_type]
             else:
                 warnings.warn("checkpoint is not None. pretrained=True is ignored", stacklevel=1)
 
         if checkpoint:
             model.load_checkpoint(checkpoint)
+            model.eval()
 
         return model
 
@@ -261,15 +280,25 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         which cannot be directly exported via :func:`torch.onnx.export`.
 
         This override exports only the **image encoder** subgraph
-        (``self.image_encoder``), which is a pure ``(B, 3, H, W) -> (B, C, H', W')``
-        tensor-to-tensor module and fully ONNX-compatible.  The encoder embeddings
-        can then be fed into a separate prompt-encoder / mask-decoder pipeline.
+        (``self.image_encoder``), a ``(B, 3, H, W) -> (B, C, H', W')`` tensor-to-tensor
+        module whose graph input is named ``input`` and output ``image_embeddings``. The prompt
+        encoder and the mask decoder are not exported. The encoder embeddings
+        can be fed into a separate prompt-encoder / mask-decoder pipeline.
+
+        On torch 2.14, whose default exporter is the dynamo exporter, a ViT image encoder (SAM ViT-B, ViT-L, ViT-H)
+        needs ``onnxscript`` 0.7.2 or later: with 0.7.1 the export raises :class:`torch.onnx.OnnxExporterError`
+        (https://github.com/kornia/kornia/issues/5947). A TinyViT encoder (MobileSAM) exports with 0.7.1.
 
         Args:
             onnx_name: Path for the saved ``.onnx`` file.  Defaults to
                 ``"Kornia-Sam-ImageEncoder.onnx"``.
             pseudo_shape: Concrete input shape used to trace the encoder, e.g.
-                ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``.
+                ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``. The batch is
+                exported as dynamic, so a batch below 2 is traced at 2. A TinyViT image encoder
+                (MobileSAM) on the legacy TorchScript exporter (the default before torch 2.9, or
+                ``dynamo=False``) is the exception: that graph runs at the traced batch only, so it is
+                traced at this shape's batch and declares it static. With a caller's ``dynamic_axes``, such an
+                encoder is still traced at this shape's batch and runs at that batch only.
             save: Whether to write the model to disk.  Default ``True``.
             **kwargs: Additional keyword arguments forwarded to
                 :func:`torch.onnx.export`.
@@ -283,16 +312,17 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         if pseudo_shape is None:
             pseudo_shape = [1, 3, 1024, 1024]
         kwargs.setdefault("output_names", ["image_embeddings"])
-        kwargs.setdefault(
-            "dynamic_axes",
-            {
-                "input": {0: "batch"},
-                "image_embeddings": {0: "batch"},
-            },
-        )
+        input_shape = [-1, 3, -1, -1]
+        dynamic_axes: dict[str, dict[int, str]] = {"input": {0: "batch"}, "image_embeddings": {0: "batch"}}
+        if isinstance(self.image_encoder, TinyViT) and not kwargs.get("dynamo", torch_version_ge(2, 9, 0)):
+            # The TorchScript exporter keeps the traced batch in TinyViT's attention reshapes, so the graph runs at
+            # that batch only: a fixed batch is traced at the pseudo shape's size rather than at 2, and declared.
+            input_shape = [pseudo_shape[0], 3, -1, -1]
+            dynamic_axes = {}
+        kwargs.setdefault("dynamic_axes", dynamic_axes)
         return super().to_onnx(
             onnx_name=onnx_name,
-            input_shape=[-1, 3, -1, -1],
+            input_shape=input_shape,
             pseudo_shape=pseudo_shape,
             model=self.image_encoder,
             save=save,
@@ -308,14 +338,14 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         This method expects that the images have already been pre-processed, at least been normalized, resized and
         padded to be compatible with the `self.image_encoder`.
 
-        .. note:: For each image :math:`(3, H, W)`, it is possible to input a batch (:math:`K`) of :math:`N` prompts,
+        .. note:: For each image ``(3, H, W)``, it is possible to input a batch (:math:`K`) of :math:`N` prompts,
                  the results are batched by the number of prompts batch. So given a prompt with :math:`K=5`, and
                  :math:`N=10`, the results will look like :math:`5xCxHxW` where :math:`C` is determined by
                  multimask_output. And within each of these masks :math:`(5xC)`, it should be possible to find
                  :math:`N` instances if the model succeed.
 
         Args:
-            images: The image as a torch tensor in :math:`(B, 3, H, W)` format, already transformed for input to the
+            images: The image as a torch tensor in ``(B, 3, H, W)`` format, already transformed for input to the
                     model.
             batched_prompts: A list over the batch of images (list length should be :math:`B`), each a dictionary with
                              the following keys. If it does not have the respective prompt, it should not be included
@@ -323,25 +353,25 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
 
                 - "points": tuple of (torch.Tensor, torch.Tensor) within the coordinate keypoints
                   and their respective labels. The tuple should look like (keypoints, labels), where the keypoints
-                  (a tensor) are a batched point prompts for this image, with shape :math:`(K, N, 2)`. Already
+                  (a tensor) are a batched point prompts for this image, with shape ``(K, N, 2)``. Already
                   transformed to the input frame of the model. The labels (a tensor) are a batched labels for point
-                  prompts, with shape :math:`(K, N)`. Where 1 indicates a foreground point and 0 indicates a background
+                  prompts, with shape ``(K, N)``. Where 1 indicates a foreground point and 0 indicates a background
                   point.
 
-                - "boxes": (torch.Tensor) Batched box inputs, with shape :math:`(K, 4)`.
+                - "boxes": (torch.Tensor) Batched box inputs, with shape ``(K, 4)``.
                   Already transformed to the input frame of the model.
 
-                - "mask_inputs": (torch.Tensor) Batched mask inputs to the model, in the form :math:`(K, 1, H, W)`.
+                - "mask_inputs": (torch.Tensor) Batched mask inputs to the model, in the form ``(K, 1, H, W)``.
 
             multimask_output: Whether the model should predict multiple disambiguating masks, or return a single mask.
 
         Returns:
             A list over input images, where each element is as SegmentationResults the following:
 
-                - logits: Low resolution logits with shape :math:`(K, C, H, W)`. Can be passed as mask input to
+                - logits: Low resolution logits with shape ``(K, C, H, W)``. Can be passed as mask input to
                   subsequent iterations of prediction. Where :math:`K` is the number of input prompts,
                   :math:`C` is determined by multimask_output, and :math:`H=W=256` are the model output size.
-                - scores: The model's predictions of mask quality (iou prediction), in shape BxC.
+                - scores: The predicted IoU of each mask, ``(K, C)``.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])

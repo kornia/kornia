@@ -25,7 +25,7 @@ from typing import Any
 import torch
 from torch import nn
 
-from kornia.models.efficient_vit.nn.ops import (  # type: ignore
+from kornia.models.efficient_vit.nn.ops import (
     ConvLayer,
     DSConv,
     EfficientViTBlock,
@@ -180,7 +180,7 @@ class EfficientViTBackbone(nn.Module):
         """Run the EfficientViT backbone and collect stage outputs.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`.
+            x: Image tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Dictionary containing the input, each stage output, and
@@ -392,7 +392,7 @@ class EfficientViTLargeBackbone(nn.Module):
         """Run the EfficientViT large backbone and collect stage outputs.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`.
+            x: Image tensor with shape ``(B, C, H, W)``.
 
         Returns:
             Dictionary with entries for each stage and ``"stage_final"`` for

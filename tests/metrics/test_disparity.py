@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
+from kornia.core.exceptions import BaseError, DeviceError, ShapeError, TypeCheckError
 
 from testing.base import BaseTester
 
@@ -226,10 +226,14 @@ class TestMeanAbsoluteDisparityError(BaseTester):
             kornia.metrics.mean_absolute_disparity_error(sample, sample[..., :2])
         assert "Shape mismatch" in str(errinfo.value)
 
+        mask = torch.ones(3, device=device, dtype=torch.bool)
         with pytest.raises(BaseError) as errinfo:
-            mask = torch.ones(3, device=device, dtype=torch.bool)
             kornia.metrics.mean_absolute_disparity_error(sample, sample, mask)
         assert "broadcastable" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_absolute_disparity_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.mean_absolute_disparity_error(sample, 2.0 * sample, reduction="foo")
@@ -304,6 +308,10 @@ class TestRootMeanSquaredDisparityError(BaseTester):
             kornia.metrics.root_mean_squared_disparity_error(None, sample)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.root_mean_squared_disparity_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
+
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.root_mean_squared_disparity_error(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo.value)
@@ -325,6 +333,62 @@ class TestRootMeanSquaredDisparityError(BaseTester):
 
         actual_none = kornia.metrics.root_mean_squared_disparity_error(input, target, reduction="none")
         self.assert_close(actual_none, torch.full((64,), 300.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_exact_match_has_a_finite_gradient(self, reduction, device, dtype):
+        # The square root of a zero squared error has an infinite derivative, so an exact match used to get a NaN
+        # gradient. It now gets 0, the subgradient aepe uses; a differing pixel keeps its gradient.
+        target = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        input = target.clone()
+        input[1, 1] = 5.0
+        # The differing pixel's error is 1: its gradient is 1 per pixel and under 'sum', and (1 / 4) / 0.5 = 0.5
+        # under 'mean', where the RMSE over the 4 pixels is 0.5.
+        differing = torch.zeros_like(target)
+        differing[1, 1] = 0.5 if reduction == "mean" else 1.0
+        for pred, expected in ((input, differing), (target.clone(), torch.zeros_like(target))):
+            pred = pred.clone().requires_grad_(True)
+            (grad,) = torch.autograd.grad(
+                kornia.metrics.root_mean_squared_disparity_error(pred, target, reduction=reduction).sum(), pred
+            )
+            self.assert_close(grad, expected)
+
+        # A mask does not hide the NaN of the matched valid pixels: they must be finite too.
+        mask = torch.ones_like(target, dtype=torch.bool)
+        mask[1, 1] = False
+        pred = target.clone()
+        pred[1, 1] = 9.0
+        pred.requires_grad_(True)
+        (grad,) = torch.autograd.grad(kornia.metrics.root_mean_squared_disparity_error(pred, target, mask), pred)
+        self.assert_close(grad, torch.zeros_like(grad))
+
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    def test_non_finite_error_propagates(self, reduction, device, dtype):
+        # The exact-match guard selects only a zero squared error: a NaN or inf error still reaches the output.
+        target = torch.zeros(4, device=device, dtype=dtype)
+        for bad, is_expected in ((float("nan"), torch.isnan), (float("inf"), torch.isinf)):
+            input = target.clone()
+            input[0] = bad
+            actual = kornia.metrics.root_mean_squared_disparity_error(input, target, reduction=reduction)
+            assert is_expected(actual[0] if reduction == "none" else actual)
+
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+    def test_masked_non_finite_target_has_a_finite_gradient(self, bad, reduction, device, dtype):
+        # A ground truth that marks invalid pixels with NaN or inf is masked out with valid_mask. The value never
+        # saw those pixels, and the gradient must not either: the square's backward multiplied 0 by 2 * diff = NaN.
+        target = torch.tensor([[1.0, 2.0], [3.0, bad]], device=device, dtype=dtype)
+        mask = torch.isfinite(target)
+        pred = torch.tensor([[2.0, 2.0], [3.0, 7.0]], device=device, dtype=dtype, requires_grad=True)
+        actual = kornia.metrics.root_mean_squared_disparity_error(pred, target, mask, reduction=reduction)
+        (grad,) = torch.autograd.grad(actual.sum(), pred)
+        expected = torch.zeros_like(target)
+        expected[0, 0] = 1.0 / 3.0**0.5 if reduction == "mean" else 1.0
+        self.assert_close(grad, expected)
+
+    def test_gradcheck(self, device):
+        target = torch.rand(2, 3, 4, device=device, dtype=torch.float64)
+        input = target + torch.rand(2, 3, 4, device=device, dtype=torch.float64) + 0.1
+        self.gradcheck(kornia.metrics.root_mean_squared_disparity_error, (input, target))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         input, target, mask = _dynamo_inputs(device, dtype)
@@ -399,6 +463,10 @@ class TestMeanBadPixelError(BaseTester):
         with pytest.raises(TypeCheckError) as errinfo:
             kornia.metrics.mean_bad_pixel_error(None, sample)
         assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.mean_bad_pixel_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.mean_bad_pixel_error(sample, 2.0 * sample, reduction="foo")
@@ -564,10 +632,14 @@ class TestKittiD1Error(BaseTester):
             kornia.metrics.kitti_d1_error(sample, sample[..., :2])
         assert "Shape mismatch" in str(errinfo.value)
 
+        mask = torch.ones(3, device=device, dtype=torch.bool)
         with pytest.raises(BaseError) as errinfo:
-            mask = torch.ones(3, device=device, dtype=torch.bool)
             kornia.metrics.kitti_d1_error(sample, sample, valid_mask=mask)
         assert "broadcastable" in str(errinfo.value)
+
+        with pytest.raises(DeviceError) as errinfo:
+            kornia.metrics.kitti_d1_error(sample, sample.to("meta"))
+        assert "Device mismatch" in str(errinfo.value)
 
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.kitti_d1_error(sample, 2.0 * sample, reduction="foo")
@@ -586,3 +658,121 @@ class TestKittiD1Error(BaseTester):
         op = kornia.metrics.kitti_d1_error
         op_optimized = torch_optimizer(op)
         self.assert_close(op(input, target, 3.0, 0.05, mask), op_optimized(input, target, 3.0, 0.05, mask))
+
+
+class TestConventionsDisparity(BaseTester):
+    # Two (H, W) = (3, 4) maps. Sample 0: all 12 pixels valid, errors 4, 3 and 2 px on disparities 10, 60 and 45.
+    # Sample 1: only the first row valid, errors 4 px on 100 (4 %) and 6 px on 90 (6.7 %); its masked rows hide a
+    # 1 px error on a disparity of 5.
+    TARGET = [
+        [[10.0, 20.0, 30.0, 40.0], [50.0, 60.0, 70.0, 80.0], [15.0, 25.0, 35.0, 45.0]],
+        [[100.0, 90.0, 80.0, 70.0], [60.0, 50.0, 40.0, 30.0], [20.0, 10.0, 5.0, 1.0]],
+    ]
+    INPUT = [
+        [[14.0, 20.0, 30.0, 40.0], [50.0, 63.0, 70.0, 80.0], [15.0, 25.0, 35.0, 47.0]],
+        [[104.0, 96.0, 80.0, 70.0], [60.0, 50.0, 40.0, 30.0], [20.0, 10.0, 6.0, 1.0]],
+    ]
+
+    def _sample(self, device, dtype):
+        input = torch.tensor(self.INPUT, device=device, dtype=dtype)
+        target = torch.tensor(self.TARGET, device=device, dtype=dtype)
+        mask = torch.ones(2, 3, 4, device=device, dtype=torch.bool)
+        mask[1, 1:] = False
+        return input, target, mask
+
+    def test_convention_disparity_metrics_pool_every_valid_pixel_of_the_batch(self, device, dtype):
+        """The four metrics pool the valid pixels of all images into one value; bad-pixel and D1 are fractions."""
+        input, target, mask = self._sample(device, dtype)
+        # Pooled over the 16 valid pixels, against the mean of the two per-image values:
+        #   MAE   (4 + 3 + 2 + 4 + 6) / 16 = 1.1875, not (9/12 + 10/4) / 2 = 1.625
+        #   RMSE  sqrt((16 + 9 + 4 + 16 + 36) / 16) = 2.25, not (sqrt(29/12) + sqrt(52/4)) / 2 = 2.5801
+        #   bad   3 / 16 = 0.1875 (the 3 px error is not > 3), not (1/12 + 2/4) / 2 = 0.2917
+        #   D1    2 / 16 = 0.125 (4 px on 100 is not > 5 %), not (1/12 + 1/4) / 2 = 0.1667
+        # The KITTI devkit (evaluate_scene_flow.cpp lines 51, 487, 673) sums the outlier and pixel counts over the
+        # images before dividing: D1 = 0.125 here.
+        expected = {
+            kornia.metrics.mean_absolute_disparity_error: 1.1875,
+            kornia.metrics.root_mean_squared_disparity_error: 2.25,
+            kornia.metrics.mean_bad_pixel_error: 0.1875,
+            kornia.metrics.kitti_d1_error: 0.125,
+        }
+        for metric, value in expected.items():
+            pooled = metric(input, target, valid_mask=mask)
+            assert pooled.shape == ()
+            self.assert_close(pooled, torch.tensor(value, device=device, dtype=dtype))
+            assert metric(input, target, valid_mask=mask, reduction="none").shape == (2, 3, 4)
+        # A NaN at a valid pixel, input[0, 0, 0] (a bad pixel and a D1 outlier above), propagates into MAE and RMSE,
+        # while bad-pixel and D1 count it as a good pixel: 2 / 16 and 1 / 16.
+        nan_input = input.clone()
+        nan_input[0, 0, 0] = float("nan")
+        assert torch.isnan(kornia.metrics.mean_absolute_disparity_error(nan_input, target, valid_mask=mask))
+        assert torch.isnan(kornia.metrics.root_mean_squared_disparity_error(nan_input, target, valid_mask=mask))
+        self.assert_close(
+            kornia.metrics.mean_bad_pixel_error(nan_input, target, valid_mask=mask),
+            torch.tensor(0.125, device=device, dtype=dtype),
+        )
+        self.assert_close(
+            kornia.metrics.kitti_d1_error(nan_input, target, valid_mask=mask),
+            torch.tensor(0.0625, device=device, dtype=dtype),
+        )
+
+    def test_convention_disparity_valid_mask_broadcasts_from_the_right(self, device, dtype):
+        """valid_mask is broadcast to the input from the right: (H, W) masks every image, (B, 1, 1) whole images."""
+        input, target, _ = self._sample(device, dtype)
+        metric = kornia.metrics.mean_absolute_disparity_error
+        # (H, W): the first row of both images, errors 4 | 4 and 6 over 8 pixels
+        first_row = torch.zeros(3, 4, device=device, dtype=torch.bool)
+        first_row[0] = True
+        self.assert_close(metric(input, target, valid_mask=first_row), torch.tensor(1.75, device=device, dtype=dtype))
+        # (B, 1, 1): image 0 only, 9 px over its 12 pixels
+        image_0 = torch.tensor([True, False], device=device).view(2, 1, 1)
+        self.assert_close(metric(input, target, valid_mask=image_0), torch.tensor(0.75, device=device, dtype=dtype))
+        # a (B,) mask is aligned with W, not with the batch: rejected here since W = 4 != B = 2 (W == B would broadcast)
+        with pytest.raises((ValueError, BaseError)):
+            metric(input, target, valid_mask=torch.tensor([True, False], device=device))
+
+
+_DISPARITY_METRICS = (
+    kornia.metrics.mean_absolute_disparity_error,
+    kornia.metrics.root_mean_squared_disparity_error,
+    kornia.metrics.mean_bad_pixel_error,
+    kornia.metrics.kitti_d1_error,
+)
+
+
+class TestDisparityDevices(BaseTester):
+    @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
+    def test_valid_mask_on_another_device(self, device, dtype, reduction):
+        # A CPU mask with maps on an accelerator is moved to the maps (0.9.0rc1 indexed the maps with it).
+        sample = torch.tensor([[1.0, 2.0, 30.0], [4.0, 5.0, 60.0]], device=device, dtype=dtype)
+        target = torch.tensor([[1.5, 9.0, 30.0], [4.0, 1.0, 50.0]], device=device, dtype=dtype)
+        mask = torch.tensor([[True, True, False], [True, True, True]])
+        for metric in _DISPARITY_METRICS:
+            expected = metric(sample, target, valid_mask=mask.to(device), reduction=reduction)
+            actual = metric(sample, target, valid_mask=mask, reduction=reduction)
+            self.assert_close(actual, expected, rtol=0, atol=0)
+            # The same path on every CI leg: maps on the meta device with a CPU mask.
+            out = metric(sample.to("meta"), target.to("meta"), valid_mask=mask, reduction=reduction)
+            assert out.device.type == "meta"
+
+    def test_scalar_maps_on_two_devices(self, device, dtype):
+        # A 0-d CPU map is a scalar that torch combines with a map on any device.
+        sample = torch.tensor(7.0, device=device, dtype=dtype)
+        target = torch.tensor(3.0, dtype=dtype)
+        for metric in _DISPARITY_METRICS:
+            self.assert_close(metric(sample, target), metric(sample, target.to(device)), rtol=0, atol=0)
+            self.assert_close(metric(target, sample), metric(target.to(device), sample), rtol=0, atol=0)
+        out = _DISPARITY_METRICS[0](sample.to("meta"), target)
+        assert out.device.type == "meta"
+
+    def test_scalar_maps_on_two_other_devices(self, device, dtype):
+        # Only a 0-d CPU tensor mixes with another device in torch, so 0-d maps on two other devices are rejected.
+        if device.type == "cpu":
+            pytest.skip("needs a device other than the CPU and meta")
+        sample = torch.tensor(7.0, device=device, dtype=dtype)
+        target = torch.tensor(3.0, device="meta", dtype=dtype)
+        for metric in _DISPARITY_METRICS:
+            with pytest.raises(DeviceError, match="Device mismatch"):
+                metric(sample, target)
+            with pytest.raises(DeviceError, match="Device mismatch"):
+                metric(target, sample)

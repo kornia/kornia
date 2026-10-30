@@ -20,7 +20,9 @@ from typing import Dict
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._normalization import _DescriptorSequential
 
 urls: Dict[str, str | list[str]] = {}
 urls["liberty"] = [
@@ -38,19 +40,23 @@ urls["yosemite"] = [
 
 
 class FilterResponseNorm2d(nn.Module):
-    r"""Feature Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
+    r"""Filter Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
     in the Training of Deep Neural Networks', see :cite:`FRN2019` for more details.
 
     .. math::
-        y =  \gamma \times \frac{x}{\sqrt{\mathrm{E}[x^2]} + |\epsilon|} + \beta
+        y = \gamma \frac{x}{\sqrt{\nu^2 + |\epsilon|}} + \beta
 
+    Convention:
+        - :math:`\nu^2` is the mean of :math:`x^2` over the ``H x W`` map of each sample and channel, so the output
+          does not depend on the rest of the batch; no mean is subtracted. :math:`\gamma` (``weight``) and
+          :math:`\beta` (``bias``) are per-channel parameters initialised to 1 and 0, applied only when ``is_scale``
+          and ``is_bias`` are set.
 
     Args:
         num_features: number of channels
         eps: normalization constant
         is_bias: use bias
         is_scale: use scale
-        drop_rate: dropout rate,
         is_eps_leanable: if eps is learnable
 
     Returns:
@@ -114,6 +120,12 @@ class FilterResponseNorm2d(nn.Module):
         Returns:
             Normalized tensor with the same shape as the input.
         """
+        input_dtype = x.dtype
+        half = input_dtype in (torch.float16, torch.bfloat16)
+        if half:
+            # Pretrained HyNet produces activations whose squares exceed the float16 range, and its scale and bias
+            # cancel too many bits for either half dtype.
+            x = x.float()
         # Compute the mean norm of activations per channel.
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
 
@@ -125,15 +137,23 @@ class FilterResponseNorm2d(nn.Module):
             x = self.weight * x
         if self.is_bias:
             x = x + self.bias
+        if half:
+            # Scale and bias stay in float32 too: in pretrained HyNet they cancel (weight 3.70, bias -3.40 in the
+            # first layer), so rounding before them loses several bits.
+            x = x.to(torch.promote_types(input_dtype, self.eps.dtype))
         return x
 
 
 class TLU(nn.Module):
     r"""TLU layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep
-    Neural Networks, see :cite:`FRN2019` for more details. :math:`{\tau}` is learnable per channel.
+    Neural Networks', see :cite:`FRN2019` for more details. :math:`{\tau}` is learnable per channel.
 
     .. math::
         y = \max(x, {\tau})
+
+    Convention:
+        - :math:`\tau` (``tau``) is a ``(1, num_features, 1, 1)`` parameter, one threshold per channel, initialised
+          to -1.
 
     Args:
         num_features: number of channels
@@ -190,9 +210,20 @@ class HyNet(nn.Module):
     "HyNet: Learning Local Descriptor with Hybrid Similarity Measure and Triplet Loss".
     See :cite:`hynet2020` for more details.
 
+    Convention:
+        - It takes the ``(B, 1, 32, 32)`` patches of :class:`~kornia.feature.HardNet` and returns unit-norm rows, but
+          its first layer is a :class:`~kornia.feature.FilterResponseNorm2d` on the raw patch, which divides by the root
+          mean square and subtracts no mean, as in the reference implementation. A scale :math:`a x` with
+          :math:`a > 0` therefore gives the same descriptor as long as the mean squares of the patch and of its scaled
+          copy are both large compared with that layer's ``eps``, while an offset :math:`x + b` changes it: feed
+          non-negative intensities such as ``[0, 1]`` or ``[0, 255]``, not mean-subtracted or standardised patches.
+
     Args:
-        pretrained: Download and set pretrained weights to the model.
-        is_bias: use bias in TLU layers
+        pretrained: Download and set pretrained weights to the model. The weights fit the default ``is_bias``,
+            ``is_bias_FRN`` and ``dim_desc`` only, so pass ``pretrained=False`` with another value: the strict load
+            raises ``RuntimeError`` for another ``is_bias`` or ``dim_desc``, and ``is_bias_FRN=False`` raises
+            ``ValueError`` before downloading, since the weights would load but leave their trained FRN biases unused.
+        is_bias: use bias in the convolution layers (the final 8 x 8 convolution has none either way)
         is_bias_FRN:  use bias in FRN layers
         dim_desc: descriptor dimensionality,
         drop_rate: dropout rate,
@@ -202,12 +233,16 @@ class HyNet(nn.Module):
         HyNet descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: :math:`(B, \text{dim\_desc})`
+
+    Note:
+        With float16 weights, the final BatchNorm keeps its running statistics in float32.
+        Convert the model to float16 before calling ``torch.jit.script``.
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hynet = HyNet()
+        >>> hynet = HyNet(pretrained=False).eval()
         >>> descs = hynet(input) # 16x128
 
     """
@@ -216,7 +251,7 @@ class HyNet(nn.Module):
 
     def __init__(
         self,
-        pretrained: bool = False,
+        pretrained: bool = True,
         is_bias: bool = True,
         is_bias_FRN: bool = True,
         dim_desc: int = 128,
@@ -224,6 +259,12 @@ class HyNet(nn.Module):
         eps_l2_norm: float = 1e-10,
     ) -> None:
         super().__init__()
+        if pretrained and not is_bias_FRN:
+            # The FRN biases exist with either flag, so the strict load cannot catch this mismatch.
+            raise ValueError(
+                "HyNet's pretrained weights use their trained FRN biases; pass pretrained=False to build it with "
+                "is_bias_FRN=False."
+            )
         self.eps_l2_norm = eps_l2_norm
         self.dim_desc = dim_desc
         self.drop_rate = drop_rate
@@ -264,7 +305,7 @@ class HyNet(nn.Module):
             TLU(128),
         )
 
-        self.layer7 = nn.Sequential(
+        self.layer7 = _DescriptorSequential(
             nn.Dropout(self.drop_rate),
             nn.Conv2d(128, self.dim_desc, kernel_size=8, bias=False),
             nn.BatchNorm2d(self.dim_desc, affine=False),
@@ -275,7 +316,7 @@ class HyNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Compute HyNet descriptors from grayscale image patches.
@@ -286,6 +327,7 @@ class HyNet(nn.Module):
         Returns:
             HyNet descriptors with shape ``(B, D)``.
         """
+        KORNIA_CHECK_SHAPE(x, ["B", "1", "32", "32"])
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
@@ -307,4 +349,4 @@ class HyNet(nn.Module):
             x = self.desc_norm(x.float() + self.eps_l2_norm).to(x.dtype)
         else:
             x = self.desc_norm(x + self.eps_l2_norm)
-        return x.view(x.size(0), -1)
+        return x.flatten(1)

@@ -21,24 +21,31 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import elastic_transform2d
 
 
 class RandomElasticTransform(AugmentationBase2D):
-    r"""Add random elastic transformation to a torch.Tensor image.
+    r"""Warp images with a random elastic displacement field, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomElasticTransform.png
 
+    .. note::
+        Unlike torchvision's ``ElasticTransform``, which warps every image, this class warps each sample with
+        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to warp every sample.
+
     Convention:
-        This is a dense backward sampling field with no ``transform_matrix`` or ``inverse``; spatial labels in
-        containers have limitations (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+        This is a dense backward sampling field with no ``transform_matrix`` or ``inverse``. A ``mask`` data key
+        is resampled through the same field; keypoint and box data keys raise ``NotImplementedError``, even at
+        ``p=0`` (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
         Noise has shape ``(B, 2, H, W)`` with channels ``(x, y)``; ``alpha`` scales displacement in
         normalized sampling coordinates, whereas ``kernel_size`` and ``sigma`` use ``(y, x)`` order.
-        The displaced grid is clamped to ``[-1, 1]`` before sampling. Zero ``alpha`` is an identity warp up to
-        interpolation roundoff for either ``align_corners``. Its defaults and the ``align_corners`` split across
-        classes (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
-        :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
+        Coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``. Zero
+        ``alpha`` is an identity warp up to interpolation roundoff for either ``align_corners``. Its defaults and
+        the ``align_corners`` split across classes (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are
+        listed on :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
 
     Args:
         kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
@@ -50,7 +57,7 @@ class RandomElasticTransform(AugmentationBase2D):
         resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
         padding_mode: The padding used by ``grid_sample``. Either 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 
@@ -112,7 +119,7 @@ class RandomElasticTransform(AugmentationBase2D):
     ) -> torch.Tensor:
         return elastic_transform2d(
             input,
-            params["noise"].to(input),
+            _to_device_nonblocking(params["noise"], input.device, input.dtype),
             flags["kernel_size"],
             flags["sigma"],
             flags["alpha"],
@@ -147,9 +154,10 @@ class RandomElasticTransform(AugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
-        """Process masks corresponding to the inputs that are transformed."""
-        # We assume that boxes may not be affected too much by the deformation.
-        return input
+        """Reject box inputs, which this augmentation does not move."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support box inputs. See https://github.com/kornia/kornia/issues/4420."
+        )
 
     def apply_transform_class(
         self,

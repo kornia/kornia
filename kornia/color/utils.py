@@ -27,19 +27,16 @@ def _apply_linear_transformation(
     """Apply a 3x3 linear color transformation with device-aware optimization.
 
     Args:
-        image: Input image tensor with shape :math:`(*, 3, H, W)`.
-        kernel: Transformation matrix with shape :math:`(3, 3)` applied along the channel
+        image: Input image tensor with shape ``(*, 3, H, W)``.
+        kernel: Transformation matrix with shape ``(3, 3)`` applied along the channel
             dimension.
-        bias: Bias vector with shape :math:`(3,)` to be added to the output.
+        bias: Bias vector with shape ``(3,)`` to be added to the output.
 
     Returns:
         Tensor with the same shape as ``image`` containing the transformed values.
     """
     # Handle Integer inputs by casting to float safely
-    if image.is_floating_point():
-        image_compute = image
-    else:
-        image_compute = image.float()
+    image_compute = image if image.is_floating_point() else image.float()
 
     # Match kernel dtype to the image (propagates float64 if needed)
     kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)

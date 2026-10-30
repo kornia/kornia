@@ -1,0 +1,1 @@
+`kornia.geometry.bbox.nms` no longer suppresses a box that does not overlap the kept box when both boxes have zero area. Their union is empty, so the IoU was `0 / 0 = NaN`, which compared as an overlap and dropped the lower-scored box however far away it was: two zero-width boxes or two points kept only one. The IoU of an empty union is now `0`, as in `torchvision.ops.nms`.

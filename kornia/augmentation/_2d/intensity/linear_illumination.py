@@ -19,13 +19,14 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomLinearIllumination(IntensityAugmentationBase2D):
-    r"""Applies random 2D Linear illumination patterns to a batch of images.
+    r"""Brighten or darken by a linear ramp from an edge, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomLinearIllumination.png
 
@@ -35,26 +36,24 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
         insert only as a tuple or float.
-        p: Probability of applying the transformation.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
           so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           edge where the gradient is strongest is drawn separately, per sample.
-
-    .. warning::
-        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -142,11 +141,12 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        input = _clamp_unit_range(input)
+        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
-    r"""Applies random 2D Linear from corner illumination patterns to a batch of images.
+    r"""Brighten or darken by a linear ramp from a corner, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
 
@@ -156,26 +156,24 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
         insert only as a tuple or float.
-        p: Probability of applying the transformation.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
+          into the same range. This applies only to samples selected by the probability gate.
         - the class adds the drawn field ``_params["gradient"]`` to the image and clamps the sum into ``[0, 1]``,
           so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
           is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
           a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
           corner where the gradient is strongest is drawn separately, per sample.
-
-    .. warning::
-        An all-negative input can come back as an all-zero image, depending on the sampled gradient. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -263,4 +261,5 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        return input.add(params["gradient"].to(input)).clamp(0, 1)
+        input = _clamp_unit_range(input)
+        return input.add(_to_device_nonblocking(params["gradient"], input.device, input.dtype)).clamp(0, 1)

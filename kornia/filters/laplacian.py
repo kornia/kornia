@@ -25,8 +25,14 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .blur import _HAS_MKLDNN, _ONEDNN_LARGE_INPUT, _needs_convolution_for_extreme_cpu_values
-from .filter import filter2d
-from .kernels import _check_kernel_size, _unpack_2d_ks, get_laplacian_kernel2d, normalize_kernel2d
+from .filter import _to_floating, filter2d
+from .kernels import (
+    _check_kernel_size,
+    _check_laplacian_kernel_size,
+    _unpack_2d_ks,
+    get_laplacian_kernel2d,
+    normalize_kernel2d,
+)
 
 
 def _laplacian_slices_eligible(input: torch.Tensor) -> bool:
@@ -42,6 +48,14 @@ def _laplacian_slices_eligible(input: torch.Tensor) -> bool:
     return input.device.type == "cuda" and is_compiling()
 
 
+def _check_laplacian_size(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
+    """Unpack ``kernel_size`` and reject what no Laplacian kernel can have: even, non-positive or 1x1 sizes."""
+    ky, kx = _unpack_2d_ks(kernel_size)
+    _check_kernel_size((ky, kx))
+    _check_laplacian_kernel_size((ky, kx))
+    return ky, kx
+
+
 def laplacian(
     input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", normalized: bool = True
 ) -> torch.Tensor:
@@ -49,23 +63,42 @@ def laplacian(
 
     .. image:: _static/img/laplacian.png
 
-    The operator smooths the given tensor with a laplacian kernel by convolving
-    it to each channel. It supports batched operation.
+    The operator filters each channel of the given tensor with a Laplacian kernel.
+    It supports batched operation.
+
+    Convention:
+        - The kernel is ``get_laplacian_kernel2d(kernel_size)``, correlated with each channel as by
+          :func:`~kornia.filters.filter2d`; see the Convention blocks on
+          :func:`~kornia.filters.get_laplacian_kernel2d` for the stencil, its sign and ``kernel_size``, and on
+          :func:`~kornia.filters.filter2d` for the border modes.
+        - For floating inputs, ``normalized=True``, the default, divides the kernel by its absolute sum
+          :math:`2 (kH \cdot kW - 1)`, 16 for size 3. Unlike ``normalized`` in
+          :func:`~kornia.filters.spatial_gradient`, this does not give derivative units: size 3 returns
+          :math:`3 \nabla^2 / 16`. :ref:`Filtering <filtering-conventions>` compares both scales with scipy and
+          OpenCV.
+        - An integer or bool input is filtered in float32 and the output is float32, as in
+          :func:`~kornia.filters.filter2d`.
 
     Args:
-        input: the input image tensor with shape :math:`(B, C, H, W)`.
-        kernel_size: the size of the kernel.
+        input: the input image tensor with shape ``(B, C, H, W)``.
+        kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``, case-insensitive.
         normalized: if True, L1 norm of the kernel is set to 1.
 
     Note:
         Ordinary eager CPU execution uses convolution for extreme input ranges.
-        Captured graphs and function transforms retain their selected arithmetic.
+        Captured graphs and function transforms retain their selected arithmetic, so with ``normalized=False`` an
+        input near its dtype's maximum can overflow to NaN under ``torch.compile`` or ``torch.vmap`` where eager CPU
+        execution returns a finite response.
 
     Return:
-        the blurred image with shape :math:`(B, C, H, W)`.
+        the Laplacian response with shape ``(B, C, H, W)``.
+
+    Raises:
+        BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
+            it is ``1`` or ``(1, 1)``: a :math:`1 \times 1` kernel is all zeros, and its normalized form is ``0 / 0``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_edges.html>`__.
@@ -83,9 +116,12 @@ def laplacian(
         str(border_type).lower() in {"constant", "reflect", "replicate", "circular"},
         f"Invalid border, {border_type}. Expected one of {{'constant', 'reflect', 'replicate', 'circular'}}",
     )
+    # the check is case-insensitive, so pad with the lower-case spelling as well
+    border_type = str(border_type).lower()
 
-    ky, kx = _unpack_2d_ks(kernel_size)
-    _check_kernel_size((ky, kx))
+    ky, kx = _check_laplacian_size(kernel_size)
+    # the kernel is built in the input's dtype, where an integer dtype truncates its normalized taps (#5155)
+    input = _to_floating(input)
 
     if not _laplacian_slices_eligible(input) or _needs_convolution_for_extreme_cpu_values(input, ky * kx):
         kernel = get_laplacian_kernel2d((ky, kx), device=input.device, dtype=input.dtype)[None]
@@ -121,19 +157,27 @@ def laplacian(
 class Laplacian(nn.Module):
     r"""Create an operator that returns a tensor using a Laplacian filter.
 
-    The operator smooths the given tensor with a laplacian kernel by convolving
-    it to each channel. It supports batched operation.
+    The operator filters each channel of the given tensor with a Laplacian kernel.
+    It supports batched operation.
+
+    Convention:
+        See the Convention block on :func:`~kornia.filters.laplacian`.
 
     Args:
-        kernel_size: the size of the kernel.
+        kernel_size: the size of the kernel. It should be odd and positive, and at least 3 along one axis.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+          ``'replicate'`` or ``'circular'``, case-insensitive.
         normalized: if True, L1 norm of the kernel is set to 1.
 
+    Raises:
+        BaseError: if a size is even or not positive, if ``kernel_size`` is a sequence of other than 2 sizes, or if
+            it is ``1`` or ``(1, 1)``. The size is checked when the module is built, as
+            :func:`~kornia.filters.laplacian` checks it when called.
+
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -152,6 +196,8 @@ class Laplacian(nn.Module):
         self.border_type: str = border_type
         self.normalized: bool = normalized
 
+        _check_laplacian_size(kernel_size)
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
@@ -169,12 +215,12 @@ class Laplacian(nn.Module):
         detail.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the Laplacian
+            Tensor with shape ``(B, C, H, W)`` containing the Laplacian
             response for each batch item and channel. Positive and negative
             values represent opposite directions of local curvature.
         """

@@ -23,15 +23,21 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core.utils import _as_tensor_nonblocking
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
 class RandomAffine(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to a torch.Tensor image.
+    r"""Warp images by a random 2D affine transformation, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomAffine.png
 
     The transformation is computed so that the image center is kept invariant.
+
+    .. note::
+        Unlike torchvision's ``RandomAffine``, which transforms every image, this class transforms each sample with
+        probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for the whole batch. Pass
+        ``p=1.0`` to transform every sample.
 
     Args:
         degrees: Range of degrees to select from.
@@ -56,12 +62,12 @@ class RandomAffine(GeometricAugmentationBase2D):
             Can be a float, int, or a torch.Tensor of shape (C) or (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.
@@ -69,6 +75,12 @@ class RandomAffine(GeometricAugmentationBase2D):
           move content right and down.
         - a positive ``degrees`` rotates the displayed image clockwise, unlike :class:`RandomRotation`
           (:doc:`/get-started/conventions`, `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+        - ``shear`` draws degrees, converted to radians and applied about the image centre with the sign and the
+          x-then-y order of :func:`~kornia.geometry.transform.get_shear_matrix2d`, as
+          :class:`~kornia.geometry.transform.Affine` applies its ``shear``.
+        - in :class:`~kornia.augmentation.container.AugmentationSequential`, a ``fill_value`` with more than one
+          element pads only the image: masks are padded with zero, forward and inverse, unless
+          ``extra_args[DataKey.MASK]`` sets their ``fill_value``; a one-element ``fill_value`` applies to both.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
@@ -136,13 +148,13 @@ class RandomAffine(GeometricAugmentationBase2D):
         # does not support at opset 20. Multiply by ``pi/180`` explicitly same value,
         # but only basic arithmetic ops in the trace.
         deg2rad_factor: float = math.pi / 180.0
-        shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor
-        shear_y = torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype) * deg2rad_factor
+        shear_x = _as_tensor_nonblocking(params["shear_x"], input.device, input.dtype) * deg2rad_factor
+        shear_y = _as_tensor_nonblocking(params["shear_y"], input.device, input.dtype) * deg2rad_factor
         return get_affine_matrix2d(
-            torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
+            _as_tensor_nonblocking(params["translations"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["center"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["scale"], input.device, input.dtype),
+            _as_tensor_nonblocking(params["angle"], input.device, input.dtype),
             shear_x,
             shear_y,
         )

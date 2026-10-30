@@ -25,7 +25,7 @@ from torch import float16, float32, float64
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -58,7 +58,7 @@ _LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Ten
 
 
 class AugmentationBase2D(_AugmentationBase):
-    r"""AugmentationBase2D base class for customized augmentation implementations.
+    r"""Base class for custom 2D augmentations, applied per sample with probability ``p`` (default 0.5).
 
     AugmentationBase2D aims at offering a generic base class for a greater level of customization.
     If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
@@ -85,9 +85,11 @@ class AugmentationBase2D(_AugmentationBase):
           (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
-          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. The gate selects after the transform
-          has been computed for the whole batch, so a sample it skips can still raise or carry a NaN gradient
-          (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
+          it can be set as an attribute on any augmentation. A sample the gate skips comes back
+          with its input values, its values cannot make the call raise, and where they are finite its gradient
+          is the identity; a class whose transform checks input values or has an unbounded derivative runs it
+          on 0.5 for skipped samples. An augmentation that changes the sample shape still raises ``ValueError``
+          when the gate mixes applied and skipped samples (`#4497 <https://github.com/kornia/kornia/issues/4497>`_).
         - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
@@ -99,6 +101,10 @@ class AugmentationBase2D(_AugmentationBase):
           caller's dict by reference and, if ``batch_prob`` is absent, inserts an all-true gate into it. Replaying
           parameters reproduces the output, except for :class:`RandomDissolving`, whose VAE latents are drawn
           during application and are not stored.
+        - with static ``p=1.0, p_batch=1.0`` every sample is transformed: a ``batch_prob`` put into ``params`` is not
+          consulted by the image, the transformation matrix, the labels or ``inverse``, in eager and compiled runs
+          alike (`#5585 <https://github.com/kornia/kornia/issues/5585>`_). Pass ``p < 1`` to skip samples by hand,
+          which every one of those paths honors.
         - some ``_param_generator.*`` range buffers in ``state_dict()`` do not update the samplers when loaded
           (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
         - an empty batch gives an empty output, except on a minority of classes that raise on ``B = 0``
@@ -131,7 +137,7 @@ class AugmentationBase2D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
-    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+    r"""Base class for 2D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
@@ -150,9 +156,10 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     Convention:
         - a subclass implements :meth:`compute_transformation`, which returns the ``(B, 3, 3)`` matrix of the
           sampled transform, and ``apply_transform`` for images. Direct mask, box, and keypoint handlers are
-          incomplete on this base; inherit the geometric base for its matrix-based handlers. Container dispatch
-          recognizes geometric children, so custom rigid subclasses need integration work of their own. See
-          `#4481 <https://github.com/kornia/kornia/issues/4481>`_.
+          incomplete on this base; inherit the geometric base for its matrix-based handlers.
+          :class:`~kornia.augmentation.container.AugmentationSequential` calls the subclass's mask, box and
+          keypoint handlers with ``transform_matrix`` as ``transform``, as it does for a geometric child, and
+          raises ``NotImplementedError`` for a registered data key whose handler is missing.
         - the matrix of the last call is readable as ``transform_matrix``. Subclasses opt into lazy construction
           with ``_compute_matrix_lazily``; a lazy matrix keeps only the input's shape, dtype and device, unless the
           subclass overrides ``transform_tensor``, ``generate_transformation_matrix``, ``compute_transformation``
@@ -167,6 +174,42 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     # ``apply_func`` defers the matrix and ``transform_matrix`` computes it on first access.
     _compute_matrix_lazily: bool = False
     _lazy_matrix_args: Optional[_LazyMatrixArgs] = None
+    _transform_matrix_params: Optional[Dict[str, Any]] = None
+    _transform_matrix_params_snapshot: Optional[Tuple[Tuple[str, Any, int], ...]] = None
+
+    @staticmethod
+    def _params_snapshot(params: Dict[str, Any]) -> Tuple[Tuple[str, Any, int], ...]:
+        """Return each value of ``params`` with the version counter of each tensor value.
+
+        The values themselves are kept, not their ``id()``: a replaced tensor that is freed can hand its address to the
+        next tensor. An inference tensor has no version counter, so only its replacement is seen, not an in-place edit
+        made inside ``torch.inference_mode``.
+        """
+        return tuple(
+            (key, value, value._version if isinstance(value, torch.Tensor) and not value.is_inference() else -1)
+            for key, value in params.items()
+        )
+
+    def _matrix_matches_params(self, params: Dict[str, Any]) -> bool:
+        """Whether the recorded matrix was computed from ``params`` as they are now, not before a caller edited them."""
+        if self._transform_matrix_params is not params:
+            return False
+        recorded = self._transform_matrix_params_snapshot
+        if recorded is None:
+            # An image call inside a Dynamo capture records no snapshot: Dynamo cannot trace ``is_inference`` and reads
+            # each version counter as a new unbacked symbol. Within one compiled call nothing edits the params between
+            # the image and its annotations, so the dict's identity is enough there.
+            return is_compiling()
+        current = self._params_snapshot(params)
+        if len(recorded) != len(current):
+            return False
+        return all(k0 == k1 and v0 is v1 and n0 == n1 for (k0, v0, n0), (k1, v1, n1) in zip(recorded, current))
+
+    def _record_matrix_params(self, params: Dict[str, Any]) -> None:
+        """Record the params dict the image call was given, and its values, next to the matrix computed from it."""
+        if not is_exporting():
+            self._transform_matrix_params = params
+            self._transform_matrix_params_snapshot = None if is_compiling() else self._params_snapshot(params)
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
@@ -218,8 +261,8 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         # If batch sizes line up, do the where-blend. Otherwise (e.g. VideoSequential
         # passes B-sized batch_prob into a B*T-sized input) fall back to all-or-nothing.
         if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))).to(
-                trans_matrix_applied.device
+            to_apply_expanded = _to_device_nonblocking(
+                to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))), trans_matrix_applied.device
             )
             trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:
@@ -277,7 +320,10 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         if flags is None:
             flags = self.flags
-
+        # ``forward`` committed the caller's params dict as ``_params`` before overriding a copy for this call (and
+        # ``transform_inputs`` commits that copy). Pair the caller's dict and a snapshot of its values with the matrix,
+        # so the container's annotation handlers can tell a replay of this draw from another draw or an edited dict.
+        matrix_params = self._params
         if self._compute_matrix_lazily:
             # apply_transform ignores the matrix for these ops, so don't build it here; defer to
             # the first `.transform_matrix` access (e.g. AugmentationSequential propagating to
@@ -297,10 +343,12 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
                 # PyTorch 2.5 snapshots torch.Size as a tuple during non-strict export.
                 matrix_input = _InputMetadata(tuple(in_tensor.shape), in_tensor.dtype, in_tensor.device)
             self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
+            self._record_matrix_params(matrix_params)
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
         self._commit_state(transform_matrix=trans_matrix, lazy_matrix_args=None)
+        self._record_matrix_params(matrix_params)
 
         return output

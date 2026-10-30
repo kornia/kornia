@@ -45,6 +45,12 @@ class TFeat(nn.Module):
     with triplets and shallow convolutional neural networks".
     See :cite:`TFeat2016` for more details
 
+    Convention:
+        - It takes the patches of :class:`~kornia.feature.HardNet`, with the intensity rule of HardNet's Convention
+          block, but returns the final ``tanh`` layer of the reference implementation without L2 normalisation: each
+          entry lies in ``[-1, 1]`` and the rows are not unit vectors. Normalise them where a distance threshold
+          assumes unit descriptors.
+
     Args:
         pretrained: Download and set pretrained weights to the model.
 
@@ -52,19 +58,19 @@ class TFeat(nn.Module):
         torch.Tensor: TFeat descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
-        - Output: :math:`(B, 128)`
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B, 128)``
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> tfeat = TFeat()
+        >>> tfeat = TFeat(pretrained=False).eval()
         >>> descs = tfeat(input) # 16x128
 
     """
 
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
@@ -79,18 +85,18 @@ class TFeat(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Compute TFeat descriptors for grayscale 32x32 patches.
 
         Args:
-            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+            input: Input tensor with shape ``(B, 1, 32, 32)``.
 
         Returns:
-            Descriptor tensor with shape :math:`(B, 128)`.
+            Descriptor tensor with shape ``(B, 128)``.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
-        x = x.view(x.size(0), -1)
+        x = x.flatten(1)
         return self.descr(x)

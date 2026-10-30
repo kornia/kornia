@@ -15,12 +15,26 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
+import warnings
 from typing import Any, Dict, Optional
 
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import normalize_min_max
+
+
+def _warn_clip_output_deprecated(clip_output: Optional[bool]) -> None:
+    if clip_output is not None:
+        warnings.warn(
+            "`clip_output` of `RandomAutoContrast` is deprecated since kornia 0.9.1 and has no effect: "
+            "`kornia.enhance.normalize_min_max` already returns values in [0, 1]. It will be removed in a "
+            "future release; stop passing it, and pass `same_on_batch`, `p` and `keepdim` by keyword.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
 
 class RandomAutoContrast(IntensityAugmentationBase2D):
@@ -30,31 +44,32 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        clip_output: has no effect on the output. The transform is
-          :func:`kornia.enhance.normalize_min_max`, which already maps each sample's channels onto ``[0, 1]``,
-          so clamping to that interval cannot change a value -- including for inputs outside ``[0, 1]``. Kept
-          for signature compatibility. Tracked in `#4436 <https://github.com/kornia/kornia/issues/4436>`_.
+        clip_output: deprecated since 0.9.1 and ignored; passing it emits a :class:`DeprecationWarning`,
+          and it will be removed in a future release. :func:`kornia.enhance.normalize_min_max` already maps
+          each sample's channels onto ``[0, 1]``. See `#4436 <https://github.com/kornia/kornia/issues/4436>`_.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - the output is :func:`kornia.enhance.normalize_min_max` of the input: each channel of each sample is
           rescaled by its own minimum and maximum as ``(x - min) / (max - min + 1e-6)``. This is a rescale, not
           a clamp, so an input outside ``[0, 1]`` is mapped into range rather than clipped, and a constant
-          channel comes back as zeros.
+          channel comes back as zeros. Empty batches preserve their shape, dtype and device.
 
     """
 
     def __init__(
-        self, clip_output: bool = True, same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
+        self, clip_output: Optional[bool] = None, same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
+        _warn_clip_output_deprecated(clip_output)
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
-        self.clip_output = clip_output
+        self.clip_output = True if clip_output is None else clip_output
 
     def apply_transform(
         self,
@@ -63,9 +78,4 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        out = normalize_min_max(input)
-
-        if self.clip_output:
-            return out.clamp(0.0, 1.0)
-
-        return out
+        return normalize_min_max(input)

@@ -22,15 +22,10 @@ from torch import nn
 
 from kornia.core.download import hf_url, load_state_dict_from_url
 
+# One source: the authors' own copies are not served over verifiable https.
 urls: Dict[str, str | list[str]] = {}
-urls["defmo_encoder"] = [
-    hf_url("defmo", "encoder_best.pt"),
-    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
-]
-urls["defmo_rendering"] = [
-    hf_url("defmo", "rendering_best.pt"),
-    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
-]
+urls["defmo_encoder"] = hf_url("defmo", "encoder_best.pt")
+urls["defmo_rendering"] = hf_url("defmo", "rendering_best.pt")
 
 
 # conv1x1, conv3x3, Bottleneck, ResNet are taken from:
@@ -111,7 +106,7 @@ class Bottleneck(nn.Module):
         """Run the bottleneck residual block.
 
         Args:
-            x: Feature tensor with shape :math:`(B, C, H, W)`, where ``B`` is batch
+            x: Feature tensor with shape ``(B, C, H, W)``, where ``B`` is batch
                 size, ``C`` is channel count, and ``H``/``W`` are spatial dimensions.
 
         Returns:
@@ -263,10 +258,10 @@ class ResNet(nn.Module):
         """Run the ResNet backbone and classification head.
 
         Args:
-            x: Input image or feature tensor with shape :math:`(B, C, H, W)`.
+            x: Input image or feature tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Tensor with shape :math:`(B, N)`, where ``N`` is ``num_classes``.
+            Tensor with shape ``(B, N)``, where ``N`` is ``num_classes``.
         """
         return self._forward_impl(x)
 
@@ -295,7 +290,7 @@ class EncoderDeFMO(nn.Module):
         """Encode blurred-image and background inputs into latent features.
 
         Args:
-            input_data: Tensor with shape :math:`(B, 6, H, W)`. The 6 channels usually
+            input_data: Tensor with shape ``(B, 6, H, W)``. The 6 channels usually
                 concatenate RGB blurred input and RGB background estimate.
 
         Returns:
@@ -347,7 +342,7 @@ class RenderingDeFMO(nn.Module):
 
         Args:
             latent: Latent feature tensor from :class:`EncoderDeFMO` with shape
-                :math:`(B, C, H, W)`.
+                ``(B, C, H, W)``.
 
         Returns:
             Tensor with shape :math:`(B, T, 4, H_{out}, W_{out})`, where ``T`` is the
@@ -380,24 +375,31 @@ class DeFMO(nn.Module):
     This is based on the original code from paper "DeFMO: Deblurring and Shape Recovery
         of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
 
+    Convention:
+        - The input is ``(B, 6, H, W)``: the RGB channels of the blurred image, then those of the background
+          estimate, in :math:`[0, 1]` for the pretrained weights. ``H`` and ``W`` that are multiples of 16 give an
+          output of the same size; other sizes give an output rounded up to the next multiples of 16.
+        - The output is ``(B, 24, 4, H, W)``: 24 sub-frames in time order, sub-frame ``k`` rendered at the time
+          ``k / 23``, each with red, green, blue and alpha channels in :math:`[0, 1]` after a sigmoid.
+
     Args:
-        pretrained: Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model. Default: True.
 
     Returns:
         Temporal super-resolution without background.
     Shape:
         - Input: (B, 6, H, W)
-        - Output: (B, S, 4, H, W)
+        - Output: (B, S, 4, H, W), with H and W rounded up to multiples of 16
 
     Examples:
         >>> import kornia
         >>> input = torch.rand(2, 6, 240, 320)
-        >>> defmo = kornia.feature.DeFMO()
+        >>> defmo = kornia.feature.DeFMO(pretrained=False).eval()
         >>> tsr_nobgr = defmo(input) # 2x24x4x240x320
 
     """
 
-    def __init__(self, pretrained: bool = False) -> None:
+    def __init__(self, pretrained: bool = True) -> None:
         super().__init__()
         self.encoder = EncoderDeFMO()
         self.rendering = RenderingDeFMO()
@@ -408,17 +410,17 @@ class DeFMO(nn.Module):
             self.encoder.load_state_dict(pretrained_dict, strict=True)
             pretrained_dict_ren = load_state_dict_from_url(urls["defmo_rendering"], map_location=torch.device("cpu"))
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         """Deblur a fast-moving object into a sequence of RGBA sub-frames.
 
         Args:
-            input_data: Tensor with shape :math:`(B, 6, H, W)` containing the blurred
+            input_data: Tensor with shape ``(B, 6, H, W)`` containing the blurred
                 RGB image concatenated with an RGB background estimate.
 
         Returns:
-            Tensor with shape :math:`(B, T, 4, H, W)`, where ``T`` is the number of
+            Tensor with shape ``(B, T, 4, H, W)``, where ``T`` is the number of
             temporal sub-frames and 4 stores red, green, blue, and alpha channels.
         """
         latent = self.encoder(input_data)

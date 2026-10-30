@@ -34,7 +34,7 @@ class Normalize(IntensityAugmentationBase2D):
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         mean: Mean for each channel.
@@ -44,9 +44,10 @@ class Normalize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Return:
-        Normalised tensor with same size as input :math:`(*, C, H, W)`.
+        Normalised tensor with same size as input ``(*, C, H, W)``.
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``mean`` and ``std`` accept a float, a per-channel sequence or tensor, or a per-sample ``(B, C)``
           tensor; a length that is neither ``1`` nor the channel count raises.
         - ``p`` gates the whole batch rather than each sample: the constructor hard-codes ``same_on_batch=True``

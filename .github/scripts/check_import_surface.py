@@ -609,6 +609,10 @@ def export_removals(base_ref: str, paths: list[str]) -> dict[str, set[str]]:
     for module in modules:
         old_exports = old.resolve(module)
         new_exports = new.resolve(module)
+        if new_exports is None and new._source(module) is None:
+            # Neither spelling of the module exists any more: a deleted module exports nothing.
+            # That is a known surface, unlike a dynamic one, so its emptied inventory row can match.
+            new_exports = set()
         if old_exports is None or new_exports is None:
             continue
         names = set(old_exports) - set(new_exports)
@@ -619,6 +623,8 @@ def export_removals(base_ref: str, paths: list[str]) -> dict[str, set[str]]:
 
 @dataclass
 class FileReport:
+    """What one file removed from its ``__all__``, and whether that should fail the check."""
+
     path: str
     removed_from_all: set[str]
     removed_undocumented: set[str]

@@ -20,8 +20,9 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
 from kornia.augmentation.utils import _range_bound
+from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import adjust_brightness
 
 
@@ -44,20 +45,18 @@ class RandomBrightness(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - with ``clip_output=True``, input values are clamped into ``[0, 1]`` before the operation
+          as well as afterwards. With ``clip_output=False``, the arithmetic is range-independent:
+          neither input nor output is clamped.
         - ``brightness`` is centred on ``1.0``: the drawn factor is re-based to ``factor - 1`` before it reaches
           :func:`kornia.enhance.adjust_brightness`, whose own identity is ``0.0``, so the same number passed
           straight to the primitive means something else.
         - at the default ``clip_output=True`` the result is clamped into ``[0, 1]``; with ``clip_output=False``
           the raw sum is returned.
-
-    .. warning::
-        At the default ``clip_output=True`` an all-negative input comes back as an all-zero image whenever the
-        drawn shift does not lift it above zero, which at the default ``brightness=(1.0, 1.0)`` is always.
-        Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`
@@ -109,5 +108,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        brightness_factor = params["brightness_factor"].to(input)
+        if self.clip_output:
+            input = _clamp_unit_range(input)
+        brightness_factor = _to_device_nonblocking(params["brightness_factor"], input.device, input.dtype)
         return adjust_brightness(input, brightness_factor - 1, self.clip_output)

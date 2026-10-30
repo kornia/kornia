@@ -17,13 +17,20 @@
 
 """ONNX export tests for SAM (image encoder subgraph)."""
 
-import sys
+import io
 
 import pytest
 import torch
 
 from kornia.core._compat import torch_version_ge, torch_version_lt
+from kornia.models.sam.architecture.common import LayerNorm
+from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
+from kornia.models.sam.architecture.mask_decoder import MaskDecoder
+from kornia.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.models.sam.model import Sam, SamConfig
+from kornia.models.tiny_vit import TinyViT
+
+from testing.base import assert_close
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
@@ -35,21 +42,18 @@ def test_sam_has_to_onnx():
 
 
 @pytest.mark.timeout(120)
-@pytest.mark.skipif(
-    sys.platform == "darwin",
-    reason="TorchScript tracing of the SAM encoder exceeds the 120s timeout on macOS CI runners",
-)
 @pytest.mark.xfail(
-    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+    torch_version_ge(2, 14) and torch_version_lt(2, 16, 0),
     reason=(
-        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph: "
-        "DispatchError 'No decompositions registered for the real-valued input'; not yet "
-        "reported upstream"
+        "the dynamo ONNX exporter of torch 2.14 and 2.15 cannot translate aten.mul.Scalar for this graph in "
+        "the CPU build (the 2.14 CUDA build exports it): DispatchError 'No decompositions registered for the "
+        "real-valued input'; not yet reported upstream"
     ),
     raises=torch.onnx.OnnxExporterError,
-    # Strict: an upstream fix inside 2.14.x must announce itself as an XPASS failure rather
-    # than sit silently until the 2.15 bound expires.
-    strict=True,
+    # Strict on the CPU builds, where an upstream fix inside 2.14.x or 2.15.x must announce itself as an XPASS failure
+    # rather than sit silently until the 2.16 bound expires. A CUDA build of 2.14.0 exports this graph (2.14.0+cu130
+    # on Linux), so there the marker is not strict.
+    strict=torch.version.cuda is None,
 )
 def test_sam_encoder_to_onnx(tmp_path):
     """Sam.to_onnx() exports the image encoder subgraph with correct output name."""
@@ -58,7 +62,7 @@ def test_sam_encoder_to_onnx(tmp_path):
 
     # Create a tiny pseudo-SAM model to prevent CI timeouts during ONNX trace
     config = SamConfig(
-        model_type="vit_b",
+        model_type=None,
         encoder_embed_dim=16,
         encoder_depth=1,
         encoder_num_heads=1,
@@ -66,6 +70,8 @@ def test_sam_encoder_to_onnx(tmp_path):
     )
     model = Sam.from_config(config)
     model.eval()
+    # The tiny encoder, not ViT-B (89.7M encoder parameters): 680,128, mostly the neck's 3 x 3 convolution.
+    assert sum(p.numel() for p in model.image_encoder.parameters()) < 1e6
 
     onnx_path = tmp_path / "sam_encoder.onnx"
     # Export only the image encoder (Sam.to_onnx overrides the full-model export).
@@ -77,3 +83,129 @@ def test_sam_encoder_to_onnx(tmp_path):
 
     output_names = [o.name for o in op.graph.output]
     assert "image_embeddings" in output_names, f"Expected 'image_embeddings', got {output_names}"
+
+
+def _dims(value_info):
+    return [d.dim_param or d.dim_value for d in value_info.type.tensor_type.shape.dim]
+
+
+def _check_onnx_against_eager(op, encoder, batches, size):
+    ort = pytest.importorskip("onnxruntime")
+    session = ort.InferenceSession(op.SerializeToString(), providers=["CPUExecutionProvider"])
+    generator = torch.Generator().manual_seed(0)
+    for batch in batches:
+        images = torch.rand(batch, 3, size, size, generator=generator)
+        (embeddings,) = session.run(None, {session.get_inputs()[0].name: images.numpy()})
+        with torch.no_grad():
+            expected = encoder(images)
+        assert_close(torch.from_numpy(embeddings), expected, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.timeout(120)
+def test_vit_encoder_legacy_onnx_matches_eager_at_every_batch():
+    """On the legacy exporter, a ViT image encoder runs at batches other than the traced one."""
+    pytest.importorskip("onnx")
+    torch.manual_seed(0)
+    model = Sam.from_config(
+        SamConfig(
+            model_type=None, encoder_embed_dim=16, encoder_depth=1, encoder_num_heads=1, encoder_global_attn_indexes=[0]
+        )
+    )
+    # A 64 px encoder with a windowed and a global block: the 1024 px one holds a 4096 x 4096 attention per image.
+    model.image_encoder = ImageEncoderViT(
+        img_size=64,
+        embed_dim=16,
+        depth=2,
+        num_heads=1,
+        norm_layer=LayerNorm,
+        use_rel_pos=True,
+        global_attn_indexes=(1,),
+        window_size=14,
+        out_chans=256,
+    )
+    model.eval()
+
+    op = model.to_onnx(save=False, pseudo_shape=[1, 3, 64, 64], dynamo=False)
+
+    assert _dims(op.graph.input[0]) == ["batch", 3, 64, 64]
+    _check_onnx_against_eager(op, model.image_encoder, (1, 2, 3), 64)
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize("export_kwargs", [{}, {"dynamo": False}], ids=["default", "legacy"])
+def test_tiny_vit_encoder_onnx_runs_at_the_batches_it_declares(export_kwargs):
+    """A MobileSAM (TinyViT) encoder: a dynamic batch on the dynamo exporter, the pseudo batch on the legacy one.
+
+    The legacy TorchScript exporter (the default before torch 2.9) keeps the traced batch in TinyViT's reshapes, so
+    its graph is traced at the pseudo shape's batch and declares that batch, rather than a dynamic batch that runs at
+    the traced size only.
+    """
+    pytest.importorskip("onnx")
+    legacy = not export_kwargs.get("dynamo", torch_version_ge(2, 9, 0))
+    if not legacy:
+        pytest.importorskip("onnxscript")
+    torch.manual_seed(0)
+    model = Sam.from_name("mobile_sam")
+    # The MobileSAM encoder layout at 64 px instead of 1024 px.
+    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True)
+    model.eval()
+
+    op = model.to_onnx(save=False, pseudo_shape=[1, 3, 64, 64], **export_kwargs)
+
+    if legacy:
+        _check_onnx_against_eager(op, model.image_encoder, (1,), 64)
+        assert _dims(op.graph.input[0]) == [1, 3, 64, 64]
+        assert _dims(op.graph.output[0])[0] == 1
+    else:
+        _check_onnx_against_eager(op, model.image_encoder, (1, 2, 3), 64)
+        assert isinstance(_dims(op.graph.input[0])[0], str)
+
+
+@pytest.mark.timeout(120)
+def test_tiny_vit_encoder_legacy_onnx_declares_the_pseudo_batch():
+    """On the legacy exporter, a TinyViT encoder is traced at the pseudo shape's batch, here 3, and declares it."""
+    pytest.importorskip("onnx")
+    torch.manual_seed(0)
+    model = Sam.from_name("mobile_sam")
+    model.image_encoder = TinyViT.from_config("5m", img_size=64, mobile_sam=True)
+    model.eval()
+
+    op = model.to_onnx(save=False, pseudo_shape=[3, 3, 64, 64], dynamo=False)
+
+    assert _dims(op.graph.input[0]) == [3, 3, 64, 64]
+    assert _dims(op.graph.output[0])[0] == 3
+    _check_onnx_against_eager(op, model.image_encoder, (3,), 64)
+
+
+@pytest.mark.timeout(120)
+def test_mask_decoder_legacy_onnx_declares_a_dynamic_prompt_batch():
+    """The TorchScript exporter declares the masks' prompt batch dynamic, as the prompt embeddings' batch is."""
+    onnx = pytest.importorskip("onnx")
+    torch.manual_seed(0)
+    transformer = TwoWayTransformer(depth=1, embedding_dim=32, mlp_dim=64, num_heads=2)
+    decoder = MaskDecoder(transformer_dim=32, transformer=transformer).eval()
+    image = (torch.rand(1, 32, 8, 8), torch.rand(1, 32, 8, 8))
+    prompts = (torch.rand(2, 2, 32), torch.rand(2, 32, 8, 8))
+    buffer = io.BytesIO()
+    torch.onnx.export(
+        decoder,
+        (*image, *prompts, True),
+        buffer,
+        input_names=["image_embeddings", "image_pe", "sparse", "dense"],
+        output_names=["masks", "iou_pred"],
+        dynamic_axes={"sparse": {0: "prompts"}, "dense": {0: "prompts"}},
+        dynamo=False,
+    )
+    masks = onnx.load_from_string(buffer.getvalue()).graph.output[0]
+    assert masks.type.tensor_type.shape.dim[0].dim_param
+    # The graph also runs at other prompt batches and matches eager there.
+    ort = pytest.importorskip("onnxruntime")
+    session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+    for batch in (1, 3):
+        sparse, dense = torch.rand(batch, 2, 32), torch.rand(batch, 32, 8, 8)
+        with torch.no_grad():
+            expected = decoder(*image, sparse, dense, True)
+        names = ["image_embeddings", "image_pe", "sparse", "dense"]
+        actual = session.run(None, {name: t.numpy() for name, t in zip(names, (*image, sparse, dense))})
+        for got, want in zip(actual, expected):
+            torch.testing.assert_close(torch.from_numpy(got), want, rtol=1e-4, atol=1e-5)

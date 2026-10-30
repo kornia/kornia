@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-# based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
+# based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py
 from typing import Dict, List, Union
 
 import torch
@@ -64,13 +64,19 @@ class YuNet(nn.Module):
     This is the underlying CNN model used by :py:class:`kornia.contrib.FaceDetector` for face detection.
     The model architecture is based on the method described in :cite:`facedetect-yu`.
 
+    The input is a BGR image with pixel values in :math:`[0, 255]`, with no mean or standard deviation applied: the
+    pretrained weights were trained on such images (ShiqiYu/libfacedetection.train@74f3aa7 ``src/data.py:76, 90``)
+    and evaluated on images read with ``cv2.imread`` (``tasks/task1/datasets.py:53``, ``detect.py:100-106``).
+    :py:class:`kornia.contrib.FaceDetector` takes RGB in :math:`[0, 255]` and flips it to BGR before this model.
+
     Args:
         phase: the phase of the model, either "train" or "test".
-        pretrained: if True, loads pretrained weights from the official repository.
+        pretrained: if True, loads pretrained weights from the official repository and returns the model in
+            evaluation mode; otherwise the random weights stay in training mode.
 
     Example:
         >>> model = YuNet("test", pretrained=True)
-        >>> img = torch.rand(1, 3, 320, 320)
+        >>> img = torch.rand(1, 3, 320, 320) * 255  # BGR in [0, 255]
         >>> out = model(img)
 
     """
@@ -111,13 +117,13 @@ class YuNet(nn.Module):
         if pretrained:
             pretrained_dict = load_state_dict_from_url(_url, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
-        self.eval()
+            self.eval()
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Run YuNet face detection heads over an input image batch.
 
         Args:
-            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`B` is
+            x: Image tensor with shape ``(B, C, H, W)``, where :math:`B` is
                 batch size, :math:`C` is channel count, :math:`H` is height,
                 and :math:`W` is width.
 
@@ -151,16 +157,12 @@ class YuNet(nn.Module):
             x_tmp = h(detection_sources[i])
             head_list.append(x_tmp.permute(0, 2, 3, 1).contiguous())
 
-        head_data = torch.cat([o.view(o.size(0), -1) for o in head_list], 1)
-        head_data = head_data.view(head_data.size(0), -1, 17)
+        head_data = torch.cat([o.flatten(1) for o in head_list], 1)
+        head_data = head_data.view(head_data.shape[0], head_data.shape[1] // 17, 17)
 
         loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
         if self.phase == "test":
             conf_data = torch.softmax(conf_data, dim=-1)
-        else:
-            loc_data = loc_data.view(loc_data.size(0), -1, 14)
-            conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes)
-            iou_data = iou_data.view(iou_data.size(0), -1, 1)
 
         return {"loc": loc_data, "conf": conf_data, "iou": iou_data}

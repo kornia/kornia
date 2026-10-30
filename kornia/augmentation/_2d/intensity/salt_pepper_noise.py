@@ -22,10 +22,11 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
-    r"""Apply random Salt and Pepper noise to input images.
+    r"""Add salt-and-pepper noise to images, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomSaltAndPepperNoise.png
 
@@ -34,16 +35,17 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     Args:
         amount: A float or a tuple representing the range for the amount of noise to apply.
         salt_vs_pepper: A float or a tuple representing the range for the ratio of Salt to Pepper noise.
-        p: The probability of applying the transformation. Default is 0.5.
+        p: The probability of applying the transformation to each sample. Default is 0.5.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
+        - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
         - ``amount`` is a per-*pixel* rewrite probability: a chosen pixel is rewritten in every channel.
         - ``salt_vs_pepper`` is the probability that a rewritten pixel becomes salt rather than pepper, and
           the poles are the literals ``1.0`` and ``0.0`` whatever the input's range is -- on an image scaled
@@ -152,8 +154,12 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
 
         noisy_image = input.clone()
 
-        # Apply noise masks using indexing.
-        noisy_image[params["mask_salt"].to(input.device)] = 1.0
-        noisy_image[params["mask_pepper"].to(input.device)] = 0.0
-
-        return noisy_image
+        mask_salt = _to_device_nonblocking(params["mask_salt"], input.device)
+        mask_pepper = _to_device_nonblocking(params["mask_pepper"], input.device)
+        if mask_salt.shape != noisy_image.shape or mask_pepper.shape != noisy_image.shape:
+            # Boolean indexing raises for a mask of another shape, where ``masked_fill`` would broadcast it.
+            noisy_image[mask_salt] = 1.0
+            noisy_image[mask_pepper] = 0.0
+            return noisy_image
+        # The same writes as boolean indexing, salt first, without the ``nonzero`` that reads the masks on the host.
+        return noisy_image.masked_fill(mask_salt, 1.0).masked_fill(mask_pepper, 0.0)
