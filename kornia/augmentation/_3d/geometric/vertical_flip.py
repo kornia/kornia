@@ -27,7 +27,7 @@ from kornia.core.ops import _device_literal
 class RandomVerticalFlip3D(GeometricAugmentationBase3D):
     r"""Flip 3D volumes vertically, applied per sample with probability ``p`` (default 0.5).
 
-    Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
+    Input should be a tensor of shape ``(C, D, H, W)`` or a batch of tensors ``(*, C, D, H, W)``.
 
     Args:
         p: probability of applying the transformation to each sample.
@@ -36,8 +36,8 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
           to the batch form ``False``.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.

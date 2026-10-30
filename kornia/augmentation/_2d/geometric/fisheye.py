@@ -38,9 +38,9 @@ class RandomFisheye(AugmentationBase2D):
         The input sampling coordinate is ``(x * (1 + r**gamma), y * (1 + r**gamma))``:
         the centre changes the distance, but scaling is about the coordinate origin.
         Sampling is bilinear with zero padding and ``align_corners=True``; these settings are fixed.
-        There is no ``transform_matrix`` or ``inverse``; spatial labels in containers have limitations
+        There is no ``transform_matrix`` or ``inverse``. A ``mask``, keypoint or box data key raises
+        ``NotImplementedError`` identifying this augmentation, even at ``p=0``
         (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
-        A ``mask`` data key raises ``NotImplementedError`` identifying this augmentation, even at ``p=0``.
 
     Args:
         center_x: Ranges to sample respect to x-coordinate center with shape (2,).

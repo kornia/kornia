@@ -157,12 +157,12 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
         this is just a convenience function to have compatibility with Pil
 
     Args:
-        image: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        image: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
         factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Return:
-        Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -216,12 +216,12 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     The image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        image: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        image: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
         factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Return:
-        Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        Adjusted image in the shape of ``(*, 3, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -323,14 +323,14 @@ def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch
     The image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, 3, H, W)``.
         factor: How much to shift the hue channel. Should be in [-PI, PI]. PI
           and -PI give complete reversal of hue channel in HSV space in positive and negative
           direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
           image with complementary colors while 0 gives the original image.
 
     Return:
-        Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        Adjusted image in the shape of ``(*, 3, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -372,14 +372,14 @@ def adjust_gamma(
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        input: Image to be adjusted in the shape of ``(*, H, W)``.
         gamma: Non negative real number, same as y\gammay in the equation.
             gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
             dark regions lighter.
         gain: The constant multiplier.
 
     Return:
-        Adjusted image in the shape of :math:`(*, H, W)`.
+        Adjusted image in the shape of ``(*, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -505,7 +505,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         https://scikit-image.org/docs/dev/auto_examples/color_exposure/plot_log_gamma.html#sphx-glr-auto-examples-color-exposure-plot-log-gamma-py
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Contrast adjust factor per element
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
@@ -513,7 +513,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         clip_output: whether to clip the output image with range of [0, 1].
 
     Return:
-        Adjusted image in the shape of :math:`(*, H, W)`.
+        Adjusted image in the shape of ``(*, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -573,13 +573,13 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
         definition of image contrast adjustment consider using :func:`kornia.enhance.adjust_gamma`.
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Contrast adjust factor per element
             in the batch. 0 gives a uniform image at the mean gray level, 1 does not modify
             the input image and a larger factor increases the contrast.
 
     Return:
-        Adjusted image in the shape of :math:`(*, H, W)`.
+        Adjusted image in the shape of ``(*, H, W)``.
 
     Example:
         >>> import torch
@@ -641,14 +641,14 @@ def adjust_brightness(
         https://scikit-image.org/docs/dev/auto_examples/color_exposure/plot_log_gamma.html#sphx-glr-auto-examples-color-exposure-plot-log-gamma-py
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Brightness adjust factor per element in the batch. It's recommended to
             bound the factor by [0, 1]. 0 does not modify the input image while any other
             number modify the brightness.
         clip_output: Whether to clip output to be in [0,1].
 
     Return:
-        Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+        Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -702,14 +702,14 @@ def adjust_brightness_accumulative(
     The input image and factor is expected to be in the range of [0, 1].
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Brightness factor per element in the batch. The image is multiplied by it, so ``1``
             leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image and a factor above ``1``
             brightens it.
         clip_output: Whether to clip output to be in [0,1].
 
     Return:
-        Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+        Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -759,13 +759,13 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
              http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         cutoff: The cutoff of sigmoid function.
         gain: The multiplier of sigmoid function.
         inv: If is set to True the function will return the inverse sigmoid correction.
 
     Returns:
-         Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+         Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -793,13 +793,13 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
     [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         gain: The multiplier of logarithmic function.
         inv:  If is set to True the function will return the inverse logarithmic correction.
         clip_output: Whether to clip the output image with range of [0, 1].
 
     Returns:
-        Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+        Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     Example:
         >>> x = torch.zeros(1, 1, 2, 2)
@@ -872,7 +872,7 @@ def solarize(
     ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is in the closed range [-0.5, 0.5].
 
     Args:
-        input: image torch.Tensor with shapes like :math:`(*, C, H, W)` to solarize.
+        input: image torch.Tensor with shapes like ``(*, C, H, W)`` to solarize.
         thresholds: solarize thresholds.
             If int or one element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
@@ -882,7 +882,7 @@ def solarize(
             If 1-d torch.Tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
-        The solarized images with shape :math:`(*, C, H, W)`.
+        The solarized images with shape ``(*, C, H, W)``.
 
     .. note::
        The range check on ``additions`` reads a float or a CPU tensor during the call and raises
@@ -967,7 +967,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Non-differentiable function, ``torch.uint8`` involved.
 
     Args:
-        input: image torch.Tensor with shape :math:`(*, C, H, W)` to posterize.
+        input: image torch.Tensor with shape ``(*, C, H, W)`` to posterize.
         bits: number of high bits. Must be in range [0, 8].
             If int or one-element torch.Tensor, the same bits value is used across the whole batch.
             A 1-d tensor with multiple elements specifies one value per sample, not per channel;
@@ -978,7 +978,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
             match the corresponding leading dimensions of the normalized ``(B, C, H, W)`` input.
 
     Returns:
-        Image with reduced color channels with shape :math:`(*, C, H, W)`.
+        Image with reduced color channels with shape ``(*, C, H, W)``.
 
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
@@ -1072,7 +1072,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L326
 
     Args:
-        input: image torch.Tensor with shape :math:`(*, C, H, W)` to sharpen.
+        input: image torch.Tensor with shape ``(*, C, H, W)`` to sharpen.
         factor: blend factor between the smoothed copy and the input. ``0`` returns the smoothed image,
             ``1`` returns the input, and a factor above ``1`` sharpens. It is not validated: ``0`` and
             negative factors are accepted and extrapolate past the smoothed image.
@@ -1082,7 +1082,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
             when ``B`` is greater than one.
 
     Returns:
-        Sharpened image or images with shape :math:`(*, C, H, W)`.
+        Sharpened image or images with shape ``(*, C, H, W)``.
 
     Example:
         >>> x = torch.rand(1, 1, 5, 5)
@@ -1218,10 +1218,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/5f71c12a020403f863434e96982a840578fdd127/models/official/efficientnet/autoaugment.py#L355
 
     Args:
-        input: image torch.Tensor to equalize with shape :math:`(*, C, H, W)`.
+        input: image torch.Tensor to equalize with shape ``(*, C, H, W)``.
 
     Returns:
-        Equalized image torch.Tensor with shape :math:`(*, C, H, W)`.
+        Equalized image torch.Tensor with shape ``(*, C, H, W)``.
 
     .. note::
        The input is expected as a floating-point image in :math:`[0, 1]`, and each channel is equalized from
@@ -1260,14 +1260,14 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-        input: image torch.Tensor with shape :math:`(*, C, D, H, W)` to equalize.
+        input: image torch.Tensor with shape ``(*, C, D, H, W)`` to equalize.
 
     Returns:
         Equalized volume with the same shape as the input.
 
     .. note::
        The input is expected as a floating-point volume in :math:`[0, 1]`, and each channel's whole
-       :math:`(D, H, W)` volume is equalized from one 256-bin histogram. The lookup step is an integer
+       ``(D, H, W)`` volume is equalized from one 256-bin histogram. The lookup step is an integer
        division by 255, so a volume with no more than 255 voxels per channel is returned unchanged up to
        floating-point roundoff; just above that, whether it changes depends on the values. An integer or
        boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, as for :func:`equalize`. Values
@@ -1334,8 +1334,8 @@ class AdjustSaturation(nn.Module):
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Shape:
-        - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        - Input: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
+        - Output: Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -1371,7 +1371,7 @@ class AdjustSaturation(nn.Module):
         """Adjust RGB saturation using the module's configured factor.
 
         Args:
-            input: Input RGB tensor, typically shaped :math:`(*, 3, H, W)`.
+            input: Input RGB tensor, typically shaped ``(*, 3, H, W)``.
 
         Returns:
             Saturation-adjusted tensor with the same shape as ``input``.
@@ -1395,8 +1395,8 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Shape:
-        - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        - Input: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
+        - Output: Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -1435,7 +1435,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
         which follows PIL-like saturation behavior.
 
         Args:
-            input: Input image tensor, typically shaped :math:`(*, 3, H, W)`.
+            input: Input image tensor, typically shaped ``(*, 3, H, W)``.
 
         Returns:
             Saturation-adjusted tensor with the same shape as ``input``.
@@ -1461,8 +1461,8 @@ class AdjustHue(nn.Module):
           image with complementary colors while 0 gives the original image.
 
     Shape:
-        - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        - Input: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
+        - Output: Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -1498,7 +1498,7 @@ class AdjustHue(nn.Module):
 
         Args:
             input: Input RGB tensor in the expected image range, usually shaped
-                :math:`(*, 3, H, W)`.
+                ``(*, 3, H, W)``.
 
         Returns:
             Hue-adjusted tensor with the same shape as ``input``.
@@ -1521,8 +1521,8 @@ class AdjustGamma(nn.Module):
         gain: The constant multiplier.
 
     Shape:
-        - Input: Image to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1549,7 +1549,7 @@ class AdjustGamma(nn.Module):
 
         Args:
             input: Input tensor to correct, commonly image-shaped
-                :math:`(*, C, H, W)`.
+                ``(*, C, H, W)``.
 
         Returns:
             Gamma-corrected tensor with the same shape as ``input``.
@@ -1573,8 +1573,8 @@ class AdjustContrast(nn.Module):
           brightness by this factor.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1598,7 +1598,7 @@ class AdjustContrast(nn.Module):
         """Adjust contrast using the configured contrast factor.
 
         Args:
-            input: Input tensor to adjust, typically shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, typically shaped ``(*, C, H, W)``.
 
         Returns:
             Contrast-adjusted tensor with the same shape as ``input``.
@@ -1623,8 +1623,8 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
           the input image and a larger factor increases the contrast.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1651,7 +1651,7 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
         applies PIL-like contrast behavior.
 
         Args:
-            input: Input tensor to adjust, typically shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, typically shaped ``(*, C, H, W)``.
 
         Returns:
             Contrast-adjusted tensor with the same shape as ``input``.
@@ -1674,8 +1674,8 @@ class AdjustBrightness(nn.Module):
           brightness.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1699,7 +1699,7 @@ class AdjustBrightness(nn.Module):
         """Adjust image brightness using the configured brightness factor.
 
         Args:
-            input: Input tensor to adjust, commonly shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, commonly shaped ``(*, C, H, W)``.
 
         Returns:
             Brightness-adjusted tensor with the same shape as ``input``.
@@ -1720,7 +1720,7 @@ class AdjustSigmoid(nn.Module):
              http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         cutoff: The cutoff of sigmoid function.
         gain: The multiplier of sigmoid function.
         inv: If is set to True the function will return the negative sigmoid correction.
@@ -1744,7 +1744,7 @@ class AdjustSigmoid(nn.Module):
 
         Args:
             image: Input image tensor to remap, typically shaped
-                :math:`(*, C, H, W)` or :math:`(*, H, W)`.
+                ``(*, C, H, W)`` or ``(*, H, W)``.
 
         Returns:
             Tensor with sigmoid correction applied, preserving input shape.
@@ -1764,7 +1764,7 @@ class AdjustLog(nn.Module):
     [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         gain: The multiplier of logarithmic function.
         inv:  If is set to True the function will return the inverse logarithmic correction.
         clip_output: Whether to clip the output image with range of [0, 1].
@@ -1788,7 +1788,7 @@ class AdjustLog(nn.Module):
 
         Args:
             image: Input image tensor to transform, typically shaped
-                :math:`(*, C, H, W)` or :math:`(*, H, W)`.
+                ``(*, C, H, W)`` or ``(*, H, W)``.
 
         Returns:
             Log-corrected tensor with the same shape as ``image``.
@@ -1812,8 +1812,8 @@ class AdjustBrightnessAccumulative(nn.Module):
           and a factor above ``1`` brightens it.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1837,7 +1837,7 @@ class AdjustBrightnessAccumulative(nn.Module):
         """Adjust brightness with accumulative (PIL-like) behavior.
 
         Args:
-            input: Input tensor to adjust, commonly shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, commonly shaped ``(*, C, H, W)``.
 
         Returns:
             Brightness-adjusted tensor with the same shape as ``input``.

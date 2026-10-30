@@ -112,12 +112,12 @@ def mean_absolute_disparity_error(
         \text{MAE}(D, D^{gt}) = \frac{1}{|\mathcal{V}|}\sum_{p \in \mathcal{V}} |D_{p} - D^{gt}_{p}|
 
     Convention:
-        - The maps hold disparities in pixels, have any shape :math:`(*)` and must have a floating dtype. ``'mean'``
+        - The maps hold disparities in pixels, have any shape ``(*)`` and must have a floating dtype. ``'mean'``
           and ``'sum'`` pool every valid pixel of every image into one 0-d value, in pixels here, so for images with
           different numbers of valid pixels the result is not the mean of the per-image errors. The other disparity
           metrics pool the same way.
-        - ``valid_mask`` is broadcast to the maps from the right: an :math:`(H, W)` mask applies to every image of a
-          :math:`(B, H, W)` batch and a :math:`(B, 1, 1)` mask selects whole images, while a :math:`(B,)` mask is
+        - ``valid_mask`` is broadcast to the maps from the right: an ``(H, W)`` mask applies to every image of a
+          ``(B, H, W)`` batch and a ``(B, 1, 1)`` mask selects whole images, while a ``(B,)`` mask is
           matched against the last axis, not the batch. Nothing is masked automatically: a pixel with an invalid
           ground truth, such as a zero disparity, counts unless ``valid_mask`` excludes it.
         - A ``nan`` at a valid pixel of either map propagates into this error and the RMSE, while
@@ -125,7 +125,7 @@ def mean_absolute_disparity_error(
           good pixel.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         valid_mask: optional mask broadcastable to the shape of ``input``, where nonzero
             (``True``) values mark the pixels to evaluate. Non-boolean masks are converted
@@ -189,7 +189,7 @@ def root_mean_squared_disparity_error(
         a sum of errors.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         valid_mask: optional mask broadcastable to the shape of ``input``, where nonzero
             (``True``) values mark the pixels to evaluate. Non-boolean masks are converted
@@ -272,7 +272,7 @@ def mean_bad_pixel_error(
         number of bad pixels.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         threshold: the disparity error above which a pixel is considered bad.
         valid_mask: optional mask broadcastable to the shape of ``input``, where nonzero
@@ -348,7 +348,7 @@ def kitti_d1_error(
           change the result.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         abs_threshold: the absolute disparity error above which a pixel may be an outlier.
         rel_threshold: the relative disparity error above which a pixel may be an outlier.

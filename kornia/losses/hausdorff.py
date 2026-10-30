@@ -119,9 +119,9 @@ class _HausdorffERLossBase(nn.Module):
         """Compute Hausdorff loss.
 
         Args:
-            pred: predicted torch.Tensor with a shape of :math:`(B, C, H, W)` or :math:`(B, C, D, H, W)`.
+            pred: predicted torch.Tensor with a shape of ``(B, C, H, W)`` or ``(B, C, D, H, W)``.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, 1, D, H, W)`.
+            target: target torch.Tensor with a shape of ``(B, 1, H, W)`` or ``(B, 1, D, H, W)``.
 
         Returns:
             Estimated Hausdorff Loss.
@@ -238,9 +238,9 @@ class HausdorffERLoss(_HausdorffERLossBase):
         """Compute Hausdorff loss.
 
         Args:
-            pred: predicted torch.Tensor with a shape of :math:`(B, C, H, W)`.
+            pred: predicted torch.Tensor with a shape of ``(B, C, H, W)``.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)`.
+            target: target torch.Tensor with a shape of ``(B, 1, H, W)``.
 
         Returns:
             Estimated Hausdorff Loss.
@@ -321,9 +321,9 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         """Compute 3D Hausdorff loss.
 
         Args:
-            pred: predicted torch.Tensor with a shape of :math:`(B, C, D, H, W)`.
+            pred: predicted torch.Tensor with a shape of ``(B, C, D, H, W)``.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target torch.Tensor with a shape of :math:`(B, 1, D, H, W)`.
+            target: target torch.Tensor with a shape of ``(B, 1, D, H, W)``.
 
         Returns:
             Estimated Hausdorff Loss.

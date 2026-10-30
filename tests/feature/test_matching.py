@@ -914,6 +914,13 @@ class TestMatchSteererLocal(BaseTester):
         assert num_rot is None
 
 
+def _sine_pattern(shape, frequency, chirp, phase, device, dtype):
+    """Deterministic descriptors in ``[-1, 1]`` without the random generator, the same on every device."""
+    index = torch.arange(math.prod(shape), dtype=torch.float64)
+    values = torch.sin(frequency * index + chirp * (index % shape[-1]) ** 2 + phase).view(shape)
+    return values.to(dtype).to(device)
+
+
 class TestCDist(BaseTester):
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("use_autocast", [False, True])
@@ -971,6 +978,28 @@ class TestCDist(BaseTester):
         with pytest.raises(RuntimeError):
             _cdist(torch.ones(2, 4, device=device, dtype=dtype1), torch.ones(3, 4, device=device, dtype=dtype2))
 
+    @pytest.mark.parametrize("exporting", [False, True])
+    @pytest.mark.parametrize("rows", [10, 30])
+    def test_mixed_pair_under_mixed_precision_is_computed(self, device, monkeypatch, rows, exporting):
+        # Inside autocast a mixed pair of float16, bfloat16 and float32 is computed in float32, by `torch.cdist` and by
+        # the fallback that export takes; more than 25 rows also send `torch.cdist` through its matrix form. Autocast
+        # does not cast float64, so a pair with it raises, as outside autocast.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("autocast region of CPU, CUDA and MPS only")
+        monkeypatch.setattr(matching, "is_exporting", lambda: exporting)
+        low = torch.bfloat16 if device.type == "cpu" else torch.float16
+        d1 = _sine_pattern((rows, 16), 0.71, 0.13, 0.0, device, torch.float32)
+        d2 = _sine_pattern((rows + 5, 16), 0.53, 0.29, 1.0, device, torch.float32)
+        with torch.autocast(device.type, dtype=low):
+            for a, b in ((d1.to(low), d2), (d1, d2.to(low))):
+                actual = _cdist(a, b)
+                assert actual.dtype == a.dtype
+                expected = torch.cdist(a.cpu().double(), b.cpu().double())
+                self.assert_close(actual.cpu().double(), expected.to(a.dtype).double(), rtol=1e-2, atol=1e-3)
+            if device.type == "cpu":
+                with pytest.raises(RuntimeError, match="same dtype"):
+                    _cdist(d1.to(low), d2.double())
+
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_zero_distance_gradient(self, device, desc_dtype):
         if not supports_matmul(device, desc_dtype):
@@ -988,6 +1017,23 @@ class TestCDist(BaseTester):
         assert torch.isfinite(d1.grad).all()
         assert d2.grad is not None
         assert torch.isfinite(d2.grad).all()
+
+    @pytest.mark.parametrize("exporting", [False, True])
+    def test_matches_float64_cdist(self, device, dtype, monkeypatch, exporting):
+        # Export takes the matrix-multiplication fallback, as MPS does before torch 2.13. Every distance is at least
+        # 2.6, where that form does not cancel; more than 25 rows also send `torch.cdist` itself through it.
+        monkeypatch.setattr(matching, "is_exporting", lambda: exporting)
+        desc1 = _sine_pattern((30, 16), 0.71, 0.13, 0.0, device, dtype).requires_grad_()
+        desc2 = _sine_pattern((40, 16), 0.53, 0.29, 1.0, device, dtype).requires_grad_()
+        reference1 = desc1.detach().cpu().double().requires_grad_()
+        reference2 = desc2.detach().cpu().double().requires_grad_()
+        expected = torch.cdist(reference1, reference2)
+        expected_grads = torch.autograd.grad(expected.sum(), (reference1, reference2))
+        actual = _cdist(desc1, desc2)
+        actual_grads = torch.autograd.grad(actual.sum(), (desc1, desc2))
+        self.assert_close(actual, expected.to(dtype).to(device))
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad.to(dtype).to(device))
 
 
 class TestMatchSMNNBatched(BaseTester):
@@ -1032,6 +1078,33 @@ class TestMatchSMNNBatched(BaseTester):
         actual = torch_optimizer(matching.match_smnn_batched)(a, b, **kwargs)
         self.assert_close(actual[0], expected[0])
         self.assert_close(actual[1], expected[1])
+
+    @pytest.mark.parametrize("masked", [False, True])
+    @pytest.mark.parametrize("rows", [20, 30])
+    def test_export_differences_match_cdist(self, device, dtype, monkeypatch, masked, rows):
+        # Export accumulates direct differences in chunks of 16 coordinates, as MPS does for masks, for at most 25
+        # rows and before torch 2.13. Every ratio is at least 0.02 from the threshold.
+        a = _sine_pattern((2, rows, 20), 0.71, 0.13, 0.0, device, dtype)
+        noise = _sine_pattern((2, rows, 20), 0.53, 0.29, 1.0, device, dtype)
+        b = torch.cat((a.flip(1) + 0.1 * noise, 2.0 * _sine_pattern((2, 4, 20), 0.83, 0.17, 2.0, device, dtype)), 1)
+        kwargs = {}
+        if masked:
+            limits = torch.tensor([[rows + 4], [rows]], device=device)
+            kwargs["mask1"] = torch.arange(rows, device=device).expand(2, rows) % 7 != 3
+            kwargs["mask2"] = torch.arange(rows + 4, device=device).expand(2, rows + 4) < limits
+        results = []
+        for exporting in (False, True):
+            monkeypatch.setattr(matching, "is_exporting", lambda exporting=exporting: exporting)
+            a_, b_ = a.clone().requires_grad_(), b.clone().requires_grad_()
+            ratios, indices = matching.match_smnn_batched(a_, b_, 0.95, **kwargs)
+            results.append((ratios, indices, *torch.autograd.grad(ratios.sum(), (a_, b_))))
+        (ratios, indices, *grads), (export_ratios, export_indices, *export_grads) = results
+        assert len(indices) > 20
+        self.assert_close(export_indices, indices)
+        self.assert_close(export_ratios, ratios)
+        for export_grad, grad in zip(export_grads, grads):
+            # Unmasked pairs over 25 rows take the matrix-multiplication form, which moves the gradients by 1e-5.
+            self.assert_close(export_grad, grad, low_tolerance=not masked and rows > 25)
 
     def test_masked_gradients_are_finite(self, device, dtype):
         a = torch.rand(2, 3, 4, device=device, dtype=dtype, requires_grad=True)

@@ -82,8 +82,8 @@ def tversky_loss(
         enters the batch mean as loss 1. There is no ``weight``, ``average`` or ``reduction``.
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        target: labels tensor with shape :math:`(N, H, W)` where each value
+        pred: logits tensor with shape ``(N, C, H, W)`` where C = number of classes.
+        target: labels tensor with shape ``(N, H, W)`` where each value
           is in range :math:`0 ≤ targets[i] ≤ C-1`.
         alpha: the first coefficient in the denominator.
         beta: the second coefficient in the denominator.
@@ -184,8 +184,8 @@ class TverskyLoss(nn.Module):
         ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
-        - Pred: :math:`(N, C, H, W)` where C = number of classes.
-        - Target: :math:`(N, H, W)` where each value is
+        - Pred: ``(N, C, H, W)`` where C = number of classes.
+        - Target: ``(N, H, W)`` where each value is
           :math:`0 ≤ targets[i] ≤ C-1`.
 
     Examples:
@@ -210,10 +210,10 @@ class TverskyLoss(nn.Module):
         """Compute the Tversky segmentation loss for class logits and labels.
 
         Args:
-            pred: Logit tensor with shape :math:`(B, C, H, W)`, where
+            pred: Logit tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is batch size, :math:`C` is number of classes,
                 :math:`H` is height, and :math:`W` is width.
-            target: Integer class-label tensor with shape :math:`(B, H, W)`.
+            target: Integer class-label tensor with shape ``(B, H, W)``.
                 Labels matching ``self.ignore_index`` are excluded from the
                 loss when an ignore index is configured.
 

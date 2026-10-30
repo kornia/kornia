@@ -524,12 +524,12 @@ Augmentations
   intensity and non-rigid children are skipped, so their effect
   stays. Tensor box outputs are axis-aligned enclosures, so a rotation round
   trip does not restore a box.
-- Non-rigid children do not move coordinate annotations:
-  :class:`kornia.augmentation.RandomElasticTransform` warps masks but leaves
-  keypoints and boxes unchanged, and
-  :class:`kornia.augmentation.RandomThinPlateSpline` and
-  :class:`kornia.augmentation.RandomFisheye` leave coordinates unchanged and
-  raise on masks (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+- Non-rigid children cannot move coordinate annotations, so a pipeline that
+  contains :class:`kornia.augmentation.RandomElasticTransform`,
+  :class:`kornia.augmentation.RandomThinPlateSpline` or
+  :class:`kornia.augmentation.RandomFisheye` raises ``NotImplementedError`` on
+  a keypoint or box data key, even at ``p=0``. Elastic warps masks; the other
+  two raise on masks (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 - Intensity augmentations leave masks unchanged, except
   :class:`kornia.augmentation.RandomErasing`, which erases the same rectangle
   in the mask and fills it with ``0`` (background) whatever ``value`` fills

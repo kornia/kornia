@@ -381,7 +381,7 @@ def otsu_threshold(
     r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
 
     Convention:
-        - One threshold is returned per plane over the last two axes: a :math:`(B, C, H, W)` input gives ``B * C``
+        - One threshold is returned per plane over the last two axes: a ``(B, C, H, W)`` input gives ``B * C``
           thresholds, flattened, and a tensor of at most two dimensions is one plane.
         - Each plane is histogrammed on its own range, ``nbins`` bins between its minimum and its maximum, not over a
           fixed :math:`[0, 1]` or :math:`[0, 255]`. The threshold is the upper edge of the selected histogram bin,
