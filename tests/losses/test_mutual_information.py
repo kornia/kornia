@@ -1103,9 +1103,9 @@ class TestConventionsMutualInformation(BaseTester):
             self.assert_close(actual_grad, expected_grad)
 
     def test_chunked_joint_histogram_rejects_empty_samples(self, device, dtype):
-        """Empty sample axes retain their explicit error after splitting."""
+        """Empty sample axes retain their explicit error after chunking."""
         values = torch.empty(2, 4, 0, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match="sample dimension"):
+        with pytest.raises(RuntimeError, match="sample dimension"):
             _chunked_joint_histogram_matmul(values, values, 5)
 
     @pytest.mark.device_agnostic

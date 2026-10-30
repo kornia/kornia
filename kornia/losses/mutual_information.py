@@ -30,19 +30,14 @@ _MPS_MATMUL_MAX_K = 16384
 
 def _chunked_joint_histogram_matmul(vals_1: torch.Tensor, vals_2: torch.Tensor, chunk_size: int) -> torch.Tensor:
     """Contract the sample dimension in bounded chunks for MPS joint histograms."""
-    if vals_1.shape[-1] == 0:
-        raise ValueError("The sample dimension must contain at least one value.")
-    chunks_1 = vals_1.split(chunk_size, dim=-1)
-    chunks_2 = vals_2.split(chunk_size, dim=-1)
-    joint_histogram: torch.Tensor | None = None
-    # Split backward concatenates chunk gradients once instead of allocating a
-    # full input gradient for every slice in the loop.
-    for chunk_1, chunk_2 in zip(chunks_1, chunks_2):
-        chunk = chunk_1.contiguous() @ chunk_2.transpose(-1, -2).contiguous()
-        joint_histogram = chunk if joint_histogram is None else joint_histogram + chunk
-    if joint_histogram is None:
-        raise ValueError("The sample dimension must contain at least one value.")
-    return joint_histogram
+    # The sample count of a masked gather is data-dependent under graph capture: torch._check records
+    # it as a runtime assert, where a Python comparison or a loop over chunks would guard on it.
+    torch._check(vals_1.shape[-1] > 0, lambda: "The sample dimension must contain at least one value.")
+    # Zero-pad the samples to whole chunks and contract every chunk in one batched matmul.
+    pad = (-vals_1.shape[-1]) % chunk_size
+    chunks_1 = torch.nn.functional.pad(vals_1, (0, pad)).unflatten(-1, (-1, chunk_size)).transpose(-2, -3)
+    chunks_2 = torch.nn.functional.pad(vals_2, (0, pad)).unflatten(-1, (-1, chunk_size)).transpose(-2, -3)
+    return (chunks_1.contiguous() @ chunks_2.transpose(-1, -2).contiguous()).sum(-3)
 
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
