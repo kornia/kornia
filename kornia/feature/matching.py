@@ -20,43 +20,65 @@ from typing import Any, ClassVar, Dict, List, Optional, Tuple
 import torch
 from torch import nn
 
+from kornia.core._compat import torch_version_ge
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _l2_normalize, is_exporting, is_mps_tensor_safe
+from kornia.core.utils import _l2_normalize, is_autocast_enabled, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
 from .adalam import match_adalam
 
+# ``aten::_cdist_backward`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
+_MPS_HAS_CDIST_BACKWARD = torch_version_ge(2, 13)
+
+
+def _torch_cdist_available(x: torch.Tensor) -> bool:
+    """Return whether ``torch.cdist`` can compute, and differentiate, the distances of descriptors like ``x``."""
+    if is_exporting():  # `torch.cdist` has no ONNX lowering
+        return False
+    # TorchScript cannot read ``_MPS_HAS_CDIST_BACKWARD``, so a scripted call keeps the fallback on MPS.
+    mps_has_backward = False
+    if not torch.jit.is_scripting():
+        mps_has_backward = _MPS_HAS_CDIST_BACKWARD
+    return mps_has_backward or not is_mps_tensor_safe(x)
+
 
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     r"""Compute pairwise L2 distances between rows of d1 and d2.
 
-    Uses ``torch.cdist`` on non-MPS devices outside export. Falls back to a manual
-    squared-distance implementation for MPS tensors and export. Half-precision
-    inputs are computed in float32: in half precision the squared norms round away
-    the squared distance between nearby descriptors, and ``torch.cdist`` has no
-    float16 kernel on CPU. Distances are returned in the input dtype.
+    Uses ``torch.cdist``, except under export, where it has no ONNX lowering, and on
+    MPS before torch 2.13, where it has no backward. Both fall back to the
+    matrix-multiplication form of the squared distance. Half-precision inputs are
+    computed in float32: in half precision the squared norms round away the squared
+    distance between nearby descriptors, and ``torch.cdist`` has no float16 kernel on
+    CPU. Distances are returned in the input dtype.
     """
     half = (torch.float16, torch.bfloat16)
     output_dtype = d1.dtype
-    if output_dtype in half and d2.dtype == output_dtype:
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():  # noqa: SIM102
+        if d1.dtype != d2.dtype:
+            # Inside autocast, `torch.cdist` computes a mixed pair of float16, bfloat16 and float32 in float32, and
+            # so does the fallback here; autocast does not cast float64. Outside autocast, the CPU `torch.cdist`
+            # raises for a mixed pair, while on MPS it computes one of up to 25 rows in the dtype of d1.
+            castable = (torch.float16, torch.bfloat16, torch.float32)
+            if not (is_autocast_enabled() and d1.dtype in castable and d2.dtype in castable):
+                raise RuntimeError(f"The descriptors must have the same dtype, got {d1.dtype} and {d2.dtype}")
+            d1, d2 = d1.float(), d2.float()
+    if output_dtype in half:
         d1, d2 = d1.float(), d2.float()
-    if (
-        not is_exporting()  # `torch.cdist` has no ONNX lowering
-        and (not is_mps_tensor_safe(d1))
-        and (not is_mps_tensor_safe(d2))
-    ):
+    if _torch_cdist_available(d1) and _torch_cdist_available(d2):
         distances = torch.cdist(d1, d2)
     else:
         # Autocast would lower the matmul precision again and cancel nearby distances.
         with torch.autocast(device_type="cpu", enabled=False), torch.autocast(device_type="cuda", enabled=False):
             d1_sq = (d1**2).sum(dim=1, keepdim=True)
             d2_sq = (d2**2).sum(dim=1, keepdim=True)
-            dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
+            dm = d1_sq + d2_sq.t() - 2.0 * d1 @ d2.t()
             dm = dm.clamp(min=0.0)
             mask = dm > 0.0
-            safe_dm = torch.where(mask, dm, torch.ones_like(dm))
-            distances = torch.where(mask, safe_dm.sqrt(), torch.zeros_like(dm))
+            safe_dm = torch.where(mask, dm, 1.0)
+            distances = torch.where(mask, safe_dm.sqrt(), 0.0)
     return distances.to(output_dtype)
 
 
@@ -372,21 +394,24 @@ def match_smnn_batched(
         work2 = desc2.masked_fill(~valid2.unsqueeze(-1), 0.0) if mask2 is not None else desc2
         work1 = work1.float() if work1.dtype in (torch.float16, torch.bfloat16) else work1
         work2 = work2.float() if work2.dtype in (torch.float16, torch.bfloat16) else work2
-        if not is_exporting() and not is_mps_tensor_safe(desc1):
+        # Without the matrix-multiplication form, which it takes for unmasked pairs with more than
+        # 25 descriptors on a side, `torch.cdist` on MPS holds all (B, N, M, D) differences at once.
+        mps_direct = is_mps_tensor_safe(desc1) and (masked or max(n, m) <= 25)
+        if _torch_cdist_available(desc1) and not mps_direct:
             distances = torch.cdist(
                 work1,
                 work2,
                 compute_mode="donot_use_mm_for_euclid_dist" if masked else "use_mm_for_euclid_dist_if_necessary",
             )
         else:
-            # MPS/ONNX lack cdist. Accumulate direct differences in descriptor
-            # chunks to bound temporary memory without looping over pairs.
+            # Export, MPS before torch 2.13 and direct distances on MPS: accumulate direct differences
+            # in descriptor chunks to bound temporary memory without looping over pairs.
             squared = work1.new_zeros((batch, n, m))
             for start in range(0, dim, 16):
                 difference = work1[:, :, None, start : start + 16] - work2[:, None, :, start : start + 16]
                 squared = squared + (difference * difference).sum(-1)
             positive = squared > 0
-            distances = torch.where(positive, torch.where(positive, squared, torch.ones_like(squared)).sqrt(), 0.0)
+            distances = torch.where(positive, torch.where(positive, squared, 1.0).sqrt(), 0.0)
     else:
         distances = dm
     if mask1 is not None or mask2 is not None:

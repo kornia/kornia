@@ -978,7 +978,10 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
           that image, ``(max x, max y)``.
         - What the network gets besides the keypoints depends on ``feature_name`` (case-insensitive):
 
-          - ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"superpoint"``: nothing else.
+          - ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"raco-aliked"``, ``"superpoint"``, ``"xfeat"``:
+            nothing else. For ``"xfeat"``, the LighterGlue weights of :class:`~kornia.feature.XFeat`, pass the 64-D
+            descriptors of :meth:`~kornia.feature.XFeat.detectAndCompute` and LAFs centred on its keypoints, such as
+            ``laf_from_center_scale_ori(keypoints[None])``.
           - ``"sift"``: the scale and orientation of the COLMAP keypoints the weights were trained on: the negated
             LAF orientation in :math:`(-\pi, \pi]`, and a sixth of the LAF scale, which is the detection sigma for
             6-sigma DoG frames such as :class:`~kornia.feature.SIFTFeatureScaleSpace`'s. The descriptors must be in
@@ -1015,8 +1018,10 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         "dog_affnet_hardnet",
         "doghardnet",
         "keynet_affnet_hardnet",
+        "raco-aliked",
         "sift",
         "superpoint",
+        "xfeat",
     ]
 
     def __init__(self, feature_name: str = "disk", params: Optional[Dict] = None) -> None:
