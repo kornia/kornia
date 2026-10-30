@@ -19,7 +19,12 @@ from typing import Optional
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_DEVICE,
+    KORNIA_CHECK_SAME_SHAPE,
+)
 
 
 def _is_broadcastable_to(shape: torch.Size, target_shape: torch.Size) -> bool:
@@ -36,6 +41,10 @@ def _check_disparity_inputs(
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(target)
     KORNIA_CHECK_SAME_SHAPE(input, target)
+    # torch combines a 0-d CPU tensor with a tensor on any device, as a scalar, so a 0-d pair with one map on the CPU
+    # is not checked. Maps with dimensions, and 0-d maps on two other devices, must share a device.
+    if input.ndim > 0 or (input.device.type != "cpu" and target.device.type != "cpu"):
+        KORNIA_CHECK_SAME_DEVICE(input, target)
     # The reductions below accumulate in float32 and cast back to the map dtype. For an integer
     # map that cast truncates, which would turn a ratio into 0 instead of raising, so reject
     # integers here. KITTI ships disparity as a uint16 PNG, so this is a realistic input.
@@ -54,7 +63,8 @@ def _check_disparity_inputs(
         f"valid_mask shape must be broadcastable to the input shape. Got: {valid_mask.shape} and {input.shape}",
     )
 
-    return valid_mask.to(torch.bool).broadcast_to(input.shape)
+    # A mask on another device, such as a CPU mask with CUDA maps, is moved to the maps.
+    return valid_mask.to(device=input.device, dtype=torch.bool).broadcast_to(input.shape)
 
 
 def _reduce_disparity_error(error: torch.Tensor, valid_mask: Optional[torch.Tensor], reduction: str) -> torch.Tensor:
@@ -102,12 +112,12 @@ def mean_absolute_disparity_error(
         \text{MAE}(D, D^{gt}) = \frac{1}{|\mathcal{V}|}\sum_{p \in \mathcal{V}} |D_{p} - D^{gt}_{p}|
 
     Convention:
-        - The maps hold disparities in pixels, have any shape :math:`(*)` and must have a floating dtype. ``'mean'``
+        - The maps hold disparities in pixels, have any shape ``(*)`` and must have a floating dtype. ``'mean'``
           and ``'sum'`` pool every valid pixel of every image into one 0-d value, in pixels here, so for images with
           different numbers of valid pixels the result is not the mean of the per-image errors. The other disparity
           metrics pool the same way.
-        - ``valid_mask`` is broadcast to the maps from the right: an :math:`(H, W)` mask applies to every image of a
-          :math:`(B, H, W)` batch and a :math:`(B, 1, 1)` mask selects whole images, while a :math:`(B,)` mask is
+        - ``valid_mask`` is broadcast to the maps from the right: an ``(H, W)`` mask applies to every image of a
+          ``(B, H, W)`` batch and a ``(B, 1, 1)`` mask selects whole images, while a ``(B,)`` mask is
           matched against the last axis, not the batch. Nothing is masked automatically: a pixel with an invalid
           ground truth, such as a zero disparity, counts unless ``valid_mask`` excludes it.
         - A ``nan`` at a valid pixel of either map propagates into this error and the RMSE, while
@@ -115,7 +125,7 @@ def mean_absolute_disparity_error(
           good pixel.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         valid_mask: optional mask broadcastable to the shape of ``input``, where nonzero
             (``True``) values mark the pixels to evaluate. Non-boolean masks are converted
@@ -179,7 +189,7 @@ def root_mean_squared_disparity_error(
         a sum of errors.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         valid_mask: optional mask broadcastable to the shape of ``input``, where nonzero
             (``True``) values mark the pixels to evaluate. Non-boolean masks are converted
@@ -218,8 +228,19 @@ def root_mean_squared_disparity_error(
     # reduction happens. The square root brings the value back into range before the cast back.
     out_dtype = torch.promote_types(input.dtype, target.dtype)
     acc_dtype = torch.promote_types(out_dtype, torch.float32)
-    error = (input.to(acc_dtype) - target.to(acc_dtype)) ** 2
-    return _reduce_disparity_error(error, mask, reduction).sqrt().to(out_dtype)
+    diff = input.to(acc_dtype) - target.to(acc_dtype)
+    if mask is not None:
+        # Zero a masked-out difference before squaring: the reduction drops its value, but the backward of the square
+        # would still multiply the zero gradient by 2 * diff, which is NaN for a NaN or inf ground truth there.
+        diff = torch.where(mask, diff, 0)
+    squared = _reduce_disparity_error(diff**2, mask, reduction)
+    # d sqrt(x)/dx is infinite at 0 and autograd multiplies it by the zero derivative of the square, so an exact match
+    # would get a NaN gradient (and a mask cannot hide it: NaN * 0 is NaN). Differentiate the sqrt of a safe positive
+    # argument and select 0 at zero error, the subgradient aepe and torch.linalg.vector_norm use. The value is
+    # unchanged, and an empty mask still gives NaN under 'mean'.
+    is_zero = squared == 0
+    safe = torch.where(is_zero, torch.ones_like(squared), squared)
+    return torch.where(is_zero, torch.zeros_like(squared), safe.sqrt()).to(out_dtype)
 
 
 def mean_bad_pixel_error(
@@ -251,7 +272,7 @@ def mean_bad_pixel_error(
         number of bad pixels.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         threshold: the disparity error above which a pixel is considered bad.
         valid_mask: optional mask broadcastable to the shape of ``input``, where nonzero
@@ -327,7 +348,7 @@ def kitti_d1_error(
           change the result.
 
     Args:
-        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        input: the predicted disparity map with arbitrary shape ``(*)``.
         target: the ground truth disparity map with the same shape as ``input``.
         abs_threshold: the absolute disparity error above which a pixel may be an outlier.
         rel_threshold: the relative disparity error above which a pixel may be an outlier.

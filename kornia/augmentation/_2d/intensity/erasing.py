@@ -48,8 +48,8 @@ class RandomErasing(IntensityAugmentationBase2D):
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - this operation is range-independent: it does not clamp the input into ``[0, 1]``.
@@ -71,7 +71,7 @@ class RandomErasing(IntensityAugmentationBase2D):
           in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 
     Note:
-        This function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        This function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
@@ -140,7 +140,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
         # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
         bboxes = _to_device_nonblocking(bboxes, input.device)
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
+        mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)
 
     def apply_transform_mask(
@@ -161,5 +161,5 @@ class RandomErasing(IntensityAugmentationBase2D):
         # The (B, 4, 2) boxes cross to the device, not the (B, H, W) mask: a large pageable copy stalls the host while
         # the driver stages it. The mask is 0 or 1 by exact comparisons, so it is the same on either device.
         bboxes = _to_device_nonblocking(bboxes, input.device)
-        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
+        mask = bbox_to_mask(bboxes, size=(h, w)).unsqueeze(1).to(input.dtype)  # (B, 1, H, W)
         return torch.where(mask == 1.0, values, input)

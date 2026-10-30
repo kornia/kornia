@@ -196,7 +196,7 @@ def _spread_residual(residual: torch.Tensor, num_bins: int) -> torch.Tensor:
     by tens of levels.
 
     Args:
-        residual: residual per tile, shape :math:`(T,)`, below ``num_bins``.
+        residual: residual per tile, shape ``(T,)``, below ``num_bins``.
         num_bins: number of histogram bins.
 
     Returns:
@@ -503,7 +503,7 @@ def equalize_clahe(
     values are not rounded to 8-bit integers.
 
     Args:
-        input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
+        input: images tensor to equalize with values in the range [0, 1] and shape ``(*, C, H, W)``.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
             than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.

@@ -203,7 +203,7 @@ def dx_distort_points_kannala_brandt(
     r"""Return the analytic Jacobian of the Kannala-Brandt distortion model.
 
     Convention:
-        - the result has shape :math:`(..., 2, 2)` and is laid out like the Jacobian that
+        - the result has shape ``(..., 2, 2)`` and is laid out like the Jacobian that
           :func:`~kornia.geometry.camera.dx_distort_points_affine` returns: rows are the output components
           ``(u, v)``, columns the input components ``(x, y)``.
         - for squared radii ``<= 1e-8`` the forward function uses its affine branch, so the Jacobian there is

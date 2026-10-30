@@ -129,7 +129,7 @@ def canny(
 
     Convention:
         - A 3-channel input is converted with :func:`~kornia.color.rgb_to_grayscale`, which reads channel 0 as
-          red. Both outputs are :math:`(B, 1, H, W)`, in the input's dtype for a floating input and in float32 for
+          red. Both outputs are ``(B, 1, H, W)``, in the input's dtype for a floating input and in float32 for
           an integer one, which is processed in float32 on its own scale.
         - The image is blurred with ``gaussian_blur2d(input, kernel_size, sigma)``; the Convention block on
           :func:`~kornia.filters.gaussian_blur2d` gives the order of both pairs, and ``kernel_size=1`` skips the
@@ -164,7 +164,7 @@ def canny(
           is converted with the floating weights rather than rounded to an integer grey.
 
     Args:
-        input: input image torch.Tensor with shape :math:`(B,C,H,W)`, with :math:`C` equal to 1, or to 3 for an RGB
+        input: input image torch.Tensor with shape ``(B,C,H,W)``, with :math:`C` equal to 1, or to 3 for an RGB
             image, which is converted to grayscale.
         low_threshold: lower threshold for the hysteresis procedure, in the units of the magnitude above. It must be
             positive and at most ``high_threshold``.
@@ -176,8 +176,8 @@ def canny(
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the gradient magnitude after non-maximum suppression, shape of :math:`(B,1,H,W)`.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
+        - the gradient magnitude after non-maximum suppression, shape of ``(B,1,H,W)``.
+        - the canny edge detection filtered by thresholds and hysteresis, shape of ``(B,1,H,W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/canny.html>`__.
@@ -337,8 +337,8 @@ class Canny(nn.Module):
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the gradient magnitude after non-maximum suppression, shape of :math:`(B,1,H,W)`.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
+        - the gradient magnitude after non-maximum suppression, shape of ``(B,1,H,W)``.
+        - the canny edge detection filtered by thresholds and hysteresis, shape of ``(B,1,H,W)``.
 
     Example:
         >>> input = torch.rand(5, 3, 4, 4)
@@ -400,7 +400,7 @@ class Canny(nn.Module):
         pixels.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the image height, and :math:`W` is the
                 image width. :math:`C` must be 1, or 3 for an RGB image, which is

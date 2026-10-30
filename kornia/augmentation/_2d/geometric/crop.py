@@ -85,12 +85,12 @@ class RandomCrop(GeometricAugmentationBase2D):
                        differentiability.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
         - Output: :math:`(B, C, out_h, out_w)`
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        Additionally, this function accepts another transformation torch.Tensor (``(B, 3, 3)``), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Convention:

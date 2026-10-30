@@ -35,9 +35,9 @@ class DISKFeatures:
         Convention block gives their frame and order.
 
     Args:
-        keypoints: torch.Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
-        descriptors: torch.Tensor of shape :math:`(N, D)`, where :math:`D` is the descriptor dimension.
-        detection_scores: torch.Tensor of shape :math:`(N,)`, the detection heatmap value at each keypoint: a raw
+        keypoints: torch.Tensor of shape ``(N, 2)``, where :math:`N` is the number of keypoints.
+        descriptors: torch.Tensor of shape ``(N, D)``, where :math:`D` is the descriptor dimension.
+        detection_scores: torch.Tensor of shape ``(N,)``, the detection heatmap value at each keypoint: a raw
                           logit of the network, not a log-probability.
 
     """

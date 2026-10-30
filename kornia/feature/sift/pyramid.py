@@ -109,8 +109,8 @@ class SIFTDescriptorFromPyramid(nn.Module):
             bins), which is remapped to ``num_ang_bins`` in each local frame.
 
     Shape:
-        - image: :math:`(B, 1, H, W)`
-        - lafs: :math:`(B, N, 2, 3)` in image pixel coordinates
+        - image: ``(B, 1, H, W)``
+        - lafs: ``(B, N, 2, 3)`` in image pixel coordinates
         - descriptors: :math:`(B, N, num_ang_bins * num_spatial_bins^2)`
     """
 

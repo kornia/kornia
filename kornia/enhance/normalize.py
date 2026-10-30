@@ -51,15 +51,15 @@ class Normalize(nn.Module):
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Shape:
-        - Input: Image torch.Tensor of size :math:`(B, C, *)`.
-        - Output: Normalised torch.Tensor with same size as input :math:`(B, C, *)`.
+        - Input: Image torch.Tensor of size ``(B, C, *)``.
+        - Output: Normalised torch.Tensor with same size as input ``(B, C, *)``.
 
     Note:
         An integer or bool input is converted to torch's default floating dtype first; see :func:`normalize`.
@@ -103,7 +103,7 @@ class Normalize(nn.Module):
         ``mean`` and ``std`` values stored in the module constructor.
 
         Args:
-            input: Tensor to normalize, typically with shape :math:`(*, C, ...)`,
+            input: Tensor to normalize, typically with shape ``(*, C, ...)``,
                 where ``*`` represents optional leading dimensions (for example
                 batch) and ``C`` is the channel dimension.
 
@@ -140,15 +140,15 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
-        data: Image torch.Tensor of size :math:`(B, C, *)`.
+        data: Image torch.Tensor of size ``(B, C, *)``.
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Return:
-        Normalised torch.Tensor with same size as input :math:`(B, C, *)`.
+        Normalised torch.Tensor with same size as input ``(B, C, *)``.
 
     Note:
         An integer or bool ``data`` is converted to torch's default floating dtype (float32 unless changed) before
@@ -230,15 +230,15 @@ class Denormalize(nn.Module):
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Shape:
-        - Input: Image torch.Tensor of size :math:`(B, C, *)`.
-        - Output: Denormalised torch.Tensor with same size as input :math:`(B, C, *)`.
+        - Input: Image torch.Tensor of size ``(B, C, *)``.
+        - Output: Denormalised torch.Tensor with same size as input ``(B, C, *)``.
 
     Note:
         An integer or bool input is converted to torch's default floating dtype first; see :func:`denormalize`.
@@ -278,7 +278,7 @@ class Denormalize(nn.Module):
         ``mean`` and ``std`` parameters.
 
         Args:
-            input: Tensor to denormalize, commonly shaped :math:`(*, C, ...)`
+            input: Tensor to denormalize, commonly shaped ``(*, C, ...)``
                 with channel dimension ``C``.
 
         Returns:
@@ -315,15 +315,15 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+    Where `mean` is :math:`(M_1, \ldots, M_n)` and `std` :math:`(S_1, \ldots, S_n)` for `n` channels,
 
     Args:
-        data: Image torch.Tensor of size :math:`(B, C, *)`.
+        data: Image torch.Tensor of size ``(B, C, *)``.
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Return:
-        Denormalised torch.Tensor with same size as input :math:`(B, C, *)`.
+        Denormalised torch.Tensor with same size as input ``(B, C, *)``.
 
     Note:
         An integer or bool ``data`` is converted to torch's default floating dtype (float32 unless changed) before
@@ -415,13 +415,13 @@ def normalize_min_max(
     where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
 
     Args:
-        input: The image torch.Tensor to be normalised with shape :math:`(*, C, H, W)`.
+        input: The image torch.Tensor to be normalised with shape ``(*, C, H, W)``.
         min_val: The minimum value for the new range.
         max_val: The maximum value for the new range.
         eps: Float number to avoid zero division.
 
     Returns:
-        The normalised image torch.Tensor with same shape as input :math:`(*, C, H, W)`.
+        The normalised image torch.Tensor with same shape as input ``(*, C, H, W)``.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)

@@ -84,11 +84,11 @@ class ModelBaseMixin:
             is_batch: If True, the output is expected to be a batch of tensors.
 
         Returns:
-            The output unchanged for "torch". For "pil", a list of PIL images, one per :math:`(C, H, W)` or
-            :math:`(H, W)` image: a :math:`(B, C, H, W)` tensor gives B images, and a list gives the images of each
+            The output unchanged for "torch". For "pil", a list of PIL images, one per ``(C, H, W)`` or
+            ``(H, W)`` image: a ``(B, C, H, W)`` tensor gives B images, and a list gives the images of each
             element in turn. They are converted as :meth:`~kornia.core.mixin.image_module.ImageModuleMixIn.to_pil`
             does: a floating image is clamped to ``[0, 1]`` and rounded to 8 bits, and a one-channel or
-            :math:`(H, W)` image becomes a mode ``"L"`` image.
+            ``(H, W)`` image becomes a mode ``"L"`` image.
 
         Raises:
             RuntimeError: If the output type is not supported.
