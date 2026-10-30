@@ -209,21 +209,17 @@ class SequentialBase(BasicSequentialBase):
         self._keepdim = keepdim
         self.update_attribute(keepdim=keepdim)
 
-    def autofill_dim(
-        self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4), accepted: Optional[str] = None
-    ) -> Tuple[torch.Size, torch.Size]:
+    def autofill_dim(self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
         """Fill torch.Tensor dim to the upper bound of dim_range.
 
         A rank outside ``dim_range`` raises :class:`~kornia.core.exceptions.InputRankError` with the message an
-        augmentation itself gives for that input (#4424). ``accepted`` overrides the shapes that message lists,
-        e.g. a video layout, where ``dim_range`` alone would describe images or volumes.
+        augmentation itself gives for that input (#4424).
         """
         ori_shape = input.shape
         if len(ori_shape) < dim_range[0] or len(ori_shape) > dim_range[1]:
-            if accepted is None:
-                accepted = {(2, 4): _IMAGE_SHAPES, (3, 5): _VOLUME_SHAPES}.get(
-                    tuple(dim_range), f"{dim_range[0]} to {dim_range[1]} dimensions"
-                )
+            accepted = {(2, 4): _IMAGE_SHAPES, (3, 5): _VOLUME_SHAPES}.get(
+                tuple(dim_range), f"{dim_range[0]} to {dim_range[1]} dimensions"
+            )
             _raise_input_rank_error(ori_shape, accepted)
         while len(input.shape) < dim_range[1]:
             input = input[None]

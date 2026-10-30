@@ -40,7 +40,8 @@ class BaseError(Exception):
 
     A failed ``KORNIA_CHECK`` raises it directly; it is neither a :exc:`ValueError` nor a :exc:`TypeError`. Each
     subclass also derives from the one of those two built-ins that matches its failure, so the matching ``except``
-    clause catches the subclass as well. :exc:`AsyncCheckError` is also a :exc:`RuntimeError`.
+    clause catches the subclass as well. :exc:`AsyncCheckError` is also a :exc:`RuntimeError`, and :exc:`InputRankError`
+    also a :exc:`RuntimeError` and an :exc:`AssertionError`.
     """
 
 

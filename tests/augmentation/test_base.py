@@ -626,13 +626,16 @@ class TestConventionAugmentationBase2D(BaseTester):
         RandomHorizontalFlip3D(p=1.0).validate_tensor(torch.rand(3, 4, 5, device=device, dtype=dtype))
 
     def test_convention_wrong_input_rank_in_augmentation_sequential_video_and_3d_4424(self, device, dtype):
+        # Only the 5D layout is listed: a rank-3 or rank-4 video does not run through the container.
         video = K.AugmentationSequential(K.VideoSequential(K.RandomHorizontalFlip(p=1.0), data_format="BCTHW"))
-        with pytest.raises(InputRankError, match=r"either \(T, H, W\), \(C, T, H, W\) or \(B, C, T, H, W\)\. Got"):
+        with pytest.raises(InputRankError, match=r"must have a shape of \(B, C, T, H, W\)\. Got"):
             video(torch.rand(1, 1, 2, 3, 6, 8, device=device, dtype=dtype))
+        # Rank 4 is ambiguous next to a 3D child, so no message lists (C, D, H, W).
         volume = K.AugmentationSequential(RandomHorizontalFlip3D(p=1.0), data_keys=["input"])
-        with pytest.raises(InputRankError, match=r"either \(D, H, W\) or \(B, C, D, H, W\)\. Got") as info:
-            volume(torch.rand(2, 3, 5, 6, device=device, dtype=dtype))
-        assert isinstance(info.value, RuntimeError)
+        for shape in ((2, 3, 5, 6), (5, 6), (1, 2, 1, 3, 5, 6)):
+            with pytest.raises(InputRankError, match=r"either \(D, H, W\) or \(B, C, D, H, W\)\. Got") as info:
+                volume(torch.rand(*shape, device=device, dtype=dtype))
+            assert isinstance(info.value, RuntimeError)
 
     def test_convention_numeric_ranges_return_cpu_parameters_independently_of_input(self, device, dtype):
         # With numeric ranges and unchanged CPU defaults, returned parameter placement is independent of

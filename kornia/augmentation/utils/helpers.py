@@ -258,15 +258,6 @@ def _raise_input_rank_error(shape: torch.Size, accepted: str) -> NoReturn:
     raise InputRankError(f"Input size must have a shape of {accepted}. Got {shape}", actual_shape=tuple(shape))
 
 
-def _trailing_shapes(layout: str, min_rank: int) -> str:
-    """Describe the shapes a container fills up to ``layout`` by adding leading axes.
-
-    ``_trailing_shapes("BTCHW", 3)`` is ``"either (C, H, W), (T, C, H, W) or (B, T, C, H, W)"``.
-    """
-    shapes = ["(" + ", ".join(layout[start:]) + ")" for start in range(len(layout) - min_rank, -1, -1)]
-    return "either " + ", ".join(shapes[:-1]) + " or " + shapes[-1]
-
-
 def _transform_input(input: torch.Tensor) -> torch.Tensor:
     r"""Unsqueeze an ``(H, W)`` or ``(C, H, W)`` image tensor to 4 dims, ``(B, C, H, W)``; a 4-dim input is kept.
 
