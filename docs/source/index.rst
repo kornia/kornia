@@ -107,7 +107,7 @@ Kornia: Differentiable Computer Vision for PyTorch
 
             **Same code, any device.** Operators run wherever the tensor lives — no flags, no per-image loops.
 
-            :doc:`See details <get-started/gpu-acceleration>` :octicon:`arrow-right`
+            :doc:`See details and feature-pipeline tradeoffs <get-started/gpu-acceleration>` :octicon:`arrow-right`
 
          .. tab-item:: :octicon:`git-compare` Differentiable
 
