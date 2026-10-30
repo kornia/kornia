@@ -179,8 +179,11 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     th = safe_rth.sqrt()
     th = torch.where(nonzero_radius, th, torch.zeros_like(th))
 
-    # gauss-newton
-    for _ in range(iters):
+    # gauss-newton. A while loop, not range(iters): TorchScript unrolls a constant-count loop, and its CUDA fuser
+    # then inlines every step into one expression that grows exponentially with the iterations.
+    it = 0
+    while it < iters:
+        it += 1
         th2 = th * th
         inner = k0 + th2 * (k1 + th2 * (k2 + th2 * k3))
         thd = th * (1.0 + th2 * inner)
