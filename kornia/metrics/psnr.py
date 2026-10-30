@@ -50,7 +50,8 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: _PSNRMaxVal) -> tor
         - ``image`` and ``target`` must have the same shape, without broadcasting; the value is symmetric in them.
           Identical inputs give an MSE of 0 and ``inf``, while a batch with one identical pair stays finite.
         - Integer and bool images are converted to float32 before computing the MSE; pixel values are not rescaled.
-          Uint8, int8, int16 and int32 tensor data ranges are widened to int64 before squaring to avoid overflow.
+          Uint8, int8, int16 and int32 tensor data ranges are widened to int64 before squaring to avoid overflow,
+          except when the promoted image dtype is float16 or bfloat16, which uses float32 range arithmetic.
         - Float16 and bfloat16 inputs are evaluated in float32; the result retains their promoted input dtype,
           also promoted with ``max_val.dtype`` when the data range is a tensor. A float32 tensor data range therefore
           gives a float32 result for half-precision images.
