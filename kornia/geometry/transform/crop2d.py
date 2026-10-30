@@ -358,7 +358,7 @@ def crop_by_boxes(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
         validate_boxes: deprecated since kornia 0.9.1 and ignored; passing it emits a
-          :class:`DeprecationWarning`. The boxes were never validated, whatever its value: only the
+          :class:`DeprecationWarning`. The boxes are not validated, whatever its value: only the
           shapes of ``src_box`` and ``dst_box`` and the equal size of the ``dst_box`` boxes are checked.
 
     Returns:
@@ -398,7 +398,7 @@ def crop_by_boxes(
             "crop_by_boxes(validate_boxes=...)",
             None,
             "0.9.1",
-            "The argument has no effect: `crop_by_boxes` never validated the boxes, whatever its value; stop "
+            "The argument has no effect: `crop_by_boxes` does not validate the boxes, whatever its value; stop "
             "passing it.",
         )
 

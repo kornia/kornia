@@ -452,7 +452,7 @@ class TestCropByBoxes(BaseTester):
 
     @pytest.mark.parametrize("validate_boxes", [True, False])
     def test_validate_boxes_is_deprecated_and_ignored_6401(self, validate_boxes, device, dtype):
-        # `validate_boxes` was read nowhere: the boxes were never validated, whatever its value. It now warns when
+        # `validate_boxes` is read nowhere: the boxes are not validated, whatever its value. It now warns when
         # passed, and the result stays what the call without it returns.
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
