@@ -132,6 +132,16 @@ class TestKMeans(BaseTester):
         with pytest.raises(BaseError, match="num_clusters must be a positive int, got True"):
             kornia.contrib.KMeans(True, None, 1e-3, 10, 0)
 
+    def test_zero_dim_integer_tensor_num_clusters_is_accepted_6442(self, device, dtype):
+        # A 0-d integer tensor fitted before the positivity check too; like a NumPy integer, it is a count.
+        X = torch.tensor([[0.0, 0.0], [10.0, 10.0], [0.0, 1.0]], device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(torch.tensor(2), None, 1e-4, 10, seed=0)
+        assert type(kmeans.num_clusters) is int
+        kmeans.fit(X)
+        assert kmeans.cluster_centers.shape == (2, 2)
+        with pytest.raises(BaseError, match=r"num_clusters must be a positive int, got tensor\(True\)"):
+            kornia.contrib.KMeans(torch.tensor(True), None, 1e-3, 10, 0)
+
     def test_more_clusters_than_samples_is_rejected_6442(self, device, dtype):
         # Starting centres sampled from X are distinct samples, so 5 clusters need 5 of them. With 3, the 3 drawn
         # centres used to fail the first update with an unrelated "size of tensor a (5) must match" RuntimeError.

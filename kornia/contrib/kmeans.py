@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-from numbers import Integral
+import operator
 
 import torch
 
@@ -45,7 +45,8 @@ class KMeans:
           truncated toward zero.
 
     Args:
-        num_clusters: number of clusters the data has to be assigned to. Required, also with ``cluster_centers``.
+        num_clusters: number of clusters the data has to be assigned to, a positive integer. Required, also with
+            ``cluster_centers``; without them, :meth:`fit` needs at least ``num_clusters`` samples.
         cluster_centers: the ``(num_clusters, D)`` starting centres, or ``None`` to sample them from the data in
             each :meth:`fit`.
         tolerance: the bound on the squared total centre shift that stops :meth:`fit`, or ``None`` to stop only after
@@ -68,12 +69,17 @@ class KMeans:
         max_iterations: int = 0,
         seed: int | None = None,
     ) -> None:
-        # Any integral count, such as a NumPy integer, is accepted and stored as an int; a bool is not a count.
-        KORNIA_CHECK(
-            isinstance(num_clusters, Integral) and not isinstance(num_clusters, bool) and num_clusters > 0,
-            f"num_clusters must be a positive int, got {num_clusters}",
+        # Any integer count, such as a NumPy integer or a 0-d integer tensor, is accepted and stored as an int; a
+        # bool is not a count.
+        try:
+            count = operator.index(num_clusters)
+        except TypeError:
+            count = 0
+        is_bool = isinstance(num_clusters, bool) or (
+            isinstance(num_clusters, torch.Tensor) and num_clusters.dtype == torch.bool
         )
-        num_clusters = int(num_clusters)
+        KORNIA_CHECK(not is_bool and count > 0, f"num_clusters must be a positive int, got {num_clusters!r}")
+        num_clusters = count
         KORNIA_CHECK(max_iterations >= 0, f"max_iterations must be >= 0, got {max_iterations}")
         KORNIA_CHECK(tolerance is None or tolerance >= 0, f"tolerance must be None or >= 0, got {tolerance}")
         KORNIA_CHECK(
