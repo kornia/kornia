@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.core.exceptions import ShapeError
 from kornia.core.ops import eye_like
 from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
@@ -1124,6 +1125,8 @@ class TestHomographyShapeChecks(BaseTester):
 
     @pytest.mark.parametrize("batch", [1, 2, 4, 5])
     def test_homography_warp3d_shares_one_homography_with_expand(self, batch, device, dtype):
+        if device.type == "mps" and torch_version_lt(2, 9, 0):
+            pytest.skip("MPS grid_sampler_3d requires PyTorch 2.9 or newer")
         # The 3D counterpart of the migration for an unbatched (4, 4): one homography per volume, shared with expand.
         volume = torch.rand(batch, 1, 2, 4, 5, device=device, dtype=dtype)
         homography = torch.eye(4, device=device, dtype=dtype)
