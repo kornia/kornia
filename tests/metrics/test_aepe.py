@@ -25,6 +25,27 @@ from testing.base import BaseTester
 
 
 class TestAepe(BaseTester):
+    @pytest.mark.parametrize("integer_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("route", ["function", "alias", "module"])
+    def test_integer_flow(self, integer_dtype, reduction, route, device):
+        distance = {torch.int8: 120, torch.int32: 50_000}.get(integer_dtype, 200)
+        input = torch.tensor([[distance, 0], [0, distance], [3, 4]], device=device, dtype=integer_dtype)
+        target = torch.zeros_like(input)
+        expected = torch.tensor([distance, distance, 5], device=device, dtype=torch.get_default_dtype())
+        if reduction != "none":
+            expected = getattr(expected, reduction)()
+        op = {"function": kornia.metrics.aepe, "alias": kornia.metrics.average_endpoint_error}.get(route)
+        actual = kornia.metrics.AEPE(reduction)(input, target) if op is None else op(input, target, reduction)
+        assert actual.dtype == torch.get_default_dtype()
+        self.assert_close(actual, expected, atol=0, rtol=0)
+        self.assert_close(kornia.metrics.aepe(target, input, reduction), expected, atol=0, rtol=0)
+
+    def test_large_int64_origin(self, device):
+        input = torch.tensor([[2**60 + 3, 2**60 + 4]], device=device, dtype=torch.int64)
+        target = torch.full_like(input, 2**60)
+        self.assert_close(kornia.metrics.aepe(input, target), torch.tensor(5.0, device=device), atol=0, rtol=0)
+
     def test_metric_mean_reduction(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.tensor(0.565685424, device=device, dtype=dtype)

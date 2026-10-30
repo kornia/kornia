@@ -43,6 +43,8 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
           map. An unknown ``reduction`` raises ``NotImplementedError``.
         - :func:`~kornia.metrics.aepe` and :func:`~kornia.metrics.average_endpoint_error` are the same function.
         - Float16 and bfloat16 inputs are computed in float32 and the result is returned in their promoted dtype.
+        - When both inputs are integers and their promoted dtype is uint8, int8, int16 or int32, differences and
+          squared distances use int64 to avoid wrapping. The result keeps PyTorch's default floating dtype.
 
     Args:
         input: the input flow map with shape ``(*, 2)``.
@@ -76,6 +78,8 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     # The distance can be representable even when its squared components overflow or underflow in half precision.
     if output_dtype in (torch.float16, torch.bfloat16):
         input, target = input.float(), target.float()
+    elif output_dtype in (torch.uint8, torch.int8, torch.int16, torch.int32):
+        input, target = input.to(torch.int64), target.to(torch.int64)
 
     sq_dist: Tensor = (input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2
     # d sqrt(x)/dx is infinite at 0 and autograd multiplies it by the zero derivative of the squares, so an exact
