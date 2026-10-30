@@ -23,6 +23,7 @@ from functools import partial
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
@@ -85,7 +86,7 @@ class TestBoxes2D(BaseTester):
         # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
         # validate_boxes=True rejects non-finite coordinates.
         if device.type != "cpu":
-            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
             pytest.skip("the vertex check raises synchronously only on CPU")
         vertices = torch.tensor(
             [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
@@ -922,7 +923,7 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data, original, atol=0.0, rtol=0.0)
 
     def test_wart_clamp_tuple_bounds_and_outside_box_behavior_4017(self, device, dtype):
-        # Wart pin for kornia#4017: tuple bounds are advertised but unsupported;
+        # Wart pin for kornia#4017: tuple bounds are no longer advertised and raise, as documented;
         # tensor bounds clamp every vertex, collapsing a wholly outside box.
         boxes = Boxes.from_tensor(
             torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype),
@@ -943,14 +944,19 @@ class TestBoxes2D(BaseTester):
             rtol=0.0,
         )
 
-    def test_wart_trim_and_fast_translate_are_unimplemented_4017(self, device, dtype):
-        # Wart pin for kornia#4017: both documented entry points raise instead
-        # of implementing their advertised operations.
+    def test_wart_trim_is_deprecated_and_fast_translate_is_unsupported_4017(self, device, dtype):
+        # Wart pin for kornia#4017: trim warns that it's deprecated and still raises,
+        # and "fast" is no longer advertised and raises.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
-        with pytest.raises(NotImplementedError, match=r"Boxes\.trim.*not implemented"):
-            boxes.trim()
-        with pytest.raises(NotImplementedError, match=r"fast.*not implemented.*warp"):
+        with pytest.raises(NotImplementedError, match=r"accepts `method='warp'`"):
             boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="fast")
+        with (
+            pytest.warns(DeprecationWarning, match=r"Boxes\.trim") as record,
+            pytest.raises(NotImplementedError, match=r"Boxes\.trim.*not implemented"),
+        ):
+            boxes.trim()
+        assert len(record) == 1
+        assert record[0].filename == __file__
 
     def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
         # transform_boxes leaves its input unchanged by default. Its in-place
@@ -991,9 +997,9 @@ class TestBoxes2D(BaseTester):
         assert translated is not boxes
 
     def test_translate_unknown_method_raises(self, device, dtype):
-        # The message names the accepted methods and repeats the rejected one, so a typo is visible.
+        # The message names the accepted method and repeats the rejected one, so a typo is visible.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
-        with pytest.raises(NotImplementedError, match=r"method='warp'.*method='fast'.*got method='wrap'"):
+        with pytest.raises(NotImplementedError, match=r"accepts `method='warp'`; got method='wrap'"):
             boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="wrap")
 
     def test_wart_filter_boxes_by_area_zeroes_small_boxes_4010(self, device, dtype):
@@ -1253,15 +1259,18 @@ class TestBoxes2D(BaseTester):
         assert transformed.data.shape == original.shape
 
     def test_wart_to_mask_and_bbox_to_mask_take_opposite_size_orders_4014(self, device, dtype):
-        # Wart pin for kornia#4014: Boxes.to_mask(height, width) and bbox_to_mask(boxes, width, height)
-        # are the same call, and both return (N, height, width) in the box dtype.
+        # Wart pin for kornia#4014: Boxes.to_mask(height, width) and bbox_to_mask(boxes, size=(height, width))
+        # are the same call, and both return (N, height, width) in the box dtype. The deprecated pair stays
+        # wrapped at the bottom, because the opposite order it implied is the wart that was reported.
         vertices = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         method = Boxes(vertices).to_mask(3, 5)
         assert method.shape == (1, 3, 5)
         assert method.dtype == dtype
-        self.assert_close(method, bbox_to_mask(vertices, 5, 3), atol=0.0, rtol=0.0)
+        self.assert_close(method, bbox_to_mask(vertices, size=(3, 5)), atol=0.0, rtol=0.0)
         assert Boxes(vertices).to_mask(5, 3).shape == (1, 5, 3)
         assert Boxes(vertices[None]).to_mask(3, 5).shape == (1, 1, 3, 5)
+        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)"):
+            self.assert_close(method, bbox_to_mask(vertices, 5, 3), atol=0.0, rtol=0.0)
 
     def test_wart_to_mask_rounds_the_exclusive_export_half_open_4015(self, device, dtype):
         # Wart pin for kornia#4015: the fractional box [1.4, 3.6] x [1.4, 2.6] exports as xyxy
@@ -1272,7 +1281,7 @@ class TestBoxes2D(BaseTester):
         expected = torch.zeros(1, 5, 6, device=device, dtype=dtype)
         expected[0, 1:4, 1:5] = 1.0
         self.assert_close(Boxes(boxes).to_mask(5, 6), expected, atol=0.0, rtol=0.0)
-        assert bbox_to_mask(boxes, 6, 5).sum().item() == 2.0
+        assert bbox_to_mask(boxes, size=(5, 6)).sum().item() == 2.0
 
         outside = torch.tensor([[[6.0, 6.0], [9.0, 6.0], [9.0, 9.0], [6.0, 9.0]]], device=device, dtype=dtype)
         assert Boxes(outside).to_mask(5, 5).sum().item() == 0.0
@@ -2342,6 +2351,18 @@ class TestVideoBoxes(BaseTester):
         video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
         self.assert_close(video_boxes.data, boxes.reshape(-1, 1, 4, 2), atol=0.0, rtol=0.0)
+
+    def test_vertex_check_is_skipped_when_checks_are_disabled(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        boxes[0, 0, 0, 0, 0] = float("nan")
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+        assert video_boxes.data.shape == boxes.reshape(-1, 1, 4, 2).shape
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
     def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):

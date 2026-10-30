@@ -70,8 +70,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
           loss negative.
 
     Args:
-        pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        target: labels tensor with shape :math:`(N, H, W)` with binary values.
+        pred: logits tensor with shape ``(N, 1, H, W)``.
+        target: labels tensor with shape ``(N, H, W)`` with binary values.
 
     Return:
         a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
@@ -100,8 +100,8 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     # The labels, the Jaccard weights and the sum over pixels are accumulated in the prediction dtype, or in float32
     # for a half-precision prediction, where pixel counts stay exact up to 2**24 pixels.
     accumulation_dtype = torch.promote_types(pred.dtype, torch.float32)
-    pred_flatten: Tensor = pred.reshape(pred.shape[0], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1).to(accumulation_dtype)
+    pred_flatten: Tensor = pred.flatten(start_dim=1)
+    target_flatten: Tensor = target.flatten(start_dim=1).to(accumulation_dtype)
 
     # get shapes
     B, N = pred_flatten.shape
@@ -159,8 +159,8 @@ class LovaszHingeLoss(nn.Module):
         See the Convention block of :func:`~kornia.losses.lovasz_hinge_loss`.
 
     Args:
-        pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        target: labels tensor with shape :math:`(N, H, W)` with binary values.
+        pred: logits tensor with shape ``(N, 1, H, W)``.
+        target: labels tensor with shape ``(N, H, W)`` with binary values.
 
     Return:
         a scalar with the computed loss, in the dtype of a floating-point ``pred`` and in float32 for an
@@ -184,8 +184,8 @@ class LovaszHingeLoss(nn.Module):
         """Compute binary Lovasz hinge loss for segmentation logits.
 
         Args:
-            pred: Binary logit tensor with shape :math:`(B, 1, H, W)`.
-            target: Binary label tensor with shape :math:`(B, H, W)`.
+            pred: Binary logit tensor with shape ``(B, 1, H, W)``.
+            target: Binary label tensor with shape ``(B, H, W)``.
 
         Returns:
             Scalar tensor containing the Lovasz hinge surrogate for the

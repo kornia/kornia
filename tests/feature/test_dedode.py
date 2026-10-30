@@ -23,8 +23,10 @@ import torch
 from kornia.enhance.normalize import Normalize
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
+from kornia.feature.dedode.dedode_models import get_detector
 from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
+from kornia.feature.dedode.transformer.layers.attention import Attention
 from kornia.feature.dedode.transformer.layers.patch_embed import PatchEmbed
 from kornia.feature.dedode.utils import dedode_denormalize_pixel_coordinates
 
@@ -56,6 +58,27 @@ class TestConvRefiner(BaseTester):
 
 
 class TestMemEffAttention(BaseTester):
+    @pytest.mark.parametrize("attention_class", [Attention, MemEffAttention])
+    def test_matches_the_materialised_softmax(self, device, dtype, attention_class):
+        # The fused kernel computes softmax(q k^T * scale) v without materialising the N x N weights; the dropout of
+        # attn_drop is off in eval mode.
+        attention = attention_class(dim=16, num_heads=4, qkv_bias=True, attn_drop=0.5).to(device, dtype).eval()
+        x = torch.rand(2, 7, 16, device=device, dtype=dtype)
+        with torch.no_grad():
+            q, k, v = attention.qkv(x).reshape(2, 7, 3, 4, 4).permute(2, 0, 3, 1, 4)
+            weights = (q * attention.scale @ k.transpose(-2, -1)).softmax(dim=-1)
+            expected = attention.proj((weights @ v).transpose(1, 2).reshape(2, 7, 16))
+            self.assert_close(attention(x), expected)
+
+    def test_attn_drop_applies_in_training_mode_only(self, device, dtype):
+        attention = Attention(dim=16, num_heads=4, attn_drop=0.5).to(device, dtype)
+        x = torch.rand(2, 7, 16, device=device, dtype=dtype)
+        with torch.no_grad():
+            expected = attention.eval()(x)
+            assert not torch.allclose(attention.train()(x), expected)
+            attention.attn_drop.p = 0.0
+            self.assert_close(attention(x), expected)
+
     def test_attn_bias_raises(self, device, dtype):
         attention = MemEffAttention(dim=8, num_heads=2).to(device, dtype).eval()
         x = torch.rand(1, 5, 8, device=device, dtype=dtype)
@@ -96,6 +119,15 @@ class TestNestedTensorBlock(BaseTester):
 
 
 class TestDinoVisionTransformer(BaseTester):
+    def test_get_intermediate_layers_empty_batch_6266(self, device, dtype):
+        """``reshape=True`` turns the token grid of an empty batch into an empty feature map."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        model = DinoVisionTransformer(img_size=56, patch_size=14, embed_dim=32, depth=2, num_heads=2)
+        model = model.to(device, dtype).eval()
+        (out,) = model.get_intermediate_layers(torch.rand(0, 3, 56, 56, device=device, dtype=dtype), reshape=True)
+        assert out.shape == (0, 32, 4, 4)
+
     def test_forward_features_tensor(self, device, dtype):
         model = DinoVisionTransformer(
             img_size=8,
@@ -213,6 +245,39 @@ class TestDeDoDeHalfPrecision(BaseTester):
         assert keypoints.shape == (1, 10, 2)
         assert scores.shape == (1, 10)
         assert torch.isfinite(scores).all()
+
+    def test_detector_returns_at_least_float32_logits(self, device, dtype):
+        # The networks run in the model dtype; the logits are accumulated in at least float32, as Parskatt/DeDoDe
+        # 6d15618 (detectors/dedode_detector.py) does in float32, and are not rounded to a half dtype afterwards.
+        detector = get_detector("L", amp_dtype=dtype).to(device, dtype).eval()
+        with torch.no_grad():
+            logits = detector(torch.rand(1, 3, 56, 84, device=device, dtype=dtype))
+        assert logits.shape == (1, 1, 56, 84)
+        assert logits.dtype == torch.promote_types(dtype, torch.float32)
+        assert torch.isfinite(logits).all()
+
+    def test_half_scoremap_keeps_the_float32_top_k(self, device, dtype, monkeypatch):
+        # A peaky map of integer logits, exact in every dtype. Over 252 x 336 pixels most of its softmax
+        # probabilities are below 1e-8: float16 flushes them to 0 and bfloat16 keeps 8 significant bits, so a
+        # softmax in the model dtype loses the top-k. The softmax and the keypoint sampling run in at least float32,
+        # so a half-precision model returns the float32 keypoints and scores.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a regression for the half dtypes")
+        h, w = 252, 336
+        logits = (torch.randn(1, 1, h, w, generator=torch.Generator().manual_seed(0)) * 8).round().to(device)
+
+        def detector(images):
+            return logits.to(images.dtype).expand(images.shape[0], -1, -1, -1)
+
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_detector", lambda *a, **k: _FixedMap(detector))
+        monkeypatch.setattr("kornia.feature.dedode.dedode.get_descriptor", lambda *a, **k: _FixedMap(lambda x: x))
+        image = torch.rand(1, 3, h, w, device=device)
+        expected_keypoints, expected_scores = DeDoDe().to(device).detect(image)
+        keypoints, scores = DeDoDe().to(device, dtype).detect(image.to(dtype))
+        assert keypoints.shape == (1, 10_000, 2)
+        self.assert_close(keypoints, expected_keypoints, rtol=0.0, atol=0.0)
+        assert keypoints.dtype == scores.dtype == torch.float32
+        self.assert_close(scores, expected_scores, rtol=0.0, atol=0.0)
 
 
 def _tiny_dinov2(monkeypatch):

@@ -88,7 +88,7 @@ class Se2(nn.Module):
     Convention:
         - ``matrix()`` is the 3x3 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()`` and ``g * p`` is
           :math:`R p + t`, as in :class:`~kornia.geometry.liegroup.Se3`, but an unbatched pose also transforms
-          :math:`(N, 2)` points and a batched one a single :math:`(2,)` point. The rotation is an
+          ``(N, 2)`` points and a batched one a single ``(2,)`` point. The rotation is an
           :class:`~kornia.geometry.liegroup.So2`, whose storage and direction conventions apply.
         - The tangent vector is :math:`(v_x, v_y, \theta)`, angle last: ``exp`` rotates by :math:`\theta` and
           translates by :math:`V(\theta) (v_x, v_y)`, and ``log`` returns :math:`\theta` in :math:`[-\pi, \pi]`.
@@ -126,7 +126,7 @@ class Se2(nn.Module):
 
         Args:
             rotation: So2 group encompassing a rotation.
-            translation: translation torch.Tensor with the shape of :math:`(B, 2)`, or a Vector2 wrapping one; the
+            translation: translation torch.Tensor with the shape of ``(B, 2)``, or a Vector2 wrapping one; the
                 tensor is what gets stored. It must have the rotation's dtype (``z``'s real dtype) and device;
                 a bfloat16 translation is also accepted beside a complex32, complex64 or complex128 rotation, which
                 is what ``.bfloat16()`` leaves (PyTorch has no complex bfloat16). Every method then reads the
@@ -185,7 +185,7 @@ class Se2(nn.Module):
         """Compose two Se2 transformations, or transform points.
 
         Args:
-            right: the other Se2 transformation, or points of shape :math:`(B, 2)` or :math:`(2,)`.
+            right: the other Se2 transformation, or points of shape ``(B, 2)`` or ``(2,)``.
 
         Return:
             The resulting Se2 transformation, or the transformed points.
@@ -213,7 +213,7 @@ class Se2(nn.Module):
 
     @property
     def t(self) -> torch.Tensor:
-        """Return the underlying translation vector of shape :math:`(B,2)`."""
+        """Return the underlying translation vector of shape ``(B,2)``."""
         return self._translation
 
     @property
@@ -223,7 +223,7 @@ class Se2(nn.Module):
 
     @property
     def translation(self) -> torch.Tensor:
-        """Return the underlying translation vector of shape :math:`(B,2)`."""
+        """Return the underlying translation vector of shape ``(B,2)``."""
         return self._translation
 
     @staticmethod
@@ -231,7 +231,7 @@ class Se2(nn.Module):
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
-            v: vector of shape :math:`(B, 3)`.
+            v: vector of shape ``(B, 3)``.
 
         Example:
             >>> v = torch.ones((1, 3))
@@ -306,7 +306,7 @@ class Se2(nn.Module):
         :meth:`vee` inverts it, and its matrix exponential is the pose :meth:`exp` returns.
 
         Args:
-            v: vector of shape :math:`(B, 3)` or :math:`(3,)`.
+            v: vector of shape ``(B, 3)`` or ``(3,)``.
 
         Example:
             >>> v = torch.tensor([1.0, 2.0, 0.5])
@@ -333,10 +333,10 @@ class Se2(nn.Module):
         It reads the translation from the last column and the angle from the ``[1, 0]`` entry.
 
         Args:
-            omega: 3x3-matrix built by :meth:`hat`, of shape :math:`(B, 3, 3)` or :math:`(3, 3)`.
+            omega: 3x3-matrix built by :meth:`hat`, of shape ``(B, 3, 3)`` or ``(3, 3)``.
 
         Returns:
-            vector of shape :math:`(B, 3)` or :math:`(3,)`.
+            vector of shape ``(B, 3)`` or ``(3,)``.
 
         Example:
             >>> v = torch.ones(3)
@@ -385,7 +385,7 @@ class Se2(nn.Module):
         return cls(So2.identity(batch_size, device, dtype), t)
 
     def matrix(self) -> torch.Tensor:
-        """Return the matrix representation of shape :math:`(B, 3, 3)`.
+        """Return the matrix representation of shape ``(B, 3, 3)``.
 
         Example:
             >>> s = Se2(So2.identity(1), torch.ones(1, 2))
@@ -406,7 +406,7 @@ class Se2(nn.Module):
         """Create an Se2 group from a matrix.
 
         Args:
-            matrix: torch.Tensor of shape :math:`(B, 3, 3)`.
+            matrix: torch.Tensor of shape ``(B, 3, 3)``.
 
         Example:
             >>> s = Se2.from_matrix(torch.eye(3).repeat(2, 1, 1))
@@ -506,7 +506,7 @@ class Se2(nn.Module):
         return cls.trans(zs, y)
 
     def adjoint(self) -> torch.Tensor:
-        """Return the adjoint matrix of shape :math:`(B, 3, 3)`.
+        """Return the adjoint matrix of shape ``(B, 3, 3)``.
 
         Example:
             >>> s = Se2.identity()

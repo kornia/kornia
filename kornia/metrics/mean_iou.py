@@ -30,7 +30,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
     Convention:
         - See the Convention block of :func:`~kornia.metrics.confusion_matrix`, which counts the labels: the same
           label contract, one result per sample.
-        - The result is the IoU of every class in every sample, :math:`(B, K)` float32, each a fraction in
+        - The result is the IoU of every class in every sample, ``(B, K)`` float32, each a fraction in
           :math:`[0, 1]`; despite the name, neither axis is averaged. Averaging it over :math:`B` gives the mean of
           per-image IoUs; for the IoU of a whole dataset, sum :func:`~kornia.metrics.confusion_matrix` over all
           images and take the IoU of the sum.
@@ -42,7 +42,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
 
     Args:
         pred : tensor with estimated targets returned by a
-          classifier. The shape can be :math:`(B, *)` and must contain integer
+          classifier. The shape can be ``(B, *)`` and must contain integer
           values between 0 and K-1.
         target: tensor with ground truth (correct) target
           values. The shape must be that of ``pred``, and it must contain integer
@@ -51,7 +51,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
         eps: the value added to the numerator and the denominator of every IoU.
 
     Returns:
-        a tensor with the IoU of every class, with shape :math:`(B, K)` where K is the number of classes.
+        a tensor with the IoU of every class, with shape ``(B, K)`` where K is the number of classes.
 
     Example:
         >>> logits = torch.tensor([[0, 1, 0]])
@@ -112,7 +112,7 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     """Compute the IoU of the cartesian product of two sets of boxes.
 
     Convention:
-        - The result is the IoU of every pair, :math:`(B1, B2)`, each a fraction in :math:`[0, 1]`; despite the name,
+        - The result is the IoU of every pair, ``(B1, B2)``, each a fraction in :math:`[0, 1]`; despite the name,
           nothing is averaged, and swapping the two sets transposes it.
         - Boxes are exclusive in every ``box_format``: the area of ``(x1, y1, x2, y2)`` is
           :math:`(x_2 - x_1)(y_2 - y_1)`, with no ``+ 1``, as in :func:`~kornia.geometry.bbox.nms`. A box with a
@@ -122,8 +122,8 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
           inclusive ``'xyxy_plus'`` export.
 
     Args:
-        boxes_1: a tensor of bounding boxes in :math:`(B1, 4)`.
-        boxes_2: a tensor of bounding boxes in :math:`(B2, 4)`.
+        boxes_1: a tensor of bounding boxes in ``(B1, 4)``.
+        boxes_2: a tensor of bounding boxes in ``(B2, 4)``.
         box_format: the bounding box format. Supported formats are:
             - 'xyxy': (x1, y1, x2, y2) where (x1, y1) is top-left and (x2, y2) is bottom-right
             - 'xywh': (x, y, w, h) where (x, y) is top-left, w is width, h is height
@@ -131,7 +131,7 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
             Default: 'xyxy'.
 
     Returns:
-        a tensor in dimensions :math:`(B1, B2)`, representing the
+        a tensor in dimensions ``(B1, B2)``, representing the
         IoU of each of the boxes in set 1 with each of the boxes in set 2.
 
     .. note::
@@ -165,16 +165,17 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str 
     boxes_1 = _promote_integer_boxes(boxes_1)
     boxes_2 = _promote_integer_boxes(boxes_2)
 
+    output_dtype = torch.promote_types(boxes_1.dtype, boxes_2.dtype)
+    # Compute half-precision boxes in float32 from the start: the corners (x + w) round in their dtype, which can erase
+    # a small width at a large position, and image-sized areas overflow float16.
+    if boxes_1.dtype in (torch.float16, torch.bfloat16):
+        boxes_1 = boxes_1.float()
+    if boxes_2.dtype in (torch.float16, torch.bfloat16):
+        boxes_2 = boxes_2.float()
+
     # Convert boxes to xyxy format
     boxes_1_xyxy = _convert_boxes_to_xyxy(boxes_1, box_format)
     boxes_2_xyxy = _convert_boxes_to_xyxy(boxes_2, box_format)
-
-    output_dtype = torch.promote_types(boxes_1_xyxy.dtype, boxes_2_xyxy.dtype)
-    # Ordinary image-sized areas overflow float16; compute the ratio before rounding back.
-    if boxes_1_xyxy.dtype in (torch.float16, torch.bfloat16):
-        boxes_1_xyxy = boxes_1_xyxy.float()
-    if boxes_2_xyxy.dtype in (torch.float16, torch.bfloat16):
-        boxes_2_xyxy = boxes_2_xyxy.float()
 
     # Validate boxes are in proper xyxy format. The checks read the data, which graph capture cannot do;
     # skip them under any capture. TorchScript cannot call is_compiling(), and a scripted call keeps the checks.

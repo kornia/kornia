@@ -120,7 +120,7 @@ def _apply_cond(order: Tuple[int, ...], input: torch.Tensor, factors: Tuple[torc
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
+    r"""Randomly shift brightness, scale contrast and HSV saturation, and rotate the hue of an image.
 
     .. image:: _static/img/ColorJiggle.png
 
@@ -141,8 +141,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
           The parameter generator still draws an ``order`` entry into ``_params``, and with a fixed order that
           entry is ignored, including on replay.
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped

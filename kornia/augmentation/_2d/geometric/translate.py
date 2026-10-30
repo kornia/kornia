@@ -27,7 +27,12 @@ from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 
 
 class RandomTranslate(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to a torch.Tensor image.
+    r"""Translate images by a random 2D shift, applied per sample with probability ``p`` (default 0.5).
+
+    .. note::
+        Unlike torchvision's ``RandomAffine(degrees=0, translate=...)``, which translates every image, this class
+        translates each sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for
+        the whole batch. Pass ``p=1.0`` to translate every sample.
 
     Args:
         translate_x: tuple of maximum absolute fraction for horizontal translations.
@@ -40,12 +45,12 @@ class RandomTranslate(GeometricAugmentationBase2D):
         padding_mode: padding mode from "torch.zeros" (0), "border" (1) or "reflection" (2).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - See :class:`~kornia.augmentation.GeometricAugmentationBase2D` for coordinates, defaults and inverse.

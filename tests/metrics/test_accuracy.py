@@ -17,40 +17,60 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError, DeviceError, ShapeError, TypeCheckError
 from kornia.metrics import accuracy
 
 from testing.base import BaseTester, supports_topk
 
 
 class TestAccuracy:
-    def test_top1_perfect(self):
-        logits = torch.tensor([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])
-        target = torch.tensor([[1], [0]])
-        result = accuracy(logits, target, topk=(1,))
-        assert len(result) == 1
-        assert result[0].item() == 100.0
+    def test_smoke(self, device):
+        logits = torch.tensor([[0.0, 1.0, 2.0]], device=device)
+        target = torch.tensor([2], device=device)
+        assert accuracy(logits, target)[0].item() == 100.0
 
-    def test_top1_zero(self):
-        logits = torch.tensor([[1.0, 0.0, 0.0]])
-        target = torch.tensor([[2]])
-        result = accuracy(logits, target, topk=(1,))
-        assert result[0].item() == 0.0
+    def test_smoke_with_batch(self, device):
+        logits = torch.tensor([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]], device=device)
+        target = torch.tensor([2, 0], device=device)
+        assert accuracy(logits, target)[0].item() == 100.0
 
-    def test_topk(self):
-        # 3 classes; true class is index 2 (lowest logit) — wrong for both top-1 and top-2
-        logits = torch.tensor([[0.3, 0.5, 0.2]])
-        target = torch.tensor([[2]])  # true class is index 2 (third highest)
+    def test_smoke_with_target_shape_b_1(self, device):
+        logits = torch.tensor([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]], device=device)
+        target = torch.tensor([[2], [0]], device=device)
+        assert accuracy(logits, target)[0].item() == 100.0
+
+    def test_topk(self, device):
+        logits = torch.tensor([[0.0, 3.0, 1.0, 2.0]], device=device)
+        target = torch.tensor([1], device=device)
+        top1, top2 = accuracy(logits, target, topk=(1, 2))
+        assert top1.item() == 100.0
+        assert top2.item() == 100.0
+
+        logits = torch.tensor([[0.0, 1.0, 3.0, 2.0]], device=device)
+        target = torch.tensor([3], device=device)
         top1, top2 = accuracy(logits, target, topk=(1, 2))
         assert top1.item() == 0.0
-        assert top2.item() == 0.0
+        assert top2.item() == 100.0
 
-        logits2 = torch.tensor([[0.3, 0.2, 0.5]])
-        target2 = torch.tensor([[2]])
-        top1b, _ = accuracy(logits2, target2, topk=(1, 2))
+    def test_topk_with_target_shape_b_1(self, device):
+        logits = torch.tensor([[0.0, 3.0, 1.0, 2.0], [0.0, 1.0, 3.0, 2.0]], device=device)
+        target = torch.tensor([[1], [3]], device=device)
+        top1, top2 = accuracy(logits, target, topk=(1, 2))
+        assert top1.item() == 50.0
+        assert top2.item() == 100.0
+
+        top1a, top1b = accuracy(logits, target, topk=(1, 1))
+        assert top1a.item() == 50.0
+        assert top1b.item() == 50.0
+
+        target = torch.tensor([[1], [2]], device=device)
+        top1a, top1b = accuracy(logits, target, topk=(1, 2))
+        assert top1a.item() == 100.0
         assert top1b.item() == 100.0
 
     def test_topk_exceeds_num_classes_is_clipped(self):
@@ -59,6 +79,78 @@ class TestAccuracy:
         target = torch.tensor([[1]])
         result = accuracy(logits, target, topk=(5,))
         assert result[0].item() == 100.0
+
+    @pytest.mark.parametrize(("pred_batch", "target_batch"), [(1, 2), (2, 1), (2, 3), (3, 2)])
+    def test_mismatched_batch(self, pred_batch, target_batch):
+        """Reject mismatched batch sizes between pred and target."""
+        logits = torch.zeros(pred_batch, 3)
+        target = torch.zeros(target_batch, dtype=torch.int64)
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    def test_singleton_target_batch_mismatch_does_not_broadcast(self):
+        """Ensure singleton target batch size is not silently broadcast across pred batch."""
+        logits = torch.tensor([[0.0, 1.0], [0.0, 1.0]])
+        target = torch.tensor([1])
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    @pytest.mark.parametrize("pred_shape", [(3,), (2, 3, 4)])
+    def test_invalid_pred_shape(self, pred_shape):
+        """Reject pred tensors that are not 2-dimensional (B, C)."""
+        logits = torch.zeros(pred_shape)
+        target = torch.zeros(logits.shape[0] if logits.ndim > 0 else 1, dtype=torch.int64)
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    @pytest.mark.parametrize("target_shape", [(2, 2), (1, 2), (2, 1, 2), ()])
+    def test_invalid_target_shape(self, target_shape):
+        """Reject target tensors that do not hold one class index per sample."""
+        logits = torch.zeros(2, 3)
+        target = torch.zeros(target_shape, dtype=torch.int64)
+        with pytest.raises(ShapeError):
+            accuracy(logits, target)
+
+    def test_target_with_more_size_one_dims(self):
+        """A (B, 1, 1) target is read like a (B,) one."""
+        logits = torch.tensor([[0.0, 3.0, 1.0, 2.0], [0.0, 1.0, 3.0, 2.0]])
+        target = torch.tensor([[[1]], [[3]]])
+        assert torch.equal(torch.stack(accuracy(logits, target, topk=(1, 2))), torch.tensor([50.0, 100.0]))
+
+    def test_non_tensor_inputs(self):
+        """Reject non-tensor pred and target inputs."""
+        with pytest.raises(TypeCheckError):
+            accuracy([[0.0, 1.0]], torch.tensor([1]))  # type: ignore[arg-type]
+        with pytest.raises(TypeCheckError):
+            accuracy(torch.tensor([[0.0, 1.0]]), [1])  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        "invalid_topk",
+        [(), (0,), (-1,), (1, 0), (1.5,), (True,), (2, True), (torch.tensor(True),), (2, torch.tensor(True))],
+    )
+    def test_invalid_topk(self, invalid_topk):
+        """Reject empty, non-positive, or non-integer topk sequences."""
+        logits = torch.tensor([[0.0, 1.0]])
+        target = torch.tensor([1])
+        with pytest.raises(BaseError, match="topk must be a non-empty sequence of positive integers"):
+            accuracy(logits, target, topk=invalid_topk)
+
+    @pytest.mark.parametrize(
+        "topk",
+        [[1, 2], (np.int64(1), np.int64(2)), (torch.tensor(1), torch.tensor(2))],
+        ids=["list", "numpy", "tensor"],
+    )
+    def test_integer_like_topk(self, topk):
+        logits = torch.tensor([[0.0, 1.0, 2.0], [2.0, 1.0, 0.0]])
+        target = torch.tensor([1, 0])
+        assert torch.equal(torch.stack(accuracy(logits, target, topk=topk)), torch.tensor([50.0, 100.0]))
+
+    def test_device_mismatch(self):
+        """Reject pred and target tensors located on different devices."""
+        logits = torch.zeros(2, 3, device="cpu")
+        target = torch.zeros(2, dtype=torch.int64, device="meta")
+        with pytest.raises(DeviceError):
+            accuracy(logits, target)
 
 
 class TestConventionsAccuracy(BaseTester):

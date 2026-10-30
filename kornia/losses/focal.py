@@ -174,7 +174,7 @@ def focal_loss(
     weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Criterion that computes Focal loss.
+    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -213,8 +213,8 @@ def focal_loss(
           same NaN and infinity positions and a zero gradient at ignored pixels, and supports double backward.
 
     Args:
-        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels torch.Tensor with shape :math:`(N, *)` where each value is an integer
+        pred: logits torch.Tensor with shape ``(N, C, *)`` where C = number of classes.
+        target: labels torch.Tensor with shape ``(N, *)`` where each value is an integer
           representing correct classification :math:`target[i] \in [0, C)`.
         alpha: Weighting factor :math:`\alpha \in [0, 1]` of classes :math:`1, \dots, C - 1`; class 0 is weighted by
           :math:`1 - \alpha`. ``None`` weights every class by 1.
@@ -339,7 +339,7 @@ def focal_loss(
 
 
 class FocalLoss(nn.Module):
-    r"""Criterion that computes Focal loss.
+    r"""Compute the multi-class focal loss of ``(B, C, *)`` logits against ``(B, *)`` class indices, using softmax.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -367,8 +367,8 @@ class FocalLoss(nn.Module):
         ignore_index: labels with this value contribute 0 to the loss but stay in the ``'mean'`` denominator.
 
     Shape:
-        - Pred: :math:`(N, C, *)` where C = number of classes.
-        - Target: :math:`(N, *)` where each value is an integer
+        - Pred: ``(N, C, *)`` where C = number of classes.
+        - Target: ``(N, *)`` where each value is an integer
           representing correct classification :math:`target[i] \in [0, C)`.
 
     Example:
@@ -404,10 +404,10 @@ class FocalLoss(nn.Module):
         """Compute multi-class focal loss from class logits.
 
         Args:
-            pred: Logit tensor with shape :math:`(B, C, *)`, where :math:`B`
+            pred: Logit tensor with shape ``(B, C, *)``, where :math:`B`
                 is batch size, :math:`C` is number of classes, and ``*`` is
                 any number of spatial dimensions.
-            target: Integer class-label tensor with shape :math:`(B, *)`.
+            target: Integer class-label tensor with shape ``(B, *)``.
 
         Returns:
             Focal-loss tensor reduced according to ``self.reduction``. See :func:`~kornia.losses.focal_loss` for
@@ -426,7 +426,7 @@ def binary_focal_loss_with_logits(
     weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
-    r"""Criterion that computes Binary Focal loss.
+    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -454,8 +454,8 @@ def binary_focal_loss_with_logits(
           ``sigmoid_focal_loss`` and torch's ``pos_weight``.
 
     Args:
-        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels torch.Tensor with the same shape as pred :math:`(N, C, *)`
+        pred: logits torch.Tensor with shape ``(N, C, *)`` where C = number of classes.
+        target: labels torch.Tensor with the same shape as pred ``(N, C, *)``
           where each value is between 0 and 1.
         alpha: Weighting factor :math:`\alpha \in [0, 1]` of the positive term; the negative term is weighted by
           :math:`1 - \alpha`.
@@ -550,7 +550,7 @@ def binary_focal_loss_with_logits(
 
 
 class BinaryFocalLossWithLogits(nn.Module):
-    r"""Criterion that computes Focal loss.
+    r"""Compute the binary focal loss of ``(B, C, *)`` logits against same-shape targets in [0, 1], using sigmoid.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
@@ -581,8 +581,8 @@ class BinaryFocalLossWithLogits(nn.Module):
           denominator.
 
     Shape:
-        - Pred: :math:`(N, C, *)` where C = number of classes.
-        - Target: the same shape as Pred :math:`(N, C, *)`
+        - Pred: ``(N, C, *)`` where C = number of classes.
+        - Target: the same shape as Pred ``(N, C, *)``
           where each value is between 0 and 1.
 
     Examples:
@@ -623,7 +623,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         """Compute binary focal loss from logits.
 
         Args:
-            pred: Logit tensor with shape :math:`(B, C, *)`, at least two dimensions.
+            pred: Logit tensor with shape ``(B, C, *)``, at least two dimensions.
             target: Binary target tensor with the same shape as ``pred``.
 
         Returns:

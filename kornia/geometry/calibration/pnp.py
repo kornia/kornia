@@ -33,14 +33,14 @@ def _mean_isotropic_scale_normalize(
     r"""Normalize points.
 
     Args:
-       points : torch.Tensor containing the points to be normalized with shape :math:`(B, N, D)`.
+       points : torch.Tensor containing the points to be normalized with shape ``(B, N, D)``.
        eps : Small value to avoid division by zero error.
-       weights : Optional non-negative per-point weights with shape :math:`(B, N)` for the mean and the scale.
+       weights : Optional non-negative per-point weights with shape ``(B, N)`` for the mean and the scale.
           A point with weight zero does not affect the normalization.
 
     Returns:
-       Tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
-       in the shape :math:`(B, D+1, D+1)`.
+       Tuple containing the normalized points in the shape ``(B, N, D)`` and the transformation matrix
+       in the shape ``(B, D+1, D+1)``.
 
     """
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
@@ -93,10 +93,10 @@ def solve_pnp_dlt(
     twisted cubic. However, this function does not check for this condition.
 
     Convention:
-        - the returned :math:`(B, 3, 4)` matrix is the **world-to-camera** ``[R | t]``: it maps a world point
+        - the returned ``(B, 3, 4)`` matrix is the **world-to-camera** ``[R | t]``: it maps a world point
           into the camera frame (``X_cam = X_world + (1, 0, 0)`` gives ``t = (+1, 0, 0)``), not a
           camera-to-world pose.
-        - ``intrinsics`` is the :math:`(B, 3, 3)` ``K``; the :math:`(B, 4, 4)` matrix that a
+        - ``intrinsics`` is the ``(B, 3, 3)`` ``K``; the ``(B, 4, 4)`` matrix that a
           ``PinholeCamera`` stores is rejected.
         - ``weights`` scales the two rows each point contributes to the homogeneous linear system, and the
           normalization and the degeneracy check use the same weighting. A uniform ``weights`` leaves the answer
@@ -107,18 +107,18 @@ def solve_pnp_dlt(
         - a caller's autocast region does not change the result: float32 inputs are solved in float32.
 
     Args:
-        world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
+        world_points : A torch.Tensor with shape ``(B, N, 3)`` representing
           the points in the world space.
-        img_points : A torch.Tensor with shape :math:`(B, N, 2)` representing
+        img_points : A torch.Tensor with shape ``(B, N, 2)`` representing
           the points in the image space.
-        intrinsics : A torch.Tensor with shape :math:`(B, 3, 3)` representing
+        intrinsics : A torch.Tensor with shape ``(B, 3, 3)`` representing
           the intrinsic matrices.
-        weights : A torch.Tensor with shape :math:`(B, N)` representing the
+        weights : A torch.Tensor with shape ``(B, N)`` representing the
             weights for each point. If None, all points are considered to be equally important.
         svd_eps : A small float value to avoid numerical precision issues.
 
     Returns:
-        A torch.Tensor with shape :math:`(B, 3, 4)` representing the estimated world to
+        A torch.Tensor with shape ``(B, 3, 4)`` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
 
     Example:

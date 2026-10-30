@@ -58,12 +58,12 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     instead applies Softmax over features at each spatial location.
 
     Args:
-        input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
+        input: the input torch.Tensor with shape ``(B, N, H, W)``.
         temperature: softmax temperature: the input is divided by it; smaller is sharper. Must be positive.
           ``None`` means ``1.0``. A tensor temperature is not checked under ``torch.compile`` or export.
 
     Returns:
-       a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
+       a 2D probability distribution per image channel with shape ``(B, N, H, W)``.
 
     Examples:
         >>> heatmaps = torch.tensor([[[
@@ -85,7 +85,17 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     if isinstance(temperature, torch.Tensor):
         temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.reshape(batch_size, channels, height * width)
+    # An integer map is divided in the default floating dtype, as ``x / temperature`` does; the shift below would wrap
+    # in its own dtype (``uint8``).
+    if not x.is_floating_point():
+        x = x.to(torch.get_default_dtype())
 
+    # Softmax is invariant to a shift by a constant per map. Subtracting the maximum leaves every logit at or below
+    # zero, so dividing by a sharp temperature cannot overflow the input dtype (``max|logit| / temperature > 65504``
+    # is reachable in float16) before softmax gets a chance to stabilize the values. The shift is a constant, so it
+    # takes no gradient; an empty map has nothing to shift and no maximum.
+    if height * width > 0:
+        x = x - x.amax(dim=-1, keepdim=True).detach()
     x_soft = F.softmax(x / temperature, dim=-1)
 
     return x_soft.view(batch_size, channels, height, width)
@@ -100,12 +110,12 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
           :func:`~kornia.geometry.subpix.spatial_softmax2d` does: a map summing to ``s`` scales the result by ``s``.
 
     Args:
-        input: the input torch.Tensor representing dense spatial probabilities with shape :math:`(B, N, H, W)`.
+        input: the input torch.Tensor representing dense spatial probabilities with shape ``(B, N, H, W)``.
         normalized_coordinates: whether to return the coordinates normalized in the range
           of :math:`[-1, 1]`. Otherwise, it will return the coordinates in the range of the input shape.
 
     Returns:
-       expected value of the 2D coordinates with shape :math:`(B, N, 2)`. Output order of the coordinates is (x, y).
+       expected value of the 2D coordinates with shape ``(B, N, 2)``. Output order of the coordinates is (x, y).
 
     Examples:
         >>> heatmaps = torch.tensor([[[
@@ -154,15 +164,15 @@ def render_gaussian2d(
         - Float16 parameters are evaluated in float32; the heatmap retains the input dtype.
 
     Args:
-        mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
+        mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: ``(*, 2)``.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
-          Shape :math:`(*, 2)`. Should be able to be broadcast with `mean`.
+          Shape ``(*, 2)``. Should be able to be broadcast with `mean`.
         size: the (height, width) of the output image.
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
 
     Returns:
-        torch.Tensor including rendered points with shape :math:`(*, H, W)`.
+        torch.Tensor including rendered points with shape ``(*, H, W)``.
 
     """
     if not (std.dtype == mean.dtype and std.device == mean.device):

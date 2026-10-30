@@ -27,10 +27,10 @@ from kornia.filters import motion_blur3d
 
 
 class RandomMotionBlur3D(IntensityAugmentationBase3D):
-    r"""Apply random motion blur on 3D volumes (5D torch.Tensor).
+    r"""Blur 3D volumes with a random motion-blur kernel, applied per sample with probability ``p`` (default 0.5).
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         kernel_size: motion kernel size (odd and at least 3).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
@@ -54,8 +54,8 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

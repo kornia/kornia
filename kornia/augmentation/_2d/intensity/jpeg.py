@@ -46,8 +46,8 @@ class RandomJPEG(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     .. note::
         This function internally uses :func:`kornia.enhance.jpeg_codec_differentiable`.

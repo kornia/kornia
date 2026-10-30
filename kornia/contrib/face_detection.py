@@ -48,7 +48,7 @@ class FaceDetectorResult:
 
     Args:
         data: the detections returned by :py:class:`kornia.contrib.FaceDetector`, one row of 15 values per face with
-            shape :math:`(15,)` or :math:`(N, 15)`: the box ``xmin, ymin, xmax, ymax``, five ``(x, y)`` landmarks
+            shape ``(15,)`` or ``(N, 15)``: the box ``xmin, ymin, xmax, ymax``, five ``(x, y)`` landmarks
             (see :py:class:`kornia.contrib.FaceKeypoint`) and the score.
 
     """
@@ -160,7 +160,7 @@ class FaceDetector(nn.Module):
         keep_top_k: the maximum number of detections to return after the nms.
 
     Return:
-        A list of B tensors with shape :math:`(N,15)` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
+        A list of B tensors with shape ``(N,15)`` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320) * 255  # RGB in [0, 255]
@@ -195,7 +195,7 @@ class FaceDetector(nn.Module):
         """Preprocess input images before feeding them to YuNet.
 
         Args:
-            image: Batch of RGB images with pixel values in :math:`[0, 255]` and shape :math:`(B, 3, H, W)`, where:
+            image: Batch of RGB images with pixel values in :math:`[0, 255]` and shape ``(B, 3, H, W)``, where:
                 - ``B`` is batch size,
                 - ``3`` is the RGB channel dimension,
                 - ``H`` is image height,
@@ -205,7 +205,7 @@ class FaceDetector(nn.Module):
             The same images in BGR channel order, still in :math:`[0, 255]`: the input YuNet was trained on.
 
         Raises:
-            ValueError: If the image is not of shape :math:`(*, 3, H, W)`.
+            ValueError: If the image is not of shape ``(*, 3, H, W)``.
         """
         return rgb_to_bgr(image)
 
@@ -220,7 +220,7 @@ class FaceDetector(nn.Module):
 
         Returns:
             A list with one tensor per batch element. Each tensor is shaped
-            :math:`(N, 15)`, where ``N`` is the number of detections kept after
+            ``(N, 15)``, where ``N`` is the number of detections kept after
             confidence filtering and non-maximum suppression (NMS).
 
             The 15 values per detection are:
@@ -270,7 +270,7 @@ class FaceDetector(nn.Module):
         r"""Detect faces in a given batch of images.
 
         Args:
-            image: batch of RGB images with pixel values in :math:`[0, 255]` and shape :math:`(B,3,H,W)`.
+            image: batch of RGB images with pixel values in :math:`[0, 255]` and shape ``(B,3,H,W)``.
 
         Return:
             List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`.

@@ -108,11 +108,11 @@ class Block(nn.Module):
         """Run this DeDoDe module forward.
 
         Args:
-            x: Input token sequence with shape :math:`(B, N, C)`, where ``B`` is batch size,
+            x: Input token sequence with shape ``(B, N, C)``, where ``B`` is batch size,
                ``N`` is token count, and ``C`` is embedding dimension.
 
         Returns:
-            Output token sequence with the same shape :math:`(B, N, C)`.
+            Output token sequence with the same shape ``(B, N, C)``.
         """
 
         def attn_residual_func(x: Tensor) -> Tensor:
@@ -179,7 +179,7 @@ class NestedTensorBlock(Block):
         """Run this DeDoDe module forward.
 
         Args:
-            x_or_x_list: A single token tensor with shape :math:`(B, N, C)`.
+            x_or_x_list: A single token tensor with shape ``(B, N, C)``.
 
         Returns:
             Output token tensor with the same shape as the input.

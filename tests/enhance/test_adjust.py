@@ -26,6 +26,7 @@ from kornia import enhance
 from kornia.constants import pi
 from kornia.core._compat import torch_version_ge
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import AsyncCheckError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -360,6 +361,24 @@ class TestAdjustGamma(BaseTester):
         gain = torch.tensor([0.7, 0.9], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.adjust_gamma, (image, gamma, gain))
 
+    @pytest.mark.parametrize("gamma", [0.0, 0.25, 0.5, 0.9, 2.0])
+    @pytest.mark.parametrize("scalar", [True, False])
+    def test_black_pixel_gradient(self, device, dtype, gamma, scalar):
+        # For 0 < gamma < 1, x ** gamma has an infinite derivative at x = 0; the gradient there is 0, as for the other
+        # exponents. x = 1 is left out: the derivative of the output clamp at its bound differs across torch releases.
+        image = torch.tensor([0.0, 0.25, 0.5], device=device, dtype=dtype).reshape(1, 1, 3).requires_grad_()
+        param = gamma if scalar else torch.tensor([gamma], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_gamma(image, param)
+        (grad,) = torch.autograd.grad(out.sum(), image)
+        # in the image dtype, as adjust_gamma rounds the exponent
+        exponent = torch.tensor(gamma, device=device, dtype=dtype)
+        expected = image.detach().pow(exponent)
+        expected_grad = exponent * image.detach().pow(exponent - 1)
+        expected_grad[..., 0] = 0.0
+        self.assert_close(out, expected)
+        assert torch.isfinite(grad).all()
+        self.assert_close(grad, expected_grad)
+
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_scalar_export(self, device, dtype):
         image = torch.full((1, 2, 2), 0.4, device=device, dtype=dtype)
@@ -542,25 +561,46 @@ class TestAdjustContrast(BaseTester):
 
     def test_negative_factor_errors(self, device, dtype):
         if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+            pytest.skip("the value check raises during the call only on CPU; see test_mps_checks_the_factor")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="non-negative"):
             kornia.enhance.adjust_contrast(img, factor)
 
-    def test_mps_skips_value_check(self, device, dtype):
-        # aten::_assert_async has no MPS kernel; its CPU fallback forces a full device sync per
-        # call. On MPS the value check is skipped entirely (see the note in the adjust_contrast
-        # docstring), so even an invalid factor must go through without raising, and the output
-        # must stay on the device with the requested dtype.
+    def test_mps_checks_the_factor(self, device, dtype):
+        # The factor is checked on MPS as well: from torch 2.13 by the asynchronous assert, which raises at the next
+        # synchronization, and before, without that kernel, on the host during the call.
         if device.type != "mps":
-            pytest.skip("pins the MPS-only no-CPU-fallback behavior")
+            pytest.skip("pins the MPS behavior")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
-        out = kornia.enhance.adjust_contrast(img, factor)
-        assert out.shape == img.shape
-        assert out.device == img.device
-        assert out.dtype == img.dtype
+        if torch_version_ge(2, 13):
+            kornia.enhance.adjust_contrast(img, factor)
+            with pytest.raises(RuntimeError, match="non-negative"):
+                torch.mps.synchronize()
+        else:
+            with pytest.raises(AsyncCheckError, match="non-negative"):
+                kornia.enhance.adjust_contrast(img, factor)
+
+    def test_factor_check_is_skipped_when_checks_are_disabled(self, device, dtype):
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([-0.5], device=device, dtype=dtype)
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            out = kornia.enhance.adjust_contrast(img, factor, clip_output=False)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+        self.assert_close(out, img * -0.5)
+
+    def test_vmap_over_the_factor(self, device, dtype):
+        # vmap has no batching rule for the value assert, which is skipped under functorch transforms.
+        img = torch.rand(3, 4, 4, device=device, dtype=dtype)
+        factors = torch.tensor([0.5, 1.0, 1.5], device=device, dtype=dtype)
+        out = torch.vmap(lambda factor: kornia.enhance.adjust_contrast(img, factor))(factors)
+        expected = torch.stack([kornia.enhance.adjust_contrast(img, factor) for factor in factors])
+        self.assert_close(out, expected)
 
     def test_factor_one_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -1108,6 +1148,21 @@ class TestEqualize(BaseTester):
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
             _sync(kornia.enhance.equalize(x).device)
 
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+        # The range check keeps the lookup in bounds, so it runs with checks disabled too (``python -O``,
+        # ``KORNIA_CHECKS=0``): a compiled CPU scatter with an index out of range terminates the process.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+                _sync(kornia.enhance.equalize(x).device)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the values that crashed, so a hair above 1 keeps working.
         x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 1.0001
@@ -1133,7 +1188,22 @@ class TestEqualize(BaseTester):
         with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
             _sync(compiled(x).device)
 
-    @pytest.mark.skip(reason="TorchScript cannot read the module-level _MPS_HAS_ASSERT_ASYNC flag")
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+        # The range check keeps the lookup in bounds, so a compiled torch.func.grad keeps it, although a compiled
+        # functorch transform skips the value checks that guard no index.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        if not torch_version_ge(2, 14):
+            pytest.skip("torch 2.9.1 and older end an error raised in a compiled torch.func.grad in an internal assert")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 2.0
+        torch._dynamo.reset()
+        gradient = torch.func.grad(lambda image: kornia.enhance.equalize(image).sum())
+        compiled = torch.compile(gradient, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
         inp = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -1232,7 +1302,6 @@ class TestEqualize3D(BaseTester):
         inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.equalize3d, (inputs3d,), fast_mode=False)
 
-    @pytest.mark.skip(reason="TorchScript cannot read the module-level _MPS_HAS_ASSERT_ASYNC flag")
     def test_jit(self, device, dtype):
         batch_size, channels, depth, height, width = 1, 2, 1, 3, 3
         inp = torch.ones(batch_size, channels, depth, height, width, device=device, dtype=dtype)
@@ -1416,6 +1485,13 @@ class TestSolarize(BaseTester):
         img = torch.rand(2, 3, 4, 5, device=device)
         with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
             TestSolarize.f(img, 0.5, addition)
+
+    def test_float_additions_checked_on_the_host_under_any_default_device(self, device, dtype):
+        # The float is checked on the CPU whatever the default device: under a meta default the check used to have
+        # nothing to read, so an invalid float passed, and under a CUDA default it was a device-side assert.
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+        with torch.device("meta"), pytest.raises(AsyncCheckError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, 0.7)
 
     @pytest.mark.parametrize("addition", [0.5001, -0.5001])
     def test_float_additions_checked_before_rounding(self, device, dtype, addition):

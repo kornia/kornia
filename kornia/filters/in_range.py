@@ -111,14 +111,14 @@ def in_range(
           an empty mask.
 
     Args:
-        input: The input torch.Tensor to be filtered in the shape of :math:`(*, *, H, W)`.
+        input: The input torch.Tensor to be filtered in the shape of ``(*, *, H, W)``.
         lower: The lower bounds of the filter (inclusive).
         upper: The upper bounds of the filter (inclusive).
         return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
 
     Returns:
-        A binary mask :math:`(*, 1, H, W)` of input indicating whether elements are within the range
-        or filtered input image :math:`(*, *, H, W)`.
+        A binary mask ``(*, 1, H, W)`` of input indicating whether elements are within the range
+        or filtered input image ``(*, *, H, W)``.
 
     Raises:
         TypeError: If `lower` or `upper` is neither a tuple nor a torch.Tensor, if one is a tuple and the other a
@@ -141,14 +141,14 @@ def in_range(
           length, such as (W,) when W is neither C nor 1, raises. When W == C, a (W,) bound is the (C,) bound, not a
           per-column one.
 
-        - Any other torch.Tensor with at most four dimensions is aligned with the input :math:`(B, C, H, W)` from the
+        - Any other torch.Tensor with at most four dimensions is aligned with the input ``(B, C, H, W)`` from the
           last dimension, and every dimension must be 1 or the input's. For example (1, C, 1, 1) and (C, 1, 1) apply
           the same per-channel bound to all batches, (B, C, H, W), (C, H, W) and (H, W) give a different bound at each
           pixel, and a 0-d torch.Tensor applies one bound everywhere.
 
         - Each torch.Tensor bound is checked on its own, so a mis-shaped one raises whatever the other bound is.
-          The input is read as :math:`(B, C, H, W)`: a 3-D input is :math:`(1, C, H, W)`, a 2-D input is
-          :math:`(1, 1, H, W)`, and for more than four dimensions the leading dimensions are flattened into B.
+          The input is read as ``(B, C, H, W)``: a 3-D input is ``(1, C, H, W)``, a 2-D input is
+          ``(1, 1, H, W)``, and for more than four dimensions the leading dimensions are flattened into B.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -226,8 +226,8 @@ class InRange(nn.Module):
         return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
 
     Returns:
-        A binary mask :math:`(*, 1, H, W)` of input indicating whether elements are within the range
-        or filtered input image :math:`(*, *, H, W)`.
+        A binary mask ``(*, 1, H, W)`` of input indicating whether elements are within the range
+        or filtered input image ``(*, *, H, W)``.
 
     .. note::
         View complete documentation in :func:`kornia.filters.in_range`.
@@ -266,12 +266,12 @@ class InRange(nn.Module):
 
         Args:
             input: Tensor to test against the configured bounds. For images the
-                usual shape is :math:`(B, C, H, W)`, where :math:`B` is the
+                usual shape is ``(B, C, H, W)``, where :math:`B` is the
                 batch size, :math:`C` is the number of channels, :math:`H` is
                 the height, and :math:`W` is the width.
 
         Returns:
-            If ``self.return_mask`` is ``True``, a :math:`(B, 1, H, W)` mask of
+            If ``self.return_mask`` is ``True``, a ``(B, 1, H, W)`` mask of
             the pixels whose every channel lies within the inclusive range.
             Otherwise, a tensor with values outside the range removed according
             to :func:`in_range`.

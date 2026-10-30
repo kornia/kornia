@@ -29,7 +29,7 @@ from kornia.geometry.keypoints import Keypoints
 
 
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
-    r"""GeometricAugmentationBase2D base class for customized geometric augmentation implementations.
+    r"""Base class for custom 2D geometric augmentations, applied per sample with probability ``p`` (default 0.5).
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 

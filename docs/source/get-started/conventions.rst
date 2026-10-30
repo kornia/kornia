@@ -286,10 +286,25 @@ Transformation matrices and homographies
   **source→destination** homography in **pixel** coordinates.
 - :func:`kornia.geometry.transform.homography_warp` is different on every
   axis: it takes the **destination→source** homography, **normalized** to
-  ``[-1, 1]`` by default (``normalized_homography=True``), and defaults to
+  ``[-1, 1]`` by default (``normalized_coordinates=True``), and defaults to
   ``align_corners=False``. ``normalized_coordinates=False`` takes the same
-  destination→source homography in pixels. Convert a pixel
-  source→destination homography by normalizing it FIRST with
+  destination→source homography in pixels, and
+  ``normalized_homography=False`` takes a pixel source→destination
+  homography instead and hands it to ``warp_perspective``.
+  :func:`~kornia.geometry.transform.homography_warp3d` and
+  :class:`~kornia.geometry.transform.HomographyWarper` read the homography the
+  same way but have no ``normalized_homography`` switch. For a pixel
+  source→destination homography, as :class:`~kornia.geometry.ransac.RANSAC`
+  and :func:`~kornia.geometry.homography.find_homography_dlt` return it, use
+  :func:`~kornia.geometry.transform.warp_perspective`, or in 3D
+  :func:`~kornia.geometry.transform.warp_perspective3d` with
+  ``align_corners=True``, because its default ``align_corners=False``
+  resamples even an identity
+  (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Passed to
+  ``homography_warp`` unchanged, such a homography usually samples outside
+  the source and the warp comes back mostly or entirely as zeros. To keep
+  ``homography_warp``, convert a pixel source→destination homography by
+  normalizing it FIRST with
   :func:`kornia.geometry.conversions.normalize_homography` (which expects
   the forward src→dst homography) and inverting AFTER — inverting first
   with unswapped sizes is silently wrong whenever the source and
@@ -475,6 +490,31 @@ See the :doc:`enhancement API </enhance>` for clipping, histogram ranges, and kn
 Augmentations
 -------------
 
+- Most augmentations apply per sample with probability ``p`` and default to
+  ``p=0.5``: ``RandomRotation(degrees=30.0)`` leaves about half the batch
+  unrotated. :class:`kornia.augmentation.RandomGrayscale` defaults to ``0.1``
+  and :class:`kornia.augmentation.RandomMosaic` to ``0.7``; every class
+  exported from ``kornia.augmentation`` with a default below ``1`` states it
+  on its first docstring line. These default to ``p=1.0``: ``CenterCrop``,
+  ``CenterCrop3D``, ``ColorJiggle``, ``ColorJitter``, ``Denormalize``,
+  ``LongestMaxSize``, ``Normalize``, ``PatchMix``, ``RandomAutoContrast``,
+  ``RandomBrightness``, ``RandomContrast``, ``RandomCrop``, ``RandomCrop3D``,
+  ``RandomCutMixV2``, ``RandomGamma``, ``RandomHue``, ``RandomJPEG``,
+  ``RandomMixUpV2``, ``RandomResizedCrop``, ``RandomSaturation``,
+  ``RandomSnow``, ``Resize`` and ``SmallestMaxSize``.
+- The crop, resize and mix classes (``RandomCrop``, ``CenterCrop``,
+  ``RandomResizedCrop``, ``Resize``, ``LongestMaxSize``, ``SmallestMaxSize``,
+  ``RandomCrop3D``, ``CenterCrop3D``, ``RandomMixUpV2``, ``RandomCutMixV2``,
+  ``PatchMix``) take their ``p`` as one draw for the whole batch;
+  ``Normalize``, ``Denormalize`` and
+  :class:`kornia.augmentation.RandomDissolving` share one draw across the
+  batch, and ``same_on_batch=True`` shares the draw for any class (see
+  *Randomness in augmentations* below).
+- torchvision's ``RandomRotation``, ``RandomAffine``, ``ElasticTransform``,
+  ``GaussianBlur``, ``GaussianNoise`` and ``RandomChannelPermutation`` always
+  apply: pass ``p=1.0`` for that behaviour. The reverse holds for
+  ``RandomAutoContrast``, which defaults to ``p=1.0`` while torchvision's
+  ``RandomAutocontrast`` defaults to ``p=0.5``.
 - Use one :class:`kornia.augmentation.container.AugmentationSequential` call
   for an image and its annotations. Geometric children that implement a data
   key's handler share their recorded parameters across the inputs; a transform
@@ -484,12 +524,12 @@ Augmentations
   intensity and non-rigid children are skipped, so their effect
   stays. Tensor box outputs are axis-aligned enclosures, so a rotation round
   trip does not restore a box.
-- Non-rigid children do not move coordinate annotations:
-  :class:`kornia.augmentation.RandomElasticTransform` warps masks but leaves
-  keypoints and boxes unchanged, and
-  :class:`kornia.augmentation.RandomThinPlateSpline` and
-  :class:`kornia.augmentation.RandomFisheye` leave coordinates unchanged and
-  raise on masks (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+- Non-rigid children cannot move coordinate annotations, so a pipeline that
+  contains :class:`kornia.augmentation.RandomElasticTransform`,
+  :class:`kornia.augmentation.RandomThinPlateSpline` or
+  :class:`kornia.augmentation.RandomFisheye` raises ``NotImplementedError`` on
+  a keypoint or box data key, even at ``p=0``. Elastic warps masks; the other
+  two raise on masks (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 - Intensity augmentations leave masks unchanged, except
   :class:`kornia.augmentation.RandomErasing`, which erases the same rectangle
   in the mask and fills it with ``0`` (background) whatever ``value`` fills
@@ -589,9 +629,11 @@ Randomness in augmentations
   order of ``ColorJiggle`` and ``ColorJitter`` is shared across the batch
   regardless. On ``AugmentationSequential``, ``same_on_batch=None`` keeps each
   child's setting, and ``True`` or ``False`` overwrites it.
-- Whether a constructor's ``p`` sets the per-sample or the whole-batch gate,
-  and whether it exposes ``p_batch``, depends on the concrete class
-  (`#4425 <https://github.com/kornia/kornia/issues/4425>`_). A sample the gate
+- Every augmentation honours ``p_batch`` as an attribute, and only
+  ``RandomHorizontalFlip``, ``RandomVerticalFlip``, ``RandomTransplantation``
+  and ``RandomTransplantation3D`` take it in the constructor; whether a
+  constructor's ``p`` sets the per-sample or the whole-batch gate depends on
+  the concrete class. A sample the gate
   skips comes back with its input values, its values cannot make the call
   raise, and where they are finite its gradient is the identity. Below ``p=1``
   the transform still runs on the whole batch before the gate selects; classes
@@ -1315,7 +1357,8 @@ Quick self-review for generated code, most common first:
 7. Uint8 ``[0, 255]`` values where float ``[0, 1]`` is expected.
 8. Image and mask augmented through two separate augmentation calls.
 9. ``homography_warp`` fed a source→destination pixel homography — it wants
-   destination→source, normalized (or pass ``normalized_homography=False``).
+   destination→source, normalized; use ``warp_perspective`` (or pass
+   ``normalized_homography=False``).
 10. Mixing ``axis_angle_to_rotation_matrix`` (math convention; screen-
     clockwise for +z) with ``rotate`` (screen-counter-clockwise) without
     negating the angle.

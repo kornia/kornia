@@ -166,9 +166,10 @@ class TestSo2(BaseTester):
         with pytest.raises(BaseError):
             assert So2.identity(batch_size=0)
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        theta = torch.tensor([[0.4], [-0.3]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: So2.exp(x).matrix(), (theta,))
+        self.gradcheck(lambda x: So2.exp(x).log(), (theta,))
 
     # TODO: implement me
     def test_jit(self, device, dtype):

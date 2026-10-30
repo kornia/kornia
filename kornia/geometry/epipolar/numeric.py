@@ -15,23 +15,34 @@
 # limitations under the License.
 #
 
-"""Module containing numerical functionalities for SfM."""
+"""Numerical helpers of the epipolar functions: the cross-product matrix and the cofactor matrix."""
 
 import torch
 
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
-    r"""Return the skew-symmetric cross-product matrix of a vector.
+    r"""Build the skew-symmetric cross-product matrices of 3-vectors with any number of leading dimensions.
+
+    ``S = cross_product_matrix(x)`` takes vectors ``(*, 3)`` and returns the matrices :math:`[x]_\times`,
+    ``(*, 3, 3)``, with ``S @ w == cross(x, w)``: the matrix that :func:`essential_from_Rt` multiplies the relative
+    rotation by. :func:`~kornia.geometry.conversions.vector_to_skew_symmetric_matrix` builds the same matrix for a
+    ``(3,)`` or ``(B, 3)`` vector only.
 
     Convention:
         - Same matrix as :func:`~kornia.geometry.conversions.vector_to_skew_symmetric_matrix`,
           :math:`[x]_\times w = x \times w`, for any number of leading dims.
 
     Args:
-        x: The input vector to construct the matrix in the shape :math:`(*, 3)`.
+        x: The input vector to construct the matrix in the shape ``(*, 3)``.
 
     Returns:
-        The skew-symmetric matrix with shape :math:`(*, 3, 3)`.
+        The skew-symmetric matrix with shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`~kornia.geometry.conversions.vector_to_skew_symmetric_matrix`: the same matrix, for ``(3,)`` or
+          ``(B, 3)`` vectors only.
+        - :meth:`~kornia.geometry.liegroup.So3.hat`: the same matrix, as the Lie-algebra element of a rotation
+          vector.
 
     """
     if not x.shape[-1] == 3:
@@ -52,7 +63,7 @@ def matrix_cofactor_tensor(matrix: torch.Tensor) -> torch.Tensor:
     """Cofactor matrix, refer to the numpy doc.
 
     Args:
-        matrix: The input matrix in the shape :math:`(*, 3, 3)`.
+        matrix: The input matrix in the shape ``(*, 3, 3)``.
 
     """
     # Closed form: the rows of the cofactor matrix are the cross products of the other two rows. Unlike the

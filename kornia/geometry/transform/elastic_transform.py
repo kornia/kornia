@@ -15,6 +15,16 @@
 # limitations under the License.
 #
 
+"""Deform images elastically by a smoothed displacement field, as in Simard et al.
+
+Which function to use:
+
+- A displacement field from your own noise, smoothed by a Gaussian and scaled per axis: :func:`elastic_transform2d`.
+- For random elastic deformations in an augmentation pipeline, use :class:`~kornia.augmentation.RandomElasticTransform`;
+  for a smooth deformation set by control points, :func:`~kornia.geometry.transform.warp_image_tps`; to sample an
+  image at per-pixel coordinates of your own, :func:`~kornia.geometry.transform.remap`.
+"""
+
 from typing import Tuple, Union
 
 import torch
@@ -39,37 +49,53 @@ def elastic_transform2d(
     mode: str = "bilinear",
     padding_mode: str = "zeros",
 ) -> torch.Tensor:
-    r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
+    r"""Deform images by a displacement field smoothed from noise, as described in :cite:`Simard2003BestPF`.
+
+    ``out = elastic_transform2d(image, noise)`` takes images ``(B, C, H, W)`` and a noise field ``(B, 2, H, W)``,
+    smooths each channel of the noise with a Gaussian of ``kernel_size`` and ``sigma``, scales it by ``alpha`` and
+    returns the ``(B, C, H, W)`` images sampled at the displaced pixels. The displacements are in the normalized
+    :math:`[-1, 1]` coordinates of ``grid_sample``: an x displacement of 1 moves a sample by :math:`W / 2` pixels at the
+    default ``align_corners=False`` and by :math:`(W - 1) / 2` at ``True``, and a y displacement likewise by the
+    height. One Gaussian and one ``alpha`` serve the whole batch. For random fields in an augmentation pipeline, use
+    :class:`~kornia.augmentation.RandomElasticTransform`; for a smooth warp set by control points,
+    :func:`~kornia.geometry.transform.warp_image_tps`.
 
     .. image:: _static/img/elastic_transform2d.png
 
     Convention:
-        - image: :math:`(B, C, H, W)`; ``noise``: :math:`(B, 2, H, W)` with
+        - image: ``(B, C, H, W)``; ``noise``: ``(B, 2, H, W)`` with
           channel 0 the x- and channel 1 the y-displacement of the sampling
           grid (positive x-noise shifts image content left)
         - displacements are smoothed with a Gaussian (``kernel_size``,
-          ``sigma``) and scaled by ``alpha``
+          ``sigma``) and scaled by ``alpha``; ``kernel_size`` and ``sigma`` are ``(y, x)`` pairs, but ``alpha`` is
+          ``(x, y)``
         - align_corners: ``False`` by default (the matrix warps default to ``True``); zero
           ``noise`` is an identity under either setting
         - coordinates displaced outside the image are filled by ``padding_mode`` as in ``grid_sample``:
           zeros, the edge value, or the reflected image
 
     Args:
-        image: Input image to be transformed with shape :math:`(B, C, H, W)`.
+        image: Input image to be transformed with shape ``(B, C, H, W)``.
         noise: Noise image used to spatially transform the input image. Same
-          resolution as the input image with shape :math:`(B, 2, H, W)`. The coordinates order
+          resolution as the input image with shape ``(B, 2, H, W)``. The coordinates order
           it is expected to be in x-y.
-        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
+        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively; both odd.
         sigma: The standard deviation of the Gaussian in the y and x directions,
-          respectively. Larger sigma results in smaller pixel displacements.
+          respectively, as a pair or a ``(2,)`` tensor. Larger sigma results in smaller pixel displacements.
         alpha : The scaling factor that controls the intensity of the deformation
-          in the x and y directions, respectively.
+          in the x and y directions, respectively, as a pair or a ``(2,)`` tensor.
         align_corners: Interpolation flag used by ``grid_sample``.
         mode: Interpolation mode used by ``grid_sample``. Either ``'bilinear'`` or ``'nearest'``.
         padding_mode: The padding used by ``grid_sample``. Either ``'zeros'``, ``'border'`` or ``'reflection'``.
 
     Returns:
-        the elastically transformed input image with shape :math:`(B,C,H,W)`.
+        the elastically transformed input image with shape ``(B, C, H, W)``.
+
+    See Also:
+        - :class:`~kornia.augmentation.RandomElasticTransform`: draws uniform noise in :math:`[-1, 1]` for each call and
+          applies it with probability ``p``, in an augmentation pipeline.
+        - :func:`~kornia.geometry.transform.warp_image_tps`: a smooth deformation set by control-point pairs.
+        - :func:`~kornia.geometry.transform.remap`: samples an image at per-pixel coordinates given directly.
 
     Example:
         >>> image = torch.rand(1, 3, 5, 5)
