@@ -467,6 +467,10 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
         - the rank is enforced to be exactly 3, as in the 2D function: an
           unbatched ``(3, 4)`` matrix raises ``ValueError``
 
+    Note:
+        ``A`` must be a floating point or complex tensor; an integer or
+        boolean one raises ``ValueError`` naming its dtype.
+
     Args:
         A: the affine matrix with shape ``(B,3,4)``.
 
@@ -3580,9 +3584,10 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           ``torch.zeros(1, 4)`` with ``t = (1, 1, 1)`` returns
           ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)``, the same answer as the
           identity input
-        - only real floating point ``qvec`` and ``tvec`` are accepted: an
-          integer, bool or complex one raises ``TypeCheckError`` (also a
-          ``TypeError``) naming the argument, so cast it first
+        - ``qvec`` must be real floating point: an integer, bool or complex
+          ``qvec`` raises ``TypeCheckError`` (also a ``TypeError``) naming it,
+          so cast it first. An integer or bool ``tvec`` promotes to ``qvec``'s
+          dtype; a complex ``tvec`` raises ``TypeCheckError``
 
     Args:
         qvec: ARKit rotation quaternion ``(B, 4)``, [w, x, y, z] format.
@@ -3607,11 +3612,13 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     """
     # ToDo:  integrate QuaterniaonAPI
 
-    for name, value in (("qvec", qvec), ("tvec", tvec)):
-        if isinstance(value, torch.Tensor) and not value.is_floating_point():  # complex is not floating point
-            raise TypeCheckError(
-                f"Input {name} must be a real floating point tensor. Got dtype {value.dtype}.", actual_type=value.dtype
-            )
+    if isinstance(qvec, torch.Tensor) and not qvec.is_floating_point():  # complex is not floating point
+        raise TypeCheckError(
+            f"Input qvec must be a real floating point tensor. Got dtype {qvec.dtype}.", actual_type=qvec.dtype
+        )
+    # An integer tvec promotes against the floating rotation and gives the float result; only complex is rejected.
+    if isinstance(tvec, torch.Tensor) and tvec.is_complex():
+        raise TypeCheckError(f"Input tvec must be a real tensor. Got dtype {tvec.dtype}.", actual_type=tvec.dtype)
     Rcg = quaternion_to_rotation_matrix(qvec)
     Rcv, Tcv = camtoworld_graphics_to_vision_Rt(Rcg, tvec)
     R_colmap, t_colmap = camtoworld_to_worldtocam_Rt(Rcv, Tcv)

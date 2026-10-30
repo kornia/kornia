@@ -5577,22 +5577,28 @@ class TestCARKitToColmap(BaseTester):
             ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
 
     @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
-    @pytest.mark.parametrize("which", ["qvec", "tvec"])
-    def test_exception_arkit_to_colmap_rejects_non_floating_inputs(self, device, int_dtype, which):
-        # Mirrors test_exception_colmap_to_arkit_rejects_non_floating_inputs: the forward
-        # conversion had no dtype guard at all and used to surface a bare torch RuntimeError
-        # from linalg.vector_norm instead of naming the argument.
+    def test_exception_arkit_to_colmap_rejects_non_floating_qvec(self, device, int_dtype):
+        # The forward conversion had no dtype guard and an integer qvec surfaced a bare torch
+        # RuntimeError from linalg.vector_norm instead of naming the argument.
         # Snippet used to generate the old behaviour (torch only):
         #   ARKitQTVecs_to_ColmapQTVecs(torch.tensor([[0, 1, 0, 1]]), torch.ones(1, 3, 1, dtype=torch.int64))
         #     -> RuntimeError: linalg.vector_norm: Expected a floating point or complex tensor as input. Got Long
-        qvec = torch.tensor([[1, 0, 0, 0]], device=device).to(torch.float32)
+        qvec = torch.tensor([[1, 0, 0, 0]], device=device, dtype=int_dtype)
         tvec = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
-        if which == "qvec":
-            qvec = qvec.to(int_dtype)
-        else:
-            tvec = tvec.to(int_dtype)
-        with pytest.raises(TypeCheckError, match=rf"{which}.*floating point.*{int_dtype}"):
+        with pytest.raises(TypeCheckError, match=rf"qvec.*floating point.*{int_dtype}"):
             ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    def test_arkit_to_colmap_integer_tvec_promotes(self, device, dtype, int_dtype):
+        # An integer tvec with a floating qvec has always promoted to qvec's dtype and given the
+        # float result; the qvec guard must not reject it.
+        qvec = torch.tensor([[0.5, 0.5, 0.5, 0.5], [0.0, 1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        tvec = torch.tensor([[[1], [0], [3]], [[0], [1], [1]]], device=device, dtype=int_dtype)
+        q_int, t_int = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
+        q_ref, t_ref = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec.to(dtype))
+        assert t_int.dtype == dtype
+        self.assert_close(q_int, q_ref, atol=0.0, rtol=0.0)
+        self.assert_close(t_int, t_ref, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
     @pytest.mark.parametrize("which", ["qvec", "tvec"])
@@ -5604,7 +5610,7 @@ class TestCARKitToColmap(BaseTester):
             qvec = qvec.to(complex_dtype)
         else:
             tvec = tvec.to(complex_dtype)
-        with pytest.raises(TypeCheckError, match=rf"{which}.*real floating point.*{complex_dtype}"):
+        with pytest.raises(TypeCheckError, match=rf"{which}.*real.*{complex_dtype}"):
             ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
 
     def test_dynamo_colmap_to_arkit(self, device, dtype, torch_optimizer):
