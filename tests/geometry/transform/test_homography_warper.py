@@ -1122,6 +1122,22 @@ class TestHomographyShapeChecks(BaseTester):
         self.assert_close(kornia.geometry.transform.warp_grid3d(grid, homography[:, None]), flow)
         self.assert_close(kornia.geometry.transform.warp_grid3d(grid.expand(batch, -1, -1, -1, -1), homography), flow)
 
+    @pytest.mark.parametrize("batch", [1, 2, 4, 5])
+    def test_homography_warp3d_shares_one_homography_with_expand(self, batch, device, dtype):
+        # The 3D counterpart of the migration for an unbatched (4, 4): one homography per volume, shared with expand.
+        volume = torch.rand(batch, 1, 2, 4, 5, device=device, dtype=dtype)
+        homography = torch.eye(4, device=device, dtype=dtype)
+        homography[0, 3], homography[1, 3] = 0.2, -0.1
+
+        out = kornia.geometry.transform.homography_warp3d(volume, homography.expand(batch, -1, -1), (2, 4, 5))
+        expected = torch.cat(
+            [
+                kornia.geometry.transform.homography_warp3d(volume[i : i + 1], homography[None], (2, 4, 5))
+                for i in range(batch)
+            ]
+        )
+        self.assert_close(out, expected)
+
     @pytest.mark.parametrize("batch", [1, 2, 3, 4])
     def test_homography_warp3d_rejects_unbatched_homography_for_any_batch(self, batch, device, dtype):
         volume = torch.rand(batch, 1, 2, 4, 5, device=device, dtype=dtype)
