@@ -504,7 +504,11 @@ class TestCropByBoxes3D(BaseTester):
             device=device,
             dtype=dtype,
         )
-        with pytest.raises(AssertionError, match=r"Got depth tensor\(\[2\., 3\.\]"):
+        # Heights are 3 and widths 4 in both items, so the match also pins the height and width labels.
+        with pytest.raises(
+            AssertionError,
+            match=r"Got depth tensor\(\[2\., 3\.\].*, height tensor\(\[3\., 3\.\].* and width tensor\(\[4\., 4\.\]",
+        ):
             kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box)
 
 
