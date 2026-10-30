@@ -597,6 +597,32 @@ def _fill_and_warp(
     return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
 
 
+def _check_homography_shape(src_homo_dst: torch.Tensor) -> None:
+    """Raise unless ``src_homo_dst`` is ``(B, 3, 3)`` or ``(B, 1, 3, 3)``.
+
+    A single ``(3, 3)`` matrix is refused: its first dimension would be read as the batch, so the grid would come
+    back with a batch of 3 instead of one grid.
+    """
+    msg = "src_homo_dst must be (B, 3, 3) or (B, 1, 3, 3); a single (3, 3) homography needs a leading batch dimension."
+    if src_homo_dst.dim() == 4:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "1", "3", "3"], msg=msg)
+    else:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "3", "3"], msg=msg)
+
+
+def _check_homography_shape3d(src_homo_dst: torch.Tensor) -> None:
+    """Raise unless ``src_homo_dst`` is ``(B, 4, 4)`` or ``(B, 1, 4, 4)``.
+
+    A single ``(4, 4)`` matrix is refused: its first dimension would be read as the batch, so the grid would come
+    back with a batch of 4 instead of one grid.
+    """
+    msg = "src_homo_dst must be (B, 4, 4) or (B, 1, 4, 4); a single (4, 4) homography needs a leading batch dimension."
+    if src_homo_dst.dim() == 4:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "1", "4", "4"], msg=msg)
+    else:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "4", "4"], msg=msg)
+
+
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     r"""Transform a 2D (x, y) coordinate grid by destination→source (N, 3, 3) homographies.
 
@@ -623,7 +649,13 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     Returns:
         the transformed grid of shape ``(N, H, W, 2)``.
 
+    Raises:
+        ShapeError: If ``grid`` is not ``(B, H, W, 2)``, or ``src_homo_dst`` is not ``(B, 3, 3)`` or
+            ``(B, 1, 3, 3)``. A single ``(3, 3)`` homography is refused rather than read as a batch of 3.
+
     """
+    KORNIA_CHECK_SHAPE(grid, ["B", "H", "W", "2"], msg="grid must be (1, H, W, 2) or (N, H, W, 2).")
+    _check_homography_shape(src_homo_dst)
     batch_size: int = src_homo_dst.size(0)
     _, height, width, _ = grid.size()
     # expand grid to match the input batch size
@@ -661,6 +693,7 @@ def _warp_pixel_grid(src_homo_dst: torch.Tensor, height: int, width: int) -> tor
     also in a scripted call, which cannot leave it, and round the pixel coordinates of a 640 px wide grid to whole
     pixels in bfloat16. Autocast leaves elementwise products alone, so eager and scripted calls compute the same grid.
     """
+    _check_homography_shape(src_homo_dst)
     work_dtype = _pixel_grid_work_dtype(src_homo_dst)
     grid = create_meshgrid(height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype)
     matrix = src_homo_dst.to(work_dtype)
@@ -710,7 +743,13 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     Returns:
         the transformed grid of shape ``(N, D, H, W, 3)``.
 
+    Raises:
+        ShapeError: If ``grid`` is not ``(B, D, H, W, 3)``, or ``src_homo_dst`` is not ``(B, 4, 4)`` or
+            ``(B, 1, 4, 4)``. A single ``(4, 4)`` homography is refused rather than read as a batch of 4.
+
     """
+    KORNIA_CHECK_SHAPE(grid, ["B", "D", "H", "W", "3"], msg="grid must be (1, D, H, W, 3) or (N, D, H, W, 3).")
+    _check_homography_shape3d(src_homo_dst)
     batch_size: int = src_homo_dst.size(0)
     _, depth, height, width, _ = grid.size()
     # expand grid to match the input batch size
@@ -734,6 +773,7 @@ def _warp_pixel_grid3d(src_homo_dst: torch.Tensor, depth: int, height: int, widt
     elementwise column products that a caller's autocast region leaves alone, scripted or not. The result is
     ``(N, D, H, W, 3)`` in the ``(x, y, z)`` order the homography and ``grid_sample`` read.
     """
+    _check_homography_shape3d(src_homo_dst)
     work_dtype = _pixel_grid_work_dtype(src_homo_dst)
     grid = create_meshgrid3d(
         depth, height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype
@@ -1221,10 +1261,17 @@ def get_translation_matrix2d(translations: torch.Tensor) -> torch.Tensor:
     Returns:
         the affine transformation matrix ``(B, 3, 3)``.
 
+    Raises:
+        ShapeError: If ``translations`` is not ``(B, 2)``. A single ``(2,)`` translation is refused rather than
+            read as two matrices.
+
     .. note::
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
 
     """
+    KORNIA_CHECK_SHAPE(
+        translations, ["B", "2"], msg="translations must be (B, 2); a single (2,) translation needs a batch dimension."
+    )
     transform: torch.Tensor = eye_like(3, translations)[:, :2, :]
     transform[..., 2] += translations  # tx/ty
 
@@ -1318,7 +1365,8 @@ def get_affine_matrix3d(
     Args:
         translations: torch.Tensor containing the translation vector (dx,dy,dz) with shape ``(B, 3)``.
         center: torch.Tensor containing the center vector (x,y,z) with shape ``(B, 3)``.
-        scale: torch.Tensor containing the scale factor with shape ``(B)``.
+        scale: torch.Tensor containing the scale factors with shape ``(B, 3)`` for per-axis
+            ``(sx, sy, sz)`` or ``(B, 1)`` for one isotropic factor per sample.
         angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
@@ -1331,6 +1379,9 @@ def get_affine_matrix3d(
 
     Returns:
         the 3d affine transformation matrix ``(B, 4, 4)``.
+
+    Raises:
+        ShapeError: If ``scale`` is not ``(B, 3)``, ``(B, 1)`` or ``(1,)``; see :func:`get_projective_transform`.
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective3d`.
@@ -1568,6 +1619,23 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
     return torch.cat([rmat, tvec], -1)  # Bx3x4
 
 
+def _check_scale_shape3d(scales: torch.Tensor) -> None:
+    """Raise unless ``scales`` is ``(B, 3)`` per-axis factors, ``(B, 1)`` isotropic factors or a single ``(1,)`` factor.
+
+    A ``(3,)`` tensor is refused: it is read as ``(sx, sy, sz)`` shared by every sample when the batch happens to be
+    1 or 3, and fails inside the broadcast for any other batch, so ``(B,)`` per-sample factors would be misread at
+    ``B = 3``.
+    """
+    msg = "scale must be (B, 3) per-axis or (B, 1) isotropic factors; a single (3,) scale needs a batch dimension."
+    if scales.dim() == 1:
+        # One factor for every sample, as before.
+        KORNIA_CHECK_SHAPE(scales, ["1"], msg=msg)
+    elif scales.dim() == 2 and scales.shape[1] == 1:
+        KORNIA_CHECK_SHAPE(scales, ["B", "1"], msg=msg)
+    else:
+        KORNIA_CHECK_SHAPE(scales, ["B", "3"], msg=msg)
+
+
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
     r"""Calculate the projection matrix for a 3D rotation.
 
@@ -1594,6 +1662,10 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     Returns:
         the projection matrix of 3D rotation with shape ``(B, 3, 4)``.
 
+    Raises:
+        ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)`` or ``(1,)``. A ``(3,)`` tensor is refused rather than
+            read as ``(sx, sy, sz)`` when the batch happens to be 1 or 3.
+
     .. note::
         This function is often used in conjunction with :func:`warp_affine3d`.
 
@@ -1606,6 +1678,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         raise AssertionError(center.device, angles.device)
     if center.dtype != angles.dtype:
         raise AssertionError(center.dtype, angles.dtype)
+    _check_scale_shape3d(scales)
 
     # create rotation matrix
     axis_angle_rad: torch.Tensor = torch.torch.deg2rad(angles)

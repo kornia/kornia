@@ -22,6 +22,7 @@ import torch
 
 import kornia
 import kornia.geometry.transform as proj
+from kornia.core.exceptions import ShapeError
 from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
 
 from testing.base import BaseTester, assert_close
@@ -1043,3 +1044,76 @@ class TestPerspectiveTransform3D(BaseTester):
 
         # compute gradient check
         self.gradcheck(kornia.geometry.transform.get_perspective_transform3d, (src, dst))
+
+
+class TestScaleShape3d(BaseTester):
+    """``scale`` is ``(B, 3)`` per-axis or ``(B, 1)`` isotropic; a ``(3,)`` tensor is not read as ``(sx, sy, sz)``."""
+
+    @staticmethod
+    def _inputs(batch, device, dtype):
+        center = torch.zeros(batch, 3, device=device, dtype=dtype)
+        angles = torch.zeros(batch, 3, device=device, dtype=dtype)
+        translations = torch.zeros(batch, 3, device=device, dtype=dtype)
+        return translations, center, angles
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_projective_transform_rejects_unbatched_per_axis_scale(self, batch, device, dtype):
+        _, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)  # (sx, sy, sz) without a batch dimension
+        with pytest.raises(ShapeError, match="batch dimension"):
+            proj.get_projective_transform(center, angles, scale)
+
+    @pytest.mark.parametrize("batch", [2, 3, 4])
+    def test_projective_transform_rejects_per_sample_scale_without_a_trailing_dimension(self, batch, device, dtype):
+        # (B,) is the shape the get_affine_matrix3d docstring used to document. At B = 3 it was silently read as
+        # per-axis (sx, sy, sz) shared by every sample and at B = 2 or 4 it failed inside the broadcast.
+        _, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.linspace(1.0, 2.0, batch, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            proj.get_projective_transform(center, angles, scale)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_affine_matrix3d_rejects_unbatched_per_axis_scale(self, batch, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match="batch dimension"):
+            proj.get_affine_matrix3d(translations, center, scale, angles)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_per_axis_scale_is_the_diagonal(self, batch, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        scale = torch.tensor([2.0, 3.0, 4.0], device=device, dtype=dtype).repeat(batch, 1)  # (B, 3)
+        expected = torch.diag(scale[0]).repeat(batch, 1, 1)
+
+        projective = proj.get_projective_transform(center, angles, scale)
+        assert projective.shape == (batch, 3, 4)
+        self.assert_close(projective[..., :3], expected)
+
+        affine = proj.get_affine_matrix3d(translations, center, scale, angles)
+        assert affine.shape == (batch, 4, 4)
+        self.assert_close(affine[..., :3, :3], expected)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_isotropic_scale_matches_the_repeated_per_axis_scale(self, batch, device, dtype):
+        translations, center, angles = self._inputs(batch, device, dtype)
+        angles = angles + torch.tensor([10.0, -20.0, 30.0], device=device, dtype=dtype)
+        isotropic = torch.linspace(1.0, 2.0, batch, device=device, dtype=dtype)[:, None]  # (B, 1)
+
+        self.assert_close(
+            proj.get_projective_transform(center, angles, isotropic),
+            proj.get_projective_transform(center, angles, isotropic.repeat(1, 3)),
+        )
+        self.assert_close(
+            proj.get_affine_matrix3d(translations, center, isotropic, angles),
+            proj.get_affine_matrix3d(translations, center, isotropic.repeat(1, 3), angles),
+        )
+
+    @pytest.mark.parametrize("batch", [1, 3])
+    def test_single_scale_factor_still_applies_to_every_sample(self, batch, device, dtype):
+        # A (1,) tensor worked before and is unambiguous, so it is still accepted.
+        _, center, angles = self._inputs(batch, device, dtype)
+        single = torch.tensor([2.0], device=device, dtype=dtype)
+        self.assert_close(
+            proj.get_projective_transform(center, angles, single),
+            proj.get_projective_transform(center, angles, single.expand(batch, 3).contiguous()),
+        )
