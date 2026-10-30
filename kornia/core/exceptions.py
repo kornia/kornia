@@ -28,6 +28,7 @@ __all__ = [
     "BaseError",
     "DeviceError",
     "ImageError",
+    "InputRankError",
     "ShapeError",
     "TypeCheckError",
     "ValueCheckError",
@@ -61,6 +62,16 @@ class ShapeError(BaseError, ValueError):
         super().__init__(message)
         self.actual_shape = actual_shape
         self.expected_shape = expected_shape
+
+
+class InputRankError(ShapeError, RuntimeError, AssertionError):
+    """Raised when an input has a number of dimensions the operation does not accept. Also a :exc:`ValueError`.
+
+    The augmentation classes and their containers raise it for one user error: an image or a volume with too few or
+    too many dimensions. They used to raise :exc:`ValueError`, :exc:`RuntimeError` or :exc:`AssertionError` for it,
+    depending on the entry point (`#4424 <https://github.com/kornia/kornia/issues/4424>`_), so this class also
+    derives from :exc:`RuntimeError` and :exc:`AssertionError`, and each of those ``except`` clauses still catches it.
+    """
 
 
 class TypeCheckError(BaseError, TypeError):

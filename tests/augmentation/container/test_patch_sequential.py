@@ -481,7 +481,7 @@ class TestPatchSequentialRegression(BaseTester):
     def test_three_dimensional_input_raises_value_error(self, method, device, dtype):
         seq = K.PatchSequential(nn.Identity(), grid_size=(2, 2), patchwise_apply=False)
         kwargs = {"padding": "same"} if method == "compute_padding" else {}
-        with pytest.raises(ValueError, match="Expected image shape"):
+        with pytest.raises(ValueError, match=r"Input size must have a shape of \(B, C, H, W\)"):
             getattr(seq, method)(torch.ones(3, 4, 4, device=device, dtype=dtype), **kwargs)
 
     @pytest.mark.parametrize("shape", [(2, 3, 4), (2, 5, 3, 2, 2), (2, 6, 3, 2, 2, 1)])

@@ -149,8 +149,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           returned as ``(B, T, 1, H, W)``, and a single ``(1, T, H, W)`` mask is repeated too. Any other mask rank
           next to a video, or a 5D mask next to a non-video image, raises ``ValueError`` instead of guessing. A
           replay with no image (``params=`` given, no ``INPUT`` key) reads the batch to repeat to from the recorded
-          params instead. A wrong input rank raises ``RuntimeError`` here rather than the ``ValueError`` of a bare
-          augmentation (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+          params instead. A wrong input rank raises :class:`~kornia.core.exceptions.InputRankError` with the message
+          a bare augmentation gives (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
         - boxes use the inclusive ``xyxy_plus`` convention of :class:`~kornia.geometry.boxes.Boxes`. Flips map
           ``x' = W - 1 - x`` and ``y' = H - 1 - y`` for every key, as :func:`~kornia.geometry.transform.hflip`
           does. Labels pass through geometric steps untouched.
