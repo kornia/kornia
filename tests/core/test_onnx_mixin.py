@@ -122,6 +122,10 @@ _NOT_CALL_STATE = {
     "SequentialBase.same_on_batch": (("_same_on_batch",), "a property setter"),
     "OperationBase._init_magnitude": (("_factor_name", "_magnitude", "magnitude_range"), "a constructor helper"),
     "TransformMatrixMinIn._parse_transformation_matrix_mode": (("_transformation_matrix_arg",), "a constructor helper"),
+    "ImageSequentialBase.transform_inputs": (
+        ("_sequence_matrices",),
+        "the enclosing AugmentationSequential reads it right after this image call, in the same call",
+    ),
     "_BasicAugmentationBase.set_rng_device_and_dtype": (("device", "dtype"), "called by .to(), not by a call"),
     "RandomGeneratorBase.set_rng_device_and_dtype": (("device", "dtype"), "called by .to(), not by a call"),
     "RandomTransplantation.params_from_input": (
