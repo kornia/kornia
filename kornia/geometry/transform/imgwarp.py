@@ -1622,9 +1622,10 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 def _check_scale_shape3d(scales: torch.Tensor) -> None:
     """Raise unless ``scales`` is ``(B, 3)`` per-axis factors, ``(B, 1)`` isotropic factors or a single ``(1,)`` factor.
 
-    A ``(3,)`` tensor is refused: it is read as ``(sx, sy, sz)`` shared by every sample when the batch happens to be
-    1 or 3, and fails inside the broadcast for any other batch, so ``(B,)`` per-sample factors would be misread at
-    ``B = 3``. Per-sample factors go in a column, ``(B, 1)``; a single ``(sx, sy, sz)`` goes in a row, ``(1, 3)``.
+    A 1-D tensor is refused unless it has a single element. ``(3,)`` used to be read as ``(sx, sy, sz)`` shared by every
+    sample, whatever the batch, so at ``B = 3`` it cannot be told from ``(B,)`` per-sample factors; those were misread
+    the same way at ``B = 3`` and failed inside the broadcast for any other ``B`` above 1. Per-sample factors go in a
+    column, ``(B, 1)``; a single ``(sx, sy, sz)`` goes in a row, ``(1, 3)``.
     """
     msg = (
         "scale must be (B, 3) per-axis or (B, 1) isotropic factors; reshape per-sample factors (B,) to (B, 1) and "
@@ -1666,9 +1667,10 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         the projection matrix of 3D rotation with shape ``(B, 3, 4)``.
 
     Raises:
-        ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)`` or ``(1,)``. A ``(3,)`` tensor is refused rather than
-            read as ``(sx, sy, sz)`` when the batch happens to be 1 or 3: pass per-sample factors as ``(B, 1)`` and
-            a single ``(sx, sy, sz)`` as ``(1, 3)``.
+        ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)`` or ``(1,)``. A 1-D tensor of any other length is
+            refused: ``(3,)`` used to be read as ``(sx, sy, sz)`` shared by every sample, which at ``B = 3`` is
+            indistinguishable from ``(B,)`` per-sample factors. Pass per-sample factors as ``(B, 1)`` and a single
+            ``(sx, sy, sz)`` as ``(1, 3)``.
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine3d`.

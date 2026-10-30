@@ -1041,8 +1041,9 @@ class TestHomographyShapeChecks(BaseTester):
 
     @pytest.mark.parametrize("batch", [1, 2, 3])
     def test_homography_warp_pixel_homography_path_rejects_unbatched_homography(self, batch, device, dtype):
-        # normalized_homography=False is handed to warp_perspective, which has always raised its own ValueError
-        # (not a ShapeError) for an unbatched matrix; this pins that it stays an error for every batch.
+        # normalized_homography=False is handed to warp_perspective, which raises its own ValueError for an unbatched
+        # matrix. Only "still an error for every batch" is pinned. The exception type is left open on purpose: a
+        # ShapeError there would be an improvement and is a ValueError anyway.
         image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
         with pytest.raises(ValueError):
             kornia.geometry.transform.homography_warp(
