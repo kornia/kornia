@@ -17,21 +17,24 @@
 
 import math
 import warnings
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.download import load_state_dict_from_url
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 from kornia.geometry.bbox import nms
 
 from .backbones import SOLD2Net
 
-urls: Dict[str, str] = {}
-urls["wireframe"] = "https://cvg-data.inf.ethz.ch/SOLD2/sold2_wireframe.tar"
+urls: Dict[str, List[str]] = {}
+urls["wireframe"] = [
+    hf_url("sold2", "sold2_wireframe.pth"),
+    "https://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+]
 
 
 class SOLD2_detector(nn.Module):
@@ -72,7 +75,7 @@ class SOLD2_detector(nn.Module):
             warnings.warn(
                 "Usage of config as a plain dictionary is deprecated in favor of"
                 "`kornia.features.sold2.structures.DetectorCfg`. The support of plain"
-                "dictionaries as config will be removed in kornia v0.8.0 (December 2024).",
+                "dictionaries as config will be removed in a future release.",
                 category=DeprecationWarning,
                 stacklevel=2,
             )

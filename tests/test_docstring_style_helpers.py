@@ -17,6 +17,7 @@
 
 """Tests for the shared docstring-style helpers in ``testing/docstring_style.py``."""
 
+import functools
 import inspect
 from functools import cache
 from pathlib import Path
@@ -28,13 +29,16 @@ from kornia.augmentation.auto.operations.ops import AutoContrast
 from kornia.geometry.boxes import Boxes, Boxes3D
 from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 
+from testing import docstring_style
 from testing.docstring_style import (
     catalog_missing,
     catalog_required,
     catalog_unimportable,
     covered,
     docstring_roles,
+    forwards_to,
     intersphinx_names,
+    is_deprecated_wrapper,
     is_documented,
     is_private_target,
     is_shape_tuple,
@@ -45,6 +49,8 @@ from testing.docstring_style import (
     resolve_reference,
     see_also_entries,
     sphinx_registry,
+    status_target,
+    undocumented_public_objects,
 )
 
 DOCS = Path(__file__).resolve().parents[1] / "docs" / "source"
@@ -567,3 +573,244 @@ def test_own_docstring_ignores_whitespace_only():
         """ """
 
     assert own_docstring(blank) is None
+
+
+@pytest.mark.parametrize(
+    ("doc", "target"),
+    [
+        ("Alias of :func:`axis_angle_to_rotation_matrix`.", "axis_angle_to_rotation_matrix"),
+        ("Alias of :class:`kornia.geometry.depth.DepthWarper`.", "kornia.geometry.depth.DepthWarper"),
+        (
+            "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`.",
+            "kornia.geometry.conversions.rotation_matrix_to_axis_angle",
+        ),
+        ("Alias of :py:func:`foo`.\n\nMore text.", "foo"),
+        (
+            "Deprecated: use :func:`~kornia.geometry.conversions.axis_angle_to_quaternion`.",
+            "kornia.geometry.conversions.axis_angle_to_quaternion",
+        ),
+        ("Deprecated: use :class:`kornia.geometry.boxes.Boxes`.", "kornia.geometry.boxes.Boxes"),
+        ("Deprecated: use :py:meth:`Foo.bar`.\n\nIt warns on every call.", "Foo.bar"),
+    ],
+)
+def test_status_target_accepts_a_status_title(doc, target):
+    assert status_target(doc) == target
+
+
+def test_is_deprecated_wrapper_recognises_the_decorator():
+    from kornia.core._compat import deprecated
+
+    def plain():
+        return 1
+
+    class Plain:
+        def __init__(self) -> None:
+            pass
+
+    wrapped = deprecated(replace_with="plain", version="0.1")(plain)
+    wrapped_class = deprecated(replace_with="Plain", version="0.1")(type("Old", (Plain,), {}))
+    assert is_deprecated_wrapper(wrapped)
+    assert is_deprecated_wrapper(wrapped_class)
+    assert not is_deprecated_wrapper(plain)
+    assert not is_deprecated_wrapper(Plain)
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        "Alias of :func:`foo`",
+        "Alias of :func:`foo` with a twist.",
+        "Alias of :func:`foo` and :func:`bar`.",
+        "Alias for :func:`foo`.",
+        "Return the thing.\nAlias of :func:`foo`.",
+        "Alias of foo.",
+        "",
+        "Deprecated, use :func:`foo`.",
+        "Deprecated: use foo.",
+        "Deprecated: use :func:`foo`",
+        "Deprecated: use :func:`foo` instead.",
+        "Deprecated: use :func:`foo` or :func:`bar`.",
+        "Deprecated: Use :func:`foo`.",
+        "Deprecated since 0.7.0: use :func:`foo`.",
+        "Return the thing.\nDeprecated: use :func:`foo`.",
+        "Deprecated: use :math:`foo`.",
+    ],
+)
+def test_status_target_rejects_other_titles(doc):
+    assert status_target(doc) is None
+
+
+def test_undocumented_public_objects_complements_public_objects():
+    documented, undocumented = public_objects(), undocumented_public_objects()
+    assert not documented.keys() & undocumented.keys()
+    assert all(own_docstring(obj) is None for obj, _ in undocumented.values())
+
+
+def test_public_and_undocumented_objects_split_the_export_walk(monkeypatch):
+    # kornia may export nothing undocumented, so the split is checked on a synthetic walk. ``__wrapped__`` calls the
+    # functions past their own ``functools.cache``, which the patched walk would otherwise never reach.
+    def undocumented():
+        pass
+
+    def documented():
+        """Do the thing."""
+
+    walk = ((undocumented, "m.undocumented"), (documented, "m.documented"))
+    monkeypatch.setattr(docstring_style, "_exported_objects", lambda: walk)
+    assert [qualified for _, qualified in undocumented_public_objects.__wrapped__().values()] == ["m.undocumented"]
+    assert [qualified for _, qualified in public_objects.__wrapped__().values()] == ["m.documented"]
+
+
+def _alias_target(a, b=1, *args, c=2, **kwargs):
+    return a
+
+
+def _forwarding_alias(a, b=1, *args, c=2, **kwargs):
+    """Alias of :func:`_alias_target`."""
+    return _alias_target(a, b, *args, c=c, **kwargs)
+
+
+def _keyword_alias(a, b=1):
+    """Alias of :func:`_alias_target`."""
+    return _alias_target(a, b=b)
+
+
+class _AliasTargetClass:
+    pass
+
+
+class _AliasClass(_AliasTargetClass):
+    """Alias of :class:`_AliasTargetClass`."""
+
+
+class _SubclassWithBody(_AliasTargetClass):
+    """Alias of :class:`_AliasTargetClass`."""
+
+    def extra(self):
+        return 1
+
+
+class _TwoBases(_AliasTargetClass, Exception):
+    """Alias of :class:`_AliasTargetClass`."""
+
+
+def _swapped(a, b):
+    return _alias_target(b, a)
+
+
+def _constant_argument(a):
+    return _alias_target(a, 2)
+
+
+def _extra_statement(a):
+    a = a + 1
+    return _alias_target(a)
+
+
+def _dropped_argument(a, b=1):
+    return _alias_target(a)
+
+
+def _renamed_keyword(a, b=1):
+    return _alias_target(a, c=b)
+
+
+def _other_target(a):
+    return _keyword_alias(a)
+
+
+@functools.lru_cache
+def _decorated(a):
+    return _alias_target(a)
+
+
+def _renamed_positional(x, y=1):
+    return _alias_target(x, y)
+
+
+def _required_where_target_defaults(a, b):
+    return _alias_target(a, b)
+
+
+def _changed_default(a, b=5):
+    return _alias_target(a, b)
+
+
+def _renamed_positional_changed_default(x, y=3):
+    return _alias_target(x, y)
+
+
+def _defaulted_where_target_requires(a=0):
+    return _alias_target(a)
+
+
+def _keyword_changed_default(a, c=9):
+    return _alias_target(a, c=c)
+
+
+def _default_into_target_kwargs(a, d=1):
+    return _alias_target(a, d=d)
+
+
+@pytest.mark.parametrize(
+    ("obj", "target"),
+    [
+        (_forwarding_alias, _alias_target),
+        (_keyword_alias, _alias_target),
+        (_AliasClass, _AliasTargetClass),
+        # positional parameters reach the target by position, so their names may differ
+        (_renamed_positional, _alias_target),
+        # an alias may require what the target defaults: every call it accepts still behaves as the target
+        (_required_where_target_defaults, _alias_target),
+    ],
+)
+def test_forwards_to_accepts_a_forwarding_alias(obj, target):
+    assert forwards_to(obj, target)
+
+
+def test_forwards_to_resolves_a_target_from_the_closure():
+    def local_target(x):
+        return x
+
+    def local_alias(x):
+        """Alias of the local target."""
+        return local_target(x)
+
+    assert forwards_to(local_alias, local_target)
+
+
+@pytest.mark.parametrize(
+    ("obj", "target"),
+    [
+        (_swapped, _alias_target),
+        (_constant_argument, _alias_target),
+        (_extra_statement, _alias_target),
+        (_dropped_argument, _alias_target),
+        (_renamed_keyword, _alias_target),
+        (_other_target, _alias_target),
+        (_decorated, _alias_target),
+        # a default that differs from the target's changes what a call relying on it returns
+        (_changed_default, _alias_target),
+        (_renamed_positional_changed_default, _alias_target),
+        (_keyword_changed_default, _alias_target),
+        (_defaulted_where_target_requires, _alias_target),
+        (_default_into_target_kwargs, _alias_target),
+        (_SubclassWithBody, _AliasTargetClass),
+        (_TwoBases, _AliasTargetClass),
+        (_AliasClass, object),
+        (len, _alias_target),
+    ],
+)
+def test_forwards_to_rejects_anything_else(obj, target):
+    assert not forwards_to(obj, target)
+
+
+def test_forwards_to_rejects_a_live_function_titled_alias_of_another():
+    # The mutant the status-title check used to accept: give a live converted function the title
+    # "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`." and it skipped its See Also,
+    # although it computes something else entirely.
+    from kornia.geometry.conversions import axis_angle_to_quaternion, rotation_matrix_to_quaternion
+
+    title = "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`."
+    assert status_target(title) == "kornia.geometry.conversions.rotation_matrix_to_quaternion"
+    assert not forwards_to(axis_angle_to_quaternion, rotation_matrix_to_quaternion)
