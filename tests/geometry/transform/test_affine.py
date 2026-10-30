@@ -23,7 +23,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.exceptions import DeviceError, TypeCheckError
+from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, supports_reflect_padding
 
@@ -1072,6 +1072,18 @@ class TestAffine2d(BaseTester):
         matrix = torch.eye(2, 3, device=device, dtype=dtype).expand(2, -1, -1)
         with pytest.raises(RuntimeError):
             kornia.geometry.transform.affine(image, matrix)
+
+    @pytest.mark.parametrize("unbatched_image", [False, True])
+    def test_function_rejects_unbatched_matrix_6462(self, device, dtype, unbatched_image):
+        # A (2, 3) matrix was read as a batch of 2 and returned two copies of the image; it is rejected, as in
+        # warp_affine, and a (1, 2, 3) matrix still warps the image once.
+        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        image = image[0] if unbatched_image else image
+        matrix = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.affine(image, matrix)
+        out = kornia.geometry.transform.affine(image, matrix[None])
+        assert out.shape == ((2, 5, 7) if unbatched_image else (1, 2, 5, 7))
 
     def test_affine_no_args(self):
         with pytest.raises(RuntimeError):

@@ -1,0 +1,1 @@
+`kornia.geometry.transform.affine` now raises `ShapeError` for an unbatched `(2, 3)` matrix and asks for `(B, 2, 3)`, as `warp_affine` does. It used to read the matrix's 2 rows as 2 matrices and return the image twice, as a batch of 2, with no error.
