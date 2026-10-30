@@ -2105,7 +2105,7 @@ def normal_transform_pixel3d(
     dtype: Optional[torch.dtype] = None,
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Compute the (1, 4, 4) matrix that maps 3D voxel coordinates (x, y, z) to [-1, 1], always corner-aligned.
+    r"""Compute the (1, 4, 4) matrix that maps 3D voxel coordinates (x, y, z) to [-1, 1], corner-aligned by default.
 
     Convention:
         - the 3-D counterpart of
@@ -2365,7 +2365,7 @@ def normalize_homography3d(
     dsize_dst: tuple[int, int, int],
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Express a 3D source→destination voxel homography (B, 4, 4) in [-1, 1] coordinates, always corner-aligned.
+    r"""Express a 3D source→destination voxel homography (B, 4, 4) in [-1, 1] coordinates, corner-aligned by default.
 
     Convention:
         - the 3-D counterpart of
