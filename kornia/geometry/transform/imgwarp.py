@@ -925,8 +925,9 @@ def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst:
     ONNX. The result is normalized to ``H[2, 2] == 1`` to match the DLT
     convention, unless that entry is zero up to rounding (a homography that sends
     the source origin to infinity) or that form overflows the input dtype; then it
-    is normalized to a largest absolute entry of 1 instead. Computed in
-    float32/float64 for numerical stability, then cast back to the input dtype.
+    is divided by the geometric mean of its largest and smallest nonzero
+    magnitudes instead. Computed in float32/float64 for numerical stability, then
+    cast back to the input dtype.
     """
     dtype = points_src.dtype
     work_dtype = _normalize_to_float32_or_float64(dtype)
@@ -936,15 +937,19 @@ def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst:
     transform = h_d @ h_s_inv
     # ``H[2, 2]`` is the dot product of ``h_d``'s last row and ``h_s_inv``'s last column; below a few units of rounding
     # of that sum, its value and sign are noise, and dividing by it gives NaN, inf or an arbitrary scale. The
-    # ``H[2, 2] = 1`` form must also fit the output dtype: float16 overflows at 65504. Otherwise scale by the largest
-    # absolute entry. Machine epsilon is written out, as TorchScript has no ``torch.finfo``, and ``x - x == 0`` tests
-    # for a finite value with ops that every exporter supports.
+    # ``H[2, 2] = 1`` form must also fit the output dtype: float16 overflows at 65504. Otherwise scale by the geometric
+    # mean of the largest and smallest nonzero magnitudes, which centres the entries in the dtype's range: scaling the
+    # largest to 1 would flush the small ones to zero in float16. Machine epsilon is written out, as TorchScript has no
+    # ``torch.finfo``, and ``x - x == 0`` tests for a finite value with ops that every exporter supports.
     eps = 1.1920928955078125e-07 if work_dtype == torch.float32 else 2.220446049250313e-16
     h22 = transform[..., 2:3, 2:3]
     h22_rounding = h_d[..., 2:3, :].abs() @ h_s_inv[..., :, 2:3].abs()
     unit_h22 = (transform / h22).to(dtype)
     fits = ((unit_h22 - unit_h22) == 0).all(dim=-1, keepdim=True).all(dim=-2, keepdim=True)
-    scale = transform.abs().amax(dim=(-2, -1), keepdim=True)
+    magnitude = transform.abs()
+    largest = magnitude.amax(dim=(-2, -1), keepdim=True)
+    smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
+    scale = largest.sqrt() * smallest.sqrt()
     transform = transform / torch.where((h22.abs() > 8 * eps * h22_rounding) & fits, h22, scale)
     return transform.to(dtype)
 
@@ -990,8 +995,9 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - ``M`` is scaled to ``M[2, 2] = 1`` where that form exists and fits the output dtype. A homography whose
           bottom-right entry is zero up to rounding, such as one that sends source pixel ``(0, 0)`` to infinity, has
           no such form although neither quadrilateral is degenerate, and one whose ``M[2, 2] = 1`` form overflows the
-          dtype, such as a float16 one with entries beyond ``65504``, is scaled to a largest absolute entry of 1
-          instead; :func:`~kornia.geometry.homography.find_homography_dlt` returns the same map at another scale
+          dtype, such as a float16 one with entries beyond ``65504``, is divided instead by the geometric mean of its
+          largest and smallest nonzero magnitudes, which keeps both in range;
+          :func:`~kornia.geometry.homography.find_homography_dlt` returns the same map at another scale
         - float16 and bfloat16 points are solved in float32, and the result is cast back to their dtype
         - a caller's autocast region does not change the result, outside TorchScript
 

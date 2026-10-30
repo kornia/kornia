@@ -409,6 +409,22 @@ class TestGetPerspectiveTransform(BaseTester):
         mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
         self.assert_close(mapped.to(dtype), points_dst.cpu())
 
+    @pytest.mark.parametrize("ratio", [1e5, 1e8, 1e9])
+    def test_overflowing_form_keeps_small_coefficients_6435(self, device, dtype, ratio):
+        # A rectangle stretched along x by `ratio` has M = diag(ratio, 1, 1). In float16 that M[2, 2] = 1 form
+        # overflows, and scaling its largest entry to 1 would flush the 1s to zero, leaving a matrix that maps nothing.
+        width = ratio**0.5
+        points_src = torch.tensor(
+            [[[0.0, 0.0], [1 / width, 0.0], [1 / width, 1.0], [0.0, 1.0]]], device=device, dtype=dtype
+        )
+        points_dst = torch.tensor([[[0.0, 0.0], [width, 0.0], [width, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
     def test_zero_bottom_right_entry_grad_6435(self, device, dtype):
         # Scaling jumps from the largest entry to M[2, 2] as soon as M[2, 2] leaves zero, so the gradient is one-sided
         # and gradcheck does not apply here; it must be finite, where dividing by zero made it NaN.
