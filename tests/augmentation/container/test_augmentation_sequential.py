@@ -2484,6 +2484,12 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(outer(image), image.flip((-2, -1)))
         expected = torch.tensor([[[-1.0, 0.0, 5.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(outer.transform_matrix, expected)
+        # An annotation-only replay reads the matrix from the parameters and keeps the inner skip mode too.
+        points = torch.tensor([[[1.0, 0.0]]], device=device, dtype=dtype)
+        self.assert_close(
+            outer(points, params=outer._params, data_keys=["keypoints"]), points.new_tensor([[[4.0, 3.0]]])
+        )
+        self.assert_close(outer.transform_matrix, expected)
 
     def test_nested_image_sequence_3d_matrix_4476(self, device, dtype):
         outer = K.AugmentationSequential(
