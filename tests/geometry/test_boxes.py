@@ -2520,6 +2520,27 @@ class TestVideoBoxes(BaseTester):
         expected[videos] = boxes[videos]
         self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(("target_time", "value_time", "key"), [(4, 2, 0), (2, 4, "mask"), (2, 3, 0)])
+    def test_index_assignment_rejects_another_frame_count_6388(self, target_time, value_time, key, device, dtype):
+        # A value whose videos have another number of frames used to be regrouped into videos of the target's length:
+        # two 2-frame videos were stitched into one 4-frame video, one 4-frame video was split across two, and a
+        # frame total that does not divide by the target's length raised a RuntimeError from view.
+        target = VideoBoxes.from_tensor(torch.zeros(2, target_time, 1, 4, 2, device=device, dtype=dtype))
+        num_videos = 2 if value_time == 2 else 1  # one 3-frame video does not divide into 2-frame videos
+        value = VideoBoxes.from_tensor(torch.ones(num_videos, value_time, 1, 4, 2, device=device, dtype=dtype))
+        if key == "mask":
+            key = torch.tensor([True, True], device=device)
+        original = target.to_tensor().clone()
+        with pytest.raises(ValueError, match=f"videos of {value_time} frames to videos of {target_time} frames"):
+            target[key] = value
+        self.assert_close(target.to_tensor(), original, atol=0.0, rtol=0.0)
+
+        # A plain Boxes value is read as frames of the target's length, as before.
+        target[0] = Boxes(torch.ones(target_time, 1, 4, 2, device=device, dtype=dtype))
+        expected = original.clone()
+        expected[0] = 1
+        self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
+
     def test_index_assignment_without_boxes_5871(self, device, dtype):
         # A clip with no boxes stores (B * T, 0, 4, 2): the write still lands in place.
         target = VideoBoxes.from_tensor(torch.zeros(3, 2, 0, 4, 2, device=device, dtype=dtype))

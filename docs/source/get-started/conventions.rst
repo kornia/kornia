@@ -557,9 +557,10 @@ Augmentations
   :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
   integer pixel centres: ``x' = W - 1 - x``.
 - Nested ``AugmentationSequential`` children contribute matrices from the
-  current call. A plain ``ImageSequential`` child is still omitted from an
-  outer ``AugmentationSequential`` matrix
-  (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
+  current call under their own matrix mode. Plain ``ImageSequential`` children
+  contribute their geometric operations in ``silent`` mode, including repeated
+  members of a sampled sequence. ``rigid`` still rejects a plain image sequence,
+  and ``skip`` records no matrix.
 - Dictionary keys match a data-key name exactly or before an ``_``/``-``
   suffix, the longest match winning. Unrecognized keys are returned unchanged
   as metadata, and the caller's dictionary is not modified.

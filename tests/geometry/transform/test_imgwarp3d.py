@@ -975,6 +975,18 @@ class TestPerspectiveTransform3D(BaseTester):
         # compute gradient check
         self.gradcheck(kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), fast_mode=False)
 
+    def test_integer_points_6396(self, device):
+        points_src = torch.tensor(self._corners, device=device)[None] * 4
+        points_dst = points_src // 2 + torch.tensor([1, 2, 3], device=device)
+
+        out = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
+        expected = kornia.geometry.transform.get_perspective_transform3d(
+            points_src.to(out.dtype), points_dst.to(out.dtype)
+        )
+
+        assert out.dtype == torch.get_default_dtype()
+        self.assert_close(out, expected)
+
     def test_convention_uses_corners_0_1_2_5_7(self, device, dtype):
         # The 15 unknowns are solved exactly from corners 0, 1, 2, 5 and 7 (000, 100, 110, 101, 011); the
         # destinations of corners 3, 4 and 6 do not enter the solve.

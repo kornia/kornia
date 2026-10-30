@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Generate synthetic 3d scenes."""
+"""Generate random synthetic scenes to test the two-view and multi-view estimators on."""
 
 import math
 from typing import Dict
@@ -30,6 +30,11 @@ from .projection import projection_from_KRt, random_intrinsics
 
 def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     """Generate a random 3d scene seen by ``num_views`` cameras that share one camera matrix.
+
+    ``scene = generate_scene(num_views, num_points)`` returns a dictionary with a random camera matrix from
+    :func:`random_intrinsics`, the world-to-camera rotation, translation and projection matrix of each view,
+    ``num_points`` random 3D points in front of every view and their pixel projections, ``points2d``. Pass two of its
+    views to :func:`find_fundamental` or :func:`triangulate_points` to test them against the known geometry.
 
     Convention:
         - Every point has positive depth in every view; depth and focal length are not bounded away from zero.
@@ -48,6 +53,10 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
         - ``"P"``: the projection matrix :math:`K [R|t]` of each view, with shape ``(V, 3, 4)``.
         - ``"points3d"``: the 3d points, in :math:`[0, 1)` per coordinate, with shape ``(1, N, 3)``.
         - ``"points2d"``: the projection of ``points3d`` by each ``P``, with shape ``(V, N, 2)``.
+
+    See Also:
+        - :func:`random_intrinsics`: the camera matrix of the scene.
+        - :func:`projection_from_KRt`: the projection matrix of each view.
 
     """
     # Generate the 3d points

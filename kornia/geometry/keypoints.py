@@ -297,6 +297,10 @@ class VideoKeypoints(Keypoints):
 
     Non-contiguous inputs are copied only when flattening requires it. Empty batches and point sets
     retain their shape on conversion back to a tensor; the temporal dimension must be nonzero.
+
+    Indexing and item assignment select whole videos on the video-batch axis, as for
+    :class:`~kornia.geometry.boxes.VideoBoxes`: ``vk[i]`` is a one-video :class:`VideoKeypoints` whose
+    :meth:`to_tensor` is ``(1, T, N, 2)``, and a boolean mask has length ``B``. Index frames with ``vk.data``.
     """
 
     temporal_channel_size: int
@@ -315,6 +319,36 @@ class VideoKeypoints(Keypoints):
         out = cls(boxes.reshape(boxes.size(0) * boxes.size(1), boxes.size(2), boxes.size(3)))
         out.temporal_channel_size = temporal_channel_size
         return out
+
+    def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "VideoKeypoints":
+        r"""Select videos while preserving the temporal axis, as :meth:`VideoBoxes.__getitem__` does.
+
+        An integer or scalar tensor keeps a singleton video-batch dimension. Slices, integer tensors, and boolean
+        tensors follow the corresponding PyTorch indexing behavior on the video-batch axis.
+        """
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        selected = self._data.view(batch_size, self.temporal_channel_size, *self._data.shape[1:])[key]
+        if selected.ndim == self._data.ndim:
+            selected = selected.unsqueeze(0)
+        out = type(self)(selected.flatten(0, 1), False)
+        out.temporal_channel_size = self.temporal_channel_size
+        return out
+
+    def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "VideoKeypoints":
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`.
+
+        A :class:`VideoKeypoints` value must have the same ``temporal_channel_size``: otherwise its frames would be
+        regrouped into videos of another length.
+        """
+        size = self.temporal_channel_size
+        if isinstance(value, VideoKeypoints) and value.temporal_channel_size != size:
+            raise ValueError(
+                f"Cannot assign videos of {value.temporal_channel_size} frames to videos of {size} frames."
+            )
+        # Explicit video counts: a clip with no points has 0 elements, so a -1 in the view would be ambiguous.
+        n, m = self._data.shape[0] // size, value.data.shape[0] // size
+        self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
+        return self
 
     def to_tensor(self) -> torch.torch.Tensor:
         out = super().to_tensor(as_padded_sequence=False)

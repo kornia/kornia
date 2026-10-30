@@ -17,14 +17,20 @@
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import kornia
 from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
-from kornia.feature.aliked.aliked import _affine_from_cov
+from kornia.feature.aliked.aliked import SDDH, _affine_from_cov, get_patches
 from kornia.feature.aliked.deform_conv2d import deform_conv2d
 
-from testing.base import BaseTester, supports_bilinear_2d_grid_sample, supports_replicate_padding
+from testing.base import (
+    BaseTester,
+    supports_bilinear_2d_grid_sample,
+    supports_bilinear_2d_grid_sample_backward,
+    supports_replicate_padding,
+)
 
 # ---------------------------------------------------------------------------
 # deform_conv2d tests
@@ -364,6 +370,95 @@ class TestALIKED(BaseTester):
         assert torch.autograd.gradcheck(fn, [inp], eps=1e-4, atol=1e-3, rtol=1e-3, fast_mode=True, nondet_tol=1e-3)
 
 
+def _sddh_with_convolutions(sddh: SDDH, x: torch.Tensor, keypoints: list[torch.Tensor]):
+    """SDDH as in the reference implementations: its ``Conv2d`` layers applied to the per-keypoint windows."""
+    _, c, h, w = x.shape
+    wh = torch.tensor([[w - 1, h - 1]], device=x.device, dtype=torch.promote_types(x.dtype, torch.float32))
+    max_offset = max(h, w) / 4.0
+    descriptors, offsets = [], []
+    for xi, kptsi in zip(x, keypoints):
+        kptsi_wh = (kptsi / 2 + 0.5) * wh
+        n = len(kptsi)
+        if sddh.kernel_size > 1:
+            patch = get_patches(xi, kptsi_wh.long(), sddh.kernel_size)
+        else:
+            corner = kptsi_wh.long()
+            patch = xi[:, corner[:, 1], corner[:, 0]].permute(1, 0).reshape(n, c, 1, 1)
+        offset = sddh.offset_conv(patch).clamp(-max_offset, max_offset)[:, :, 0, 0]
+        offset = offset.view(n, 3 if sddh.mask else 2, sddh.n_pos).permute(0, 2, 1)
+        offsets.append(offset[:, :, :2])
+        pos = (2.0 * (kptsi_wh.unsqueeze(1) + offset[:, :, :2]) / wh[None] - 1).reshape(1, n * sddh.n_pos, 1, 2)
+        features = F.grid_sample(xi[None], pos.to(xi.dtype), mode="bilinear", align_corners=True)
+        features = features.reshape(c, n, sddh.n_pos, 1).permute(1, 0, 2, 3)
+        if sddh.mask:
+            features = features * torch.sigmoid(offset[:, :, 2])[:, None, :, None]
+        features = torch.selu(sddh.sf_conv(features)).squeeze(-1)  # (N, C, n_pos)
+        if sddh.conv2d:
+            descs = sddh.convM(features.flatten(1)[:, :, None, None])[:, :, 0, 0]
+        else:
+            descs = torch.einsum("ncp,pcd->nd", features, sddh.agg_weights)  # codespell:ignore
+        descriptors.append(F.normalize(descs, p=2.0, dim=1))
+    return descriptors, offsets
+
+
+class TestSDDH(BaseTester):
+    """SDDH computes its per-keypoint convolutions as matrix products with the ``Conv2d`` weights."""
+
+    @pytest.fixture(autouse=True)
+    def _kernels(self, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("SDDH samples with bilinear grid_sample, absent for this dtype")
+
+    @staticmethod
+    def _inputs(device, dtype):
+        x = F.normalize(torch.rand(2, 16, 24, 32, device=device, dtype=dtype), dim=1)
+        # the second image has no keypoint
+        keypoints = [
+            torch.rand(37, 2, device=device, dtype=dtype) * 2 - 1,
+            torch.zeros(0, 2, device=device, dtype=dtype),
+        ]
+        return x, keypoints
+
+    @pytest.mark.parametrize("kernel_size", [1, 3])
+    @pytest.mark.parametrize("mask", [False, True])
+    @pytest.mark.parametrize("conv2d", [False, True])
+    def test_matches_the_convolutions(self, kernel_size, mask, conv2d, device, dtype):
+        sddh = SDDH(16, kernel_size, 4, gate=torch.nn.SELU(inplace=True), conv2d=conv2d, mask=mask).to(device, dtype)
+        x, keypoints = self._inputs(device, dtype)
+        with torch.no_grad():
+            descriptors, offsets = sddh(x, keypoints)
+            expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
+        assert [d.shape for d in descriptors] == [(37, 16), (0, 16)]
+        for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
+            self.assert_close(actual, expected)
+
+    def test_gate_gets_the_convolution_output_map(self, device, dtype):
+        # a gate that accepts only (N, C, H, W) input, such as Softmax2d, works as it did on the convolution output
+        sddh = SDDH(16, 3, 4, gate=torch.nn.Softmax2d()).to(device, dtype)
+        x, keypoints = self._inputs(device, dtype)
+        with torch.no_grad():
+            descriptors, offsets = sddh(x, keypoints)
+            expected_descriptors, expected_offsets = _sddh_with_convolutions(sddh, x, keypoints)
+        for actual, expected in zip(descriptors + offsets, expected_descriptors + expected_offsets):
+            self.assert_close(actual, expected)
+
+    def test_gradients_match_the_convolutions(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            # a weight gradient sums over every sample, in another order than conv2d's backward: a few ulps apart
+            pytest.skip("half-precision weight gradients differ by their accumulation order")
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip("bilinear grid_sample has no backward for this dtype")
+        sddh = SDDH(16, 3, 4, gate=torch.nn.SELU(inplace=True)).to(device, dtype)
+        x, keypoints = self._inputs(device, dtype)
+        x.requires_grad_()
+        weights = torch.rand(37, 16, device=device, dtype=dtype)
+        inputs = [x, *sddh.parameters()]
+        grads = torch.autograd.grad((sddh(x, keypoints)[0][0] * weights).sum(), inputs)
+        expected = torch.autograd.grad((_sddh_with_convolutions(sddh, x, keypoints)[0][0] * weights).sum(), inputs)
+        for actual, reference in zip(grads, expected):
+            self.assert_close(actual, reference)
+
+
 # ---------------------------------------------------------------------------
 # forward_laf tests
 # ---------------------------------------------------------------------------
@@ -404,6 +499,34 @@ class TestALIKEDForwardLAF(BaseTester):
         assert lafs.ndim == 4  # (B, N, 2, 3)
         assert responses.ndim == 3  # (B, N, 1)
         assert descs.ndim == 3  # (B, N, D)
+
+    @pytest.mark.parametrize("compute_affine", [True, False])
+    @pytest.mark.parametrize("with_mask", [False, True])
+    def test_empty_batch_6266(self, compute_affine, with_mask, device, dtype):
+        """An empty batch gives empty LAFs, responses and descriptors with the dtypes of a non-empty batch."""
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
+        mask = torch.ones(0, 1, 64, 64, device=device, dtype=dtype) if with_mask else None
+        lafs, responses, descs = aliked.forward_laf(
+            torch.rand(0, 3, 64, 64, device=device, dtype=dtype), mask=mask, compute_affine=compute_affine
+        )
+        ref = aliked.forward_laf(torch.rand(1, 3, 64, 64, device=device, dtype=dtype), compute_affine=compute_affine)
+        assert lafs.shape == (0, 0, 2, 3)
+        assert responses.shape == (0, 0, 1)
+        assert descs.shape == (0, 0, ref[2].shape[-1])
+        assert [t.dtype for t in (lafs, responses, descs)] == [t.dtype for t in ref]
+        assert all(t.device == ref[0].device for t in (lafs, responses, descs))
+        # The empty outputs stay in the autograd graph, so a loss over an empty batch can still be backpropagated.
+        assert [t.requires_grad for t in (lafs, responses, descs)] == [t.requires_grad for t in ref]
+        (lafs.sum() + responses.sum() + descs.sum()).backward()
+
+    @pytest.mark.parametrize("compute_affine", [True, False])
+    def test_empty_batch_autocast_6266(self, compute_affine):
+        """Under CPU bfloat16 autocast an empty batch gets the dtypes of a non-empty one (float32 responses)."""
+        aliked = ALIKED(model_name="aliked-t16").eval()
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            empty = aliked.forward_laf(torch.rand(0, 3, 64, 64), compute_affine=compute_affine)
+            ref = aliked.forward_laf(torch.rand(1, 3, 64, 64), compute_affine=compute_affine)
+        assert [t.dtype for t in empty] == [t.dtype for t in ref]
 
     def test_output_shapes(self, device, dtype):
         """Shapes should be (B, N, 2, 3), (B, N, 1), (B, N, D)."""
@@ -978,3 +1101,30 @@ class TestALIKEDModes(BaseTester):
             feat, score = aliked.extract_dense_map(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
         assert feat.shape[0] == 1
         assert score.shape == (1, 1, 16, 16)
+
+
+class TestALIKEDStateDict(BaseTester):
+    """``dkd.hw_grid`` is rebuilt from ``nms_radius`` and not saved, so the pretrained checkpoints load strictly."""
+
+    def test_hw_grid_is_not_saved_but_follows_the_module(self, device, dtype):
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype)
+        assert "dkd.hw_grid" not in aliked.state_dict()
+        assert aliked.dkd.hw_grid.device == device
+        assert aliked.dkd.hw_grid.dtype == dtype
+
+    def test_from_pretrained_rejects_a_checkpoint_with_a_renamed_key(self, device, dtype, monkeypatch):
+        weights = ALIKED(model_name="aliked-t16").state_dict()
+        weights["desc_head.sf.weight"] = weights.pop("desc_head.sf_conv.weight")
+        monkeypatch.setattr("kornia.feature.aliked.aliked.load_state_dict_from_url", lambda urls, **kwargs: weights)
+        with pytest.raises(RuntimeError, match=r"Missing key.*desc_head\.sf_conv\.weight"):
+            ALIKED.from_pretrained("aliked-t16", device=device)
+
+    def test_state_dict_with_hw_grid_loads(self, device, dtype, monkeypatch):
+        saved = ALIKED(model_name="aliked-t16")
+        weights = {**saved.state_dict(), "dkd.hw_grid": saved.dkd.hw_grid.clone()}
+        aliked = ALIKED(model_name="aliked-t16")
+        aliked.load_state_dict(weights)
+        assert "dkd.hw_grid" in weights  # the caller's dict is left as it was
+        assert all(torch.equal(v, weights[k]) for k, v in aliked.state_dict().items())
+        monkeypatch.setattr("kornia.feature.aliked.aliked.load_state_dict_from_url", lambda urls, **kwargs: weights)
+        ALIKED.from_pretrained("aliked-t16", device=device)

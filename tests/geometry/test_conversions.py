@@ -906,8 +906,9 @@ class TestQuaternionToAngleAxis(BaseTester):
         # property of atan2 plus the 2*theta/||v|| factor, not of the particular numbers (verified
         # bit-identical in 500/500 random float64 quaternions, seeded torch.Generator(7), for both
         # factors -- a non-power-of-two factor such as 3 is invariant to rounding only, 82/500).
-        # Contrast quaternion_exp_to_log, which does NOT normalise and is silently wrong on a
-        # non-unit input.
+        # quaternion_exp_to_log does not normalise and is invariant to a positive scale (for ||u|| >= eps), for the
+        # same reason: atan2(||u||, w) and u / ||u|| do not depend on the scale (q = (1, 2, 3, 4) scaled by 3, 1e-3
+        # or 1e3 stays within 2.2e-16 of the unscaled log in float64).
         quaternion = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
 
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
@@ -1760,8 +1761,9 @@ class TestQuaternionExpToLog(BaseTester):
         # axis-angle vector -- so quaternion_exp_to_log(q) == quaternion_to_axis_angle(q) / 2, but
         # ONLY on the w >= 0 half. The two functions treat the double cover differently:
         # quaternion_to_axis_angle collapses q and -q onto the same |theta| <= pi vector, while
-        # quaternion_exp_to_log takes acos(w) at face value and returns (pi - theta/2) along the
-        # negated axis for w < 0. The second half of this pin states that divergence explicitly,
+        # quaternion_exp_to_log takes the angle atan2(||u||, w) of the quaternion as given (acos(w) for
+        # a unit one, u the vector part) and returns (pi - theta/2) along the negated axis for w < 0.
+        # The second half of this pin states that divergence explicitly,
         # because "log is half the axis-angle" is false without the restriction: over 500 random
         # float64 unit quaternions (seeded torch.Generator(3)) the two agree to 4.44e-16 on the
         # 243 with w >= 0 and disagree by up to 3.1367975802888637 on the 257 with w < 0.
@@ -2376,12 +2378,14 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         )
 
     def test_convention_axis_angle_matrix_roundtrip_is_accurate_in_float64(self, device):
-        # rotation_matrix_to_axis_angle(axis_angle_to_rotation_matrix(v)) returns v to roundoff,
-        # except on the low-angle Taylor branch (theta**2 <= 1e-6), whose second-order truncation
-        # leaves about theta**3 / 6 (1.2e-10 at the 9e-4 row). 1e-9 keeps ~8x headroom over that
-        # and would catch a first-order branch (theta**2 / 2 = 4e-7). Measured over 2e5 float64
-        # axis-angles drawn in float64 (uniform, log-spaced small and near-pi angles): 1.6e-10 max,
-        # at theta just under 1e-3; 1.3e-15 max for theta near pi.
+        # rotation_matrix_to_axis_angle(axis_angle_to_rotation_matrix(v)) returns v to roundoff, the
+        # low-angle Taylor branch (theta**2 <= 1e-6) included: that branch keeps the theta**2 terms of
+        # both series (kornia#4838), so its truncation is theta**5 / 120, below float64 rounding (the
+        # second-order branch it replaced left theta**3 / 6, 1.2e-10 at the 9e-4 row, which
+        # test_convention_low_angle_branch_matches_quaternion_route_4838 pins). 1e-9 catches a
+        # first-order branch (theta**2 / 2 = 4e-7). Measured over 2e5 float64 axis-angles drawn in
+        # float64 (uniform, log-spaced small and near-pi angles): 7.9e-18 max on the Taylor branch, at
+        # theta just under 1e-3; 1.6e-15 max, for theta near pi.
         # Snippet used to generate the inputs (stdlib only):
         #   n = math.sqrt(14.0); axis = (1 / n, 2 / n, 3 / n)
         #   [[theta * a for a in axis] for theta in (9e-4, 1e-3, 0.7, 2.0, math.pi)]
@@ -2921,6 +2925,25 @@ class TestConvertAtoH(BaseTester):
             dtype=dtype,
         )
         self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        "op,shape",
+        [
+            (kornia.geometry.conversions.convert_affinematrix_to_homography, (1, 2, 3)),
+            (kornia.geometry.conversions.convert_affinematrix_to_homography3d, (1, 3, 4)),
+        ],
+    )
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    def test_exception_rejects_non_floating_input(self, op, shape, int_dtype, device):
+        # Integer or bool input used to surface as a bare torch RuntimeError from the in-place
+        # "+= 1.0" on the padded homography ("result type Float can't be cast to the desired
+        # output type Long"), naming no kornia argument. Now rejected up front by name.
+        # Snippet used to generate the old behaviour (torch only):
+        #   convert_affinematrix_to_homography(torch.ones(1, 2, 3, dtype=torch.int64))
+        #     -> RuntimeError: result type Float can't be cast to the desired output type Long
+        A = torch.ones(shape, device=device, dtype=int_dtype)
+        with pytest.raises(ValueError, match=rf"floating point or complex.*{int_dtype}"):
+            op(A)
 
 
 class TestConvertPointsFromHomogeneous(BaseTester):
@@ -5672,6 +5695,43 @@ class TestCARKitToColmap(BaseTester):
             tvec = tvec.to(complex_dtype)
         with pytest.raises(TypeCheckError, match=rf"{which}.*real floating point.*{complex_dtype}"):
             ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    def test_exception_arkit_to_colmap_rejects_non_floating_qvec(self, device, int_dtype):
+        # The forward conversion had no dtype guard and an integer qvec surfaced a bare torch
+        # RuntimeError from linalg.vector_norm instead of naming the argument.
+        # Snippet used to generate the old behaviour (torch only):
+        #   ARKitQTVecs_to_ColmapQTVecs(torch.tensor([[0, 1, 0, 1]]), torch.ones(1, 3, 1, dtype=torch.int64))
+        #     -> RuntimeError: linalg.vector_norm: Expected a floating point or complex tensor as input. Got Long
+        qvec = torch.tensor([[1, 0, 0, 0]], device=device, dtype=int_dtype)
+        tvec = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+        with pytest.raises(TypeCheckError, match=rf"qvec.*floating point.*{int_dtype}"):
+            ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    def test_arkit_to_colmap_integer_tvec_promotes(self, device, dtype, int_dtype):
+        # An integer tvec with a floating qvec has always promoted to qvec's dtype and given the
+        # float result; the qvec guard must not reject it.
+        qvec = torch.tensor([[0.5, 0.5, 0.5, 0.5], [0.0, 1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        tvec = torch.tensor([[[1], [0], [3]], [[0], [1], [1]]], device=device, dtype=int_dtype)
+        q_int, t_int = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
+        q_ref, t_ref = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec.to(dtype))
+        assert t_int.dtype == dtype
+        self.assert_close(q_int, q_ref, atol=0.0, rtol=0.0)
+        self.assert_close(t_int, t_ref, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
+    @pytest.mark.parametrize("which", ["qvec", "tvec"])
+    def test_exception_arkit_to_colmap_rejects_complex_inputs(self, complex_dtype, which):
+        # CPU tensors: the guard runs before any arithmetic and MPS has no complex128.
+        qvec = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        tvec = torch.ones(1, 3, 1)
+        if which == "qvec":
+            qvec = qvec.to(complex_dtype)
+        else:
+            tvec = tvec.to(complex_dtype)
+        with pytest.raises(TypeCheckError, match=rf"{which}.*real.*{complex_dtype}"):
+            ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
 
     def test_dynamo_colmap_to_arkit(self, device, dtype, torch_optimizer):
         qvec = torch.tensor([[0.7071, 0.0, 0.7071, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)

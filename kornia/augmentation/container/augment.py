@@ -17,7 +17,7 @@
 
 import sys
 import warnings
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -186,8 +186,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``True`` or ``False`` overrides it.
         - Nested :class:`AugmentationSequential` children contribute the matrix they record for the current call
           under their own ``transformation_matrix_mode``; one whose children are all non-rigid records none and is
-          skipped. A plain :class:`ImageSequential` child is still omitted from the outer matrix
-          (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
+          skipped. In ``silent`` mode, plain :class:`ImageSequential` children contribute their geometric operations,
+          using each operation's recorded parameters even when the sampled sequence repeats a member. The ``rigid``
+          mode still rejects a plain image sequence, and ``skip`` records no matrix.
 
     .. note::
         :class:`~kornia.augmentation.RandomElasticTransform`, :class:`~kornia.augmentation.RandomThinPlateSpline`
@@ -416,6 +417,60 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if matrix is not None:
             self._transform_matrices.append(matrix)
 
+    @staticmethod
+    def _image_sequence_matrices(
+        container: ImageSequential,
+        params: List[ParamItem],
+        input: DataType,
+        extra_args: Optional[Dict[str, Any]] = None,
+        sequence_matrices: Optional[Iterator[Optional[torch.Tensor]]] = None,
+    ) -> Iterator[torch.Tensor]:
+        """Read invocation snapshots and parameter-aware geometric matrices from a plain image sequence."""
+        for param in params:
+            module = container.get_submodule(param.name)
+            if type(module) is ImageSequential:
+                yield from AugmentationSequential._image_sequence_matrices(
+                    module, InputSequentialOps.get_sequential_module_param(param), input, extra_args, sequence_matrices
+                )
+            elif isinstance(module, AugmentationSequential):
+                if sequence_matrices is None and type(module) is AugmentationSequential:
+                    if module._transformation_matrix_arg != "skip":
+                        yield from AugmentationSequential._image_sequence_matrices(
+                            module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
+                        )
+                else:
+                    matrix = module.transform_matrix if sequence_matrices is None else next(sequence_matrices)
+                    if matrix is not None:
+                        yield matrix
+            elif isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D)):
+                yield InputSequentialOps.get_transform_matrix(module, param, input, extra_args=extra_args)
+
+    def _update_image_sequence_matrix(
+        self,
+        module: nn.Module,
+        param: ParamItem,
+        input: DataType,
+        extra_args: Optional[Dict[str, Any]] = None,
+        image_transformed: bool = True,
+    ) -> None:
+        """Collect nested matrices, using invocation snapshots only after an image call."""
+        if (
+            type(module) is ImageSequential
+            and self._transformation_matrix_arg in ("silent", "silence")
+            and not is_exporting()
+        ):
+            self._transform_matrices.extend(
+                self._image_sequence_matrices(
+                    module,
+                    InputSequentialOps.get_sequential_module_param(param),
+                    input,
+                    extra_args,
+                    iter(module._sequence_matrices) if image_transformed else None,
+                )
+            )
+        else:
+            self._update_transform_matrix_by_module(module)
+
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
@@ -435,7 +490,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-            self._update_transform_matrix_by_module(module)
+            self._update_image_sequence_matrix(module, param, input, extra_args=extra_args)
         if not is_exporting():
             self._params = params
         return input
@@ -773,7 +828,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
-                self._update_transform_matrix_by_module(module)
+                self._update_image_sequence_matrix(
+                    module,
+                    param,
+                    outputs[0],
+                    extra_args=self.extra_args.get(DataKey.INPUT),
+                    image_transformed=DataKey.INPUT in original_data_keys,
+                )
 
             if input_first_order != list(range(len(input_first_order))):
                 restore_order = [input_first_order.index(i) for i in range(len(input_first_order))]
@@ -1170,6 +1231,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dtype = None
 
         if self.contains_video_sequential:
+            if isinstance(arg, VideoKeypoints):
+                return arg
+            if isinstance(arg, Keypoints):
+                raise TypeError(
+                    "A VideoSequential pipeline needs VideoKeypoints or a (B, T, N, 2) tensor for its keypoints, which"
+                    " carry the number of frames per video. Got Keypoints."
+                )
             arg = cast(Union[torch.Tensor, List[torch.Tensor]], arg)
             if isinstance(arg, list):
                 if not torch.is_floating_point(arg[0]):
