@@ -63,10 +63,11 @@ def match_adalam(
     See :cite:`AdaLAM2020` for more details.
 
     Convention:
-        - See the Convention block on :func:`~kornia.feature.match_nn`. ``dists`` is the inverse of the confidence
-          of the local RANSAC that accepted the match, in float32 whatever the descriptor dtype, so at most
-          ``1 / min_confidence`` (``1 / 200`` by default). If no seed survives, for example with very few keypoints,
-          the matches of a ratio test on squared distances, ``ratio <= 0.95``, are returned with that ratio instead.
+        - See the Convention block on :func:`~kornia.feature.match_nn`. ``dists`` is the inverse of the confidence of
+          the most confident local RANSAC that accepted the match (overlapping neighbourhoods often accept a match
+          several times), in float32 whatever the descriptor dtype, so at most ``1 / min_confidence`` (``1 / 200`` by
+          default). If no seed survives, for example with very few keypoints, the matches of a ratio test on squared
+          distances, ``ratio <= 0.95``, are returned with that ratio instead.
         - The putative matches are the nearest neighbours in the distance matrix ``dm``, scored by the ratio of the
           two smallest distances; with ``force_seed_mnn`` only mutual nearest neighbours can be seeds. ``dm`` holds
           plain distances, like the ``dm`` of :func:`~kornia.feature.match_nn` and the other matchers: AdaLAM

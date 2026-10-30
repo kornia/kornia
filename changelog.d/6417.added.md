@@ -1,0 +1,1 @@
+`LightGlue` computes its cross-attention with `torch.nn.functional.scaled_dot_product_attention` on every device, as its self-attention already did, instead of only on CUDA with `flash=True`. The matches are the same and the scores move by rounding; on an Apple M1 a 2048-keypoint DISK pair matches 1.3-1.7x faster on CPU and 1.2-1.5x faster on MPS.

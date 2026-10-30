@@ -15,6 +15,57 @@
 # limitations under the License.
 #
 
+"""Convert between homogeneous points, normalized coordinates, rotations and poses.
+
+Points and vectors sit in the last dimension, and matrices act on column vectors from the left. 2D pixel coordinates
+are ``(x, y)``, with ``x`` the column and pixel centres at integers, while size arguments are ``(height, width)`` or
+``(depth, height, width)``. The :math:`[-1, 1]` normalizations are corner-aligned, mapping the first and last pixel
+centre of an axis to ``-1`` and ``1``; only :func:`normal_transform_pixel`, :func:`normalize_homography` and
+:func:`denormalize_homography` also offer the half-pixel convention of ``align_corners=False``, and their 3D forms
+do not (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Quaternions are ``(w, x, y, z)``, real part first,
+in the Hamilton convention. 3D rotations are active and right-handed: a positive angle about ``+z`` turns ``+x``
+towards ``+y``. Axis-angle vectors and Euler angles are in radians, while :func:`angle_to_rotation_matrix` takes
+degrees and turns ``+x`` towards ``-y``, counter-clockwise as displayed with ``y`` down. The pose functions take
+exactly one batch dimension: ``(B, 3, 3)`` rotations with ``(B, 3, 1)`` translations, ``(B, 4, 4)`` matrices or
+``(B, 4)`` quaternions.
+
+Which function to use:
+
+- Homogeneous points: :func:`convert_points_to_homogeneous` appends ``w = 1`` to ``(*, N, D)`` points and
+  :func:`convert_points_from_homogeneous` divides by it. An affine matrix as a homography:
+  :func:`convert_affinematrix_to_homography` for ``(B, 2, 3)``, :func:`convert_affinematrix_to_homography3d` for
+  ``(B, 3, 4)``.
+- Pixel coordinates to :math:`[-1, 1]` and back: :func:`normalize_pixel_coordinates` and
+  :func:`denormalize_pixel_coordinates` for ``(*, 2)`` points, :func:`normalize_pixel_coordinates3d` and
+  :func:`denormalize_pixel_coordinates3d` for ``(*, 3)`` points in ``(d, x, y)`` order. The same maps as matrices:
+  :func:`normal_transform_pixel` ``(1, 3, 3)`` on ``(x, y, 1)`` and :func:`normal_transform_pixel3d` ``(1, 4, 4)`` on
+  ``(x, y, z, 1)``.
+- A pixel homography in :math:`[-1, 1]` coordinates and back: :func:`normalize_homography` and
+  :func:`denormalize_homography` for ``(B, 3, 3)``, :func:`normalize_homography3d` and
+  :func:`denormalize_homography3d` for ``(B, 4, 4)``.
+- Pixels to normalized camera coordinates with intrinsics ``K``, and back: :func:`normalize_points_with_intrinsics`,
+  :func:`denormalize_points_with_intrinsics`.
+- A 3D rotation from one form to another, axis-angle ``(*, 3)``, quaternion ``(*, 4)`` or matrix ``(*, 3, 3)``:
+  :func:`axis_angle_to_rotation_matrix`, :func:`axis_angle_to_quaternion`, :func:`quaternion_to_rotation_matrix`,
+  :func:`quaternion_to_axis_angle`, :func:`rotation_matrix_to_quaternion`, :func:`rotation_matrix_to_axis_angle`.
+  The deprecated names ``angle_axis_to_rotation_matrix``, ``angle_axis_to_quaternion``, ``quaternion_to_angle_axis``
+  and ``rotation_matrix_to_angle_axis`` forward to them.
+- Quaternion helpers: unit length, :func:`normalize_quaternion`; the exponential and logarithm maps, whose 3-vector
+  is half the axis-angle vector, :func:`quaternion_log_to_exp` and :func:`quaternion_exp_to_log`; roll, pitch and
+  yaw, with the quaternion as four separate tensors, :func:`quaternion_from_euler` and :func:`euler_from_quaternion`.
+- A 2D rotation matrix from an angle in degrees: :func:`angle_to_rotation_matrix`. The cross-product matrix of a
+  3-vector: :func:`vector_to_skew_symmetric_matrix`.
+- Poses: pack and split ``(B, 4, 4)`` matrices with :func:`Rt_to_matrix4x4` and :func:`matrix4x4_to_Rt`; invert a
+  rigid ``(R, t)`` pose with :func:`camtoworld_to_worldtocam_Rt` or :func:`worldtocam_to_camtoworld_Rt`; switch a
+  camera-to-world pose between OpenGL and OpenCV camera axes with :func:`camtoworld_graphics_to_vision_4x4`,
+  :func:`camtoworld_graphics_to_vision_Rt`, :func:`camtoworld_vision_to_graphics_4x4` or
+  :func:`camtoworld_vision_to_graphics_Rt`; convert quaternion poses between ARKit and Colmap with
+  :func:`ARKitQTVecs_to_ColmapQTVecs` and :func:`ColmapQTVecs_to_ARKitQTVecs`.
+- Angles and polar coordinates: :func:`deg2rad`, :func:`rad2deg`, :func:`cart2pol`, :func:`pol2cart`.
+- Rotations and poses as objects that compose and invert: :class:`~kornia.geometry.quaternion.Quaternion`,
+  :class:`~kornia.geometry.liegroup.So3` and :class:`~kornia.geometry.liegroup.Se3`.
+"""
+
 from __future__ import annotations
 
 import math
@@ -82,17 +133,20 @@ __all__ = [
 
 
 def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
-    r"""Convert angles from radians to degrees.
+    r"""Convert angles from radians to degrees, elementwise.
 
-    Convention:
-        - the input is in **radians** and the output in **degrees**; the
-          conversion is elementwise and preserves shape, device and float dtype
+    ``degrees = rad2deg(radians)`` multiplies a tensor of any shape by ``180 / pi`` and returns the angles in degrees
+    with the same shape, device and floating dtype; an integer tensor gives the default floating dtype. For the
+    reverse, use :func:`deg2rad`.
 
     Args:
-        tensor: torch.Tensor of arbitrary shape.
+        tensor: angles in radians, of any shape.
 
     Returns:
-        torch.Tensor with same shape as input.
+        the angles in degrees, with the shape of ``tensor``.
+
+    See Also:
+        - :func:`deg2rad`: the reverse conversion, degrees to radians.
 
     Example:
         >>> input = torch.tensor(3.1415926535)
@@ -107,18 +161,22 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
-    r"""Convert angles from degrees to radians.
+    r"""Convert angles from degrees to radians, elementwise.
 
-    Convention:
-        - the input is in **degrees** and the output in **radians**; it
-          performs the opposite conversion to
-          :func:`~kornia.geometry.conversions.rad2deg`
+    ``radians = deg2rad(degrees)`` multiplies a tensor of any shape by ``pi / 180`` and returns the angles in radians
+    with the same shape, device and floating dtype; an integer tensor gives the default floating dtype. The axis-angle,
+    Euler and polar functions of this module take radians; :func:`angle_to_rotation_matrix` takes degrees. For the
+    reverse, use :func:`rad2deg`.
 
     Args:
-        tensor: torch.Tensor of arbitrary shape.
+        tensor: angles in degrees, of any shape.
 
     Returns:
-        tensor with same shape as input.
+        the angles in radians, with the shape of ``tensor``.
+
+    See Also:
+        - :func:`rad2deg`: the reverse conversion, radians to degrees.
+        - :func:`angle_to_rotation_matrix`: the 2D rotation matrix of an angle given in degrees.
 
     Examples:
         >>> input = torch.tensor(180.)
@@ -133,23 +191,31 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert polar coordinates to cartesian coordinates.
+    r"""Convert polar coordinates (rho, phi), phi in radians, to cartesian coordinates (x, y).
+
+    ``x, y = pol2cart(rho, phi)`` takes radii and angles in radians and returns two tensors, ``x = rho * cos(phi)`` and
+    ``y = rho * sin(phi)``, in the broadcast shape of ``rho`` and ``phi``. It undoes :func:`cart2pol`:
+    ``pol2cart(*cart2pol(x, y))`` returns ``(x, y)`` to rounding as long as ``x ** 2 + y ** 2`` is above the ``eps``
+    of :func:`cart2pol` and neither overflows nor underflows in the working dtype. Inside the ``eps`` neighbourhood of
+    the origin :func:`cart2pol` rounds the radius, so in ``float32`` ``(1e-5, 2e-5)`` comes back as
+    ``(1.0023e-5, 2.0045e-5)`` and ``(3e-8, 4e-8)`` as ``(0, 0)``
+    (`#6440 <https://github.com/kornia/kornia/issues/6440>`_).
 
     Convention:
-        - the arguments are ``(rho, phi)`` and the return is the tuple
-          ``(x, y)``, with ``x = rho * cos(phi)`` and ``y = rho * sin(phi)``:
-          ``rho = 5``, ``phi = atan2(4, 3)`` gives ``(3., 4.)``
-        - ``phi`` is in **radians** (``rho = 2``, ``phi = pi / 6`` gives
-          ``(1.7321, 1.)``) and follows the angle convention documented on
-          :func:`~kornia.geometry.conversions.cart2pol`
+        - ``rho = 5``, ``phi = atan2(4, 3)`` gives ``(3., 4.)``, and ``rho = 2``, ``phi = pi / 6`` gives
+          ``(1.7321, 1.)``
+        - ``phi`` follows the angle convention documented on :func:`cart2pol`
 
     Args:
-        rho: torch.Tensor of arbitrary shape.
-        phi: torch.Tensor of same arbitrary shape.
+        rho: the radii, of any shape that broadcasts with ``phi``.
+        phi: the angles in radians.
 
     Returns:
-        - x: torch.Tensor with same shape as input.
-        - y: torch.Tensor with same shape as input.
+        - x: the first coordinate, in the broadcast shape of ``rho`` and ``phi``.
+        - y: the second coordinate, in the same shape.
+
+    See Also:
+        - :func:`cart2pol`: the reverse conversion, cartesian to polar.
 
     Example:
         >>> rho = torch.rand(1, 3, 3)
@@ -166,11 +232,33 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.
 
 
 def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert cartesian coordinates to polar coordinates.
+    r"""Convert cartesian coordinates (x, y) to polar coordinates (rho, phi), phi in radians.
+
+    ``rho, phi = cart2pol(x, y)`` returns two tensors in the broadcast shape of ``x`` and ``y``: the radius
+    ``sqrt(x ** 2 + y ** 2)`` and the angle ``atan2(y, x)`` in radians, in :math:`[-\pi, \pi]`. The radius is
+    computed from the unscaled ``x ** 2 + y ** 2``, so it is ``nan`` once that overflows
+    (`#6414 <https://github.com/kornia/kornia/issues/6414>`_). ``eps`` keeps the gradient of ``rho`` finite at the
+    origin, but it also rounds every radius with ``x ** 2 + y ** 2 <= eps``, as the convention below details
+    (`#6440 <https://github.com/kornia/kornia/issues/6440>`_). For the reverse, use :func:`pol2cart`.
 
     Convention:
-        - the arguments are ``(x, y)`` and the return is the tuple
-          ``(rho, phi)``: ``(3., 4.)`` gives ``(5., 0.9273)``
+        - ``(3., 4.)`` gives ``(5., 0.9273)``
+        - ``x ** 2 + y ** 2`` overflows from a radius of about ``256`` in
+          ``float16`` (``(300., 150.)`` gives ``rho = nan``), ``1.8e19`` in
+          ``float32`` and ``bfloat16`` and ``1.3e154`` in ``float64``, and
+          ``rho`` is then ``nan``, not ``inf``
+          (`#6414 <https://github.com/kornia/kornia/issues/6414>`_)
+        - where ``x ** 2 + y ** 2 <= eps`` (radii up to about ``1e-4`` at the
+          default ``eps``), ``rho`` is computed as ``(rho + 1) - 1``, which
+          rounds it to a multiple of the spacing of the dtype at ``1``
+          (`#6440 <https://github.com/kornia/kornia/issues/6440>`_): in
+          ``float32`` ``(1e-5, 0.)`` gives ``1.0014e-5`` and every radius below
+          about ``6e-8``, ``(1e-20, 0.)`` included, gives ``0``; in ``bfloat16``
+          every radius up to ``1e-4`` gives ``0``; in ``float64`` ``(1e-14, 0.)``
+          gives ``9.992e-15``. In ``float16`` no nonzero sum is that small, so
+          only a sum of ``0`` takes that branch; there a sum that underflows
+          makes ``rho`` inexact or ``0`` instead: ``(2e-4, 0.)`` gives
+          ``2.44e-4``
         - ``phi`` is ``atan2(y, x)`` in **radians**, so it lies in
           :math:`[-\pi, \pi]`, is ``0`` on the ``+x`` axis and grows toward
           ``+y`` (``x = 0``, ``y = 1`` gives ``phi = 1.5708``). Both endpoints
@@ -185,24 +273,23 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
           ``phi = -170`` degrees rotated by ``theta = 30`` returns
           ``phi = +160``, not ``-200``. At the origin ``phi`` carries no
           direction and the relation does not apply
-        - ``rho`` is the Euclidean radius ``sqrt(x ** 2 + y ** 2)``.
-          ``eps`` only protects the gradient near the origin and does not
-          perturb the returned radius
-
-    .. note::
-        ``eps`` defines the neighborhood around the origin where the gradient
-        is stabilized. It does not change the forward value of ``rho``.
 
     Args:
-        x: torch.Tensor of arbitrary shape.
-        y: torch.Tensor of same arbitrary shape.
-        eps: squared-radius threshold used to stabilize the gradient near the
-            origin. It does not perturb the forward value of ``rho``. The
+        x: the first coordinates, of any shape that broadcasts with ``y``.
+        y: the second coordinates.
+        eps: squared-radius threshold: at or below it the gradient of ``rho``
+            is zero, which avoids the ``0 / 0`` of the exact gradient at the
+            origin, and ``rho`` is rounded as described above
+            (`#6440 <https://github.com/kornia/kornia/issues/6440>`_). The
             default ``1e-8`` underflows in ``float16``.
 
     Returns:
-        - rho: torch.Tensor with same shape as input.
-        - phi: torch.Tensor with same shape as input.
+        - rho: the radius, in the broadcast shape of ``x`` and ``y``.
+        - phi: the angle in radians, in the same shape.
+
+    See Also:
+        - :func:`pol2cart`: the reverse conversion, polar to cartesian.
+        - :func:`angle_to_rotation_matrix`: the 2D rotation by an angle in degrees, which turns ``phi`` the other way.
 
     Example:
         >>> x = torch.rand(1, 3, 3)
@@ -222,11 +309,14 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
 
 
 def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    r"""Convert points from homogeneous to Euclidean space.
+    r"""Convert homogeneous points ``(*, N, D)`` to Euclidean ``(*, N, D - 1)``.
+
+    ``points = convert_points_from_homogeneous(points_h)`` takes points ``(*, N, D)`` whose **last** coordinate is the
+    homogeneous ``w``, divides the others by it and returns ``(*, N, D - 1)``. A point with ``abs(w) <= eps`` comes
+    back undivided rather than as ``inf``, following OpenCV. For the reverse, use :func:`convert_points_to_homogeneous`;
+    to apply a homography to Euclidean points in one call, :func:`~kornia.geometry.linalg.transform_points`.
 
     Convention:
-        - the **last** component of the last dimension is the homogeneous
-          coordinate ``w`` and is dropped from the output
         - requires rank :math:`\geq 2`: a bare ``(D,)`` point raises
           ``ValueError``
         - when ``abs(w) > eps`` the remaining components are divided by exactly
@@ -245,6 +335,11 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
 
     Returns:
         the points in Euclidean space ``(*, N, D-1)``.
+
+    See Also:
+        - :func:`convert_points_to_homogeneous`: the reverse, appending ``w = 1``.
+        - :func:`~kornia.geometry.linalg.transform_points`: apply a ``(B, D + 1, D + 1)`` matrix to Euclidean points,
+          with this division included.
 
     Examples:
         >>> input = torch.tensor([[0., 0., 1.]])
@@ -272,22 +367,24 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
 
 
 def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
-    r"""Convert points from Euclidean to homogeneous space.
+    r"""Convert Euclidean points ``(*, N, D)`` to homogeneous ``(*, N, D + 1)`` by appending a 1.
+
+    ``points_h = convert_points_to_homogeneous(points)`` appends the coordinate ``w = 1`` as the **last** component of
+    each point ``(*, N, D)``, where :func:`convert_points_from_homogeneous` expects it, and returns ``(*, N, D + 1)`` in
+    the input dtype, integer dtypes included.
 
     Convention:
-        - appends the constant ``1`` as the **last** component of the last
-          dimension, which is where
-          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`
-          expects it
         - requires rank :math:`\geq 2`: a bare ``(D,)`` point raises
           ``ValueError``
-        - the input dtype is preserved, integer dtypes included
 
     Args:
         points: the points to be transformed with shape ``(*, N, D)``.
 
     Returns:
         the points in homogeneous coordinates ``(*, N, D+1)``.
+
+    See Also:
+        - :func:`convert_points_from_homogeneous`: the reverse, dividing by ``w`` and dropping it.
 
     Examples:
         >>> input = torch.tensor([[0., 0.]])
@@ -312,11 +409,14 @@ def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
 
 
 def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
-    r"""Convert batch of affine matrices.
+    r"""Extend 2D affine matrices ``(B, 2, 3)`` to ``(B, 3, 3)`` homographies.
+
+    ``H = convert_affinematrix_to_homography(A)`` copies each ``(B, 2, 3)`` affine matrix verbatim into the top of a
+    ``(B, 3, 3)`` matrix whose last row is ``[0, 0, 1]``, so that it composes with homographies by matrix product and
+    inverts with :func:`torch.linalg.inv`; the input is not modified. For ``(B, 3, 4)`` 3D affine matrices, use
+    :func:`convert_affinematrix_to_homography3d`.
 
     Convention:
-        - appends the row ``[0, 0, 1]`` at the bottom and copies the
-          :math:`2 \times 3` block verbatim; the input tensor is not modified
         - the rank is enforced to be exactly 3, so batching is **mandatory**: an
           unbatched ``(2, 3)`` matrix raises ``ValueError``
 
@@ -325,6 +425,11 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
 
     Returns:
          the homography matrix with shape of ``(B,3,3)``.
+
+    See Also:
+        - :func:`convert_affinematrix_to_homography3d`: the 3D form, ``(B, 3, 4)`` to ``(B, 4, 4)``.
+        - :func:`~kornia.geometry.transform.invert_affine_transform`: the inverse of a ``(B, 2, 3)`` matrix, returned
+          as ``(B, 2, 3)``.
 
     Examples:
         >>> A = torch.tensor([[[1., 0., 0.],
@@ -345,19 +450,27 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
 
 
 def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
-    r"""Convert batch of 3d affine matrices.
+    r"""Extend 3D affine matrices ``(B, 3, 4)`` to ``(B, 4, 4)`` homographies.
+
+    ``H = convert_affinematrix_to_homography3d(A)`` copies each ``(B, 3, 4)`` affine matrix verbatim into the top of a
+    ``(B, 4, 4)`` matrix whose last row is ``[0, 0, 0, 1]``; the input is not modified. For a rotation and a
+    translation given separately, use :func:`Rt_to_matrix4x4`; for ``(B, 2, 3)`` 2D matrices,
+    :func:`convert_affinematrix_to_homography`.
 
     Convention:
-        - same as
-          :func:`~kornia.geometry.conversions.convert_affinematrix_to_homography`,
-          except that ``A`` is ``(B, 3, 4)`` and the appended bottom row is
-          ``[0, 0, 0, 1]``
+        - the rank is enforced to be exactly 3, as in the 2D function: an
+          unbatched ``(3, 4)`` matrix raises ``ValueError``
 
     Args:
         A: the affine matrix with shape ``(B,3,4)``.
 
     Returns:
          the homography matrix with shape of ``(B,4,4)``.
+
+    See Also:
+        - :func:`convert_affinematrix_to_homography`: the 2D form, ``(B, 2, 3)`` to ``(B, 3, 3)``.
+        - :func:`Rt_to_matrix4x4`: the same ``(B, 4, 4)`` matrix from a ``(B, 3, 3)`` rotation and a ``(B, 3, 1)``
+          translation.
 
     Examples:
         >>> A = torch.tensor([[[1., 0., 0., 0.],
@@ -380,7 +493,13 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
 
 
 def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
-    r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
+    r"""Convert axis-angle vectors ``(*, 3)`` in radians to rotation matrices ``(*, 3, 3)``.
+
+    ``R = axis_angle_to_rotation_matrix(axis_angle)`` takes rotation vectors ``(*, 3)``, each the unit axis scaled by
+    the angle in radians, and returns the rotation matrices ``(*, 3, 3)`` by Rodrigues' formula, with any number of
+    leading dimensions. The matrices act on column vectors from the left and turn by the right-hand rule. For the
+    quaternion of the same rotation, use :func:`axis_angle_to_quaternion`; for the reverse,
+    :func:`rotation_matrix_to_axis_angle`.
 
     Convention:
         - any number of leading batch dimensions is accepted: ``(3,)``
@@ -410,6 +529,12 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
 
     Returns:
         tensor of rotation matrices of shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`rotation_matrix_to_axis_angle`: the reverse conversion, matrix to axis-angle.
+        - :func:`axis_angle_to_quaternion`: the ``(w, x, y, z)`` quaternion of the same rotation.
+        - :func:`quaternion_to_rotation_matrix`: the same matrix from a quaternion.
+        - :func:`angle_to_rotation_matrix`: a 2D ``(*, 2, 2)`` rotation from an angle in degrees.
 
     Example:
         >>> input = torch.tensor([[0., 0., 0.]])
@@ -509,26 +634,36 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
 
 
 @deprecated(replace_with="axis_angle_to_rotation_matrix", version="0.7.0")
-def angle_axis_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:  # noqa: D103
+def angle_axis_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
+    """Deprecated: use :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`.
+
+    Each call emits a ``DeprecationWarning`` (deprecated since 0.7.0) and returns what the new name returns.
+    """
     return axis_angle_to_rotation_matrix(axis_angle)
 
 
 def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor, check_rotation: bool = False) -> torch.Tensor:
-    r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
+    r"""Convert rotation matrices ``(*, 3, 3)`` to axis-angle vectors ``(*, 3)`` in radians.
+
+    ``axis_angle = rotation_matrix_to_axis_angle(R)`` returns, for each rotation matrix ``(*, 3, 3)``, the Rodrigues
+    vector ``(*, 3)``: the unit axis scaled by the angle in radians, at most ``pi``, the form
+    :func:`axis_angle_to_rotation_matrix` takes back. It goes through :func:`rotation_matrix_to_quaternion` and
+    :func:`quaternion_to_axis_angle`. The input is not checked to be a rotation unless ``check_rotation=True``. For the
+    ``(w, x, y, z)`` quaternion instead, use :func:`rotation_matrix_to_quaternion`.
 
     Convention:
         - any number of leading batch dimensions is accepted: ``(3, 3)``
           gives ``(3,)`` and ``(2, 5, 3, 3)`` gives ``(2, 5, 3)``
-        - the output is the rotation axis scaled by the angle in **radians**,
-          the parametrization
+        - the output is the parametrization
           :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
           consumes, at every rank: the ``(3,)`` and ``(2, 5, 3)``
           results above can be fed straight back
-        - the round trip through
-          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
-          is accurate to roundoff, except that the low-angle Taylor branch
-          (``theta <= 1e-3``) leaves a truncation error of up to about
-          ``2e-10``
+        - ``rotation_matrix_to_axis_angle(axis_angle_to_rotation_matrix(v))``
+          returns ``v`` to roundoff for angles below ``pi``, the low-angle
+          Taylor branch (``theta <= 1e-3``) included. A longer ``v`` comes
+          back as the equivalent vector of angle at most ``pi``:
+          ``[0., 0., 4.]`` returns ``[0., 0., -2.2832]``, a turn by
+          ``2 * pi - 4`` about ``-z``
         - by default the input is **not** checked for being a rotation matrix:
           ``zeros(3, 3)`` returns ``[0., 0., 3.1416]`` and ``2 * eye(3)``
           returns ``[0., 0., 0.]``. Pass ``check_rotation=True`` to reject
@@ -550,6 +685,11 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor, check_rotation:
 
     Returns:
         Rodrigues vector transformation of shape ``(*, 3)``.
+
+    See Also:
+        - :func:`axis_angle_to_rotation_matrix`: the reverse conversion, axis-angle to matrix.
+        - :func:`rotation_matrix_to_quaternion`: the ``(w, x, y, z)`` quaternion of the same matrix.
+        - :func:`quaternion_to_axis_angle`: the same vector from a quaternion.
 
     Example:
         >>> input = torch.tensor([[1., 0., 0.],
@@ -579,21 +719,29 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor, check_rotation:
 
 
 @deprecated(replace_with="rotation_matrix_to_axis_angle", version="0.7.0")
-def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor:  # noqa: D103
+def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor:
+    """Deprecated: use :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`.
+
+    Each call emits a ``DeprecationWarning`` (deprecated since 0.7.0) and returns what the new name returns with its
+    default ``check_rotation=False``: this name takes no ``check_rotation`` argument, so its input is never checked.
+    """
     return rotation_matrix_to_axis_angle(rotation_matrix)
 
 
 def rotation_matrix_to_quaternion(
     rotation_matrix: torch.Tensor, eps: float = 1.0e-8, check_rotation: bool = False
 ) -> torch.Tensor:
-    r"""Convert 3x3 rotation matrix to 4d quaternion vector.
+    r"""Convert rotation matrices ``(*, 3, 3)`` to quaternions ``(*, 4)`` in ``(w, x, y, z)`` order.
 
-    The quaternion vector has components in (w, x, y, z) format.
+    ``q = rotation_matrix_to_quaternion(R)`` returns, for each rotation matrix ``(*, 3, 3)``, the unit quaternion
+    ``(*, 4)`` with the real part first, with any number of leading dimensions. Of the two quaternions ``q`` and ``-q``
+    of a rotation it returns either, not always the one with ``w >= 0``. The input is not checked to be a rotation
+    unless ``check_rotation=True``. For the reverse, use :func:`quaternion_to_rotation_matrix`; for the axis-angle
+    vector, :func:`rotation_matrix_to_axis_angle`.
 
     Convention:
-        - the returned components are ``(w, x, y, z)``, real part first — the
-          layout, and its silent misreading, are spelled out on
-          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+        - the ``(w, x, y, z)`` layout, and its silent misreading, are spelled
+          out on :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
         - the sign is **not** canonicalised to ``w >= 0``. For
           ``trace(R) > 0`` the returned ``w`` is non-negative, but for
           ``trace(R) <= 0`` it is the dominant of ``x, y, z`` that is forced
@@ -621,6 +769,13 @@ def rotation_matrix_to_quaternion(
 
     Return:
         the rotation in quaternion with shape ``(*, 4)``.
+
+    See Also:
+        - :func:`quaternion_to_rotation_matrix`: the reverse conversion, quaternion to matrix.
+        - :func:`rotation_matrix_to_axis_angle`: the axis-angle vector of the same matrix.
+        - :func:`axis_angle_to_quaternion`: the quaternion of an axis-angle vector instead.
+        - :meth:`~kornia.geometry.quaternion.Quaternion.from_matrix`: the same quaternion as a
+          :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     Example:
         >>> input = torch.tensor([[1., 0., 0.],
@@ -702,9 +857,12 @@ def rotation_matrix_to_quaternion(
 
 
 def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torch.Tensor:
-    r"""Normalize a quaternion.
+    r"""Scale quaternions ``(*, 4)`` to unit length, keeping their sign and component order.
 
-    The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
+    ``q_unit = normalize_quaternion(q)`` divides each quaternion ``(*, 4)`` by its L2 norm and returns ``(*, 4)``. It
+    reads no component order, so the quaternion can be in ``(x, y, z, w)`` or ``(w, x, y, z)`` format. The norm is
+    floored at ``eps``, so with a positive ``eps`` the zero quaternion returns zeros rather than ``nan``. The
+    conversions of this module that take a quaternion accept a non-unit one, so they need no call here first.
 
     Convention:
         - it is an L2 normalisation of the **last** axis and nothing else, which
@@ -730,6 +888,11 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     Return:
         the normalized quaternion of shape ``(*, 4)``.
+
+    See Also:
+        - :func:`quaternion_to_rotation_matrix`: normalizes with this function before building the matrix.
+        - :meth:`~kornia.geometry.quaternion.Quaternion.normalize`: the same normalization of a
+          :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     Example:
         >>> quaternion = torch.tensor((1., 0., 1., 0.))
@@ -780,14 +943,16 @@ def _normalize_last_dim(x: torch.Tensor, eps: float) -> torch.Tensor:
 
 
 def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
-    r"""Convert a quaternion to a rotation matrix.
+    r"""Convert ``(w, x, y, z)`` quaternions ``(*, 4)`` to rotation matrices ``(*, 3, 3)``.
 
-    The quaternion should be in (w, x, y, z) format.
+    ``R = quaternion_to_rotation_matrix(q)`` takes quaternions ``(*, 4)`` with the **real part first**, in the Hamilton
+    convention, and returns the rotation matrices ``(*, 3, 3)``, which act on column vectors from the left. The input
+    is normalized first, so it need not be unit, and ``q`` and ``-q`` give the same matrix. A quaternion in
+    ``(x, y, z, w)`` order is not detected and returns a valid-looking wrong rotation. For the reverse, use
+    :func:`rotation_matrix_to_quaternion`; from an axis-angle vector, :func:`axis_angle_to_rotation_matrix`.
 
     Convention:
-        - the quaternion is ``(w, x, y, z)``, **real part first**, shape
-          ``(*, 4)`` in and ``(*, 3, 3)`` out. ``[1., 0., 0., 0.]``
-          gives the identity and ``[0., 0., 0., 1.]`` gives
+        - ``[1., 0., 0., 0.]`` gives the identity and ``[0., 0., 0., 1.]`` gives
           ``[[-1., 0., 0.], [0., -1., 0.], [0., 0., 1.]]``, a half turn about
           ``+z`` — so a caller passing ``(x, y, z, w)`` gets a valid-looking
           rotation matrix and no error
@@ -817,6 +982,14 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     Return:
         the rotation matrix of shape ``(*, 3, 3)``.
+
+    See Also:
+        - :func:`rotation_matrix_to_quaternion`: the reverse conversion, matrix to quaternion.
+        - :func:`quaternion_to_axis_angle`: the axis-angle vector of the same quaternion.
+        - :func:`axis_angle_to_rotation_matrix`: the same matrix from an axis-angle vector.
+        - :func:`normalize_quaternion`: the normalization applied to the input first.
+        - :meth:`~kornia.geometry.quaternion.Quaternion.matrix`: the same matrix of a
+          :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     Example:
         >>> quaternion = torch.tensor((0., 0., 0., 1.))
@@ -877,17 +1050,19 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
 
 def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
-    """Convert quaternion vector to axis angle of rotation in radians.
+    """Convert ``(w, x, y, z)`` quaternions ``(*, 4)`` to axis-angle vectors ``(*, 3)`` in radians.
 
-    The quaternion should be in (w, x, y, z) format.
+    ``axis_angle = quaternion_to_axis_angle(q)`` returns, for each quaternion ``(*, 4)`` with the real part first, the
+    rotation vector ``(*, 3)``: the unit axis scaled by the angle in radians, at most ``pi``. The input need not be
+    unit, and ``q`` and ``-q`` give the same vector unless ``w = 0``. For the reverse, use
+    :func:`axis_angle_to_quaternion`; for the logarithm map, which is half this vector for ``w >= 0`` and tells ``q``
+    from ``-q``, :func:`quaternion_exp_to_log`.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Convention:
-        - the input is ``(w, x, y, z)``, real part first (see
-          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`),
-          and the output is the rotation axis scaled by the angle in
-          **radians**
+        - the ``(w, x, y, z)`` layout is spelled out on
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
         - for ``w != 0`` the double cover is collapsed: ``q`` and ``-q`` return
           the same vector, the representative with ``|theta| <= pi``
         - at exactly ``w = 0`` — a half turn, and ``0.`` is exactly
@@ -916,6 +1091,13 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     Shape:
         - Input: ``(*, 4)`` where `*` means, any number of dimensions
         - Output: ``(*, 3)``
+
+    See Also:
+        - :func:`axis_angle_to_quaternion`: the reverse conversion, axis-angle to quaternion.
+        - :func:`quaternion_to_rotation_matrix`: the rotation matrix of the same quaternion.
+        - :func:`quaternion_exp_to_log`: the logarithm map, half this vector for ``w >= 0``; it tells ``q`` from
+          ``-q``.
+        - :func:`rotation_matrix_to_axis_angle`: the same vector from a rotation matrix.
 
     Example:
         >>> quaternion = torch.tensor((1., 0., 0., 0.))
@@ -997,18 +1179,26 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
 
 
 @deprecated(replace_with="quaternion_to_axis_angle", version="0.7.0")
-def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:  # noqa: D103
+def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
+    """Deprecated: use :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`.
+
+    Each call emits a ``DeprecationWarning`` (deprecated since 0.7.0) and returns what the new name returns.
+    """
     return quaternion_to_axis_angle(quaternion)
 
 
 def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
-    r"""Apply exponential map to log quaternion.
+    r"""Map log 3-vectors ``(*, 3)`` to ``(w, x, y, z)`` quaternions ``(*, 4)``, the exponential map.
+
+    ``q = quaternion_log_to_exp(v)`` takes 3-vectors ``(*, 3)``, the logarithms of unit quaternions, and returns the
+    quaternions ``(cos(||v||), sin(||v||) v / ||v||)`` of shape ``(*, 4)``, real part first. Despite its name, the
+    argument ``quaternion`` is the 3-vector, which is **half** the axis-angle vector of the rotation; for the
+    quaternion of an axis-angle vector, use :func:`axis_angle_to_quaternion`. For the reverse, use
+    :func:`quaternion_exp_to_log`.
 
     Convention:
-        - the **input** is a 3-vector of shape ``(*, 3)``, not a
-          quaternion; the **output** is the quaternion of shape ``(*, 4)``
-          in ``(w, x, y, z)`` order (see
-          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`)
+        - the ``(w, x, y, z)`` layout is spelled out on
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
         - the map is ``w = cos(||v||)`` with vector part
           ``sin(||v||) * v / ||v||``, and every finite ``v`` returns a unit
           quaternion up to the working dtype's rounding: ``||v||`` is computed
@@ -1035,6 +1225,10 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
     Return:
         the quaternion exponential map of shape ``(*, 4)``.
+
+    See Also:
+        - :func:`quaternion_exp_to_log`: the reverse, the logarithm map.
+        - :func:`axis_angle_to_quaternion`: the same quaternion from the full axis-angle vector ``2 * v``.
 
     Example:
         >>> quaternion = torch.tensor((0., 0., 0.))
@@ -1072,33 +1266,37 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
 
 def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
-    r"""Apply the log map to a quaternion.
+    r"""Map ``(w, x, y, z)`` quaternions ``(*, 4)`` to log 3-vectors ``(*, 3)``, the logarithm map.
 
-    The quaternion should be in (w, x, y, z) format.
+    ``v = quaternion_exp_to_log(q)`` takes quaternions ``(*, 4)`` with the real part first and returns the 3-vectors
+    ``atan2(||u||, w) u / max(||u||, eps)`` of shape ``(*, 3)``, with ``u`` the vector part. While ``||u||`` is at
+    least ``eps``, the input need not be unit and :func:`quaternion_log_to_exp` maps the result back to the unit
+    quaternion of ``q``; below ``eps`` the log shrinks by ``||u|| / eps``, so ``(-1, 0, 0, 0)`` comes back as
+    ``(1, 0, 0, 0)``. For ``w >= 0`` the result is half the
+    axis-angle vector; for ``w < 0`` it is not, because this map tells ``q`` from ``-q``. For the axis-angle vector,
+    use :func:`quaternion_to_axis_angle`.
 
     Convention:
-        - the input is the quaternion of shape ``(*, 4)`` in
-          ``(w, x, y, z)`` order and the output is a 3-vector of shape
-          ``(*, 3)``, the argument
-          :func:`~kornia.geometry.conversions.quaternion_log_to_exp` takes
         - for a **unit** ``q`` on the ``w >= 0`` half of the double cover the
           result is ``quaternion_to_axis_angle(q) / 2``. On the ``w < 0`` half the two
           part company: this function keeps the sign of ``w``, with the angle
-          ``atan2(||v||, w)`` in ``[0, pi]``, while
+          ``atan2(||u||, w)`` in ``[0, pi]`` for the vector part ``u``, while
           :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`
           collapses the double cover. For the ``q`` whose log is ``v``,
           ``quaternion_exp_to_log(-q)`` is ``-(pi - ||v||) * v / ||v||``
         - ``quaternion_exp_to_log(quaternion_log_to_exp(v))`` returns ``v`` for
-          ``0 < ||v|| < pi`` and the wrapped ``||v|| - 2 * pi`` above ``pi``
-          (``pi + 0.5`` comes back as ``-2.6415926535897936``). At exactly
+          ``0 < ||v|| < pi``. A longer ``v`` comes back shifted along its own
+          direction by a multiple of ``2 * pi`` to a length of at most ``pi``:
+          ``pi + 0.5`` and ``3 * pi + 0.5`` both come back as
+          ``-2.6415926535897936``, ``2 * pi + 0.5`` as ``0.5``. At exactly
           ``||v|| = pi`` in ``float64`` it collapses to nearly ``0``: ``cos(pi)``
           rounds to ``-1`` and the vector part falls under the ``eps`` clamp.
           Both are properties of the map, not defects
         - ``float16``/``bfloat16`` are computed in ``float32``, so the identity
           returns ``[0., 0., 0.]`` at every dtype, and the gradient is finite
           at ``w = +-1``, the identity included
-        - the map is scale-invariant: a non-unit quaternion produces the same
-          log as its normalisation
+        - the map is invariant to a positive scale while ``||u||`` stays at least ``eps``: a non-unit quaternion
+          produces the same log as its normalisation, and ``-q`` another one
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -1107,6 +1305,10 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
     Return:
         the quaternion log map of shape ``(*, 3)``.
+
+    See Also:
+        - :func:`quaternion_log_to_exp`: the reverse, the exponential map.
+        - :func:`quaternion_to_axis_angle`: the axis-angle vector, twice this one for ``w >= 0``.
 
     Example:
         >>> quaternion = torch.tensor((1., 0., 0., 0.))
@@ -1148,20 +1350,24 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
 
 def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
-    r"""Convert an axis angle to a quaternion.
+    r"""Convert axis-angle vectors ``(*, 3)`` in radians to ``(w, x, y, z)`` quaternions ``(*, 4)``.
 
-    The quaternion vector has components in (w, x, y, z) format.
+    ``q = axis_angle_to_quaternion(axis_angle)`` takes rotation vectors ``(*, 3)``, each the unit axis scaled by the
+    angle ``theta`` in radians, and returns the unit quaternions ``(cos(theta / 2), sin(theta / 2) * axis)`` of shape
+    ``(*, 4)``, real part first. The sign is not canonicalised. For the reverse, use :func:`quaternion_to_axis_angle`;
+    for the rotation matrix, :func:`axis_angle_to_rotation_matrix`; from the half-angle log vector,
+    :func:`quaternion_log_to_exp`.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Convention:
-        - the input is the rotation axis scaled by the angle in **radians**,
-          shape ``(*, 3)``; the output is ``(w, x, y, z)`` with
-          ``w = cos(theta / 2)``, shape ``(*, 4)`` (see
+        - the ``(w, x, y, z)`` layout is spelled out on
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
-          for the layout)
-        - nothing is canonicalised, so ``theta > pi`` returns the ``w < 0`` half
-          of the double cover: ``[2 * pi, 0., 0.]`` gives ``[-1., 0., 0., 0.]``
+        - nothing is canonicalised, so ``pi < theta < 3 * pi`` returns the
+          ``w < 0`` half of the double cover: ``[2 * pi, 0., 0.]`` gives
+          ``[-1., 0., 0., 0.]``. The sign of ``w = cos(theta / 2)`` keeps
+          alternating beyond that interval: ``[4 * pi, 0., 0.]`` gives
+          ``[1., 0., 0., 0.]``
         - the round trip with
           :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` holds
           to roundoff for ``0 <= theta <= pi``
@@ -1185,6 +1391,14 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     Shape:
         - Input: ``(*, 3)`` where `*` means, any number of dimensions
         - Output: ``(*, 4)``
+
+    See Also:
+        - :func:`quaternion_to_axis_angle`: the reverse conversion, quaternion to axis-angle.
+        - :func:`axis_angle_to_rotation_matrix`: the rotation matrix of the same vector.
+        - :func:`rotation_matrix_to_quaternion`: the quaternion of a rotation matrix instead, its sign not canonical.
+        - :func:`quaternion_log_to_exp`: the same quaternion from half the vector, the exponential map.
+        - :meth:`~kornia.geometry.quaternion.Quaternion.from_axis_angle`: the same quaternion as a
+          :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     Example:
         >>> axis_angle = torch.tensor((0., 1., 0.))
@@ -1231,7 +1445,11 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
 
 
 @deprecated(replace_with="axis_angle_to_quaternion", version="0.7.0")
-def angle_axis_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:  # noqa: D103
+def angle_axis_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
+    """Deprecated: use :func:`~kornia.geometry.conversions.axis_angle_to_quaternion`.
+
+    Each call emits a ``DeprecationWarning`` (deprecated since 0.7.0) and returns what the new name returns.
+    """
     return axis_angle_to_quaternion(axis_angle)
 
 
@@ -1241,16 +1459,18 @@ def angle_axis_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:  # noqa:
 def euler_from_quaternion(
     w: torch.Tensor, x: torch.Tensor, y: torch.Tensor, z: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Convert a quaternion coefficients to Euler angles.
+    r"""Convert a quaternion given as four tensors w, x, y, z to roll, pitch and yaw in radians.
+
+    ``roll, pitch, yaw = euler_from_quaternion(w, x, y, z)`` takes the four quaternion components as **separate**
+    tensors, not as one ``(*, 4)`` tensor, and returns three tensors of their shape: the angles in radians about ``x``,
+    ``y`` and ``z`` of the rotation ``Rz(yaw) @ Ry(pitch) @ Rx(roll)``, with ``roll`` and ``yaw`` in
+    :math:`[-\pi, \pi]` and ``pitch`` in :math:`[-\pi/2, \pi/2]`. For a ``(*, 4)`` quaternion ``q``, pass
+    ``*q.unbind(-1)``. For the reverse, use :func:`quaternion_from_euler`.
 
     Convention:
-        - the four quaternion coefficients are passed as **separate** tensors in
-          ``(w, x, y, z)`` order, not as one ``(*, 4)`` tensor, and their
-          shapes must be exactly equal: broadcastable shapes such as ``(2,)``
-          and ``(1,)`` raise ``BaseError``
-        - the return is a tuple of three tensors ``(roll, pitch, yaw)`` in
-          **radians**, with ``roll`` about ``x``, ``pitch`` about ``y`` and
-          ``yaw`` about ``z``; the composition they stand for is documented on
+        - the four shapes must be exactly equal: broadcastable shapes such as
+          ``(2,)`` and ``(1,)`` raise ``BaseError``
+        - the composition the triple stands for is documented on
           :func:`~kornia.geometry.conversions.quaternion_from_euler`
         - away from ``|pitch| = pi/2`` it returns the triple of the input
           rotation folded into ``roll, yaw`` in ``[-pi, pi]`` — the interval is
@@ -1292,7 +1512,12 @@ def euler_from_quaternion(
         z: quaternion :math:`q_z` coefficient.
 
     Return:
-        A tuple with euler angles`roll`, `pitch`, `yaw`.
+        A tuple with the euler angles ``roll``, ``pitch``, ``yaw`` in radians.
+
+    See Also:
+        - :func:`quaternion_from_euler`: the reverse conversion, Euler angles to quaternion components.
+        - :meth:`~kornia.geometry.quaternion.Quaternion.to_euler`: the same angles of a
+          :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
     KORNIA_CHECK(w.shape == x.shape)
@@ -1370,7 +1595,12 @@ def euler_from_quaternion(
 def quaternion_from_euler(
     roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Convert Euler angles to quaternion coefficients.
+    """Convert roll, pitch and yaw in radians to a quaternion returned as four tensors w, x, y, z.
+
+    ``w, x, y, z = quaternion_from_euler(roll, pitch, yaw)`` takes the angles in radians about ``x``, ``y`` and ``z``
+    as tensors of one shape and returns, as four tensors of that shape, the components of the unit quaternion of the
+    rotation ``Rz(yaw) @ Ry(pitch) @ Rx(roll)``, real part first. For one ``(*, 4)`` tensor, stack them with
+    ``torch.stack((w, x, y, z), -1)``. For the reverse, use :func:`euler_from_quaternion`.
 
     Convention:
         - ``roll``, ``pitch`` and ``yaw`` are in **radians** and turn about
@@ -1392,7 +1622,12 @@ def quaternion_from_euler(
         yaw: the yaw euler angle.
 
     Return:
-        A tuple with quaternion coefficients in order of `wxyz`.
+        A tuple with quaternion coefficients in order of ``wxyz``.
+
+    See Also:
+        - :func:`euler_from_quaternion`: the reverse conversion, quaternion components to Euler angles.
+        - :meth:`~kornia.geometry.quaternion.Quaternion.from_euler`: the same quaternion as a
+          :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     """
     KORNIA_CHECK(roll.shape == pitch.shape)
@@ -1424,7 +1659,18 @@ def quaternion_from_euler(
 def normalize_pixel_coordinates(
     pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Map pixel coordinates so that the first and last pixel of each axis become -1 and 1.
+    r"""Map 2D ``(x, y)`` pixel coordinates to ``[-1, 1]``, corner-aligned.
+
+    ``coords_norm = normalize_pixel_coordinates(coords, height, width)`` takes pixel coordinates ``(*, 2)`` in
+    ``(x, y)`` order and the image size in ``(height, width)`` order, and returns them as normalized
+    :math:`[-1, 1]` coordinates, corner-aligned: the centres of the first and last pixel of each axis map to ``-1``
+    and ``1``. This is the ``align_corners=True`` convention, and there is no other choice here: for the half-pixel
+    convention of ``align_corners=False``, apply
+    ``normal_transform_pixel(height, width, device=..., dtype=..., align_corners=False)``, on the device and in the
+    floating dtype of the coordinates (cast integer ones first), with
+    :func:`~kornia.geometry.linalg.transform_points`, which needs a point axis, ``(*, N, 2)`` (write a single ``(2,)``
+    coordinate as ``coords[None]``). For the reverse, use
+    :func:`denormalize_pixel_coordinates`; for ``(*, 3)`` voxel coordinates, :func:`normalize_pixel_coordinates3d`.
 
     Convention:
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
@@ -1434,17 +1680,16 @@ def normalize_pixel_coordinates(
           indexes columns and is scaled by ``width``, ``y`` indexes rows and is
           scaled by ``height``. The positional argument order is the other way
           round — ``(pixel_coordinates, height, width)``
-        - the mapping is **corner-aligned**,
-          ``x_norm = 2 * x / (width - 1) - 1``: for ``width = 4`` the columns
-          ``0``, ``1``, ``3`` map to ``-1``, ``-1/3``, ``+1``. This is the
-          ``align_corners=True`` convention;
-          :func:`torch.nn.functional.grid_sample` at its default
-          ``align_corners=False`` would instead place the first and last of
-          those values at pixels ``-0.5`` and ``3.5`` — half a pixel outside
-          the image on each side — so ``align_corners=True`` must be passed
-          explicitly when feeding this output to it. Note that kornia's own
-          :func:`~kornia.geometry.transform.remap` resolves
-          ``align_corners=None`` to ``False``
+        - the mapping is ``x_norm = 2 * x / (width - 1) - 1``: for
+          ``width = 4`` the columns ``0``, ``1``, ``3`` map to ``-1``,
+          ``-1/3``, ``+1``. :func:`torch.nn.functional.grid_sample` at its
+          default ``align_corners=False`` would instead place the first and
+          last of those values at pixels ``-0.5`` and ``3.5`` — half a pixel
+          outside the image on each side — so ``align_corners=True`` must be
+          passed explicitly when feeding this output to it. kornia's own
+          :func:`~kornia.geometry.transform.remap` normalizes pixel maps with
+          this function but resolves ``align_corners=None`` to ``False``
+          (`#4504 <https://github.com/kornia/kornia/issues/4504>`_)
         - a singleton axis uses scale ``1`` and offset ``0``: its only valid
           pixel coordinate maps to the normalized centre, and the unit-scale
           extension keeps this function exactly invertible outside that lone
@@ -1464,12 +1709,19 @@ def normalize_pixel_coordinates(
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be ``(*, 2)``.
-        height: the maximum height in the y-axis.
-        width: the maximum width in the x-axis.
+        height: the image height, the number of rows, which scales ``y``.
+        width: the image width, the number of columns, which scales ``x``.
         eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the normalized pixel coordinates with shape ``(*, 2)``.
+
+    See Also:
+        - :func:`denormalize_pixel_coordinates`: the reverse map, :math:`[-1, 1]` back to pixels.
+        - :func:`normalize_pixel_coordinates3d`: the 3D form, for ``(*, 3)`` coordinates in ``(d, x, y)`` order.
+        - :func:`normal_transform_pixel`: the same map as a ``(1, 3, 3)`` matrix, with an ``align_corners`` choice.
+        - :func:`~kornia.geometry.grid.create_meshgrid`: the whole ``(1, H, W, 2)`` pixel grid, normalized the same
+          way by default.
 
     Examples:
         >>> coords = torch.tensor([[50., 100.]])
@@ -1523,31 +1775,34 @@ def normalize_pixel_coordinates(
 def denormalize_pixel_coordinates(
     pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Denormalize pixel coordinates.
+    r"""Map 2D ``(x, y)`` coordinates from ``[-1, 1]`` back to pixels, corner-aligned.
 
-    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
+    ``coords = denormalize_pixel_coordinates(coords_norm, height, width)`` is the inverse of
+    :func:`normalize_pixel_coordinates`: it takes corner-aligned coordinates ``(*, 2)`` in ``(x, y)`` order, with
+    ``-1`` and ``1`` at the centres of the first and last pixel of each axis, and the image size in
+    ``(height, width)`` order, and returns the pixel coordinates ``(*, 2)``, ``x = (width - 1) * (x_norm + 1) / 2``,
+    so that ``1`` maps to ``x = width - 1``. For ``(*, 3)`` voxel coordinates, use
+    :func:`denormalize_pixel_coordinates3d`.
 
     Convention:
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
         normalized-coordinate and ``align_corners`` conventions.
-
-        - the inverse of
-          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`,
-          ``x = (width - 1) * (x_norm + 1) / 2``, with the same ``(x, y)``
-          component order and the same ``(pixel_coordinates, height, width)``
-          positional order
 
         - singleton axes, non-positive-size validation, tracing assumptions, and
           the deprecated ``eps`` parameter follow the normalization function
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be ``(*, 2)``.
-        height: the maximum height in the y-axis.
-        width: the maximum width in the x-axis.
+        height: the image height, the number of rows, which scales ``y``.
+        width: the image width, the number of columns, which scales ``x``.
         eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the denormalized pixel coordinates with shape ``(*, 2)``.
+
+    See Also:
+        - :func:`normalize_pixel_coordinates`: the forward map, pixels to :math:`[-1, 1]`.
+        - :func:`denormalize_pixel_coordinates3d`: the 3D form, for ``(*, 3)`` coordinates in ``(d, x, y)`` order.
 
     Examples:
         >>> coords = torch.tensor([[-1., -1.]])
@@ -1602,31 +1857,41 @@ def denormalize_pixel_coordinates(
 def normalize_pixel_coordinates3d(
     pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Map 3d pixel coordinates so that the first and last sample of each axis become -1 and 1.
+    r"""Map 3D ``(d, x, y)`` voxel coordinates to ``[-1, 1]``, corner-aligned.
+
+    ``coords_norm = normalize_pixel_coordinates3d(coords, depth, height, width)`` takes voxel coordinates ``(*, 3)`` in
+    ``(d, x, y)`` order, the order of :func:`~kornia.geometry.grid.create_meshgrid3d`, and returns them as
+    normalized :math:`[-1, 1]` coordinates, corner-aligned and unclamped in each axis as
+    :func:`normalize_pixel_coordinates` is.
+    :func:`normal_transform_pixel3d` reads ``(x, y, z)`` instead, so a grid built for one permutes the axes when fed
+    to the other. For the reverse, use :func:`denormalize_pixel_coordinates3d`.
 
     Convention:
         - ``pixel_coordinates`` is ``(*, 3)`` in ``(d, x, y)`` order —
-          **depth first, then x, then y**, *not* ``(x, y, z)``. This is the
-          order :func:`~kornia.geometry.grid.create_meshgrid3d` produces. The
+          **depth first, then x, then y**, *not* ``(x, y, z)``. The
           three components are scaled by ``depth - 1``, ``width - 1`` and
           ``height - 1`` respectively, so with ``depth=3, height=5, width=9``
           the coordinate ``[2., 8., 4.]`` maps to ``[1., 1., 1.]``
         - the positional argument order is
           ``(pixel_coordinates, depth, height, width)``
-        - corner-aligned and unclamped in each axis exactly as in
-          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`
         - singleton axes, non-positive-size validation, tracing assumptions, and
-          the deprecated ``eps`` parameter likewise follow that function
+          the deprecated ``eps`` parameter follow
+          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be ``(*, 3)``.
-        depth: the maximum depth in the z-axis.
-        height: the maximum height in the y-axis.
-        width: the maximum width in the x-axis.
+        depth: the volume depth, which scales ``d``.
+        height: the volume height, which scales ``y``.
+        width: the volume width, which scales ``x``.
         eps: deprecated compatibility parameter. It is ignored.
 
     Return:
-        the normalized pixel coordinates.
+        the normalized pixel coordinates, ``(*, 3)`` in ``(d, x, y)`` order.
+
+    See Also:
+        - :func:`denormalize_pixel_coordinates3d`: the reverse map, :math:`[-1, 1]` back to voxels.
+        - :func:`normalize_pixel_coordinates`: the 2D form, for ``(*, 2)`` coordinates in ``(x, y)`` order.
+        - :func:`normal_transform_pixel3d`: the same scaling as a ``(1, 4, 4)`` matrix on ``(x, y, z, 1)``.
 
     """
     if pixel_coordinates.shape[-1] != 3:
@@ -1689,28 +1954,34 @@ def normalize_pixel_coordinates3d(
 def denormalize_pixel_coordinates3d(
     pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Denormalize 3d pixel coordinates.
+    r"""Map 3D ``(d, x, y)`` coordinates from ``[-1, 1]`` back to voxels, corner-aligned.
+
+    ``coords = denormalize_pixel_coordinates3d(coords_norm, depth, height, width)`` is the inverse of
+    :func:`normalize_pixel_coordinates3d`: it takes corner-aligned coordinates ``(*, 3)`` in ``(d, x, y)`` order and
+    returns the voxel coordinates ``(*, 3)`` in the same order. For ``(*, 2)`` pixel coordinates, use
+    :func:`denormalize_pixel_coordinates`.
 
     Convention:
-        - the inverse of
-          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`,
-          with the same ``(d, x, y)`` component order and the same
-          ``(pixel_coordinates, depth, height, width)`` positional order: with
-          ``depth=3, height=5, width=9`` the input ``[0., 0., 0.]`` maps back to
-          ``[1., 4., 2.]``
-
+        - the ``(d, x, y)`` component order and the
+          ``(pixel_coordinates, depth, height, width)`` positional order are
+          those of the normalization: with ``depth=3, height=5, width=9`` the
+          input ``[0., 0., 0.]`` maps back to ``[1., 4., 2.]``
         - singleton axes, non-positive-size validation, tracing assumptions, and
           the deprecated ``eps`` parameter follow the 2-D counterpart
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be ``(*, 3)``.
-        depth: the maximum depth in the z-axis.
-        height: the maximum height in the y-axis.
-        width: the maximum width in the x-axis.
+        depth: the volume depth, which scales ``d``.
+        height: the volume height, which scales ``y``.
+        width: the volume width, which scales ``x``.
         eps: deprecated compatibility parameter. It is ignored.
 
     Return:
-        the denormalized pixel coordinates.
+        the denormalized pixel coordinates, ``(*, 3)`` in ``(d, x, y)`` order.
+
+    See Also:
+        - :func:`normalize_pixel_coordinates3d`: the forward map, voxels to :math:`[-1, 1]`.
+        - :func:`denormalize_pixel_coordinates`: the 2D form, for ``(*, 2)`` coordinates in ``(x, y)`` order.
 
     """
     if pixel_coordinates.shape[-1] != 3:
@@ -1768,12 +2039,16 @@ def denormalize_pixel_coordinates3d(
 
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
-    r"""Create a rotation matrix out of angles in degrees.
+    r"""Build 2D rotation matrices ``(*, 2, 2)`` from angles in degrees, counter-clockwise as displayed.
+
+    ``R = angle_to_rotation_matrix(angle)`` takes angles of any shape ``(*)`` in **degrees** and returns the matrices
+    ``[[cos, sin], [-sin, cos]]`` of shape ``(*, 2, 2)``. Applied to ``(x, y)`` column vectors in image coordinates,
+    with ``y`` down, a positive angle turns counter-clockwise as displayed, which is clockwise in a ``y``-up plot. For
+    a ``(B, 2, 3)`` matrix that also scales and turns about a centre, use
+    :func:`~kornia.geometry.transform.get_rotation_matrix2d`; for an angle in radians, pass ``rad2deg(angle)``.
 
     Convention:
-        - ``angle`` is in **degrees**, shape ``(*)`` in and
-          ``(*, 2, 2)`` out
-        - the matrix is ``[[cos, sin], [-sin, cos]]`` with ``det = +1``; for
+        - the matrix has ``det = +1``; for
           ``angle = 30`` it is ``[[0.8660, 0.5000], [-0.5000, 0.8660]]``
         - applied on the left to a column vector ``(x, y)``, ``angle = 30`` maps
           ``(1., 0.)`` to ``(0.8660, -0.5000)`` — counter-clockwise **as
@@ -1787,6 +2062,12 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
     Returns:
         tensor of rotation matrices with shape ``(*, 2, 2)``.
+
+    See Also:
+        - :func:`~kornia.geometry.transform.get_rotation_matrix2d`: the ``(B, 2, 3)`` matrix that also scales and
+          turns about a centre, in the same sense.
+        - :func:`axis_angle_to_rotation_matrix`: a 3D ``(*, 3, 3)`` rotation from an axis-angle vector in radians.
+        - :func:`cart2pol`: the polar angle of a point, which this rotation decreases.
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
@@ -1805,15 +2086,22 @@ def normalize_homography(
     dsize_dst: tuple[int, int],
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Express a 2D source→destination pixel homography (B, 3, 3) in [-1, 1] coordinates, corner-aligned by default.
+    r"""Express a source→destination pixel homography ``(B, 3, 3)`` in ``[-1, 1]`` coordinates.
+
+    ``H_norm = normalize_homography(H, dsize_src, dsize_dst)`` takes homographies ``(B, 3, 3)``, or one ``(3, 3)``,
+    that map **source pixels to destination pixels**, and the ``(height, width)`` of both images, and returns
+    ``N_dst @ H @ inv(N_src)`` ``(B, 3, 3)``: the same maps between normalized :math:`[-1, 1]` coordinates, with ``N``
+    from :func:`normal_transform_pixel`. Pass the ``align_corners`` of the sampling that will use the result: for a
+    ``(B, 3, 3)`` ``H`` and ``H_norm = normalize_homography(H, img.shape[-2:], dsize, align_corners=a)``,
+    ``homography_warp(img, torch.linalg.inv(H_norm), dsize, align_corners=a)`` samples what
+    ``warp_perspective(img, H, dsize, align_corners=a)`` samples, since
+    :func:`~kornia.geometry.transform.warp_perspective` normalizes a pixel homography itself. For the reverse, use
+    :func:`denormalize_homography`; for ``(B, 4, 4)`` voxel homographies, :func:`normalize_homography3d`.
 
     Convention:
-        - the input maps **source pixels to destination pixels** and the output
-          maps **normalized source to normalized destination**: exactly
-          ``N_dst @ H @ inv(N_src)`` with ``N`` from
-          :func:`~kornia.geometry.conversions.normal_transform_pixel`, so
-          ``dsize_src`` drives the right factor and ``dsize_dst`` the left one.
-          A ``+2`` pixel shift in ``x`` on a 5-wide image comes back as ``+1.0``.
+        - ``dsize_src`` drives the right factor and ``dsize_dst`` the left one:
+          a ``+2`` pixel shift in ``x`` on a 5-wide image comes back as ``+1.0``
+          (``+0.8`` with ``align_corners=False``).
           :func:`~kornia.geometry.conversions.denormalize_homography` computes
           the reverse ``inv(N_dst) @ H @ N_src``
         - both ``dsize`` arguments are ``(height, width)``, while the matrix acts
@@ -1867,6 +2155,15 @@ def normalize_homography(
     Returns:
         the normalized homography of shape ``(B, 3, 3)``.
 
+    See Also:
+        - :func:`denormalize_homography`: the reverse, a normalized homography back to pixels.
+        - :func:`normalize_homography3d`: the 3D form for ``(B, 4, 4)`` voxel homographies, always corner-aligned.
+        - :func:`normal_transform_pixel`: the ``(1, 3, 3)`` normalization matrix ``N`` composed here.
+        - :func:`~kornia.geometry.transform.warp_perspective`: warps by the pixel homography, normalizing it with
+          this function.
+        - :func:`~kornia.geometry.transform.homography_warp`: warps by the inverse of the result, a
+          destination→source normalized homography.
+
     """
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
@@ -1916,14 +2213,19 @@ def normal_transform_pixel(
     dtype: Optional[torch.dtype] = None,
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Compute the (1, 3, 3) matrix that maps 2D pixel coordinates (x, y) to [-1, 1], corner-aligned by default.
+    r"""Compute the ``(1, 3, 3)`` matrix that maps 2D pixel coordinates ``(x, y)`` to ``[-1, 1]``.
+
+    ``N = normal_transform_pixel(height, width)`` returns a **single** matrix ``(1, 3, 3)``, never batched, that maps
+    the homogeneous pixel coordinates ``(x, y, 1)`` of a ``height`` by ``width`` image to :math:`[-1, 1]`: the
+    corner-aligned map of :func:`normalize_pixel_coordinates` by default, the half-pixel map with
+    ``align_corners=False``. It is the ``N`` that :func:`normalize_homography` and :func:`denormalize_homography`
+    compose with a homography. To normalize points directly, use :func:`normalize_pixel_coordinates`; for
+    ``(1, 4, 4)`` volume matrices, :func:`normal_transform_pixel3d`.
 
     Convention:
-        - the result is a **single** matrix of shape ``(1, 3, 3)`` — never
-          batched — acting on homogeneous ``(x, y, 1)`` column vectors, with
-          ``x`` indexing columns and scaled by ``width`` and ``y`` indexing rows
-          and scaled by ``height``. The positional argument order is the other
-          way round, ``(height, width)``
+        - ``x`` indexes columns and is scaled by ``width``, ``y`` indexes rows
+          and is scaled by ``height``. The positional argument order is the
+          other way round, ``(height, width)``
         - the mapping is **corner-aligned by default**: scale ``2 / (size - 1)``,
           offset ``-1``, so the pixel *centres* ``0`` and ``size - 1`` map to
           exactly ``-1`` and ``+1``. ``align_corners=False`` selects the
@@ -1980,6 +2282,11 @@ def normal_transform_pixel(
 
     Returns:
         normalized transform with shape ``(1, 3, 3)``.
+
+    See Also:
+        - :func:`normal_transform_pixel3d`: the 3D ``(1, 4, 4)`` matrix, always corner-aligned.
+        - :func:`normalize_pixel_coordinates`: the same corner-aligned map applied to ``(*, 2)`` points.
+        - :func:`normalize_homography`: conjugates a pixel homography with this matrix.
 
     Example:
         >>> normal_transform_pixel(4, 5)
@@ -2105,16 +2412,21 @@ def normal_transform_pixel3d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Compute the (1, 4, 4) matrix that maps 3D voxel coordinates (x, y, z) to [-1, 1], always corner-aligned.
+    r"""Compute the ``(1, 4, 4)`` matrix that maps 3D voxel coordinates ``(x, y, z)`` to ``[-1, 1]``.
+
+    ``N = normal_transform_pixel3d(depth, height, width)`` returns a single matrix ``(1, 4, 4)`` that maps the
+    homogeneous voxel coordinates ``(x, y, z, 1)`` of a ``depth`` by ``height`` by ``width`` volume to
+    :math:`[-1, 1]`, corner-aligned, as :func:`normalize_homography3d` composes it. It has no ``align_corners``
+    parameter, so a homography normalized with it suits only ``align_corners=True`` sampling, a restriction the 3D
+    warps that use it inherit (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Its ``(x, y, z)`` order
+    differs from the ``(d, x, y)`` of :func:`normalize_pixel_coordinates3d`.
 
     Convention:
         - the 3-D counterpart of
           :func:`~kornia.geometry.conversions.normal_transform_pixel`: same
           corner-aligned ``2 / (size - 1)`` scaling with offset ``-1``, same
           ``dtype=None`` / ``torch.get_default_dtype()`` rule, and likewise
-          **never batched**. Unlike the 2-D function it has no ``align_corners``
-          parameter, so it applies that scaling unconditionally.
-          Singleton axes use the same invertible centre mapping, and zero or
+          **never batched**. Singleton axes use the same invertible centre mapping, and zero or
           negative sizes raise ``ValueError``. Only the lines below differ
         - the result has shape ``(1, 4, 4)`` and acts on homogeneous
           ``(x, y, z, 1)`` column vectors with ``x`` scaled by ``width``, ``y``
@@ -2150,6 +2462,13 @@ def normal_transform_pixel3d(
 
     Returns:
         normalized transform with shape ``(1, 4, 4)``.
+
+    See Also:
+        - :func:`normal_transform_pixel`: the 2D ``(1, 3, 3)`` matrix, which also has the ``align_corners=False``
+          map.
+        - :func:`normalize_homography3d`: conjugates a voxel homography with this matrix.
+        - :func:`normalize_pixel_coordinates3d`: the same scaling applied to ``(*, 3)`` points in ``(d, x, y)``
+          order.
 
     Example:
         >>> normal_transform_pixel3d(2, 4, 5)
@@ -2258,15 +2577,18 @@ def denormalize_homography(
     dsize_dst: tuple[int, int],
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
+    r"""Express a ``[-1, 1]`` homography ``(B, 3, 3)`` as a source→destination pixel homography.
+
+    ``H = denormalize_homography(H_norm, dsize_src, dsize_dst)`` is the inverse of :func:`normalize_homography`: it
+    takes homographies ``(B, 3, 3)``, or one ``(3, 3)``, from normalized :math:`[-1, 1]` source coordinates to
+    normalized destination coordinates, and the ``(height, width)`` of both images, and returns the source→destination
+    pixel homographies ``inv(N_dst) @ H_norm @ N_src`` ``(B, 3, 3)``. Pass the ``align_corners`` that produced
+    ``H_norm``. For ``(B, 4, 4)`` voxel homographies, use :func:`denormalize_homography3d`.
 
     Convention:
         - the mirror of
-          :func:`~kornia.geometry.conversions.normalize_homography`: the
-          composition is ``inv(N_dst) @ H @ N_src``, so the input maps
-          normalized source to normalized destination and the output maps
-          source pixels to destination pixels. The ``dsize`` roles, the
-          ``(x, y, 1)`` column vectors, per-sample batching, the
+          :func:`~kornia.geometry.conversions.normalize_homography`. The ``dsize``
+          roles, the ``(x, y, 1)`` column vectors, per-sample batching, the
           ``align_corners``-selected frames and the shape guard are as
           documented there, including its integer-input warning
         - ``inv(N_dst)`` goes through ``torch.linalg.inv`` in eager mode (so
@@ -2287,6 +2609,11 @@ def denormalize_homography(
 
     Returns:
         the denormalized homography of shape ``(B, 3, 3)``.
+
+    See Also:
+        - :func:`normalize_homography`: the forward conversion, pixels to normalized coordinates.
+        - :func:`denormalize_homography3d`: the 3D form for ``(B, 4, 4)`` homographies, always corner-aligned.
+        - :func:`normal_transform_pixel`: the ``(1, 3, 3)`` normalization matrix ``N`` composed here.
 
     """
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
@@ -2334,7 +2661,14 @@ def denormalize_homography(
 def normalize_homography3d(
     dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
 ) -> torch.Tensor:
-    r"""Express a 3D source→destination voxel homography (B, 4, 4) in [-1, 1] coordinates, always corner-aligned.
+    r"""Express a source→destination voxel homography ``(B, 4, 4)`` in ``[-1, 1]`` coordinates.
+
+    ``H_norm = normalize_homography3d(H, dsize_src, dsize_dst)`` takes homographies ``(B, 4, 4)``, or one ``(4, 4)``,
+    that map **source voxels to destination voxels**, and the ``(depth, height, width)`` of both volumes, and returns
+    ``N_dst @ H @ inv(N_src)`` ``(B, 4, 4)`` with ``N`` from :func:`normal_transform_pixel3d`. It has no
+    ``align_corners`` parameter: the result suits only ``align_corners=True`` sampling
+    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For the reverse, use :func:`denormalize_homography3d`;
+    for ``(B, 3, 3)`` pixel homographies, :func:`normalize_homography`.
 
     Convention:
         - the 3-D counterpart of
@@ -2343,8 +2677,7 @@ def normalize_homography3d(
           direction re-expressed in normalized frames, same ``dsize_src`` on the
           right and ``dsize_dst`` on the left, and corner-aligned frames — with
           :func:`~kornia.geometry.conversions.normal_transform_pixel3d` in place
-          of the 2-D helper. Unlike the 2-D function it has no ``align_corners``
-          parameter, so its frames are corner-aligned unconditionally. It is
+          of the 2-D helper. It is
           **not** the 2-D function with wider matrices, though: the shapes and
           — least visibly — the inversion routine differ, as the bullets below
           record
@@ -2373,6 +2706,11 @@ def normalize_homography3d(
 
     Shape:
         Output: ``(B, 4, 4)``
+
+    See Also:
+        - :func:`denormalize_homography3d`: the reverse, a normalized voxel homography back to voxels.
+        - :func:`normalize_homography`: the 2D form for ``(B, 3, 3)`` pixel homographies, with ``align_corners``.
+        - :func:`normal_transform_pixel3d`: the ``(1, 4, 4)`` normalization matrix ``N`` composed here.
 
     """
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
@@ -2410,14 +2748,18 @@ def normalize_homography3d(
 def denormalize_homography3d(
     dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
 ) -> torch.Tensor:
-    r"""De-normalize a given 3D homography from [-1, 1] to actual depth, height and width.
+    r"""Express a ``[-1, 1]`` homography ``(B, 4, 4)`` as a source→destination voxel homography.
+
+    ``H = denormalize_homography3d(H_norm, dsize_src, dsize_dst)`` is the inverse of :func:`normalize_homography3d`: it
+    takes real floating homographies ``(B, 4, 4)``, or one ``(4, 4)``, from normalized :math:`[-1, 1]` source
+    coordinates to normalized destination coordinates, and the ``(depth, height, width)`` of both volumes, and returns
+    the source→destination voxel homographies ``inv(N_dst) @ H_norm @ N_src`` ``(B, 4, 4)``, always corner-aligned
+    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For ``(B, 3, 3)`` pixel homographies, use
+    :func:`denormalize_homography`.
 
     Convention:
         - the mirror of
-          :func:`~kornia.geometry.conversions.normalize_homography3d`: the
-          composition is ``inv(N_dst) @ H @ N_src``, so the input maps
-          normalized source to normalized destination and the output maps
-          source voxels to destination voxels. The ``(depth, height, width)``
+          :func:`~kornia.geometry.conversions.normalize_homography3d`. The ``(depth, height, width)``
           ``dsize`` roles, the ``(x, y, z, 1)`` column vectors, per-sample
           batching, the corner-aligned frames and the shape guard are as
           documented there
@@ -2449,6 +2791,11 @@ def denormalize_homography3d(
 
     Shape:
         Output: ``(B, 4, 4)``
+
+    See Also:
+        - :func:`normalize_homography3d`: the forward conversion, voxels to normalized coordinates.
+        - :func:`denormalize_homography`: the 2D form for ``(B, 3, 3)`` homographies, with ``align_corners``.
+        - :func:`normal_transform_pixel3d`: the ``(1, 4, 4)`` normalization matrix ``N`` composed here.
 
     """
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
@@ -2491,7 +2838,16 @@ def denormalize_homography3d(
 
 
 def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
-    """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
+    """Convert pixel coordinates (u, v) to normalized camera coordinates (x, y) with the intrinsics K.
+
+    ``xy = normalize_points_with_intrinsics(uv, K)`` takes pixel points ``(*, 2)`` and pinhole intrinsics
+    ``(*, 3, 3)`` and returns the normalized camera coordinates ``((u - cx) / fx, (v - cy) / fy)``, ``(*, 2)``: the
+    point where the ray of each pixel meets the ``z = 1`` plane, the form an essential matrix relates. A
+    ``(B, 3, 3)`` ``K`` pairs camera ``b`` with ``uv[b]`` for ``(B, 2)`` and ``(B, N, 2)`` points; for
+    ``(B, H, W, 2)`` points pass ``K[:, None, None]``, since the cameras otherwise line up with the ``H`` axis
+    (`#6409 <https://github.com/kornia/kornia/issues/6409>`_). For the reverse, use
+    :func:`denormalize_points_with_intrinsics`; for 3D points at a depth,
+    :func:`~kornia.geometry.camera.perspective.unproject_points`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera intrinsics and
@@ -2500,10 +2856,8 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
         - ``point_2d`` is ``(*, 2)`` in pixel ``(u, v)`` order and
           ``camera_matrix`` is a row-major pinhole ``(*, 3, 3)`` with
           ``fx = K[0, 0]``, ``fy = K[1, 1]``, ``cx = K[0, 2]``, ``cy = K[1, 2]``
-        - the output is the calibrated camera coordinate
-          ``x = (u - cx) / fx``, ``y = (v - cy) / fy``: with
-          ``K = [[100., 0., 320.], [0., 200., 240.], [0., 0., 1.]]`` the pixel
-          ``(420., 440.)`` maps to ``(1., 1.)``
+        - with ``K = [[100., 0., 320.], [0., 200., 240.], [0., 0., 1.]]`` the
+          pixel ``(420., 440.)`` maps to ``(1., 1.)``
         - the skew entry ``K[0, 1]`` is **ignored**; only the two diagonal
           entries and the ``[:2, 2]`` column are read. This is a design choice:
           kornia's functional pinhole model is zero-skew, like OpenCV's, and
@@ -2516,7 +2870,14 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
         camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be ``(*, 3, 3)``.
 
     Returns:
-        tensor of normalized camera coordinates :math:`(x, y)` with shape ``(*, 2)``.
+        tensor of normalized camera coordinates :math:`(x, y)` with shape ``(*, 2)``, the leading dimensions
+        broadcast from both inputs.
+
+    See Also:
+        - :func:`denormalize_points_with_intrinsics`: the reverse, normalized camera coordinates back to pixels.
+        - :func:`~kornia.geometry.camera.perspective.unproject_points`: the 3D camera-frame points of pixels at a
+          given depth.
+        - :func:`normalize_pixel_coordinates`: a different normalization, to :math:`[-1, 1]` by the image size.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -2541,17 +2902,22 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
 
 
 def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
-    """Denormalize points with intrinsics. Useful for converting normalized camera points back to pixels.
+    """Convert normalized camera coordinates (x, y) to pixel coordinates (u, v) with the intrinsics K.
+
+    ``uv = denormalize_points_with_intrinsics(xy, K)`` is the inverse of :func:`normalize_points_with_intrinsics`: it
+    takes normalized camera coordinates ``(*, 2)``, points on the ``z = 1`` plane, and pinhole intrinsics
+    ``(*, 3, 3)``, and returns the pixels ``(x * fx + cx, y * fy + cy)``, ``(*, 2)``. ``K`` broadcasts against the
+    points as in that function: for ``(B, H, W, 2)`` points pass ``K[:, None, None]``
+    (`#6409 <https://github.com/kornia/kornia/issues/6409>`_). To project 3D camera-frame points instead, use
+    :func:`~kornia.geometry.camera.perspective.project_points`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera intrinsics and
         pixel-centre conventions used by these coordinates.
 
-        - the inverse of
+        - the ``K`` layout is documented on
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`,
-          which documents the ``K`` layout: ``u = x * fx + cx`` and
-          ``v = y * fy + cy``, and the skew entry ``K[0, 1]`` is ignored here
-          too
+          and the skew entry ``K[0, 1]`` is ignored here too
 
     Args:
         point_2d_norm: tensor containing the 2d points in normalized camera coordinates. The shape of the tensor can
@@ -2559,7 +2925,12 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
         camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be ``(*, 3, 3)``.
 
     Returns:
-        tensor of :math:`(u, v)` pixel coordinates with shape ``(*, 2)``.
+        tensor of :math:`(u, v)` pixel coordinates with shape ``(*, 2)``, the leading dimensions broadcast from both
+        inputs.
+
+    See Also:
+        - :func:`normalize_points_with_intrinsics`: the forward conversion, pixels to normalized camera coordinates.
+        - :func:`~kornia.geometry.camera.perspective.project_points`: the pixels of 3D camera-frame points.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -2583,7 +2954,14 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
 
 
 def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-    r"""Combine 3x3 rotation matrix R and 3x1 translation vector t into 4x4 extrinsics.
+    r"""Pack rotations ``(B, 3, 3)`` and translations ``(B, 3, 1)`` into ``(B, 4, 4)`` pose matrices.
+
+    ``M = Rt_to_matrix4x4(R, t)`` places each rotation ``(B, 3, 3)`` in the top-left block and its translation
+    ``(B, 3, 1)`` in the last column of a ``(B, 4, 4)`` matrix with the bottom row ``[0, 0, 0, 1]``, so that ``M``
+    maps ``x`` to ``R @ x + t``. It checks neither that ``R`` is a rotation nor which way the pose goes:
+    camera-to-world and world-to-camera poses pack the same way. For the reverse, use :func:`matrix4x4_to_Rt`; for the
+    ``(*, 3, 4)`` matrix ``[R | t]`` without the bottom row,
+    :func:`~kornia.geometry.transform.projection_from_Rt`.
 
     Convention:
         - ``t`` goes in the **last column** and the appended bottom row is
@@ -2623,6 +3001,13 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     Returns:
         the extrinsics ``(B, 4, 4)``.
 
+    See Also:
+        - :func:`matrix4x4_to_Rt`: the reverse, splitting a ``(B, 4, 4)`` matrix into ``R`` and ``t``.
+        - :func:`camtoworld_to_worldtocam_Rt`: inverts a rigid ``(R, t)`` pose before or after packing.
+        - :func:`~kornia.geometry.transform.projection_from_Rt`: the ``(*, 3, 4)`` matrix ``[R | t]``, without the
+          bottom row.
+        - :func:`convert_affinematrix_to_homography3d`: the same ``(B, 4, 4)`` from a ``(B, 3, 4)`` matrix.
+
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> Rt_to_matrix4x4(R, t)
@@ -2642,14 +3027,16 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
 
 
 def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert 4x4 extrinsics into 3x3 rotation matrix R and 3x1 translation vector t.
+    r"""Split ``(B, 4, 4)`` pose matrices into rotation ``(B, 3, 3)`` and translation ``(B, 3, 1)`` views.
+
+    ``R, t = matrix4x4_to_Rt(M)`` returns the top-left ``(B, 3, 3)`` block and the first three rows ``(B, 3, 1)`` of
+    the last column of each ``(B, 4, 4)`` matrix, as views of ``M``; the bottom row is ignored. It is the inverse of
+    :func:`Rt_to_matrix4x4`.
 
     Convention:
         - the inverse of
           :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`, with the same
-          layout — ``R`` is the top-left 3x3 block and ``t`` the first three
-          rows of the last column — and the same frame-agnosticism. Only the
-          lines below differ
+          layout and the same frame-agnosticism. Only the lines below differ
         - the input shape is strictly ``(B, 4, 4)``; an unbatched ``(4, 4)``,
           a ``(B, 3, 3)`` and extra leading dimensions each raise ``ShapeError``
         - the **bottom row is ignored**: a projective 4x4 is silently truncated
@@ -2667,6 +3054,11 @@ def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
     Returns:
         R: Rotation matrix, ``(B, 3, 3)``.
         t: Translation matrix ``(B, 3, 1)``.
+
+    See Also:
+        - :func:`Rt_to_matrix4x4`: the reverse, packing ``R`` and ``t`` with the bottom row ``[0, 0, 0, 1]``.
+        - :func:`~kornia.geometry.linalg.inverse_transformation`: the rigid inverse of the ``(B, 4, 4)`` matrix
+          itself.
 
     Example:
         >>> ext = torch.eye(4)[None]
@@ -2703,10 +3095,15 @@ def _integer_safe_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torch.Tensor:
-    r"""Convert a (B, 4, 4) camera-to-world matrix from the graphics (OpenGL) frame to the vision (OpenCV) frame.
+    r"""Convert ``(B, 4, 4)`` camera-to-world poses from graphics (OpenGL) to vision (OpenCV) camera axes.
 
-    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards].
+    ``M_vision = camtoworld_graphics_to_vision_4x4(M_graphics)`` takes camera-to-world poses ``(B, 4, 4)`` whose
+    camera axes follow the graphics convention, ``[+x, +y, +z] == [right, up, backwards]``, and returns them with the
+    vision camera axes, ``[right, down, forwards]``: it negates the camera ``y`` and ``z`` axes, the second and third
+    columns of the rotation block, and leaves the camera centre unchanged. A world-to-camera pose needs the flip on the
+    other side, which this function does not make: invert it to camera-to-world with
+    :func:`~kornia.geometry.linalg.inverse_transformation`, convert, and invert the result back. For a pose given as
+    ``(R, t)``, use :func:`camtoworld_graphics_to_vision_Rt`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
@@ -2755,6 +3152,11 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
     Returns:
         extrinsics: pose matrix ``(B, 4, 4)``.
 
+    See Also:
+        - :func:`camtoworld_vision_to_graphics_4x4`: the reverse direction, the same arithmetic.
+        - :func:`camtoworld_graphics_to_vision_Rt`: the same conversion for a pose given as ``(R, t)``.
+        - :func:`camtoworld_to_worldtocam_Rt`: inverts a camera-to-world pose to world-to-camera.
+
     Example:
         >>> ext = torch.eye(4)[None]
         >>> camtoworld_graphics_to_vision_4x4(ext)
@@ -2774,10 +3176,12 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
 
 
 def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert a camera-to-world pose given as (R, t) from the graphics (OpenGL) frame to the vision (OpenCV) frame.
+    r"""Convert camera-to-world ``(R, t)`` poses from graphics (OpenGL) to vision (OpenCV) camera axes.
 
-    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards].
+    ``R_vision, t = camtoworld_graphics_to_vision_Rt(R, t)`` is :func:`camtoworld_graphics_to_vision_4x4` for a
+    camera-to-world pose given as rotations ``(B, 3, 3)`` and camera centres ``(B, 3, 1)``: it negates the camera
+    ``y`` and ``z`` axes, the second and third columns of ``R``, to turn graphics camera axes
+    ``[right, up, backwards]`` into vision ones ``[right, down, forwards]``, and returns ``t`` unchanged.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
@@ -2793,8 +3197,6 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
         - the shapes are strictly ``(B, 3, 3)`` and ``(B, 3, 1)`` in and
           out, with the same-batch-size rule and the integer-input ``ValueError`` of
           :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`
-        - ``t`` is returned unchanged; only ``R`` has its second and third
-          columns negated
 
     Args:
         R: Rotation matrix, ``(B, 3, 3)``.
@@ -2803,6 +3205,11 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Returns:
         R: Rotation matrix, ``(B, 3, 3)``.
         t: Translation matrix ``(B, 3, 1)``.
+
+    See Also:
+        - :func:`camtoworld_vision_to_graphics_Rt`: the reverse direction, the same arithmetic.
+        - :func:`camtoworld_graphics_to_vision_4x4`: the same conversion for a ``(B, 4, 4)`` matrix.
+        - :func:`camtoworld_to_worldtocam_Rt`: inverts a camera-to-world ``(R, t)`` to world-to-camera.
 
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
@@ -2822,10 +3229,13 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
 
 
 def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.Tensor:
-    r"""Convert a (B, 4, 4) camera-to-world matrix from the vision (OpenCV) frame to the graphics (OpenGL) frame.
+    r"""Convert ``(B, 4, 4)`` camera-to-world poses from vision (OpenCV) to graphics (OpenGL) camera axes.
 
-    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards].
+    ``M_graphics = camtoworld_vision_to_graphics_4x4(M_vision)`` takes camera-to-world poses ``(B, 4, 4)`` whose
+    camera axes follow the vision convention, ``[+x, +y, +z] == [right, down, forwards]``, and returns them with the
+    graphics camera axes, ``[right, up, backwards]``, by negating the camera ``y`` and ``z`` axes. The flip is its own
+    inverse, so this is the same arithmetic as :func:`camtoworld_graphics_to_vision_4x4`; the name records the
+    direction. For a pose given as ``(R, t)``, use :func:`camtoworld_vision_to_graphics_Rt`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
@@ -2848,6 +3258,10 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
     Returns:
         extrinsics: pose matrix ``(B, 4, 4)``.
 
+    See Also:
+        - :func:`camtoworld_graphics_to_vision_4x4`: the forward direction, which documents the flip.
+        - :func:`camtoworld_vision_to_graphics_Rt`: the same conversion for a pose given as ``(R, t)``.
+
     Example:
         >>> ext = torch.eye(4)[None]
         >>> camtoworld_vision_to_graphics_4x4(ext)
@@ -2867,10 +3281,12 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
 
 
 def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert a camera-to-world pose given as (R, t) from the vision (OpenCV) frame to the graphics (OpenGL) frame.
+    r"""Convert camera-to-world ``(R, t)`` poses from vision (OpenCV) to graphics (OpenGL) camera axes.
 
-    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards].
+    ``R_graphics, t = camtoworld_vision_to_graphics_Rt(R, t)`` is :func:`camtoworld_vision_to_graphics_4x4` for a
+    camera-to-world pose given as rotations ``(B, 3, 3)`` and camera centres ``(B, 3, 1)``: it negates the second and
+    third columns of ``R`` and returns ``t`` unchanged, the same arithmetic as
+    :func:`camtoworld_graphics_to_vision_Rt`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
@@ -2893,6 +3309,10 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Returns:
         R: Rotation matrix, ``(B, 3, 3)``.
         t: Translation matrix ``(B, 3, 1)``.
+
+    See Also:
+        - :func:`camtoworld_graphics_to_vision_Rt`: the forward direction, the same arithmetic.
+        - :func:`camtoworld_vision_to_graphics_4x4`: the same conversion for a ``(B, 4, 4)`` matrix.
 
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
@@ -2959,10 +3379,14 @@ def _check_is_rotation(R: torch.Tensor, fn_name: str) -> None:
 def camtoworld_to_worldtocam_Rt(
     R: torch.Tensor, t: torch.Tensor, check_rotation: bool = False
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert camtoworld to worldtocam frame used in Colmap.
+    r"""Invert camera-to-world poses (R, t) into the world-to-camera poses that Colmap stores.
 
-    See
-    long-url: https://colmap.github.io/format.html#output-format
+    ``R_w2c, t_w2c = camtoworld_to_worldtocam_Rt(R, t)`` takes camera-to-world rotations ``(B, 3, 3)`` and camera
+    centres ``(B, 3, 1)`` and returns the rigid inverse ``(R^T, -R^T @ t)``: the world-to-camera pose of
+    `Colmap's images.txt <https://colmap.github.io/format.html#output-format>`_. It transposes rather than inverts, so
+    ``R`` must be a rotation; pass ``check_rotation=True`` to verify it. The same formula undoes it, under the name
+    :func:`worldtocam_to_camtoworld_Rt`; for a ``(B, 4, 4)`` matrix, use
+    :func:`~kornia.geometry.linalg.inverse_transformation`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-to-world versus
@@ -3007,6 +3431,12 @@ def camtoworld_to_worldtocam_Rt(
         Rinv: Rotation matrix, ``(B, 3, 3)``.
         tinv: Translation matrix ``(B, 3, 1)``.
 
+    See Also:
+        - :func:`worldtocam_to_camtoworld_Rt`: the reverse direction, the same formula.
+        - :func:`~kornia.geometry.linalg.inverse_transformation`: the same rigid inverse of a ``(B, 4, 4)`` matrix.
+        - :func:`camtoworld_graphics_to_vision_Rt`: changes the camera axes of a camera-to-world pose instead.
+        - :func:`ARKitQTVecs_to_ColmapQTVecs`: an ARKit quaternion pose to Colmap's, through this inversion.
+
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> camtoworld_to_worldtocam_Rt(R, t)
@@ -3033,7 +3463,13 @@ def camtoworld_to_worldtocam_Rt(
 def worldtocam_to_camtoworld_Rt(
     R: torch.Tensor, t: torch.Tensor, check_rotation: bool = False
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert worldtocam frame used in Colmap to camtoworld.
+    r"""Invert world-to-camera poses (R, t), as Colmap stores them, into camera-to-world poses.
+
+    ``R_c2w, t_c2w = worldtocam_to_camtoworld_Rt(R, t)`` takes world-to-camera rotations ``(B, 3, 3)`` and
+    translations ``(B, 3, 1)``, as in Colmap's ``images.txt``, and returns the rigid inverse ``(R^T, -R^T @ t)``: the
+    camera-to-world pose, whose translation is the camera centre in world coordinates. It is the same formula as
+    :func:`camtoworld_to_worldtocam_Rt`, which documents it; ``R`` must be a rotation, verified with
+    ``check_rotation=True``.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-to-world versus
@@ -3061,6 +3497,11 @@ def worldtocam_to_camtoworld_Rt(
         Rinv: Rotation matrix, ``(B, 3, 3)``.
         tinv: Translation matrix ``(B, 3, 1)``.
 
+    See Also:
+        - :func:`camtoworld_to_worldtocam_Rt`: the reverse direction, the same formula.
+        - :func:`~kornia.geometry.linalg.inverse_transformation`: the same rigid inverse of a ``(B, 4, 4)`` matrix.
+        - :func:`ColmapQTVecs_to_ARKitQTVecs`: a Colmap quaternion pose to ARKit's, through this inversion.
+
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> worldtocam_to_camtoworld_Rt(R, t)
@@ -3087,7 +3528,12 @@ def worldtocam_to_camtoworld_Rt(
 def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an Apple ARKit camera-to-world screen pose to the world-to-camera pose expected by Colmap.
 
-    Both poses in quaternion representation.
+    ``q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(q, t)`` takes ARKit camera-to-world poses in the graphics camera
+    frame, as ``(w, x, y, z)`` quaternions ``(B, 4)`` and camera centres ``(B, 3, 1)``, and returns the Colmap
+    world-to-camera poses in the vision camera frame, the ``QW QX QY QZ TX TY TZ`` of ``images.txt``, as a
+    ``(B, 4)`` quaternion and a ``(B, 3, 1)`` translation. ARKit stores quaternions as ``(x, y, z, w)``: reorder them
+    first. The sign of the returned quaternion is not canonical. For the reverse, use
+    :func:`ColmapQTVecs_to_ARKitQTVecs`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera frames and
@@ -3137,6 +3583,11 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         qvec: Colmap rotation quaternion ``(B, 4)``, [w, x, y, z] format.
         tvec: translation vector ``(B, 3, 1)``, [x, y, z]
 
+    See Also:
+        - :func:`ColmapQTVecs_to_ARKitQTVecs`: the reverse conversion, Colmap to ARKit.
+        - :func:`camtoworld_graphics_to_vision_Rt`: the camera-axes step of this pipeline, for a matrix pose.
+        - :func:`camtoworld_to_worldtocam_Rt`: the inversion step of this pipeline, for a matrix pose.
+
     Example:
         >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
         >>> ARKitQTVecs_to_ColmapQTVecs(q, t)
@@ -3158,7 +3609,11 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
 def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert a Colmap world-to-camera pose to an Apple ARKit camera-to-world screen pose.
 
-    Both poses in quaternion representation.
+    ``q_arkit, t_arkit = ColmapQTVecs_to_ARKitQTVecs(q, t)`` takes Colmap world-to-camera poses in the vision camera
+    frame, as ``(w, x, y, z)`` quaternions ``(B, 4)`` and translations ``(B, 3, 1)``, and returns the ARKit
+    camera-to-world poses in the graphics camera frame, as a ``(w, x, y, z)`` quaternion ``(B, 4)`` and the camera
+    centre ``(B, 3, 1)``. Reorder the quaternion to ARKit's ``(x, y, z, w)`` before handing it over. The sign of the
+    returned quaternion is not canonical. For the reverse, use :func:`ARKitQTVecs_to_ColmapQTVecs`.
 
     Convention:
         See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera frames and
@@ -3210,6 +3665,11 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         qvec: ARKit rotation quaternion ``(B, 4)``, [w, x, y, z] format.
         tvec: translation vector ``(B, 3, 1)``, [x, y, z]
 
+    See Also:
+        - :func:`ARKitQTVecs_to_ColmapQTVecs`: the reverse conversion, ARKit to Colmap.
+        - :func:`worldtocam_to_camtoworld_Rt`: the inversion step of this pipeline, for a matrix pose.
+        - :func:`camtoworld_vision_to_graphics_Rt`: the camera-axes step of this pipeline, for a matrix pose.
+
     Example:
         >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
         >>> ColmapQTVecs_to_ARKitQTVecs(*ARKitQTVecs_to_ColmapQTVecs(q, t))
@@ -3232,7 +3692,11 @@ def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
 
 
 def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:
-    r"""Convert a vector to a skew symmetric matrix.
+    r"""Build the skew-symmetric cross-product matrix ``(3, 3)`` or ``(B, 3, 3)`` of a 3-vector.
+
+    ``S = vector_to_skew_symmetric_matrix(v)`` takes a vector ``(3,)`` or a batch ``(B, 3)`` and returns the matrix
+    ``(3, 3)`` or ``(B, 3, 3)`` with ``S @ x == cross(v, x)``. For any number of leading dimensions ``(*, 3)``, use
+    :func:`~kornia.geometry.epipolar.cross_product_matrix`, which builds the same matrix.
 
     A vector :math:`(v1, v2, v3)` has a corresponding skew-symmetric matrix, which is of the form:
 
@@ -3254,6 +3718,11 @@ def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:
 
     Returns:
         tensor of shape ``(3, 3)`` or ``(B, 3, 3)`` respectively.
+
+    See Also:
+        - :func:`~kornia.geometry.epipolar.cross_product_matrix`: the same matrix for ``(*, 3)`` vectors of any rank.
+        - :meth:`~kornia.geometry.liegroup.So3.hat`: the same matrix, as the Lie-algebra element of a rotation
+          vector.
 
     Example:
         >>> vec = torch.tensor([1.0, 2.0, 3.0])

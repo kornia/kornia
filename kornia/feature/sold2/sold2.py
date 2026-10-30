@@ -23,18 +23,12 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.download import load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 
 from .backbones import SOLD2Net
-from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
-
-urls: Dict[str, str | list[str]] = {}
-urls["wireframe"] = [
-    hf_url("sold2", "sold2_wireframe.pth"),
-    "https://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
-]
+from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions, urls
 
 
 class SOLD2(nn.Module):
