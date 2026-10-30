@@ -297,6 +297,10 @@ class VideoKeypoints(Keypoints):
 
     Non-contiguous inputs are copied only when flattening requires it. Empty batches and point sets
     retain their shape on conversion back to a tensor; the temporal dimension must be nonzero.
+
+    Indexing and item assignment select whole videos on the video-batch axis, as for
+    :class:`~kornia.geometry.boxes.VideoBoxes`: ``vk[i]`` is a one-video :class:`VideoKeypoints` whose
+    :meth:`to_tensor` is ``(1, T, N, 2)``, and a boolean mask has length ``B``. Index frames with ``vk.data``.
     """
 
     temporal_channel_size: int
