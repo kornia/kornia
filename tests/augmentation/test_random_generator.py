@@ -794,6 +794,43 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
+    @pytest.mark.parametrize(
+        "ranges,sampler_name,expected",
+        [
+            ({"degrees": 0.1}, "degree_sampler", (-0.1, 0.1)),
+            ({"degrees": (0.1, 0.2)}, "degree_sampler", (0.1, 0.2)),
+            ({"translate": (0.1, 0.2)}, "translate_x_sampler", (-0.1, 0.1)),
+            ({"translate": (0.1, 0.2)}, "translate_y_sampler", (-0.2, 0.2)),
+            ({"scale": (0.7, 1.2)}, "scale_2_sampler", (0.7, 1.2)),
+            ({"scale": (0.7, 1.2, 0.8, 1.3)}, "scale_2_sampler", (0.7, 1.2)),
+            ({"scale": (0.7, 1.2, 0.8, 1.3)}, "scale_4_sampler", (0.8, 1.3)),
+        ],
+    )
+    @pytest.mark.parametrize("tensor_ranges", [False, True])
+    def test_sampler_bounds_keep_requested_precision_4426(
+        self, ranges, sampler_name, expected, tensor_ranges, device, dtype
+    ):
+        kwargs = {"degrees": (0.0, 0.0), **ranges}
+        if tensor_ranges:
+            kwargs = {name: torch.tensor(value, device=device, dtype=dtype) for name, value in kwargs.items()}
+        # A float64 sampler must not inherit float32-rounded bounds from the ambient default.
+        with patch("torch.get_default_dtype", return_value=torch.float32):
+            generator = AffineGenerator(**kwargs)
+            generator.set_rng_device_and_dtype(device, dtype)
+        sampler = getattr(generator, sampler_name)
+        bounds = torch.stack((sampler.low, sampler.high))
+        assert_close(bounds, torch.tensor(expected, device=device, dtype=dtype), rtol=0, atol=0)
+
+    def test_float64_constant_angle_is_not_rounded_via_float32_4426(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64.")
+        degrees = torch.tensor((0.1, 0.1), device=device, dtype=torch.float64)
+        with patch("torch.get_default_dtype", return_value=torch.float32):
+            generator = AffineGenerator(degrees)
+            generator.set_rng_device_and_dtype(device, torch.float64)
+        angle = generator((4, 3, 8, 9))["angle"]
+        assert_close(angle, torch.full((4,), 0.1, device=device, dtype=torch.float64), rtol=0, atol=0)
+
     @pytest.mark.parametrize("range_name", ["degrees", "translate", "scale", "shear"])
     def test_tensor_range_keeps_placement(self, range_name, device, dtype):
         ranges = {"degrees": 30.0, "translate": (0.1, 0.1), "scale": (0.8, 1.2), "shear": (0.0, 5.0, 0.0, 5.0)}
