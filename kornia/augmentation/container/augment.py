@@ -1231,6 +1231,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dtype = None
 
         if self.contains_video_sequential:
+            if isinstance(arg, VideoKeypoints):
+                return arg
+            if isinstance(arg, Keypoints):
+                raise TypeError(
+                    "A VideoSequential pipeline needs VideoKeypoints or a (B, T, N, 2) tensor for its keypoints, which"
+                    " carry the number of frames per video. Got Keypoints."
+                )
             arg = cast(Union[torch.Tensor, List[torch.Tensor]], arg)
             if isinstance(arg, list):
                 if not torch.is_floating_point(arg[0]):
