@@ -118,11 +118,16 @@ def undistort_points(
     # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
     if has_tilt:
         inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
-        if inv_tilt.dim() == 2:
-            inv_tilt = inv_tilt.unsqueeze(0)
+        xy = torch.stack([x, y], dim=-1)
+        # transform_points pairs a batch of transforms with the leading axis of the points, so give it one transform
+        # per point set: the tilt then broadcasts against the points like the other coefficients.
+        # (TorchScript has no torch.broadcast_shapes, so broadcast 1 x 1 corners for the batch shape.)
+        batch_shape = list(torch.broadcast_tensors(xy[..., :1, :1], inv_tilt[..., :1, :1])[0].shape[:-2])
+        inv_tilt = inv_tilt.expand(batch_shape + [3, 3])
+        xy = xy.expand(batch_shape + list(xy.shape[-2:]))
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
+        x, y = transform_points(inv_tilt, xy).unbind(-1)
 
     # Iteratively undistort points
     x0, y0 = x, y
