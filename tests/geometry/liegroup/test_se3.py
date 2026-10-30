@@ -196,16 +196,17 @@ class TestSe3(BaseTester):
     def test_unbatched_pose_transforms_a_point_set(self, points_shape, device, dtype):
         # #6426: an unbatched Se3 maps every point of a point set, as Se2 does for (N, 2); it used to raise in
         # torch.linalg.cross. Expected: R p + t for each point.
+        torch.manual_seed(0)
         g = Se3.exp(torch.tensor([0.3, -0.5, 0.2, 1.0, -2.0, 0.5], device=device, dtype=dtype))
-        p = torch.randn(points_shape, device=device, dtype=dtype)
+        p = (2 * torch.rand(points_shape) - 1).to(device, dtype)
 
         out = g * p
 
         assert out.shape == p.shape
         self.assert_close(out, torch.stack([g * q for q in p.reshape(-1, 3)]).reshape(points_shape))
-        low_tolerance = dtype in (torch.float16, torch.bfloat16)
-        m = g.matrix()
-        self.assert_close(out, p @ m[:3, :3].mT + m[:3, 3], low_tolerance=low_tolerance)
+        # R p + t in float64, on the CPU, from the same rounded pose and points: only the output is rounded
+        r = So3(Quaternion(g.so3.q.data.cpu().double())).matrix()
+        self.assert_close(out.cpu(), (p.cpu().double() @ r.mT + g.t.cpu().double()).to(dtype))
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
