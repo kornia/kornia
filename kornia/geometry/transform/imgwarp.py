@@ -1532,9 +1532,10 @@ def get_affine_matrix3d(
     Args:
         translations: torch.Tensor containing the translation vector (dx,dy,dz) with shape ``(B, 3)``.
         center: torch.Tensor containing the center vector (x,y,z) with shape ``(B, 3)``.
-        scale: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` shared across the batch.
+        scale: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` or ``(3,)`` shared
+            across the batch. A ``(3,)`` tensor always means per-axis factors, including when ``B = 3``.
             Use ``(B, 1)`` for one isotropic factor per sample, or ``(1,)`` for one factor shared across all samples
-            and axes. A flat ``(B,)`` tensor with more than one element is rejected; reshape it to ``(B, 1)``.
+            and axes. Per-sample isotropic factors must have shape ``(B, 1)``, not ``(B,)``.
         angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
@@ -1549,7 +1550,7 @@ def get_affine_matrix3d(
         the 3d affine transformation matrix ``(B, 4, 4)``.
 
     Raises:
-        ShapeError: If ``scale`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)`` or ``(1,)``;
+        ShapeError: If ``scale`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)``, ``(3,)`` or ``(1,)``;
             see :func:`get_projective_transform`.
 
     See Also:
@@ -1819,20 +1820,20 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 
 
 def _check_scale_shape3d(scales: torch.Tensor) -> None:
-    """Raise unless ``scales`` is ``(B, 3)`` per-axis factors, ``(B, 1)`` isotropic factors or a single ``(1,)`` factor.
+    """Validate batched scale factors or shared ``(3,)`` per-axis and ``(1,)`` isotropic factors.
 
-    A 1-D tensor is refused unless it has a single element. ``(3,)`` used to be read as ``(sx, sy, sz)`` shared by every
-    sample, whatever the batch, so at ``B = 3`` it cannot be told from ``(B,)`` per-sample factors; those were misread
-    the same way at ``B = 3`` and failed inside the broadcast for any other ``B`` above 1. Per-sample factors go in a
-    column, ``(B, 1)``; a single ``(sx, sy, sz)`` goes in a row, ``(1, 3)``.
+    A ``(3,)`` tensor means ``(sx, sy, sz)`` shared by every sample, including at ``B = 3``. Per-sample isotropic
+    factors go in a column, ``(B, 1)``; other 1-D lengths are unsupported.
     """
     msg = (
-        "scale must be (B, 3) per-axis or (B, 1) isotropic factors; reshape per-sample factors (B,) to (B, 1) and "
-        "a single (sx, sy, sz) to (1, 3)."
+        "scale must be (B, 3) or (1, 3) per-axis, (B, 1) isotropic, (3,) shared per-axis or (1,) shared isotropic "
+        "factors; reshape per-sample factors (B,) to (B, 1)."
     )
     if scales.dim() == 1:
-        # One factor for every sample, as before.
-        KORNIA_CHECK_SHAPE(scales, ["1"], msg=msg)
+        if scales.shape[0] == 3:
+            KORNIA_CHECK_SHAPE(scales, ["3"], msg=msg)
+        else:
+            KORNIA_CHECK_SHAPE(scales, ["1"], msg=msg)
     elif scales.dim() == 2 and scales.shape[1] == 1:
         KORNIA_CHECK_SHAPE(scales, ["B", "1"], msg=msg)
     else:
@@ -1866,16 +1867,16 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
-        scales: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` shared across the batch.
+        scales: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` or ``(3,)`` shared
+            across the batch. A ``(3,)`` tensor always means per-axis factors, including when ``B = 3``.
             Use ``(B, 1)`` for one isotropic factor per sample, or ``(1,)`` for one factor shared across all samples
-            and axes.
+            and axes. Per-sample isotropic factors must have shape ``(B, 1)``, not ``(B,)``.
 
     Returns:
         the projection matrix of 3D rotation with shape ``(B, 3, 4)``.
 
     Raises:
-        ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)`` or ``(1,)``. A flat ``(3,)`` tensor
-            is rejected: pass shared per-axis factors as ``(1, 3)`` and per-sample factors as ``(B, 1)``.
+        ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)``, ``(3,)`` or ``(1,)``.
 
     See Also:
         - :func:`get_rotation_matrix2d`: the 2D rotation and scale, counter-clockwise on screen.
