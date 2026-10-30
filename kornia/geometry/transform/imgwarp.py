@@ -980,6 +980,7 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
           ``float32`` (`#6435 <https://github.com/kornia/kornia/issues/6435>`_);
           :func:`~kornia.geometry.homography.find_homography_dlt` returns it, at another scale
         - float16 and bfloat16 points are solved in float32, and the result is cast back to their dtype
+        - integer or boolean points give a matrix in the default floating dtype; floating points keep theirs
         - a caller's autocast region does not change the result, outside TorchScript
 
     Args:
@@ -1007,6 +1008,13 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
     KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
     KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
+
+    # A homography is not integer-valued in general, so integer or boolean points are solved and returned in the
+    # default floating dtype (read off an empty tensor: TorchScript has no ``torch.get_default_dtype()``) rather than
+    # truncated back to the input dtype.
+    if not points_src.is_floating_point():
+        work_dtype = torch.empty(0, device=points_src.device).dtype
+        points_src, points_dst = points_src.to(work_dtype), points_dst.to(work_dtype)
 
     # Solve via two closed-form unit-square (Heckbert) decompositions rather than an 8x8
     # ``torch.linalg.solve``. Both yield the perspective transform mapping ``points_src`` onto
@@ -1913,6 +1921,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
           ``101`` and ``011`` in :func:`~kornia.geometry.bbox.bbox_generator3d` order; points 3, 4 and 6 are not
           used, so they map onto their ``dst`` only when all eight pairs are related by one homography
         - returns the source→destination **pixel** homography ``(B, 4, 4)``
+        - integer or boolean points give a matrix in the default floating dtype; floating points keep theirs
 
     Args:
         src: coordinates of the box corners in the source volume with shape ``(B, 8, 3)``.
@@ -1948,6 +1957,12 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
             f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
             f"with the same dtype (Got {src.dtype}, {dst.dtype})."
         )
+
+    # A homography is not integer-valued in general, so integer or boolean points are solved and returned in the
+    # default floating dtype rather than truncated back to the input dtype.
+    if not src.is_floating_point():
+        work_dtype = torch.empty(0, device=src.device).dtype
+        src, dst = src.to(work_dtype), dst.to(work_dtype)
 
     # we build the square matrix A from 5 point correspondences, 3 equations each, and solve it exactly
     p = []
