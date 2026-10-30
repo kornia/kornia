@@ -682,10 +682,11 @@ class TestPerpendicular(BaseTester):
         line = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         self.gradcheck(epi.get_perpendicular, (pt, line), requires_grad=(True, False))
 
-    def test_unbatched_points_raise_6422(self, device, dtype):
-        # The shape check accepted unbatched points, and points.shape[2] then raised an IndexError.
-        lines = torch.rand(5, 3, device=device, dtype=dtype)
-        points = torch.rand(5, 2, device=device, dtype=dtype)
+    @pytest.mark.parametrize("lines_shape, points_shape", [((5, 3), (5, 2)), ((1, 5, 3), (1, 5, 4))])
+    def test_wrong_points_shape_raises_6422(self, lines_shape, points_shape, device, dtype):
+        # Unbatched points reached points.shape[2], an IndexError; four coordinates reached a bare AssertionError.
+        lines = torch.rand(*lines_shape, device=device, dtype=dtype)
+        points = torch.rand(*points_shape, device=device, dtype=dtype)
         with pytest.raises(ShapeError, match=r"points must have shape \(B, N, 2\) or \(B, N, 3\)"):
             epi.get_perpendicular(lines, points)
 
@@ -718,10 +719,12 @@ class TestGetClosestPointOnEpipolarLine(BaseTester):
         Fm = create_random_fundamental_matrix(1, dtype=torch.float64, device=device)
         self.gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), requires_grad=(True, False, False))
 
-    def test_unbatched_pts2_raises_6422(self, device, dtype):
-        # pts2 reached get_perpendicular, whose points.shape[2] raised an IndexError.
-        pts1 = torch.rand(5, 2, device=device, dtype=dtype)
-        pts2 = torch.rand(5, 2, device=device, dtype=dtype)
+    @pytest.mark.parametrize("pts_shape", [(5, 2), (1, 5, 4)])
+    def test_wrong_pts2_shape_raises_6422(self, pts_shape, device, dtype):
+        # pts2 reached get_perpendicular, where an unbatched one raised an IndexError and one with four
+        # coordinates a bare AssertionError.
+        pts1 = torch.rand(pts_shape[:-1] + (2,), device=device, dtype=dtype)
+        pts2 = torch.rand(pts_shape, device=device, dtype=dtype)
         Fm = create_random_fundamental_matrix(1, device=device, dtype=dtype)
         with pytest.raises(ShapeError, match=r"pts2 must have shape \(B, N, 2\) or \(B, N, 3\)"):
             epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm)
