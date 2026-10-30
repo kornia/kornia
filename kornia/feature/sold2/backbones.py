@@ -483,7 +483,7 @@ class SOLD2Net(nn.Module):
         a Dict with the following values:
             junctions: heatmap of junctions.
             heatmap: line heatmap.
-            descriptors: semi-dense descriptors.
+            descriptors: semi-dense descriptors, only when ``use_descriptor`` is true in ``model_cfg``.
 
     """
 
@@ -501,9 +501,27 @@ class SOLD2Net(nn.Module):
         # Line heatmap decoder
         self.heatmap_decoder = PixelShuffleDecoder(feat_channel, num_upsample=2)
 
-        # Descriptor decoder
-        if "use_descriptor" in self.cfg:
-            self.descriptor_decoder = SuperpointDescriptor(feat_channel)
+        # Descriptor decoder, only when the descriptors are used: SOLD2 sets use_descriptor, SOLD2_detector does not
+        self.descriptor_decoder = SuperpointDescriptor(feat_channel) if self.cfg.get("use_descriptor", False) else None
+
+    def _load_from_state_dict(
+        self,
+        state_dict: Dict[str, Any],
+        prefix: str,
+        local_metadata: Dict[str, Any],
+        strict: bool,
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        error_msgs: List[str],
+    ) -> None:
+        # The pretrained checkpoint, and state dicts saved from a detector that built the descriptor head, carry its
+        # weights; a network without the head loads the rest. ``load_state_dict`` passes a copy of the caller's dict.
+        if self.descriptor_decoder is None:
+            for key in [k for k in state_dict if k.startswith(prefix + "descriptor_decoder.")]:
+                del state_dict[key]
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def forward(self, input_images: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Run this SOLD2 backbone component forward.
@@ -526,7 +544,7 @@ class SOLD2Net(nn.Module):
         outputs = {"junctions": junctions, "heatmap": heatmaps}
 
         # Descriptor decoder
-        if "use_descriptor" in self.cfg:
+        if self.descriptor_decoder is not None:
             outputs["descriptors"] = self.descriptor_decoder(features)
 
         return outputs

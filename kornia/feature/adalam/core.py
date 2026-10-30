@@ -267,6 +267,25 @@ def extract_local_patterns(
     return im1loc[sorting_perm], im2loc[sorting_perm], ransidx, tokp1[sorting_perm], tokp2[sorting_perm]
 
 
+def _merge_duplicate_matches(matches: torch.Tensor, dists: torch.Tensor, n2: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Keep each match once, with the smallest distance ratio of its copies.
+
+    Overlapping neighbourhoods accept the same match in several local RANSACs, each with its own confidence; the best
+    one is reported. The unique rows come sorted lexicographically, through a 1-D key: torch.unique(dim=0) has no MPS
+    kernel on torch 2.5 (https://stackoverflow.com/a/72005790).
+    """
+    keys, inverse = torch.unique(matches[:, 0] * n2 + matches[:, 1], return_inverse=True)
+    unique_matches = torch.stack([torch.div(keys, n2, rounding_mode="floor"), keys % n2], dim=1)
+    # The copies ordered by match, then by ratio, and the first of each match kept: scatter_reduce, the direct way to
+    # take a minimum per match, has no MPS kernel on torch 2.5.
+    by_ratio = torch.sort(dists, stable=True).indices
+    order = by_ratio[torch.sort(inverse[by_ratio], stable=True).indices]
+    grouped = inverse[order]
+    first = torch.ones_like(grouped, dtype=torch.bool)
+    first[1:] = grouped[1:] != grouped[:-1]
+    return unique_matches, dists[order][first]
+
+
 def adalam_core(
     k1: torch.Tensor,
     k2: torch.Tensor,
@@ -414,18 +433,7 @@ def adalam_core(
 
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
-        # Unique rows, sorted lexicographically, through a 1-D key: torch.unique(dim=0) has no MPS kernel on torch 2.5.
-        # https://stackoverflow.com/a/72005790
-        n2 = k2.shape[0]
-        keys, idxs, counts = torch.unique(
-            final_matches[:, 0] * n2 + final_matches[:, 1], return_inverse=True, return_counts=True
-        )
-        final_matches = torch.stack([torch.div(keys, n2, rounding_mode="floor"), keys % n2], dim=1)
-        _, ind_sorted = torch.sort(idxs)
-        cum_sum = counts.cumsum(0)
-        cum_sum = torch.cat((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))
-        first_indicies = ind_sorted[cum_sum]
-        accepted_dist = accepted_dist[first_indicies]
+        final_matches, accepted_dist = _merge_duplicate_matches(final_matches, accepted_dist, k2.shape[0])
     if return_dist:
         return final_matches, accepted_dist.reshape(-1, 1)
     return final_matches
