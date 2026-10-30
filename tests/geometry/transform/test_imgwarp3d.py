@@ -977,7 +977,7 @@ class TestPerspectiveTransform3D(BaseTester):
 
     def test_integer_points_6396(self, device):
         points_src = torch.tensor(self._corners, device=device)[None] * 4
-        points_dst = points_src * 3 + torch.tensor([1, 2, 3], device=device)
+        points_dst = points_src // 2 + torch.tensor([1, 2, 3], device=device)
 
         out = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
         expected = kornia.geometry.transform.get_perspective_transform3d(
