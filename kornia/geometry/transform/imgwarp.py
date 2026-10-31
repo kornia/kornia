@@ -1235,13 +1235,22 @@ def remap(
             allow_fill=False,
             operand="map",
         )
+
     out_dtype = image.dtype
     if _runs_in_float32(image, map_xy):
         image, map_xy = image.float(), map_xy.float()
 
-    # F.normalize coordinates if not already normalized
+    if height <= 0 or width <= 0:
+        raise ValueError("Image height and width must be positive.")
+
+    # Normalize pixel coordinates according to align_corners.
     if not normalized_coordinates:
-        map_xy = normalize_pixel_coordinates(map_xy, height, width)
+        if align_corners:
+            map_xy = normalize_pixel_coordinates(map_xy, height, width)
+        else:
+            map_x = (2.0 * map_xy[..., 0] + 1.0) / width - 1.0
+            map_y = (2.0 * map_xy[..., 1] + 1.0) / height - 1.0
+            map_xy = torch.stack((map_x, map_y), dim=-1)
 
     # simulate broadcasting since grid_sample does not support it
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
