@@ -958,6 +958,9 @@ class TestSe2(BaseTester):
         assert s_bcast1.adjoint().shape == (2, 3, 3)
         assert s_bcast1[0].matrix().shape == (3, 3)
         assert s_bcast1[1].matrix().shape == (3, 3)
+        assert s_bcast1[0:2].matrix().shape == (2, 3, 3)
+        assert s_bcast1[1:].matrix().shape == (1, 3, 3)
+        assert s_bcast1[1:1].matrix().shape == (0, 3, 3)
 
         s_bcast2 = Se2(So2.identity(2, device=device, dtype=dtype), torch.zeros(1, 2, device=device, dtype=dtype))
         assert s_bcast2.matrix().shape == (2, 3, 3)
@@ -965,3 +968,21 @@ class TestSe2(BaseTester):
         assert s_bcast2.adjoint().shape == (2, 3, 3)
         assert s_bcast2[0].matrix().shape == (3, 3)
         assert s_bcast2[1].matrix().shape == (3, 3)
+        assert s_bcast2[0:2].matrix().shape == (2, 3, 3)
+        assert s_bcast2[1:].matrix().shape == (1, 3, 3)
+        assert s_bcast2[1:1].matrix().shape == (0, 3, 3)
+
+        # Mixed unbatched and singleton batch inputs
+        s_mixed1 = Se2(So2.identity(None, device=device, dtype=dtype), torch.zeros(1, 2, device=device, dtype=dtype))
+        assert s_mixed1.matrix().shape == (1, 3, 3)
+        assert s_mixed1.log().shape == (1, 3)
+        assert s_mixed1.adjoint().shape == (1, 3, 3)
+        assert s_mixed1[0].matrix().shape == (3, 3)
+        assert s_mixed1[0:1].matrix().shape == (1, 3, 3)
+
+        s_mixed2 = Se2(So2.identity(1, device=device, dtype=dtype), torch.zeros(2, device=device, dtype=dtype))
+        assert s_mixed2.matrix().shape == (1, 3, 3)
+        assert s_mixed2.log().shape == (1, 3)
+        assert s_mixed2.adjoint().shape == (1, 3, 3)
+        assert s_mixed2[0].matrix().shape == (3, 3)
+        assert s_mixed2[0:1].matrix().shape == (1, 3, 3)
