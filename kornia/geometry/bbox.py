@@ -828,7 +828,9 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         # the union is not positive, so dividing it by 1 there gives 0, and a NaN coordinate still gives a NaN IoU.
         ovr = inter / torch.where(union > 0, union, torch.ones_like(union))
 
-        inds = torch.where(ovr <= iou_threshold)[0]
+        # Suppress only when IoU is strictly above the threshold. In particular, NaN IoUs compare false here, so a
+        # box with NaN coordinates does not suppress the remaining boxes.
+        inds = torch.where(~(ovr > iou_threshold))[0]
         order = order[inds + 1]
 
     if len(keep) > 0:
