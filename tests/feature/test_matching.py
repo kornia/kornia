@@ -16,6 +16,7 @@
 #
 
 import math
+import warnings
 
 import pytest
 import torch
@@ -32,6 +33,9 @@ from kornia.feature.matching import (
     GeometryAwareDescriptorMatcher,
     _cdist,
     _first_to_second_nearest_ratio,
+    _min_over_rows,
+    _nearest_neighbour_ratio,
+    _nearest_neighbour_ratio_over_rows,
     match_adalam,
     match_fginn,
     match_mnn,
@@ -43,6 +47,30 @@ from kornia.feature.steerers import DiscreteSteerer
 
 from testing.base import BaseTester, supports_matmul
 from testing.casts import dict_to
+
+
+def _host_synchronizations(match, *args):
+    """Count the CUDA host synchronizations of one call to ``match``, after a warm-up call."""
+    match(*args)
+    torch.cuda.synchronize()
+    previous = torch.cuda.get_sync_debug_mode()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        torch.cuda.set_sync_debug_mode("warn")
+        try:
+            match(*args)
+        finally:
+            torch.cuda.set_sync_debug_mode(previous)
+    return sum("called a synchronizing CUDA operation" in str(warning.message) for warning in caught)
+
+
+def _descriptors_with_planted_matches(device, swap):
+    """300 and 280 unit descriptors whose first 200 are noisy copies of each other, in either order."""
+    gen = torch.Generator().manual_seed(0)
+    desc1 = torch.randn(300, 32, generator=gen)
+    desc2 = torch.cat([desc1[:200] + 0.05 * torch.randn(200, 32, generator=gen), torch.randn(80, 32, generator=gen)])
+    desc1, desc2 = (torch.nn.functional.normalize(d, dim=1).to(device) for d in (desc1, desc2))
+    return (desc2, desc1) if swap else (desc1, desc2)
 
 
 class TestMatchNN(BaseTester):
@@ -105,6 +133,20 @@ class TestMatchMNN(BaseTester):
         desc1 = torch.rand(5, 8, device=device, dtype=torch.float64)
         desc2 = torch.rand(7, 8, device=device, dtype=torch.float64)
         self.gradcheck(match_mnn, (desc1, desc2), nondet_tol=1e-4)
+
+    def test_larger_desc1_lists_matches_in_desc2_order(self, device):
+        # With more descriptors in desc1 than in desc2, the matches come in the order of desc2: 2 -> 0, then 1 -> 1.
+        desc1 = torch.tensor([[0.0], [1.0], [5.0]], device=device)
+        desc2 = torch.tensor([[4.8], [1.1]], device=device)
+        dists, idxs = match_mnn(desc1, desc2)
+        self.assert_close(idxs, torch.tensor([[2, 0], [1, 1]], device=device))
+        self.assert_close(dists, torch.tensor([[0.2], [0.1]], device=device))
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_waits_for_the_device_once(self, device, swap):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        assert _host_synchronizations(match_mnn, *_descriptors_with_planted_matches(device, swap)) == 1
 
 
 class TestMatchSNN(BaseTester):
@@ -173,6 +215,12 @@ class TestMatchSNN(BaseTester):
                 match_snn(desc1, desc2, 0.8)
         else:
             match_snn(desc1, desc2, 0.8)
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_waits_for_the_device_once(self, device, swap):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        assert _host_synchronizations(match_snn, *_descriptors_with_planted_matches(device, swap), 0.9) == 1
 
 
 class TestFirstToSecondNearestRatio(BaseTester):
@@ -272,6 +320,122 @@ class TestFirstToSecondNearestRatio(BaseTester):
             assert torch.equal(torch.isnan(ratio), ~number)
             self.assert_close(ratio[number], expected_ratio[number])
             self.assert_close(column[number], expected_column[number])
+
+
+def _assert_bitwise_equal(actual, expected):
+    """Assert two tensors hold the same values bit for bit: nan where nan, and the sign of every zero."""
+    assert actual.dtype == expected.dtype
+    assert actual.shape == expected.shape
+    nan = torch.isnan(expected)
+    assert torch.equal(torch.isnan(actual), nan)
+    assert torch.equal(actual.nan_to_num(0.0), expected.nan_to_num(0.0))
+    # The sign of a nan is not part of its value: x86 bfloat16 division returns -nan from its vectorised kernel and
+    # +nan from the strided one.
+    assert torch.equal(torch.signbit(actual)[~nan], torch.signbit(expected)[~nan])
+
+
+def _distances_with_ties_and_nonfinite(rows, cols, device, dtype, levels=7):
+    """A ``(rows, cols)`` matrix of integers below ``levels`` with -0, +inf and nan, a column of +inf and one of nan."""
+    flat = torch.arange(rows * cols, device=device)
+    dm = (flat * 7919 % levels).to(dtype)
+    dm = torch.where(flat % 23 == 0, -0.0, dm)
+    dm = torch.where(flat % 17 == 0, float("inf"), dm)
+    dm = torch.where(flat % 29 == 0, float("nan"), dm).reshape(rows, cols)
+    dm[:, 3] = float("inf")  # a column without a number
+    dm[:, 5] = float("nan")  # a column of nan
+    return dm
+
+
+class TestReductionsOverRowBlocks(BaseTester):
+    """The column reductions of match_mnn, match_smnn and match_fginn, which run on blocks of rows on CPU."""
+
+    # Blocks of 4 rows: no partial block, a partial block of one row, one of three rows, and too few rows to block.
+    @pytest.mark.parametrize("rows", [16, 17, 19, 8])
+    def test_min_over_rows_is_torch_min_bitwise(self, device, dtype, rows):
+        dm = _distances_with_ties_and_nonfinite(rows, 9, device, dtype)
+        values, idxs = _min_over_rows(dm, block=4)
+        expected_values, expected_idxs = torch.min(dm, dim=0)
+        _assert_bitwise_equal(values, expected_values)
+        assert torch.equal(idxs, expected_idxs)
+
+    @pytest.mark.parametrize("rows", [16, 17, 19, 8])
+    def test_ratio_over_rows_is_the_ratio_of_the_transpose(self, device, dtype, rows):
+        # 41 levels leave most columns a unique nearest row, and some tied ones.
+        dm = _distances_with_ties_and_nonfinite(rows, 40, device, dtype, levels=41)
+        ratio, nearest = _nearest_neighbour_ratio_over_rows(dm, block=4)
+        expected_ratio, expected_nearest = _nearest_neighbour_ratio(dm.t())
+        _assert_bitwise_equal(ratio, expected_ratio)
+        # torch.topk orders no ties, so a tied nearest row may be another one of the tied rows. Such a column's ratio
+        # is 1 or nan, which a ratio test with th < 1 rejects; a ratio below 1 has a unique nearest row.
+        unique = expected_ratio < 1
+        assert unique.sum() > 10
+        assert (~unique).sum() >= 2
+        assert torch.equal(nearest[unique], expected_nearest[unique])
+
+    def test_blocks_run_on_cpu_only(self, device):
+        dm = torch.rand(9, 3, device=device)
+        assert matching._reduces_over_row_blocks(dm, 4) == (device.type == "cpu")
+        assert not matching._reduces_over_row_blocks(dm[:8], 4)
+
+    def test_gradcheck(self, device):
+        dm = torch.rand(11, 5, device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: _min_over_rows(x, block=4)[0], (dm,))
+        self.gradcheck(lambda x: _nearest_neighbour_ratio_over_rows(x, block=4)[0], (dm,))
+
+    @pytest.mark.parametrize("traced_rows, rows", [(12, 13), (13, 12)])
+    def test_traced_graph_keeps_one_reduction(self, device, traced_rows, rows):
+        # A trace records whether the last block is partial: traced with 12 rows, blocks of 4 would drop the 13th
+        # row of a later input, and traced with 13, they would reduce an empty 13th row of 12. Tracing takes one
+        # reduction instead.
+        def column_min(dm):
+            return _min_over_rows(dm, block=4)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(column_min, torch.rand(traced_rows, 3, device=device))
+        dm = torch.rand(rows, 3, device=device)
+        dm[-1] = -1.0  # the minimum of every column is in the last row
+        values, idxs = traced(dm)
+        expected_values, expected_idxs = torch.min(dm, dim=0)
+        self.assert_close(values, expected_values)
+        assert torch.equal(idxs, expected_idxs)
+
+    @pytest.mark.parametrize("matcher", ["mnn", "smnn", "fginn"])
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_matchers_return_what_one_reduction_returns(self, device, matcher, swap, monkeypatch):
+        # 1300 and 1100 descriptors: more than two blocks of 512 rows either way round, and a partial block.
+        gen = torch.Generator().manual_seed(0)
+        desc1 = torch.randn(1300, 32, generator=gen)
+        desc2 = torch.cat(
+            [desc1[:900] + 0.1 * torch.randn(900, 32, generator=gen), torch.randn(200, 32, generator=gen)]
+        )
+        desc1, desc2 = (torch.nn.functional.normalize(d, dim=1).to(device) for d in (desc1, desc2))
+        desc1, desc2 = (desc2, desc1) if swap else (desc1, desc2)
+
+        def run():
+            if matcher == "mnn":
+                return match_mnn(desc1, desc2)
+            if matcher == "smnn":
+                return match_smnn(desc1, desc2, 0.95)
+            lafs1, lafs2 = (laf_from_center_scale_ori(10 * d[None, :, :2]) for d in (desc1, desc2))
+            return match_fginn(desc1, desc2, lafs1, lafs2, 0.95, 0.1, mutual=True)
+
+        blocked = []
+        reduces_over_row_blocks = matching._reduces_over_row_blocks
+
+        def recording(dm, block):
+            blocked.append(reduces_over_row_blocks(dm, block))
+            return blocked[-1]
+
+        monkeypatch.setattr(matching, "_reduces_over_row_blocks", recording)
+        dists, idxs = run()
+        assert blocked
+        assert all(blocked) == (device.type == "cpu")
+        monkeypatch.setattr(matching, "_reduces_over_row_blocks", lambda dm, block: False)
+        expected_dists, expected_idxs = run()
+        assert idxs.shape[0] > 100
+        _assert_bitwise_equal(dists, expected_dists)
+        assert torch.equal(idxs, expected_idxs)
 
 
 class TestMatchSMNN(BaseTester):
@@ -418,6 +582,36 @@ class TestMatchSMNN(BaseTester):
         matcher_jit = torch.jit.script(DescriptorMatcher(match_type, 0.8).to(device))
         self.assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2)[0])
         self.assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2)[1])
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_waits_for_the_device_once(self, device, swap):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        assert _host_synchronizations(match_smnn, *_descriptors_with_planted_matches(device, swap), 0.9) == 1
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_matches_the_definition_on_random_descriptors(self, device, dtype, swap):
+        # Reference: (i, j) is a match when j is the nearest neighbour of i and i that of j, and both ratios of the
+        # nearest to the second-nearest distance are <= th; its ratio is the larger one. Sorted by i. The reference
+        # reads the matcher's own distance matrix, and divides and compares in its dtype on its device, so it pins the
+        # join rather than how another device or dtype rounds near ties and near th.
+        desc1, desc2 = (d.to(dtype) for d in _descriptors_with_planted_matches(device, swap))
+        th = 0.9
+        dm = _cdist(desc1, desc2)
+        dists, idxs = match_smnn(desc1, desc2, th, dm=dm)
+        rows, cols = dm.sort(dim=1), dm.t().sort(dim=1)
+        ratios1 = rows.values[:, 0] / rows.values[:, 1]
+        ratios2 = cols.values[:, 0] / cols.values[:, 1]
+        passes1, passes2 = (ratios1 <= th).tolist(), (ratios2 <= th).tolist()
+        nearest2, nearest1 = rows.indices[:, 0].tolist(), cols.indices[:, 0].tolist()
+        expected_idxs, expected_dists = [], []
+        for i, j in enumerate(nearest2):
+            if nearest1[j] == i and passes1[i] and passes2[j]:
+                expected_idxs.append([i, j])
+                expected_dists.append(torch.maximum(ratios1[i], ratios2[j]))
+        assert len(expected_idxs) > 100
+        assert torch.equal(idxs, torch.tensor(expected_idxs, device=device))
+        assert torch.equal(dists, torch.stack(expected_dists).view(-1, 1))
 
 
 class TestMatchFGINN(BaseTester):
