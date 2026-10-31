@@ -1117,7 +1117,7 @@ class TestPinholeCamera(BaseTester):
             cam = kornia.geometry.camera.PinholeCamera(k, e, h, w)
         assert cam.fx.shape == (1, 2)
         self.assert_close(cam.fx, torch.full((1, 2), 100.0, device=device, dtype=dtype))
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError):
             cam.project(torch.ones(1, 5, 3, device=device, dtype=dtype))
 
     def test_rank4_construction_does_not_warn_under_trace_4266(self, device, dtype):
