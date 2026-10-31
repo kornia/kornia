@@ -147,6 +147,11 @@ def get_patches(tensor: torch.Tensor, required_corners: torch.Tensor, ps: int) -
     return sampled.permute(2, 3, 0, 1)
 
 
+def _reads_channels_last(image: torch.Tensor) -> bool:
+    """Whether :meth:`ALIKED.forward` asks for the ``channels_last`` feature map; see ``extract_dense_map``."""
+    return image.device.type == "cpu" and image.dtype in (torch.float32, torch.float64)
+
+
 # ---------------------------------------------------------------------------
 # LAF helpers
 # ---------------------------------------------------------------------------
@@ -935,12 +940,26 @@ class ALIKED(nn.Module):
             mask=mask,
         )
 
-    def extract_dense_map(self, image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_dense_map(
+        self, image: torch.Tensor, *, channels_last: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run the backbone and return ``(feature_map, score_map)``.
 
         Args:
             image: ``(B, 3, H, W)`` float image. Inputs are internally padded to
                 a multiple of 32 and the padding is removed before returning.
+            channels_last: if ``True``, ``feature_map`` has the strides of the ``torch.channels_last`` memory
+                format (it is a crop of such a tensor when the image was padded): the ``dim`` channels of each pixel
+                lie next to each other. Its values equal those of the default
+                layout up to the rounding of the normalisation, and ``score_map`` is the same either way. On CPU,
+                normalising the map and the sampling of the descriptor head are then several times faster, so
+                :meth:`forward` and :meth:`forward_laf` use it for a float32 or float64 CPU image. They keep the
+                default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout; on CUDA the forward
+                is 0.80-0.94x as fast with it (RTX 4090, float32, float16 and bfloat16); and on CPU torch's float16
+                and bfloat16 ``grid_sample`` is unreliable in either layout: it returned NaN for this one on an Apple
+                M1, and on x86 it crashes the process for a 640 x 480 image in both
+                (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). By default each channel is a plane of the
+                map, as before.
 
         Returns:
             ``feature_map``: ``(B, dim, H, W)`` L2-normalised dense features.
@@ -966,6 +985,8 @@ class ALIKED(nn.Module):
         x1234 = torch.cat([x1, x2_up, x3_up, x4_up], dim=1)
 
         score_map = torch.sigmoid(self.score_head(x1234))
+        if channels_last:
+            x1234 = x1234.contiguous(memory_format=torch.channels_last)
         feature_map = F.normalize(x1234, p=2, dim=1)
 
         feature_map = padder.unpad(feature_map)
@@ -993,7 +1014,7 @@ class ALIKED(nn.Module):
         if images.shape[1] == 1:
             images = grayscale_to_rgb(images)
 
-        feature_map, score_map = self.extract_dense_map(images)
+        feature_map, score_map = self.extract_dense_map(images, channels_last=_reads_channels_last(images))
         keypoints, kptscores, _scoredispersitys = self.dkd(score_map, image_size=image_size)
         descriptors, _offsets = self.desc_head(feature_map, keypoints)
 
@@ -1053,7 +1074,7 @@ class ALIKED(nn.Module):
         if img.shape[1] == 1:
             img = grayscale_to_rgb(img)
 
-        feature_map, score_map = self.extract_dense_map(img)
+        feature_map, score_map = self.extract_dense_map(img, channels_last=_reads_channels_last(img))
 
         if mask is not None:
             # Resize mask to score map resolution and apply.
