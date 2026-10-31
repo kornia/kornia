@@ -959,7 +959,11 @@ class ALIKED(nn.Module):
                 and bfloat16 ``grid_sample`` is unreliable in either layout: it returned NaN for this one on an Apple
                 M1, and on x86 it crashes the process for a 640 x 480 image in both
                 (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). By default each channel is a plane of the
-                map, as before.
+                map, as before. Under ``torch.compile`` on an x86 CPU the layout still costs time. Inductor (torch
+                2.14) lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel at a time across
+                the sample points, and on this layout each of those reads lands on another cache line. The compiled
+                forward of a 416 x 640 image takes 228 ms with this map and 199 ms without, and eager takes 144 ms
+                (4 threads).
 
         Returns:
             ``feature_map``: ``(B, dim, H, W)`` L2-normalised dense features.
@@ -986,8 +990,15 @@ class ALIKED(nn.Module):
 
         score_map = torch.sigmoid(self.score_head(x1234))
         if channels_last:
-            x1234 = x1234.contiguous(memory_format=torch.channels_last)
-        feature_map = F.normalize(x1234, p=2, dim=1)
+            # Each pixel's channels are normalised in an explicit (B, H, W, C) tensor, whose permutation back has the
+            # strides of a channels_last map. Eager computes the same bits as normalising
+            # ``x1234.contiguous(memory_format=torch.channels_last)`` over dim 1. Inductor (torch 2.14, x86) differs:
+            # for that form it kept the channel-major loop of the map's producer and transposed every 8 x 8 tile into
+            # the channels_last store. For this form it writes pixel by pixel, and the compiled forward of a 416 x 640
+            # image is 1.11x faster.
+            feature_map = F.normalize(x1234.permute(0, 2, 3, 1).contiguous(), p=2, dim=-1).permute(0, 3, 1, 2)
+        else:
+            feature_map = F.normalize(x1234, p=2, dim=1)
 
         feature_map = padder.unpad(feature_map)
         score_map = padder.unpad(score_map)

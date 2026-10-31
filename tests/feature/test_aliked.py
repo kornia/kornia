@@ -449,12 +449,13 @@ class TestALIKED(BaseTester):
                 assert bottom - top in (0, 1)
                 assert right - left in (0, 1)
 
-    def test_dynamo_dense_map_with_changing_sizes(self, dtype, device, torch_optimizer):
+    @pytest.mark.parametrize("channels_last", [False, True])
+    def test_dynamo_dense_map_with_changing_sizes(self, dtype, device, torch_optimizer, channels_last):
         """extract_dense_map compiles in one graph and matches eager, also once the image size changes.
 
         A second size makes Dynamo trace the sizes symbolically. The padding used to be a modulo of the image size,
         which reached the float offset bound of DeformableConv2d, and inductor (torch 2.14) failed to lower it:
-        ``TensorReferenceAnalysis has no attribute 'python_mod'``.
+        ``TensorReferenceAnalysis has no attribute 'python_mod'``. The channels_last map keeps its layout compiled.
         """
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS does not support float64")
@@ -464,9 +465,11 @@ class TestALIKED(BaseTester):
         for hw in ((64, 96), (96, 72), (80, 112)):
             inp = torch.rand(1, 3, *hw, device=device, dtype=dtype)
             with torch.no_grad():
-                expected, actual = aliked.extract_dense_map(inp), op(inp)
+                expected = aliked.extract_dense_map(inp, channels_last=channels_last)
+                actual = op(inp, channels_last=channels_last)
             for e, a in zip(expected, actual):
                 self.assert_close(a, e)
+            assert (actual[0].stride(1) == 1) == channels_last
 
     def test_dynamo_model_with_changing_sizes(self, dtype, device, torch_optimizer):
         """The compiled model, with the graph breaks of its keypoint selection, runs on changing image sizes."""
