@@ -283,9 +283,18 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Transformed tensor.
         """
+        if not is_exporting():
+            self._sequence_matrices: List[Optional[torch.Tensor]] = []
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            if not is_exporting():
+                if isinstance(module, K.AugmentationSequential):
+                    # A repeated child can replace or mutate its matrix on the next invocation.
+                    matrix = module.transform_matrix
+                    self._sequence_matrices.append(None if matrix is None else matrix.clone())
+                elif type(module) is K.ImageSequential:
+                    self._sequence_matrices.extend(module._sequence_matrices)
         return input
 
     def inverse_inputs(

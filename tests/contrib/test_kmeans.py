@@ -109,16 +109,61 @@ class TestKMeans(BaseTester):
         assert out1.shape == (N,)
         assert out2.shape == (num_clusters, D)
 
+    @pytest.mark.parametrize("num_clusters", [-1, -2])
+    def test_negative_num_clusters_is_rejected_6442(self, num_clusters, device, dtype):
+        # A negative count used to pass __init__ and fail in fit inside one_hot ("Class values must be smaller than
+        # num_classes"), without naming num_clusters.
+        with pytest.raises(BaseError, match=f"num_clusters must be a positive int, got {num_clusters}"):
+            kornia.contrib.KMeans(num_clusters, None, 1e-3, 10, 0)
+
+        # None, which got past the old != 0 check, is rejected with the same message.
+        with pytest.raises(BaseError, match="num_clusters must be a positive int, got None"):
+            kornia.contrib.KMeans(None, None, 1e-3, 10, 0)
+
+    def test_integral_num_clusters_is_accepted_6442(self, device, dtype):
+        # Any integral count is accepted and stored as an int, as a NumPy integer was before the positivity check;
+        # a bool is not a count.
+        np = pytest.importorskip("numpy")
+        X = torch.tensor([[0.0, 0.0], [10.0, 10.0], [0.0, 1.0]], device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(np.int64(2), None, 1e-4, 10, seed=0)
+        assert type(kmeans.num_clusters) is int
+        kmeans.fit(X)
+        assert kmeans.cluster_centers.shape == (2, 2)
+        with pytest.raises(BaseError, match="num_clusters must be a positive int, got True"):
+            kornia.contrib.KMeans(True, None, 1e-3, 10, 0)
+
+    def test_zero_dim_integer_tensor_num_clusters_is_accepted_6442(self, device, dtype):
+        # A 0-d integer tensor fitted before the positivity check too; like a NumPy integer, it is a count.
+        X = torch.tensor([[0.0, 0.0], [10.0, 10.0], [0.0, 1.0]], device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(torch.tensor(2), None, 1e-4, 10, seed=0)
+        assert type(kmeans.num_clusters) is int
+        kmeans.fit(X)
+        assert kmeans.cluster_centers.shape == (2, 2)
+        with pytest.raises(BaseError, match=r"num_clusters must be a positive int, got tensor\(True\)"):
+            kornia.contrib.KMeans(torch.tensor(True), None, 1e-3, 10, 0)
+
+    def test_more_clusters_than_samples_is_rejected_6442(self, device, dtype):
+        # Starting centres sampled from X are distinct samples, so 5 clusters need 5 of them. With 3, the 3 drawn
+        # centres used to fail the first update with an unrelated "size of tensor a (5) must match" RuntimeError.
+        X = torch.tensor([[0.0, 0.0], [10.0, 10.0], [0.0, 1.0]], device=device, dtype=dtype)
+        kmeans = kornia.contrib.KMeans(5, None, 1e-4, 10, seed=0)
+        with pytest.raises(BaseError, match="num_clusters=5 needs at least as many samples, but X has 3"):
+            kmeans.fit(X)
+        # As many clusters as samples is fine, and explicit centres do not draw from X, so they are not limited.
+        kornia.contrib.KMeans(3, None, 1e-4, 10, seed=0).fit(X)
+        centres = torch.zeros(5, 2, device=device, dtype=dtype)
+        kornia.contrib.KMeans(5, centres, 1e-4, 10, seed=0).fit(X)
+
     def test_exception(self, device, dtype):
         # case: cluster_center = 0:
         with pytest.raises(BaseError) as errinfo:
             kornia.contrib.KMeans(0, None, 1e-3, 10, 0)
-        assert "num_clusters can't be 0" in str(errinfo.value)
+        assert "num_clusters must be a positive int, got 0" in str(errinfo.value)
 
         # case: cluster centers is not a 2D tensor
         starting_centers = torch.rand((2, 3, 5), device=device, dtype=dtype)
         with pytest.raises(ShapeError) as errinfo:
-            kornia.contrib.KMeans(None, starting_centers, 1e-3, 100, 0)
+            kornia.contrib.KMeans(2, starting_centers, 1e-3, 100, 0)
         assert "Shape dimension mismatch" in str(errinfo.value)
 
         # case: input data is not a 2D tensor

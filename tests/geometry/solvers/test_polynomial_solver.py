@@ -592,6 +592,18 @@ class TestMultiplyDegOnePoly(BaseTester):
         out_poly = solver.multiply_deg_one_poly(a, b)
         assert out_poly.shape == (B, 10)
 
+    def test_unbatched_input_raises_6422(self, device, dtype):
+        # An unbatched polynomial failed in unsqueeze(2) with an IndexError.
+        a = torch.rand(4, device=device, dtype=dtype)
+        b = torch.rand(4, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a, b)
+        with pytest.raises(ShapeError, match=r"b must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a[None], b)
+        # An extra batch dimension returned products of the wrong coefficients instead of raising.
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a.expand(1, 4, 4), b.expand(1, 4, 4))
+
     @pytest.mark.parametrize(
         "a_coeffs, b_coeffs, expected_coeffs",
         [

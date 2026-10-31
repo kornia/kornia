@@ -15,7 +15,23 @@
 # limitations under the License.
 #
 
-"""Module containing RANSAC modules."""
+r"""Estimate geometric models robustly from correspondences that contain outliers, with RANSAC.
+
+:class:`RANSAC` fits one model to one set of ``(N, 2)`` correspondences (``(N, 2, 2)`` segments for
+``"homography_from_linesegments"``), with the first image's points first: a homography or an affine map from the first
+image to the second, a fundamental matrix with :math:`x_2^\top F x_1 = 0` from pixels, or an essential matrix from
+normalized camera coordinates. Its threshold ``inl_th`` is a distance in the units of the correspondences.
+:ref:`Two-view geometry <two-view-conventions>` compares this with OpenCV.
+
+Which class to use:
+
+- One model from correspondences with outliers: :class:`RANSAC`, with ``model_type`` one of ``"homography"``,
+  ``"homography_from_linesegments"``, ``"affine"``, ``"fundamental"`` (seven-point samples),
+  ``"fundamental_7pt"``, ``"fundamental_8pt"`` or ``"essential"``.
+- A model from correspondences known to be inliers, without sampling: the estimators it wraps,
+  :func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`,
+  :func:`~kornia.geometry.epipolar.find_fundamental` and :func:`~kornia.geometry.epipolar.find_essential`.
+"""
 
 from __future__ import annotations
 
@@ -178,13 +194,24 @@ def _check_compile_config(local_optimization: str, prosac_sampling: bool, degens
 
 
 class RANSAC(nn.Module):
-    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
+    r"""Estimate a homography, affine, fundamental or essential matrix robustly despite outliers.
+
+    ``estimator = RANSAC(model_type, inl_th=2.0)`` builds the estimator, and ``model, inliers = estimator(kp1, kp2)``
+    takes one set of correspondences ``(N, 2)`` of the first and the second image, or segments ``(N, 2, 2)`` for
+    ``"homography_from_linesegments"``, and returns the best-scoring ``(3, 3)`` model and its ``(N,)`` bool inlier
+    mask, or an all-zero model and an all-False mask when no model has enough support. A correspondence is an inlier
+    when its error under the model is at most ``inl_th``, in the units of the keypoints. The model follows the
+    estimator of its type: a homography or affine map from ``kp1`` to ``kp2``
+    (:func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`), a
+    fundamental matrix with :math:`x_2^\top F x_1 = 0` (:func:`~kornia.geometry.epipolar.find_fundamental`), or an
+    essential matrix for camera-normalized keypoints (:func:`~kornia.geometry.epipolar.find_essential`). Each call
+    estimates one model, since ``batch_size`` batches hypotheses rather than problems; for correspondences known to be
+    inliers, call those estimators directly (see also https://en.wikipedia.org/wiki/Random_sample_consensus).
 
     Convention:
         - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
-          ``model_type``, so a homography maps ``kp1`` to ``kp2``. ``forward`` returns a ``(3, 3)`` model and an
-          ``(N,)`` bool inlier mask, or an all-zero model and no inliers when no candidate has more inliers than
-          its minimal sample (three correspondences for affine transforms, four for homographies,
+          ``model_type``. ``forward`` returns an all-zero model and no inliers when no candidate has more inliers
+          than its minimal sample (three correspondences for affine transforms, four for homographies,
           five for ``"essential"``, seven for ``"fundamental"`` and ``"fundamental_7pt"``,
           eight for ``"fundamental_8pt"``).
         - ``"fundamental"`` draws seven-point samples, like ``"fundamental_7pt"``; ``"fundamental_8pt"`` draws
@@ -282,6 +309,15 @@ class RANSAC(nn.Module):
         degensac: run DEGENSAC's dominant-plane recovery, as described above. Defaults to False; None also leaves
             it off. True enables it for ``"fundamental"`` and ``"fundamental_7pt"`` with ``local_optimization="lm"``,
             the only supported combinations; True with any other raises ``ValueError``.
+
+    See Also:
+        - :func:`~kornia.geometry.homography.find_homography_dlt`: the homography of correspondences known to be
+          inliers.
+        - :func:`~kornia.geometry.epipolar.find_fundamental`: the fundamental matrix of inlier correspondences.
+        - :func:`~kornia.geometry.epipolar.find_essential`: the essential matrix candidates of inlier
+          correspondences in normalized camera coordinates.
+        - :func:`~kornia.geometry.solvers.find_affine`: the affine map of inlier correspondences.
+        - :func:`~kornia.geometry.homography.find_homography_lines_dlt`: the homography of inlier line segments.
 
     """
 
@@ -469,7 +505,7 @@ class RANSAC(nn.Module):
                 size; None assumes ``iteration`` batches of ``batch_size``.
 
         Returns:
-            Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
+            Tensor of sampled indices with shape ``(batch_size, sample_size)``.
 
         """
         device = torch.device("cpu") if device is None else torch.device(device)
@@ -536,7 +572,7 @@ class RANSAC(nn.Module):
         return _DEFAULT_BATCH * self.max_iter
 
     def resolve_batch_size(self, num_tc: int, device: torch.device) -> int:
-        """Return the batch size of a ``local_optimization="dlt"`` call: the configured one, or the ``"auto"`` choice.
+        """Return the batch size of a ``local_optimization="dlt"`` call: configured or ``"auto"``.
 
         On CUDA and MPS a homography or affine batch costs about the same from a few hundred up to 8192 hypotheses
         (the four- and three-point solves are launch-bound), so the whole :attr:`sample_budget` is drawn in batches
@@ -692,8 +728,8 @@ class RANSAC(nn.Module):
         """Estimate models from minimal samples.
 
         Args:
-            kp1: source keypoints with shape :math:`(batch_size, sample_size, 2)`.
-            kp2: target keypoints with shape :math:`(batch_size, sample_size, 2)`.
+            kp1: source keypoints with shape ``(batch_size, sample_size, 2)``.
+            kp2: target keypoints with shape ``(batch_size, sample_size, 2)``.
 
         Returns:
             Estimated models tensor.
@@ -920,17 +956,16 @@ class RANSAC(nn.Module):
             KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
                 raise ValueError(
-                    "kp1 and kp2 should be                                  equal shape at least"
-                    f" [{self.minimal_sample_size}, 2],                                  got {kp1.shape}, {kp2.shape}"
+                    f"kp1 and kp2 should be equal shape at least [{self.minimal_sample_size}, 2],"
+                    f" got {kp1.shape}, {kp2.shape}"
                 )
         if self.model_type == "homography_from_linesegments":
             KORNIA_CHECK_SHAPE(kp1, ["N", "2", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
                 raise ValueError(
-                    "kp1 and kp2 should be                                  equal shape at least"
-                    f" [{self.minimal_sample_size}, 2, 2],                                  got {kp1.shape},"
-                    f" {kp2.shape}"
+                    f"kp1 and kp2 should be equal shape at least [{self.minimal_sample_size}, 2, 2],"
+                    f" got {kp1.shape}, {kp2.shape}"
                 )
 
     def forward(

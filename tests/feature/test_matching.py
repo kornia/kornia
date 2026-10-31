@@ -31,6 +31,7 @@ from kornia.feature.matching import (
     DescriptorMatcherWithSteerer,
     GeometryAwareDescriptorMatcher,
     _cdist,
+    _first_to_second_nearest_ratio,
     match_adalam,
     match_fginn,
     match_mnn,
@@ -158,6 +159,119 @@ class TestMatchSNN(BaseTester):
         desc1 = torch.rand(5, 8, device=device, dtype=torch.float64)
         desc2 = torch.rand(7, 8, device=device, dtype=torch.float64)
         self.gradcheck(match_snn, (desc1, desc2, 0.8), nondet_tol=1e-4)
+
+    def test_mps_alone_uses_two_row_reductions(self, device, monkeypatch):
+        # torch.topk is two to five times faster than the two row reductions on x86 CPUs, and as fast on CUDA (#6465)
+        def two_row_reductions(*args):
+            raise AssertionError("two row reductions")
+
+        monkeypatch.setattr(matching, "_first_to_second_nearest_ratio", two_row_reductions)
+        desc1 = torch.rand(4, 8, device=device)
+        desc2 = torch.rand(5, 8, device=device)
+        if device.type == "mps":
+            with pytest.raises(AssertionError, match="two row reductions"):
+                match_snn(desc1, desc2, 0.8)
+        else:
+            match_snn(desc1, desc2, 0.8)
+
+
+class TestFirstToSecondNearestRatio(BaseTester):
+    """The ratio that match_snn and match_smnn take from two row reductions on MPS, checked on every device."""
+
+    def test_nonfinite_distances_and_ties(self, device, dtype):
+        # nan is ordered after +inf, as by torch.topk: it is a neighbour only when no number is left in the row
+        nan, inf = float("nan"), float("inf")
+        dm = torch.tensor(
+            [
+                [1.0, nan, 2.0],  # 1 / 2
+                [nan, 3.0, 1.0],  # 1 / 3
+                [1.0, nan, nan],  # no second neighbour: nan
+                [1.0, nan, inf],  # an infinitely far second neighbour: 0
+                [nan, nan, nan],  # nan
+                [2.0, 2.0, 5.0],  # a tie: 1, at the first tied column
+                [4.0, 1.0, inf],  # 1 / 4
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected = torch.tensor([1 / 2, 1 / 3, nan, 0.0, nan, 1.0, 1 / 4], device=device, dtype=dtype)
+
+        ratio, column = _first_to_second_nearest_ratio(dm)
+
+        number = ~torch.isnan(expected)
+        assert torch.equal(torch.isnan(ratio), ~number)
+        self.assert_close(ratio[number], expected[number])
+        self.assert_close(column[number], torch.tensor([0, 2, 0, 0, 1], device=device))
+
+    def test_tied_nearest_neighbours_take_the_first_column(self, device, dtype):
+        # torch.topk returns the last of these tied columns on CPU and the first on MPS
+        dm = torch.full((2, 3000), 2.0, device=device, dtype=dtype)
+        dm[:, [2000, 2500]] = 1.0
+        ratio, column = _first_to_second_nearest_ratio(dm)
+        self.assert_close(ratio, torch.ones(2, device=device, dtype=dtype))
+        self.assert_close(column, torch.tensor([2000, 2000], device=device))
+
+    @pytest.mark.parametrize("transposed", [False, True])
+    def test_matches_topk(self, device, dtype, transposed):
+        # Small integers make many ties; every 11th distance is nan and every 17th +inf. match_smnn passes the
+        # transposed matrix for its second direction.
+        flat = torch.arange(40 * 30, device=device)
+        dm = (flat * 7919 % 13).to(dtype)
+        dm = torch.where(flat % 17 == 0, float("inf"), dm)
+        dm = torch.where(flat % 11 == 0, float("nan"), dm).reshape(40, 30)
+        dm = dm.t() if transposed else dm
+
+        ratio, column = _first_to_second_nearest_ratio(dm)
+
+        values, columns = torch.topk(dm, 2, dim=1, largest=False)
+        expected = values[:, 0] / values[:, 1]
+        number = ~torch.isnan(expected)
+        assert torch.equal(torch.isnan(ratio), ~number)
+        self.assert_close(ratio[number], expected[number])
+        # A ratio below 1, the only kind a ratio test with th < 1 accepts, has a unique nearest neighbour.
+        unique = expected < 1
+        assert unique.any()
+        self.assert_close(column[unique], columns[unique, 0])
+
+    @pytest.mark.parametrize("int_dtype", [torch.int32, torch.int64])
+    def test_integer_distance_matrix(self, device, int_dtype):
+        # an integer dm, such as Hamming distances between binary descriptors
+        dm = torch.tensor([[2, 3, 5], [4, 4, 1], [7, 1, 9]], device=device, dtype=int_dtype)
+        ratio, column = _first_to_second_nearest_ratio(dm)
+        # promoted to the default floating dtype, as an integer division is
+        assert ratio.dtype == torch.get_default_dtype()
+        self.assert_close(ratio, torch.tensor([2 / 3, 1 / 4, 1 / 7], device=device))
+        self.assert_close(column, torch.tensor([0, 2, 1], device=device))
+        desc = torch.zeros(3, 2, device=device)
+        dists, idxs = match_snn(desc, desc, 0.8, dm)
+        self.assert_close(dists, torch.tensor([[2 / 3], [1 / 4], [1 / 7]], device=device))
+        self.assert_close(idxs, torch.tensor([[0, 0], [1, 2], [2, 1]], device=device))
+
+    def test_undefined_ratio_gets_no_gradient(self, device):
+        # The first row's ratio is 0 / 0. Its quotient's nan gradient would reach every distance of the row through
+        # amin's backward, and from there every descriptor of desc2.
+        dm = torch.tensor([[0.0, 0.0, 3.0], [2.0, 4.0, 1.0]], device=device, requires_grad=True)
+        ratio, _ = _first_to_second_nearest_ratio(dm)
+        assert torch.isnan(ratio[0])
+        ratio[1].backward()
+        self.assert_close(dm.grad, torch.tensor([[0.0, 0.0, 0.0], [-0.25, 0.0, 0.5]], device=device))
+
+    def test_gradcheck(self, device):
+        dm = torch.rand(6, 7, device=device, dtype=torch.float64)
+        self.gradcheck(lambda dm: _first_to_second_nearest_ratio(dm)[0], (dm,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        flat = torch.arange(40 * 30, device=device)
+        dm = (flat * 7919 % 13).to(dtype)
+        dm = torch.where(flat % 11 == 0, float("nan"), dm).reshape(40, 30)
+        op = torch_optimizer(_first_to_second_nearest_ratio)
+        for x in (dm, dm.t()):
+            expected_ratio, expected_column = _first_to_second_nearest_ratio(x)
+            ratio, column = op(x)
+            number = ~torch.isnan(expected_ratio)
+            assert torch.equal(torch.isnan(ratio), ~number)
+            self.assert_close(ratio[number], expected_ratio[number])
+            self.assert_close(column[number], expected_column[number])
 
 
 class TestMatchSMNN(BaseTester):
