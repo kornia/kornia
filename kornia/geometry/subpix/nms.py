@@ -45,9 +45,13 @@ def _pooled_window_is_faster(x: torch.Tensor) -> bool:
     against about 10 for :func:`_neighbourhood_max2d`, which is 2-6x faster there (RTX 4090, 480 x 640 to
     960 x 1280 maps). On CPU the chains are 2-20x faster than the pooled path, so they stay there, and on MPS, where
     neither has been measured. Integer maps keep the chains everywhere, because CUDA ``max_pool2d`` takes only
-    floating-point input. Both paths give the same mask.
+    floating-point input, and so do maps without channels, which ``max_pool2d`` rejects. TorchScript keeps them too:
+    the legacy ONNX exporter has no symbolic for the ``prim::is_cuda`` a scripted check would leave in the graph. Both
+    paths give the same mask.
     """
-    return x.is_cuda and x.is_floating_point()
+    if torch.jit.is_scripting():
+        return False
+    return x.is_cuda and x.is_floating_point() and x.shape[1] > 0
 
 
 def _neighbourhood_max2d(x: torch.Tensor, ky: int, kx: int) -> torch.Tensor:
