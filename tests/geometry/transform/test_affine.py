@@ -1319,6 +1319,24 @@ class TestAffine3d(BaseTester):
 
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("unbatched", [False, True])
+    def test_function_unbatched_matrix(self, device, dtype, unbatched):
+        volume = torch.rand(2, 4, 5, 6, device=device, dtype=dtype)
+        if not unbatched:
+            volume = volume.unsqueeze(0)
+        matrix = torch.eye(3, 4, device=device, dtype=dtype)
+        matrix[0, 3] = 1.0
+        expected = kornia.geometry.transform.affine3d(volume, matrix.unsqueeze(0))
+        actual = kornia.geometry.transform.affine3d(volume, matrix)
+        assert actual.shape == volume.shape
+        self.assert_close(actual, expected)
+
+    def test_function_empty_matrix_batch(self, device, dtype):
+        volume = torch.rand(1, 2, 4, 5, 6, device=device, dtype=dtype)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            kornia.geometry.transform.affine3d(volume, matrix)
+
     def test_function_invalid_batch(self, device, dtype):
         volume = torch.rand(2, 2, 4, 5, 6, device=device, dtype=dtype)
         matrix = torch.eye(3, 4, device=device, dtype=dtype).repeat(3, 1, 1)
