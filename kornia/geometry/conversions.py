@@ -300,8 +300,9 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    in_dtype = torch.promote_types(x.dtype, y.dtype)
-    half = in_dtype in (torch.float16, torch.bfloat16)
+    phi = torch.atan2(y, x)
+    # phi has the dtype of rho under torch's rank-aware promotion, which promote_types(x.dtype, y.dtype) ignores
+    half = phi.dtype in (torch.float16, torch.bfloat16)
     # float32 holds the square of every float16 value, so half-precision radii neither overflow nor lose small values
     xw, yw = (x.float(), y.float()) if half else (x, y)
     squared_radius = xw**2 + yw**2
@@ -310,8 +311,7 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     safe_rho = torch.sqrt(torch.where(outside, squared_radius, torch.ones_like(squared_radius)))
     rho = torch.where(outside, safe_rho, torch.sqrt(squared_radius).detach())
     if half:
-        rho = rho.to(in_dtype)
-    phi = torch.atan2(y, x)
+        rho = rho.to(phi.dtype)
     return rho, phi
 
 

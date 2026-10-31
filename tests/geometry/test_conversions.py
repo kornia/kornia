@@ -2654,6 +2654,17 @@ class TestPolCartConversions(BaseTester):
 
         self.assert_close(rho, expected, atol=0.0, rtol=0.0)
 
+    def test_cart2pol_float16_rho_with_a_0d_float32_operand_is_formed_in_float32(self, device):
+        # rho is float16 under torch's rank-aware promotion, so its square sum must still be formed in float32 (#6414):
+        # promote_types(float16, float32) would say float32 and skip that
+        x = torch.tensor([300.0], device=device, dtype=torch.float16)
+        y = torch.tensor(150.0, device=device, dtype=torch.float32)
+
+        rho = kornia.geometry.conversions.cart2pol(x, y)[0]
+
+        assert rho.dtype == torch.float16
+        self.assert_close(rho, torch.tensor([335.5], device=device, dtype=torch.float16), atol=0.0, rtol=0.0)
+
     @pytest.mark.parametrize("radius", [1e-4, 5e-5, 1e-5, 1e-6, 5e-8])
     def test_cart2pol_rho_is_exact_inside_eps_6440(self, radius, device, dtype):
         # Inside the eps neighbourhood rho was computed as (rho + 1) - 1, which rounded it to a multiple of the
