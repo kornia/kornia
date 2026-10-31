@@ -23,6 +23,7 @@ import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import _autocast_disabled, _torch_svd_cast
 
@@ -62,9 +63,13 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     """
     if len(input.shape) != 4:
-        raise AssertionError(input.shape)
+        raise ShapeError(
+            f"input must have shape (B, C, H, W), got {list(input.shape)}.",
+            actual_shape=list(input.shape),
+            expected_shape=["B", "C", "H", "W"],
+        )
     if focal <= 0:
-        raise AssertionError(focal)
+        raise ValueCheckError(f"focal must not be zero or negative, got {focal}", actual_value=focal)
 
     _, _, H, W = input.shape
 
@@ -179,7 +184,10 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
     KORNIA_CHECK_SHAPE(R, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["*", "3", "1"])
     if not len(K.shape) == len(R.shape) == len(t.shape):
-        raise AssertionError
+        raise ShapeError(
+            "K, R and t must have shapes (*, 3, 3), (*, 3, 3) and (*, 3, 1) with the same number of dimensions, "
+            f"got {list(K.shape)}, {list(R.shape)} and {list(t.shape)}."
+        )
 
     Rt = torch.cat([R, t], dim=-1)  # 3x4
     Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4

@@ -422,8 +422,10 @@ class InputPadder:
     def __init__(self, h: int, w: int, divis_by: int = 8) -> None:
         self.ht = h
         self.wd = w
-        pad_ht = (((h // divis_by) + 1) * divis_by - h) % divis_by
-        pad_wd = (((w // divis_by) + 1) * divis_by - w) % divis_by
+        # The distance to the next multiple, written without `%`: under dynamic-shape torch.compile a modulo of the
+        # image size reached the float offset bound of DeformableConv2d, which inductor (torch 2.14) cannot lower.
+        pad_ht = (h + divis_by - 1) // divis_by * divis_by - h
+        pad_wd = (w + divis_by - 1) // divis_by * divis_by - w
         self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
 
     def pad(self, x: torch.Tensor) -> torch.Tensor:
@@ -1071,6 +1073,17 @@ class ALIKED(nn.Module):
         B, _, H, W = img.shape
         wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=torch.promote_types(img.dtype, torch.float32))
 
+        if B == 0:
+            # torch.stack rejects an empty list. Derive the empty outputs from the dense maps instead of allocating
+            # them, so they stay in the autograd graph, and sample the responses as DKD does, so they keep the
+            # dtype a non-empty batch gets (float32 under autocast).
+            responses = F.grid_sample(score_map, score_map.new_zeros(0, 1, 0, 2), mode="bilinear", align_corners=True)
+            return (
+                score_map.flatten()[:0].to(wh.dtype).view(0, 0, 2, 3),
+                responses.view(0, 0, 1),
+                feature_map.flatten()[:0].view(0, 0, feature_map.shape[1]),
+            )
+
         lafs_list: list[torch.Tensor] = []
         for i in range(B):
             kps_px = wh * (keypoints[i] + 1) / 2.0  # (N, 2)
@@ -1084,7 +1097,7 @@ class ALIKED(nn.Module):
             lafs_list.append(laf_i)
 
         # Pad to the maximum number of keypoints in the batch.
-        n_max = max(laf.shape[0] for laf in lafs_list) if lafs_list else 0
+        n_max = max(laf.shape[0] for laf in lafs_list)
 
         def _pad(t: torch.Tensor, n: int, fill: float = 0.0) -> torch.Tensor:
             pad_n = n - t.shape[0]

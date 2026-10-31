@@ -4678,7 +4678,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
             ValueError,
-            match=r"The length of salt_vs_pepper must be greater than 0\s+and less than or equal to 2, "
+            match=r"The length of salt_vs_pepper must be greater than 0 and less than or equal to 2, "
             r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
@@ -4686,7 +4686,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
         with pytest.raises(
             BaseError,
-            match=r"Salt_vs_pepper values must be between 0 and 1\.\s+"
+            match=r"Salt_vs_pepper values must be between 0 and 1\. "
             r"Recommended value 0\.5\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
@@ -4694,13 +4694,13 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
         with pytest.raises(
             ValueError,
-            match=r"The length of amount must be greater than 0\s+and less than or equal to 2, "
+            match=r"The length of amount must be greater than 0 and less than or equal to 2, "
             r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
             BaseError,
-            match=r"amount of noise values must be between 0 and 1\.\s+"
+            match=r"amount of noise values must be between 0 and 1\. "
             r"Recommended values less than 0\.2\.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
@@ -4908,6 +4908,16 @@ class TestRandomGaussianIllumination(BaseTester):
         actual = aug(input_tensor, params=params)
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("param", ["gain", "center", "sigma", "sign"])
+    def test_length_message_6454(self, param, device, dtype):
+        # The message carried a run of spaces from a backslash-continued string literal.
+        with pytest.raises(ValueError) as excinfo:
+            RandomGaussianIllumination(**{param: (0.1, 0.1, 0.1)})
+        assert str(excinfo.value) == (
+            f"The length of {param} must be greater than 0 and less than or equal to 2, "
+            "and it should be a tuple or a float."
+        )
+
 
 class TestRandomLinearIllumination(BaseTester):
     def _get_expected(self, device, dtype):
@@ -4974,6 +4984,16 @@ class TestRandomLinearIllumination(BaseTester):
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
+    @pytest.mark.parametrize("param", ["gain", "sign"])
+    def test_length_message_6454(self, param, device, dtype):
+        # The message carried a run of spaces from a backslash-continued string literal.
+        with pytest.raises(ValueError) as excinfo:
+            RandomLinearIllumination(**{param: (0.1, 0.1, 0.1)})
+        assert str(excinfo.value) == (
+            f"The length of {param} must be greater than 0 and less than or equal to 2, "
+            "and it should be a tuple or a float."
+        )
+
 
 class TestRandomLinearCornerIllumination(BaseTester):
     def _get_expected(self, device, dtype):
@@ -5039,6 +5059,16 @@ class TestRandomLinearCornerIllumination(BaseTester):
         transform = RandomLinearCornerIllumination(p=1.0, same_on_batch=True)
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
+
+    @pytest.mark.parametrize("param", ["gain", "sign"])
+    def test_length_message_6454(self, param, device, dtype):
+        # The message carried a run of spaces from a backslash-continued string literal.
+        with pytest.raises(ValueError) as excinfo:
+            RandomLinearCornerIllumination(**{param: (0.1, 0.1, 0.1)})
+        assert str(excinfo.value) == (
+            f"The length of {param} must be greater than 0 and less than or equal to 2, "
+            "and it should be a tuple or a float."
+        )
 
 
 class TestRandomChannelDropout(BaseTester):

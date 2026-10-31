@@ -32,7 +32,7 @@ Which class to use:
 
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 import torch
@@ -46,16 +46,15 @@ from .imgwarp import _normalize_warped_pixel_grid, _warp_pixel_grid, homography_
 __all__ = ["BaseWarper", "HomographyWarper"]
 
 
-class BaseWarper(nn.Module):
+class BaseWarper(ABC, nn.Module):
     """Declare the interface of a homography warper module that ImageRegistrator can call.
 
     ``BaseWarper(height, width)`` only stores the destination ``height`` and ``width``. A subclass implements
     ``warper(patch_src, src_homo_dst)``, which samples a ``(B, C, H, W)`` source on that destination grid by a
     ``(B, 3, 3)`` destination→source homography, and ``precompute_warp_grid(src_homo_dst)``, which caches the grid.
     :class:`~kornia.geometry.transform.image_registrator.ImageRegistrator` takes such a class as ``warper`` and calls
-    it as ``warper(height, width)``. The two methods are marked abstract, but :class:`torch.nn.Module` does not enforce
-    it: ``BaseWarper`` itself constructs, and its ``forward`` returns ``None``
-    (`#6399 <https://github.com/kornia/kornia/issues/6399>`_). To warp images, use :class:`HomographyWarper`.
+    it as ``warper(height, width)``. Both methods are abstract: constructing ``BaseWarper`` itself, or a subclass that
+    does not implement both, raises ``TypeError``. To warp images, use :class:`HomographyWarper`.
 
     Convention:
         - subclasses receive ``src_homo_dst`` as the destination→source homography

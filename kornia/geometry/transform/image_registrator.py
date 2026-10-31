@@ -34,7 +34,7 @@ Which class to use:
   :class:`~kornia.geometry.ransac.RANSAC` or :func:`~kornia.geometry.homography.find_homography_dlt`.
 """
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
@@ -51,16 +51,16 @@ from .pyramid import build_pyramid
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
-class BaseModel(nn.Module):
+class BaseModel(ABC, nn.Module):
     """Declare the interface of a transform model that ImageRegistrator optimizes.
 
     A subclass holds its transform parameters as :class:`~torch.nn.parameter.Parameter` and implements
     ``reset_model()``, which returns them to the identity, ``forward()``, the matrix with which its warper warps the
     source image into the destination, and ``forward_inverse()``, the matrix of the reverse warp.
     :class:`ImageRegistrator` takes an instance as ``model_type``, together with a ``warper`` class. The three methods
-    are marked abstract, but :class:`torch.nn.Module` does not enforce it: ``BaseModel`` itself constructs, as
-    :class:`~kornia.geometry.transform.BaseWarper` does (`#6399 <https://github.com/kornia/kornia/issues/6399>`_). For
-    the built-in models, use :class:`Homography` or :class:`Similarity`.
+    are abstract: constructing ``BaseModel`` itself, or a subclass that does not implement all three, raises
+    ``TypeError``, as for :class:`~kornia.geometry.transform.BaseWarper`. For the built-in models, use
+    :class:`Homography` or :class:`Similarity`.
 
     See Also:
         - :class:`Homography`: the built-in model of a full homography.
@@ -350,10 +350,7 @@ class ImageRegistrator(nn.Module):
         """Warp img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
-            raise ValueError(
-                "Cannot register images of different shapes                             "
-                f" {img_src.shape} {img_dst.shape:} "
-            )
+            raise ValueError(f"Cannot register images of different shapes {img_src.shape} {img_dst.shape}")
         _height, _width = img_dst.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(img_src, transform_model)

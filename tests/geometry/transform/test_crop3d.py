@@ -446,6 +446,71 @@ class TestCropByBoxes3D(BaseTester):
         )
         assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
 
+    def test_mismatched_batch_error_labels_dimensions_correctly(self, device, dtype):
+        # Regression for #6402: the error message used to print depth as "height" and vice versa.
+        inp = torch.rand(2, 1, 4, 4, 4, device=device, dtype=dtype)
+        src_box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 3.0, 0.0],
+                    [0.0, 3.0, 0.0],
+                    [0.0, 0.0, 3.0],
+                    [3.0, 0.0, 3.0],
+                    [3.0, 3.0, 3.0],
+                    [0.0, 3.0, 3.0],
+                ],
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 3.0, 0.0],
+                    [0.0, 3.0, 0.0],
+                    [0.0, 0.0, 3.0],
+                    [3.0, 0.0, 3.0],
+                    [3.0, 3.0, 3.0],
+                    [0.0, 3.0, 3.0],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # Batch item 0: 2x3x4 (depth=2, height=3, width=4)
+        # Batch item 1: 3x3x4 (depth=3, height=3, width=4)
+        # Depths differ across the batch, so the error should mention "depth".
+        dst_box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 2.0, 0.0],
+                    [0.0, 2.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [3.0, 0.0, 1.0],
+                    [3.0, 2.0, 1.0],
+                    [0.0, 2.0, 1.0],
+                ],
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 2.0, 0.0],
+                    [0.0, 2.0, 0.0],
+                    [0.0, 0.0, 2.0],
+                    [3.0, 0.0, 2.0],
+                    [3.0, 2.0, 2.0],
+                    [0.0, 2.0, 2.0],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # Heights are 3 and widths 4 in both items, so the match also pins the height and width labels.
+        with pytest.raises(
+            AssertionError,
+            match=r"Got depth tensor\(\[2\., 3\.\].*, height tensor\(\[3\., 3\.\].* and width tensor\(\[4\., 4\.\]",
+        ):
+            kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box)
+
 
 class TestCrop3DSizeValidation:
     """Tests that 3D crop functions properly reject invalid size arguments."""

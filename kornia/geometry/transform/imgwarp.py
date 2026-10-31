@@ -660,6 +660,32 @@ def _fill_and_warp(
     return _torch_grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
 
 
+def _check_homography_shape(src_homo_dst: torch.Tensor) -> None:
+    """Raise unless ``src_homo_dst`` is ``(B, 3, 3)`` or ``(B, 1, 3, 3)``.
+
+    A single ``(3, 3)`` matrix is refused: its first dimension would be read as the batch, so the grid would come
+    back with a batch of 3 instead of one grid.
+    """
+    msg = "src_homo_dst must be (B, 3, 3) or (B, 1, 3, 3); a single (3, 3) homography needs a leading batch dimension."
+    if src_homo_dst.dim() == 4:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "1", "3", "3"], msg=msg)
+    else:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "3", "3"], msg=msg)
+
+
+def _check_homography_shape3d(src_homo_dst: torch.Tensor) -> None:
+    """Raise unless ``src_homo_dst`` is ``(B, 4, 4)`` or ``(B, 1, 4, 4)``.
+
+    A single ``(4, 4)`` matrix is refused: its first dimension would be read as the batch, so the grid would come
+    back with a batch of 4 instead of one grid.
+    """
+    msg = "src_homo_dst must be (B, 4, 4) or (B, 1, 4, 4); a single (4, 4) homography needs a leading batch dimension."
+    if src_homo_dst.dim() == 4:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "1", "4", "4"], msg=msg)
+    else:
+        KORNIA_CHECK_SHAPE(src_homo_dst, ["B", "4", "4"], msg=msg)
+
+
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     """Warp a grid of 2D points by homographies, returning the coordinates without sampling an image.
 
@@ -693,6 +719,10 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     Returns:
         the transformed grid of shape ``(N, H, W, 2)``.
 
+    Raises:
+        ShapeError: If ``grid`` is not ``(B, H, W, 2)``, or ``src_homo_dst`` is not ``(B, 3, 3)`` or
+            ``(B, 1, 3, 3)``. A single ``(3, 3)`` homography needs a leading batch dimension.
+
     See Also:
         - :func:`warp_grid3d`: the same for a 3D ``(x, y, z)`` grid and ``(N, 4, 4)`` homographies.
         - :func:`homography_warp`: builds the grid, warps it with this function and samples the image.
@@ -701,6 +731,8 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           matrices.
 
     """
+    KORNIA_CHECK_SHAPE(grid, ["B", "H", "W", "2"], msg="grid must be (1, H, W, 2) or (N, H, W, 2).")
+    _check_homography_shape(src_homo_dst)
     batch_size: int = src_homo_dst.size(0)
     _, height, width, _ = grid.size()
     # expand grid to match the input batch size
@@ -738,6 +770,7 @@ def _warp_pixel_grid(src_homo_dst: torch.Tensor, height: int, width: int) -> tor
     also in a scripted call, which cannot leave it, and round the pixel coordinates of a 640 px wide grid to whole
     pixels in bfloat16. Autocast leaves elementwise products alone, so eager and scripted calls compute the same grid.
     """
+    _check_homography_shape(src_homo_dst)
     work_dtype = _pixel_grid_work_dtype(src_homo_dst)
     grid = create_meshgrid(height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype)
     matrix = src_homo_dst.to(work_dtype)
@@ -794,6 +827,10 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     Returns:
         the transformed grid of shape ``(N, D, H, W, 3)``.
 
+    Raises:
+        ShapeError: If ``grid`` is not ``(B, D, H, W, 3)``, or ``src_homo_dst`` is not ``(B, 4, 4)`` or
+            ``(B, 1, 4, 4)``. A single ``(4, 4)`` homography needs a leading batch dimension.
+
     See Also:
         - :func:`warp_grid`: the same for a 2D ``(x, y)`` grid and ``(N, 3, 3)`` homographies.
         - :func:`homography_warp3d`: builds and reorders the grid, warps it with this function and samples the volume.
@@ -801,6 +838,8 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           in.
 
     """
+    KORNIA_CHECK_SHAPE(grid, ["B", "D", "H", "W", "3"], msg="grid must be (1, D, H, W, 3) or (N, D, H, W, 3).")
+    _check_homography_shape3d(src_homo_dst)
     batch_size: int = src_homo_dst.size(0)
     _, depth, height, width, _ = grid.size()
     # expand grid to match the input batch size
@@ -824,6 +863,7 @@ def _warp_pixel_grid3d(src_homo_dst: torch.Tensor, depth: int, height: int, widt
     elementwise column products that a caller's autocast region leaves alone, scripted or not. The result is
     ``(N, D, H, W, 3)`` in the ``(x, y, z)`` order the homography and ``grid_sample`` read.
     """
+    _check_homography_shape3d(src_homo_dst)
     work_dtype = _pixel_grid_work_dtype(src_homo_dst)
     grid = create_meshgrid3d(
         depth, height, width, normalized_coordinates=False, device=src_homo_dst.device, dtype=work_dtype
@@ -999,6 +1039,7 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
           largest and smallest nonzero magnitudes, which keeps both in range;
           :func:`~kornia.geometry.homography.find_homography_dlt` returns the same map at another scale
         - float16 and bfloat16 points are solved in float32, and the result is cast back to their dtype
+        - integer or boolean points give a matrix in the default floating dtype; floating points keep theirs
         - a caller's autocast region does not change the result, outside TorchScript
 
     Args:
@@ -1026,6 +1067,13 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
     KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
     KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
+
+    # A homography is not integer-valued in general, so integer or boolean points are solved and returned in the
+    # default floating dtype (read off an empty tensor: TorchScript has no ``torch.get_default_dtype()``) rather than
+    # truncated back to the input dtype.
+    if not points_src.is_floating_point():
+        work_dtype = torch.empty(0, device=points_src.device).dtype
+        points_src, points_dst = points_src.to(work_dtype), points_dst.to(work_dtype)
 
     # Solve via two closed-form unit-square (Heckbert) decompositions rather than an 8x8
     # ``torch.linalg.solve``. Both yield the perspective transform mapping ``points_src`` onto
@@ -1390,11 +1438,17 @@ def get_translation_matrix2d(translations: torch.Tensor) -> torch.Tensor:
     Returns:
         the affine transformation matrix ``(B, 3, 3)``.
 
+    Raises:
+        ShapeError: If ``translations`` is not ``(B, 2)``. A single translation needs shape ``(1, 2)``.
+
     See Also:
         - :func:`translate`: shift an image without building the matrix.
         - :func:`get_affine_matrix2d`: a translation composed with a rotation, a scale and a shear.
 
     """
+    KORNIA_CHECK_SHAPE(
+        translations, ["B", "2"], msg="translations must be (B, 2); a single (2,) translation needs a batch dimension."
+    )
     transform: torch.Tensor = eye_like(3, translations)[:, :2, :]
     transform[..., 2] += translations  # tx/ty
 
@@ -1505,10 +1559,10 @@ def get_affine_matrix3d(
     Args:
         translations: torch.Tensor containing the translation vector (dx,dy,dz) with shape ``(B, 3)``.
         center: torch.Tensor containing the center vector (x,y,z) with shape ``(B, 3)``.
-        scale: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``; a ``(B, 1)`` or ``(1,)`` tensor scales
-            the three axes alike. A ``(B,)`` tensor is not one factor per matrix: for ``B = 3`` it is read as
-            ``(sx, sy, sz)``, and for another ``B > 1`` it raises
-            (`#6398 <https://github.com/kornia/kornia/issues/6398>`_).
+        scale: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` or ``(3,)`` shared
+            across the batch. A ``(3,)`` tensor always means per-axis factors, including when ``B = 3``.
+            Use ``(B, 1)`` for one isotropic factor per sample, or ``(1,)`` for one factor shared across all samples
+            and axes. Per-sample isotropic factors must have shape ``(B, 1)``, not ``(B,)``.
         angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
@@ -1521,6 +1575,10 @@ def get_affine_matrix3d(
 
     Returns:
         the 3d affine transformation matrix ``(B, 4, 4)``.
+
+    Raises:
+        ShapeError: If ``scale`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)``, ``(3,)`` or ``(1,)``;
+            see :func:`get_projective_transform`.
 
     See Also:
         - :func:`get_affine_matrix2d`: the 2D composition, whose positive angle turns clockwise on screen.
@@ -1788,6 +1846,27 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
     return torch.cat([rmat, tvec], -1)  # Bx3x4
 
 
+def _check_scale_shape3d(scales: torch.Tensor) -> None:
+    """Validate batched scale factors or shared ``(3,)`` per-axis and ``(1,)`` isotropic factors.
+
+    A ``(3,)`` tensor means ``(sx, sy, sz)`` shared by every sample, including at ``B = 3``. Per-sample isotropic
+    factors go in a column, ``(B, 1)``; other 1-D lengths are unsupported.
+    """
+    msg = (
+        "scale must be (B, 3) or (1, 3) per-axis, (B, 1) isotropic, (3,) shared per-axis or (1,) shared isotropic "
+        "factors; reshape per-sample factors (B,) to (B, 1)."
+    )
+    if scales.dim() == 1:
+        if scales.shape[0] == 3:
+            KORNIA_CHECK_SHAPE(scales, ["3"], msg=msg)
+        else:
+            KORNIA_CHECK_SHAPE(scales, ["1"], msg=msg)
+    elif scales.dim() == 2 and scales.shape[1] == 1:
+        KORNIA_CHECK_SHAPE(scales, ["B", "1"], msg=msg)
+    else:
+        KORNIA_CHECK_SHAPE(scales, ["B", "3"], msg=msg)
+
+
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
     """Compute the 3x4 affine matrix of a 3D scaling and axis-angle rotation about a centre.
 
@@ -1815,10 +1894,16 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape ``(B, 3)``. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
-        scales: scale factor for x-y-z-directions with shape ``(B, 3)``.
+        scales: per-axis scale factors ``(sx, sy, sz)`` with shape ``(B, 3)``, or ``(1, 3)`` or ``(3,)`` shared
+            across the batch. A ``(3,)`` tensor always means per-axis factors, including when ``B = 3``.
+            Use ``(B, 1)`` for one isotropic factor per sample, or ``(1,)`` for one factor shared across all samples
+            and axes. Per-sample isotropic factors must have shape ``(B, 1)``, not ``(B,)``.
 
     Returns:
         the projection matrix of 3D rotation with shape ``(B, 3, 4)``.
+
+    Raises:
+        ShapeError: If ``scales`` is not ``(B, 3)``, ``(B, 1)``, ``(1, 3)``, ``(3,)`` or ``(1,)``.
 
     See Also:
         - :func:`get_rotation_matrix2d`: the 2D rotation and scale, counter-clockwise on screen.
@@ -1836,6 +1921,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         raise AssertionError(center.device, angles.device)
     if center.dtype != angles.dtype:
         raise AssertionError(center.dtype, angles.dtype)
+    _check_scale_shape3d(scales)
 
     # create rotation matrix
     axis_angle_rad: torch.Tensor = torch.torch.deg2rad(angles)
@@ -1932,6 +2018,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
           ``101`` and ``011`` in :func:`~kornia.geometry.bbox.bbox_generator3d` order; points 3, 4 and 6 are not
           used, so they map onto their ``dst`` only when all eight pairs are related by one homography
         - returns the source→destination **pixel** homography ``(B, 4, 4)``
+        - integer or boolean points give a matrix in the default floating dtype; floating points keep theirs
 
     Args:
         src: coordinates of the box corners in the source volume with shape ``(B, 8, 3)``.
@@ -1967,6 +2054,12 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
             f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
             f"with the same dtype (Got {src.dtype}, {dst.dtype})."
         )
+
+    # A homography is not integer-valued in general, so integer or boolean points are solved and returned in the
+    # default floating dtype rather than truncated back to the input dtype.
+    if not src.is_floating_point():
+        work_dtype = torch.empty(0, device=src.device).dtype
+        src, dst = src.to(work_dtype), dst.to(work_dtype)
 
     # we build the square matrix A from 5 point correspondences, 3 equations each, and solve it exactly
     p = []

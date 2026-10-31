@@ -50,6 +50,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import Resample
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
@@ -316,7 +317,7 @@ def crop_by_boxes(
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
-    validate_boxes: bool = True,
+    validate_boxes: Optional[bool] = None,
 ) -> torch.Tensor:
     """Crop images by mapping a source box onto a destination box, whose size sets the output size.
 
@@ -356,8 +357,10 @@ def crop_by_boxes(
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
-        validate_boxes: has no effect: the boxes are not validated
-          (`#6401 <https://github.com/kornia/kornia/issues/6401>`_).
+        validate_boxes: deprecated since kornia 0.9.1 and ignored; passing ``True`` or ``False`` emits a
+          :class:`DeprecationWarning`, and the default ``None`` does not. The boxes are not validated, whatever
+          its value: only the shapes of ``src_box`` and ``dst_box`` and the equal size of the ``dst_box`` boxes
+          are checked.
 
     Returns:
         the patches, with shape ``(B, C, h, w)`` for the size ``(h, w)`` of ``dst_box``.
@@ -389,6 +392,17 @@ def crop_by_boxes(
                   [ 9.0000, 10.0000]]]])
 
     """
+    # TorchScript cannot compile the warning helper (it formats an ``Optional[str]`` and passes ``category`` to
+    # ``warnings.warn``), so a scripted call stays silent, as in ``bbox_to_mask``.
+    if not torch.jit.is_scripting() and validate_boxes is not None:
+        _emit_deprecation_warning(
+            "crop_by_boxes(validate_boxes=...)",
+            None,
+            "0.9.1",
+            "The argument has no effect: `crop_by_boxes` does not validate the boxes, whatever its value; stop "
+            "passing it.",
+        )
+
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
