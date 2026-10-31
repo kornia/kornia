@@ -1902,6 +1902,8 @@ def normalize_pixel_coordinates3d(
         - :func:`denormalize_pixel_coordinates3d`: the reverse map, :math:`[-1, 1]` back to voxels.
         - :func:`normalize_pixel_coordinates`: the 2D form, for ``(*, 2)`` coordinates in ``(x, y)`` order.
         - :func:`normal_transform_pixel3d`: the same scaling as a ``(1, 4, 4)`` matrix on ``(x, y, z, 1)``.
+        - :func:`~kornia.geometry.grid.create_meshgrid3d`: the whole ``(1, D, H, W, 3)`` voxel grid, normalized the
+          same way by default.
 
     """
     if pixel_coordinates.shape[-1] != 3:
