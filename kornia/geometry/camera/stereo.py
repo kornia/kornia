@@ -256,11 +256,16 @@ class StereoCamera:
     def tx(self) -> torch.Tensor:
         r"""The horizontal baseline between the two cameras.
 
+        Integer translations are promoted to the default floating-point dtype before negation.
+
         Returns:
             torch.Tensor of shape ``(B)``
 
         """
-        return -self.rectified_right_camera[..., 0, 3] / self.fx
+        translation = self.rectified_right_camera[..., 0, 3]
+        if not translation.is_floating_point():
+            translation = translation.to(torch.get_default_dtype())
+        return -translation / self.fx
 
     @property
     def Q(self) -> torch.Tensor:
@@ -271,7 +276,7 @@ class StereoCamera:
         lengths in the x and y direction.
 
         Integer camera matrices use the default floating-point dtype for Q; floating-point cameras
-        retain their dtype. The stored camera matrices and their parameter properties are unchanged.
+        retain their dtype. The stored camera matrices and intrinsic parameter properties are unchanged.
 
         Return:
             The Q matrix of shape ``(B, 4, 4)``.
@@ -291,7 +296,7 @@ class StereoCamera:
         # Promote before products and negation, which can overflow for narrow integer cameras.
         fx, fy = self.fx.to(dtype), self.fy.to(dtype)
         cx_left, cx_right, cy = self.cx_left.to(dtype), self.cx_right.to(dtype), self.cy.to(dtype)
-        baseline: torch.Tensor = -self.tx if floating_camera else self.rectified_right_camera[..., 0, 3].to(dtype) / fx
+        baseline: torch.Tensor = -self.tx
         Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=dtype)
         Q[:, 0, 0] = fy * baseline
         Q[:, 0, 3] = -fy * cx_left * baseline
