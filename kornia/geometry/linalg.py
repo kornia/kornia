@@ -272,20 +272,21 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         if trans_shape[0] > 1:
             raise ValueError(mismatch)
     else:
-        extra = matrix_batch[len(point_batch) :]
-        if len(extra) > 0 and any(size != 1 for size in extra):
-            raise ValueError(mismatch)
-        if len(extra) > 0:
-            matrix_batch = matrix_batch[: len(point_batch)]
-            trans_01 = trans_01.reshape(matrix_batch + trans_shape[-2:])
-        try:
-            broadcast = torch.broadcast_shapes(
-                matrix_batch + (1,) * (len(point_batch) - len(matrix_batch)), point_batch
-            )
-        except RuntimeError as err:
-            raise ValueError(mismatch) from err
-        if broadcast != tuple(point_batch):
-            raise ValueError(mismatch)
+        # No ``try``: ``torch.jit.script`` rejects it, and ``warp_grid`` scripts this function.
+        while len(matrix_batch) > len(point_batch):
+            if matrix_batch[-1] != 1:
+                raise ValueError(mismatch)
+            matrix_batch = matrix_batch[:-1]
+            trans_01 = trans_01.squeeze(-3)
+        axis = 0
+        while axis < len(matrix_batch):
+            matrix_size = matrix_batch[axis]
+            if matrix_size != point_batch[axis] and matrix_size != 1:
+                raise ValueError(mismatch)
+            axis = axis + 1
+        while len(matrix_batch) < len(point_batch):
+            trans_01 = trans_01.unsqueeze(-3)
+            matrix_batch = matrix_batch + (1,)
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
         raise ValueError(f"Last input dimensions must differ by one unit. Got {trans_01.shape} and {points_1.shape}")
 
