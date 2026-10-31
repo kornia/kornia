@@ -1167,8 +1167,8 @@ class Affine(nn.Module):
             ``(C, H, W)`` input counting as 1.
 
     Returns:
-        The transformed tensor with same shape as input, except that one image warped by ``B > 1`` parameter sets
-        returns ``(B, C, H, W)``.
+        The transformed tensor with same shape as input, except that one image warped by ``P > 1`` parameter sets
+        returns ``(P, C, H, W)``.
 
     See Also:
         - :func:`get_affine_matrix2d`: the ``(B, 3, 3)`` matrix this module warps by, whose own angle turns clockwise
@@ -1245,8 +1245,8 @@ class Affine(nn.Module):
                 :math:`H` is height, and :math:`W` is width.
 
         Returns:
-            Affine-warped tensor with shape ``(B, C, H, W)``. Values
-            sampled outside the input image are handled by ``self.padding_mode``.
+            Affine-warped tensor with the input's shape, except that one image warped by ``P > 1`` parameter sets
+            gives ``(P, C, H, W)``. Values sampled outside the input image are handled by ``self.padding_mode``.
         """
         if self.shear is None:
             sx = sy = None
