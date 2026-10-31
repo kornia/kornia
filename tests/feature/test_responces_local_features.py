@@ -17,6 +17,7 @@
 
 import math
 
+import numpy as np
 import pytest
 import torch
 
@@ -61,6 +62,23 @@ class TestCornerHarris(BaseTester):
         inp = torch.zeros(2, 6, 4, 4, device=device)
         harris = kornia.feature.CornerHarris(k=0.04).to(device)
         assert harris(inp).shape == (2, 6, 4, 4)
+
+    @pytest.mark.parametrize("k", [0, 1, -1])
+    def test_int_k_6503(self, device, dtype, k):
+        # register_buffer takes only tensors, so an int k raised in __init__, while harris_response accepts it.
+        torch.manual_seed(0)
+        inp = torch.rand(2, 1, 9, 9).to(device=device, dtype=dtype)
+        scores = kornia.feature.CornerHarris(k).to(device)(inp)
+        self.assert_close(scores, kornia.feature.CornerHarris(float(k)).to(device)(inp), rtol=0, atol=0)
+        self.assert_close(scores, kornia.feature.harris_response(inp, k), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("k", [np.int64(0), np.float32(0.0625)])
+    def test_numpy_scalar_k_6503(self, device, dtype, k):
+        # Neither is a Python float, so they reached register_buffer unconverted, like an int.
+        torch.manual_seed(0)
+        inp = torch.rand(2, 1, 9, 9).to(device=device, dtype=dtype)
+        scores = kornia.feature.CornerHarris(k).to(device)(inp)
+        self.assert_close(scores, kornia.feature.harris_response(inp, k), rtol=0, atol=0)
 
     def test_corners(self, device, dtype):
         inp = torch.tensor(
