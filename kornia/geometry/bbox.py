@@ -773,7 +773,8 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     Note:
         Two boxes whose union is empty, such as two zero-width boxes, have an IoU of ``0``, so neither suppresses the
-        other, as in ``torchvision.ops.nms``.
+        other, as in ``torchvision.ops.nms``. A box with a NaN coordinate has a NaN IoU with every other box, which
+        is not above ``iou_threshold``: it neither suppresses nor is suppressed, as in ``torchvision.ops.nms``.
 
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other
@@ -823,9 +824,9 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
         union = areas[i] + areas[order[1:]] - inter
-        # Two zero-area boxes have a zero union, and their IoU is 0 rather than 0 / 0: a NaN would compare as an
-        # overlap below and suppress a disjoint box. torchvision keeps such a box too. The intersection is 0 whenever
-        # the union is not positive, so dividing it by 1 there gives 0, and a NaN coordinate still gives a NaN IoU.
+        # Two zero-area boxes have a zero union, and their IoU is 0 rather than 0 / 0, so they compare with
+        # iou_threshold like disjoint boxes. The intersection is 0 whenever the union is not positive, so dividing it
+        # by 1 there gives 0, and a NaN coordinate still gives a NaN IoU.
         ovr = inter / torch.where(union > 0, union, torch.ones_like(union))
 
         # Suppress only when IoU is strictly above the threshold. In particular, NaN IoUs compare false here, so a
