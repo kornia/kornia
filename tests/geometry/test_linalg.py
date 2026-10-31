@@ -119,16 +119,23 @@ class TestTransformPoints(BaseTester):
             ((2, 3), (2, 3, 2)),
             ((2,), (2, 3)),
             ((1, 1, 1), (2, 3)),
+            ((2, 1), (2,)),
+            ((2, 1, 1), (2, 3)),
+            ((1, 2, 1), (3, 2, 2)),
         ],
     )
     def test_multi_axis_matrix_batch_aligns_with_points_axes(self, trans_batch, points_batch, device, dtype):
         # Each matrix batch axis pairs with the matching leading points axis, a size-1 axis broadcasting (kornia#6473).
         trans = self._translations(trans_batch, device, dtype)
         points = torch.zeros(*points_batch, 1, 3, device=device, dtype=dtype)
-        if len(trans_batch) > len(points_batch):  # a single matrix applies to every point set
+        # Trailing size-1 matrix axes broadcast over the remaining point axes, so drop them first.
+        kept = list(trans_batch)
+        while len(kept) > 1 and kept[-1] == 1:
+            kept.pop()
+        if len(kept) > len(points_batch):  # a single matrix applies to every point set
             expected_x = trans.reshape(-1, 4, 4)[0, 0, 3].expand(points_batch)
         else:
-            full_trans = trans.reshape(*trans_batch, *([1] * (len(points_batch) - len(trans_batch))), 4, 4)
+            full_trans = trans.reshape(*kept, *([1] * (len(points_batch) - len(kept))), 4, 4)
             expected_x = full_trans[..., 0, 3].expand(points_batch)
 
         result = kgl.transform_points(trans, points)
