@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numbers
 from typing import Optional, Union
 
 import torch
@@ -430,6 +431,9 @@ class CornerHarris(nn.Module):
         super().__init__()
         if isinstance(k, float):
             self.register_buffer("k", torch.tensor(k))
+        elif isinstance(k, numbers.Real) and not isinstance(k, bool):
+            # An int or a NumPy scalar, which harris_response accepts: register_buffer takes only tensors.
+            self.register_buffer("k", torch.tensor(float(k)))
         else:
             self.register_buffer("k", k)
         self.grads_mode: str = grads_mode
