@@ -19,6 +19,8 @@
 
 import torch
 
+from kornia.core.exceptions import ShapeError
+
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
     r"""Build the skew-symmetric cross-product matrices of 3-vectors with any number of leading dimensions.
@@ -45,8 +47,10 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
           vector.
 
     """
-    if not x.shape[-1] == 3:
-        raise AssertionError(x.shape)
+    if x.ndim == 0 or x.shape[-1] != 3:
+        raise ShapeError(
+            f"x must have shape (*, 3), got {list(x.shape)}.", actual_shape=list(x.shape), expected_shape=["*", "3"]
+        )
     # get vector compononens
     x0 = x[..., 0]
     x1 = x[..., 1]

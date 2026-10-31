@@ -24,7 +24,7 @@ import torch.nn.functional as F
 import kornia
 from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
-from kornia.feature.aliked.aliked import SDDH, _affine_from_cov, get_patches
+from kornia.feature.aliked.aliked import SDDH, InputPadder, _affine_from_cov, get_patches
 from kornia.feature.aliked.deform_conv2d import _bilinear_sample, _grid_sample_bilinear, deform_conv2d
 
 from testing.base import (
@@ -437,6 +437,48 @@ class TestALIKED(BaseTester):
         aliked = ALIKED(model_name="aliked-t16", **kwargs).to(device, dtype).eval()
         output = aliked(torch.rand(0, 3, 64, 64, device=device, dtype=dtype))
         assert output == []
+
+    def test_input_padder_pads_to_the_next_multiple(self):
+        """The pad reaches the next multiple of ``divis_by``, split evenly with the extra pixel at the end."""
+        for size in range(70):
+            for divis_by in (1, 8, 32):
+                left, right, top, bottom = InputPadder(size, size + 3, divis_by)._pad
+                for pad, extent in ((top + bottom, size), (left + right, size + 3)):
+                    assert (extent + pad) % divis_by == 0
+                    assert 0 <= pad < divis_by
+                assert bottom - top in (0, 1)
+                assert right - left in (0, 1)
+
+    def test_dynamo_dense_map_with_changing_sizes(self, dtype, device, torch_optimizer):
+        """extract_dense_map compiles in one graph and matches eager, also once the image size changes.
+
+        A second size makes Dynamo trace the sizes symbolically. The padding used to be a modulo of the image size,
+        which reached the float offset bound of DeformableConv2d, and inductor (torch 2.14) failed to lower it:
+        ``TensorReferenceAnalysis has no attribute 'python_mod'``.
+        """
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        torch.manual_seed(0)
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
+        op = torch_optimizer(aliked.extract_dense_map, fullgraph=True)
+        for hw in ((64, 96), (96, 72), (80, 112)):
+            inp = torch.rand(1, 3, *hw, device=device, dtype=dtype)
+            with torch.no_grad():
+                expected, actual = aliked.extract_dense_map(inp), op(inp)
+            for e, a in zip(expected, actual):
+                self.assert_close(a, e)
+
+    def test_dynamo_model_with_changing_sizes(self, dtype, device, torch_optimizer):
+        """The compiled model, with the graph breaks of its keypoint selection, runs on changing image sizes."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        aliked = ALIKED(model_name="aliked-t16").to(device, dtype).eval()
+        op = torch_optimizer(aliked)
+        for hw in ((64, 96), (96, 72)):
+            with torch.no_grad():
+                output = op(torch.rand(1, 3, *hw, device=device, dtype=dtype))
+            assert len(output) == 1
+            assert isinstance(output[0], ALIKEDFeatures)
 
     def test_smoke(self, dtype, device):
         aliked = ALIKED().to(device, dtype).eval()

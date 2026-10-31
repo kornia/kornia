@@ -155,8 +155,9 @@ class So2(nn.Module):
         """Perform a left-multiplication either rotation concatenation or point-transform.
 
         Args:
-            right: the other So2 transformation, or points of shape ``(B, 2)`` or ``(2,)`` as a tensor or
-                a ``Vector2``.
+            right: the other So2 transformation, or points as a tensor or a ``Vector2``: ``(2,)`` or ``(N, 2)``
+                for an unbatched rotation, ``(B, 2)`` or ``(2,)`` for a batch of ``B`` (a batch of one also maps
+                ``(N, 2)``).
 
         Return:
             The resulting So2 transformation, or the rotated points with the type of ``right``.
@@ -167,11 +168,18 @@ class So2(nn.Module):
             return So2(z * right.z)
         if isinstance(right, (Vector2, torch.Tensor)):
             if isinstance(right, torch.Tensor):
-                # check_so2_t_shape
+                # (2,) under any pose, (N, 2) under an unbatched pose, and one point per pose for a batch
                 is_batch_shape = KORNIA_CHECK_SHAPE(right, ["B", "2"], raises=False)
                 is_single_shape = KORNIA_CHECK_SHAPE(right, ["2"], raises=False)
+                if is_batch_shape and z.dim() == 1:
+                    is_batch_shape = right.shape[0] in (z.shape[0], 1) or z.shape[0] == 1
                 if not (is_batch_shape or is_single_shape):
-                    raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {right.shape}")
+                    raise ValueError(
+                        "Expected points of shape (2,) or (N, 2) for an unbatched pose, or (B, 2), one point per "
+                        "pose, for a batch of B poses (a batch of one pose also maps (N, 2), and one point (2,) or "
+                        f"(1, 2) maps under every pose). Got points of shape {tuple(right.shape)} for a pose of batch "
+                        f"shape {tuple(z.shape)}."
+                    )
             right_data = _unwrap(right)
             x = right_data[..., 0]
             y = right_data[..., 1]

@@ -1466,6 +1466,8 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         - :func:`determinant_to_polynomial`: the step that follows the elimination of these cubics.
 
     """
+    KORNIA_CHECK_SHAPE(a, ["B", "10"], "a must have shape (B, 10).")
+    KORNIA_CHECK_SHAPE(b, ["B", "4"], "b must have shape (B, 4).")
     global T_deg2  # noqa: PLW0603
     if T_deg2.device != a.device or T_deg2.dtype != a.dtype:
         T_deg2 = T_deg2.to(device=a.device, dtype=a.dtype)

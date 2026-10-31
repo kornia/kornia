@@ -231,6 +231,22 @@ class TestNamedPose(BaseTester):
         self.assert_close(points_in_b, (points_in_a + shift_x) @ rot_z.T, low_tolerance=low_tolerance)
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a, low_tolerance=low_tolerance)
 
+    def test_transform_points_point_set_with_unbatched_se3(self, device, dtype):
+        # #6426: an unbatched 3D pose maps an (N, 3) point set, as an unbatched 2D pose maps (N, 2).
+        torch.manual_seed(0)
+        points_in_a = (2 * torch.rand(7, 3) - 1).to(device, dtype)
+        b_from_a_se3 = Se3.rot_z(torch.tensor(0.5, device=device, dtype=dtype)) * Se3.trans_x(
+            torch.tensor(1.0, device=device, dtype=dtype)
+        )
+        b_from_a = NamedPose(b_from_a_se3, frame_src="frame_a", frame_dst="frame_b")
+
+        points_in_b = b_from_a.transform_points(points_in_a)
+
+        # R p + t in float64, on the CPU, from the same rounded pose and points: only the output is rounded
+        r = So3(Quaternion(b_from_a_se3.so3.q.data.cpu().double())).matrix()
+        expected = points_in_a.cpu().double() @ r.mT + b_from_a_se3.t.cpu().double()
+        self.assert_close(points_in_b.cpu(), expected.to(dtype))
+
 
 class TestNamedPoseConventions(BaseTester):
     @staticmethod
