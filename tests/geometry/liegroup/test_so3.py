@@ -334,6 +334,19 @@ class TestSo3(BaseTester):
         self.assert_close((s2 * s2.inverse()).q.data, s1.q.data)
         self.assert_close((s1 * t), t)
 
+    @pytest.mark.parametrize(("left_batch", "right_batch"), [(None, 3), (3, None)])
+    def test_mul_unbatched_with_batched(self, device, dtype, left_batch, right_batch):
+        # #6481: composing an unbatched So3 with a batch used to raise in torch.linalg.cross
+        s1 = So3(Quaternion.random(left_batch, device, dtype))
+        s2 = So3(Quaternion.random(right_batch, device, dtype))
+        out = s1 * s2
+        assert out.q.shape == (3, 4)
+        self.assert_close(out.matrix(), s1.matrix() @ s2.matrix())
+
+    def test_mul_mismatched_batches_raise(self, device, dtype):
+        with pytest.raises(ValueError, match="Cannot multiply quaternions of batch shapes"):
+            So3.random(3, device, dtype) * So3.random(2, device, dtype)
+
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_unit_norm(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size, device, dtype)
