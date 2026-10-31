@@ -17,6 +17,7 @@
 
 import itertools
 import math
+import warnings
 
 import numpy as np
 import pytest
@@ -45,6 +46,38 @@ class TestResize(BaseTester):
         inp = torch.rand(*shape, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize_to_be_divisible(inp, divisible_factor)
         assert out.shape == expected
+
+    @pytest.mark.parametrize("kwargs", [{}, {"side": None}])
+    def test_resize_to_be_divisible_default_side(self, kwargs, device, dtype):
+        inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            out = kornia.geometry.transform.resize_to_be_divisible(inp, 5, **kwargs)
+        assert out.shape == (1, 1, 5, 10)
+
+    @pytest.mark.parametrize("shape", [(1, 1, 6, 12), (2, 3, 17, 9), (1, 1, 5, 10), (1, 1, 0, 12)])
+    @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
+    def test_resize_to_be_divisible_deprecated_side(self, shape, side, device, dtype):
+        inp = torch.rand(*shape, device=device, dtype=dtype)
+        expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
+        with pytest.warns(DeprecationWarning, match="side.*has no effect") as records:
+            out = kornia.geometry.transform.resize_to_be_divisible(inp, 5, side=side)
+        assert len(records) == 1
+        assert records[0].filename == __file__
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_resize_to_be_divisible_compile_fullgraph(self, side, device, dtype, torch_optimizer, optimizer_backend):
+        if not optimizer_backend or optimizer_backend == "jit":
+            pytest.skip("Fullgraph requires a torch.compile backend, not TorchScript or the no-op optimizer.")
+        inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
+        expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
+        op = torch_optimizer(kornia.geometry.transform.resize_to_be_divisible, fullgraph=True)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message=r".*resize_to_be_divisible.*side", category=DeprecationWarning)
+            out = op(inp, 5, side=side)
+        self.assert_close(out, expected)
 
     def test_resize_to_be_divisible_numpy_factor_and_empty_side(self, device, dtype):
         resize_to_be_divisible = kornia.geometry.transform.resize_to_be_divisible
