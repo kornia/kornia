@@ -25,15 +25,20 @@ def _patch_conv_layout(x: torch.Tensor, cpu_has_onednn: bool = _CPU_HAS_ONEDNN) 
     r"""Return a patch network's convolution input in the memory format its device convolves fastest in.
 
     The patch descriptor and shape networks (HardNet, HardNet8, SOSNet, TFeat, HyNet, AffNet, OriNet) call this where
-    their convolutions start. It changes the strides only, never the values: the networks return the same numbers in
-    either layout.
+    their convolutions start. It changes the strides only, never the values; the networks return the same numbers in
+    either layout up to rounding, because a backend may pick other convolution kernels for channels-last (bitwise equal
+    on MPS; within float32 rounding on x86 oneDNN).
 
     - MPS, float32 and float16: channels-last. The convolution bodies run 1.04-1.38x faster on an Apple M1 with torch
       2.14, and extracting 2048 patches and describing them with HardNet 1.07x (float32) and 1.11x (float16).
-    - CPU float32 with oneDNN: channels-last, which avoids oneDNN's activation reorders. A CPU build without oneDNN,
+    - CUDA, float16 and bfloat16: channels-last. On an RTX 4090 with torch 2.14 the forwards on 2048 patches run
+      1.08-1.44x faster; on 512 patches the result is mixed (0.83-1.30x across runs, the losses in float16).
+    - CPU float32 with oneDNN: channels-last, which avoids oneDNN's activation reorders: 1.2-1.5x on an x86 i7-14700K,
+      except HardNet8, which gains at the default thread count and is 0.95x on 8 threads. A CPU build without oneDNN,
       such as the macOS arm64 wheels, convolves with NNPACK, which takes only the default layout, so the input is left
       alone instead of paying a copy that changes nothing.
-    - Everything else, CUDA included, keeps the input's layout.
+    - Everything else keeps the input's layout. CUDA float32 is among them: under cuDNN's default TF32 convolutions,
+      six of the seven bodies are 0.87-1.00x in channels-last at 2048 patches and more.
 
     Args:
         x: convolution input ``(B, C, H, W)``.
@@ -43,8 +48,10 @@ def _patch_conv_layout(x: torch.Tensor, cpu_has_onednn: bool = _CPU_HAS_ONEDNN) 
         ``x``, as a channels-last copy where that layout is faster.
     """
     device = x.device.type
-    if (device == "cpu" and cpu_has_onednn and x.dtype == torch.float32) or (
-        device == "mps" and x.dtype in (torch.float32, torch.float16)
+    if (
+        (device == "cpu" and cpu_has_onednn and x.dtype == torch.float32)
+        or (device == "mps" and x.dtype in (torch.float32, torch.float16))
+        or (device == "cuda" and x.dtype in (torch.float16, torch.bfloat16))
     ):
         return x.to(memory_format=torch.channels_last)
     return x

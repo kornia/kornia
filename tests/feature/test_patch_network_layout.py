@@ -78,6 +78,21 @@ class TestPatchConvLayout(BaseTester):
         x = torch.rand(2, 4, 3, 3, device=device, dtype=dtype)
         assert torch.equal(_patch_conv_layout(x), x)
 
+    def test_device_decision(self, device, dtype):
+        # The layout measured fastest on each device: MPS float32/float16 (Apple M1), CUDA float16/bfloat16 (RTX 4090;
+        # float32 is slower there under TF32), CPU float32 with oneDNN (x86).
+        expected = {
+            "mps": dtype in (torch.float32, torch.float16),
+            "cuda": dtype in (torch.float16, torch.bfloat16),
+            "cpu": dtype == torch.float32 and torch.backends.mkldnn.is_available(),
+        }.get(device.type, False)
+        x = torch.rand(2, 4, 3, 3, device=device, dtype=dtype)
+        converted = _patch_conv_layout(x)
+        assert (converted is not x) == expected
+        if expected:
+            assert converted.is_contiguous(memory_format=torch.channels_last)
+            assert not converted.is_contiguous()
+
     @pytest.mark.parametrize("name", NETWORKS)
     def test_convolutions_receive_device_layout(self, name, device, dtype):
         torch.manual_seed(0)
