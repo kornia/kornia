@@ -29,7 +29,8 @@ an IDE or a coding agent relies on and what a refactor silently breaks; the shap
 * every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
   ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
   object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
-  text (a short import alias is importable but is not a target); See Also entries name kornia objects only;
+  text (a short import alias is importable but is not a target), also in the docstrings of the methods, properties
+  and attributes autodoc documents under a converted class; See Also entries name kornia objects only;
 * every ``kornia/**/*.py`` file and every page Sphinx builds from ``docs/source`` writes a tensor shape as a literal
   such as ``(B, 1, H, W)``, not as ``:math:``, except for the values listed in ``MATH_NON_SHAPES``;
 * the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal.
@@ -62,6 +63,7 @@ from testing.docstring_style import (
     catalog_unimportable,
     covered,
     docstring_roles,
+    documented_members,
     forwards_to,
     intersphinx_names,
     is_deprecated_wrapper,
@@ -97,7 +99,10 @@ UNDOCUMENTED = sorted(
         if covered(obj.__module__, DOCSTRING_MODULES)
     ),
 )
-
+MEMBERS = sorted(
+    (qualified, member, doc)
+    for qualified, (member, doc) in documented_members(REGISTRY, [obj for _, obj in CONVERTED]).items()
+)
 
 SHAPE_CHECK_FILES = sorted([*KORNIA_ROOT.rglob("*.py"), *rst_pages(DOCS)])
 
@@ -218,17 +223,30 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
     assert not problems, f"{qualified} See Also: " + "; ".join(problems)
 
 
-@pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
-def test_converted_object_references_resolve(qualified: str, obj: object) -> None:
+def _unresolved_references(qualified: str, obj: object, doc: str | None) -> str:
+    """Describe the roles in ``doc``, the docstring of ``obj`` registered as ``qualified``, that Sphinx cannot link."""
     unresolved = [
         f":{role}:`{target}`{_suggest(target)}{_wrong_role(role, target)}"
-        for role, target in docstring_roles(own_docstring(obj))
+        for role, target in docstring_roles(doc)
         if not reference_resolves(obj, target, REGISTRY, INTERSPHINX, role)
     ]
+    if not unresolved:
+        return ""
     hint = "write the full name the docs register"
     if not is_documented(obj, REGISTRY):
         hint = f"{qualified} is not documented on any docs/source page, so short names have no scope; {hint}"
-    assert not unresolved, f"{qualified} has references Sphinx cannot link ({hint}): " + ", ".join(unresolved)
+    return f"{qualified} has references Sphinx cannot link ({hint}): " + ", ".join(unresolved)
+
+
+@pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
+def test_converted_object_references_resolve(qualified: str, obj: object) -> None:
+    assert not (message := _unresolved_references(qualified, obj, own_docstring(obj))), message
+
+
+@pytest.mark.parametrize(("qualified", "member", "doc"), MEMBERS, ids=[qualified for qualified, _, _ in MEMBERS])
+def test_converted_class_member_references_resolve(qualified: str, member: object, doc: str) -> None:
+    """The methods, properties and attributes autodoc renders under a converted class link their references too."""
+    assert not (message := _unresolved_references(qualified, member, doc)), message
 
 
 @pytest.mark.parametrize(

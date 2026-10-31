@@ -31,11 +31,13 @@ from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 
 from testing import docstring_style
 from testing.docstring_style import (
+    _Attribute,
     catalog_missing,
     catalog_required,
     catalog_unimportable,
     covered,
     docstring_roles,
+    documented_members,
     forwards_to,
     intersphinx_names,
     is_deprecated_wrapper,
@@ -659,6 +661,74 @@ def test_public_and_undocumented_objects_split_the_export_walk(monkeypatch):
     monkeypatch.setattr(docstring_style, "_exported_objects", lambda: walk)
     assert [qualified for _, qualified in undocumented_public_objects.__wrapped__().values()] == ["m.undocumented"]
     assert [qualified for _, qualified in public_objects.__wrapped__().values()] == ["m.documented"]
+
+
+class _Converted:
+    """A converted class."""
+
+    #: The size, see :class:`_Converted`.
+    size = 1
+    bare = 2
+    #: First line, see :class:`_Converted`.
+    #: Second line.
+    block = 3
+    trailing = 4  #: Trailing, see :attr:`size`.
+    literal = 5
+    """A string after the assignment,
+    on two lines."""
+
+    def method(self):
+        """Do it, like :meth:`other`."""
+
+    @property
+    def prop(self):
+        """Read it."""
+
+    def silent(self):
+        pass
+
+
+class _Unconverted:
+    """Another class."""
+
+    def method(self):
+        """Not wanted."""
+
+
+def test_documented_members_returns_the_registered_members_of_the_classes():
+    registry = {
+        "m.Converted": _Converted,
+        "m.Converted.method": _Converted.method,
+        "m.Converted.prop": _Converted.prop,
+        "m.Converted.size": _Attribute(_Converted, "size"),
+        "m.Converted.block": _Attribute(_Converted, "block"),
+        "m.Converted.trailing": _Attribute(_Converted, "trailing"),
+        "m.Converted.literal": _Attribute(_Converted, "literal"),
+        "m.Converted.silent": _Converted.silent,
+        "m.Converted.bare": _Attribute(_Converted, "bare"),
+        "m.Unconverted": _Unconverted,
+        "m.Unconverted.method": _Unconverted.method,
+        "m.function": _alias_target,
+    }
+    members = documented_members(registry, [_Converted])
+    assert members == {
+        "m.Converted.method": (_Converted.method, "Do it, like :meth:`other`."),
+        "m.Converted.prop": (_Converted.prop, "Read it."),
+        "m.Converted.size": (registry["m.Converted.size"], "The size, see :class:`_Converted`."),
+        "m.Converted.block": (
+            registry["m.Converted.block"],
+            "First line, see :class:`_Converted`.\nSecond line.",
+        ),
+        "m.Converted.trailing": (registry["m.Converted.trailing"], "Trailing, see :attr:`size`."),
+        "m.Converted.literal": (registry["m.Converted.literal"], "A string after the assignment,\non two lines."),
+    }
+    assert documented_members(registry, []) == {}
+
+
+def test_documented_members_reads_a_member_under_every_class_that_registers_it():
+    registry = {"a.Converted": _Converted, "b.Converted": _Converted}
+    registry |= {"a.Converted.prop": _Converted.prop, "b.Converted.prop": _Converted.prop}
+    assert set(documented_members(registry, [_Converted])) == {"a.Converted.prop", "b.Converted.prop"}
 
 
 def _alias_target(a, b=1, *args, c=2, **kwargs):

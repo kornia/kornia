@@ -495,7 +495,9 @@ _ATTRIBUTE_COMMENT = re.compile(r"^\s*#: ?(.*)$")
 
 
 class _AttributeDocPicker(ast.NodeVisitor):
-    """Collect ``(namespace, name)`` of the documented variables of a module, as ``VariableCommentPicker`` does.
+    """Collect the documented variables of a module and their text, as ``VariableCommentPicker`` does.
+
+    ``found`` maps ``(namespace, name)`` to the documentation text: the ``#:`` comment, or the string literal.
 
     An assignment documents its targets with a ``#:`` comment after it, with ``#:`` lines right above it, or with
     a string literal right after it. The namespace is the enclosing class path, ``""`` at module level. Inside a
@@ -503,14 +505,14 @@ class _AttributeDocPicker(ast.NodeVisitor):
     ``except`` and ``finally`` blocks are not read.
     """
 
-    def __init__(self, lines: list[str], comment_columns: dict[int, int]) -> None:
+    def __init__(self, lines: list[str], comments: dict[int, tuple[int, str]]) -> None:
         self.lines = lines
-        self.comment_columns = comment_columns
+        self.comments = comments
         self.context: list[str] = []
         self.classes = 0
         self.function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
         self.previous: ast.AST | None = None
-        self.found: set[tuple[str, str]] = set()
+        self.found: dict[tuple[str, str], str] = {}
 
     def visit(self, node: ast.AST) -> None:
         super().visit(node)
@@ -548,10 +550,10 @@ class _AttributeDocPicker(ast.NodeVisitor):
             return ".".join(self.context[:-1])
         return None
 
-    def _record(self, names: list[str]) -> None:
+    def _record(self, names: list[str], text: str) -> None:
         namespace = self._namespace()
         if namespace is not None:
-            self.found.update((namespace, name) for name in names)
+            self.found.update(((namespace, name), text) for name in names)
 
     def visit_Assign(self, node: ast.Assign | ast.AnnAssign) -> None:
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -559,13 +561,17 @@ class _AttributeDocPicker(ast.NodeVisitor):
             names = [name for target in targets for name in self._names(target)]
         except TypeError:
             return
-        column = self.comment_columns.get(node.end_lineno or node.lineno)
-        if (column is not None and column >= (node.end_col_offset or 0)) or (
-            node.lineno > 1
-            and not self.lines[node.lineno - 1][: node.col_offset].strip()
-            and _ATTRIBUTE_COMMENT.match(self.lines[node.lineno - 2])
-        ):
-            self._record(names)
+        trailing = self.comments.get(node.end_lineno or node.lineno)
+        above = []
+        if node.lineno > 1 and not self.lines[node.lineno - 1][: node.col_offset].strip():
+            index = node.lineno - 2
+            while index >= 0 and (comment := _ATTRIBUTE_COMMENT.match(self.lines[index])):
+                above.insert(0, comment.group(1))
+                index -= 1
+        if trailing is not None and trailing[0] >= (node.end_col_offset or 0):
+            self._record(names, trailing[1])
+        elif above:
+            self._record(names, "\n".join(above))
 
     visit_AnnAssign = visit_Assign
 
@@ -578,7 +584,7 @@ class _AttributeDocPicker(ast.NodeVisitor):
         ):
             target = previous.targets[0] if isinstance(previous, ast.Assign) else previous.target
             with contextlib.suppress(TypeError):
-                self._record(self._names(target))
+                self._record(self._names(target), inspect.cleandoc(node.value.value))
 
     def visit_Try(self, node: ast.Try) -> None:
         for child in [*node.body, *node.orelse]:
@@ -607,20 +613,23 @@ class _AttributeDocPicker(ast.NodeVisitor):
 
 
 @cache
-def _attribute_docs(module_name: str) -> frozenset[tuple[str, str]]:
-    """``(namespace, name)`` of the variables the source of ``module_name`` documents (see ``_AttributeDocPicker``)."""
+def _attribute_docs(module_name: str) -> Mapping[tuple[str, str], str]:
+    """``(namespace, name)`` to documentation text of the variables the source of ``module_name`` documents.
+
+    See ``_AttributeDocPicker``.
+    """
     path = getattr(sys.modules.get(module_name), "__file__", None)
     if not path or not path.endswith(".py"):
-        return frozenset()
+        return {}
     source = Path(path).read_text(encoding="utf-8")
-    comment_columns = {
-        token.start[0]: token.start[1]
+    comments = {
+        token.start[0]: (token.start[1], _ATTRIBUTE_COMMENT.match(token.string).group(1))
         for token in tokenize.generate_tokens(io.StringIO(source).readline)
         if token.type == tokenize.COMMENT and _ATTRIBUTE_COMMENT.match(token.string)
     }
-    picker = _AttributeDocPicker(source.splitlines(), comment_columns)
+    picker = _AttributeDocPicker(source.splitlines(), comments)
     picker.visit(ast.parse(source))
-    return frozenset(picker.found)
+    return picker.found
 
 
 def _is_data(value: object) -> bool:
@@ -895,6 +904,30 @@ def _reference_scopes(obj: object, registry: dict[str, object]) -> list[str]:
         else:
             scopes.append(parent)
     return [scope for scope in scopes if scope]
+
+
+def documented_members(registry: Mapping[str, object], classes: Iterable[object]) -> dict[str, tuple[object, str]]:
+    """Map each member autodoc documents under one of ``classes`` to its registered name, as ``(member, docstring)``.
+
+    These are the methods, properties and data attributes Sphinx renders inside a class page, found as the registry
+    entries whose parent entry is one of ``classes`` (by identity). The docstring is the one autodoc shows, so an
+    override without one has its base's; for a data attribute it is the text of its ``#:`` comment or string. A member
+    without a docstring is left out, as there is nothing to check in it. A method registered under several of the
+    classes appears once per registered name.
+    """
+    wanted = list(classes)
+    members: dict[str, tuple[object, str]] = {}
+    for name, member in registry.items():
+        parent = registry.get(name.rpartition(".")[0])
+        if parent is None or not any(parent is cls for cls in wanted):
+            continue
+        if isinstance(member, _Attribute):
+            doc = _attribute_docs(member.owner.__module__).get((member.owner.__qualname__, member.name))
+        else:
+            doc = inspect.getdoc(member)
+        if doc:
+            members[name] = (member, doc)
+    return members
 
 
 def is_documented(obj: object, registry: dict[str, object]) -> bool:
