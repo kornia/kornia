@@ -1039,13 +1039,25 @@ class TestNMS(BaseTester):
         self.assert_close(nms(boxes.to(torch.int32), scores, iou_threshold), expected, atol=0, rtol=0)
 
     @pytest.mark.parametrize("iou_threshold", [0.0, 0.5])
-    def test_nan_box_is_still_suppressed(self, iou_threshold, device, dtype):
-        # A box with a NaN coordinate has a NaN IoU with the kept box, which does not compare as at most the
-        # threshold, so it is suppressed. The zero-union rule must not turn that NaN into 0.
-        boxes = torch.tensor([[0, 0, 10, 10], [100, 100, float("nan"), 110]], device=device, dtype=dtype)
-        scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
-        expected = torch.tensor([0], device=device, dtype=torch.long)
+    def test_nan_box_does_not_suppress_or_get_suppressed(self, iou_threshold, device, dtype):
+        # A box with a NaN coordinate has a NaN IoU with other boxes. A NaN IoU does not compare as greater than
+        # iou_threshold, so it neither suppresses lower-scored boxes nor is suppressed by higher-scored boxes,
+        # matching torchvision.ops.nms.
+        boxes = torch.tensor(
+            [[0.0, 0.0, float("nan"), 10.0], [0.0, 0.0, 10.0, 10.0], [20.0, 20.0, 30.0, 30.0]],
+            device=device,
+            dtype=dtype,
+        )
+        scores = torch.tensor([0.9, 0.8, 0.7], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1, 2], device=device, dtype=torch.long)
         self.assert_close(nms(boxes, scores, iou_threshold), expected, atol=0, rtol=0)
+
+        boxes_lower = torch.tensor(
+            [[0.0, 0.0, 10.0, 10.0], [100.0, 100.0, float("nan"), 110.0]], device=device, dtype=dtype
+        )
+        scores_lower = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
+        expected_lower = torch.tensor([0, 1], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes_lower, scores_lower, iou_threshold), expected_lower, atol=0, rtol=0)
 
     def test_zero_area_box_next_to_a_box(self, device, dtype):
         # A zero-width box inside a box with a positive area has IoU 0 with it, and a box with a positive area still

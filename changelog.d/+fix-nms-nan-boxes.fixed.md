@@ -1,0 +1,1 @@
+`kornia.geometry.bbox.nms` no longer suppresses lower-scored boxes when a box has a NaN coordinate. Because a NaN IoU does not compare as greater than `iou_threshold`, suppressing on `ovr > iou_threshold` rather than keeping on `ovr <= iou_threshold` retains remaining detections instead of dropping them, matching `torchvision.ops.nms`.
