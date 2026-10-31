@@ -78,6 +78,14 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         **kwargs: Additional keyword arguments passed to `AugmentationSequential`
 
 
+    .. note::
+        The default augmentation stack contains ``RandomRotation90(times=(0, 3))``, which raises ``ValueError`` on a
+        non-square image, so the default needs square images. ADA checks the image against it on every call, before
+        it selects samples, so a non-square image raises on the first call. In a custom stack, a
+        :class:`~kornia.augmentation.RandomRotation90` that may turn an image by an odd number of quarter turns needs
+        the image it receives to be square, after any earlier resize, crop or patch split, and raises when ADA first
+        selects a sample.
+
     Examples:
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
         >>> original = torch.randn(2, 3, 16, 16)
@@ -89,7 +97,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         >>> import kornia.augmentation as K
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
-        >>> originals = torch.randn(2, 3, 5, 6)
+        >>> originals = torch.randn(2, 3, 6, 6)
         >>> aug_list = [
         ...     K.RandomRotation90(times=(0, 3), p=1),
         ...     K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1),
@@ -97,7 +105,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         ... ]
 
         >>> ada = AdaptiveDiscriminatorAugmentation(*aug_list)
-        >>> augmented = ada(original)
+        >>> augmented = ada(originals)
 
     This example demonstrates using custom augmentations with AdaptiveDiscriminatorAugmentation.
     """
@@ -118,7 +126,8 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         same_on_batch: Optional[bool] = False,
         **kwargs: Any,
     ) -> None:
-        if not args:
+        default_stack = not args
+        if default_stack:
             args = self.default_ada_transfroms(erasing_scale, erasing_ratio, erasing_fill_value)
 
         super().__init__(
@@ -131,6 +140,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             same_on_batch=same_on_batch,
             **kwargs,
         )
+
+        # ADA built the default stack, so it knows the stack's RandomRotation90 receives the input's (H, W).
+        self._default_stack = default_stack
 
         if adjustment_speed <= 0:
             raise ValueError(f"Invalid `adjustment_speed` ({adjustment_speed}) — must be greater than 0")
@@ -241,6 +253,26 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         order = sorted(range(len(keys)), key=lambda i: dict_data_keys[i] != DataKey.INPUT)
         return [keys[i] for i in order]
 
+    def _validate_rotation90_inputs(self, inputs: _inputs_type, data_keys: Optional[_data_keys_type]) -> None:
+        # Only the default stack: in a custom one an earlier module can resize the image, or a container can cut it into
+        # patches or frames, so the input's (H, W) is not the one its RandomRotation90 receives. There the rotation
+        # checks the tensor it receives, when ADA first selects a sample. An ADA pickled before this check has no flag.
+        if not getattr(self, "_default_stack", False):
+            return
+        if isinstance(inputs, dict):
+            keys, dict_data_keys, _, _ = self._preproc_dict_data(cast(Dict[str, DataType], inputs))
+            images = [inputs[key] for key, data_key in zip(keys, dict_data_keys) if data_key == DataKey.INPUT]
+        else:
+            # A tensor is an image unless ``data_keys`` name it otherwise; a mask-only call is not checked here.
+            if data_keys is None:
+                data_keys = [k.name for k in self.data_keys] if self.data_keys is not None else ["input"]
+            images = [inputs] if DataKey.get(data_keys[0]) == DataKey.INPUT else []
+        rotations = [module for module in self.modules() if isinstance(module, RandomRotation90)]
+        for image in images:
+            if image.dim() == 4:
+                for rotation in rotations:
+                    rotation.validate_tensor(image)
+
     def _get_inputs_metadata(
         self, inputs: _inputs_type, data_keys: _data_keys_type
     ) -> Tuple[int, Optional[Union[str, torch.device]]]:
@@ -309,6 +341,11 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         """
         if real_acc is not None:
             self.update(real_acc)
+
+        # ADA only calls its augmentations for the samples its probability selects, which at a small `p` can be many
+        # calls in. Check the input here, on every call, so a shape the default `RandomRotation90` rejects fails on the
+        # first one.
+        self._validate_rotation90_inputs(inputs, data_keys)
 
         if self.p == 0:
             return inputs
