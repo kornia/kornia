@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from math import prod
+from math import exp, prod
 
 import pytest
 import torch
@@ -931,6 +931,99 @@ class TestAdjustBrightness(BaseTester):
 
 
 class TestAdjustSigmoid(BaseTester):
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("gain", [23.0, -23.0, 30.0, -30.0, 32.0, -32.0])
+    def test_half_high_gain_second_derivative(self, device, half_dtype, gain, inv):
+        values = [0.0, 0.25, 0.5, 0.75, 1.0]
+        image = torch.tensor(values, device=device, dtype=half_dtype).view(1, 1, 1, 5).requires_grad_()
+        actual = kornia.enhance.AdjustSigmoid(gain=gain, inv=inv)(image)
+        (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+        (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+
+        # Evaluate the analytic derivatives through the small tail, avoiding cancellation in 1 - sigmoid.
+        logits = [gain * (x - 0.5) for x in values]
+        tails = [exp(-abs(z)) for z in logits]
+        sign = -1.0 if inv else 1.0
+        expected_gradient = [sign * gain * t / (1 + t) ** 2 for t in tails]
+        expected_second = [
+            sign * (-1.0 if z > 0 else 1.0) * gain**2 * t * (1 - t) / (1 + t) ** 3 for z, t in zip(logits, tails)
+        ]
+        self.assert_close(gradient, image.new_tensor(expected_gradient).view_as(image), rtol=0, atol=0)
+        self.assert_close(second, image.new_tensor(expected_second).view_as(image), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("half_dtype", [torch.bfloat16])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("value,cutoff,gain", [(-7.90625, 0.75, 10.0), (-3.53125, 0.7578125, 20.0)])
+    def test_bfloat16_outside_range_second_derivative(self, device, half_dtype, value, cutoff, gain, inv):
+        # Promoting bfloat16 here can overflow double-backward intermediates that were finite before.
+        image = torch.tensor([value], device=device, dtype=half_dtype).view(1, 1, 1, 1).requires_grad_()
+        actual = kornia.enhance.adjust_sigmoid(image, cutoff=cutoff, gain=gain, inv=inv)
+        (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+        (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+        assert torch.isfinite(actual).all()
+        assert torch.isfinite(gradient).all()
+        assert torch.isfinite(second).all()
+
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_broadcast_tensor_parameters_keep_gradients_and_dtype(self, device, dtype, inv):
+        image = torch.tensor([0.25, 0.5, 0.75], device=device, dtype=dtype).view(1, 1, 1, 3).requires_grad_()
+        cutoff = torch.tensor([0.5, 0.5, 0.5], device=device, dtype=torch.float32, requires_grad=True)
+        gain = torch.tensor([30.0, -30.0, 10.0], device=device, dtype=torch.float32, requires_grad=True)
+        actual = kornia.enhance.adjust_sigmoid(image, cutoff=cutoff, gain=gain, inv=inv)
+        image_grad, cutoff_grad, gain_grad = torch.autograd.grad(actual, (image, cutoff, gain), torch.ones_like(actual))
+        assert actual.dtype == torch.promote_types(dtype, torch.float32)
+        assert actual.shape == image.shape
+        assert actual.device == image.device
+        # All values are exactly representable, so the reference does not inherit image rounding error.
+        tails = [exp(-7.5), 1.0, exp(-2.5)]
+        sign = -1.0 if inv else 1.0
+        slopes = [sign * t / (1 + t) ** 2 for t in tails]
+        expected_image = [g * s for g, s in zip([30.0, -30.0, 10.0], slopes)]
+        self.assert_close(image_grad, image.new_tensor(expected_image).view_as(image), rtol=1e-6, atol=0)
+        self.assert_close(cutoff_grad, cutoff.new_tensor([-v for v in expected_image]), rtol=1e-6, atol=0)
+        self.assert_close(
+            gain_grad, gain.new_tensor([d * s for d, s in zip([-0.25, 0.0, 0.25], slopes)]), rtol=1e-6, atol=0
+        )
+
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("gain", [0.0, 10.0, 30.0, -30.0])
+    def test_bounded_values_and_gradients(self, device, dtype, gain, inv):
+        # Dark pixels overflow exp(gain * (cutoff - x)) in float16 at gain=30, although both the
+        # sigmoid and its derivative are bounded. Check both tails and the derivative at the cutoff.
+        image = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=dtype).view(1, 1, 1, 5)
+        image.requires_grad_()
+        actual = kornia.enhance.AdjustSigmoid(gain=gain, inv=inv)(image)
+        (gradient,) = torch.autograd.grad(actual.sum(), image)
+
+        # Independent analytic reference, evaluated in Python double precision, without an optional dependency.
+        values = [1.0 / (1.0 + exp(gain * (0.5 - x))) for x in [0.0, 0.25, 0.5, 0.75, 1.0]]
+        derivatives = [gain * y * (1.0 - y) * (-1.0 if inv else 1.0) for y in values]
+        expected = image.new_tensor([1.0 - y if inv else y for y in values]).view_as(image)
+        expected_gradient = image.new_tensor(derivatives).view_as(image)
+        assert actual.dtype == image.dtype
+        assert actual.device == image.device
+        self.assert_close(actual, expected)
+        # In particular, both tiny tail derivatives must survive; replacing the expression with a
+        # low-precision sigmoid alone rounds the bright tail to 1 and gives it a zero derivative.
+        self.assert_close(gradient, expected_gradient, rtol=0.02, atol=1e-7)
+
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_gradcheck_high_gain(self, device, inv):
+        image = torch.tensor([0.25, 0.5, 0.75], device=device, dtype=torch.float64).view(1, 1, 1, 3)
+        self.gradcheck(kornia.enhance.AdjustSigmoid(gain=30.0, inv=inv), (image,))
+
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_dynamo_high_gain_backward(self, device, dtype, inv, torch_optimizer):
+        image = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype).view(1, 1, 1, 3).requires_grad_()
+        op = kornia.enhance.AdjustSigmoid(gain=30.0, inv=inv)
+        expected = op(image)
+        expected_gradient = torch.autograd.grad(expected.sum(), image)[0]
+        actual = torch_optimizer(op, fullgraph=True)(image)
+        gradient = torch.autograd.grad(actual.sum(), image)[0]
+        self.assert_close(actual, expected)
+        self.assert_close(gradient, expected_gradient, rtol=0.02, atol=1e-7)
+
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_shape_sigmoid(self, shape, device):
         inputs = torch.ones(*shape, device=device)

@@ -777,7 +777,17 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
     _check_floating_image(image, "adjust_sigmoid")
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    return 1 - 1 / (1 + (gain * (cutoff - image)).exp()) if inv else 1 / (1 + (gain * (cutoff - image)).exp())
+    promote = False
+    if image.dtype == torch.float16 and isinstance(gain, (int, float)) and isinstance(cutoff, (int, float)):
+        bound = abs(gain) * max(abs(cutoff), abs(1.0 - cutoff))
+        # For images in [0, 1], bound limits the exponent. Above 11, half exp can overflow;
+        # at most 16 keeps the reciprocal cube in double backward normal in float32.
+        # Leave other cases, including tensor parameters and bfloat16, on their original path.
+        promote = 11.0 < bound <= 16.0 and abs(cutoff) <= 3.4028234663852886e38
+    if promote:
+        image = image.float()
+    result = 1 - 1 / (1 + (gain * (cutoff - image)).exp()) if inv else 1 / (1 + (gain * (cutoff - image)).exp())
+    return result.half() if promote else result
 
 
 def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_output: bool = True) -> torch.Tensor:
