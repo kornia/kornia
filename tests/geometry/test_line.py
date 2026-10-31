@@ -97,6 +97,18 @@ class TestParametrizedLine(BaseTester):
         assert type(from_scalar) is torch.Tensor
         self.assert_close(from_scalar, expected)
 
+    def test_unbatched_point_at_n_steps_6483(self, device, dtype):
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([1.0, 0.0], device=device, dtype=dtype),
+        )
+        for n in (1, 2, 3):
+            steps = torch.arange(1.0, n + 1, device=device, dtype=dtype)
+            expected = torch.stack([line.point_at(s) for s in steps])
+            assert expected.shape == (n, 2)
+            self.assert_close(line.point_at(steps), expected)
+            self.assert_close(line.point_at(steps[:, None]), expected)
+
     def test_scalar_point_at_preserves_line_dtype(self, device, dtype):
         line = ParametrizedLine(
             torch.tensor([1.0, 2.0], device=device, dtype=dtype),
@@ -213,6 +225,19 @@ class TestParametrizedLine(BaseTester):
         )
         self.assert_close(steps, torch.stack(expected_steps))
         self.assert_close(points, torch.stack(expected_points))
+
+    @pytest.mark.parametrize("num_planes", [1, 3, 4])
+    def test_unbatched_line_intersect_batch_of_planes_6483(self, device, dtype, num_planes):
+        line = ParametrizedLine(
+            torch.tensor([1.0, 2.0, 0.0], device=device, dtype=dtype),
+            torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype),
+        )
+        normal = Vector3(torch.tensor([[0.0, 0.0, 1.0]] * num_planes, device=device, dtype=dtype))
+        offset = Scalar(-torch.arange(1.0, num_planes + 1, device=device, dtype=dtype))
+        steps, points = line.intersect(Hyperplane(normal, offset))
+        expected_points = torch.tensor([[1.0, 2.0, z] for z in range(1, num_planes + 1)], device=device, dtype=dtype)
+        self.assert_close(steps, -offset.data)
+        self.assert_close(points, expected_points)
 
     def test_intersect_plane_returns_tensors(self, device, dtype):
         plane = Hyperplane.through(
@@ -376,6 +401,18 @@ class TestParametrizedLine(BaseTester):
         plain.point_at(2.0).sum().backward()
         self.assert_close(plain.origin.grad, torch.ones_like(origin))
         self.assert_close(plain.direction.grad, torch.full_like(direction, 2.0))
+
+    def test_getitem_6483(self, device, dtype):
+        origin = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        direction = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
+        line = ParametrizedLine(origin, direction)
+        self.assert_close(line[0], origin)
+        self.assert_close(line[1], direction)
+        self.assert_close(line[-2], origin)
+        self.assert_close(line[-1], direction)
+        for idx in (2, 5, -3):
+            with pytest.raises(IndexError):
+                line[idx]
 
     def test_integer_input_raises(self, device):
         # An integer origin or direction cannot be optimizable state: the constructor names the dtype instead of
