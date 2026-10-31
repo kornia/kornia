@@ -1344,12 +1344,13 @@ class TestAffine3d(BaseTester):
         if not unbatched:
             volume = volume.unsqueeze(0)
         matrix = torch.eye(3, 4, device=device, dtype=dtype).repeat(3, 1, 1)
+        matrix[:, 0, 3] = torch.arange(3, device=device, dtype=dtype)
 
         reference_volume = volume.unsqueeze(0) if unbatched else volume
         expected = kornia.geometry.transform.warp_affine3d(
-            reference_volume.expand(3, -1, -1, -1, -1), matrix, (4, 5, 6), flags="nearest"
+            reference_volume.expand(3, -1, -1, -1, -1), matrix, (4, 5, 6), flags="nearest", align_corners=False
         )
-        actual = kornia.geometry.transform.affine3d(volume, matrix, mode="nearest")
+        actual = kornia.geometry.transform.affine3d(volume, matrix, mode="nearest", align_corners=False)
 
         self.assert_close(actual, expected)
 
