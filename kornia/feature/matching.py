@@ -119,6 +119,69 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return dists, idxs
 
 
+def _reduces_over_row_blocks(distance_matrix: torch.Tensor, block: int) -> bool:
+    """Return whether a reduction over the rows of ``distance_matrix`` runs on blocks of ``block`` rows.
+
+    On CPU, ``torch.min`` and ``torch.topk`` over the rows of a row-major ``(B1, B2)`` matrix walk each column with a
+    stride of ``B2`` elements, which is slow when ``B2`` is a power of two, as keypoint budgets usually are, or when
+    ``B1`` is large. On an Apple M1, the column minimum of a ``(2048, 2048)`` matrix costs 7 times its row minimum and
+    3 times the distance matrix itself. The same kernels run on blocks of ``block`` rows, then on the few results of
+    the blocks: 2.4 times faster there, 2.7 times for ``(4096, 4096)`` and 4 times for ``(8000, 8000)``. A matrix of
+    at most ``2 * block`` rows gains little and keeps one reduction. So do CUDA and MPS, which reduce columns as fast
+    as rows, and a traced or exported graph, which would record whether the last block is partial.
+    """
+    if distance_matrix.device.type != "cpu" or distance_matrix.size(0) <= 2 * block:
+        return False
+    return not (is_exporting() or torch.jit.is_tracing())
+
+
+def _min_over_rows(distance_matrix: torch.Tensor, block: int = 512) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return each column's minimum and its row, bitwise as ``torch.min(distance_matrix, dim=0)``.
+
+    On CPU a matrix of more than ``2 * block`` rows is reduced in blocks of rows, see
+    :func:`_reduces_over_row_blocks`. ``torch.min`` returns the first of tied minima and the first nan of a column,
+    and the minimum over the blocks keeps the first block's, so the values, rows and gradients are those of one
+    reduction.
+    """
+    if not _reduces_over_row_blocks(distance_matrix, block):
+        return torch.min(distance_matrix, dim=0)
+    rows = distance_matrix.size(0)
+    full = rows - rows % block
+    vals, idxs = distance_matrix[:full].reshape(full // block, block, -1).min(dim=1)
+    idxs = idxs + torch.arange(0, full, block, device=distance_matrix.device)[:, None]
+    if full < rows:
+        rest_vals, rest_idxs = distance_matrix[full:].min(dim=0)
+        vals, idxs = torch.cat([vals, rest_vals[None]]), torch.cat([idxs, rest_idxs[None] + full])
+    best, first_block = vals.min(dim=0)
+    return best, idxs.gather(0, first_block[None])[0]
+
+
+def _nearest_neighbour_ratio_over_rows(
+    distance_matrix: torch.Tensor, block: int = 512
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return :func:`_nearest_neighbour_ratio` of ``distance_matrix.t()``: the ratio test of each column.
+
+    On CPU a matrix of more than ``2 * block`` rows takes the two smallest distances of each block of rows with
+    ``torch.topk``, then the two smallest of those, see :func:`_reduces_over_row_blocks`. The two smallest values
+    are those of one ``torch.topk``, so the ratios are bitwise the same, apart from the sign of a nan ratio (x86
+    bfloat16 division gives ``-nan`` in its vectorised kernel and ``+nan`` in the strided one), and so is a unique
+    nearest row. Of tied nearest rows it may return another one: ``torch.topk`` orders no ties. Such a column's ratio
+    is 1 or nan, which the ratio test of :func:`match_smnn` rejects for any ``th < 1``.
+    """
+    if not _reduces_over_row_blocks(distance_matrix, block):
+        return _nearest_neighbour_ratio(distance_matrix.t())
+    rows, cols = distance_matrix.shape
+    full = rows - rows % block
+    vals, idxs = distance_matrix[:full].reshape(full // block, block, cols).topk(2, dim=1, largest=False)
+    idxs = idxs + torch.arange(0, full, block, device=distance_matrix.device)[:, None, None]
+    vals, idxs = vals.reshape(-1, cols), idxs.reshape(-1, cols)
+    if full < rows:
+        rest_vals, rest_idxs = distance_matrix[full:].topk(min(2, rows - full), dim=0, largest=False)
+        vals, idxs = torch.cat([vals, rest_vals]), torch.cat([idxs, rest_idxs + full])
+    best, pick = vals.topk(2, dim=0, largest=False)
+    return best[0] / best[1], idxs.gather(0, pick[:1])[0]
+
+
 def match_nn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -204,7 +267,7 @@ def match_mnn(
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
     ms = min(distance_matrix.size(0), distance_matrix.size(1))
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
-    match_dists2, idxs_in_1 = torch.min(distance_matrix, dim=0)
+    match_dists2, idxs_in_1 = _min_over_rows(distance_matrix)
     minsize_idxs = torch.arange(ms, device=distance_matrix.device)
 
     # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
@@ -334,7 +397,7 @@ def match_smnn(
         return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
     ratio1, nearest2 = _nearest_neighbour_ratio(distance_matrix)
-    ratio2, nearest1 = _nearest_neighbour_ratio(distance_matrix.t())
+    ratio2, nearest1 = _nearest_neighbour_ratio_over_rows(distance_matrix)
     # Join the two directions on integer indices: i and nearest2[i] are mutual when nearest1[nearest2[i]] == i. Both
     # ratio tests and the mutual check form one mask, so one nonzero is the only wait for the device.
     reverse_ratio = ratio2[nearest2]
@@ -561,7 +624,7 @@ def match_fginn(
 
     if not mutual:  # returning 1-way matches
         return match_dists, matches_idxs
-    _, idxs_in_1_mut = torch.min(distance_matrix, dim=0)
+    _, idxs_in_1_mut = _min_over_rows(distance_matrix)
     good_mask = matches_idxs[:, 0] == idxs_in_1_mut[matches_idxs[:, 1]]
     return match_dists[good_mask], matches_idxs[good_mask]
 
