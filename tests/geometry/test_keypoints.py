@@ -17,6 +17,7 @@
 
 import pytest
 import torch
+from torch._dynamo.exc import BackendCompilerFailed, Unsupported, UserError
 
 import kornia.augmentation as K
 from kornia.geometry.keypoints import Keypoints, Keypoints3D, VideoKeypoints
@@ -71,6 +72,41 @@ class TestKeypointsIndexing(BaseTester):
     def test_gradcheck_scalar(self, container, coordinates, device):
         data = torch.arange(3 * coordinates, device=device, dtype=torch.float64).reshape(3, coordinates)
         self.gradcheck(lambda x: container(x)[-1].data, (data.requires_grad_(),))
+
+    @pytest.mark.parametrize("scalar_tensor", [False, True])
+    def test_dynamo_scalar(
+        self, container, coordinates, scalar_tensor, device, dtype, torch_optimizer, optimizer_backend
+    ):
+        data = torch.arange(4 * coordinates, device=device, dtype=dtype).reshape(4, coordinates)
+        key = torch.tensor(-1, device=device) if scalar_tensor else -1
+
+        def select(x, index):
+            return container(x)[index].data
+
+        expected = data[-1:]
+        self.assert_close(select(data, key), expected, atol=0, rtol=0)
+        compiled = torch_optimizer(select, fullgraph=True)
+        try:
+            actual = compiled(data, key)
+        except UserError as exc:
+            if (
+                scalar_tensor
+                and device.type == "cuda"
+                and optimizer_backend == "inductor"
+                and "Could not extract specialized integer from data-dependent expression" in str(exc)
+            ):
+                pytest.xfail("Dynamo cannot specialize a CUDA scalar tensor index, including raw tensor indexing")
+            raise
+        except Unsupported as exc:
+            if torch.__version__.startswith("2.5.") and "UserDefinedClassVariable" in str(exc):
+                pytest.xfail("PyTorch 2.5 cannot compile the keypoint type(self) constructor")
+            raise
+        except BackendCompilerFailed as exc:
+            if scalar_tensor and optimizer_backend == "inductor" and "GuardOnDataDependentSymNode" in str(exc):
+                pytest.xfail("Inductor cannot specialize a scalar tensor index, including raw tensor indexing")
+            raise
+        assert actual.shape == (1, coordinates)
+        self.assert_close(actual, expected, atol=0, rtol=0)
 
 
 class TestKeypoints(BaseTester):
