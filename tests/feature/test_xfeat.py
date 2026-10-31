@@ -21,6 +21,7 @@ import pytest
 import torch
 from torch.overrides import TorchFunctionMode
 
+from kornia.core.exceptions import BaseError
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
@@ -258,6 +259,35 @@ class TestXFeat(BaseTester):
         mkpts0, mkpts1 = model.match_xfeat(img1, img2)
         assert mkpts0.shape == mkpts1.shape
         assert mkpts0.shape[-1] == 2
+
+    def test_match_xfeat_batch_matches_each_pair(self, device, dtype):
+        torch.manual_seed(0)
+        model = XFeat(top_k=256, detection_threshold=0.0).to(device).eval()  # random weights score below 0.05
+        img1 = torch.rand(3, 3, 64, 96, device=device)
+        img2 = torch.rand(3, 3, 64, 96, device=device)
+        batched = model.match_xfeat(img1, img2)
+        assert isinstance(batched, list)
+        assert len(batched) == 3
+        # Pair b matches image b of each batch, and no other: the features of one batched extraction, matched per
+        # pair. A batch need not equal single-image calls bit for bit: a backend may round a batched convolution
+        # differently, which can reorder near-tied keypoints (MPS does with these random weights).
+        out1, out2 = model.detectAndCompute(img1), model.detectAndCompute(img2)
+        for b in range(3):
+            # match_xfeat's default min_cossim, not _match_mnn's
+            idx0, idx1 = model._match_mnn(out1[b]["descriptors"], out2[b]["descriptors"], min_cossim=-1)
+            assert idx0.shape[0] > 0
+            expected = torch.cat([out1[b]["keypoints"][idx0], out2[b]["keypoints"][idx1]], dim=-1)
+            self.assert_close(batched[b], expected, rtol=0, atol=0)
+
+    def test_match_xfeat_empty_batch(self, device, dtype):
+        model = XFeat().to(device).eval()
+        img = torch.rand(0, 3, 64, 64, device=device)
+        assert model.match_xfeat(img, img) == []
+
+    def test_match_xfeat_batch_size_mismatch(self, device, dtype):
+        model = XFeat().to(device).eval()
+        with pytest.raises(BaseError, match="same number of images"):
+            model.match_xfeat(torch.rand(2, 3, 64, 64, device=device), torch.rand(1, 3, 64, 64, device=device))
 
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
