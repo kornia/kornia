@@ -220,15 +220,26 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     return trans_12
 
 
+def _matrix_batch_pairs_with_points(trans_batch: list[int], points_batch: list[int]) -> bool:
+    """Whether a matrix batch with several axes lines up with the leading axes of the points' batch.
+
+    ``transform_points`` pairs the flattened matrix batch with the leading points' axes in order. That pairing is right
+    when the matrix batch equals those leading axes, or does once its size-1 axes are left out, and wrong otherwise.
+    """
+    stripped = list(trans_batch)
+    while len(stripped) > 0 and stripped[-1] == 1:
+        stripped.pop()
+    if len(stripped) == 0:
+        return True
+    nonunit: list[int] = []
+    for size in trans_batch:
+        if size != 1:
+            nonunit.append(size)
+    return list(points_batch[: len(stripped)]) == stripped or list(points_batch[: len(nonunit)]) == nonunit
+
+
 def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Tensor:
     r"""Apply transformations to a set of points.
-
-    ``points_0 = transform_points(trans_01, points_1)`` takes homogeneous transforms ``trans_01`` of shape
-    ``(D+1, D+1)`` or ``(B1, ..., Bk, D+1, D+1)`` and Euclidean points ``points_1`` of shape ``(..., N, D)`` in
-    frame 1, and returns the same points in frame 0 with the shape of ``points_1``. The points are lifted to
-    homogeneous coordinates, multiplied by the matrices and divided by their last coordinate, so a projective
-    ``trans_01`` (a homography) works as well as a rigid one. For a camera projection with intrinsics, use
-    :func:`~kornia.geometry.camera.perspective.project_points` instead.
 
     Convention:
         Integer and boolean operands are promoted, not rejected, because a transform moves integer coordinates
@@ -238,21 +249,16 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Args:
         trans_01: tensor for transformations of shape
-          ``(D+1, D+1)`` or ``(B, D+1, D+1)``. A matrix batch with several axes, ``(B1, ..., Bk, D+1, D+1)``,
-          aligns with the first ``k`` batch axes of ``points_1``; each of its axes must match or be 1.
-          Trailing size-1 axes broadcast over the remaining point axes, as in ``(B, 1, 1, D+1, D+1)``.
-        points_1: tensor of points of shape ``(..., N, D)``, where ``...`` are zero or more leading batch axes.
+          ``(D+1, D+1)`` or ``(B, D+1, D+1)``. A batch with several axes, ``(*, D+1, D+1)``, pairs with the
+          leading batch axes of ``points_1`` in order once its size-1 axes are left out, so ``(B, 1, D+1, D+1)``
+          and ``(1, B, D+1, D+1)`` both apply matrix ``b`` to ``points_1[b]``; any other multi-axis batch raises.
+        points_1: tensor of points of shape ``(N, D)`` or ``(B, N, D)``.
 
     Returns:
         transformed points with the same shape as ``points_1``.
 
     Shape:
         - Output: same shape as ``points_1``.
-
-    See Also:
-        - :func:`compose_transformations`: chains two rigid transforms into the one to pass as ``trans_01``.
-        - :func:`inverse_transformation`: the inverse rigid transform, to map points back from frame 0 to frame 1.
-        - :func:`~kornia.geometry.camera.perspective.project_points`: projects camera-frame 3D points to pixels.
 
     Examples:
         >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
@@ -273,37 +279,6 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         trans_01 = trans_01.to(out_dtype)
     if trans_01.ndim == 2:
         trans_01 = trans_01.unsqueeze(0)
-    # A matrix batch with several leading axes aligns with the points' leading batch axes, with a size-1 matrix
-    # axis broadcast. The flatten-and-repeat below pairs the matrices with the points by count only, so an
-    # unexpanded size-1 axis in front of a larger one paired the wrong point sets (kornia#6473). Trailing size-1
-    # axes already broadcast correctly there (e.g. (B, 1, 1, D+1, D+1) with (B, H, W, D) points), so drop them,
-    # and expand only when a leading size-1 axis must broadcast. A single matrix applies to every point set.
-    if trans_01.ndim > 3 and trans_01[..., 0, 0].numel() != 1:
-        # Read sizes straight off ``.shape`` (no ``int()``) and reshape with ``squeeze``/``expand(-1)`` so that a
-        # traced or ONNX-exported graph keeps the batch sizes symbolic instead of baking in the example's.
-        trans_batch_ndim = trans_01.ndim - 2
-        while trans_batch_ndim > 1 and trans_01.shape[trans_batch_ndim - 1] == 1:
-            trans_01 = trans_01.squeeze(trans_batch_ndim - 1)
-            trans_batch_ndim -= 1
-        if trans_batch_ndim > 1:
-            batch_ok = points_1.ndim - 2 >= trans_batch_ndim
-            needs_expand = False
-            if batch_ok:
-                for i in range(trans_batch_ndim):
-                    if trans_01.shape[i] != points_1.shape[i]:
-                        needs_expand = True
-                        if trans_01.shape[i] != 1:
-                            batch_ok = False
-            if not batch_ok:
-                raise ValueError(
-                    "The batch axes of trans_01 must match the leading batch axes of points_1, or be 1. "
-                    f"Got {trans_01.shape} and {points_1.shape}"
-                )
-            if needs_expand:
-                expand_shape = [-1] * trans_01.ndim
-                for i in range(trans_batch_ndim):
-                    expand_shape[i] = points_1.shape[i]
-                trans_01 = trans_01.expand(expand_shape)
     # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a
     # coincidence, not a match: it used to reach ``bmm`` with an empty batch (kornia#4969).
     unbatched_points = points_1.ndim == 2 and trans_01.shape[0] > 1
@@ -320,6 +295,13 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     if points_1.shape[-2] == 0:
         return points_1.to(out_dtype)
 
+    # A matrix batch with several axes pairs with the points' leading batch axes in order (kornia#6473).
+    if trans_01.ndim > 3 and not _matrix_batch_pairs_with_points(list(trans_01.shape[:-2]), list(points_1.shape[:-2])):
+        raise ValueError(
+            "A matrix batch with several axes must match the leading batch axes of the points, size-1 matrix axes "
+            f"aside. Got {trans_01.shape} and {points_1.shape}"
+        )
+
     # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
     shape_inp = list(points_1.shape)
     points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])
@@ -329,8 +311,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     # transform batch has nothing to repeat, and the validation above guarantees an empty point
     # batch alongside it, so skip the division rather than computing ``0 // 0``.
     repeats = points_1.shape[0] // trans_01.shape[0] if trans_01.shape[0] > 0 else 0
-    if repeats != 1:
-        trans_01 = torch.repeat_interleave(trans_01, repeats=int(repeats), dim=0)
+    trans_01 = torch.repeat_interleave(trans_01, repeats=int(repeats), dim=0)
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # `torch.bmm` requires both operands to share a scalar type. Callers may pass coordinate

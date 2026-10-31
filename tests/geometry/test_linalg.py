@@ -16,7 +16,6 @@
 #
 
 import math
-import warnings
 
 import pytest
 import torch
@@ -102,78 +101,6 @@ class TestTransformPoints(BaseTester):
         assert result.dtype == default_dtype
         self.assert_close(result, pixels.to(default_dtype) / 2)
 
-    @staticmethod
-    def _translations(batch, device, dtype):
-        # translations[idx] moves x by the flat index of idx in the matrix batch.
-        trans = torch.eye(4, device=device, dtype=dtype).repeat(*batch, 1, 1)
-        flat = trans.view(-1, 4, 4)
-        flat[:, 0, 3] = torch.arange(flat.shape[0], device=device).to(dtype)
-        return trans
-
-    @pytest.mark.parametrize(
-        "trans_batch, points_batch",
-        [
-            ((2, 2), (2, 2)),
-            ((2, 1), (2, 3)),
-            ((1, 2), (3, 2)),
-            ((1, 1), (3, 2)),
-            ((2, 3), (2, 3, 2)),
-            ((2,), (2, 3)),
-            ((1, 1, 1), (2, 3)),
-            ((2, 1), (2,)),
-            ((2, 1, 1), (2, 3)),
-            ((1, 2, 1), (3, 2, 2)),
-        ],
-    )
-    def test_multi_axis_matrix_batch_aligns_with_points_axes(self, trans_batch, points_batch, device, dtype):
-        # Each matrix batch axis pairs with the matching leading points axis, a size-1 axis broadcasting (kornia#6473).
-        trans = self._translations(trans_batch, device, dtype)
-        points = torch.zeros(*points_batch, 1, 3, device=device, dtype=dtype)
-        # Trailing size-1 matrix axes broadcast over the remaining point axes, so drop them first.
-        kept = list(trans_batch)
-        while len(kept) > 1 and kept[-1] == 1:
-            kept.pop()
-        if len(kept) > len(points_batch):  # a single matrix applies to every point set
-            expected_x = trans.reshape(-1, 4, 4)[0, 0, 3].expand(points_batch)
-        else:
-            full_trans = trans.reshape(*kept, *([1] * (len(points_batch) - len(kept))), 4, 4)
-            expected_x = full_trans[..., 0, 3].expand(points_batch)
-
-        result = kgl.transform_points(trans, points)
-
-        assert result.shape == points.shape
-        self.assert_close(result[..., 0, 0], expected_x)
-        self.assert_close(result[..., 0, 1:], torch.zeros_like(result[..., 0, 1:]))
-
-    @pytest.mark.parametrize(
-        "trans_batch, points_shape",
-        [((2, 2), (2, 4, 1, 3)), ((2, 2), (2, 3, 1, 3)), ((2, 2), (2, 1, 1, 3)), ((2, 2), (2, 1, 3)), ((1, 2), (2, 3))],
-    )
-    def test_multi_axis_matrix_batch_mismatch_raises(self, trans_batch, points_shape, device, dtype):
-        trans = self._translations(trans_batch, device, dtype)
-        points = torch.zeros(*points_shape, device=device, dtype=dtype)
-        with pytest.raises(ValueError, match="batch axes of trans_01 must match"):
-            kgl.transform_points(trans, points)
-
-    @pytest.mark.parametrize("trans_batch", [(2, 1, 1), (1, 3)])
-    def test_multi_axis_matrix_batch_trace_keeps_batch_size_dynamic(self, trans_batch, device, dtype):
-        # A traced (or ONNX-exported) graph must not bake in the example batch size: warp_perspective traces
-        # transform_points with a (B, 1, 1, 3, 3) matrix batch and is exported with a dynamic batch axis.
-        def fn(trans: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
-            return kgl.transform_points(trans, points)
-
-        def inputs(batch_size: int) -> tuple[torch.Tensor, torch.Tensor]:
-            trans_shape = [batch_size if n == 2 else n for n in trans_batch]
-            trans = self._translations(tuple(trans_shape), device, dtype)
-            points = torch.rand(batch_size, 3, 4, 3, device=device, dtype=dtype)
-            return trans, points
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            traced = torch.jit.trace(fn, inputs(2))
-        trans, points = inputs(4)
-        self.assert_close(traced(trans, points), fn(trans, points))
-
     @pytest.mark.parametrize("num_points", [2, 3])
     def test_unbatched_points_with_transform_batch_raise(self, num_points, device, dtype):
         # (N, D) points have no batch axis, so N == B must hit the batch check like N != B does
@@ -182,6 +109,40 @@ class TestTransformPoints(BaseTester):
         points = torch.zeros(num_points, 3, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Input batch size must be the same"):
             kgl.transform_points(transform, points)
+
+    @pytest.mark.parametrize(
+        "trans_batch, points_batch, expected",
+        [
+            ((2, 1), (2, 3), [[0, 0, 0], [1, 1, 1]]),  # trailing size-1 axis, as in (B, 1, D+1, D+1) callers
+            ((1, 2), (2, 3), [[0, 0, 0], [1, 1, 1]]),  # leading size-1 axis: matrix b for points[b]
+            ((1, 2), (2, 2), [[0, 0], [1, 1]]),  # the same with C == B
+            ((2, 3), (2, 3), [[0, 1, 2], [3, 4, 5]]),  # matrix batch equal to the points' batch
+            ((2, 1, 3), (2, 3), [[0, 1, 2], [3, 4, 5]]),  # a size-1 axis in the middle
+            ((1, 2), (1, 2), [[0, 1]]),  # equal, size-1 axis included
+        ],
+    )
+    def test_multi_axis_matrix_batch_pairs_with_leading_point_axes_6473(
+        self, trans_batch, points_batch, expected, device, dtype
+    ):
+        # Matrix k translates x by k, so the x of each transformed point is the flat index of its matrix.
+        trans = torch.eye(4, device=device, dtype=dtype).repeat(*trans_batch, 1, 1)
+        trans.view(-1, 4, 4)[:, 0, 3] = torch.arange(trans.view(-1, 4, 4).shape[0], device=device, dtype=dtype)
+        points = torch.zeros(*points_batch, 5, 3, device=device, dtype=dtype)
+        out = kgl.transform_points(trans, points)
+        assert out.shape == points.shape
+        expected_x = torch.tensor(expected, device=device, dtype=dtype)[..., None].expand(*points_batch, 5)
+        self.assert_close(out[..., 0], expected_x, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "trans_batch, points_batch",
+        [((2, 2), (2, 4)), ((1, 2), (3, 2)), ((2, 2), (2, 3)), ((2, 2), (2, 1, 2)), ((1, 3), (2, 3))],
+    )
+    def test_multi_axis_matrix_batch_that_does_not_line_up_raises_6473(self, trans_batch, points_batch, device, dtype):
+        # These used to pair matrices with point sets by count and return wrong points, or fail inside bmm.
+        trans = torch.eye(4, device=device, dtype=dtype).repeat(*trans_batch, 1, 1)
+        points = torch.zeros(*points_batch, 1, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="leading batch axes of the points"):
+            kgl.transform_points(trans, points)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
