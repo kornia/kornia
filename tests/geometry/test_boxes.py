@@ -62,15 +62,24 @@ def _unbatched_geometry_data(device: torch.device, dtype: torch.dtype) -> torch.
 )
 class TestBoxesIndexing(BaseTester):
     @staticmethod
-    def _key(kind, device):
+    def _key(kind: str, device: torch.device) -> int | torch.Tensor:
         return {"first": 0, "last": -1, "scalar_tensor": torch.tensor(-1, device=device, dtype=torch.long)}[kind]
 
     @pytest.mark.parametrize("num_boxes", [1, 3])
     @pytest.mark.parametrize("key_kind", ["first", "last", "scalar_tensor"])
     @pytest.mark.parametrize("strided", [False, True])
     def test_scalar_unbatched_6478(
-        self, container, vertices, coordinates, mode, num_boxes, key_kind, strided, device, dtype
-    ):
+        self,
+        container: type[Boxes] | type[Boxes3D],
+        vertices: int,
+        coordinates: int,
+        mode: str,
+        num_boxes: int,
+        key_kind: str,
+        strided: bool,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> None:
         # #6478: an integer or scalar tensor index on an unbatched container keeps a singleton box axis.
         source = torch.arange(num_boxes * 2 * coordinates, device=device, dtype=dtype).reshape(
             num_boxes, 2, coordinates
@@ -96,7 +105,15 @@ class TestBoxesIndexing(BaseTester):
             self.assert_close(selected._valid, torch.ones(1, device=device, dtype=torch.bool))
             self.assert_close(selected.to_tensor(mode), boxes.to_tensor(mode)[key].unsqueeze(0), atol=0, rtol=0)
 
-    def test_scalar_selection_keeps_a_view_6478(self, container, vertices, coordinates, mode, device, dtype):
+    def test_scalar_selection_keeps_a_view_6478(
+        self,
+        container: type[Boxes] | type[Boxes3D],
+        vertices: int,
+        coordinates: int,
+        mode: str,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> None:
         # The selection shares storage with the container, like the raw tensor indexing it wraps.
         data = torch.arange(3 * vertices * coordinates, device=device, dtype=dtype).reshape(3, vertices, coordinates)
         boxes = container(data, mode=mode)
@@ -111,7 +128,16 @@ class TestBoxesIndexing(BaseTester):
         )
 
     @pytest.mark.parametrize("batched", [False, True])
-    def test_existing_selection_6478(self, container, vertices, coordinates, mode, batched, device, dtype):
+    def test_existing_selection_6478(
+        self,
+        container: type[Boxes] | type[Boxes3D],
+        vertices: int,
+        coordinates: int,
+        mode: str,
+        batched: bool,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> None:
         # Slices, index tensors, masks and (batched) scalars keep their tensor-selection shape.
         shape = (2, 3, vertices, coordinates) if batched else (3, vertices, coordinates)
         count = (6 if batched else 3) * vertices * coordinates
@@ -144,14 +170,30 @@ class TestBoxesIndexing(BaseTester):
             with pytest.raises(IndexError):
                 empty[key]
 
-    def test_gradcheck_scalar_6478(self, container, vertices, coordinates, mode, device):
+    def test_gradcheck_scalar_6478(
+        self,
+        container: type[Boxes] | type[Boxes3D],
+        vertices: int,
+        coordinates: int,
+        mode: str,
+        device: torch.device,
+    ) -> None:
         data = torch.arange(3 * vertices * coordinates, device=device, dtype=torch.float64).reshape(
             3, vertices, coordinates
         )
         self.gradcheck(lambda x: container(x, mode=mode)[-1].data, (data,))
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_dynamo_scalar_6478(self, container, vertices, coordinates, mode, device, dtype, torch_optimizer):
+    def test_dynamo_scalar_6478(
+        self,
+        container: type[Boxes] | type[Boxes3D],
+        vertices: int,
+        coordinates: int,
+        mode: str,
+        device: torch.device,
+        dtype: torch.dtype,
+        torch_optimizer: object,
+    ) -> None:
         # The getter is pure tensor indexing plus an unsqueeze, so a scalar selection stays fullgraph.
         data = torch.arange(3 * vertices * coordinates, device=device, dtype=dtype).reshape(3, vertices, coordinates)
 
@@ -491,7 +533,12 @@ class TestBoxes2D(BaseTester):
         assert isinstance(scalar.to_tensor("xyxy"), torch.Tensor)
 
     @pytest.mark.parametrize("key_kind", ["first", "last", "scalar_tensor"])
-    def test_scalar_selection_keeps_validity_in_step_6478(self, key_kind, device, dtype):
+    def test_scalar_selection_keeps_validity_in_step_6478(
+        self,
+        key_kind: str,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> None:
         # #6478: a scalar selection carries the per-box validity of the row it selected.
         xyxy = torch.tensor([[0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 4.0, 4.0]], device=device, dtype=dtype)
         key = TestBoxesIndexing._key(key_kind, device)
@@ -506,7 +553,7 @@ class TestBoxes2D(BaseTester):
         self.assert_close(selected._valid, filtered._valid[key].reshape(1), atol=0, rtol=0)
         self.assert_close(selected.to_tensor("xyxy"), filtered.to_tensor("xyxy")[key].unsqueeze(0), atol=0, rtol=0)
 
-    def test_scalar_selection_on_list_backed_boxes_6478(self, device, dtype):
+    def test_scalar_selection_on_list_backed_boxes_6478(self, device: torch.device, dtype: torch.dtype) -> None:
         # #6478: the scalar path stays consistent with the existing batch-axis selection of list-backed boxes.
         first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
         lb = Boxes([first, torch.cat([first, first]), torch.cat([first, first, first])])
