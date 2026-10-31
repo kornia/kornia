@@ -15,6 +15,30 @@
 # limitations under the License.
 #
 
+"""Quaternions in ``(w, x, y, z)`` order: Hamilton product, slerp, averaging and rotation conversions.
+
+A quaternion is stored real part first, with shape ``(*, 4)``, and ``q1 * q2`` is the Hamilton product, so
+``(q1 * q2).matrix()`` is ``q1.matrix() @ q2.matrix()``: the right operand acts first, as for the Lie groups of
+``kornia.geometry.liegroup``. ``q`` and ``-q`` are the same rotation. Nothing normalises the stored data; the
+conversions to a rotation read only its direction :math:`q / |q|`, within the limits stated on :class:`Quaternion`.
+
+Which function to use:
+
+- Quaternions as objects that multiply, invert, interpolate (``slerp``) and convert to and from rotation matrices,
+  rotation vectors and Euler angles: :class:`Quaternion`.
+- The mean rotation of many quaternions, optionally weighted, whatever their signs: :func:`average_quaternions`.
+- The same conversions on plain tensors, without an object:
+  :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`,
+  :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`,
+  :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` and
+  :func:`~kornia.geometry.conversions.axis_angle_to_quaternion` on ``(*, 4)`` tensors;
+  :func:`~kornia.geometry.conversions.euler_from_quaternion` and
+  :func:`~kornia.geometry.conversions.quaternion_from_euler` for roll, pitch and yaw, with the quaternion as four
+  separate ``w``, ``x``, ``y``, ``z`` tensors.
+- A rotation that acts on points, with ``exp``, ``log`` and Jacobians: :class:`~kornia.geometry.liegroup.So3`; with a
+  translation: :class:`~kornia.geometry.liegroup.Se3`.
+"""
+
 # kornia.geometry.quaternion module inspired by Eigen, Sophus-sympy, and PyQuaternion.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/quaternion.py
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
@@ -39,10 +63,15 @@ from kornia.geometry.linalg import batched_dot_product
 
 
 class Quaternion(nn.Module):
-    r"""Base class to represent a Quaternion.
+    r"""Represent (w, x, y, z) quaternions: Hamilton product, slerp and rotation conversions.
 
-    A quaternion is a four dimensional vector representation of a rotation transformation in 3d.
-    See more: https://en.wikipedia.org/wiki/Quaternion
+    ``q = Quaternion(data)`` wraps a ``(*, 4)`` tensor of quaternions, real part first, without copying it;
+    :meth:`from_axis_angle`, :meth:`from_matrix`, :meth:`from_euler`, :meth:`identity` and :meth:`random` build one.
+    ``q1 * q2`` is the Hamilton product, ``q.inv()`` the inverse and ``q0.slerp(q1, t)`` the interpolation along the
+    shorter arc; ``q.matrix()`` returns the ``(*, 3, 3)`` rotation matrices and ``q.to_axis_angle()`` the ``(*, 3)``
+    rotation vectors of the direction :math:`q / |q|`. A quaternion does not act on points: for a rotation that maps
+    points and has ``exp``, ``log`` and Jacobians, use :class:`~kornia.geometry.liegroup.So3`; for the same
+    conversions on plain tensors, the functions of ``kornia.geometry.conversions``.
 
     The general definition of a quaternion is given by:
 
@@ -50,8 +79,8 @@ class Quaternion(nn.Module):
 
         Q = a + b \cdot \mathbf{i} + c \cdot \mathbf{j} + d \cdot \mathbf{k}
 
-    Thus, we represent a rotation quaternion as a contiguous torch.Tensor structure to
-    perform rigid bodies transformations:
+    A unit quaternion represents a rotation in 3D; see https://en.wikipedia.org/wiki/Quaternion. The last axis of
+    ``data`` holds:
 
     .. math::
 
@@ -63,6 +92,8 @@ class Quaternion(nn.Module):
           :ref:`Rotations and rigid motions <rotation-conventions>`.
         - ``*`` between quaternions is the Hamilton product, so ``(q1 * q2).matrix()`` is
           ``q1.matrix() @ q2.matrix()``, ``q1 / q2`` is ``q1 * q2.inv()``, and ``q`` and ``-q`` are the same rotation.
+          A batch multiplies with a batch of the same size or of one, but an unbatched quaternion with a batch raises
+          (`#6481 <https://github.com/kornia/kornia/issues/6481>`_).
           A float or tensor operand of ``+``, ``-``, ``*`` or ``/`` is the real quaternion ``[s, 0, 0, 0]``, and a
           tensor of the shape of ``q.w`` holds one such scalar per quaternion of the batch.
         - Nothing normalises the stored data or the results of ``*``, ``**`` and ``inv()``. ``matrix()``,
@@ -77,6 +108,20 @@ class Quaternion(nn.Module):
         - Below a norm of ``1e-12``, ``matrix()`` and ``slerp`` read ``q`` through the norm floor of
           :func:`~kornia.geometry.conversions.normalize_quaternion`, so they do not give the rotation of its
           direction, and the zero quaternion's ``matrix()`` is the identity.
+
+    See Also:
+        - :class:`~kornia.geometry.liegroup.So3`: the rotation group stored as a quaternion, which rotates points
+          and adds ``exp``, ``log`` and Jacobians.
+        - :func:`average_quaternions`: the mean rotation of many quaternions, instead of interpolating two.
+        - :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`,
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`: :meth:`matrix` and :meth:`from_matrix`
+          on plain ``(*, 4)`` and ``(*, 3, 3)`` tensors.
+        - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`,
+          :func:`~kornia.geometry.conversions.axis_angle_to_quaternion`: :meth:`to_axis_angle` and
+          :meth:`from_axis_angle` on plain ``(*, 4)`` and ``(*, 3)`` tensors.
+        - :func:`~kornia.geometry.conversions.euler_from_quaternion`,
+          :func:`~kornia.geometry.conversions.quaternion_from_euler`: :meth:`to_euler` and :meth:`from_euler` on plain
+          tensors, with the quaternion as four separate ``w``, ``x``, ``y``, ``z`` tensors.
 
     Example:
         >>> q = Quaternion.identity(batch_size=4)
@@ -383,7 +428,7 @@ class Quaternion(nn.Module):
     def q(self) -> torch.Tensor:
         """Return the underlying data with shape ``(B, 4)``.
 
-        Alias for :func:`~kornia.geometry.quaternion.Quaternion.data`
+        Alias for :attr:`~kornia.geometry.quaternion.Quaternion.data`.
         """
         return self.data
 
@@ -719,24 +764,44 @@ class Quaternion(nn.Module):
 
 
 def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Quaternion":
-    r"""Compute (weighted) average of multiple quaternions.
+    r"""Average quaternions as their weighted chordal mean rotation, whatever their signs.
+
+    ``q_mean = average_quaternions(Q, w)`` takes a :class:`Quaternion` of ``M`` quaternions, ``(M, 4)``, and optional
+    non-negative weights ``w`` of shape ``(M,)``, uniform by default, and returns their mean rotation as a unit
+    :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
+    :meth:`Quaternion.slerp`.
 
     Convention:
         - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of
           :math:`\sum_i w_i q_i q_i^\top / \sum_i w_i` with the largest eigenvalue. ``q_i`` and ``-q_i`` count the
           same, and the sign of the result is arbitrary.
-        - ``w`` need not sum to one: scaling it by a positive factor does not change the result. A negative weight,
-          or weights that are all zero, raise ``ValueError``.
+        - ``w`` need not sum to one: scaling it by a positive factor does not change the result.
         - The members are normalised first, so only their directions count: a member stored as ``3 * q`` weighs
           the same as ``q``.
 
     Args:
-        Q (Quaternion): quaternion object containing data of shape (M, 4).
-        w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
-
+        Q: quaternions of shape ``(M, 4)``.
+        w: weights of shape ``(M,)``. If None, uniform weights are used. ``(M, 1)`` weights raise a
+            ``RuntimeError`` (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
 
     Returns:
-        Quaternion: averaged quaternion of shape (1, 4), wrapped back in the Quaternion class.
+        the averaged quaternion, of unit norm and shape ``(1, 4)``.
+
+    Raises:
+        TypeCheckError: if ``Q`` is not a :class:`Quaternion`.
+        ValueError: if ``w`` does not have ``M`` elements, has a negative entry, or sums to zero.
+
+    See Also:
+        - :class:`Quaternion`: holds ``Q`` and the result; it composes, inverts and converts quaternions one at a
+          time rather than averaging them.
+        - :meth:`Quaternion.slerp`: interpolates between two rotations along the shorter arc instead of averaging
+          many.
+
+    Example:
+        >>> Q = Quaternion(torch.tensor([[1., 0., 0., 0.], [-1., 0., 0., 0.]]))
+        >>> average_quaternions(Q).data.abs()
+        tensor([[1., 0., 0., 0.]])
+
     """
     KORNIA_CHECK_TYPE(Q, Quaternion)
     # the chordal mean is the top eigenvector of sum_i w_i q_i q_i^T, which is sign invariant but weights each member

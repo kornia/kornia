@@ -63,7 +63,8 @@ Which function to use:
   :func:`ARKitQTVecs_to_ColmapQTVecs` and :func:`ColmapQTVecs_to_ARKitQTVecs`.
 - Angles and polar coordinates: :func:`deg2rad`, :func:`rad2deg`, :func:`cart2pol`, :func:`pol2cart`.
 - Rotations and poses as objects that compose and invert: :class:`~kornia.geometry.quaternion.Quaternion`,
-  :class:`~kornia.geometry.liegroup.So3` and :class:`~kornia.geometry.liegroup.Se3`.
+  :class:`~kornia.geometry.liegroup.So2`, :class:`~kornia.geometry.liegroup.So3`,
+  :class:`~kornia.geometry.liegroup.Se2` and :class:`~kornia.geometry.liegroup.Se3`.
 """
 
 from __future__ import annotations
@@ -545,6 +546,8 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         - :func:`axis_angle_to_quaternion`: the ``(w, x, y, z)`` quaternion of the same rotation.
         - :func:`quaternion_to_rotation_matrix`: the same matrix from a quaternion.
         - :func:`angle_to_rotation_matrix`: a 2D ``(*, 2, 2)`` rotation from an angle in degrees.
+        - :class:`~kornia.geometry.liegroup.So3`: the same rotation as an object that composes, inverts and maps back
+          with ``log``; ``So3.exp(v).matrix()`` is this matrix.
 
     Example:
         >>> input = torch.tensor([[0., 0., 0.]])
@@ -1108,6 +1111,8 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
         - :func:`quaternion_exp_to_log`: the logarithm map, half this vector for ``w >= 0``; it tells ``q`` from
           ``-q``.
         - :func:`rotation_matrix_to_axis_angle`: the same vector from a rotation matrix.
+        - :meth:`~kornia.geometry.quaternion.Quaternion.to_axis_angle`: the same vector of a
+          :class:`~kornia.geometry.quaternion.Quaternion` object.
 
     Example:
         >>> quaternion = torch.tensor((1., 0., 0., 0.))
@@ -2080,6 +2085,8 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
           turns about a centre, in the same sense.
         - :func:`axis_angle_to_rotation_matrix`: a 3D ``(*, 3, 3)`` rotation from an axis-angle vector in radians.
         - :func:`cart2pol`: the polar angle of a point, which this rotation decreases.
+        - :class:`~kornia.geometry.liegroup.So2`: a 2D rotation object built from radians, turning the other way:
+          its :meth:`~kornia.geometry.liegroup.So2.matrix` is the transpose of this matrix for the same angle.
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
