@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import register_module_state
-from kornia.geometry.liegroup.so3 import So3, _so3_rotate, _so3_small_angle_coefficients
+from kornia.geometry.liegroup.so3 import So3, _check_points_layout, _so3_rotate, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -174,8 +174,8 @@ class Se3(nn.Module):
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
-            right: the other Se3 transformation, or points as a tensor or ``Vector3`` with the batch shape of the
-                pose and a last dimension of 3.
+            right: the other Se3 transformation, or points as a tensor or ``Vector3``: ``(3,)`` or ``(N, 3)`` for
+                an unbatched pose, ``(B, 3)`` for a batch of ``B`` (a batch of one also maps ``(N, 3)``).
 
         Return:
             The resulting Se3 transformation, or the transformed points.
@@ -189,6 +189,7 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
+            _check_points_layout(so3.q, _right_data)
             # R p + t is rounded once, so float16/bfloat16 add the translation to the float32 rotated point
             out = (_so3_rotate(so3.q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
             return Vector3(out) if isinstance(right, Vector3) else out

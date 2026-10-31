@@ -607,6 +607,47 @@ class TestSo3Conventions(BaseTester):
         tol = 1e-2 if dtype == torch.float16 else None
         self.assert_close((s * s2) * p, s * (s2 * p), rtol=tol, atol=tol)
 
+    @pytest.mark.parametrize("points_shape", [(7, 3), (1, 3)])
+    def test_unbatched_rotation_rotates_a_point_set(self, points_shape, device, dtype):
+        # #6426: an unbatched So3 rotates every point of a point set, as So2 does for (N, 2); it used to raise
+        # in torch.linalg.cross because the (4,) quaternion and the points had different ranks.
+        torch.manual_seed(0)
+        s = So3.exp(torch.tensor([0.3, -0.5, 0.2], device=device, dtype=dtype))
+        p = (2 * torch.rand(points_shape) - 1).to(device, dtype)
+
+        out = s * p
+
+        assert out.shape == p.shape
+        self.assert_close(out, torch.stack([s * q for q in p.reshape(-1, 3)]).reshape(points_shape))
+        # R p in float64, on the CPU, from the same rounded quaternion and points: only the output is rounded
+        r = So3(Quaternion(s.q.data.cpu().double())).matrix()
+        self.assert_close(out.cpu(), (p.cpu().double() @ r.mT).to(dtype))
+
+    def test_unbatched_rotation_point_set_gradcheck(self, device):
+        # #6426: gradients flow through the expansion of an unbatched rotation over a point set
+        torch.manual_seed(0)
+        q = torch.randn(4, dtype=torch.float64).to(device)
+        p = torch.randn(5, 3, dtype=torch.float64).to(device)
+        self.gradcheck(lambda q, p: So3(Quaternion(q)) * p, (q, p))
+
+    # #6426: a pose maps (3,) or (N, 3) unbatched and one point per pose for a batch; other layouts, such as a
+    # batch of poses with a point set, raise a ValueError that names the accepted layouts.
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape"), [(None, (2, 5, 3)), (2, (3,)), (2, (7, 3)), (2, (2, 7, 3)), (1, (1, 7, 3))]
+    )
+    def test_point_layout_outside_the_contract_raises(self, batch_size, points_shape, device, dtype):
+        pose = So3.identity(batch_size, device, dtype)
+        with pytest.raises(ValueError, match=r"Expected points of shape \(3,\) or \(N, 3\)"):
+            pose * torch.zeros(points_shape, device=device, dtype=dtype)
+
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape", "out_shape"),
+        [(None, (3,), (3,)), (None, (7, 3), (7, 3)), (1, (7, 3), (7, 3)), (2, (2, 3), (2, 3)), (2, (1, 3), (2, 3))],
+    )
+    def test_point_layout_in_the_contract_maps(self, batch_size, points_shape, out_shape, device, dtype):
+        pose = So3.identity(batch_size, device, dtype)
+        assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape
+
     def test_convention_so3_adjoint_conjugates_the_tangent(self, device, dtype):
         # Ad(g) xi is the tangent of g exp(xi) g^-1: exp(Ad(g) xi) = g exp(xi) g^-1, with Ad(g) = R
         g = So3.exp(torch.tensor([[0.7, -0.2, 0.4]], device=device, dtype=dtype))
