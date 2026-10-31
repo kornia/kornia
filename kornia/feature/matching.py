@@ -218,6 +218,37 @@ def match_mnn(
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
+def _first_to_second_nearest_ratio(distance_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return each row's ratio of the smallest to the second-smallest distance, and the column of the smallest.
+
+    :func:`match_snn` calls this on MPS in place of ``torch.topk(distance_matrix, 2, dim=1, largest=False)``, which
+    is two to three times slower there. Elsewhere ``torch.topk`` is at least as fast: as fast on CUDA, and two to five
+    times faster on an x86 CPU, where it reads the matrix about once and these reductions several times. The ratios
+    are those of ``torch.topk``, which orders nan after ``+inf``. Where a ratio is a number, its column is that of the
+    smallest distance, the first of tied ones. A row without a finite smallest and a finite, non-zero second-smallest
+    distance gets no gradient. A row needs at least two columns.
+    """
+    inf = float("inf")
+    # A row-major copy of the transposed matrix that match_smnn passes; the MPS timings of #6465 were taken with it.
+    dm = distance_matrix.contiguous()
+    is_nan = torch.isnan(dm)
+    remaining = torch.nan_to_num(dm, nan=inf, posinf=inf, neginf=-inf)
+    first, first_idx = remaining.min(dim=1)
+    idx = first_idx[:, None]
+    # Overwrite the smallest with another distance of its row, which keeps the minimum of the others. It is read from
+    # `dm`, not from `remaining`: autograd must not save a tensor that is then modified in place.
+    other = dm.gather(1, (idx == 0).long())
+    remaining.scatter_(1, idx, torch.nan_to_num(other, nan=inf, posinf=inf, neginf=-inf))
+    # Ordered after +inf, a nan is the second-smallest distance only when every other distance of the row is nan.
+    no_second = is_nan.scatter_(1, idx, True).all(dim=1)
+    second = torch.where(no_second, float("nan"), remaining.amin(dim=1))
+    # Without such a pair the quotient's gradient is nan or infinite, and amin's backward would spread it over every
+    # distance of the row. Those rows keep the quotient as their ratio, but detached.
+    defined = torch.isfinite(first) & torch.isfinite(second) & (second != 0)
+    ratio = torch.where(defined, first, 0) / torch.where(defined, second, 1)
+    return torch.where(defined, ratio, (first / second).detach()), first_idx
+
+
 def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -248,14 +279,17 @@ def match_snn(
     if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)
-    ratio = vals[:, 0] / vals[:, 1]
+    if is_mps_tensor_safe(distance_matrix):
+        ratio, idxs_in_2 = _first_to_second_nearest_ratio(distance_matrix)
+    else:
+        vals, idxs = torch.topk(distance_matrix, 2, dim=1, largest=False)
+        ratio, idxs_in_2 = vals[:, 0] / vals[:, 1], idxs[:, 0]
     mask = ratio <= th
     match_dists = ratio[mask]
     if len(match_dists) == 0:
         return _no_match(distance_matrix)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
-    idxs_in_2 = idxs_in_2[:, 0][mask]
+    idxs_in_2 = idxs_in_2[mask]
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 

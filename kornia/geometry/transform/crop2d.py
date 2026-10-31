@@ -50,6 +50,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import Resample
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
@@ -316,7 +317,7 @@ def crop_by_boxes(
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
-    validate_boxes: bool = True,
+    validate_boxes: Optional[bool] = None,
 ) -> torch.Tensor:
     """Crop images by mapping a source box onto a destination box, whose size sets the output size.
 
@@ -356,8 +357,10 @@ def crop_by_boxes(
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
-        validate_boxes: has no effect: the boxes are not validated
-          (`#6401 <https://github.com/kornia/kornia/issues/6401>`_).
+        validate_boxes: deprecated since kornia 0.9.1 and ignored; passing ``True`` or ``False`` emits a
+          :class:`DeprecationWarning`, and the default ``None`` does not. The boxes are not validated, whatever
+          its value: only the shapes of ``src_box`` and ``dst_box`` and the equal size of the ``dst_box`` boxes
+          are checked.
 
     Returns:
         the patches, with shape ``(B, C, h, w)`` for the size ``(h, w)`` of ``dst_box``.
@@ -389,6 +392,17 @@ def crop_by_boxes(
                   [ 9.0000, 10.0000]]]])
 
     """
+    # TorchScript cannot compile the warning helper (it formats an ``Optional[str]`` and passes ``category`` to
+    # ``warnings.warn``), so a scripted call stays silent, as in ``bbox_to_mask``.
+    if not torch.jit.is_scripting() and validate_boxes is not None:
+        _emit_deprecation_warning(
+            "crop_by_boxes(validate_boxes=...)",
+            None,
+            "0.9.1",
+            "The argument has no effect: `crop_by_boxes` does not validate the boxes, whatever its value; stop "
+            "passing it.",
+        )
+
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
@@ -603,8 +617,8 @@ def crop_by_indices(
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
-        shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
-            or resized.
+        shape_compensation: how to compensate when the cropped slice size differs from `size`: ``'resize'``
+            resamples, while ``'pad'`` pads or trims. ``'F.pad'`` is a legacy alias for ``'pad'``.
 
     Returns:
         The cropped torch.Tensor with shape ``(B, C, h, w)``, where
@@ -612,7 +626,8 @@ def crop_by_indices(
         from ``src_box``.
 
     Raises:
-        ValueError: if ``size`` is ``None`` and the boxes differ in size.
+        ValueError: if ``shape_compensation`` is not ``'resize'``, ``'pad'`` or ``'F.pad'``, or ``size`` is ``None``
+            and the boxes differ in size.
 
     See Also:
         - :func:`crop_and_resize`: resamples any four-corner box, differentiably with respect to its corners.
@@ -635,6 +650,10 @@ def crop_by_indices(
     """
     KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
     KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
+    if shape_compensation not in ("resize", "pad", "F.pad"):
+        raise ValueError(
+            f"`shape_compensation` must be one of 'resize', 'pad', or 'F.pad'. Got {shape_compensation!r}."
+        )
 
     B, C, _, _ = input_tensor.shape
     # Kept on the device ``src_box`` lives on: the coordinates are read back to Python below, which costs no device

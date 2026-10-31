@@ -1071,6 +1071,17 @@ class ALIKED(nn.Module):
         B, _, H, W = img.shape
         wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=torch.promote_types(img.dtype, torch.float32))
 
+        if B == 0:
+            # torch.stack rejects an empty list. Derive the empty outputs from the dense maps instead of allocating
+            # them, so they stay in the autograd graph, and sample the responses as DKD does, so they keep the
+            # dtype a non-empty batch gets (float32 under autocast).
+            responses = F.grid_sample(score_map, score_map.new_zeros(0, 1, 0, 2), mode="bilinear", align_corners=True)
+            return (
+                score_map.flatten()[:0].to(wh.dtype).view(0, 0, 2, 3),
+                responses.view(0, 0, 1),
+                feature_map.flatten()[:0].view(0, 0, feature_map.shape[1]),
+            )
+
         lafs_list: list[torch.Tensor] = []
         for i in range(B):
             kps_px = wh * (keypoints[i] + 1) / 2.0  # (N, 2)
@@ -1084,7 +1095,7 @@ class ALIKED(nn.Module):
             lafs_list.append(laf_i)
 
         # Pad to the maximum number of keypoints in the batch.
-        n_max = max(laf.shape[0] for laf in lafs_list) if lafs_list else 0
+        n_max = max(laf.shape[0] for laf in lafs_list)
 
         def _pad(t: torch.Tensor, n: int, fill: float = 0.0) -> torch.Tensor:
             pad_n = n - t.shape[0]

@@ -38,6 +38,24 @@ def _reduce_max(parts: List[torch.Tensor]) -> torch.Tensor:
     return out
 
 
+def _pooled_window_is_faster(x: torch.Tensor) -> bool:
+    """Whether the ``(5, 5)`` and ``(7, 7)`` windows should take the pooled path instead of their comparison chains.
+
+    On CUDA the chains are launch-bound: 24 or 48 comparisons and their conjunction cost about 50 or 100 kernels,
+    against about 10 for :func:`_neighbourhood_max2d`, which is 2-6x faster there (RTX 4090, 480 x 640 to
+    960 x 1280 maps). On CPU the chains are 2-20x faster than the pooled path, so they stay there. MPS keeps them
+    too: before torch 2.16, its stride-1 ``max_pool2d`` drops nan and returns 0 for a window of -inf (pytorch#200910,
+    pytorch#200789), so the pooled path would change the mask there, although it is 1.4-1.9x (5 x 5) and 2.4-3.7x
+    (7 x 7) faster on an M1 with torch 2.14. Integer maps keep the chains everywhere, because CUDA ``max_pool2d`` takes
+    only floating-point input, and so do maps without channels, which ``max_pool2d`` rejects. TorchScript keeps them
+    too: the legacy ONNX exporter has no symbolic for the ``prim::is_cuda`` a scripted check would leave in the graph.
+    Both paths give the same mask.
+    """
+    if torch.jit.is_scripting():
+        return False
+    return x.is_cuda and x.is_floating_point() and x.shape[1] > 0
+
+
 def _neighbourhood_max2d(x: torch.Tensor, ky: int, kx: int) -> torch.Tensor:
     """Max over each ``ky x kx`` window with its own centre excluded.
 
@@ -105,6 +123,10 @@ class NonMaximaSuppression2d(nn.Module):
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for some windows when the input holds nan or -inf; see the
+        warning of :func:`~kornia.geometry.subpix.nms2d`.
     """
 
     def __init__(self, kernel_size: tuple[int, int]) -> None:
@@ -176,7 +198,7 @@ class NonMaximaSuppression2d(nn.Module):
                 & (ct > x[..., right, center])
                 & (ct > x[..., right, right])
             )
-        elif self.kernel_size == (5, 5):
+        elif self.kernel_size == (5, 5) and not _pooled_window_is_faster(x):
             # 24-comparison explicit path for 5x5 neighbourhood.
             c2 = slice(0, -4)
             c1 = slice(1, -3)
@@ -211,7 +233,7 @@ class NonMaximaSuppression2d(nn.Module):
                 & (ct > x[..., p2, p1])
                 & (ct > x[..., p2, p2])
             )
-        elif self.kernel_size == (7, 7):
+        elif self.kernel_size == (7, 7) and not _pooled_window_is_faster(x):
             # 48-comparison explicit path for 7x7 neighbourhood.
             c3 = slice(0, -6)
             c2 = slice(1, -5)
@@ -273,7 +295,8 @@ class NonMaximaSuppression2d(nn.Module):
                 & (ct > x[..., p3, p3])
             )
         else:
-            # General path: the same rule as the explicit paths above, for any window size. A
+            # General path: the same rule as the explicit paths above, for any window size, and the (5, 5) and
+            # (7, 7) windows of floating-point CUDA maps (see `_pooled_window_is_faster`). A
             # position whose full window does not fit inside the image is not a maximum -- it has
             # not been compared against the neighbours that would decide it -- so the border strip
             # stays False and only the interior is computed (#4239).
@@ -295,6 +318,10 @@ class NonMaximaSuppression3d(nn.Module):
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for some windows when the input holds nan; see the warning
+        of :func:`~kornia.geometry.subpix.nms3d`.
     """
 
     def __init__(self, kernel_size: tuple[int, int, int]) -> None:
@@ -399,6 +426,15 @@ def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = F
           each axis are never maxima.
         - The default output keeps the input value at each maximum and is ``0`` elsewhere, which is larger than a
           negative maximum, so use ``mask_only=True`` for a signed response.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for a ``kernel_size`` other than ``(1, 1)``, ``(3, 3)``,
+        ``(5, 5)`` and ``(7, 7)`` when the map holds nan or -inf: its stride-1 ``max_pool2d`` drops nan and returns
+        ``0`` for a window of -inf
+        (`pytorch/pytorch#200910 <https://github.com/pytorch/pytorch/issues/200910>`__,
+        `pytorch/pytorch#200789 <https://github.com/pytorch/pytorch/issues/200789>`__). A position next to a nan can
+        then be kept, and a negative maximum among -inf neighbours suppressed. Those four windows compare the
+        neighbours directly and are not affected, and neither are other devices or torch 2.16 or later.
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
@@ -408,6 +444,13 @@ def nms3d(input: torch.Tensor, kernel_size: tuple[int, int, int], mask_only: boo
 
     Convention:
         - See the convention block of :func:`nms2d`, applied over depth, height and width.
+
+    .. warning::
+        On MPS, torch earlier than 2.16 gives wrong masks for a ``kernel_size`` other than ``(1, 1, 1)`` and
+        ``(3, 3, 3)`` when the volume holds nan: its ``max_pool3d`` drops a nan that is not the first value of its
+        window (`pytorch/pytorch#200910 <https://github.com/pytorch/pytorch/issues/200910>`__), so a position next to
+        a nan can be kept. Those two windows compare the neighbours directly and are not affected, and neither are
+        other devices or torch 2.16 or later.
     """
     return NonMaximaSuppression3d(kernel_size)(input, mask_only)
 

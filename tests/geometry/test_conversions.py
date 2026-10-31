@@ -2806,6 +2806,25 @@ class TestConvertAtoH(BaseTester):
         )
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize(
+        "op,shape",
+        [
+            (kornia.geometry.conversions.convert_affinematrix_to_homography, (1, 2, 3)),
+            (kornia.geometry.conversions.convert_affinematrix_to_homography3d, (1, 3, 4)),
+        ],
+    )
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    def test_exception_rejects_non_floating_input(self, op, shape, int_dtype, device):
+        # Integer or bool input used to surface as a bare torch RuntimeError from the in-place
+        # "+= 1.0" on the padded homography ("result type Float can't be cast to the desired
+        # output type Long"), naming no kornia argument. Now rejected up front by name.
+        # Snippet used to generate the old behaviour (torch only):
+        #   convert_affinematrix_to_homography(torch.ones(1, 2, 3, dtype=torch.int64))
+        #     -> RuntimeError: result type Float can't be cast to the desired output type Long
+        A = torch.ones(shape, device=device, dtype=int_dtype)
+        with pytest.raises(ValueError, match=rf"floating point or complex.*{int_dtype}"):
+            op(A)
+
 
 class TestConvertPointsFromHomogeneous(BaseTester):
     @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
@@ -5556,6 +5575,43 @@ class TestCARKitToColmap(BaseTester):
             tvec = tvec.to(complex_dtype)
         with pytest.raises(TypeCheckError, match=rf"{which}.*real floating point.*{complex_dtype}"):
             ColmapQTVecs_to_ARKitQTVecs(qvec, tvec)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    def test_exception_arkit_to_colmap_rejects_non_floating_qvec(self, device, int_dtype):
+        # The forward conversion had no dtype guard and an integer qvec surfaced a bare torch
+        # RuntimeError from linalg.vector_norm instead of naming the argument.
+        # Snippet used to generate the old behaviour (torch only):
+        #   ARKitQTVecs_to_ColmapQTVecs(torch.tensor([[0, 1, 0, 1]]), torch.ones(1, 3, 1, dtype=torch.int64))
+        #     -> RuntimeError: linalg.vector_norm: Expected a floating point or complex tensor as input. Got Long
+        qvec = torch.tensor([[1, 0, 0, 0]], device=device, dtype=int_dtype)
+        tvec = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
+        with pytest.raises(TypeCheckError, match=rf"qvec.*floating point.*{int_dtype}"):
+            ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int64, torch.int32, torch.bool])
+    def test_arkit_to_colmap_integer_tvec_promotes(self, device, dtype, int_dtype):
+        # An integer tvec with a floating qvec has always promoted to qvec's dtype and given the
+        # float result; the qvec guard must not reject it.
+        qvec = torch.tensor([[0.5, 0.5, 0.5, 0.5], [0.0, 1.0, 0.0, 1.0]], device=device, dtype=dtype)
+        tvec = torch.tensor([[[1], [0], [3]], [[0], [1], [1]]], device=device, dtype=int_dtype)
+        q_int, t_int = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
+        q_ref, t_ref = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec.to(dtype))
+        assert t_int.dtype == dtype
+        self.assert_close(q_int, q_ref, atol=0.0, rtol=0.0)
+        self.assert_close(t_int, t_ref, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("complex_dtype", [torch.complex64, torch.complex128])
+    @pytest.mark.parametrize("which", ["qvec", "tvec"])
+    def test_exception_arkit_to_colmap_rejects_complex_inputs(self, complex_dtype, which):
+        # CPU tensors: the guard runs before any arithmetic and MPS has no complex128.
+        qvec = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+        tvec = torch.ones(1, 3, 1)
+        if which == "qvec":
+            qvec = qvec.to(complex_dtype)
+        else:
+            tvec = tvec.to(complex_dtype)
+        with pytest.raises(TypeCheckError, match=rf"{which}.*real.*{complex_dtype}"):
+            ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
 
     def test_dynamo_colmap_to_arkit(self, device, dtype, torch_optimizer):
         qvec = torch.tensor([[0.7071, 0.0, 0.7071, 0.0], [1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)

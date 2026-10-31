@@ -45,6 +45,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
@@ -893,7 +894,7 @@ def resize_to_be_divisible(
     divisible_factor: int,
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
-    side: str = "short",
+    side: Optional[str] = None,
     antialias: bool = False,
 ) -> torch.Tensor:
     """Resize an image so that its height and width are multiples of a factor.
@@ -901,9 +902,8 @@ def resize_to_be_divisible(
     ``out = resize_to_be_divisible(input, divisible_factor)`` resizes ``(*, H, W)`` tensors with :func:`resize` to the
     nearest multiples of ``divisible_factor``, at least ``divisible_factor`` for a positive side, and returns
     ``(*, h, w)``; an empty side stays empty. A side halfway between two multiples rounds as Python's :func:`round`
-    does, to an even quotient, so with a factor of 4 both 6 and 10 become 8. ``side`` is passed to :func:`resize` but
-    has no effect there, because the size is a pair (`#6397 <https://github.com/kornia/kornia/issues/6397>`_). For a
-    given size, use :func:`resize`.
+    does, to an even quotient, so with a factor of 4 both 6 and 10 become 8. ``side`` is deprecated and has no effect.
+    For a given size, use :func:`resize`.
 
     Convention:
         - see the convention block of :func:`resize`
@@ -917,8 +917,9 @@ def resize_to_be_divisible(
         interpolation (str, optional): Interpolation flag. Defaults to "bilinear".
         align_corners (Optional[bool], optional):
             whether to align the corners of the input and output. Defaults to None.
-        side (str, optional): passed to :func:`resize`, where it has no effect because the size is a pair.
-            Defaults to "short".
+        side (str, optional): Deprecated and ignored. Both sides are rounded independently to a multiple of
+            ``divisible_factor``. In eager mode, any explicit non-None value emits a :class:`DeprecationWarning`.
+            Defaults to None. This argument will be removed in a future release.
         antialias (bool, optional):
             If True, then image will be filtered with Gaussian before downscaling. Defaults to False.
 
@@ -934,6 +935,14 @@ def resize_to_be_divisible(
         - :func:`rescale`: resize by a factor.
 
     """
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript needs a standalone guard.
+        if side is not None:
+            _emit_deprecation_warning(
+                "resize_to_be_divisible(..., side=...)",
+                None,
+                "0.9.1",
+                "The `side` argument has no effect. Both sides are rounded to a multiple of `divisible_factor`.",
+            )
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
     if input.ndim < 2:
@@ -944,7 +953,7 @@ def resize_to_be_divisible(
     height, width = input.shape[-2:]
     height = max(1, round(height / divisible_factor)) * divisible_factor if height > 0 else 0
     width = max(1, round(width / divisible_factor)) * divisible_factor if width > 0 else 0
-    return resize(input, (height, width), interpolation, align_corners, side, antialias)
+    return resize(input, (height, width), interpolation=interpolation, align_corners=align_corners, antialias=antialias)
 
 
 def rescale(

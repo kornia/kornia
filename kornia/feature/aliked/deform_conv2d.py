@@ -27,6 +27,7 @@ from __future__ import annotations
 from typing import Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 
@@ -105,8 +106,14 @@ def deform_conv2d(
     sample_h = base_h + kern_h + off_y
     sample_w = base_w + kern_w + off_x
 
-    # bilinear interpolation with zero-padding
-    sampled = _bilinear_sample(input, sample_h, sample_w, n_off_grps, c_per_off_grp)
+    # bilinear interpolation with zero-padding. Without autograd one grid_sample samples every offset group, which
+    # makes ALIKED inference about 1.7x faster on MPS. Autograd keeps the absolute-coordinate sampler: normalized
+    # coordinates can round a sample at an integer position, such as any sample of a zero offset, onto the other
+    # side of the pixel, which changes its one-sided derivative.
+    if torch.is_grad_enabled():
+        sampled = _bilinear_sample(input, sample_h, sample_w, n_off_grps, c_per_off_grp)
+    else:
+        sampled = _grid_sample_bilinear(input, sample_h, sample_w, n_off_grps, c_per_off_grp)
     # sampled: [B, n_off_grps, c_per_off_grp, K, H_out, W_out]
 
     # apply mask (DCNv2 modulation)
@@ -127,6 +134,47 @@ def deform_conv2d(
         out = out + bias.reshape(1, -1, 1, 1)
 
     return out
+
+
+def _grid_sample_bilinear(
+    input: Tensor,
+    sample_h: Tensor,
+    sample_w: Tensor,
+    n_off_grps: int,
+    c_per_off_grp: int,
+) -> Tensor:
+    """Sample input at fractional (sample_h, sample_w) positions with zero-padding, using one ``grid_sample``.
+
+    Gives the values of :func:`_bilinear_sample`. Offset groups are folded into the batch of ``grid_sample`` and
+    kernel points into its output height. Half-precision inputs are sampled in float32: rounding the normalized
+    coordinates to half precision would add error that the absolute-coordinate sampler does not have.
+
+    Args:
+        input: ``(B, C_in, H_in, W_in)``
+        sample_h: ``(B, n_off_grps, K, H_out, W_out)``
+        sample_w: ``(B, n_off_grps, K, H_out, W_out)``
+        n_off_grps: number of offset groups.
+        c_per_off_grp: input channels per offset group.
+
+    Returns:
+        Sampled tensor ``(B, n_off_grps, c_per_off_grp, K, H_out, W_out)``.
+    """
+    B, _C_in, H_in, W_in = input.shape
+    _B, _G, K, H_out, W_out = sample_h.shape
+    dtype = torch.promote_types(input.dtype, torch.float32)
+    sample_h = sample_h.to(dtype)
+    sample_w = sample_w.to(dtype)
+    # Pixel p is at (2 * p + 1) / size - 1 with align_corners=False. Clamping keeps a huge finite position from
+    # overflowing; +-3 lies wholly in the zero padding for any size.
+    grid_x = ((2 * sample_w + 1) / W_in - 1).clamp(-3, 3)
+    grid_y = ((2 * sample_h + 1) / H_in - 1).clamp(-3, 3)
+    grid = torch.stack((grid_x, grid_y), dim=-1).reshape(B * n_off_grps, K * H_out, W_out, 2)
+    grouped = input.to(dtype).reshape(B * n_off_grps, c_per_off_grp, H_in, W_in)
+    sampled = F.grid_sample(grouped, grid, mode="bilinear", padding_mode="zeros", align_corners=False)
+    sampled = sampled.reshape(B, n_off_grps, c_per_off_grp, K, H_out, W_out)
+    # _bilinear_sample returns nan at a non-finite position, whereas grid_sample differs between devices there.
+    nonfinite = ~(torch.isfinite(sample_h) & torch.isfinite(sample_w))
+    return sampled.masked_fill(nonfinite.unsqueeze(2), float("nan")).to(input.dtype)
 
 
 def _bilinear_sample(

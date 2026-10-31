@@ -40,12 +40,15 @@ Which function to use:
 from __future__ import annotations
 
 import math
+import operator
+from typing import Any
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ValueCheckError
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.filters.gaussian import _gaussian_blur2d_cpu, _gaussian_blur2d_cpu_eligible
 
@@ -198,6 +201,31 @@ class PyrUp(nn.Module):
         return pyrup(input, self.border_type, self.align_corners)
 
 
+def _extra_levels_as_int(extra_levels: Any) -> int:
+    """Return ``extra_levels`` as a positive ``int``, or raise :class:`~kornia.core.exceptions.ValueCheckError`.
+
+    ``_extra_levels_as_int(extra_levels)`` converts a positive integer-like value to ``int`` through ``operator.index``.
+    Python and NumPy integers, 0-d integer arrays and integer tensors are accepted, as is anything else that
+    ``operator.index`` converts to a positive integer; bools of every kind are rejected. The error is raised directly
+    instead of through ``KORNIA_CHECK``: with ``extra_levels < 1`` the level that seeds the next octave does not exist,
+    so the guard must also hold under ``python -O``, ``KORNIA_CHECKS=0`` and ``disable_checks()``.
+    """
+    dtype = getattr(extra_levels, "dtype", None)
+    # ``operator.index`` turns ``True``, ``torch.tensor(True)`` and, on older NumPy, ``np.bool_`` into 1.
+    is_bool = isinstance(extra_levels, bool) or dtype is torch.bool or getattr(dtype, "kind", None) == "b"
+    value: int | None = None
+    if not is_bool:
+        try:
+            value = operator.index(extra_levels)
+        except TypeError:
+            value = None
+    if value is None or value < 1:
+        raise ValueCheckError(
+            f"Invalid extra_levels, it must be a positive integer. Got: {extra_levels!r}", actual_value=extra_levels
+        )
+    return value
+
+
 class ScalePyramid(nn.Module):
     r"""Build octaves of progressively blurred images, with their sigmas, for scale-space detection.
 
@@ -205,8 +233,7 @@ class ScalePyramid(nn.Module):
     ``(B, C, H, W)`` images and returns three lists with one entry per octave. ``pyr[o]`` stacks
     ``L = n_levels + extra_levels`` levels as ``(B, C, L, H_o, W_o)``, each blurred ``2 ** (1 / n_levels)`` times more
     than the previous, and ``sigmas[o]`` and ``pixel_dists[o]`` are ``(B, L)``. Each octave after the
-    first starts from level ``n_levels`` of the previous one (for ``extra_levels >= 1``,
-    `#6400 <https://github.com/kornia/kornia/issues/6400>`_), resized to half its size, and
+    first starts from level ``n_levels`` of the previous one, resized to half its size, and
     octaves are added while that halved size stays above ``min_size`` on its shorter side. It is the pyramid
     :class:`~kornia.feature.ScaleSpaceDetector` searches; for a plain list of halved images, use :func:`build_pyramid`.
 
@@ -230,15 +257,19 @@ class ScalePyramid(nn.Module):
         min_size: the minimum size of the octave in pixels: an octave after the first is built only when its shorter
           side is larger than ``min_size``.
         double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
-        extra_levels: number of levels per octave beyond ``n_levels``; the default 3 is what DoG non-maximum
-          suppression needs. Keep it at least 1: the next octave starts from level ``n_levels``, which
-          ``extra_levels=0`` leaves out of the octave, and then starts from the least blurred level instead
-          (`#6400 <https://github.com/kornia/kornia/issues/6400>`_).
+        extra_levels: number of levels per octave beyond ``n_levels``, a positive integer (a NumPy integer or
+          integer tensor is converted to ``int``); the default 3 is what DoG non-maximum suppression needs. Level
+          ``n_levels``, blurred to twice the first level's sigma, seeds the next octave, so ``1`` is the least
+          that works.
 
     Returns:
         1st output: images, the levels of each octave.
         2nd output: sigmas, the nominal blur of each level in the octave's own pixels.
         3rd output: pixel_dists, the nominal pixel spacing of each level relative to the input.
+
+    Raises:
+        ValueCheckError: if ``extra_levels`` is not a positive integer. Raised even when the ``KORNIA_CHECK``
+            helpers are disabled, because ``forward`` could not build the pyramid.
 
     Shape:
         - Input: ``(B, C, H, W)``
@@ -267,6 +298,7 @@ class ScalePyramid(nn.Module):
         extra_levels: int = 3,
     ) -> None:
         super().__init__()
+        extra_levels = _extra_levels_as_int(extra_levels)
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
         self.extra_levels = extra_levels
@@ -448,9 +480,11 @@ class ScalePyramid(nn.Module):
                 sigmas[-1][:, level_idx] = cur_sigma_oct
                 pixel_dists[-1][:, level_idx] = pixel_distance
 
-            # Seed next octave: bilinear 2x downscale of the (-extra_levels) level.
+            # Seed next octave: bilinear 2x downscale of level ``n_levels``, the one blurred to twice the first
+            # level's sigma, so the new octave starts at the same octave-relative blur. It is addressed from the
+            # front: ``-self.extra_levels`` is the same level for ``extra_levels >= 1`` but selects level 0 for 0.
             # Bilinear resampling is more accurate than integer-stride decimation.
-            _pyr = pyr[-1][-self.extra_levels]
+            _pyr = pyr[-1][self.n_levels]
             H, W = _pyr.shape[2], _pyr.shape[3]
             if min(H // 2, W // 2) <= self.min_size:
                 break
