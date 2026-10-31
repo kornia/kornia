@@ -25,6 +25,43 @@ from testing.base import BaseTester
 
 
 class TestAepe(BaseTester):
+    @pytest.mark.parametrize("default_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize(
+        "values,target_values,integer_dtype,target_dtype",
+        [
+            ([[200, 200], [0, 0]], [[0, 0], [0, 0]], torch.uint8, torch.uint8),
+            ([[2**31 - 1, 0]], [[-(2**31), 0]], torch.int32, torch.int32),
+            ([[2**30 + 3, 2**30 + 4]], [[2**30, 2**30]], torch.int32, torch.int32),
+            ([[200, 0]], [[-120, 0]], torch.uint8, torch.int8),
+            ([[200, 0]], [[-50_000, 0]], torch.int16, torch.int32),
+            ([[60_000, 60_000], [0, 0]], [[0, 0], [0, 0]], torch.int32, torch.int32),
+        ],
+    )
+    def test_integer_work_precision(
+        self, default_dtype, reduction, values, target_values, integer_dtype, target_dtype, device
+    ):
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        input = torch.tensor(values, device=device, dtype=integer_dtype)
+        target = torch.tensor(target_values, device=device, dtype=target_dtype)
+        difference = input.cpu().double() - target.cpu().double()
+        expected = torch.hypot(difference[..., 0], difference[..., 1])
+        if reduction != "none":
+            expected = getattr(expected, reduction)()
+        expected = expected.to(device=device, dtype=default_dtype)
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            actual = kornia.metrics.aepe(input, target, reduction)
+            assert actual.dtype == default_dtype
+            self.assert_close(actual, expected)
+            self.assert_close(kornia.metrics.average_endpoint_error(input, target, reduction), expected)
+            self.assert_close(kornia.metrics.AEPE(reduction)(input, target), expected)
+            self.assert_close(kornia.metrics.aepe(target, input, reduction), expected)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+
     @pytest.mark.parametrize("integer_dtype", [torch.uint8, torch.int8, torch.int16, torch.int32])
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
     @pytest.mark.parametrize("route", ["function", "alias", "module"])
@@ -45,6 +82,20 @@ class TestAepe(BaseTester):
         input = torch.tensor([[2**60 + 3, 2**60 + 4]], device=device, dtype=torch.int64)
         target = torch.full_like(input, 2**60)
         self.assert_close(kornia.metrics.aepe(input, target), torch.tensor(5.0, device=device), atol=0, rtol=0)
+
+    def test_integer_jit(self, device):
+        input = torch.tensor([[200, 200]], device=device, dtype=torch.uint8)
+        target = torch.zeros_like(input)
+        actual = torch.jit.script(kornia.metrics.aepe)(input, target)
+        self.assert_close(actual, kornia.metrics.aepe(input, target))
+
+    @pytest.mark.parametrize("input_on_cpu", [False, True])
+    def test_integer_mixed_device_scalar(self, device, input_on_cpu):
+        if device.type != "cuda":
+            pytest.skip("CPU scalar operands require a CUDA tensor")
+        input = torch.tensor([200, 0], device="cpu" if input_on_cpu else device, dtype=torch.int16)
+        target = torch.tensor([0, 0], device=device if input_on_cpu else "cpu", dtype=torch.int16)
+        self.assert_close(kornia.metrics.aepe(input, target), torch.tensor(200.0, device=device))
 
     def test_metric_mean_reduction(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
