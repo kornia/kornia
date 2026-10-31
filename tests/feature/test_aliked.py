@@ -24,6 +24,7 @@ import torch.nn.functional as F
 import kornia
 from kornia.feature import laf_is_filled
 from kornia.feature.aliked import ALIKED, ALIKEDFeatures
+from kornia.feature.aliked import aliked as aliked_module
 from kornia.feature.aliked.aliked import SDDH, InputPadder, _affine_from_cov, get_patches
 from kornia.feature.aliked.deform_conv2d import _bilinear_sample, _grid_sample_bilinear, deform_conv2d
 
@@ -1358,6 +1359,23 @@ class TestALIKEDModes(BaseTester):
         with torch.no_grad():
             getattr(aliked, method)(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
         assert requested == [device.type == "cpu" and dtype in (torch.float32, torch.float64)]
+
+    @pytest.mark.parametrize("method", ["forward", "forward_laf"])
+    def test_forward_keeps_the_default_layout_in_graph_capture(self, device, dtype, method, monkeypatch):
+        # inductor's grid_sample gathers channel by channel, which the channels_last map makes slower (x86, torch 2.14)
+        aliked = self._model(device, dtype)
+        original = aliked.extract_dense_map
+        requested = []
+
+        def spy(image, *, channels_last=False):
+            requested.append(channels_last)
+            return original(image, channels_last=channels_last)
+
+        monkeypatch.setattr(aliked, "extract_dense_map", spy)
+        monkeypatch.setattr(aliked_module, "is_compiling", lambda: True)
+        with torch.no_grad():
+            getattr(aliked, method)(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
+        assert requested == [False]
 
     def test_forward_matches_the_default_layout(self, device, dtype):
         # forward reads the channels_last map on CPU; the keypoints and scores cannot depend on that choice

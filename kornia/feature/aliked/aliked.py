@@ -65,6 +65,7 @@ from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
 from kornia.core.download import load_state_dict_from_url
+from kornia.core.utils import is_compiling
 from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
@@ -148,8 +149,13 @@ def get_patches(tensor: torch.Tensor, required_corners: torch.Tensor, ps: int) -
 
 
 def _reads_channels_last(image: torch.Tensor) -> bool:
-    """Whether :meth:`ALIKED.forward` asks for the ``channels_last`` feature map; see ``extract_dense_map``."""
-    return image.device.type == "cpu" and image.dtype in (torch.float32, torch.float64)
+    """Whether :meth:`ALIKED.forward` asks for the ``channels_last`` feature map; see ``extract_dense_map``.
+
+    It does for a float32 or float64 CPU image in eager only. Under ``torch.compile`` or ``torch.export`` capture the
+    default layout is faster: inductor lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel
+    at a time across the sample points, and on the channels_last map each of those reads lands on another cache line.
+    """
+    return image.device.type == "cpu" and image.dtype in (torch.float32, torch.float64) and not is_compiling()
 
 
 # ---------------------------------------------------------------------------
@@ -953,17 +959,16 @@ class ALIKED(nn.Module):
                 lie next to each other. Its values equal those of the default
                 layout up to the rounding of the normalisation, and ``score_map`` is the same either way. On CPU,
                 normalising the map and the sampling of the descriptor head are then several times faster, so
-                :meth:`forward` and :meth:`forward_laf` use it for a float32 or float64 CPU image. They keep the
-                default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout; on CUDA the forward
+                :meth:`forward` and :meth:`forward_laf` use it for a float32 or float64 CPU image in eager. They keep
+                the default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout; on CUDA the forward
                 is 0.80-0.94x as fast with it (RTX 4090, float32, float16 and bfloat16); and on CPU torch's float16
                 and bfloat16 ``grid_sample`` is unreliable in either layout: it returned NaN for this one on an Apple
                 M1, and on x86 it crashes the process for a 640 x 480 image in both
                 (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). By default each channel is a plane of the
-                map, as before. Under ``torch.compile`` on an x86 CPU the layout still costs time. Inductor (torch
-                2.14) lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel at a time across
-                the sample points, and on this layout each of those reads lands on another cache line. The compiled
-                forward of a 416 x 640 image takes 228 ms with this map and 199 ms without, and eager takes 144 ms
-                (4 threads).
+                map, as before. Under ``torch.compile`` they keep the default too. On an x86 CPU (torch 2.14),
+                inductor lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel at a time
+                across the sample points, and on this layout each of those reads lands on another cache line. The
+                compiled forward of a 416 x 640 image took 254 ms with this map and 199 ms without (4 threads).
 
         Returns:
             ``feature_map``: ``(B, dim, H, W)`` L2-normalised dense features.
@@ -994,8 +999,8 @@ class ALIKED(nn.Module):
             # strides of a channels_last map. Eager computes the same bits as normalising
             # ``x1234.contiguous(memory_format=torch.channels_last)`` over dim 1. Inductor (torch 2.14, x86) differs:
             # for that form it kept the channel-major loop of the map's producer and transposed every 8 x 8 tile into
-            # the channels_last store. For this form it writes pixel by pixel, and the compiled forward of a 416 x 640
-            # image is 1.11x faster.
+            # the channels_last store. For this form it writes pixel by pixel, which made the compiled forward of a
+            # 416 x 640 image 1.11x faster while it still asked for this map.
             feature_map = F.normalize(x1234.permute(0, 2, 3, 1).contiguous(), p=2, dim=-1).permute(0, 3, 1, 2)
         else:
             feature_map = F.normalize(x1234, p=2, dim=1)
