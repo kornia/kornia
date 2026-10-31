@@ -473,23 +473,26 @@ class TestMatchSMNN(BaseTester):
     @pytest.mark.parametrize("swap", [False, True])
     def test_matches_the_definition_on_random_descriptors(self, device, dtype, swap):
         # Reference: (i, j) is a match when j is the nearest neighbour of i and i that of j, and both ratios of the
-        # nearest to the second-nearest distance are <= th; its ratio is the larger one. Sorted by i.
+        # nearest to the second-nearest distance are <= th; its ratio is the larger one. Sorted by i. The reference
+        # reads the matcher's own distance matrix, and divides and compares in its dtype on its device, so it pins the
+        # join rather than how another device or dtype rounds near ties and near th.
         desc1, desc2 = (d.to(dtype) for d in _descriptors_with_planted_matches(device, swap))
         th = 0.9
-        dists, idxs = match_smnn(desc1, desc2, th)
-        dm = torch.cdist(desc1.cpu().double(), desc2.cpu().double())
+        dm = _cdist(desc1, desc2)
+        dists, idxs = match_smnn(desc1, desc2, th, dm=dm)
         rows, cols = dm.sort(dim=1), dm.t().sort(dim=1)
+        ratios1 = rows.values[:, 0] / rows.values[:, 1]
+        ratios2 = cols.values[:, 0] / cols.values[:, 1]
+        passes1, passes2 = (ratios1 <= th).tolist(), (ratios2 <= th).tolist()
+        nearest2, nearest1 = rows.indices[:, 0].tolist(), cols.indices[:, 0].tolist()
         expected_idxs, expected_dists = [], []
-        for i in range(dm.shape[0]):
-            j = int(rows.indices[i, 0])
-            ratio1 = float(rows.values[i, 0] / rows.values[i, 1])
-            ratio2 = float(cols.values[j, 0] / cols.values[j, 1])
-            if int(cols.indices[j, 0]) == i and ratio1 <= th and ratio2 <= th:
+        for i, j in enumerate(nearest2):
+            if nearest1[j] == i and passes1[i] and passes2[j]:
                 expected_idxs.append([i, j])
-                expected_dists.append([max(ratio1, ratio2)])
+                expected_dists.append(torch.maximum(ratios1[i], ratios2[j]))
         assert len(expected_idxs) > 100
-        self.assert_close(idxs, torch.tensor(expected_idxs, device=device))
-        self.assert_close(dists, torch.tensor(expected_dists, device=device, dtype=dtype))
+        assert torch.equal(idxs, torch.tensor(expected_idxs, device=device))
+        assert torch.equal(dists, torch.stack(expected_dists).view(-1, 1))
 
 
 class TestMatchFGINN(BaseTester):
