@@ -54,7 +54,9 @@ and on CPU (`#6498 <https://github.com/kornia/kornia/pull/6498>`_), faster ratio
 `#6501 <https://github.com/kornia/kornia/pull/6501>`_), and channels-last patch-descriptor
 convolutions on MPS and oneDNN CPUs (`#6502 <https://github.com/kornia/kornia/pull/6502>`_).
 The ALIKED, XFeat and patch-descriptor rows below were re-measured on the same M1 at commit
-``0c1e9645e``, which includes them; the other rows describe ``160e0f0f7``.
+``0c1e9645e``, which includes them; the other rows describe ``160e0f0f7``. Faster distance
+selection in the matchers on CPU and CUDA (`#6509 <https://github.com/kornia/kornia/pull/6509>`_)
+merged after these measurements and is not reflected in them.
 The `audit PR <https://github.com/kornia/kornia/pull/6452>`_ records the full interim table,
 reference revisions, remaining coverage and CUDA handoff instructions, and a separate
 PhotoTourism-only replay on an NVIDIA RTX 4090 and an x86 CPU that includes those changes;
