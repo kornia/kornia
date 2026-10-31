@@ -47,12 +47,14 @@ An accelerator-compatible implementation is not automatically faster than its re
 For local features, choose the detector, descriptor and matcher together, and check both
 accuracy and latency on your workload. The following **interim M1 audit** compares Kornia
 at commit ``160e0f0f7`` with pinned author implementations and explicitly named alternatives.
-These measurements do not predict CUDA or Intel performance. They also predate later Kornia
-speed-ups that this table does not reflect: faster ALIKED inference on MPS
-(`#6464 <https://github.com/kornia/kornia/pull/6464>`_) and on CPU
-(`#6498 <https://github.com/kornia/kornia/pull/6498>`_), the MPS ratio test
-(`#6465 <https://github.com/kornia/kornia/pull/6465>`_), and channels-last patch-descriptor
+These measurements do not predict CUDA or Intel performance. Later Kornia speed-ups changed
+some rows: faster ALIKED inference on MPS (`#6464 <https://github.com/kornia/kornia/pull/6464>`_)
+and on CPU (`#6498 <https://github.com/kornia/kornia/pull/6498>`_), faster ratio-test matching
+(`#6465 <https://github.com/kornia/kornia/pull/6465>`_,
+`#6501 <https://github.com/kornia/kornia/pull/6501>`_), and channels-last patch-descriptor
 convolutions on MPS and oneDNN CPUs (`#6502 <https://github.com/kornia/kornia/pull/6502>`_).
+The ALIKED, XFeat and patch-descriptor rows below were re-measured on the same M1 at commit
+``0c1e9645e``, which includes them; the other rows describe ``160e0f0f7``.
 The `audit PR <https://github.com/kornia/kornia/pull/6452>`_ records the full interim table,
 reference revisions, remaining coverage and CUDA handoff instructions, and a separate
 PhotoTourism-only replay on an NVIDIA RTX 4090 and an x86 CPU that includes those changes;
@@ -71,13 +73,12 @@ its replay and raw evidence packages currently require a separate local transfer
      - A strong measured speed advantage for these descriptor pipelines. Validate accuracy
        on your data; this is not a claim that MKD is the best descriptor overall.
    * - ALIKED n16 / author Python
-     - **1.67× CPU** speedup on Oxford, with identical @3 px accuracy. Baseline MPS runs at
-       **0.59×** the reference speed (about 1.69× the latency).
-     - Prefer Kornia for this measured CPU workload. For MPS inference, the author Python
-       implementation is faster at this revision; benchmark again on a release that
-       includes #6464 (see *Proposed improvements* below).
+     - **1.99× CPU** speedup on Oxford, with identical @3 px accuracy. On MPS the two are
+       tied: **0.99×** on Oxford and **0.97×** on HPatches. At ``160e0f0f7``, before #6464
+       and #6498, they were **1.67× CPU** and **0.59× MPS**.
+     - Prefer Kornia on CPU. On MPS either implementation serves; choose on integration needs.
    * - XFeat / author
-     - **1.46× CPU** speedup on Oxford; @3 px accuracy **60.00% / 59.17%** (Kornia / author).
+     - **1.53× CPU** speedup on Oxford; @3 px accuracy **60.00% / 59.17%** (Kornia / author).
        MPS timing is approximately tied and noisy.
      - A measured CPU advantage. Do not assume the same speedup on an accelerator.
    * - SIFT pipelines / OpenCV RootSIFT
@@ -97,9 +98,11 @@ its replay and raw evidence packages currently require a separate local transfer
      - The planar improvement is substantial on this subset; it is not a universal accuracy
        improvement. Check the application metric before selecting a refinement policy.
    * - HardNet, SOSNet, HyNet, TFeat / authors, using shared SIFT frames
-     - Near parity in full-pipeline latency; aggregate accuracy is identical on the measured cohorts.
-     - Choose based on integration needs. These results do not establish a broad speed or
-       accuracy advantage for the ports.
+     - Near parity on CPU. On MPS, channels-last convolutions (#6502) make the HyNet pipeline
+       **1.35×** the reference speed and HardNet and SOSNet about **1.05×**; TFeat is tied.
+       Aggregate accuracy is identical on the measured cohorts.
+     - Choose based on integration needs; on MPS, HyNet runs faster in Kornia. These results
+       do not establish an accuracy advantage for the ports.
 
 Speedup means **reference latency / Kornia latency** on the same device and timed pairs;
 values below one favor the reference. These are full-pipeline measurements, including both
@@ -126,7 +129,8 @@ Proposed improvements, measured separately
 
 These candidate changes are **not included in the baseline above**; each was measured as a
 patch against the same Kornia commit. The first two have since been merged as separate pull
-requests, and the M1 figures below are for the candidate patches, not for the merged code:
+requests; the table gives the candidate figures and, re-measured at ``0c1e9645e``, the merged
+code's:
 
 .. list-table:: Candidate versus the same Kornia baseline
    :header-rows: 1
@@ -138,13 +142,16 @@ requests, and the M1 figures below are for the candidate patches, not for the me
        `#6464 <https://github.com/kornia/kornia/pull/6464>`_)
      - **1.59× Oxford / 1.71× HPatches** full-pipeline speedup, with unchanged aggregate accuracy.
        Patched Kornia is approximately tied with the author on Oxford and remains slightly
-       slower on HPatches. The merged sampler also runs on CUDA and CPU; this M1 candidate
-       measurement does not establish a CUDA speedup.
+       slower on HPatches. Merged, together with #6498 on CPU, Kornia's own ALIKED pipeline
+       latency fell **1.76× on MPS** and **1.40× on CPU** on Oxford, and the MPS pipeline is tied
+       with the author's. The merged sampler also runs on CUDA; this M1 measurement does not
+       establish a CUDA speedup.
    * - MPS SNN / SMNN (merged as
        `#6465 <https://github.com/kornia/kornia/pull/6465>`_)
      - **1.42–1.49× / 1.26–1.33×** matcher-only speedup across the three cohorts;
-       identical indices and ratios across **315 pairs**. These gains are not whole-pipeline
-       gains, and the candidate does not universally beat OpenCV matching.
+       identical indices and ratios across **315 pairs**. Merged, with the single device wait
+       of #6501, the speedup over ``160e0f0f7`` is **1.36–1.46× / 1.92–2.19×**, with outputs
+       still bitwise identical. These gains are not whole-pipeline gains.
    * - Affine-shape mirror fix (not merged)
      - PhotoTourism mAA **+0.49 percentage points**; Oxford @3 px unchanged;
        HPatches @3 px **−0.46 percentage points**. Correctness improves; accuracy effects are
