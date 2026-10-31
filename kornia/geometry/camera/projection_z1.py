@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Functions for the perspective projection of points onto the canonical z=1 plane."""
+"""Perspective projection of camera-frame points onto the normalized z = 1 plane, its inverse and its Jacobian."""
 
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/perspective_camera.rs
 from __future__ import annotations
@@ -28,7 +28,12 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
-    r"""Project one or more points from the camera frame into the canonical z=1 plane through perspective division.
+    r"""Divide camera-frame points by z onto the normalized z = 1 plane, without intrinsics.
+
+    ``xy = project_points_z1(points)`` takes camera-frame points ``(..., 3)`` and returns ``(x / z, y / z)`` as
+    ``(..., 2)``: normalized coordinates, not pixels. Map them to pixels with :func:`distort_points_affine`, or
+    through a fisheye lens with :func:`distort_points_kannala_brandt`; for pixels from a ``3x3`` ``K`` in one call,
+    use :func:`~kornia.geometry.camera.perspective.project_points` instead.
 
     .. math::
 
@@ -54,10 +59,17 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
-        points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
+        points_in_camera: torch.Tensor representing the points to project with shape ``(..., 3)``.
 
     Returns:
-        torch.Tensor representing the projected points with shape (..., 2).
+        torch.Tensor representing the projected points with shape ``(..., 2)``.
+
+    See Also:
+        - :func:`unproject_points_z1`: the reverse, scaling a normalized point by a depth.
+        - :func:`dx_project_points_z1`: the ``(..., 2, 3)`` Jacobian of this projection.
+        - :func:`project_points_orthographic`: drops ``z`` instead of dividing by it.
+        - :func:`~kornia.geometry.camera.perspective.project_points`: pixels from a ``3x3`` ``K`` in one call,
+          with the divide skipped at ``abs(z) <= 1e-8``.
 
     Example:
         >>> points = torch.tensor([1., 2., 3.])
@@ -72,7 +84,12 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
 def unproject_points_z1(
     points_in_cam_canonical: torch.Tensor, extension: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Unproject points on the canonical z=1 plane into the camera frame by scaling them by a depth (default 1).
+    r"""Scale normalized z = 1 points by a depth into camera-frame points, z = 1 by default.
+
+    ``points = unproject_points_z1(xy, depth)`` takes normalized coordinates ``(..., 2)`` and their camera-frame
+    depths ``d``, ``(...,)`` or ``(..., 1)``, and returns ``(x d, y d, d)`` as ``(..., 3)``; without a depth it
+    appends ``z = 1``. For pixels and a ``3x3`` ``K``, use
+    :func:`~kornia.geometry.camera.perspective.unproject_points` instead.
 
     .. math::
         \begin{bmatrix} x \\ y \\ z \end{bmatrix} =
@@ -83,16 +100,24 @@ def unproject_points_z1(
           by it and it becomes the third component.
           :meth:`~kornia.sensors.camera.projection_model.Z1Projection.unproject` names the same argument
           ``depth``. Both ``(...,)`` and ``(..., 1)`` extensions are accepted, and their leading dimensions
-          broadcast against the points'. One depth scales both coordinates: any other trailing size raises
-          ``ShapeError``.
+          broadcast against the points'. An extension with one dimension fewer than the points is read as
+          ``(...,)``, any other as ``(..., 1)``: for ``(2, 5, 2)`` points a ``(5, 1)`` extension is read as
+          ``(...,)`` and raises, so pass ``(1, 5, 1)``. One depth scales both coordinates: any other trailing size
+          raises ``ShapeError``.
 
     Args:
-        points_in_cam_canonical: torch.Tensor representing the points to unproject with shape (..., 2).
+        points_in_cam_canonical: torch.Tensor representing the points to unproject with shape ``(..., 2)``.
         extension: torch.Tensor representing the extension (depth) of the points to unproject with shape
-            (..., 1) or (...), broadcastable against the points' leading dimensions. Defaults to unit depth.
+            ``(..., 1)`` or ``(...,)``, broadcastable against the points' leading dimensions. Defaults to unit
+            depth.
 
     Returns:
-        torch.Tensor representing the unprojected points with shape (..., 3).
+        torch.Tensor representing the unprojected points with shape ``(..., 3)``.
+
+    See Also:
+        - :func:`project_points_z1`: the reverse, dividing by ``z``.
+        - :func:`unproject_points_orthographic`: appends the depth without scaling ``x`` and ``y``.
+        - :func:`~kornia.geometry.camera.perspective.unproject_points`: from pixels, with a ``3x3`` ``K``.
 
     Example:
         >>> points = torch.tensor([1., 2.])
@@ -117,7 +142,13 @@ def unproject_points_z1(
 
 
 def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
-    r"""Compute the 2x3 Jacobian of the z=1 perspective projection with respect to the camera-frame point (x, y, z).
+    r"""Compute the 2x3 Jacobian of the z = 1 projection with respect to the camera-frame point.
+
+    ``J = dx_project_points_z1(points)`` takes camera-frame points ``(..., 3)`` and returns the Jacobian of
+    :func:`project_points_z1` at each, ``(..., 2, 3)``: the derivatives of ``(x / z, y / z)`` with respect to
+    ``(x, y, z)``. At ``z = 0`` its nonzero entries are infinite, or ``nan`` where ``x`` or ``y`` is 0. Chain it
+    with :func:`dx_distort_points_affine` or :func:`dx_distort_points_kannala_brandt` for the Jacobian of a whole
+    camera model.
 
     .. math::
         \frac{\partial \pi}{\partial x} =
@@ -138,11 +169,16 @@ def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
         - the same ``z > 0`` precondition applies, and it is not validated either.
 
     Args:
-        points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
+        points_in_camera: torch.Tensor representing the points to project with shape ``(..., 3)``.
 
     Returns:
         torch.Tensor representing the Jacobian of the projected point :math:`(u, v)` with respect to
-        :math:`(x, y, z)`, with shape (..., 2, 3).
+        :math:`(x, y, z)`, with shape ``(..., 2, 3)``.
+
+    See Also:
+        - :func:`project_points_z1`: the projection this differentiates.
+        - :func:`dx_project_points_orthographic`: the orthographic counterpart, which returns ``du/dx`` alone.
+        - :func:`dx_distort_points_affine`: the Jacobian of the next step of a camera model, the intrinsics.
 
     Example:
         >>> points = torch.tensor([1., 2., 3.])

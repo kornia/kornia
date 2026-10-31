@@ -15,6 +15,25 @@
 # limitations under the License.
 #
 
+"""Rectified stereo: reproject disparity maps to 3D points, from the rig's projection matrices or from a Q matrix.
+
+A disparity map is channels-last, ``(B, H, W, 1)``, and holds ``d = u_left - u_right`` in pixels, positive for a
+point in front of the rig. Pixel ``(u, v)`` is (column, row) with integer pixel centres, as in
+``cv2.reprojectImageTo3D``, and the points are ``(B, H, W, 3)``.
+
+Which function to use:
+
+- A calibrated rig given by its two rectified ``(B, 3, 4)`` projection matrices (``P1`` and ``P2`` of
+  ``cv2.stereoRectify``): :class:`StereoCamera`, whose
+  :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` returns points in the left
+  rectified camera frame.
+- A ``(B, 4, 4)`` ``Q`` matrix from elsewhere: :func:`reproject_disparity_to_3D`.
+- The error both raise for the invalid rigs, disparity maps and ``Q`` matrices its docstring lists:
+  :class:`StereoException`. A rig or ``Q`` batch that is neither 1 nor the disparity batch raises ``ValueError``,
+  and left and right matrices with different batch sizes, other than a right batch of 1, raise ``RuntimeError``.
+- A depth map instead of points: :func:`~kornia.geometry.depth.depth_from_disparity`.
+"""
+
 from typing import Any, Literal, overload
 
 import torch
@@ -27,12 +46,27 @@ __all__ = ["StereoCamera", "StereoException", "reproject_disparity_to_3D"]
 
 
 class StereoException(Exception):
-    """Handle errors related to stereo camera calibration and rectification."""
+    """Signal an invalid stereo rig, disparity map or Q matrix, with a link to the stereo docs.
+
+    ``raise StereoException(msg)`` raises an exception whose message is ``msg`` followed by a link to the
+    :doc:`/geometry.camera.stereo` page. :class:`StereoCamera` raises it for projection matrices of the wrong
+    shape, on different devices or with different dtypes and, outside graph capture, for different intrinsics or a
+    baseline that is zero or points the wrong way; :func:`reproject_disparity_to_3D` raises it for a disparity map
+    or ``Q`` of the wrong type, shape or dtype. It derives from :class:`Exception` directly, so
+    ``except ValueError`` does not catch it; a ``Q`` batch that is neither 1 nor the disparity batch raises
+    :class:`ValueError` instead. Left and right projection matrices with different batch sizes, other than a right
+    batch of 1, raise a plain :class:`RuntimeError` from the constructor, not this exception.
+
+    See Also:
+        - :class:`StereoCamera`: the rig whose constructor checks raise it.
+        - :func:`reproject_disparity_to_3D`: the function whose input checks raise it.
+
+    """
 
     def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        r"""Construct custom exception for the :module:`~kornia.geometry.camera.stereo` module.
+        r"""Construct custom exception for the :mod:`kornia.geometry.camera.stereo` module.
 
-        Adds a general helper module redirecting the user to the proper documentation site.
+        Appends a link to the stereo documentation page to ``msg``.
 
         Args:
             msg: Custom message to add to the general message.
@@ -51,7 +85,16 @@ class StereoException(Exception):
 
 
 class StereoCamera:
-    """Represent a horizontal stereo camera setup for depth estimation.
+    """Model a rectified horizontal stereo rig and reproject its disparity maps to 3D points.
+
+    ``stereo = StereoCamera(P_left, P_right)`` takes the ``(B, 3, 4)`` rectified projection matrices of the left and
+    the right camera, such as ``P1`` and ``P2`` of ``cv2.stereoRectify``, and
+    ``points = stereo.reproject_disparity_to_3D(disparity)`` takes a channels-last ``(B, H, W, 1)`` disparity map
+    ``d = u_left - u_right``, in pixels, and returns the 3D point of every pixel in the left rectified camera
+    frame, ``(B, H, W, 3)``, in the units of the baseline: ``Z = fx * tx / d``. For nonzero disparities the result
+    matches ``cv2.reprojectImageTo3D`` with OpenCV's ``Q``. With a ``Q`` matrix from elsewhere, call
+    :func:`reproject_disparity_to_3D` instead; for a depth map rather than points,
+    :func:`~kornia.geometry.depth.depth_from_disparity`.
 
     Convention:
         - the two arguments are the **rectified projection matrices** of the left and the right camera, each of
@@ -68,9 +111,18 @@ class StereoCamera:
           the result is ``X = (u - cx) Z / fx``, ``Y = (v - cy) Z / fy``, ``Z = fx * tx / disparity``.
         - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``.
         - a disparity map is channels-**last**, ``(B, H, W, 1)`` (a ``(B, 1, H, W)`` map is rejected),
-          and the point cloud is ``(B, H, W, 3)``.
+          and the point cloud is ``(B, H, W, 3)``. A positive disparity puts the point in front of the rig and a
+          negative one behind it. A rig with ``B = 1`` serves a batch of disparity maps; any other batch must
+          match the disparity batch, else :class:`ValueError`.
         - pixel centres are integers; see the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        - the constructor raises :class:`StereoException` for a matrix that is not ``(B, 3, 4)``, for matrices on
+          different devices or with different dtypes and, outside graph capture, for different intrinsics or a
+          zero or reversed baseline. Left and right matrices with different batch sizes raise a plain
+          :class:`RuntimeError` instead, except a right batch of 1, which is paired with every left matrix. The
+          method raises :class:`StereoException` for a disparity map that is not a floating ``(B, H, W, 1)``
+          tensor. An integer rig is accepted by the constructor, but its ``Q`` is integer too, so every call of the
+          method then raises (`#6471 <https://github.com/kornia/kornia/issues/6471>`_).
 
     .. warning::
         A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
@@ -83,6 +135,17 @@ class StereoCamera:
     Args:
         rectified_left_camera: The rectified left camera projection matrix of shape ``(B, 3, 4)``.
         rectified_right_camera: The rectified right camera projection matrix of shape ``(B, 3, 4)``.
+
+    See Also:
+        - :func:`reproject_disparity_to_3D`: the same reprojection from a ``Q`` matrix instead of the two
+          projection matrices.
+        - :func:`~kornia.geometry.depth.depth_from_disparity`: a depth map, ``fx * tx / d`` at every pixel,
+          instead of points.
+        - :func:`~kornia.geometry.depth.depth_to_3d_v2`: points from a depth map; after
+          :func:`~kornia.geometry.depth.depth_from_disparity`, the same points up to the ``1e-8`` that function
+          adds to the disparity.
+        - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: a single camera with intrinsics and
+          world-to-camera extrinsics.
     """
 
     def __init__(self, rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor) -> None:
@@ -404,7 +467,16 @@ def reproject_disparity_to_3D(
 def reproject_disparity_to_3D(
     disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor, return_mask: bool = False
 ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-    r"""Reproject the disparity torch.Tensor to a 3D point cloud.
+    r"""Reproject a disparity map to 3D points with a Q matrix, as cv2.reprojectImageTo3D does.
+
+    ``points = reproject_disparity_to_3D(disparity, Q)`` takes a channels-last ``(B, H, W, 1)`` disparity map and
+    ``Q`` matrices ``(B, 4, 4)`` or ``(1, 4, 4)``, and returns ``(X / W, Y / W, Z / W)`` of
+    ``Q (u, v, d, 1)`` for every pixel ``(u, v)`` = (column, row), ``(B, H, W, 3)``, in the frame ``Q`` defines.
+    Where ``abs(W) <= 1e-8``, as at a zero disparity when ``Q[3, 3] = 0``, it returns the undivided ``(X, Y, Z)``,
+    while OpenCV divides (infinities at ``W = 0``); see the Note. With ``return_mask=True`` it also returns a
+    ``(B, H, W, 1)`` bool mask of numerically valid points. For a rig given by its two rectified projection
+    matrices, :class:`StereoCamera` builds ``Q``; for a depth map rather than points, use
+    :func:`~kornia.geometry.depth.depth_from_disparity`.
 
     See the Convention block on :class:`~kornia.geometry.camera.stereo.StereoCamera`.
 
@@ -420,6 +492,13 @@ def reproject_disparity_to_3D(
 
     Raises:
         ValueError: If the Q matrix batch size is neither 1 nor the disparity batch size.
+        StereoException: If ``disparity_tensor`` or ``Q_matrix`` is not a floating tensor of the documented shape.
+
+    See Also:
+        - :class:`StereoCamera`: builds ``Q`` from the two rectified projection matrices of a rig.
+        - :func:`~kornia.geometry.depth.depth_from_disparity`: a depth map instead of points, from a baseline and a
+          focal length.
+        - :func:`~kornia.geometry.depth.depth_to_3d_v2`: points from a depth map and a ``3x3`` ``K``.
 
     Note:
         A point is valid when all four homogeneous components are finite,

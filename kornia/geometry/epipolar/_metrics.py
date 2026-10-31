@@ -432,6 +432,8 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
         - :func:`symmetrical_epipolar_distance`: both one-sided distances, squared and added.
         - :func:`sampson_epipolar_distance`: the first-order geometric error over both images.
         - :func:`~kornia.geometry.homography.oneway_transfer_error`: the image-2 error of a homography.
+        - :func:`~kornia.geometry.linalg.point_line_distance`: the distance from points to given lines, without a
+          fundamental matrix.
 
     """
     KORNIA_CHECK_IS_TENSOR(pts1)

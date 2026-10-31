@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Remove OpenCV's Brown-Conrady lens distortion from pixel coordinates and from images."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -34,7 +36,15 @@ from .distort import distort_points, tilt_projection
 def undistort_points(
     points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None, num_iters: int = 5
 ) -> torch.Tensor:
-    r"""Compensate for lens distortion a set of 2D image points.
+    r"""Remove Brown-Conrady lens distortion from pixel coordinates by fixed-point iteration.
+
+    ``points = undistort_points(distorted, K, dist)`` takes measured pixels ``(*, N, 2)``, the intrinsics
+    ``(*, 3, 3)`` and OpenCV's coefficient vector ``(*, n)``, ``n`` one of 4, 5, 8, 12 or 14, and returns the
+    ideal pinhole pixels ``(*, N, 2)`` after ``num_iters`` fixed-point steps; within the convergence region, with
+    the default 5 steps, the result matches ``cv2.undistortPoints(points, K, dist, P=new_K)``. For normalized
+    coordinates, as :func:`~kornia.geometry.epipolar.find_essential` takes, pass the result to
+    :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`; for a whole image, use
+    :func:`~kornia.geometry.calibration.undistort_image`.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
@@ -49,7 +59,17 @@ def undistort_points(
         - the inverse is a fixed-point iteration of ``num_iters`` steps, so the round trip through
           :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy the iteration reaches;
           within its convergence region more steps improve it down to the dtype's rounding.
-        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
+        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved, and the leading dimensions
+          broadcast as in :func:`~kornia.geometry.calibration.distort_points`, except in the sensor-tilt step of
+          14 coefficients (`#6468 <https://github.com/kornia/kornia/issues/6468>`_). That step pairs each camera
+          with its points only when ``dist`` holds one camera, or when the batch shape of ``dist`` equals that of
+          the points broadcast with ``K`` except for trailing sizes of 1, such as ``(B, 1, 14)`` for
+          ``(B, T, N, 2)`` points; any other layout gives wrong points or raises :class:`ValueError`. For
+          ``(T, B, N, 2)`` points, ``(B, 3, 3)`` cameras with ``(B, 14)`` coefficients give wrong points for
+          ``T == B`` and raise otherwise, and ``K[None]`` with ``dist[None]`` give wrong points for every
+          ``T > 1``; ``(N, 2)`` points with ``(B, 14)`` coefficients and a ``(3, 3)`` ``K`` raise.
+        - the skew entry ``K[0, 1]`` is ignored, as in
+          :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard: outside the convergence region it can
@@ -61,7 +81,7 @@ def undistort_points(
         K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
+            a vector with 4, 5, 8, 12 or 14 elements with shape ``(*, n)``.
         new_K: Intrinsic camera matrix used to map the undistorted normalized point back to pixels, while ``K``
             is the one that maps the incoming distorted ``points`` from pixels onto the normalized
             :math:`z = 1` plane -- the mirror image of the two roles in
@@ -72,6 +92,18 @@ def undistort_points(
 
     Returns:
         Undistorted 2D points with shape ``(*, N, 2)``.
+
+    See Also:
+        - :func:`~kornia.geometry.calibration.distort_points`: the forward map, in closed form, with ``K`` and
+          ``new_K`` in mirrored roles.
+        - :func:`~kornia.geometry.calibration.undistort_image`: undistorts every pixel of an image instead of a
+          point list.
+        - :func:`~kornia.geometry.calibration.tilt_projection`: the inverse sensor-tilt matrix applied first with
+          14 coefficients.
+        - :func:`~kornia.geometry.camera.undistort_points_kannala_brandt`: the fisheye inverse, from pixels to
+          normalized points.
+        - :func:`~kornia.geometry.camera.undistort_points_affine`: the intrinsics alone, from pixels to normalized
+          points, in closed form.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -160,7 +192,14 @@ def undistort_points(
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287
 def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
-    r"""Compensate an image for lens distortion.
+    r"""Undistort an image with OpenCV's Brown-Conrady coefficients, keeping its camera matrix K.
+
+    ``out = undistort_image(image, K, dist)`` takes images ``(*, C, H, W)``, the intrinsics ``(*, 3, 3)`` and
+    OpenCV's coefficient vector ``(*, n)``, ``n`` one of 4, 5, 8, 12 or 14, and returns the image a camera with the
+    same ``K`` and no distortion would take, ``(*, C, H, W)``: each output pixel samples the input bilinearly at its
+    :func:`~kornia.geometry.calibration.distort_points` position, with zeros outside the input. There is no
+    ``new_K``, so the result keeps the input's size and ``K``, as ``cv2.undistort`` does by default. For point
+    coordinates, use :func:`~kornia.geometry.calibration.undistort_points`.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
@@ -168,9 +207,10 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
 
     Convention:
         - the leading dimensions of ``image`` (in front of ``C, H, W``), ``K`` (in front of :math:`3 \times 3`)
-          and ``dist`` (in front of its ``n`` coefficients) must match exactly; the one exception is the
-          legacy unbatched call, a ``(1, C, H, W)`` image with a ``(3, 3)`` ``K`` and an :math:`(n,)`
-          ``dist``.
+          and ``dist`` (in front of its ``n`` coefficients) must match exactly, so an unbatched ``(C, H, W)``
+          image takes a ``(3, 3)`` ``K`` and an ``(n,)`` ``dist``; the one exception is the legacy unbatched
+          call, a ``(1, C, H, W)`` image with a ``(3, 3)`` ``K`` and an ``(n,)`` ``dist``.
+        - an image that is not floating point raises :class:`ValueError`.
         - the sampling map applies :func:`~kornia.geometry.calibration.distort_points` to the integer pixel
           centres (see :class:`~kornia.geometry.camera.pinhole.PinholeCamera`) and is resampled bilinearly with
           a fixed ``align_corners=True``, so all-zero coefficients return the input only to rounding.
@@ -180,10 +220,16 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
+            a vector with 4, 5, 8, 12 or 14 elements with shape ``(*, n)``.
 
     Returns:
         Undistorted image with shape ``(*, C, H, W)``.
+
+    See Also:
+        - :func:`~kornia.geometry.calibration.undistort_points`: undistorts a list of pixel coordinates instead of
+          an image.
+        - :func:`~kornia.geometry.calibration.distort_points`: the map whose positions the image is sampled at.
+        - :func:`~kornia.geometry.transform.remap`: the sampling step, to resample with other maps or options.
 
     Example:
         >>> img = torch.rand(1, 3, 5, 5)

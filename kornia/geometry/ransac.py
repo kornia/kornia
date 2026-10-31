@@ -575,7 +575,7 @@ class RANSAC(nn.Module):
         """Return the batch size of a ``local_optimization="dlt"`` call: configured or ``"auto"``.
 
         On CUDA and MPS a homography or affine batch costs about the same from a few hundred up to 8192 hypotheses
-        (the four- and three-point solves are launch-bound), so the whole :attr:`sample_budget` is drawn in batches
+        (the four- and three-point solves are launch-bound), so the whole ``sample_budget`` is drawn in batches
         of up to 8192; the epipolar solvers are compute-bound past 2048 hypotheses, so their batches stop there
         and early stopping is checked in between. The verification holds a ``batch x N`` residual matrix and a
         few temporaries of that size, so past ``2**27`` entries (about 1 GiB at peak in float32) the batch

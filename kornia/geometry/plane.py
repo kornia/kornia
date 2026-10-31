@@ -15,6 +15,24 @@
 # limitations under the License.
 #
 
+r"""Planes in 3D as n . x + d = 0: signed distances, projection and fitting.
+
+A plane is :math:`n \cdot x + d = 0`, with a normal ``n`` of shape ``(3,)``, or ``(B, 3)`` for ``B`` planes, held in a
+:class:`~kornia.geometry.vector.Vector3`, and an offset ``d`` of shape ``()`` or ``(B,)`` in a
+:class:`~kornia.geometry.vector.Scalar`. The signed distance :math:`n \cdot x + d` is positive on the side the normal
+points to, and a Euclidean distance only for a unit normal, which :meth:`~kornia.geometry.plane.Hyperplane.through`
+and :func:`fit_plane` return. :func:`~kornia.geometry.depth.depth_from_plane_equation` writes the plane as
+:math:`n \cdot X = d` instead.
+
+Which function to use:
+
+- A plane from a normal and an offset, a normal and a point, or three points, with the signed and absolute distances
+  and the projection of points: :class:`Hyperplane`.
+- The plane that best fits 3D points by total least squares: :func:`fit_plane`.
+- Where a line meets a plane: :meth:`~kornia.geometry.line.ParametrizedLine.intersect`.
+- The depth of given pixels on a known plane: :func:`~kornia.geometry.depth.depth_from_plane_equation`.
+"""
+
 # kornia.geometry.plane module inspired by Eigen::geometry::Hyperplane
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
@@ -34,7 +52,16 @@ __all__ = ["Hyperplane", "fit_plane"]
 
 
 class Hyperplane(nn.Module):
-    r"""Represent a plane in 3D space by its normal :math:`n` and offset :math:`d`.
+    r"""Represent 3D planes n . x + d = 0 by a normal and an offset, with signed distances.
+
+    ``plane = Hyperplane(Vector3(n), Scalar(d))`` stores the plane :math:`n \cdot x + d = 0` from a normal ``(3,)``
+    or ``(B, 3)`` in a :class:`~kornia.geometry.vector.Vector3` and an offset ``()`` or ``(B,)`` in a
+    :class:`~kornia.geometry.vector.Scalar`; plain tensors raise ``TypeCheckError``. :meth:`from_vector` builds it
+    from a normal and a point on it, and :meth:`through` from three points with a unit normal.
+    ``plane.signed_distance(p)`` returns :math:`n \cdot p + d` for points ``(..., 3)`` as a ``Scalar``,
+    :meth:`abs_distance` its absolute value, and :meth:`projection` the closest points as a ``Vector3`` for a unit
+    normal. To fit a plane to many points, use :func:`fit_plane`; to intersect it with a line,
+    :meth:`~kornia.geometry.line.ParametrizedLine.intersect`.
 
     Convention:
         - The plane is :math:`n \cdot x + d = 0`, and :meth:`signed_distance` is :math:`n \cdot x + d`: positive on
@@ -49,15 +76,38 @@ class Hyperplane(nn.Module):
           :math:`p_0 \to p_1 \to p_2`. Swapping two points flips it.
         - The normal and offset are registered module state under the keys ``_n`` and ``_d``, so ``state_dict()``,
           ``load_state_dict()`` and ``.to()`` include both tensors. As in
-          :class:`~kornia.geometry.line.ParametrizedLine`, a floating-point tensor without autograd history becomes
-          an ``nn.Parameter``: a plane built from plain tensors, including the result of :meth:`through` and
-          :func:`fit_plane` on points without autograd history, has trainable parameters, and the distances and
-          projections it returns require grad. A caller's ``nn.Parameter`` is kept, a tensor with autograd history
-          keeps that history, and an integer tensor is stored as a buffer (ParametrizedLine rejects one).
+          :class:`~kornia.geometry.line.ParametrizedLine`, outside graph capture a floating-point tensor that takes
+          no part in autograd (no ``grad_fn`` and ``requires_grad=False``) becomes an ``nn.Parameter``: a plane built
+          from plain tensors, including the result of :meth:`through` and :func:`fit_plane` on points without
+          autograd history, has trainable parameters, and the distances and projections it returns require grad. A
+          caller's ``nn.Parameter`` is kept; any other floating-point tensor, such as a leaf that requires grad or a
+          tensor with autograd history, is stored as a buffer and keeps its autograd link; and an integer tensor is
+          stored as a buffer (ParametrizedLine rejects one).
+          ``copy.deepcopy`` of a plane whose state carries autograd history raises ``RuntimeError``
+          (`#4923 <https://github.com/kornia/kornia/issues/4923>`_).
+        - Points broadcast against the planes as torch broadcasts ``(..., 3)`` against ``(B, 3)``: the axis before
+          the coordinates pairs with the plane batch. One plane, or a batch of one, takes points of any leading
+          shape; a batch of ``B > 1`` takes ``(B, 3)``, one point per plane, a single ``(3,)`` point, or
+          ``(N, B, 3)`` for ``N`` points per plane. ``(B, N, 3)`` is not ``N`` points per plane: it raises unless
+          ``N`` is ``B`` or 1. With ``N = B``, plane ``j`` meets ``p[:, j]``; with ``N = 1``, every plane meets every
+          point and the result is ``(B, B)``.
 
     Args:
         n: The normal vector :math:`n`, a :class:`~kornia.geometry.vector.Vector3`.
         d: The offset :math:`d`, a :class:`~kornia.geometry.vector.Scalar`.
+
+    See Also:
+        - :func:`fit_plane`: fits the plane to a set of 3D points by total least squares, instead of taking a normal
+          and an offset.
+        - :class:`~kornia.geometry.line.ParametrizedLine`: a line in any dimension; its
+          :meth:`~kornia.geometry.line.ParametrizedLine.intersect` returns where a 3D line meets this plane.
+        - :func:`~kornia.geometry.depth.depth_from_plane_equation`: the depth of pixels on a plane given as plain
+          tensors, with the offset of the opposite sign.
+
+    Example:
+        >>> plane = Hyperplane(Vector3(torch.tensor([0.0, 0.0, 1.0])), Scalar(torch.tensor(-2.0)))
+        >>> plane.signed_distance(torch.tensor([[1.0, 1.0, 5.0], [0.0, 0.0, 0.0]])).data
+        tensor([ 3., -2.], grad_fn=<AddBackward0>)
     """
 
     def __init__(self, n: Vector3, d: Scalar) -> None:
@@ -132,11 +182,12 @@ class Hyperplane(nn.Module):
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L145
     def signed_distance(self, p: Vector3 | torch.Tensor) -> Scalar:
-        """Compute signed distances from points to the hyperplane.
+        r"""Compute signed distances from points to the hyperplane.
 
         The sign is determined by the stored normal vector. Points in the
         normal direction have positive values; points on the opposite side have
-        negative values; points on the plane evaluate to zero.
+        negative values; points on the plane evaluate to zero. The value is
+        :math:`n \cdot p + d`, a Euclidean distance only for a unit normal.
 
         Args:
             p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
@@ -151,16 +202,16 @@ class Hyperplane(nn.Module):
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     def projection(self, p: Vector3 | torch.Tensor) -> Vector3:
-        """Project points onto the hyperplane along the normal direction.
+        r"""Project points onto the hyperplane along the normal direction.
 
         Args:
             p: Point or batch of points as a :class:`~kornia.geometry.vector.Vector3`
                 or :class:`torch.Tensor`.
 
         Returns:
-            :class:`~kornia.geometry.vector.Vector3` containing the closest
-            point on the hyperplane for each input point, preserving leading
-            batch dimensions.
+            :class:`~kornia.geometry.vector.Vector3`, also for a tensor input, containing
+            :math:`p - (n \cdot p + d) n` for each input point, preserving leading
+            batch dimensions: the closest point on the hyperplane for a unit normal.
         """
         dist = self.signed_distance(p)
         return p - dist.data[..., None] * self.normal
@@ -172,7 +223,8 @@ class Hyperplane(nn.Module):
         """Create a hyperplane from a normal and one point on the plane.
 
         Args:
-            n: Normal vector :math:`n` defining the plane orientation.
+            n: Normal vector :math:`n` defining the plane orientation, a
+                :class:`~kornia.geometry.vector.Vector3` stored as given, not normalised.
             e: Point :math:`e` that lies on the target plane.
 
         Returns:
@@ -185,7 +237,7 @@ class Hyperplane(nn.Module):
 
     @classmethod
     def through(cls, p0: torch.Tensor, p1: torch.Tensor, p2: Optional[torch.Tensor] = None) -> "Hyperplane":
-        """Construct the 3D plane through three points.
+        r"""Construct the 3D plane through three points.
 
         Only the three-point form is supported: :class:`Hyperplane` stores its normal as a
         :class:`~kornia.geometry.vector.Vector3`, so it cannot represent a 2D line, and calling
@@ -198,13 +250,15 @@ class Hyperplane(nn.Module):
                 ``None`` only exists so that a two-point call fails with a clear error.
 
         Returns:
-            :class:`Hyperplane` passing through the three points.
+            :class:`Hyperplane` passing through the three points, with a unit normal along
+            :math:`(p_2 - p_0) \times (p_1 - p_0)`.
 
         Raises:
             BaseError: if ``p2`` is omitted, or if the points are not ``(..., 3)`` tensors of the
                 same shape.
             ValueCheckError: if the three points are collinear (or coincide), so they do not
-                determine a plane.
+                determine a plane. Like every kornia value check, it is skipped under ``torch.compile``
+                and by ``disable_checks()``.
         """
         if p2 is None:
             # Raised directly rather than through KORNIA_CHECK, so it still fires with checks disabled.
@@ -282,11 +336,21 @@ def _rank_tolerance(dtype: torch.dtype) -> float:
 # TODO: factor to avoid duplicated from line.py
 # https://github.com/strasdat/Sophus/blob/23.04-beta/cpp/sophus/geometry/fit_plane.h
 def fit_plane(points: Vector3) -> Hyperplane:
-    """Fit a plane from a set of points using SVD.
+    """Fit a 3D plane to a set of points by total least squares, through their centroid.
+
+    ``plane = fit_plane(points)`` takes ``N >= 3`` points ``(N, 3)``, or ``B`` sets of them ``(B, N, 3)``, as a
+    tensor or a :class:`~kornia.geometry.vector.Vector3`, and returns a :class:`Hyperplane` with a unit normal ``(3,)``
+    or ``(B, 3)`` and an offset ``()`` or ``(B,)``: the plane through the centroid that minimises the sum of squared
+    perpendicular distances to the points. Every point counts equally; there are no weights. For the plane through
+    exactly three points with an oriented normal, use :meth:`Hyperplane.through` instead; for a line,
+    :func:`~kornia.geometry.line.fit_line`.
 
     Convention:
-        Returns a :class:`Hyperplane` (see its conventions) through the centroid of the points, with a unit normal
-        of unspecified sign. Each batch row is fitted on its own.
+        - Returns a :class:`Hyperplane` (see its conventions) through the centroid of the points, with a unit normal
+          of unspecified sign. Each batch row is fitted on its own.
+        - The points are collinear, and rejected, when the second singular value of the centred points is at most
+          ``8 * eps`` of the input dtype times the first, a test that does not depend on their scale.
+        - float16 and bfloat16 points are fitted in float32 and the plane is cast back to the input dtype.
 
     Args:
         points: a tensor or a :class:`~kornia.geometry.vector.Vector3` of 3D points, of shape ``(N, 3)`` or
@@ -296,8 +360,22 @@ def fit_plane(points: Vector3) -> Hyperplane:
         The computed hyperplane object.
 
     Raises:
-        ValueCheckError: if fewer than three points are given, or the points are collinear,
-            so they do not determine a plane.
+        TypeError: if ``points`` does not end in 3 coordinates.
+        ValueCheckError: if fewer than three points are given, the points are all identical, or they are
+            collinear, so they do not determine a plane. Like every kornia value check, these are skipped under
+            ``torch.compile`` and by ``disable_checks()``.
+
+    See Also:
+        - :class:`Hyperplane`: the returned plane; its :meth:`Hyperplane.through` takes exactly three points and
+          orients the normal by their order.
+        - :func:`~kornia.geometry.line.fit_line`: the same total least squares for a line, in any dimension and with
+          optional weights, for a batch ``(B, N, D)`` only.
+
+    Example:
+        >>> points = torch.tensor([[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0]])
+        >>> plane = fit_plane(points)
+        >>> plane.normal.data.abs(), plane.signed_distance(torch.tensor([0.0, 0.0, 3.0])).data.abs()
+        (tensor([0., 0., 1.], grad_fn=<AbsBackward0>), tensor(2., grad_fn=<AbsBackward0>))
 
     """
     # TODO: fix to support more type check here

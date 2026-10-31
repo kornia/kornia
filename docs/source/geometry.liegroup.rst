@@ -41,7 +41,9 @@ Lie group to its Lie algebra through the following facts:
    dimension :math:`d` is the number of degrees of freedom of :math:`M`.
 
 #. The exponential map, :math:`\exp : m \rightarrow M`, exactly converts elements of the Lie algebra into elements of the group.
-   The :math:`\log` map is the inverse operation.
+   The :math:`\log` map is the inverse operation. In kornia ``log`` is principal: ``exp(log(g))`` gives back ``g`` for a
+   unit rotation, while ``log(exp(v))`` gives back ``v`` only while the rotation angle of ``v`` is below :math:`\pi`;
+   above it, ``log`` returns the equivalent vector whose rotation angle is at most :math:`\pi`.
 
 .. image:: data/lie_ops.png
    :alt: The exponential and logarithmic maps between a Lie group and its Lie algebra
@@ -50,6 +52,14 @@ Reference: `A micro Lie theory for state estimation in robotics <https://arxiv.o
 
 Classes
 -------
+
+Pick the class by dimension and by whether the motion has a translation: :class:`So2` and :class:`Se2` in 2D,
+:class:`So3` and :class:`Se3` in 3D. ``a * b`` composes as ``a.matrix() @ b.matrix()``, so ``b`` acts first, and
+``g * p`` maps points as ``R p + t``. Tangent vectors put the rotation last, in radians: ``(v_x, v_y, theta)`` for
+``Se2`` and ``[upsilon, omega]`` for ``Se3``. :ref:`Rotations and rigid motions <rotation-conventions>` compares these
+conventions with scipy, Sophus and Eigen. For a pose that names its frames, see
+:class:`~kornia.geometry.pose.NamedPose`; for quaternion arithmetic and averaging,
+:class:`~kornia.geometry.quaternion.Quaternion`.
 
 .. autoclass:: So3
    :members:

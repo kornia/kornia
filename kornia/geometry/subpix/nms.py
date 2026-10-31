@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Strict non-maxima suppression of 2D response maps and 3D response volumes."""
+
 from __future__ import annotations
 
 from typing import Any, List, Tuple
@@ -47,7 +49,7 @@ def _neighbourhood_max2d(x: torch.Tensor, ky: int, kx: int) -> torch.Tensor:
     ``O(ky + kx)`` taps per position rather than the ``ky * kx - 1`` a literal neighbourhood costs.
 
     Only positions whose full window lies inside the image are computed, so the result has shape
-    :math:`(B, C, H - k_y + 1, W - k_x + 1)`; entry ``(i, j)`` belongs to the centre
+    ``(B, C, H - ky + 1, W - kx + 1)``; entry ``(i, j)`` belongs to the centre
     ``x[..., i + (k_y - 1) // 2, j + (k_x - 1) // 2]``.
     """
     cy, by = _split_window(ky)
@@ -101,10 +103,25 @@ def _neighbourhood_max3d(x: torch.Tensor, kd: int, ky: int, kx: int) -> torch.Te
 
 
 class NonMaximaSuppression2d(nn.Module):
-    r"""Keep only the strict local maxima of a (B, C, H, W) map in a 2D window; the module form of nms2d.
+    r"""Keep the strict local maxima of a (B, C, H, W) map; the module form of nms2d.
+
+    ``nms = NonMaximaSuppression2d((ky, kx))`` stores the window size, and ``out = nms(response)`` returns what
+    ``nms2d(response, (ky, kx))`` returns: the ``(B, C, H, W)`` map with every position that is not a strict local
+    maximum set to ``0``, or with ``nms(response, mask_only=True)`` the boolean mask. The module holds no parameters
+    or buffers; a state dict saved by an older kornia release with a ``kernel`` buffer still loads strictly.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+
+    Args:
+        kernel_size: the window size ``(ky, kx)``, a tuple of two ints; a list or another length raises
+          ``AssertionError``.
+
+    See Also:
+        - :func:`nms2d`: the function form, with the window size passed on each call.
+        - :class:`NonMaximaSuppression3d`: the module for ``(B, C, D, H, W)`` volumes.
+        - :func:`nms3d_minmax`: strict maxima and minima of a volume in one call.
+
     """
 
     def __init__(self, kernel_size: tuple[int, int]) -> None:
@@ -291,10 +308,24 @@ class NonMaximaSuppression2d(nn.Module):
 
 
 class NonMaximaSuppression3d(nn.Module):
-    r"""Keep only the strict local maxima of a (B, C, D, H, W) volume in a 3D window; the module form of nms3d.
+    r"""Keep the strict local maxima of a (B, C, D, H, W) volume; the module form of nms3d.
+
+    ``nms = NonMaximaSuppression3d((kd, ky, kx))`` stores the window size, and ``out = nms(volume)`` returns what
+    ``nms3d(volume, (kd, ky, kx))`` returns: the ``(B, C, D, H, W)`` volume with every voxel that is not a strict
+    local maximum set to ``0``, or with ``nms(volume, mask_only=True)`` the boolean mask.
 
     Convention:
         - See the convention block of :func:`~kornia.geometry.subpix.nms2d`.
+
+    Args:
+        kernel_size: the window size ``(kd, ky, kx)``, a tuple of three ints; a list or another length raises
+          ``AssertionError``.
+
+    See Also:
+        - :func:`nms3d`: the function form, with the window size passed on each call.
+        - :class:`NonMaximaSuppression2d`: the module for ``(B, C, H, W)`` maps.
+        - :func:`nms3d_minmax`: strict maxima and minima in a ``3 x 3 x 3`` window in one call.
+
     """
 
     def __init__(self, kernel_size: tuple[int, int, int]) -> None:
@@ -387,7 +418,13 @@ class NonMaximaSuppression3d(nn.Module):
 
 
 def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Keep only the strict local maxima of a (B, C, H, W) map in a 2D ``kernel_size`` window, zeroing the rest.
+    r"""Keep the strict local maxima of a (B, C, H, W) map in a 2D window, zeroing the rest.
+
+    ``out = nms2d(response, (ky, kx))`` takes a ``(B, C, H, W)`` response map and returns it with every position that
+    is not a strict local maximum of its ``ky x kx`` window set to ``0``, ``(B, C, H, W)`` in the input dtype; with
+    ``mask_only=True`` it returns the boolean maxima mask instead. Each channel is suppressed on its own. For
+    ``(B, C, D, H, W)`` volumes, use :func:`nms3d`, or :func:`nms3d_minmax` for the maxima and minima together; to
+    suppress overlapping boxes by their IoU, use :func:`~kornia.geometry.bbox.nms`.
 
     Convention:
         - Only strict maxima survive: a position must be greater than every other value in its ``kernel_size``
@@ -399,42 +436,89 @@ def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = F
           each axis are never maxima.
         - The default output keeps the input value at each maximum and is ``0`` elsewhere, which is larger than a
           negative maximum, so use ``mask_only=True`` for a signed response.
+
+    Args:
+        input: response map with shape ``(B, C, H, W)``; another number of dimensions raises ``AssertionError``.
+        kernel_size: the window size ``(ky, kx)``, a tuple of two ints. ``(1, 1)`` keeps every position, and a
+          window larger than the map keeps none.
+        mask_only: return the boolean maxima mask instead of the suppressed map.
+
+    Returns:
+        the suppressed map ``(B, C, H, W)`` in the dtype of ``input``, or with ``mask_only=True`` a boolean mask of
+        the same shape.
+
+    See Also:
+        - :func:`nms3d`: the same rule over the depth, height and width of a ``(B, C, D, H, W)`` volume.
+        - :func:`nms3d_minmax`: strict maxima and minima of a volume in a fixed ``3 x 3 x 3`` window, in one call.
+        - :class:`NonMaximaSuppression2d`: the module form.
+        - :func:`~kornia.geometry.bbox.nms`: suppresses overlapping boxes by their IoU, not positions of a map.
+
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
 
 def nms3d(input: torch.Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Keep only the strict local maxima of a (B, C, D, H, W) volume in a 3D ``kernel_size`` window, zeroing the rest.
+    r"""Keep the strict local maxima of a (B, C, D, H, W) volume in a 3D window, zeroing the rest.
+
+    ``out = nms3d(volume, (kd, ky, kx))`` takes a ``(B, C, D, H, W)`` volume, such as a scale-space response with the
+    scale levels along ``D``, and returns it with every voxel that is not a strict local maximum of its
+    ``kd x ky x kx`` window set to ``0``; with ``mask_only=True`` it returns the boolean maxima mask instead. For the
+    minima as well, in a ``3 x 3 x 3`` window, use :func:`nms3d_minmax`; for a ``(B, C, H, W)`` map, :func:`nms2d`.
 
     Convention:
         - See the convention block of :func:`nms2d`, applied over depth, height and width.
+
+    Args:
+        input: response volume with shape ``(B, C, D, H, W)``; another number of dimensions raises
+          ``AssertionError``.
+        kernel_size: the window size ``(kd, ky, kx)``, a tuple of three ints. ``(1, 1, 1)`` keeps every voxel, and a
+          window larger than the volume keeps none.
+        mask_only: return the boolean maxima mask instead of the suppressed volume.
+
+    Returns:
+        the suppressed volume ``(B, C, D, H, W)`` in the dtype of ``input``, or with ``mask_only=True`` a boolean
+        mask of the same shape.
+
+    See Also:
+        - :func:`nms2d`: the same rule over the height and width of a ``(B, C, H, W)`` map.
+        - :func:`nms3d_minmax`: the maxima and the minima in a fixed ``3 x 3 x 3`` window, in one call.
+        - :class:`NonMaximaSuppression3d`: the module form.
+        - :func:`iterative_quad_interp3d`: refines the maxima of a scale-space volume to sub-voxel positions; it
+          takes this function's mask as ``precomputed_nms_mask``.
+
     """
     return NonMaximaSuppression3d(kernel_size)(input, mask_only)
 
 
 def nms3d_minmax(input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Compute both local-maxima and local-minima NMS masks for a 3-D scale-space tensor in one pass.
+    r"""Mask the strict local maxima and minima of a (B, C, D, H, W) volume in a 3x3x3 window.
 
-    Equivalent to calling ``nms3d(input, (3,3,3), mask_only=True)`` and
-    ``nms3d(-input, (3,3,3), mask_only=True)`` separately, but only traverses
-    the 26-neighbour comparisons once, halving the NMS cost.
+    ``max_mask, min_mask = nms3d_minmax(volume)`` takes a ``(B, C, D, H, W)`` volume and returns two boolean masks of
+    the same shape: the voxels strictly greater than all 26 neighbours, and those strictly smaller. For a floating
+    input they equal ``nms3d(volume, (3, 3, 3), mask_only=True)`` and
+    ``nms3d(-volume, (3, 3, 3), mask_only=True)``. :class:`~kornia.feature.ScaleSpaceDetector` uses it on every
+    octave; for another window size, call :func:`nms3d`.
 
-    Uses integer slice literals (not Python loops or slice objects) so the 52
-    comparison-and-reduction ops are visible to the compiler at trace time,
-    allowing full fusion into a minimal number of kernels.
+    Under ``torch.compile`` the comparisons can fuse; in eager mode on the CPU and MPS the call costs about as much as
+    the two :func:`nms3d` calls.
 
     Convention:
         - The strict and border rules of :func:`nms2d` with a :math:`3 \times 3 \times 3` window, for maxima and
           minima alike.
 
     Args:
-        input: 5-D tensor of shape ``(B, C, D, H, W)``.
+        input: 5-D tensor of shape ``(B, C, D, H, W)``; another number of dimensions raises ``AssertionError``.
 
     Returns:
         A pair ``(max_mask, min_mask)`` of bool tensors with the same shape as
         *input*.  ``max_mask[..., d, h, w]`` is ``True`` when the voxel is
         strictly greater than all 26 neighbours; ``min_mask`` is the same for
         strict local minima.
+
+    See Also:
+        - :func:`nms3d`: the maxima only, in a window of any size.
+        - :func:`nms2d`: the maxima of a ``(B, C, H, W)`` map.
+        - :class:`NonMaximaSuppression3d`: the maxima only, as a module.
 
     Example:
         >>> x = torch.randn(1, 1, 5, 10, 10)

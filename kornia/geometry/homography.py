@@ -625,6 +625,8 @@ def find_homography_dlt(
           scene.
         - :func:`~kornia.geometry.solvers.find_affine`: an affine map, the special case with bottom row
           ``[0, 0, 1]``.
+        - :func:`~kornia.geometry.calibration.solve_pnp_dlt`: the DLT for 3D-2D correspondences, a camera pose
+          rather than a homography.
 
     """
     device, dtype = _extract_device_dtype([points1, points2])

@@ -15,6 +15,20 @@
 # limitations under the License.
 #
 
+"""Grids of pixel and voxel coordinates, normalized to [-1, 1] for grid_sample or in pixels.
+
+Coordinates are ``(x, y)`` = (column, row) in 2D and ``(d, x, y)``, depth first, in 3D, with integer pixel centres;
+see :ref:`Coordinates and sizes <coordinate-conventions>`. A normalized grid maps the first and last pixel centres of
+each axis to ``-1`` and ``1`` by default, the ``align_corners=True`` convention of
+:func:`torch.nn.functional.grid_sample`.
+
+Which function to use:
+
+- The ``(1, H, W, 2)`` grid of ``(x, y)`` coordinates of an image: :func:`create_meshgrid`, which can also normalize
+  to the half-pixel ``align_corners=False`` convention.
+- The ``(1, D, H, W, 3)`` grid of ``(d, x, y)`` coordinates of a volume: :func:`create_meshgrid3d`, corner-aligned
+  only.
+"""
 
 from typing import Optional
 
@@ -33,7 +47,13 @@ def create_meshgrid(
     dtype: Optional[torch.dtype] = None,
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Generate a (1, H, W, 2) grid of (x, y) pixel coordinates, normalized to [-1, 1] by default.
+    r"""Generate a (1, H, W, 2) grid of (x, y) pixel coordinates, in [-1, 1] by default.
+
+    ``grid = create_meshgrid(H, W)`` returns the ``(x, y)`` coordinates of every pixel of an ``H x W`` image as a
+    ``(1, H, W, 2)`` tensor, ``grid[0, i, j]`` holding column ``j`` and row ``i``: normalized to :math:`[-1, 1]` by
+    default, or in pixels, ``0`` to ``W - 1`` and ``H - 1``, with ``normalized_coordinates=False``. A normalized grid
+    is the identity sampling grid of :func:`torch.nn.functional.grid_sample` called with the same ``align_corners``.
+    For the ``(1, D, H, W, 3)`` grid of a volume, use :func:`create_meshgrid3d`.
 
     Convention:
         - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. With
@@ -59,6 +79,17 @@ def create_meshgrid(
 
     Return:
         grid tensor with shape ``(1, H, W, 2)``.
+
+    See Also:
+        - :func:`create_meshgrid3d`: the ``(1, D, H, W, 3)`` grid of ``(d, x, y)`` voxel coordinates, corner-aligned
+          only.
+        - :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`: normalizes given ``(x, y)`` pixel
+          coordinates the way the default grid is normalized.
+        - :func:`~kornia.geometry.transform.warp_grid`: applies homographies to this grid, without sampling.
+        - :func:`~kornia.geometry.transform.remap`: samples an image at an x map and a y map, such as the two
+          channels of a pixel grid plus a flow.
+        - :func:`~kornia.geometry.depth.unproject_meshgrid`: the camera ray through every pixel instead of its
+          coordinates.
 
     Example:
         >>> create_meshgrid(2, 2)
@@ -158,7 +189,13 @@ def create_meshgrid3d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Generate a (1, D, H, W, 3) grid of (d, x, y) voxel coordinates, normalized to [-1, 1] by default.
+    """Generate a (1, D, H, W, 3) grid of (d, x, y) voxel coordinates, in [-1, 1] by default.
+
+    ``grid = create_meshgrid3d(D, H, W)`` returns the ``(d, x, y)`` coordinates of every voxel of a ``D x H x W`` volume
+    as a ``(1, D, H, W, 3)`` tensor, ``grid[0, k, i, j]`` holding depth ``k``, column ``j`` and row ``i``: normalized
+    to :math:`[-1, 1]`, corner-aligned, by default, or in voxels with ``normalized_coordinates=False``. Depth comes
+    first, unlike the ``(x, y, z)`` that :func:`torch.nn.functional.grid_sample` reads. For the ``(1, H, W, 2)`` grid of
+    an image, use :func:`create_meshgrid`.
 
     Convention:
         - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. A normalized grid is always
@@ -179,6 +216,14 @@ def create_meshgrid3d(
 
     Return:
         grid tensor with shape ``(1, D, H, W, 3)``.
+
+    See Also:
+        - :func:`create_meshgrid`: the ``(1, H, W, 2)`` grid of ``(x, y)`` pixel coordinates, with an
+          ``align_corners`` choice.
+        - :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`: normalizes given ``(d, x, y)`` voxel
+          coordinates the way this grid is normalized.
+        - :func:`~kornia.geometry.transform.warp_grid3d`: applies ``4 x 4`` homographies to an ``(x, y, z)`` grid, so
+          reorder this one first.
 
     """
     # See ``create_meshgrid``: ``arange`` keeps eager and captured pixel ramps identical at

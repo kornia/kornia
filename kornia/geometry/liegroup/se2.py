@@ -80,15 +80,22 @@ def _check_se2_r_t_dtype_device(r: So2, t: torch.Tensor) -> None:
 
 
 class Se2(nn.Module):
-    r"""Base class to represent the Se2 group.
+    r"""Represent a 2D rigid motion, rotation and translation, as an SE(2) Lie group element.
 
-    The SE(2) is the group of rigid body transformations about the origin of two-dimensional Euclidean
-    space :math:`R^2` under the operation of composition.
+    ``g = Se2(rotation, t)`` pairs an :class:`So2` rotation with a translation ``t`` of shape ``(B, 2)``, or ``(2,)``
+    for an unbatched rotation; ``Se2.exp(v)`` builds one from tangent vectors :math:`v = (v_x, v_y, \theta)` of shape
+    ``(B, 3)``, :meth:`from_matrix` from ``(B, 3, 3)`` matrices, and ``Se2.identity(B)`` and ``Se2.random(B)`` build
+    ``B`` poses, or an unbatched one with ``batch_size=None``. ``g * p`` maps points as :math:`R p + t`, ``g1 * g2``
+    composes, ``g.inverse()`` inverts, ``g.log()`` returns the ``(B, 3)`` tangent vectors and ``g.matrix()`` the
+    ``(B, 3, 3)`` matrices. Unbatched, a pose drops the ``B`` and maps ``(2,)`` or ``(N, 2)`` points; a batch of ``B``
+    maps ``(B, 2)``, one point per pose, or a single ``(2,)`` point. For 3D, use :class:`Se3`; for a pose that names
+    its frames and checks them when composing, :class:`~kornia.geometry.pose.NamedPose`.
+
+    SE(2) is the group of rigid motions of :math:`R^2` under composition.
 
     Convention:
         - ``matrix()`` is the 3x3 :math:`[[R, t], [0, 1]]`. ``a * b`` is ``a.matrix() @ b.matrix()`` and ``g * p`` is
-          :math:`R p + t`, as in :class:`~kornia.geometry.liegroup.Se3`, but an unbatched pose also transforms
-          ``(N, 2)`` points and a batched one a single ``(2,)`` point. The rotation is an
+          :math:`R p + t`, as in :class:`~kornia.geometry.liegroup.Se3`. The rotation is an
           :class:`~kornia.geometry.liegroup.So2`, whose storage and direction conventions apply.
         - The tangent vector is :math:`(v_x, v_y, \theta)`, angle last: ``exp`` rotates by :math:`\theta` and
           translates by :math:`V(\theta) (v_x, v_y)`, and ``log`` returns :math:`\theta` in :math:`[-\pi, \pi]`.
@@ -97,8 +104,9 @@ class Se2(nn.Module):
           has the form :math:`[[a, -b], [b, a]]`, a rotation scaled by :math:`\sqrt{a^2 + b^2}`, and keeps the scale
           as a non-unit ``z`` that ``log`` drops; it rejects a reflection. Graph capture (``torch.compile``,
           ``torch.export``) omits the value check and interprets the block as ``z = m00 + i m10``.
-        - ``t`` is always a tensor registered as module state, whichever constructor built the pose; a ``Vector2``
-          passed to the constructor is unwrapped. ``g * p`` returns a ``Vector2`` only when ``p`` is one.
+        - ``t`` is always a tensor, whichever constructor built the pose, and registered as module state outside
+          graph capture; a ``Vector2`` passed to the constructor is unwrapped. ``g * p`` returns a ``Vector2`` only
+          when ``p`` is one.
         - ``hat`` returns the se(2) generator :math:`[[0, -\theta, v_x], [\theta, 0, v_y], [0, 0, 0]]` and ``vee``
           reads it back, so ``matrix_exp(hat(v))`` equals ``exp(v).matrix()``.
         - Module conversions follow :class:`~kornia.geometry.liegroup.So2`'s dtype policy for the rotation and
@@ -106,6 +114,12 @@ class Se2(nn.Module):
           keeping the rotation's existing complex precision; both follow any requested device move. Building a
           pose from bfloat16 values (``exp``, ``identity``, ``random``, ``from_matrix`` or ``trans*``) raises
           ``TypeCheckError``, as for ``So2``.
+
+    See Also:
+        - :class:`Se3`: the 3D rigid motion, with an :class:`So3` rotation and a ``(B, 3)`` translation.
+        - :class:`So2`: the rotation alone, without a translation.
+        - :class:`~kornia.geometry.pose.NamedPose`: wraps an ``Se2`` with the names of its source and destination
+          frames, and checks that they chain when composing.
 
     Example:
         >>> so2 = So2.identity(1)
@@ -120,7 +134,7 @@ class Se2(nn.Module):
     """
 
     def __init__(self, rotation: So2, translation: Vector2 | torch.Tensor) -> None:
-        """Construct the base class.
+        """Construct an Se2 from an So2 rotation and a translation.
 
         Internally represented by a torch.complex number `z` and a translation 2-vector.
 
@@ -131,7 +145,9 @@ class Se2(nn.Module):
                 a bfloat16 translation is also accepted beside a complex32, complex64 or complex128 rotation, which
                 is what ``.bfloat16()`` leaves (PyTorch has no complex bfloat16). Every method then reads the
                 translation at the rotation's precision, and ``inverse`` and ``g * g`` return a translation of the
-                rotation's real dtype.
+                rotation's real dtype. It must be batched exactly when the rotation is (``ValueError`` otherwise), but
+                its batch size is not checked against the rotation's: a mismatch fails later, in ``matrix()``
+                (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
 
         Raises:
             TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
@@ -185,7 +201,9 @@ class Se2(nn.Module):
         """Compose two Se2 transformations, or transform points.
 
         Args:
-            right: the other Se2 transformation, or points of shape ``(B, 2)`` or ``(2,)``.
+            right: the other Se2 transformation, or points as a tensor or a ``Vector2``: ``(2,)`` or ``(N, 2)``
+                for an unbatched pose, ``(B, 2)``, one point per pose, or a single ``(2,)`` point for a batch of
+                ``B``.
 
         Return:
             The resulting Se2 transformation, or the transformed points.
@@ -228,10 +246,10 @@ class Se2(nn.Module):
 
     @staticmethod
     def exp(v: torch.Tensor) -> Se2:
-        """Convert elements of lie algebra to elements of lie group.
+        r"""Convert elements of lie algebra to elements of lie group.
 
         Args:
-            v: vector of shape ``(B, 3)``.
+            v: vector :math:`(v_x, v_y, \theta)` of shape ``(B, 3)`` or ``(3,)``, angle last, in radians.
 
         Example:
             >>> v = torch.ones((1, 3))

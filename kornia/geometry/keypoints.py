@@ -15,6 +15,21 @@
 # limitations under the License.
 #
 
+"""Keypoint containers: 2D ``(x, y)`` and 3D ``(x, y, z)`` points that transform by matrices.
+
+A container wraps one floating-point tensor of points, ``(N, 2)`` or ``(B, N, 2)`` in 2D and ``(N, 3)`` or
+``(B, N, 3)`` in 3D, without copying it, and transforms it by homogeneous matrices with
+:func:`~kornia.geometry.linalg.transform_points`. 2D points are ``(x, y)`` pixel coordinates, ``x`` the column and ``y``
+the row, with pixel ``(0, 0)`` centred at ``(0, 0)``; see :ref:`Coordinates and sizes <coordinate-conventions>`.
+
+Which class to use:
+
+- 2D keypoints that follow an image through ``3 x 3`` transforms and padding, as
+  :class:`~kornia.augmentation.container.AugmentationSequential` does with its ``'keypoints'`` data: :class:`Keypoints`.
+- 3D points transformed by ``4 x 4`` matrices: :class:`Keypoints3D`.
+- Boxes rather than points: :class:`~kornia.geometry.boxes.Boxes`.
+"""
+
 from typing import List, Optional, Tuple, Union, cast
 
 import torch
@@ -35,7 +50,16 @@ def _merge_keypoint_list(keypoints: List[torch.torch.Tensor]) -> torch.torch.Ten
 
 
 class Keypoints:
-    r"""2D keypoints, stored as an ``(N, 2)`` or ``(B, N, 2)`` tensor of ``(x, y)`` points.
+    r"""Store (x, y) pixel keypoints, (N, 2) or (B, N, 2), to transform and pad with images.
+
+    ``kp = Keypoints(points)`` wraps a floating-point ``(N, 2)`` or ``(B, N, 2)`` tensor of ``(x, y)`` pixel
+    coordinates without copying it, and ``kp.transform_keypoints(M)`` maps the points by ``(3, 3)`` or ``(B, 3, 3)``
+    matrices and returns a new :class:`Keypoints`; ``kp.to_tensor()`` returns the stored tensor. A ``(B, 3, 3)``
+    batch of ``B > 1`` matrices pairs matrix ``b`` with ``points[b]`` and needs ``(B, N, 2)`` points. :meth:`pad` and
+    :meth:`unpad` shift the points by image padding.
+    :class:`~kornia.augmentation.container.AugmentationSequential` accepts a :class:`Keypoints` under its
+    ``'keypoints'`` data key and transforms it with the images. To transform a plain tensor once, use
+    :func:`~kornia.geometry.linalg.transform_points`; for 3D points, :class:`Keypoints3D`.
 
     Args:
         keypoints: tensor of ``(N, 2)`` or ``(B, N, 2)`` coordinates. A list of tensors is not implemented
@@ -55,6 +79,12 @@ class Keypoints:
           change the caller's tensor; call :meth:`clone` first to keep it.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
+
+    See Also:
+        - :class:`Keypoints3D`: ``(x, y, z)`` points, transformed by ``4 x 4`` matrices, with no padding.
+        - :func:`~kornia.geometry.linalg.transform_points`: the point transform this class applies, on a plain tensor.
+        - :class:`~kornia.geometry.boxes.Boxes`: boxes in the same pixel frame, with matching pad, unpad and transform
+          methods.
 
     """
 
@@ -371,9 +401,14 @@ class VideoKeypoints(Keypoints):
 
 
 class Keypoints3D:
-    """3D keypoints, stored as an ``(N, 3)`` or ``(B, N, 3)`` tensor of ``(x, y, z)`` points.
+    """Store (N, 3) or (B, N, 3) keypoints in (x, y, z), to transform by 4x4 matrices.
 
-    The constructor validates the tensor as :class:`Keypoints` does and wraps a floating-point one without copying it.
+    ``kp = Keypoints3D(points)`` wraps a floating-point ``(N, 3)`` or ``(B, N, 3)`` tensor of ``(x, y, z)`` points
+    without copying it, and ``kp.transform_keypoints(M)`` maps them by ``(4, 4)`` or ``(B, 4, 4)`` matrices and returns
+    a new :class:`Keypoints3D`; ``kp.to_tensor()`` returns the stored tensor. Unlike :class:`Keypoints` it has no
+    padding, ``index_put``, ``type``, ``device`` or ``dtype``. To transform a plain tensor once, use
+    :func:`~kornia.geometry.linalg.transform_points`; for 2D image points, :class:`Keypoints`. The constructor validates
+    the tensor as :class:`Keypoints` does.
 
     Args:
         keypoints: tensor of ``(N, 3)`` or ``(B, N, 3)`` coordinates. A list of tensors is not implemented
@@ -385,6 +420,11 @@ class Keypoints3D:
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``;
           :meth:`pad` and :meth:`unpad` are deprecated and also raise it
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
+
+    See Also:
+        - :class:`Keypoints`: 2D ``(x, y)`` image points, transformed by ``3 x 3`` matrices and padded with the image.
+        - :func:`~kornia.geometry.linalg.transform_points`: the point transform this class applies, on a plain tensor.
+        - :class:`~kornia.geometry.boxes.Boxes3D`: 3D boxes, transformed by the same ``4 x 4`` matrices.
 
     """
 
@@ -497,8 +537,8 @@ class Keypoints3D:
         """Validate and wrap a tensor of 3D keypoint coordinates.
 
         Args:
-            keypoints: Tensor in ``(N, 3)`` or ``(B, N, 3)`` format,
-                where the last dimension stores ``(x, y, z)``.
+            keypoints: Floating-point tensor in ``(N, 3)`` or ``(B, N, 3)`` format; an integer tensor raises
+                ``ValueError``. The last dimension stores ``(x, y, z)``.
 
         Returns:
             New :class:`Keypoints3D` instance containing the input coordinates.

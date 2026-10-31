@@ -17,9 +17,10 @@
 
 """Helpers shared by the tests that check kornia's docstring style.
 
-They find the public API, read the structure of a docstring (``See Also`` entries, cross-reference roles, shape
-tuples) and resolve a cross-reference the way Sphinx does, through the names that the ``.rst`` pages under
-``docs/source`` register and, for torch, Python and NumPy objects, the cached intersphinx inventories.
+They find the public API (exported by an ``__all__`` or documented on a docs page), read the structure of a
+docstring (``See Also`` entries, cross-reference roles, shape tuples) and resolve a cross-reference the way Sphinx
+does, through the names that the ``.rst`` pages under ``docs/source`` register and, for torch, Python and NumPy
+objects, the cached intersphinx inventories.
 """
 
 from __future__ import annotations
@@ -100,6 +101,10 @@ def _is_kornia_function_or_class(obj: object) -> bool:
     return module_of_obj == "kornia" or module_of_obj.startswith("kornia.")
 
 
+def _qualified_name(obj: object) -> str:
+    return f"{obj.__module__}.{obj.__qualname__}"
+
+
 @cache
 def _exported_objects() -> tuple[tuple[object, str], ...]:
     """List ``(obj, "module.qualname")`` for every exported kornia function and class, deduplicated by identity."""
@@ -114,7 +119,7 @@ def _exported_objects() -> tuple[tuple[object, str], ...]:
             exported = [getattr(module, name, None) for name in module.__all__ if not name.startswith("_")]
         for obj in exported:
             if _is_kornia_function_or_class(obj):
-                collected.setdefault(id(obj), (obj, f"{obj.__module__}.{obj.__qualname__}"))
+                collected.setdefault(id(obj), (obj, _qualified_name(obj)))
     return tuple(collected.values())
 
 
@@ -137,6 +142,33 @@ def undocumented_public_objects() -> dict[int, tuple[object, str]]:
     module could otherwise keep one forever. The dict is cached and shared between callers, who must not mutate it.
     """
     return {id(obj): (obj, qualified) for obj, qualified in _exported_objects() if not own_docstring(obj)}
+
+
+def documented_objects(registry: Mapping[str, object]) -> tuple[tuple[object, str], ...]:
+    """List ``(obj, "module.qualname")`` for every kornia function and class that a docs page registers at top level.
+
+    These are the registry entries that are kornia functions or classes and are not members of a registered class
+    (the methods and nested classes autodoc renders inside a class page are the member check's business). Together
+    with ``_exported_objects()`` they make up what the rollout checks; an object that is both exported and documented
+    is the same object in both and counted once by ``rollout_objects``.
+    """
+    collected: dict[int, tuple[object, str]] = {}
+    for name, obj in registry.items():
+        if not _is_kornia_function_or_class(obj) or inspect.isclass(registry.get(name.rpartition(".")[0])):
+            continue
+        collected.setdefault(id(obj), (obj, _qualified_name(obj)))
+    return tuple(collected.values())
+
+
+def rollout_objects(registry: Mapping[str, object], with_docstring: bool = True) -> dict[int, tuple[object, str]]:
+    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for the objects the docstring checks select.
+
+    The union of the exported kornia functions and classes (``public_objects()``'s walk) and the ones a docs page
+    registers (``documented_objects(registry)``), deduplicated by identity. ``with_docstring=True`` keeps those with a
+    docstring of their own, ``with_docstring=False`` those without one. Not cached: it depends on ``registry``.
+    """
+    union = {id(obj): (obj, qualified) for obj, qualified in (*_exported_objects(), *documented_objects(registry))}
+    return {key: pair for key, pair in union.items() if bool(own_docstring(pair[0])) == with_docstring}
 
 
 def covered(module_name: str, prefixes: Iterable[str]) -> bool:
@@ -495,7 +527,9 @@ _ATTRIBUTE_COMMENT = re.compile(r"^\s*#: ?(.*)$")
 
 
 class _AttributeDocPicker(ast.NodeVisitor):
-    """Collect ``(namespace, name)`` of the documented variables of a module, as ``VariableCommentPicker`` does.
+    """Collect the documented variables of a module and their text, as ``VariableCommentPicker`` does.
+
+    ``found`` maps ``(namespace, name)`` to the documentation text: the ``#:`` comment, or the string literal.
 
     An assignment documents its targets with a ``#:`` comment after it, with ``#:`` lines right above it, or with
     a string literal right after it. The namespace is the enclosing class path, ``""`` at module level. Inside a
@@ -503,14 +537,14 @@ class _AttributeDocPicker(ast.NodeVisitor):
     ``except`` and ``finally`` blocks are not read.
     """
 
-    def __init__(self, lines: list[str], comment_columns: dict[int, int]) -> None:
+    def __init__(self, lines: list[str], comments: dict[int, tuple[int, str]]) -> None:
         self.lines = lines
-        self.comment_columns = comment_columns
+        self.comments = comments
         self.context: list[str] = []
         self.classes = 0
         self.function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
         self.previous: ast.AST | None = None
-        self.found: set[tuple[str, str]] = set()
+        self.found: dict[tuple[str, str], str] = {}
 
     def visit(self, node: ast.AST) -> None:
         super().visit(node)
@@ -548,10 +582,10 @@ class _AttributeDocPicker(ast.NodeVisitor):
             return ".".join(self.context[:-1])
         return None
 
-    def _record(self, names: list[str]) -> None:
+    def _record(self, names: list[str], text: str) -> None:
         namespace = self._namespace()
         if namespace is not None:
-            self.found.update((namespace, name) for name in names)
+            self.found.update(((namespace, name), text) for name in names)
 
     def visit_Assign(self, node: ast.Assign | ast.AnnAssign) -> None:
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -559,13 +593,17 @@ class _AttributeDocPicker(ast.NodeVisitor):
             names = [name for target in targets for name in self._names(target)]
         except TypeError:
             return
-        column = self.comment_columns.get(node.end_lineno or node.lineno)
-        if (column is not None and column >= (node.end_col_offset or 0)) or (
-            node.lineno > 1
-            and not self.lines[node.lineno - 1][: node.col_offset].strip()
-            and _ATTRIBUTE_COMMENT.match(self.lines[node.lineno - 2])
-        ):
-            self._record(names)
+        trailing = self.comments.get(node.end_lineno or node.lineno)
+        above = []
+        if node.lineno > 1 and not self.lines[node.lineno - 1][: node.col_offset].strip():
+            index = node.lineno - 2
+            while index >= 0 and (comment := _ATTRIBUTE_COMMENT.match(self.lines[index])):
+                above.insert(0, comment.group(1))
+                index -= 1
+        if trailing is not None and trailing[0] >= (node.end_col_offset or 0):
+            self._record(names, trailing[1])
+        elif above:
+            self._record(names, "\n".join(above))
 
     visit_AnnAssign = visit_Assign
 
@@ -578,7 +616,7 @@ class _AttributeDocPicker(ast.NodeVisitor):
         ):
             target = previous.targets[0] if isinstance(previous, ast.Assign) else previous.target
             with contextlib.suppress(TypeError):
-                self._record(self._names(target))
+                self._record(self._names(target), inspect.cleandoc(node.value.value))
 
     def visit_Try(self, node: ast.Try) -> None:
         for child in [*node.body, *node.orelse]:
@@ -607,20 +645,23 @@ class _AttributeDocPicker(ast.NodeVisitor):
 
 
 @cache
-def _attribute_docs(module_name: str) -> frozenset[tuple[str, str]]:
-    """``(namespace, name)`` of the variables the source of ``module_name`` documents (see ``_AttributeDocPicker``)."""
+def _attribute_docs(module_name: str) -> Mapping[tuple[str, str], str]:
+    """``(namespace, name)`` to documentation text of the variables the source of ``module_name`` documents.
+
+    See ``_AttributeDocPicker``.
+    """
     path = getattr(sys.modules.get(module_name), "__file__", None)
     if not path or not path.endswith(".py"):
-        return frozenset()
+        return {}
     source = Path(path).read_text(encoding="utf-8")
-    comment_columns = {
-        token.start[0]: token.start[1]
+    comments = {
+        token.start[0]: (token.start[1], _ATTRIBUTE_COMMENT.match(token.string).group(1))
         for token in tokenize.generate_tokens(io.StringIO(source).readline)
         if token.type == tokenize.COMMENT and _ATTRIBUTE_COMMENT.match(token.string)
     }
-    picker = _AttributeDocPicker(source.splitlines(), comment_columns)
+    picker = _AttributeDocPicker(source.splitlines(), comments)
     picker.visit(ast.parse(source))
-    return frozenset(picker.found)
+    return picker.found
 
 
 def _is_data(value: object) -> bool:
@@ -881,12 +922,20 @@ def intersphinx_names(docs_source: Path) -> dict[str, frozenset[str]]:
     return {name: frozenset(kinds) for name, kinds in types.items()}
 
 
-def _reference_scopes(obj: object, registry: dict[str, object]) -> list[str]:
-    """The prefixes Sphinx tries a reference in the docstring of ``obj`` under: its module, then its class."""
+def _reference_scopes(obj: object, registry: dict[str, object], registered_as: str | None = None) -> list[str]:
+    """The prefixes Sphinx tries a reference in the docstring of ``obj`` under: its module, then its class.
+
+    With ``registered_as``, a name ``registry`` gives ``obj``, only the scopes of that one rendered entry; without it,
+    those of every name ``registry`` gives ``obj``.
+    """
+    if registered_as is None:
+        names = [name for name, registered in registry.items() if registered is obj]
+    elif registry.get(registered_as) is obj:
+        names = [registered_as]
+    else:
+        raise ValueError(f"the registry does not register the object as {registered_as!r}")
     scopes: list[str] = []
-    for name, registered in registry.items():
-        if registered is not obj:
-            continue
+    for name in names:
         parent = name.rpartition(".")[0]
         if inspect.isclass(obj):
             scopes += [parent, name]
@@ -895,6 +944,31 @@ def _reference_scopes(obj: object, registry: dict[str, object]) -> list[str]:
         else:
             scopes.append(parent)
     return [scope for scope in scopes if scope]
+
+
+def documented_members(registry: Mapping[str, object], classes: Iterable[object]) -> dict[str, tuple[object, str]]:
+    """Map each member autodoc documents under one of ``classes`` to its registered name, as ``(member, docstring)``.
+
+    These are the methods, properties and data attributes Sphinx renders inside a class page, found as the registry
+    entries whose parent entry is one of ``classes`` (by identity). The docstring is the one autodoc shows, so an
+    override without one has its base's; for a data attribute it is the text of its ``#:`` comment or string. A member
+    without a docstring is left out, as there is nothing to check in it. A method registered under several of the
+    classes appears once per registered name; check each under that name's scopes alone by passing it as
+    ``registered_as`` to ``reference_resolves``.
+    """
+    wanted = list(classes)
+    members: dict[str, tuple[object, str]] = {}
+    for name, member in registry.items():
+        parent = registry.get(name.rpartition(".")[0])
+        if parent is None or not any(parent is cls for cls in wanted):
+            continue
+        if isinstance(member, _Attribute):
+            doc = _attribute_docs(member.owner.__module__).get((member.owner.__qualname__, member.name))
+        else:
+            doc = inspect.getdoc(member)
+        if doc:
+            members[name] = (member, doc)
+    return members
 
 
 def is_documented(obj: object, registry: dict[str, object]) -> bool:
@@ -907,7 +981,13 @@ def _role_target(target: str, role: str | None) -> str:
     return target.removesuffix("()") if role in (None, "func", "meth") else target
 
 
-def resolve_reference(obj: object, target: str, registry: dict[str, object], role: str | None = None) -> object | None:
+def resolve_reference(
+    obj: object,
+    target: str,
+    registry: dict[str, object],
+    role: str | None = None,
+    registered_as: str | None = None,
+) -> object | None:
     """Return the registered object that ``target``, written in the docstring of ``obj``, resolves to, or ``None``.
 
     As Sphinx does for a Python-domain role: a trailing ``()`` is dropped for ``:func:`` and ``:meth:`` (and when
@@ -917,9 +997,15 @@ def resolve_reference(obj: object, target: str, registry: dict[str, object], rol
     its type. A short import alias is not registered, so it does not resolve; neither does a short name in the
     docstring of an object that no docs page registers. Only kornia objects resolve here; see
     ``intersphinx_names`` for the rest.
+
+    Sphinx resolves each rendered entry under its own class and module. An object registered under several names,
+    such as a method inherited by several documented classes, gets the scopes of every one of them unless
+    ``registered_as`` names the entry to check: then only that entry's scopes count, so a short name registered
+    under one class does not resolve on another class's page. ``registered_as`` must be a name ``registry`` gives
+    ``obj``; otherwise ``ValueError`` is raised.
     """
     target = _role_target(target, role)
-    candidates = [target, *(f"{scope}.{target}" for scope in _reference_scopes(obj, registry))]
+    candidates = [target, *(f"{scope}.{target}" for scope in _reference_scopes(obj, registry, registered_as))]
     for candidate in candidates:
         if candidate in registry:
             return registry[candidate]
@@ -932,15 +1018,16 @@ def reference_resolves(
     registry: dict[str, object],
     external: Mapping[str, frozenset[str]] | None = None,
     role: str | None = None,
+    registered_as: str | None = None,
 ) -> bool:
     """Whether ``target``, in a ``role`` role in the docstring of ``obj``, renders as a link.
 
-    True when it resolves to a registered kornia object (see ``resolve_reference``) or is an ``external`` name, such
-    as one from ``intersphinx_names(docs_source)``, of an object type that intersphinx links ``role`` to. Unlike the
-    local lookup, intersphinx matches the type: ``:meth:`torch.svd``` (a function) and every ``:const:`` stay plain
-    text. A ``role`` of ``None`` accepts any type.
+    True when it resolves to a registered kornia object (see ``resolve_reference``, which also explains
+    ``registered_as``) or is an ``external`` name, such as one from ``intersphinx_names(docs_source)``, of an object
+    type that intersphinx links ``role`` to. Unlike the local lookup, intersphinx matches the type:
+    ``:meth:`torch.svd``` (a function) and every ``:const:`` stay plain text. A ``role`` of ``None`` accepts any type.
     """
-    if resolve_reference(obj, target, registry, role) is not None:
+    if resolve_reference(obj, target, registry, role, registered_as) is not None:
         return True
     types = (external or {}).get(_role_target(target, role), frozenset())
     return bool(types if role is None else types & _ROLE_OBJECT_TYPES.get(role, frozenset()))

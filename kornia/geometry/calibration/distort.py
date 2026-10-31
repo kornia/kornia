@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Add OpenCV's Brown-Conrady lens distortion to pixel coordinates, and build its sensor-tilt matrix."""
+
 from typing import Optional
 
 import torch
@@ -23,7 +25,14 @@ import torch.nn.functional as F
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
-    r"""Estimate the tilt projection matrix or the inverse tilt projection matrix.
+    r"""Build the 3x3 sensor-tilt matrix of OpenCV's distortion model, or its inverse.
+
+    ``T = tilt_projection(taux, tauy)`` takes the tilt angles in radians, the last two of the 14 coefficients of
+    OpenCV's distortion vector, and returns the projective ``(*, 3, 3)`` matrix that
+    :func:`~kornia.geometry.calibration.distort_points` applies to the distorted normalized point ``(x, y, 1)``
+    before dividing by the third component; ``return_inverse=True`` returns its inverse, which
+    :func:`~kornia.geometry.calibration.undistort_points` applies first. Those two functions call it themselves:
+    call it directly only to inspect or reuse the tilt step.
 
     Convention:
         - the rotation is ``R = Ry(tauy) @ Rx(taux)`` and ``Pz`` is built from the third column of ``R``;
@@ -42,6 +51,13 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         torch.Tensor: Tilt projection matrix, or the inverse tilt projection matrix when ``return_inverse`` is
         True, with shape ``(3, 3)`` for scalar angles or ``(*, 3, 3)`` for non-scalar angles, where a
         trailing singleton angle-component axis is omitted from :math:`*`.
+
+    Raises:
+        ValueError: if ``taux`` and ``tauy`` differ in shape.
+
+    See Also:
+        - :func:`~kornia.geometry.calibration.distort_points`: applies this matrix when given 14 coefficients.
+        - :func:`~kornia.geometry.calibration.undistort_points`: applies its inverse when given 14 coefficients.
 
     """
     if taux.shape != tauy.shape:
@@ -104,7 +120,14 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 def distort_points(
     points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Distortion of a set of 2D points based on the lens distortion model.
+    r"""Distort pixel coordinates with OpenCV's Brown-Conrady model of 4 to 14 coefficients.
+
+    ``distorted = distort_points(points, K, dist)`` takes ideal pinhole pixels ``(*, N, 2)``, the intrinsics
+    ``(*, 3, 3)`` and OpenCV's coefficient vector ``(*, n)``, ``n`` one of 4, 5, 8, 12 or 14, and returns the pixels
+    ``(*, N, 2)`` where a lens with that distortion images the same rays: the values ``cv2.projectPoints`` gives for
+    the points' rays. To remove distortion from measured pixels, use
+    :func:`~kornia.geometry.calibration.undistort_points`; from a whole image,
+    :func:`~kornia.geometry.calibration.undistort_image`.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
@@ -121,14 +144,21 @@ def distort_points(
         - ``new_K`` maps the incoming pixel onto the normalized plane and ``K`` maps the distorted point back
           to pixels; ``new_K`` defaults to ``K``. :func:`~kornia.geometry.calibration.undistort_points` is the
           inverse map, with the two intrinsics in the mirrored roles.
-        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
+        - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved, and the leading dimensions
+          ``*`` of the three broadcast by torch's rules: ``(N, 2)`` points with ``(B, 3, 3)`` cameras give
+          ``(B, N, 2)``.
+        - the skew entry ``K[0, 1]`` is ignored, as in
+          :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
+        - the trailing size of ``points`` is not checked today: ``(N, 3)`` points are truncated to their first two
+          columns, and a single ``(2,)`` point returns ``(1, 2)``
+          (`#6467 <https://github.com/kornia/kornia/issues/6467>`_).
 
     Args:
         points: Input image points with shape ``(*, N, 2)``.
         K: Intrinsic camera matrix with shape ``(*, 3, 3)``.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
+            a vector with 4, 5, 8, 12 or 14 elements with shape ``(*, n)``.
         new_K: Intrinsic camera matrix used to map the incoming ``points`` from pixels onto the normalized
             :math:`z = 1` plane -- the opposite of what the argument order suggests, since ``K`` is the one
             that maps the distorted normalized point back to pixels. By default it is the same as ``K``, in
@@ -137,6 +167,18 @@ def distort_points(
 
     Returns:
         Distorted 2D points with shape ``(*, N, 2)``.
+
+    See Also:
+        - :func:`~kornia.geometry.calibration.undistort_points`: the inverse, by fixed-point iteration, with ``K``
+          and ``new_K`` in mirrored roles.
+        - :func:`~kornia.geometry.calibration.undistort_image`: removes the distortion from an image by sampling
+          it at the positions this function returns.
+        - :func:`~kornia.geometry.calibration.tilt_projection`: the sensor-tilt matrix of the last two
+          coefficients.
+        - :func:`~kornia.geometry.camera.distort_points_kannala_brandt`: the fisheye model, from normalized points
+          and a flat 8-vector.
+        - :func:`~kornia.geometry.camera.distort_points_affine`: the intrinsics alone, from normalized points and a
+          flat ``[fx, fy, cx, cy]``.
 
     Example:
         >>> points = torch.rand(1, 1, 2)

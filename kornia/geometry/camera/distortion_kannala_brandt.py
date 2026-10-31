@@ -17,6 +17,8 @@
 
 # inspired by: shttps://github.com/farm-ng/sophus-rs/blob/main/src/sensor/kannala_brandt.rs
 
+"""The Kannala-Brandt fisheye camera model between normalized z = 1 points and pixels, its inverse and Jacobian."""
+
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
@@ -67,7 +69,15 @@ def _distort_points_kannala_brandt_impl(
 def distort_points_kannala_brandt(
     projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor
 ) -> torch.Tensor:
-    r"""Distort points from the canonical z=1 plane into the camera frame using the Kannala-Brandt model.
+    r"""Map normalized z = 1 points to fisheye pixels with the Kannala-Brandt model.
+
+    ``uv = distort_points_kannala_brandt(xy, params)`` takes points on the normalized ``z = 1`` plane ``(..., 2)``
+    and the vector ``params = [fx, fy, cx, cy, k0, k1, k2, k3]``, ``(..., 8)``, and returns their pixels
+    ``(..., 2)``: the angle :math:`\theta = \arctan r` of each point's ray from the optical axis, with ``r`` its
+    distance from the axis, becomes the radius
+    :math:`\theta (1 + k_0 \theta^2 + k_1 \theta^4 + k_2 \theta^6 + k_3 \theta^8)` before the intrinsics of
+    :func:`distort_points_affine`, as OpenCV's ``cv2.fisheye.distortPoints`` with zero skew. For OpenCV's
+    Brown-Conrady coefficients on pixel coordinates, use :func:`~kornia.geometry.calibration.distort_points`.
 
     Convention:
         - ``projected_points_in_camera_z1_plane`` is a point on the **normalized** :math:`z = 1` plane, not a
@@ -78,19 +88,31 @@ def distort_points_kannala_brandt(
           ``k3`` multiply :math:`\theta^2`, :math:`\theta^4`, :math:`\theta^6` and :math:`\theta^8` in the
           fish-eye polynomial.
         - :func:`undistort_points_kannala_brandt` is the inverse map.
+        - a point with squared radius ``<= 1e-8`` takes the affine branch, ``(fx x + cx, fy y + cy)``.
+        - the leading dimensions of the points and of ``params`` broadcast as in :func:`distort_points_affine`:
+          per-camera ``params`` for ``(B, N, 2)`` points are ``(B, 1, 8)``.
 
     Args:
-        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
-        params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
+        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape
+            ``(..., 2)``.
+        params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape
+            ``(..., 8)``.
 
     Returns:
-        torch.Tensor representing the distorted points with shape (..., 2).
+        torch.Tensor representing the distorted points with shape ``(..., 2)``.
+
+    See Also:
+        - :func:`undistort_points_kannala_brandt`: the inverse, pixels to normalized points.
+        - :func:`dx_distort_points_kannala_brandt`: its ``(..., 2, 2)`` Jacobian with respect to the point.
+        - :func:`distort_points_affine`: the intrinsics alone, with no distortion.
+        - :func:`~kornia.geometry.calibration.distort_points`: OpenCV's Brown-Conrady distortion with a ``3x3``
+          ``K``, from pixels to pixels.
 
     Example:
-        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
+        >>> points = torch.tensor([0.1, -0.2])  # on the normalized z = 1 plane
         >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001])
         >>> distort_points_kannala_brandt(points, params)
-        tensor([1982.6832, 1526.3619])
+        tensor([418.8600,  82.2799])
 
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
@@ -115,23 +137,41 @@ def distort_points_kannala_brandt(
 
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
-    r"""Undistort points from the camera frame into the canonical z=1 plane using the Kannala-Brandt model.
+    r"""Map fisheye pixels back to normalized z = 1 points by inverting the Kannala-Brandt model.
+
+    ``xy = undistort_points_kannala_brandt(uv, params)`` takes pixels ``(..., 2)`` and the ``(..., 8)`` vector of
+    :func:`distort_points_kannala_brandt` and returns the normalized points ``(..., 2)`` that it maps to them,
+    solving for the ray angle iteratively. The result matches OpenCV's ``cv2.fisheye.undistortPoints`` where the
+    distorted angle, the distance of the normalized distorted point from the axis, is below :math:`\pi / 2` and
+    the polynomial increases up to the solution. Elsewhere OpenCV clamps that angle to :math:`\pi / 2` or returns
+    ``(-1e6, -1e6)`` for a point it cannot invert, while this function returns its last iterate, unflagged. For
+    OpenCV's Brown-Conrady coefficients on pixel coordinates, use
+    :func:`~kornia.geometry.calibration.undistort_points`.
 
     Convention:
         - ``distorted_points_in_camera`` is a **pixel** coordinate and the result is a point on the normalized
           :math:`z = 1` plane; ``params`` is the same 8-element vector documented on
           :func:`distort_points_kannala_brandt`.
-        - the inverse is a fixed number of Gauss-Newton steps with no convergence test and no caller-visible
-          step count, so the round trip through :func:`distort_points_kannala_brandt` closes only to the
-          accuracy that iteration reaches.
+        - the inverse is a fixed number of Gauss-Newton steps (10) with no convergence test and no
+          caller-visible step count, so the round trip through :func:`distort_points_kannala_brandt` closes only
+          to the accuracy that iteration reaches.
         - a zero distorted radius maps to the origin.
+        - the iteration runs in the dtype of ``params`` and the result takes the dtype of the points.
 
     Args:
-        distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
-        params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
+        distorted_points_in_camera: torch.Tensor representing the points to undistort with shape ``(..., 2)``.
+        params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape
+            ``(..., 8)``.
 
     Returns:
-        torch.Tensor representing the undistorted points with shape (..., 2).
+        torch.Tensor representing the undistorted points with shape ``(..., 2)``.
+
+    See Also:
+        - :func:`distort_points_kannala_brandt`: the forward map, normalized points to pixels.
+        - :func:`dx_distort_points_kannala_brandt`: the Jacobian of the forward map.
+        - :func:`undistort_points_affine`: the closed-form inverse of the intrinsics alone.
+        - :func:`~kornia.geometry.calibration.undistort_points`: removes OpenCV's Brown-Conrady distortion, from
+          pixels to pixels.
 
     Example:
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
@@ -200,7 +240,11 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
 def dx_distort_points_kannala_brandt(
     projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor
 ) -> torch.Tensor:
-    r"""Return the analytic Jacobian of the Kannala-Brandt distortion model.
+    r"""Compute the 2x2 Jacobian of the Kannala-Brandt model with respect to the point.
+
+    ``J = dx_distort_points_kannala_brandt(xy, params)`` takes normalized points ``(..., 2)`` and the ``(..., 8)``
+    vector of :func:`distort_points_kannala_brandt` and returns the Jacobian of that map at each point as
+    ``(..., 2, 2)``. Chain it after :func:`dx_project_points_z1` for the Jacobian of a fisheye camera model.
 
     Convention:
         - the result has shape ``(..., 2, 2)`` and is laid out like the Jacobian that
@@ -208,14 +252,23 @@ def dx_distort_points_kannala_brandt(
           ``(u, v)``, columns the input components ``(x, y)``.
         - for squared radii ``<= 1e-8`` the forward function uses its affine branch, so the Jacobian there is
           ``diag(fx, fy)``.
+        - float16 and bfloat16 inputs are computed in float32 and rounded once to the promoted input dtype.
 
     Args:
-        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
-        params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
+        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape
+            ``(..., 2)``.
+        params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape
+            ``(..., 8)``.
 
     Returns:
         torch.Tensor representing the derivative of the distortion with respect to the point
-        with shape (..., 2, 2).
+        with shape ``(..., 2, 2)``.
+
+    See Also:
+        - :func:`distort_points_kannala_brandt`: the map this differentiates.
+        - :func:`undistort_points_kannala_brandt`: the inverse map.
+        - :func:`dx_distort_points_affine`: the Jacobian of the intrinsics alone, ``diag(fx, fy)``.
+        - :func:`dx_project_points_z1`: the Jacobian of the projection step before it.
 
     Example:
         >>> points = torch.tensor([1., 2.])

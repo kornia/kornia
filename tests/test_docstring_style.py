@@ -20,8 +20,9 @@
 ``testing/docstring_rollout.py`` lists the modules that are converted. For those, this file enforces what a reader,
 an IDE or a coding agent relies on and what a refactor silently breaks; the shape rule applies everywhere:
 
-* every public function and class has a docstring, so none escapes the checks below;
-* every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
+* every public function and class, exported by an ``__all__`` or documented on a docs page, has a docstring, so none
+  escapes the checks below;
+* every such function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
   unless its title line is a status title, ``Alias of :func:`target`.`` or ``Deprecated: use :func:`target`.``,
   which points to another public kornia object and needs none (``Deprecated: use`` only on an object that
   ``kornia.core._compat.deprecated`` wraps, ``Alias of`` only on one that forwards to its target unchanged, as
@@ -29,7 +30,8 @@ an IDE or a coding agent relies on and what a refactor silently breaks; the shap
 * every Python-domain object role (``:func:``, ``:class:``, ``:meth:``, ``:attr:``, ``:data:``, ``:const:``,
   ``:exc:``, ``:obj:``) resolves to a name that Sphinx registers from ``docs/source``, or to a torch, Python or NumPy
   object of a type that role links in the cached intersphinx inventories, so it renders as a link and not as plain
-  text (a short import alias is importable but is not a target); See Also entries name kornia objects only;
+  text (a short import alias is importable but is not a target), also in the docstrings of the methods, properties
+  and attributes autodoc documents under a converted class; See Also entries name kornia objects only;
 * every ``kornia/**/*.py`` file and every page Sphinx builds from ``docs/source`` writes a tensor shape as a literal
   such as ``(B, 1, H, W)``, not as ``:math:``, except for the values listed in ``MATH_NON_SHAPES``;
 * the module docstring of a namespace names every export of its ``__all__`` in a role or a double-backtick literal.
@@ -62,6 +64,7 @@ from testing.docstring_style import (
     catalog_unimportable,
     covered,
     docstring_roles,
+    documented_members,
     forwards_to,
     intersphinx_names,
     is_deprecated_wrapper,
@@ -70,14 +73,13 @@ from testing.docstring_style import (
     math_shape_roles,
     modules_declaring_all,
     own_docstring,
-    public_objects,
     reference_resolves,
     resolve_reference,
+    rollout_objects,
     rst_pages,
     see_also_entries,
     sphinx_registry,
     status_target,
-    undocumented_public_objects,
 )
 
 KORNIA_ROOT = Path(kornia.__file__).resolve().parent
@@ -87,17 +89,24 @@ REGISTRY = sphinx_registry(DOCS)
 INTERSPHINX = intersphinx_names(DOCS)
 
 CONVERTED = sorted(
-    ((qualified, obj) for obj, qualified in public_objects().values() if covered(obj.__module__, DOCSTRING_MODULES)),
+    (
+        (qualified, obj)
+        for obj, qualified in rollout_objects(REGISTRY).values()
+        if covered(obj.__module__, DOCSTRING_MODULES)
+    ),
     key=lambda pair: pair[0],
 )
 UNDOCUMENTED = sorted(
     (
         qualified
-        for obj, qualified in undocumented_public_objects().values()
+        for obj, qualified in rollout_objects(REGISTRY, with_docstring=False).values()
         if covered(obj.__module__, DOCSTRING_MODULES)
     ),
 )
-
+MEMBERS = sorted(
+    (qualified, member, doc)
+    for qualified, (member, doc) in documented_members(REGISTRY, [obj for _, obj in CONVERTED]).items()
+)
 
 SHAPE_CHECK_FILES = sorted([*KORNIA_ROOT.rglob("*.py"), *rst_pages(DOCS)])
 
@@ -218,17 +227,38 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
     assert not problems, f"{qualified} See Also: " + "; ".join(problems)
 
 
-@pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
-def test_converted_object_references_resolve(qualified: str, obj: object) -> None:
+def _unresolved_references(qualified: str, obj: object, doc: str | None, registered_as: str | None = None) -> str:
+    """Describe the roles in ``doc``, the docstring of ``obj`` shown as ``qualified``, that Sphinx cannot link.
+
+    With ``registered_as``, the roles resolve in the scopes of that registered entry only, as Sphinx resolves each
+    rendered entry; without it, in those of every name the registry gives ``obj``.
+    """
     unresolved = [
         f":{role}:`{target}`{_suggest(target)}{_wrong_role(role, target)}"
-        for role, target in docstring_roles(own_docstring(obj))
-        if not reference_resolves(obj, target, REGISTRY, INTERSPHINX, role)
+        for role, target in docstring_roles(doc)
+        if not reference_resolves(obj, target, REGISTRY, INTERSPHINX, role, registered_as)
     ]
+    if not unresolved:
+        return ""
     hint = "write the full name the docs register"
     if not is_documented(obj, REGISTRY):
         hint = f"{qualified} is not documented on any docs/source page, so short names have no scope; {hint}"
-    assert not unresolved, f"{qualified} has references Sphinx cannot link ({hint}): " + ", ".join(unresolved)
+    return f"{qualified} has references Sphinx cannot link ({hint}): " + ", ".join(unresolved)
+
+
+@pytest.mark.parametrize(("qualified", "obj"), CONVERTED, ids=[qualified for qualified, _ in CONVERTED])
+def test_converted_object_references_resolve(qualified: str, obj: object) -> None:
+    assert not (message := _unresolved_references(qualified, obj, own_docstring(obj))), message
+
+
+@pytest.mark.parametrize(("qualified", "member", "doc"), MEMBERS, ids=[qualified for qualified, _, _ in MEMBERS])
+def test_converted_class_member_references_resolve(qualified: str, member: object, doc: str) -> None:
+    """The methods, properties and attributes autodoc renders under a converted class link their references too.
+
+    Each is checked under its own registered name, so a method inherited by several documented classes has to link
+    its references on every class page that renders it.
+    """
+    assert not (message := _unresolved_references(qualified, member, doc, registered_as=qualified)), message
 
 
 @pytest.mark.parametrize(
@@ -270,7 +300,7 @@ def test_catalog_names_every_export(namespace: str) -> None:
 
 def test_rollout_progress() -> None:
     """Print, per in-scope package, the converted objects and catalogued namespaces (read it with ``-s``)."""
-    objects = [obj for obj, _ in public_objects().values()]
+    objects = [obj for obj, _ in rollout_objects(REGISTRY).values()]
     namespaces = modules_declaring_all()
     print("\npackage        converted objects   catalogued namespaces")
     for package in IN_SCOPE_PACKAGES:

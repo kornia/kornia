@@ -31,11 +31,13 @@ from kornia.geometry.depth import DepthWarper, depth_to_3d, depth_to_3d_v2
 
 from testing import docstring_style
 from testing.docstring_style import (
+    _Attribute,
     catalog_missing,
     catalog_required,
     catalog_unimportable,
     covered,
     docstring_roles,
+    documented_members,
     forwards_to,
     intersphinx_names,
     is_deprecated_wrapper,
@@ -47,6 +49,7 @@ from testing.docstring_style import (
     public_objects,
     reference_resolves,
     resolve_reference,
+    rollout_objects,
     see_also_entries,
     sphinx_registry,
     status_target,
@@ -661,6 +664,117 @@ def test_public_and_undocumented_objects_split_the_export_walk(monkeypatch):
     assert [qualified for _, qualified in public_objects.__wrapped__().values()] == ["m.documented"]
 
 
+class _Converted:
+    """A converted class."""
+
+    #: The size, see :class:`_Converted`.
+    size = 1
+    bare = 2
+    #: First line, see :class:`_Converted`.
+    #: Second line.
+    block = 3
+    trailing = 4  #: Trailing, see :attr:`size`.
+    literal = 5
+    """A string after the assignment,
+    on two lines."""
+
+    def method(self):
+        """Do it, like :meth:`other`."""
+
+    @property
+    def prop(self):
+        """Read it."""
+
+    def silent(self):
+        pass
+
+
+class _Unconverted:
+    """Another class."""
+
+    def method(self):
+        """Not wanted."""
+
+
+def test_documented_members_returns_the_registered_members_of_the_classes():
+    registry = {
+        "m.Converted": _Converted,
+        "m.Converted.method": _Converted.method,
+        "m.Converted.prop": _Converted.prop,
+        "m.Converted.size": _Attribute(_Converted, "size"),
+        "m.Converted.block": _Attribute(_Converted, "block"),
+        "m.Converted.trailing": _Attribute(_Converted, "trailing"),
+        "m.Converted.literal": _Attribute(_Converted, "literal"),
+        "m.Converted.silent": _Converted.silent,
+        "m.Converted.bare": _Attribute(_Converted, "bare"),
+        "m.Unconverted": _Unconverted,
+        "m.Unconverted.method": _Unconverted.method,
+        "m.function": _alias_target,
+    }
+    members = documented_members(registry, [_Converted])
+    assert members == {
+        "m.Converted.method": (_Converted.method, "Do it, like :meth:`other`."),
+        "m.Converted.prop": (_Converted.prop, "Read it."),
+        "m.Converted.size": (registry["m.Converted.size"], "The size, see :class:`_Converted`."),
+        "m.Converted.block": (
+            registry["m.Converted.block"],
+            "First line, see :class:`_Converted`.\nSecond line.",
+        ),
+        "m.Converted.trailing": (registry["m.Converted.trailing"], "Trailing, see :attr:`size`."),
+        "m.Converted.literal": (registry["m.Converted.literal"], "A string after the assignment,\non two lines."),
+    }
+    assert documented_members(registry, []) == {}
+
+
+def test_documented_members_reads_a_member_under_every_class_that_registers_it():
+    registry = {"a.Converted": _Converted, "b.Converted": _Converted}
+    registry |= {"a.Converted.prop": _Converted.prop, "b.Converted.prop": _Converted.prop}
+    assert set(documented_members(registry, [_Converted])) == {"a.Converted.prop", "b.Converted.prop"}
+
+
+class _SharedBase:
+    def method(self):
+        """Run it, then :meth:`other`, as :func:`helper` does."""
+
+
+class _SharedA(_SharedBase):
+    def other(self):
+        """The other one."""
+
+
+class _SharedB(_SharedBase):
+    pass
+
+
+def _helper():
+    """Help."""
+
+
+def test_member_registered_under_several_classes_resolves_in_each_registration_only():
+    # One method rendered on two class pages, as an inherited ``forward`` is: Sphinx resolves its references once per
+    # rendered entry, under that entry's class and module, so a short name registered only for ``a.A`` links there
+    # and stays plain text on the ``b.B`` page.
+    registry = {
+        "a.A": _SharedA,
+        "a.A.method": _SharedBase.method,
+        "a.A.other": _SharedA.other,
+        "a.helper": _helper,
+        "b.B": _SharedB,
+        "b.B.method": _SharedBase.method,
+    }
+    method = _SharedBase.method
+    for target, expected in (("other", _SharedA.other), ("helper", _helper)):
+        assert resolve_reference(method, target, registry, registered_as="a.A.method") is expected, target
+        assert reference_resolves(method, target, registry, registered_as="a.A.method"), target
+        assert resolve_reference(method, target, registry, registered_as="b.B.method") is None, target
+        assert not reference_resolves(method, target, registry, registered_as="b.B.method"), target
+        # Without a registered name the scopes of every registration count, as for a top-level object.
+        assert resolve_reference(method, target, registry) is expected, target
+    assert resolve_reference(method, "a.A.other", registry, registered_as="b.B.method") is _SharedA.other
+    with pytest.raises(ValueError, match="does not register"):
+        resolve_reference(method, "other", registry, registered_as="a.A.other")
+
+
 def _alias_target(a, b=1, *args, c=2, **kwargs):
     return a
 
@@ -814,3 +928,41 @@ def test_forwards_to_rejects_a_live_function_titled_alias_of_another():
     title = "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`."
     assert status_target(title) == "kornia.geometry.conversions.rotation_matrix_to_quaternion"
     assert not forwards_to(axis_angle_to_quaternion, rotation_matrix_to_quaternion)
+
+
+class _OnlyDocumented:
+    """A kornia class that a docs page registers and no ``__all__`` exports."""
+
+    def method(self):
+        """A registered method, not a top-level object."""
+
+
+def _undocumented_only():
+    pass
+
+
+def test_rollout_objects_union_exported_and_documented_objects(monkeypatch):
+    # Only kornia-defined classes count, so give the synthetic class a kornia ``__module__``.
+    monkeypatch.setattr(_OnlyDocumented, "__module__", "kornia.synthetic", raising=False)
+    monkeypatch.setattr(_OnlyDocumented.method, "__module__", "kornia.synthetic")
+    monkeypatch.setattr(_undocumented_only, "__module__", "kornia.synthetic")
+    exported = ((depth_to_3d, "kornia.geometry.depth.depth_to_3d"),)
+    monkeypatch.setattr(docstring_style, "_exported_objects", lambda: exported)
+    registry = {
+        "kornia.synthetic": docstring_style,
+        "kornia.synthetic.OnlyDocumented": _OnlyDocumented,
+        "kornia.synthetic.OnlyDocumented.method": _OnlyDocumented.method,
+        "kornia.geometry.depth.depth_to_3d": depth_to_3d,
+        "kornia.synthetic.alias_of_depth_to_3d": depth_to_3d,
+        "kornia.synthetic.not_kornia": inspect.getdoc,
+        "kornia.synthetic._undocumented_only": _undocumented_only,
+    }
+    selected = rollout_objects(registry)
+    names = sorted(qualified for _, qualified in selected.values())
+    assert names == ["kornia.geometry.depth.depth_to_3d", "kornia.synthetic._OnlyDocumented"]
+    assert id(_OnlyDocumented.method) not in selected
+    assert [q for _, q in rollout_objects(registry, with_docstring=False).values()] == [
+        "kornia.synthetic._undocumented_only"
+    ]
+    # One object registered under two names is one entry of the documented walk.
+    assert [q for _, q in docstring_style.documented_objects(registry)].count("kornia.geometry.depth.depth_to_3d") == 1
