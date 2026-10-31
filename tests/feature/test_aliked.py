@@ -1342,7 +1342,7 @@ class TestALIKEDModes(BaseTester):
     @pytest.mark.parametrize("method", ["forward", "forward_laf"])
     def test_forward_asks_for_channels_last_on_cpu_float(self, device, dtype, method, monkeypatch):
         # The layout measured faster per device: channels_last for float32/float64 on CPU; the default on MPS and CUDA
-        # (slower there) and for CPU float16/bfloat16, whose grid_sample returns NaN for it (#5810).
+        # (slower there) and for CPU float16/bfloat16, whose grid_sample is unreliable in either layout (#5810).
         aliked = self._model(device, dtype)
         original = aliked.extract_dense_map
         requested = []

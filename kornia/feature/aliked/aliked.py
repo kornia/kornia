@@ -955,8 +955,9 @@ class ALIKED(nn.Module):
                 normalising the map and the sampling of the descriptor head are then several times faster, so
                 :meth:`forward` and :meth:`forward_laf` use it for a float32 or float64 CPU image. They keep the
                 default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout; on CUDA the forward
-                is 0.80-0.94x as fast with it (RTX 4090, float32, float16 and bfloat16); and on CPU the float16 and
-                bfloat16 ``grid_sample`` returns NaN for this layout
+                is 0.80-0.94x as fast with it (RTX 4090, float32, float16 and bfloat16); and on CPU torch's float16
+                and bfloat16 ``grid_sample`` is unreliable in either layout: it returned NaN for this one on an Apple
+                M1, and on x86 it crashes the process for a 640 x 480 image in both
                 (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). By default each channel is a plane of the
                 map, as before.
 
