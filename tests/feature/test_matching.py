@@ -159,6 +159,85 @@ class TestMatchSNN(BaseTester):
         desc2 = torch.rand(7, 8, device=device, dtype=torch.float64)
         self.gradcheck(match_snn, (desc1, desc2, 0.8), nondet_tol=1e-4)
 
+    @pytest.mark.parametrize("th, accepted", [(0.8, [0, 1, 3, 6]), (1.0, [0, 1, 3, 5, 6])])
+    def test_nonfinite_distances_and_ties(self, device, dtype, th, accepted):
+        # nan is ordered after +inf, as by torch.topk: it is a neighbour only when no number is left in the row
+        nan, inf = float("nan"), float("inf")
+        dm = torch.tensor(
+            [
+                [1.0, nan, 2.0],  # 1 / 2
+                [nan, 3.0, 1.0],  # 1 / 3
+                [1.0, nan, nan],  # no second neighbour: nan, rejected
+                [1.0, nan, inf],  # an infinitely far second neighbour: 0
+                [nan, nan, nan],  # rejected
+                [2.0, 2.0, 5.0],  # a tie: 1, matched to the first tied column
+                [4.0, 1.0, inf],  # 1 / 4
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        ratios = {0: 1 / 2, 1: 1 / 3, 3: 0.0, 5: 1.0, 6: 1 / 4}
+        targets = {0: 0, 1: 2, 3: 0, 5: 0, 6: 1}
+        desc1 = torch.zeros(7, 1, device=device, dtype=dtype)
+        desc2 = torch.zeros(3, 1, device=device, dtype=dtype)
+
+        dists, idxs = match_snn(desc1, desc2, th, dm)
+
+        expected_dists = torch.tensor([[ratios[i]] for i in accepted], device=device, dtype=dtype)
+        expected_idxs = torch.tensor([[i, targets[i]] for i in accepted], device=device)
+        self.assert_close(dists, expected_dists)
+        self.assert_close(idxs, expected_idxs)
+
+    def test_tied_nearest_neighbours_match_the_first_column(self, device, dtype):
+        # torch.topk returns the last of these tied columns on CPU and the first on MPS
+        dm = torch.full((2, 3000), 2.0, device=device, dtype=dtype)
+        dm[:, [2000, 2500]] = 1.0
+        desc1 = torch.zeros(2, 1, device=device, dtype=dtype)
+        desc2 = torch.zeros(3000, 1, device=device, dtype=dtype)
+        dists, idxs = match_snn(desc1, desc2, 1.0, dm)
+        self.assert_close(dists, torch.ones(2, 1, device=device, dtype=dtype))
+        self.assert_close(idxs, torch.tensor([[0, 2000], [1, 2000]], device=device))
+
+    @pytest.mark.parametrize("th", [0.3, 0.8, 0.99])
+    def test_matches_the_topk_ratio_test(self, device, dtype, th):
+        # Small integers make many ties; every 11th distance is nan and every 17th +inf.
+        flat = torch.arange(40 * 30, device=device)
+        dm = (flat * 7919 % 13).to(dtype)
+        dm = torch.where(flat % 17 == 0, float("inf"), dm)
+        dm = torch.where(flat % 11 == 0, float("nan"), dm).reshape(40, 30)
+        desc1 = torch.zeros(40, 1, device=device, dtype=dtype)
+        desc2 = torch.zeros(30, 1, device=device, dtype=dtype)
+
+        dists, idxs = match_snn(desc1, desc2, th, dm)
+
+        values, columns = torch.topk(dm, 2, dim=1, largest=False)
+        ratio = values[:, 0] / values[:, 1]
+        keep = ratio <= th
+        rows = torch.arange(40, device=device)
+        self.assert_close(dists, ratio[keep].view(-1, 1))
+        self.assert_close(idxs, torch.stack((rows[keep], columns[keep, 0]), dim=1))
+
+    def test_transposed_distance_matrix(self, device, dtype):
+        dm = torch.linspace(0.0, 1.0, 6 * 9, device=device, dtype=dtype).reshape(6, 9).sin().t()
+        desc1 = torch.zeros(9, 1, device=device, dtype=dtype)
+        desc2 = torch.zeros(6, 1, device=device, dtype=dtype)
+        dists, idxs = match_snn(desc1, desc2, 0.95, dm)
+        expected_dists, expected_idxs = match_snn(desc1, desc2, 0.95, dm.contiguous())
+        assert len(idxs) > 0
+        self.assert_close(dists, expected_dists)
+        self.assert_close(idxs, expected_idxs)
+
+    @pytest.mark.parametrize("int_dtype", [torch.int32, torch.int64])
+    def test_integer_distance_matrix(self, device, int_dtype):
+        # an integer dm, such as Hamming distances between binary descriptors
+        dm = torch.tensor([[2, 3, 5], [4, 4, 1], [7, 1, 9]], device=device, dtype=int_dtype)
+        desc = torch.zeros(3, 2, device=device)
+        dists, idxs = match_snn(desc, desc, 0.8, dm)
+        # promoted to the default floating dtype, as an integer division is
+        assert dists.dtype == torch.get_default_dtype()
+        self.assert_close(dists, torch.tensor([[2 / 3], [1 / 4], [1 / 7]], device=device))
+        self.assert_close(idxs, torch.tensor([[0, 0], [1, 2], [2, 1]], device=device))
+
 
 class TestMatchSMNN(BaseTester):
     @pytest.mark.parametrize("mps_fallback", [False, True])

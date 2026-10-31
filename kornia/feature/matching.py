@@ -218,6 +218,31 @@ def match_mnn(
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
+def _first_to_second_nearest_ratio(distance_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return each row's ratio of the smallest to the second-smallest distance, and the column of the smallest.
+
+    The ratios are those of ``torch.topk(distance_matrix, 2, dim=1, largest=False)``, which orders nan after
+    ``+inf``. Where a ratio is a number, its column is that of the smallest distance, the first of tied ones, which
+    ``torch.topk`` does not guarantee. Two row reductions replace the top-k selection, two to three times slower on
+    MPS. A row needs at least two columns.
+    """
+    inf = float("inf")
+    # A row-major copy: match_smnn passes a transposed matrix, which CPU reduces slowly along its rows.
+    dm = distance_matrix.contiguous()
+    is_nan = torch.isnan(dm)
+    remaining = torch.nan_to_num(dm, nan=inf, posinf=inf, neginf=-inf)
+    first, first_idx = remaining.min(dim=1)
+    idx = first_idx[:, None]
+    # Overwrite the smallest with another distance of its row, which keeps the minimum of the others. It is read from
+    # `dm`, not from `remaining`: autograd must not save a tensor that is then modified in place.
+    other = dm.gather(1, (idx == 0).long())
+    remaining.scatter_(1, idx, torch.nan_to_num(other, nan=inf, posinf=inf, neginf=-inf))
+    # Ordered after +inf, a nan is the second-smallest distance only when every other distance of the row is nan.
+    no_second = is_nan.scatter_(1, idx, True).all(dim=1)
+    second = torch.where(no_second, float("nan"), remaining.amin(dim=1))
+    return first / second, first_idx
+
+
 def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -248,14 +273,13 @@ def match_snn(
     if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)
-    ratio = vals[:, 0] / vals[:, 1]
+    ratio, idxs_in_2 = _first_to_second_nearest_ratio(distance_matrix)
     mask = ratio <= th
     match_dists = ratio[mask]
     if len(match_dists) == 0:
         return _no_match(distance_matrix)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
-    idxs_in_2 = idxs_in_2[:, 0][mask]
+    idxs_in_2 = idxs_in_2[mask]
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
