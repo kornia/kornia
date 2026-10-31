@@ -2599,14 +2599,24 @@ class TestVideoBoxes(BaseTester):
     def test_compute_area_and_to_mask_restore_temporal_axis_5614(self, device, dtype):
         # Issue #5614: compute_area and to_mask restore the temporal axis (B, T, N, ...).
         boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=2)
+        # A different box in every frame: frame t is t pixels wider, video b sits b pixels lower.
+        boxes[..., 1:3, 0] += torch.arange(3, device=device, dtype=dtype).view(1, 3, 1, 1)
+        boxes[..., 1] += torch.arange(2, device=device, dtype=dtype).view(2, 1, 1, 1)
         video = VideoBoxes.from_tensor(boxes)
         heights, widths = video.get_boxes_shape()
         area = video.compute_area()
         mask = video.to_mask(6, 8)
 
         assert area.shape == (2, 3, 2)
+        expected_area = torch.tensor([4.0, 6.0, 8.0], device=device, dtype=dtype).view(1, 3, 1).expand(2, 3, 2)
+        self.assert_close(area, expected_area, atol=0.0, rtol=0.0)
         assert mask.shape == (2, 3, 2, 6, 8)
         assert mask.dtype == dtype
+        expected_mask = torch.zeros_like(mask)
+        for b in range(2):
+            for t in range(3):
+                expected_mask[b, t, :, 1 + b : 4 + b, 1 : 4 + t] = 1
+        self.assert_close(mask, expected_mask, atol=0.0, rtol=0.0)
 
         # Sibling method combination no longer fails with mismatched shapes
         ratio = area / (heights * widths)
@@ -2619,6 +2629,11 @@ class TestVideoBoxes(BaseTester):
         assert filtered.data.shape == video.data.shape
         assert filtered.compute_area().shape == (2, 3, 2)
         assert filtered.compute_area().count_nonzero() == 0
+
+        # A partial filter zeroes the first frame of every video (area 4) and keeps the others.
+        partial = video.filter_boxes_by_area(min_area=5.0)
+        assert partial.to_tensor("xyxy")[:, 0].count_nonzero() == 0
+        self.assert_close(partial.to_tensor("xyxy")[:, 1:], video.to_tensor("xyxy")[:, 1:], atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("shape", [(0, 3, 2), (2, 3, 0)])
     def test_compute_area_and_to_mask_empty_batches_5614(self, shape, device, dtype):

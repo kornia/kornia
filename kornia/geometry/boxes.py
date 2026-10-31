@@ -1084,7 +1084,8 @@ class VideoBoxes(Boxes):
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is ``(B, T, N, 4)``).
         - :meth:`compute_area` returns ``(B, T, N)`` areas, and :meth:`to_mask` returns
-          ``(B, T, N, height, width)`` masks.
+          ``(B, T, N, height, width)`` masks. :attr:`~Boxes.shape` and :attr:`~Boxes.data` stay the flattened
+          storage ``(B * T, N, 4, 2)``.
         - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
           one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`. Index
           assignment, ``video_boxes[key] = other``, writes the same whole videos.
