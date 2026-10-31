@@ -57,6 +57,56 @@ def _unbatched_geometry_data(device: torch.device, dtype: torch.dtype) -> torch.
     )
 
 
+@pytest.mark.parametrize("container,points,coords", [(Boxes, 4, 2), (Boxes3D, 8, 3)])
+class TestBoxesIndexing(BaseTester):
+    @pytest.mark.parametrize("num_boxes", [1, 4])
+    @pytest.mark.parametrize("key_kind", ["first", "last", "scalar_tensor"])
+    @pytest.mark.parametrize("strided", [False, True])
+    def test_scalar_unbatched(self, container, points, coords, num_boxes, key_kind, strided, device, dtype):
+        data = torch.arange(num_boxes * points * coords, device=device, dtype=dtype).reshape(num_boxes, points, coords)
+        if strided:
+            data = data.transpose(1, 2).contiguous().transpose(1, 2)
+        key = {"first": 0, "last": -1, "scalar_tensor": torch.tensor(-1, device=device)}[key_kind]
+        boxes = container(data)
+
+        selected = boxes[key]
+
+        assert type(selected) is container
+        assert selected.shape == (1, points, coords)
+        assert selected.data.dtype == dtype
+        assert selected.data.device == device
+        self.assert_close(selected.data, data[key].unsqueeze(0), atol=0, rtol=0)
+        if container is Boxes:
+            assert selected._valid.shape == (1,)
+        selected.data.add_(1)
+        self.assert_close(boxes.data[key], selected.data[0], atol=0, rtol=0)
+        boxes[key] = container(torch.full((1, points, coords), 7.0, device=device, dtype=dtype))
+        self.assert_close(data[key], torch.full((points, coords), 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_existing_selection(self, container, points, coords, batched, device, dtype):
+        shape = (2, 4, points, coords) if batched else (4, points, coords)
+        data = torch.arange((2 if batched else 1) * 4 * points * coords, device=device, dtype=dtype).reshape(shape)
+        boxes = container(data)
+        for key in [
+            slice(None, 1),
+            slice(0, 0),
+            torch.tensor([1, 0], device=device),
+            torch.arange(data.shape[0], device=device) % 2 == 0,
+        ]:
+            self.assert_close(boxes[key].data, data[key], atol=0, rtol=0)
+        if batched:
+            self.assert_close(boxes[0].data, data[0], atol=0, rtol=0)
+        empty = container(data[:0])
+        assert empty[:].shape == data[:0].shape
+        with pytest.raises(IndexError):
+            empty[0]
+
+    def test_gradcheck_scalar(self, container, points, coords, device):
+        data = torch.arange(3 * points * coords, device=device, dtype=torch.float64).reshape(3, points, coords)
+        self.gradcheck(lambda x: container(x)[-1].data, (data.requires_grad_(),))
+
+
 class TestBoxes2D(BaseTester):
     def test_convention_from_tensor_xyxy_stores_inclusive_vertices_in_tl_tr_br_bl_order(self, device, dtype):
         # Convention pin: Boxes stores four inclusive (x, y) vertices in clockwise
