@@ -1,0 +1,1 @@
+`unproject_points_orthographic` raises `ShapeError` when `extension` is neither `(...,)` nor `(..., 1)`, as `unproject_points_z1` does. An extension with the same rank as the points and a trailing size other than 1 used to be concatenated whole, so the result had more than three coordinates.
