@@ -574,7 +574,8 @@ class TestALIKED(BaseTester):
         assert len(output) == 1
         assert output[0].n > 0
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("channels_last", [False, True])
+    def test_gradcheck(self, device, channels_last):
         """gradcheck on the fully-differentiable extract_dense_map sub-graph.
 
         The full pipeline includes discrete NMS/argmax steps that are not
@@ -585,8 +586,8 @@ class TestALIKED(BaseTester):
         aliked = ALIKED(model_name="aliked-t16").to(device, torch.float64).eval()
         inp = torch.rand(1, 3, 32, 32, device=device, dtype=torch.float64, requires_grad=True)
 
-        def fn(x: torch.Tensor) -> torch.Tensor:
-            fm, sm = aliked.extract_dense_map(x)
+        def fn(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            fm, sm = aliked.extract_dense_map(x, channels_last=channels_last)
             return fm, sm
 
         assert torch.autograd.gradcheck(fn, [inp], eps=1e-4, atol=1e-3, rtol=1e-3, fast_mode=True, nondet_tol=1e-3)
@@ -1323,6 +1324,50 @@ class TestALIKEDModes(BaseTester):
             feat, score = aliked.extract_dense_map(torch.rand(1, 3, 16, 16, device=device, dtype=dtype))
         assert feat.shape[0] == 1
         assert score.shape == (1, 1, 16, 16)
+
+    def test_extract_dense_map_channels_last_changes_only_the_layout(self, device, dtype):
+        # 50 x 70 is padded to 64 x 96 and cropped back, so the crop of a channels_last map is covered too
+        aliked = self._model(device, dtype)
+        img = torch.rand(2, 3, 50, 70, device=device, dtype=dtype)
+        with torch.no_grad():
+            feat, score = aliked.extract_dense_map(img)
+            feat_cl, score_cl = aliked.extract_dense_map(img, channels_last=True)
+        # Strides, not is_contiguous: a crop of either layout is contiguous in neither.
+        assert feat.stride(-1) == 1  # default layout: neighbouring pixels of a channel are next to each other
+        assert feat_cl.stride(1) == 1  # channels_last: the channels of a pixel are next to each other
+        assert feat_cl.shape == feat.shape == (2, 64, 50, 70)
+        self.assert_close(feat_cl, feat)
+        self.assert_close(score_cl, score, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("method", ["forward", "forward_laf"])
+    def test_forward_asks_for_channels_last_on_cpu_float(self, device, dtype, method, monkeypatch):
+        # The layout measured faster per device: channels_last for float32/float64 on CPU; the default on MPS and CUDA
+        # (slower there) and for CPU float16/bfloat16, whose grid_sample is unreliable in either layout (#5810).
+        aliked = self._model(device, dtype)
+        original = aliked.extract_dense_map
+        requested = []
+
+        def spy(image, *, channels_last=False):
+            requested.append(channels_last)
+            return original(image, channels_last=channels_last)
+
+        monkeypatch.setattr(aliked, "extract_dense_map", spy)
+        with torch.no_grad():
+            getattr(aliked, method)(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
+        assert requested == [device.type == "cpu" and dtype in (torch.float32, torch.float64)]
+
+    def test_forward_matches_the_default_layout(self, device, dtype):
+        # forward reads the channels_last map on CPU; the keypoints and scores cannot depend on that choice
+        aliked = self._model(device, dtype)
+        img = torch.rand(1, 3, 64, 96, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = aliked(img)[0]
+            feat, score = aliked.extract_dense_map(img)
+            keypoints, scores, _ = aliked.dkd(score)
+            descriptors, _ = aliked.desc_head(feat, keypoints)
+        assert out.n > 0
+        self.assert_close(out.keypoint_scores, scores[0], rtol=0, atol=0)
+        self.assert_close(out.descriptors, descriptors[0])
 
 
 class TestALIKEDStateDict(BaseTester):

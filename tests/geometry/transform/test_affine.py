@@ -1170,6 +1170,54 @@ class TestAffine2d(BaseTester):
         with pytest.raises(DeviceError):
             kornia.geometry.transform.Affine(angle=torch.zeros(1, device="meta", dtype=dtype), shear=shear)
 
+    @staticmethod
+    def _affine_parameters(kind, batch_size, device, dtype):
+        torch.manual_seed(0)
+        if kind == "angle":
+            value = 60.0 * torch.rand(batch_size)
+        elif kind == "scale_factor":
+            value = 1.0 + 0.3 * torch.rand(batch_size, 2)
+        else:  # translation in pixels, shear in radians
+            value = 0.3 * torch.rand(batch_size, 2)
+        return {kind: value.to(device, dtype)}
+
+    @pytest.mark.parametrize("kind", ["angle", "translation", "scale_factor", "shear"])
+    @pytest.mark.parametrize("with_center", [False, True])
+    def test_affine_batch1_parameters_warp_every_image_6395(self, device, dtype, kind, with_center):
+        # One parameter set warps every image of a batch, with or without center, as Rotate and Translate do.
+        params = self._affine_parameters(kind, 1, device, dtype)
+        center = torch.tensor([[3.0, 2.0]], device=device, dtype=dtype) if with_center else None
+        torch.manual_seed(1)
+        images = torch.rand(3, 2, 5, 7).to(device, dtype)
+
+        transform = kornia.geometry.transform.Affine(**params, center=center)
+        expected = torch.cat([transform(image[None]) for image in images])
+        self.assert_close(transform(images), expected)
+
+    @pytest.mark.parametrize("unbatched", [False, True])
+    def test_affine_parameter_sets_warp_one_image_without_center_6395(self, device, dtype, unbatched):
+        # Without center, B parameter sets warp one image into (B, C, H, W), as they do with the image centre given.
+        params = self._affine_parameters("angle", 3, device, dtype)
+        params.update(self._affine_parameters("translation", 3, device, dtype))
+        torch.manual_seed(1)
+        image = torch.rand(1, 2, 5, 7).to(device, dtype)
+        image = image[0] if unbatched else image
+        image_centre = torch.tensor([[3.0, 2.0]], device=device, dtype=dtype).expand(3, -1)
+
+        actual = kornia.geometry.transform.Affine(**params)(image)
+        expected = kornia.geometry.transform.Affine(**params, center=image_centre)(image)
+        assert actual.shape == (3, 2, 5, 7)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("with_center", [False, True])
+    def test_affine_parameter_and_input_batch_mismatch_raises_6395(self, device, dtype, with_center):
+        # Two parameter sets for three images pair in no sensible way: the error names both batch sizes.
+        params = self._affine_parameters("angle", 2, device, dtype)
+        center = torch.tensor([[3.0, 2.0]], device=device, dtype=dtype).expand(2, -1) if with_center else None
+        images = torch.zeros(3, 2, 5, 7, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Affine has 2 parameter sets for an input batch of 3"):
+            kornia.geometry.transform.Affine(**params, center=center)(images)
+
     @pytest.mark.parametrize("as_module", [False, True])
     def test_convention_shear_raw_factors_5661(self, device, dtype, as_module):
         # Both off-diagonal factors act on the original coordinates, about pixel (0, 0).

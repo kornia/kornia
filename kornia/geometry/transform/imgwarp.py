@@ -963,15 +963,37 @@ def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst:
     closed-form 3x3 inverse — no ``torch.linalg.solve`` — so it needs no
     LAPACK/cusolver backend (runs on the Jetson wheel) and traces cleanly for
     ONNX. The result is normalized to ``H[2, 2] == 1`` to match the DLT
-    convention. Computed in float32/float64 for numerical stability, then cast
-    back to the input dtype.
+    convention whenever that form is finite in the input dtype; otherwise (an
+    ``H[2, 2]`` that is exactly zero, or a float16 form beyond 65504) it is
+    divided by the geometric mean of its largest and smallest nonzero magnitudes
+    instead. Computed in float32/float64 for numerical stability, then cast back
+    to the input dtype.
     """
     dtype = points_src.dtype
     work_dtype = _normalize_to_float32_or_float64(dtype)
     h_s = _unit_square_to_quad(points_src.to(work_dtype))
     h_d = _unit_square_to_quad(points_dst.to(work_dtype))
     transform = h_d @ _inverse_3x3_closed_form(h_s)
-    transform = transform / transform[..., 2:3, 2:3]
+    # The ``H[2, 2] = 1`` form is kept wherever it is finite in the output dtype, so those results are unchanged. It is
+    # not when ``H[2, 2]`` is exactly zero (a homography that sends the source origin to infinity) or when it overflows
+    # the output dtype (float16 at 65504). Then scale by the geometric mean of the largest and smallest nonzero
+    # magnitudes, which centres the entries in the dtype's range: scaling the largest to 1 would flush the small ones to
+    # zero in float16. The test compares with the smallest magnitude that rounds to inf in the output dtype rather than
+    # casting to it, because inductor keeps a fused cast in float32; the bounds are written out, as TorchScript has no
+    # ``torch.finfo``, and ``abs() < inf`` also rejects NaN.
+    if dtype == torch.float16:
+        overflow = 65520.0
+    elif dtype == torch.bfloat16:
+        overflow = 3.3961775292304600e38
+    else:
+        overflow = float("inf")
+    h22 = transform[..., 2:3, 2:3]
+    fits = ((transform / h22).abs() < overflow).all(dim=-1, keepdim=True).all(dim=-2, keepdim=True)
+    magnitude = transform.abs()
+    largest = magnitude.amax(dim=(-2, -1), keepdim=True)
+    smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
+    scale = largest.sqrt() * smallest.sqrt()
+    transform = transform / torch.where(fits, h22, scale)
     return transform.to(dtype)
 
 
@@ -979,9 +1001,10 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     r"""Compute the homography that maps four source points exactly onto four destination points.
 
     ``M = get_perspective_transform(points_src, points_dst)`` takes two ``(B, 4, 2)`` sets of ``(x, y)`` points,
-    matched by index, and returns the ``(B, 3, 3)`` homography, scaled to ``M[2, 2] = 1``, that maps each source point
-    onto its destination point: the source→destination pixel homography that :func:`warp_perspective` takes. It solves
-    the four-point system in closed form, by Heckbert's square-to-quadrilateral mappings, rather than with the
+    matched by index, and returns the ``(B, 3, 3)`` homography, scaled to ``M[2, 2] = 1`` where it can be, that maps
+    each source point onto its destination point: the source→destination pixel homography that
+    :func:`warp_perspective` takes. It solves the four-point system in closed form, by Heckbert's
+    square-to-quadrilateral mappings, rather than with the
     `DLT <https://www.cs.cmu.edu/~16385/s17/Slides/10.2_2D_Alignment__DLT.pdf>`_, whose exact solution it equals, so it
     needs no linear solver. For more than four or noisy correspondences, use
     :func:`~kornia.geometry.homography.find_homography_dlt` or :class:`~kornia.geometry.ransac.RANSAC`.
@@ -1012,13 +1035,14 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - points: ``(x, y)``, pixel centers, origin at top-left; shape ``(B, 4, 2)``
         - a degenerate quadrilateral, such as one with three collinear points or two equal ones, does not raise: a
           degenerate source returns a non-finite matrix, a degenerate destination a non-finite or a singular one
-        - a homography whose true bottom-right entry is zero, such as one that sends source pixel ``(0, 0)`` to
-          infinity, has no ``M[2, 2] = 1`` form, although neither quadrilateral is degenerate: the division by
-          ``M[2, 2]`` gives NaN or inf when rounding leaves that entry exactly zero, and otherwise a finite matrix
-          scaled by the inverse of the rounding residue, whose largest entry is typically ``1e5`` in ``float32`` and
-          ``1e13`` in ``float64`` and which still maps the points, to a relative error of up to about ``1e-2`` in
-          ``float32`` (`#6435 <https://github.com/kornia/kornia/issues/6435>`_);
-          :func:`~kornia.geometry.homography.find_homography_dlt` returns it, at another scale
+        - ``M`` is scaled to ``M[2, 2] = 1`` wherever that form is finite in the output dtype. Where it is not,
+          because the computed bottom-right entry is exactly zero, as for some homographies that send source pixel
+          ``(0, 0)`` to infinity although neither quadrilateral is degenerate, or because the form overflows the dtype,
+          such as a float16 one with entries beyond ``65504``, ``M`` is divided instead by the geometric mean of its
+          largest and smallest nonzero magnitudes, which keeps both in range where the dtype can hold their ratio.
+          When the true bottom-right entry is zero but rounding leaves a small residue, ``M[2, 2] = 1`` holds and the
+          other entries are large, about the inverse of that residue; the matrix still maps the points.
+          :func:`~kornia.geometry.homography.find_homography_dlt` returns the same map at another scale
         - float16 and bfloat16 points are solved in float32, and the result is cast back to their dtype
         - integer or boolean points give a matrix in the default floating dtype; floating points keep theirs
         - a caller's autocast region does not change the result, outside TorchScript
