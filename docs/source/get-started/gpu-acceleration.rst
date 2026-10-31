@@ -47,10 +47,16 @@ An accelerator-compatible implementation is not automatically faster than its re
 For local features, choose the detector, descriptor and matcher together, and check both
 accuracy and latency on your workload. The following **interim M1 audit** compares Kornia
 at commit ``160e0f0f7`` with pinned author implementations and explicitly named alternatives.
-These measurements do not predict CUDA or Intel performance. The
-`audit PR <https://github.com/kornia/kornia/pull/6452>`_ records the full interim table,
-reference revisions, remaining coverage and CUDA handoff instructions; its replay and raw
-evidence packages currently require a separate local transfer.
+These measurements do not predict CUDA or Intel performance. They also predate later Kornia
+speed-ups that this table does not reflect: faster ALIKED inference on MPS
+(`#6464 <https://github.com/kornia/kornia/pull/6464>`_) and on CPU
+(`#6498 <https://github.com/kornia/kornia/pull/6498>`_), the MPS ratio test
+(`#6465 <https://github.com/kornia/kornia/pull/6465>`_), and channels-last patch-descriptor
+convolutions on MPS and oneDNN CPUs (`#6502 <https://github.com/kornia/kornia/pull/6502>`_).
+The `audit PR <https://github.com/kornia/kornia/pull/6452>`_ records the full interim table,
+reference revisions, remaining coverage and CUDA handoff instructions, and a separate
+PhotoTourism-only replay on an NVIDIA RTX 4090 and an x86 CPU that includes those changes;
+its replay and raw evidence packages currently require a separate local transfer.
 
 .. list-table:: Baseline guidance from the feature audit
    :header-rows: 1
@@ -68,7 +74,8 @@ evidence packages currently require a separate local transfer.
      - **1.67× CPU** speedup on Oxford, with identical @3 px accuracy. Baseline MPS runs at
        **0.59×** the reference speed (about 1.69× the latency).
      - Prefer Kornia for this measured CPU workload. For MPS inference, the author Python
-       implementation is faster at this revision; benchmark again after optimization.
+       implementation is faster at this revision; benchmark again on a release that
+       includes #6464 (see *Proposed improvements* below).
    * - XFeat / author
      - **1.46× CPU** speedup on Oxford; @3 px accuracy **60.00% / 59.17%** (Kornia / author).
        MPS timing is approximately tied and noisy.
@@ -117,8 +124,9 @@ not drive a deployment decision. Accuracy covers all stated pairs, independently
 Proposed improvements, measured separately
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-These candidate changes are **not included in the baseline above**. The audit motivates
-separate implementation changes and further hardware validation:
+These candidate changes are **not included in the baseline above**; each was measured as a
+patch against the same Kornia commit. The first two have since been merged as separate pull
+requests, and the M1 figures below are for the candidate patches, not for the merged code:
 
 .. list-table:: Candidate versus the same Kornia baseline
    :header-rows: 1
@@ -126,15 +134,18 @@ separate implementation changes and further hardware validation:
 
    * - Change
      - Measured result and limit
-   * - ALIKED MPS inference
+   * - ALIKED MPS inference (merged as
+       `#6464 <https://github.com/kornia/kornia/pull/6464>`_)
      - **1.59× Oxford / 1.71× HPatches** full-pipeline speedup, with unchanged aggregate accuracy.
        Patched Kornia is approximately tied with the author on Oxford and remains slightly
-       slower on HPatches. This does not establish a CUDA speedup.
-   * - MPS SNN / SMNN
+       slower on HPatches. The merged sampler also runs on CUDA and CPU; this M1 candidate
+       measurement does not establish a CUDA speedup.
+   * - MPS SNN / SMNN (merged as
+       `#6465 <https://github.com/kornia/kornia/pull/6465>`_)
      - **1.42–1.49× / 1.26–1.33×** matcher-only speedup across the three cohorts;
        identical indices and ratios across **315 pairs**. These gains are not whole-pipeline
        gains, and the candidate does not universally beat OpenCV matching.
-   * - Affine-shape mirror fix
+   * - Affine-shape mirror fix (not merged)
      - PhotoTourism mAA **+0.49 percentage points**; Oxford @3 px unchanged;
        HPatches @3 px **−0.46 percentage points**. Correctness improves; accuracy effects are
        mixed. No speedup is claimed.
