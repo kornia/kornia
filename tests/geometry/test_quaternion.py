@@ -44,7 +44,7 @@ class TestQuaternion(BaseTester):
         self.assert_close(q.scalar, q_data[..., 0])
         self.assert_close(q.vec, q_data[..., 1:])
 
-    def test_from_coeffs_integer_and_types(self, device, dtype):
+    def test_from_coeffs_integer_and_types(self, device: torch.device, dtype: torch.dtype) -> None:
         # 1. Four integer coefficients produce a floating-point tensor with the default dtype
         q_int = Quaternion.from_coeffs(1, 0, 0, 0)
         assert q_int.data.is_floating_point()
@@ -121,6 +121,13 @@ class TestQuaternion(BaseTester):
                 torch.tensor(0.0, dtype=torch.float32),
                 torch.tensor(0.0, dtype=torch.float32),
             )
+
+        # Complex inputs must be rejected
+        with pytest.raises(ValueError, match="complex scalar"):
+            Quaternion.from_coeffs(1 + 2j, 0, 0, 0)
+
+        with pytest.raises(ValueError, match="complex tensor"):
+            Quaternion.from_coeffs(torch.tensor(1.0 + 1.0j), 0.0, 0.0, 0.0)
 
         # 6. Default floating-point dtype behavior
         orig_default = torch.get_default_dtype()
@@ -844,7 +851,7 @@ class TestQuaternionAverage(BaseTester):
         with pytest.raises(ValueError, match="zero"):
             average_quaternions(Q, w=torch.zeros(3, device=device, dtype=dtype))
 
-    def test_average_quaternions_weight_shapes(self, device, dtype):
+    def test_average_quaternions_weight_shapes(self, device: torch.device, dtype: torch.dtype) -> None:
         # Issue 6482 reproduction: Quaternion.random(6) with torch.ones(6, 1)
         q6 = Quaternion.random(6, device=device, dtype=dtype)
         w6_2d = torch.ones(6, 1, device=device, dtype=dtype)

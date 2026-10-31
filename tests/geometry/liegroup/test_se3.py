@@ -769,7 +769,7 @@ class TestSe3(BaseTester):
         assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()
 
-    def test_se3_batch_validation(self, device, dtype):
+    def test_se3_batch_validation(self, device: torch.device, dtype: torch.dtype) -> None:
         # Incompatible batch sizes (mismatched batches) with Quaternion: batch size 3 with shape (2, 3)
         q_b3 = Quaternion.identity(3, device=device, dtype=dtype)
         t_b2 = torch.zeros(2, 3, device=device, dtype=dtype)
@@ -801,15 +801,24 @@ class TestSe3(BaseTester):
         s_batched = Se3(q_b3, torch.zeros(3, 3, device=device, dtype=dtype))
         assert s_batched.matrix().shape == (3, 4, 4)
 
+        # Test both broadcast directions: (2, 1) and (1, 2)
         s_bcast1 = Se3(
             Quaternion.identity(2, device=device, dtype=dtype), torch.zeros(1, 3, device=device, dtype=dtype)
         )
         assert s_bcast1.matrix().shape == (2, 4, 4)
+        assert s_bcast1.log().shape == (2, 6)
+        assert s_bcast1.adjoint().shape == (2, 6, 6)
+        assert s_bcast1[0].matrix().shape == (4, 4)
+        assert s_bcast1[1].matrix().shape == (4, 4)
 
         s_bcast2 = Se3(
             Quaternion.identity(1, device=device, dtype=dtype), torch.zeros(2, 3, device=device, dtype=dtype)
         )
         assert s_bcast2.matrix().shape == (2, 4, 4)
+        assert s_bcast2.log().shape == (2, 6)
+        assert s_bcast2.adjoint().shape == (2, 6, 6)
+        assert s_bcast2[0].matrix().shape == (4, 4)
+        assert s_bcast2[1].matrix().shape == (4, 4)
 
 
 class TestSe3HalfPrecision(BaseTester):
