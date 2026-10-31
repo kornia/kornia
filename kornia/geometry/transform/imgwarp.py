@@ -963,34 +963,37 @@ def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst:
     closed-form 3x3 inverse — no ``torch.linalg.solve`` — so it needs no
     LAPACK/cusolver backend (runs on the Jetson wheel) and traces cleanly for
     ONNX. The result is normalized to ``H[2, 2] == 1`` to match the DLT
-    convention, unless that entry is zero up to rounding (a homography that sends
-    the source origin to infinity) or that form overflows the input dtype; then it
-    is divided by the geometric mean of its largest and smallest nonzero
-    magnitudes instead. Computed in float32/float64 for numerical stability, then
-    cast back to the input dtype.
+    convention whenever that form is finite in the input dtype; otherwise (an
+    ``H[2, 2]`` that is exactly zero, or a float16 form beyond 65504) it is
+    divided by the geometric mean of its largest and smallest nonzero magnitudes
+    instead. Computed in float32/float64 for numerical stability, then cast back
+    to the input dtype.
     """
     dtype = points_src.dtype
     work_dtype = _normalize_to_float32_or_float64(dtype)
     h_s = _unit_square_to_quad(points_src.to(work_dtype))
     h_d = _unit_square_to_quad(points_dst.to(work_dtype))
-    h_s_inv = _inverse_3x3_closed_form(h_s)
-    transform = h_d @ h_s_inv
-    # ``H[2, 2]`` is the dot product of ``h_d``'s last row and ``h_s_inv``'s last column; below a few units of rounding
-    # of that sum, its value and sign are noise, and dividing by it gives NaN, inf or an arbitrary scale. The
-    # ``H[2, 2] = 1`` form must also fit the output dtype: float16 overflows at 65504. Otherwise scale by the geometric
-    # mean of the largest and smallest nonzero magnitudes, which centres the entries in the dtype's range: scaling the
-    # largest to 1 would flush the small ones to zero in float16. Machine epsilon is written out, as TorchScript has no
-    # ``torch.finfo``, and ``x - x == 0`` tests for a finite value with ops that every exporter supports.
-    eps = 1.1920928955078125e-07 if work_dtype == torch.float32 else 2.220446049250313e-16
+    transform = h_d @ _inverse_3x3_closed_form(h_s)
+    # The ``H[2, 2] = 1`` form is kept wherever it is finite in the output dtype, so those results are unchanged. It is
+    # not when ``H[2, 2]`` is exactly zero (a homography that sends the source origin to infinity) or when it overflows
+    # the output dtype (float16 at 65504). Then scale by the geometric mean of the largest and smallest nonzero
+    # magnitudes, which centres the entries in the dtype's range: scaling the largest to 1 would flush the small ones to
+    # zero in float16. The test compares with the smallest magnitude that rounds to inf in the output dtype rather than
+    # casting to it, because inductor keeps a fused cast in float32; the bounds are written out, as TorchScript has no
+    # ``torch.finfo``, and ``abs() < inf`` also rejects NaN.
+    if dtype == torch.float16:
+        overflow = 65520.0
+    elif dtype == torch.bfloat16:
+        overflow = 3.3961775292304600e38
+    else:
+        overflow = float("inf")
     h22 = transform[..., 2:3, 2:3]
-    h22_rounding = h_d[..., 2:3, :].abs() @ h_s_inv[..., :, 2:3].abs()
-    unit_h22 = (transform / h22).to(dtype)
-    fits = ((unit_h22 - unit_h22) == 0).all(dim=-1, keepdim=True).all(dim=-2, keepdim=True)
+    fits = ((transform / h22).abs() < overflow).all(dim=-1, keepdim=True).all(dim=-2, keepdim=True)
     magnitude = transform.abs()
     largest = magnitude.amax(dim=(-2, -1), keepdim=True)
     smallest = magnitude.masked_fill(magnitude == 0, float("inf")).amin(dim=(-2, -1), keepdim=True)
     scale = largest.sqrt() * smallest.sqrt()
-    transform = transform / torch.where((h22.abs() > 8 * eps * h22_rounding) & fits, h22, scale)
+    transform = transform / torch.where(fits, h22, scale)
     return transform.to(dtype)
 
 
@@ -1032,11 +1035,13 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
         - points: ``(x, y)``, pixel centers, origin at top-left; shape ``(B, 4, 2)``
         - a degenerate quadrilateral, such as one with three collinear points or two equal ones, does not raise: a
           degenerate source returns a non-finite matrix, a degenerate destination a non-finite or a singular one
-        - ``M`` is scaled to ``M[2, 2] = 1`` where that form exists and fits the output dtype. A homography whose
-          bottom-right entry is zero up to rounding, such as one that sends source pixel ``(0, 0)`` to infinity, has
-          no such form although neither quadrilateral is degenerate, and one whose ``M[2, 2] = 1`` form overflows the
-          dtype, such as a float16 one with entries beyond ``65504``, is divided instead by the geometric mean of its
-          largest and smallest nonzero magnitudes, which keeps both in range;
+        - ``M`` is scaled to ``M[2, 2] = 1`` wherever that form is finite in the output dtype. Where it is not,
+          because the computed bottom-right entry is exactly zero, as for some homographies that send source pixel
+          ``(0, 0)`` to infinity although neither quadrilateral is degenerate, or because the form overflows the dtype,
+          such as a float16 one with entries beyond ``65504``, ``M`` is divided instead by the geometric mean of its
+          largest and smallest nonzero magnitudes, which keeps both in range where the dtype can hold their ratio.
+          When the true bottom-right entry is zero but rounding leaves a small residue, ``M[2, 2] = 1`` holds and the
+          other entries are large, about the inverse of that residue; the matrix still maps the points.
           :func:`~kornia.geometry.homography.find_homography_dlt` returns the same map at another scale
         - float16 and bfloat16 points are solved in float32, and the result is cast back to their dtype
         - integer or boolean points give a matrix in the default floating dtype; floating points keep theirs
