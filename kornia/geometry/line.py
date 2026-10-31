@@ -282,8 +282,8 @@ class ParametrizedLine(nn.Module):
             - lambda, the line parameter of the intersection in units of the stored direction: ``()`` for one line
               and one plane, ``(B,)`` for the broadcast batch, and ``(1,)`` for one unbatched line with a batch of
               one plane.
-            - the intersection point ``point_at(lambda)``: ``(3,)``, or ``(B, 3)`` for a batch of lines; see the
-              class conventions for one unbatched line with a batch of planes.
+            - the intersection point ``point_at(lambda)``: ``(3,)`` for one unbatched line, and ``(B, 3)`` for the
+              broadcast batch; see the class conventions for one unbatched line with a batch of planes.
 
         Note:
             If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique

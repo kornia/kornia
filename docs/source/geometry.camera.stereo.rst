@@ -9,7 +9,9 @@ Stereo Camera
 :class:`StereoCamera` takes the two rectified projection matrices of a horizontal stereo rig and reprojects a
 channels-last ``(B, H, W, 1)`` disparity map to ``(B, H, W, 3)`` points in the left rectified camera frame;
 :func:`reproject_disparity_to_3D` does the same from a ``Q`` matrix, as ``cv2.reprojectImageTo3D`` does. Both raise
-:class:`StereoException` for an invalid rig or input. For a depth map rather than points, use
+:class:`StereoException` for the invalid rigs, disparity maps and ``Q`` matrices its docstring lists. A rig or ``Q``
+batch that is neither 1 nor the disparity batch raises ``ValueError``, and left and right matrices with different batch
+sizes, other than a right batch of 1, raise ``RuntimeError``. For a depth map rather than points, use
 :func:`~kornia.geometry.depth.depth_from_disparity`.
 
 The horizontal stereo camera setup is assumed to be calibrated and rectified such that the setup can be described by two camera matrices:

@@ -404,8 +404,8 @@ def bbox_to_mask(
     ``(B, H, W)`` masks in the dtype of ``boxes``: ``1`` on each pixel ``(x, y)`` with ``xmin <= x <= xmax`` and
     ``ymin <= y <= ymax``, read from the top-left and bottom-right corners, and ``0`` elsewhere, with no gradient path.
     The bounds are compared inclusively and unrounded, and a box partly outside the image fills only its part inside.
-    For several boxes per image, use :meth:`~kornia.geometry.boxes.Boxes.to_mask`, which returns ``(B, N, H, W)``; for
-    volumes, :func:`bbox_to_mask3d`.
+    For several boxes per image, use :meth:`~kornia.geometry.boxes.Boxes.to_mask`, which returns ``(N, H, W)`` for
+    unbatched boxes and ``(B, N, H, W)`` for batched ones; for volumes, :func:`bbox_to_mask3d`.
 
     Convention:
         The size is ``size=(height, width)``, as for :func:`bbox_to_mask3d` and
@@ -439,8 +439,8 @@ def bbox_to_mask(
     See Also:
         - :func:`bbox_to_mask3d`: the 3D form, ``(B, 1, D, H, W)`` masks of ``(B, 8, 3)`` corners, whose bounds are
           truncated toward zero.
-        - :meth:`~kornia.geometry.boxes.Boxes.to_mask`: ``(B, N, H, W)`` masks of several boxes per image, filled over
-          the rounded exclusive bounds.
+        - :meth:`~kornia.geometry.boxes.Boxes.to_mask`: masks of several boxes per image, ``(N, H, W)`` for unbatched
+          boxes and ``(B, N, H, W)`` for batched ones, filled over the rounded exclusive bounds.
         - :func:`infer_bbox_shape`: the inclusive height and width of the same corners.
 
     Note:
@@ -526,9 +526,10 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     Convention:
         ``size`` is ``(depth, height, width)`` and the mask ``(B, 1, depth, height, width)`` in the input
         dtype, with a channel axis that :func:`bbox_to_mask` does not have
-        (:meth:`kornia.geometry.boxes.Boxes3D.to_mask` returns ``(N, depth, height, width)``). The bounds are
-        truncated toward zero and compared inclusively: pass the ``'vertices_plus'`` export. ``(B, N, 8, 3)`` input
-        raises :class:`~kornia.core.exceptions.ShapeError`.
+        (:meth:`kornia.geometry.boxes.Boxes3D.to_mask` returns ``(N, depth, height, width)`` for unbatched boxes and
+        ``(B, N, depth, height, width)`` for batched ones). The bounds are truncated toward zero and compared
+        inclusively: pass the ``'vertices_plus'`` export. ``(B, N, 8, 3)`` input raises
+        :class:`~kornia.core.exceptions.ShapeError`.
 
     .. warning::
         For fractional coordinates the truncation differs from :func:`bbox_to_mask` and
@@ -549,8 +550,8 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     See Also:
         - :func:`bbox_to_mask`: the 2D form, ``(B, H, W)`` masks of ``(B, 4, 2)`` corners with no channel axis, whose
           bounds are compared unrounded.
-        - :meth:`~kornia.geometry.boxes.Boxes3D.to_mask`: ``(B, N, D, H, W)`` masks of several boxes per volume,
-          filled over the rounded exclusive bounds.
+        - :meth:`~kornia.geometry.boxes.Boxes3D.to_mask`: masks of several boxes per volume, ``(N, D, H, W)`` for
+          unbatched boxes and ``(B, N, D, H, W)`` for batched ones, filled over the rounded exclusive bounds.
         - :func:`infer_bbox_shape3d`: the inclusive depth, height and width of the same corners.
 
     Examples:

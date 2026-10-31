@@ -33,8 +33,9 @@ Which subpackage to use:
   conventions: ``conversions``.
 - Apply a homogeneous ``(D + 1, D + 1)`` transformation to points; compose, invert or relate ``4 x 4``
   transformations; distances of points to points and lines: ``linalg``. Grids of pixel coordinates: ``grid``.
-- Camera models, and the projection and unprojection of points: ``camera``
-  (:class:`~kornia.geometry.camera.pinhole.PinholeCamera`); lens distortion and pose from 2D-3D correspondences:
+- Camera models, the projection and unprojection of points, and the Kannala-Brandt fisheye and affine distortion
+  models on normalized points: ``camera`` (:class:`~kornia.geometry.camera.pinhole.PinholeCamera`); OpenCV
+  (Brown-Conrady) lens distortion and undistortion of pixels and images, and pose from 2D-3D correspondences:
   ``calibration``.
 - 3D points and surface normals from depth maps, and images warped by depth: ``depth``.
 - Two-view geometry, fundamental and essential matrices, relative pose and triangulation: ``epipolar``;

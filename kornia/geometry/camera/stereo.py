@@ -28,7 +28,9 @@ Which function to use:
   :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` returns points in the left
   rectified camera frame.
 - A ``(B, 4, 4)`` ``Q`` matrix from elsewhere: :func:`reproject_disparity_to_3D`.
-- The error both raise for an invalid rig, disparity map or ``Q``: :class:`StereoException`.
+- The error both raise for the invalid rigs, disparity maps and ``Q`` matrices its docstring lists:
+  :class:`StereoException`. A rig or ``Q`` batch that is neither 1 nor the disparity batch raises ``ValueError``,
+  and left and right matrices with different batch sizes, other than a right batch of 1, raise ``RuntimeError``.
 - A depth map instead of points: :func:`~kornia.geometry.depth.depth_from_disparity`.
 """
 
@@ -52,7 +54,8 @@ class StereoException(Exception):
     baseline that is zero or points the wrong way; :func:`reproject_disparity_to_3D` raises it for a disparity map
     or ``Q`` of the wrong type, shape or dtype. It derives from :class:`Exception` directly, so
     ``except ValueError`` does not catch it; a ``Q`` batch that is neither 1 nor the disparity batch raises
-    :class:`ValueError` instead.
+    :class:`ValueError` instead. Left and right projection matrices with different batch sizes, other than a right
+    batch of 1, raise a plain :class:`RuntimeError` from the constructor, not this exception.
 
     See Also:
         - :class:`StereoCamera`: the rig whose constructor checks raise it.
@@ -113,10 +116,13 @@ class StereoCamera:
           match the disparity batch, else :class:`ValueError`.
         - pixel centres are integers; see the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
-        - the constructor raises :class:`StereoException` for an invalid rig, and the method for a disparity map
-          that is not a floating ``(B, H, W, 1)`` tensor. An integer rig is accepted by the constructor, but its
-          ``Q`` is integer too, so every call of the method then raises
-          (`#6471 <https://github.com/kornia/kornia/issues/6471>`_).
+        - the constructor raises :class:`StereoException` for a matrix that is not ``(B, 3, 4)``, for matrices on
+          different devices or with different dtypes and, outside graph capture, for different intrinsics or a
+          zero or reversed baseline. Left and right matrices with different batch sizes raise a plain
+          :class:`RuntimeError` instead, except a right batch of 1, which is paired with every left matrix. The
+          method raises :class:`StereoException` for a disparity map that is not a floating ``(B, H, W, 1)``
+          tensor. An integer rig is accepted by the constructor, but its ``Q`` is integer too, so every call of the
+          method then raises (`#6471 <https://github.com/kornia/kornia/issues/6471>`_).
 
     .. warning::
         A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that

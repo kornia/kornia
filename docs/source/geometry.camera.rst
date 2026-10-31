@@ -6,24 +6,22 @@ kornia.geometry.camera
 
 .. currentmodule:: kornia.geometry.camera
 
-Camera models that map 3D points to pixels and back. Points are in the camera frame, +X right, +Y down and +Z
-forward, and pixels are ``(u, v)`` = (column, row) with integer pixel centres; :doc:`get-started/camera-conventions`
-compares these conventions with other libraries. This page holds the building blocks of a camera model, which take
-image-plane coordinates before the intrinsics (normalized ``z = 1`` coordinates for a perspective camera) and flat
-parameter vectors: a projection to the image plane, then the intrinsics, with or without a fisheye distortion. For
-pixels from a ``3x3`` ``K`` in one call, see
-:doc:`perspective <geometry.camera.perspective>`; for cameras with extrinsics, :doc:`pinhole <geometry.camera.pinhole>`;
-for a rectified stereo rig, :doc:`stereo camera <geometry.camera.stereo>`; for OpenCV's Brown-Conrady distortion of
-pixel coordinates, :doc:`geometry.calibration`.
+Camera models that map 3D points to pixels and back. Points are in the camera frame, +X right, +Y down and +Z forward,
+and pixels are ``(u, v)`` = (column, row) with integer pixel centres; :doc:`get-started/camera-conventions` compares
+these conventions with other libraries. This page holds the building blocks of a camera model, which take image-plane
+coordinates before the intrinsics (normalized ``z = 1`` coordinates for a perspective camera) and flat parameter
+vectors: a projection to the image plane, then the intrinsics, with or without a fisheye distortion. For pixels from a
+``3x3`` ``K`` in one call, see :doc:`perspective <geometry.camera.perspective>`; for cameras with extrinsics,
+:doc:`pinhole <geometry.camera.pinhole>`; for a rectified stereo rig, :doc:`stereo camera <geometry.camera.stereo>`; for
+OpenCV's Brown-Conrady distortion of pixel coordinates, :doc:`geometry.calibration`.
 
 Projections
 -----------
 
-Camera-frame points to the image plane and back, without intrinsics: :func:`project_points_z1` divides by ``z``,
-onto the normalized ``z = 1`` plane (perspective), and :func:`project_points_orthographic` drops it.
-:func:`dx_project_points_z1` returns the
-``(..., 2, 3)`` Jacobian of the perspective projection, and :func:`dx_project_points_orthographic` the derivative
-``du/dx`` alone.
+Camera-frame points to the image plane and back, without intrinsics: :func:`project_points_z1` divides by ``z``, onto
+the normalized ``z = 1`` plane (perspective), and :func:`project_points_orthographic` drops it.
+:func:`dx_project_points_z1` returns the ``(..., 2, 3)`` Jacobian of the perspective projection, and
+:func:`dx_project_points_orthographic` the derivative ``du/dx`` alone.
 
 .. autofunction:: project_points_z1
 .. autofunction:: unproject_points_z1

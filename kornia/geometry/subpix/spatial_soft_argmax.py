@@ -974,10 +974,10 @@ def conv_quad_interp3d(
     iteration loop that follows contains **no data-dependent Python control flow**
     and no GPU→CPU synchronisation. Finding the maxima and their neighbourhoods,
     with ``torch.where`` on the mask and boolean indexing, does depend on the data:
-    on CUDA it synchronises with the host, and ``torch.compile`` breaks the graph
-    there unless ``torch._dynamo.config.capture_dynamic_output_shape_ops`` is
+    on CUDA it synchronises with the host, and a default ``torch.compile`` breaks
+    the graph there; with ``torch._dynamo.config.capture_dynamic_output_shape_ops``
     enabled, as :class:`~kornia.feature.ScaleSpaceDetector` does when it compiles
-    its subpix module.
+    its subpix module, it is captured in one graph.
 
     The ``dilation_radius`` controls the precompute footprint and should be set
     to the maximum number of integer-centre moves expected per keypoint.  With the
