@@ -32,10 +32,16 @@ from kornia.feature.matching import (
     DescriptorMatcherWithSteerer,
     GeometryAwareDescriptorMatcher,
     _cdist,
+    _distance_from_squared,
     _first_to_second_nearest_ratio,
+    _key_to_squared,
     _min_over_rows,
     _nearest_neighbour_ratio,
     _nearest_neighbour_ratio_over_rows,
+    _ratio_from_keys,
+    _squared_distances,
+    _topk_order_key_,
+    _two_smallest_,
     match_adalam,
     match_fginn,
     match_mnn,
@@ -1342,6 +1348,141 @@ class TestCDist(BaseTester):
         self.assert_close(actual, expected.to(dtype).to(device))
         for actual_grad, expected_grad in zip(actual_grads, expected_grads):
             self.assert_close(actual_grad, expected_grad.to(dtype).to(device))
+
+
+def _squared_path_sizes(device):
+    """Descriptor counts just above the device's threshold of the squared-distance path, unequal on purpose."""
+    return (2100, 2050) if device.type == "cuda" else (300, 280)
+
+
+def _descriptors_for_the_squared_path(device, dtype, swap=False, nonfinite=False):
+    """Unit descriptors of which the first half are noisy copies, with duplicated rows, and with ``nonfinite``, rows
+    holding nan and infinities: a nan distance is the minimum of torch.min, so it is every row's match_nn."""
+    n1, n2 = _squared_path_sizes(device)
+    gen = torch.Generator().manual_seed(0)
+    desc1 = torch.randn(n1, 32, generator=gen, dtype=torch.float64)
+    copies = n2 // 2
+    noise = 0.05 * torch.randn(copies, 32, generator=gen, dtype=torch.float64)
+    desc2 = torch.cat([desc1[:copies] + noise, torch.randn(n2 - copies, 32, generator=gen, dtype=torch.float64)])
+    desc1, desc2 = (torch.nn.functional.normalize(d, dim=1).to(device, dtype) for d in (desc1, desc2))
+    desc2[copies + 1] = desc2[copies + 2] = desc1[copies + 3]  # a nearest neighbour tied with a duplicate
+    if nonfinite:
+        desc1[5] = float("nan")
+        desc1[7, 3] = float("inf")
+        desc2[11, 0] = -float("inf")
+        desc2[13] = float("nan")
+    return (desc2, desc1) if swap else (desc1, desc2)
+
+
+def _without_the_squared_path(monkeypatch, fn, *args):
+    """``fn(*args)`` along the path of ``torch.cdist``'s matrix, which the matchers took before the squared path."""
+    with monkeypatch.context() as patch:
+        patch.setattr(matching, "_squared_distances", lambda *_args, **_kwargs: None)
+        return fn(*args)
+
+
+class TestSquaredDistanceMatching(BaseTester):
+    """match_nn, match_mnn, match_snn and match_smnn select on squared distances on the CPU and CUDA."""
+
+    @staticmethod
+    def _skip_unless_squared_path(device, dtype):
+        if device.type not in ("cpu", "cuda") or dtype not in (torch.float32, torch.float64):
+            pytest.skip("The squared-distance path runs for float32 and float64 on the CPU and CUDA.")
+
+    def test_square_roots_are_the_cdist_matrix(self, device, dtype):
+        self._skip_unless_squared_path(device, dtype)
+        desc1, desc2 = _descriptors_for_the_squared_path(device, dtype)
+        squared = _squared_distances(desc1, desc2)
+        assert squared is not None
+        _assert_bitwise_equal(_distance_from_squared(squared), torch.cdist(desc1, desc2))
+
+    @pytest.mark.parametrize("nonfinite", [False, True])
+    @pytest.mark.parametrize("swap", [False, True])
+    @pytest.mark.parametrize("match", [match_nn, match_mnn, match_snn, match_smnn])
+    def test_same_bits_as_the_cdist_matrix(self, device, dtype, match, swap, nonfinite, monkeypatch):
+        self._skip_unless_squared_path(device, dtype)
+        desc1, desc2 = _descriptors_for_the_squared_path(device, dtype, swap, nonfinite)
+        assert _squared_distances(desc1, desc2) is not None
+        dists, idxs = match(desc1, desc2)
+        expected_dists, expected_idxs = _without_the_squared_path(monkeypatch, match, desc1, desc2)
+        _assert_bitwise_equal(dists, expected_dists)
+        assert torch.equal(idxs, expected_idxs)
+        assert len(idxs) > 0
+
+    def test_returns_the_nearer_of_distances_tied_by_the_square_root(self, device, monkeypatch):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("The squared-distance path runs on the CPU and CUDA.")
+        # 2 ** 24 + 2 > 2 ** 24, but both square roots round to 4096 in float32: torch.cdist's matrix ties them, and
+        # torch.min returns the first, while the squared distances tell the second is nearer.
+        squared = torch.tensor([[2.0**24 + 2, 2.0**24, 1e8]], device=device)
+        assert torch.equal(_distance_from_squared(squared)[0, 0], _distance_from_squared(squared)[0, 1])
+        desc1, desc2 = torch.zeros(1, 4, device=device), torch.zeros(3, 4, device=device)
+        monkeypatch.setattr(matching, "_squared_distances", lambda *_args, **_kwargs: squared.clone())
+        dists, idxs = match_nn(desc1, desc2)
+        assert idxs.tolist() == [[0, 1]]
+        assert dists.tolist() == [[4096.0]]
+
+    def test_two_smallest_are_those_of_topk(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("The squared-distance path runs for float32 and float64.")
+        distances = _distances_with_ties_and_nonfinite(40, 30, device, dtype)
+        for dim in (0, 1):
+            key = _topk_order_key_(distances.clone())
+            assert not torch.isnan(key).any()
+            unchanged = key.clone()
+            first, second, index = _two_smallest_(key, dim)
+            assert torch.equal(key, unchanged)
+            values, indices = torch.topk(distances, 2, dim=dim, largest=False)
+            nearest, second_nearest = values.select(dim, 0), values.select(dim, 1)
+            for actual, expected in ((_key_to_squared(first), nearest), (_key_to_squared(second), second_nearest)):
+                assert torch.equal(torch.isnan(actual), torch.isnan(expected))
+                assert torch.equal(actual.nan_to_num(0.0), expected.nan_to_num(0.0))
+            ratio = _ratio_from_keys(first, second)
+            expected_ratio = _distance_from_squared(nearest) / _distance_from_squared(second_nearest)
+            assert torch.equal(torch.isnan(ratio), torch.isnan(expected_ratio))
+            assert torch.equal(ratio.nan_to_num(0.0), expected_ratio.nan_to_num(0.0))
+            # torch.topk orders no ties: compare the nearest index where the smallest entry is unique
+            unique = (distances == nearest.unsqueeze(dim)).sum(dim) == 1
+            assert torch.equal(index[unique], indices.select(dim, 0)[unique])
+
+    def test_keeps_the_cdist_matrix_where_the_squared_path_does_not_apply(self, device, monkeypatch):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("The squared-distance path runs on the CPU and CUDA.")
+        desc1, desc2 = _descriptors_for_the_squared_path(device, torch.float32)
+        assert _squared_distances(desc1, desc2) is not None
+        assert _squared_distances(desc1, desc2, torch.cdist(desc1, desc2)) is None
+        assert _squared_distances(desc1[:200], desc2[:200]) is None  # below the device's threshold
+        assert _squared_distances(desc1.half(), desc2.half()) is None
+        assert _squared_distances(desc1, desc2.double()) is None
+        assert _squared_distances(desc1.requires_grad_(), desc2) is None
+        with torch.no_grad():
+            assert _squared_distances(desc1, desc2) is not None
+        desc1 = desc1.detach()
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
+            assert _squared_distances(desc1, desc2) is None
+        with monkeypatch.context() as patch:
+            patch.setattr(matching, "is_exporting", lambda: True)
+            assert _squared_distances(desc1, desc2) is None
+        with monkeypatch.context() as patch:
+            patch.setattr(torch.jit, "is_tracing", lambda: True)
+            assert _squared_distances(desc1, desc2) is None
+
+    @pytest.mark.parametrize("match", [match_mnn, match_snn, match_smnn])
+    def test_waits_for_the_device_once(self, device, match):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        desc1, desc2 = _descriptors_for_the_squared_path(device, torch.float32)
+        assert _squared_distances(desc1, desc2) is not None
+        assert _host_synchronizations(match, desc1, desc2) == 1
+
+    @pytest.mark.parametrize("match", [match_nn, match_mnn, match_snn, match_smnn])
+    def test_dynamo(self, device, dtype, torch_optimizer, match):
+        self._skip_unless_squared_path(device, dtype)
+        desc1, desc2 = _descriptors_for_the_squared_path(device, dtype)
+        dists, idxs = torch_optimizer(match)(desc1, desc2)
+        expected_dists, expected_idxs = match(desc1, desc2)
+        self.assert_close(dists, expected_dists)
+        self.assert_close(idxs, expected_idxs)
 
 
 class TestMatchSMNNBatched(BaseTester):
