@@ -191,6 +191,105 @@ class _SmokeTestData:
 class TestStereoCamera(BaseTester):
     """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
 
+    @pytest.mark.parametrize(
+        "camera_dtype,fx,fy,translation",
+        [
+            (torch.int8, 100, 120, -50),
+            (torch.int8, 100, 120, -128),
+            (torch.int16, 500, 600, -50),
+            (torch.int32, 500, 600, -50),
+            (torch.int64, 100, 120, -50),
+        ],
+    )
+    @pytest.mark.parametrize("batch_size", [0, 1, 2])
+    def test_integer_camera_reprojection_6471(self, device, dtype, camera_dtype, fx, fy, translation, batch_size):
+        left = torch.tensor([[[fx, 0, 3, 0], [0, fy, 2, 0], [0, 0, 1, 0]]], device=device, dtype=camera_dtype).expand(
+            batch_size, -1, -1
+        )
+        right = left.clone()
+        right[:, 0, 3] = translation
+        original_left, original_right = left.clone(), right.clone()
+        camera = StereoCamera(left, right)
+        reference = StereoCamera(left.to(torch.get_default_dtype()), right.to(torch.get_default_dtype()))
+
+        assert camera.rectified_left_camera is left
+        assert camera.rectified_right_camera is right
+        assert camera.dtype == camera_dtype
+        assert camera.device == device
+        assert torch.equal(left, original_left)
+        assert torch.equal(right, original_right)
+        for name, expected in (
+            ("fx", left[:, 0, 0]),
+            ("fy", left[:, 1, 1]),
+            ("cx_left", left[:, 0, 2]),
+            ("cx_right", right[:, 0, 2]),
+            ("cy", left[:, 1, 2]),
+            ("tx", -right[:, 0, 3] / left[:, 0, 0]),
+        ):
+            self.assert_close(getattr(camera, name), expected)
+        assert camera.Q.dtype == torch.get_default_dtype()
+        assert camera.Q.device == device
+        assert camera.Q.shape == (batch_size, 4, 4)
+        self.assert_close(camera.Q, reference.Q)
+
+        disparity = torch.arange(1, 7, device=device, dtype=dtype).reshape(1, 2, 3, 1).expand(batch_size, -1, -1, -1)
+        points, valid = camera.reproject_disparity_to_3D(disparity, return_mask=True)
+        # Pinhole geometry: Z = -P_right[0, 3] / d, X = (u-cx) Z/fx, Y = (v-cy) Z/fy.
+        depth = -translation / disparity[..., 0]
+        u = torch.arange(3, device=device, dtype=dtype).reshape(1, 1, 3)
+        v = torch.arange(2, device=device, dtype=dtype).reshape(1, 2, 1)
+        expected = torch.stack(((u - 3) * depth / fx, (v - 2) * depth / fy, depth), dim=-1)
+        assert points.shape == (batch_size, 2, 3, 3)
+        assert points.dtype == dtype
+        assert points.device == device
+        self.assert_close(points, expected)
+        assert torch.equal(points, camera.reproject_disparity_to_3D(disparity))
+        assert valid.shape == disparity.shape
+        assert valid.dtype == torch.bool
+        assert valid.device == device
+        assert valid.all()
+        _, zero_valid = camera.reproject_disparity_to_3D(torch.zeros_like(disparity), return_mask=True)
+        assert not zero_valid.any()
+
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_integer_camera_default_dtype_6471(self, device, default_dtype):
+        if device.type == "mps" and default_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        previous_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            camera = self._asymmetric_stereo(device, torch.int64)
+            reference = self._asymmetric_stereo(device, default_dtype)
+            assert camera.Q.dtype == default_dtype
+            assert torch.get_default_dtype() == default_dtype
+            self.assert_close(camera.Q, reference.Q)
+        finally:
+            torch.set_default_dtype(previous_dtype)
+
+    @pytest.mark.parametrize("output", ["Q", "points"])
+    def test_camera_gradcheck(self, device, output):
+        camera = self._asymmetric_stereo(device, torch.float64)
+        disparity = torch.full((1, 2, 3, 1), 10.0, device=device, dtype=torch.float64)
+
+        def op(left, translation, disparity):
+            right = left.clone()
+            right[:, 0, 3] = translation
+            rig = StereoCamera(left, right)
+            return rig.Q if output == "Q" else rig.reproject_disparity_to_3D(disparity)
+
+        self.gradcheck(op, (camera.rectified_left_camera, camera.rectified_right_camera[:, 0, 3], disparity))
+
+    @pytest.mark.parametrize("camera_dtype", [torch.int8, torch.int64])
+    def test_dynamo_integer_camera_6471(self, device, dtype, torch_optimizer, camera_dtype):
+        camera = self._asymmetric_stereo(device, camera_dtype)
+        disparity = torch.full((1, 2, 3, 1), 10.0, device=device, dtype=dtype)
+
+        def op(left, right, disparity):
+            return StereoCamera(left, right).reproject_disparity_to_3D(disparity)
+
+        inputs = (camera.rectified_left_camera, camera.rectified_right_camera, disparity)
+        self.assert_close(torch_optimizer(op)(*inputs), op(*inputs))
+
     @pytest.mark.parametrize("camera_index", [0, 1])
     @pytest.mark.parametrize("shape", [(3, 3), (4, 4), (3, 5)])
     def test_exception_invalid_camera_shape(self, batch_size, device, dtype, camera_index, shape):
@@ -423,6 +522,8 @@ class TestStereoCamera(BaseTester):
         # row that scales the first output coordinate carries fy, so the fy = 50 arm fails a reading with fx
         # there. Q[3, 3] = fy * (cx_left - cx_right) is always 0 (#4270, below).
         cam = self._asymmetric_stereo(device, dtype)
+        assert cam.Q.dtype == dtype
+        assert cam.Q.device == device
         self.assert_close(cam.tx, torch.tensor([0.5], device=device, dtype=dtype))
         self.assert_close(cam.tx, -cam.rectified_right_camera[..., 0, 3] / cam.fx)
         symmetric_q = torch.tensor(
