@@ -679,24 +679,39 @@ class XFeat(nn.Module):
         img2: torch.Tensor,
         top_k: Optional[int] = None,
         min_cossim: float = -1,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Detect, describe and mutually match keypoints from two images.
+    ) -> List[torch.Tensor] | Tuple[torch.Tensor, torch.Tensor]:
+        """Detect, describe and mutually match keypoints from two batches of images.
+
+        Pair ``b`` is image ``b`` of ``img1`` with image ``b`` of ``img2``. Each batch goes through
+        :meth:`detectAndCompute` in one call, and then the descriptors of each pair are matched on their own by
+        mutual nearest neighbour.
 
         Args:
-            img1: first image tensor of shape ``(1, C, H, W)``.
-            img2: second image tensor of shape ``(1, C, H, W)``.
+            img1: first images ``(B, C, H, W)``.
+            img2: second images ``(B, C, H, W)``, with the same ``B`` as ``img1``.
             top_k: number of top keypoints to use.
             min_cossim: minimum cosine similarity threshold. Use ``-1`` to disable.
 
         Returns:
-            Tuple ``(mkpts0, mkpts1)`` of matched keypoints, each ``(N, 2)``.
+            If ``B != 1``: list of ``(N, 4)`` tensors with ``(x1, y1, x2, y2)`` matches, one per pair; an empty
+            batch gives an empty list.
+            If ``B == 1``: tuple ``(mkpts0, mkpts1)`` of matched keypoints, each ``(N, 2)``.
+
+        See Also:
+            :meth:`match_xfeat_star`: the dense, refined variant, with the same return convention.
         """
+        KORNIA_CHECK(img1.shape[0] == img2.shape[0], "img1 and img2 must hold the same number of images")
         if top_k is None:
             top_k = self.top_k
-        out1 = self.detectAndCompute(img1, top_k=top_k)[0]
-        out2 = self.detectAndCompute(img2, top_k=top_k)[0]
-        idx0, idx1 = self._match_mnn(out1["descriptors"], out2["descriptors"], min_cossim=min_cossim)
-        return out1["keypoints"][idx0], out2["keypoints"][idx1]
+        out1 = self.detectAndCompute(img1, top_k=top_k)
+        out2 = self.detectAndCompute(img2, top_k=top_k)
+        pairs = []
+        for f1, f2 in zip(out1, out2):
+            idx0, idx1 = self._match_mnn(f1["descriptors"], f2["descriptors"], min_cossim=min_cossim)
+            pairs.append((f1["keypoints"][idx0], f2["keypoints"][idx1]))
+        if len(pairs) != 1:
+            return [torch.cat(pair, dim=-1) for pair in pairs]
+        return pairs[0]
 
     @torch.inference_mode()
     def match_xfeat_star(
