@@ -6,7 +6,12 @@ kornia.geometry.calibration
 
 .. currentmodule:: kornia.geometry.calibration
 
-Module with useful functionalities for camera calibration.
+Lens distortion of pixel coordinates with OpenCV's Brown-Conrady model, whose coefficient vector has 4, 5, 8, 12 or
+14 elements, and camera pose from 3D-2D correspondences. :func:`distort_points` adds the distortion to ideal pixels,
+:func:`undistort_points` removes it from measured pixels and :func:`undistort_image` from a whole image,
+:func:`tilt_projection` builds the sensor-tilt step of the last two coefficients, and :func:`solve_pnp_dlt`
+estimates a world-to-camera pose. For the Kannala-Brandt fisheye model, on normalized points, see
+:doc:`geometry.camera`. The model these functions share is derived below.
 
 The pinhole model is an ideal projection model that does not consider lens distortion when projecting a 3D point :math:`(X, Y, Z)` onto the image plane. To model the distortion of a 2D pixel point :math:`(u,v)` projected with the linear pinhole model, we first need to estimate the normalized 2D point coordinates :math:`(\bar{u}, \bar{v})`. For that, we can use the calibration matrix :math:`\mathbf{K}` with the following expression
 

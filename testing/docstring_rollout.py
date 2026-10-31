@@ -53,6 +53,9 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 """Top-level packages left out of the rollout, with the reason."""
 
 CATALOG_NAMESPACES: tuple[str, ...] = (
+    "kornia.geometry.calibration",
+    "kornia.geometry.camera",
+    "kornia.geometry.camera.stereo",
     "kornia.geometry.conversions",
     "kornia.geometry.depth",
     "kornia.geometry.epipolar",
@@ -74,6 +77,8 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
 DOCSTRING_MODULES: tuple[str, ...] = (
+    "kornia.geometry.calibration",
+    "kornia.geometry.camera",
     "kornia.geometry.conversions",
     "kornia.geometry.depth",
     "kornia.geometry.epipolar",

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Estimate a camera's world-to-camera pose from 3D-2D correspondences by the direct linear transform (PnP)."""
+
 from typing import Optional, Tuple
 
 import torch
@@ -72,16 +74,15 @@ def solve_pnp_dlt(
     weights: Optional[torch.Tensor] = None,
     svd_eps: float = 1e-4,
 ) -> torch.Tensor:
-    r"""Attempt to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
+    r"""Estimate a camera's world-to-camera pose from 3D-2D correspondences by the DLT (PnP).
 
-    Given a batch (where batch size is :math:`B`) of :math:`N` 3D points
-    (where :math:`N \geq 6`) in the world space, a batch of :math:`N`
-    corresponding 2D points in the image space and a batch of
-    intrinsic matrices, this function tries to estimate a batch of
-    world to camera transformation matrices.
-
-    This implementation needs at least 6 points (i.e. :math:`N \geq 6`) to
-    provide solutions.
+    ``Rt = solve_pnp_dlt(world_points, img_points, K)`` takes ``B`` sets of :math:`N \geq 6` world points
+    ``(B, N, 3)``, their pixels ``(B, N, 2)`` and the intrinsics ``(B, 3, 3)``, and returns the world-to-camera
+    extrinsics ``[R | t]`` of each set, ``(B, 3, 4)``: the Hartley-normalized, optionally weighted, linear
+    (Direct Linear Transform) solution of the Perspective-n-Point problem, with ``R`` made orthonormal by a QR step.
+    It is not robust to outliers and does not refine the pose nonlinearly. For 2D-2D correspondences of a plane,
+    use :func:`~kornia.geometry.homography.find_homography_dlt`; for two views with no known 3D points,
+    :func:`~kornia.geometry.epipolar.find_essential`.
 
     This function cannot be used if all the 3D world points (of any element
     of the batch) lie on a line or if all the 3D world points (of any element
@@ -96,8 +97,8 @@ def solve_pnp_dlt(
         - the returned ``(B, 3, 4)`` matrix is the **world-to-camera** ``[R | t]``: it maps a world point
           into the camera frame (``X_cam = X_world + (1, 0, 0)`` gives ``t = (+1, 0, 0)``), not a
           camera-to-world pose.
-        - ``intrinsics`` is the ``(B, 3, 3)`` ``K``; the ``(B, 4, 4)`` matrix that a
-          ``PinholeCamera`` stores is rejected.
+        - ``intrinsics`` is the ``(B, 3, 3)`` ``K``, or a ``(1, 3, 3)`` ``K`` shared by the batch; the
+          ``(B, 4, 4)`` matrix that a :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores is rejected.
         - ``weights`` scales the two rows each point contributes to the homogeneous linear system, and the
           normalization and the degeneracy check use the same weighting. A uniform ``weights`` leaves the answer
           unchanged up to rounding, and a zero weight is the same as removing the point.
@@ -120,6 +121,16 @@ def solve_pnp_dlt(
     Returns:
         A torch.Tensor with shape ``(B, 3, 4)`` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
+
+    See Also:
+        - :func:`~kornia.geometry.homography.find_homography_dlt`: the DLT for 2D-2D correspondences, a homography
+          rather than a pose.
+        - :func:`~kornia.geometry.epipolar.find_essential`: the relative pose of two views from 2D-2D
+          correspondences, without 3D points.
+        - :func:`~kornia.geometry.epipolar.projection_from_KRt`: the ``(B, 3, 4)`` projection matrix
+          ``K [R | t]`` of the result.
+        - :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: a camera model that takes the result, padded to
+          ``(B, 4, 4)``, as its extrinsics.
 
     Example:
         >>> world_points = torch.tensor([[

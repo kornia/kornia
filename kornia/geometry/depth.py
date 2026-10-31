@@ -201,6 +201,7 @@ def depth_to_3d_v2(
         - :func:`depth_to_3d`: the same points channels first, ``(B, 3, H, W)``.
         - :func:`unproject_meshgrid`: the per-pixel rays to pass as ``xyz_grid``.
         - :func:`depth_to_normals`: per-pixel surface normals, from a ``(B, 1, H, W)`` depth.
+        - :func:`~kornia.geometry.camera.perspective.unproject_points`: the camera-frame point of selected pixels.
 
     Example:
         >>> depth = torch.rand(4, 4)

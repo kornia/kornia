@@ -6,7 +6,11 @@ Stereo Camera
 
 .. currentmodule:: kornia.geometry.camera.stereo
 
-This module provides the :class:`StereoCamera` class, which contains functionality for working with a horizontal stereo camera setup.
+:class:`StereoCamera` takes the two rectified projection matrices of a horizontal stereo rig and reprojects a
+channels-last ``(B, H, W, 1)`` disparity map to ``(B, H, W, 3)`` points in the left rectified camera frame;
+:func:`reproject_disparity_to_3D` does the same from a ``Q`` matrix, as ``cv2.reprojectImageTo3D`` does. Both raise
+:class:`StereoException` for an invalid rig or input. For a depth map rather than points, use
+:func:`~kornia.geometry.depth.depth_from_disparity`.
 
 The horizontal stereo camera setup is assumed to be calibrated and rectified such that the setup can be described by two camera matrices:
 
@@ -180,3 +184,6 @@ scope, and coordinate and gradient behavior.
     .. automethod:: __init__
 
 .. autofunction:: reproject_disparity_to_3D
+
+.. autoexception:: StereoException
+    :show-inheritance:

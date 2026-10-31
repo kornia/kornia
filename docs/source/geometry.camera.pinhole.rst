@@ -6,7 +6,10 @@ Pinhole Camera
 
 .. currentmodule:: kornia.geometry.camera.pinhole
 
-This module contains the functions and data structures needed to describe the projection of a 3D scene onto a 2D image plane.
+:class:`PinholeCamera` holds a batch of cameras, with ``(B, 4, 4)`` intrinsics and world-to-camera extrinsics, and
+projects world points to pixels and back. :func:`pixel2cam` and :func:`cam2pixel` are the two halves of a dense
+reprojection with the same ``(B, 4, 4)`` matrices: a depth map to camera-frame points, and those to the pixels of a
+camera. For camera-frame points and a ``3x3`` ``K``, see :doc:`perspective <geometry.camera.perspective>`.
 
 In computer vision, we can map between the 3D world and a 2D image using *projective geometry*. The module implements the simplest camera model, the **pinhole camera**, which is the most basic model for general projective cameras from the finite cameras group.
 
@@ -51,7 +54,7 @@ where:
 The camera rotation and translation are expressed in terms of a Euclidean coordinate frame known as the *world coordinate system*. These terms are usually expressed by the joint rotation-translation matrix :math:`[R|t]`, also known as the extrinsic matrix. It describes the camera pose around a static scene and transforms the coordinates of a 3D point :math:`(X,Y,Z)` from the *world coordinate system* to the *camera coordinate system*.
 
 The :class:`PinholeCamera` expects the *intrinsic matrices* and the *extrinsic matrices*
-to be of shape `(B, 4, 4)` such that each *intrinsic matrix* has the following format:
+to be of shape ``(B, 4, 4)`` such that each *intrinsic matrix* has the following format:
 
 .. math::
     \begin{bmatrix}
