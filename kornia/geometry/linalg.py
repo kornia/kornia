@@ -399,14 +399,21 @@ def euclidean_distance(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False, 
     """
     KORNIA_CHECK_SHAPE(x, ["*", "N"])
     KORNIA_CHECK_SHAPE(y, ["*", "N"])
-
-    d2 = (x - y).pow(2).sum(dim=-1, keepdim=keepdim)
+    # Promote matching half-precision inputs before subtraction and squaring.
+    output_dtype = x.dtype
+    promote_half = x.dtype == y.dtype == torch.float16
+    if promote_half:
+        x = x.float()
+        y = y.float()
     # Guard the singular point by substituting a safe argument into the square root and taking the
     # value from the other arm of the ``torch.where``, so coincident points return exactly ``0``
     # with a finite (zero) gradient instead of the ``sqrt(eps)`` floor the previous form added.
+    d2 = (x - y).pow(2).sum(dim=-1, keepdim=keepdim)
     positive = d2 > 0
     safe_d2 = torch.where(positive, d2, torch.ones_like(d2))
-    return torch.where(positive, safe_d2.sqrt(), torch.zeros_like(d2))
+    distance = torch.where(positive, safe_d2.sqrt(), torch.zeros_like(d2))
+
+    return distance.to(output_dtype) if promote_half else distance
 
 
 # aliases
