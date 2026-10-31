@@ -1,0 +1,1 @@
+`kornia.geometry.camera.StereoCamera` initializes its disparity-to-depth matrix `Q` in `torch.float32` when constructed with integer projection matrices, allowing subsequent `reproject_disparity_to_3D` calls to succeed rather than raising a dtype error.

@@ -258,7 +258,20 @@ class TestStereoCamera(BaseTester):
         assert stereo_camera.batch_size == 0
         assert stereo_camera.Q.shape == (0, 4, 4)
         assert stereo_camera.Q.dtype == dtype
-        assert stereo_camera.Q.device == device
+
+    def test_integer_rig_reproject_6471(self, device):
+        # Regression for kornia#6471: integer projection matrices should build a float Q
+        # and reproject without raising StereoException.
+        PL = torch.tensor([[[100, 0, 3, 0], [0, 120, 2, 0], [0, 0, 1, 0]]], device=device, dtype=torch.int64)
+        PR = PL.clone()
+        PR[0, 0, 3] = -50
+        camera = StereoCamera(PL, PR)
+        assert camera.Q.dtype == torch.float32
+
+        disparity = torch.ones(1, 2, 2, 1, device=device, dtype=torch.float32)
+        pts = camera.reproject_disparity_to_3D(disparity)
+        assert pts.shape == (1, 2, 2, 3)
+        assert camera.Q.device == device
 
     @pytest.mark.parametrize("size", [(4, 5), (0, 5), (0, 0)])
     @pytest.mark.parametrize("entrypoint", ["method", "function"])

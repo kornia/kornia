@@ -283,7 +283,8 @@ class StereoCamera:
             The Q matrix of shape ``(B, 4, 4)``.
 
         """
-        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
+        dtype = self.dtype if self.dtype.is_floating_point else torch.float32
+        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=dtype)
         baseline: torch.Tensor = -self.tx
         Q[:, 0, 0] = self.fy * baseline
         Q[:, 0, 3] = -self.fy * self.cx_left * baseline
