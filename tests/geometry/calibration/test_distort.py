@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError
 from kornia.geometry.calibration.distort import distort_points, tilt_projection
 from kornia.geometry.calibration.undistort import undistort_points
 from kornia.geometry.camera.distortion_affine import distort_points_affine
@@ -195,6 +196,31 @@ class TestDistortPoints(BaseTester):
 
         pointsu = distort_points(points, K, distCoeff, new_K)
         assert pointsu.shape == (B, N, 2)
+
+    @pytest.mark.parametrize("points_shape", [(2,), (5,), (5, 1), (5, 3), (2, 4, 3)])
+    def test_exception_points_shape(self, points_shape, device, dtype):
+        # The check used to be `points.dim() < 2 and points.shape[-1] != 2`, which needs both conditions to hold
+        # and so rejects almost nothing: a third column was silently truncated to `(N, 2)` and an unbatched
+        # `(2,)` point gained an axis. A point axis and a trailing size of 2 are both required, as in
+        # undistort_points, so the same inputs fail there too.
+        points = torch.rand(*points_shape, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)
+        dist = torch.zeros(4, device=device, dtype=dtype)
+
+        with pytest.raises(ShapeError):
+            distort_points(points, K, dist)
+        with pytest.raises(ShapeError):
+            undistort_points(points, K, dist)
+
+    @pytest.mark.parametrize("points_shape", [(1, 2), (5, 2), (2, 3, 5, 2)])
+    def test_convention_points_shape_is_a_point_of_two_coordinates(self, points_shape, device, dtype):
+        # Accepted: the point axis is at least one dimensional, only the trailing size is pinned to 2, and the
+        # leading dimensions pass through. A single point is written `(1, 2)`, never `(2,)`.
+        points = torch.rand(*points_shape, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)
+        dist = torch.zeros(4, device=device, dtype=dtype)
+
+        assert distort_points(points, K, dist).shape == points_shape
 
     def test_gradcheck(self, device):
         # ── ORIGINAL (partial): only points had requires_grad ──────────────

@@ -1,0 +1,1 @@
+`distort_points` rejects points without a point axis and points whose trailing size is not 2, as `undistort_points` already did. A third coordinate was silently dropped and a `(2,)` point came back as `(1, 2)`.

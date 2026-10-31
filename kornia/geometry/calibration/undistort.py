@@ -88,9 +88,6 @@ def undistort_points(
     KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
 
-    if points.dim() < 2 and points.shape[-1] != 2:
-        raise ValueError(f"points shape is invalid. Got {points.shape}.")
-
     if new_K is None:
         new_K = K
     else:

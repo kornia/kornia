@@ -20,6 +20,8 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
+
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
@@ -121,6 +123,8 @@ def distort_points(
         - ``new_K`` maps the incoming pixel onto the normalized plane and ``K`` maps the distorted point back
           to pixels; ``new_K`` defaults to ``K``. :func:`~kornia.geometry.calibration.undistort_points` is the
           inverse map, with the two intrinsics in the mirrored roles.
+        - ``points`` has at least two dimensions, so a single point is written ``(1, 2)``; a trailing size
+          other than 2 raises a ``ShapeError``, as in :func:`~kornia.geometry.calibration.undistort_points`.
         - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved.
 
     Args:
@@ -145,8 +149,7 @@ def distort_points(
         >>> points_dist = distort_points(points, K, dist_coeff)
 
     """
-    if points.dim() < 2 and points.shape[-1] != 2:
-        raise ValueError(f"points shape is invalid. Got {points.shape}.")
+    KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
 
     if K.shape[-2:] != (3, 3):
         raise ValueError(f"K matrix shape is invalid. Got {K.shape}.")
