@@ -409,6 +409,79 @@ class TestScalePyramid(BaseTester):
             if checks_were_enabled:
                 enable_checks()
 
+    @pytest.mark.parametrize(
+        "n_levels",
+        [
+            *[0, -1, -2, 1.5, 3.0, None, "3", True, False],
+            *[np.int64(0), np.int32(-1), np.float64(3.0), np.bool_(True)],
+            *[torch.tensor(0), torch.tensor(-1), torch.tensor(3.0), torch.tensor(True)],
+        ],
+    )
+    def test_invalid_n_levels(self, n_levels):
+        # n_levels=0 divided by zero in the level-to-level blur step 2 ** (1 / n_levels), n_levels=-1 with
+        # extra_levels=1 built a one-level pyramid without an error, and other negatives failed inside forward.
+        with pytest.raises(BaseError, match="Invalid n_levels, it must be a positive integer"):
+            kornia.geometry.ScalePyramid(n_levels=n_levels)
+
+    def test_negative_n_levels_no_longer_builds_a_pyramid(self):
+        # The one negative value that used to construct and run: it returned three octaves of a single level.
+        with pytest.raises(BaseError, match="Invalid n_levels"):
+            kornia.geometry.ScalePyramid(n_levels=-1, extra_levels=1)
+
+    @pytest.mark.parametrize(
+        "n_levels",
+        [
+            pytest.param(np.int64(2), id="np.int64"),
+            pytest.param(np.array(2), id="np.array-0d"),
+            pytest.param(torch.tensor(2), id="tensor-0d-int64"),
+            pytest.param(torch.tensor(2, dtype=torch.int32), id="tensor-0d-int32"),
+        ],
+    )
+    def test_integer_like_n_levels(self, device, dtype, n_levels):
+        # These were accepted before n_levels was validated; they now build the same pyramid as the Python int.
+        inp = torch.rand(1, 1, 96, 96, device=device, dtype=dtype)
+        pyramid = kornia.geometry.ScalePyramid(n_levels=n_levels)
+        assert type(pyramid.n_levels) is int
+        assert pyramid.n_levels == 2
+        for got, expected in zip(pyramid(inp), kornia.geometry.ScalePyramid(n_levels=2)(inp)):
+            assert len(got) == len(expected)
+            for got_octave, expected_octave in zip(got, expected):
+                self.assert_close(got_octave, expected_octave, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("min_size", [-1, -0.5, float("nan"), torch.tensor(-1)])
+    def test_invalid_min_size(self, min_size):
+        # A negative or NaN min_size never stopped the octave loop, which halved the image to an empty one and failed
+        # inside F.interpolate.
+        with pytest.raises(BaseError, match="Invalid min_size, it must be a non-negative number"):
+            kornia.geometry.ScalePyramid(min_size=min_size)
+
+    @pytest.mark.parametrize(("min_size", "num_octaves"), [(0, 7), (0.0, 7), (15.0, 3), (float("inf"), 1)])
+    def test_min_size_bounds(self, device, dtype, min_size, num_octaves):
+        # min_size=0 keeps halving down to one pixel: 64, 32, ..., 1.
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        pyr, _, _ = kornia.geometry.ScalePyramid(min_size=min_size)(inp)
+        assert len(pyr) == num_octaves
+        assert pyr[-1].shape[-2:] == (64 // 2 ** (num_octaves - 1),) * 2
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"n_levels": 0}, "Invalid n_levels"),
+            ({"n_levels": True}, "Invalid n_levels"),
+            ({"min_size": -1}, "Invalid min_size"),
+        ],
+    )
+    def test_invalid_n_levels_and_min_size_rejected_with_checks_disabled(self, kwargs, message):
+        # Not a KORNIA_CHECK, like extra_levels: with checks off, these would construct and then fail inside forward.
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(ValueCheckError, match=message):
+                kornia.geometry.ScalePyramid(**kwargs)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
+
     @pytest.mark.parametrize("n_levels", [1, 3])
     @pytest.mark.parametrize("extra_levels", [1, 2, 3])
     def test_octave_is_seeded_from_level_n_levels_6400(self, device, dtype, n_levels, extra_levels):
