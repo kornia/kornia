@@ -26,6 +26,7 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
 
+from ._layout import _patch_conv_layout
 from .laf import (
     ellipse_to_laf,
     extract_patches_from_pyramid,
@@ -348,7 +349,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         safe_input, _ = _sanitize_laf(laf)
         frame = make_upright(safe_input)
         patches: torch.Tensor = extract_patches_from_pyramid(img, frame, PS, True).view(-1, 1, PS, PS)
-        xy = self.features(self._normalize_input(patches)).view(-1, 3)
+        xy = self.features(_patch_conv_layout(self._normalize_input(patches))).view(-1, 3)
         a1 = torch.cat([1.0 + xy[:, 0].reshape(-1, 1, 1), 0 * xy[:, 0].reshape(-1, 1, 1)], dim=2)
         a2 = torch.cat([xy[:, 1].reshape(-1, 1, 1), 1.0 + xy[:, 2].reshape(-1, 1, 1)], dim=2)
         new_laf_no_center = torch.cat([a1, a2], dim=1).reshape(B, N, 2, 2)
