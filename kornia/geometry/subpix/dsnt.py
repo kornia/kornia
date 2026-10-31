@@ -57,9 +57,12 @@ def _check_std_nonzero(std: torch.Tensor) -> None:
     A zero std makes the inverse variance infinite and the rendered Gaussian comes out all NaN, so the input is
     rejected instead. The tensor is read only outside graph capture, as in :func:`_check_positive_temperature`.
     """
-    if is_compiling() or not bool((std == 0).any()):
+    # is_compiling is marked @torch.jit.unused and cannot run under TorchScript, so it is short-circuited there:
+    # TorchScript folds is_scripting at compile time and executes eagerly at runtime, where reading is fine.
+    if not torch.jit.is_scripting() and is_compiling():
         return
-    raise ValueError(f"std should be nonzero. Got: {std}")
+    if bool((std == 0).any()):
+        raise ValueError(f"std should be nonzero. Got: {std}")
 
 
 def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
