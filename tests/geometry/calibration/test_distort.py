@@ -256,7 +256,9 @@ class TestDistortPoints(BaseTester):
         assert not torch.allclose(distort_points(points, K, short).float(), points.float())
         assert torch.equal(distort_points(points, K, short), distort_points(points, K, padded))
 
-    def test_exception_rejects_points_whose_trailing_size_is_not_2(self, device, dtype):
+    def test_exception_rejects_points_whose_trailing_size_is_not_2(
+        self, device: torch.device, dtype: torch.dtype
+    ) -> None:
         # The points must be (*, N, 2), as in undistort_points: a third column used to be dropped silently
         # and an unbatched (2,) point used to come back as (1, 2).
         from kornia.core.exceptions import ShapeError
