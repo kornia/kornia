@@ -227,12 +227,16 @@ def test_converted_object_has_see_also(qualified: str, obj: object) -> None:
     assert not problems, f"{qualified} See Also: " + "; ".join(problems)
 
 
-def _unresolved_references(qualified: str, obj: object, doc: str | None) -> str:
-    """Describe the roles in ``doc``, the docstring of ``obj`` registered as ``qualified``, that Sphinx cannot link."""
+def _unresolved_references(qualified: str, obj: object, doc: str | None, registered_as: str | None = None) -> str:
+    """Describe the roles in ``doc``, the docstring of ``obj`` shown as ``qualified``, that Sphinx cannot link.
+
+    With ``registered_as``, the roles resolve in the scopes of that registered entry only, as Sphinx resolves each
+    rendered entry; without it, in those of every name the registry gives ``obj``.
+    """
     unresolved = [
         f":{role}:`{target}`{_suggest(target)}{_wrong_role(role, target)}"
         for role, target in docstring_roles(doc)
-        if not reference_resolves(obj, target, REGISTRY, INTERSPHINX, role)
+        if not reference_resolves(obj, target, REGISTRY, INTERSPHINX, role, registered_as)
     ]
     if not unresolved:
         return ""
@@ -249,8 +253,12 @@ def test_converted_object_references_resolve(qualified: str, obj: object) -> Non
 
 @pytest.mark.parametrize(("qualified", "member", "doc"), MEMBERS, ids=[qualified for qualified, _, _ in MEMBERS])
 def test_converted_class_member_references_resolve(qualified: str, member: object, doc: str) -> None:
-    """The methods, properties and attributes autodoc renders under a converted class link their references too."""
-    assert not (message := _unresolved_references(qualified, member, doc)), message
+    """The methods, properties and attributes autodoc renders under a converted class link their references too.
+
+    Each is checked under its own registered name, so a method inherited by several documented classes has to link
+    its references on every class page that renders it.
+    """
+    assert not (message := _unresolved_references(qualified, member, doc, registered_as=qualified)), message
 
 
 @pytest.mark.parametrize(

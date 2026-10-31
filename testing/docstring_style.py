@@ -922,12 +922,20 @@ def intersphinx_names(docs_source: Path) -> dict[str, frozenset[str]]:
     return {name: frozenset(kinds) for name, kinds in types.items()}
 
 
-def _reference_scopes(obj: object, registry: dict[str, object]) -> list[str]:
-    """The prefixes Sphinx tries a reference in the docstring of ``obj`` under: its module, then its class."""
+def _reference_scopes(obj: object, registry: dict[str, object], registered_as: str | None = None) -> list[str]:
+    """The prefixes Sphinx tries a reference in the docstring of ``obj`` under: its module, then its class.
+
+    With ``registered_as``, a name ``registry`` gives ``obj``, only the scopes of that one rendered entry; without it,
+    those of every name ``registry`` gives ``obj``.
+    """
+    if registered_as is None:
+        names = [name for name, registered in registry.items() if registered is obj]
+    elif registry.get(registered_as) is obj:
+        names = [registered_as]
+    else:
+        raise ValueError(f"the registry does not register the object as {registered_as!r}")
     scopes: list[str] = []
-    for name, registered in registry.items():
-        if registered is not obj:
-            continue
+    for name in names:
         parent = name.rpartition(".")[0]
         if inspect.isclass(obj):
             scopes += [parent, name]
@@ -945,7 +953,8 @@ def documented_members(registry: Mapping[str, object], classes: Iterable[object]
     entries whose parent entry is one of ``classes`` (by identity). The docstring is the one autodoc shows, so an
     override without one has its base's; for a data attribute it is the text of its ``#:`` comment or string. A member
     without a docstring is left out, as there is nothing to check in it. A method registered under several of the
-    classes appears once per registered name.
+    classes appears once per registered name; check each under that name's scopes alone by passing it as
+    ``registered_as`` to ``reference_resolves``.
     """
     wanted = list(classes)
     members: dict[str, tuple[object, str]] = {}
@@ -972,7 +981,13 @@ def _role_target(target: str, role: str | None) -> str:
     return target.removesuffix("()") if role in (None, "func", "meth") else target
 
 
-def resolve_reference(obj: object, target: str, registry: dict[str, object], role: str | None = None) -> object | None:
+def resolve_reference(
+    obj: object,
+    target: str,
+    registry: dict[str, object],
+    role: str | None = None,
+    registered_as: str | None = None,
+) -> object | None:
     """Return the registered object that ``target``, written in the docstring of ``obj``, resolves to, or ``None``.
 
     As Sphinx does for a Python-domain role: a trailing ``()`` is dropped for ``:func:`` and ``:meth:`` (and when
@@ -982,9 +997,15 @@ def resolve_reference(obj: object, target: str, registry: dict[str, object], rol
     its type. A short import alias is not registered, so it does not resolve; neither does a short name in the
     docstring of an object that no docs page registers. Only kornia objects resolve here; see
     ``intersphinx_names`` for the rest.
+
+    Sphinx resolves each rendered entry under its own class and module. An object registered under several names,
+    such as a method inherited by several documented classes, gets the scopes of every one of them unless
+    ``registered_as`` names the entry to check: then only that entry's scopes count, so a short name registered
+    under one class does not resolve on another class's page. ``registered_as`` must be a name ``registry`` gives
+    ``obj``; otherwise ``ValueError`` is raised.
     """
     target = _role_target(target, role)
-    candidates = [target, *(f"{scope}.{target}" for scope in _reference_scopes(obj, registry))]
+    candidates = [target, *(f"{scope}.{target}" for scope in _reference_scopes(obj, registry, registered_as))]
     for candidate in candidates:
         if candidate in registry:
             return registry[candidate]
@@ -997,15 +1018,16 @@ def reference_resolves(
     registry: dict[str, object],
     external: Mapping[str, frozenset[str]] | None = None,
     role: str | None = None,
+    registered_as: str | None = None,
 ) -> bool:
     """Whether ``target``, in a ``role`` role in the docstring of ``obj``, renders as a link.
 
-    True when it resolves to a registered kornia object (see ``resolve_reference``) or is an ``external`` name, such
-    as one from ``intersphinx_names(docs_source)``, of an object type that intersphinx links ``role`` to. Unlike the
-    local lookup, intersphinx matches the type: ``:meth:`torch.svd``` (a function) and every ``:const:`` stay plain
-    text. A ``role`` of ``None`` accepts any type.
+    True when it resolves to a registered kornia object (see ``resolve_reference``, which also explains
+    ``registered_as``) or is an ``external`` name, such as one from ``intersphinx_names(docs_source)``, of an object
+    type that intersphinx links ``role`` to. Unlike the local lookup, intersphinx matches the type:
+    ``:meth:`torch.svd``` (a function) and every ``:const:`` stay plain text. A ``role`` of ``None`` accepts any type.
     """
-    if resolve_reference(obj, target, registry, role) is not None:
+    if resolve_reference(obj, target, registry, role, registered_as) is not None:
         return True
     types = (external or {}).get(_role_target(target, role), frozenset())
     return bool(types if role is None else types & _ROLE_OBJECT_TYPES.get(role, frozenset()))

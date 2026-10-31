@@ -732,6 +732,49 @@ def test_documented_members_reads_a_member_under_every_class_that_registers_it()
     assert set(documented_members(registry, [_Converted])) == {"a.Converted.prop", "b.Converted.prop"}
 
 
+class _SharedBase:
+    def method(self):
+        """Run it, then :meth:`other`, as :func:`helper` does."""
+
+
+class _SharedA(_SharedBase):
+    def other(self):
+        """The other one."""
+
+
+class _SharedB(_SharedBase):
+    pass
+
+
+def _helper():
+    """Help."""
+
+
+def test_member_registered_under_several_classes_resolves_in_each_registration_only():
+    # One method rendered on two class pages, as an inherited ``forward`` is: Sphinx resolves its references once per
+    # rendered entry, under that entry's class and module, so a short name registered only for ``a.A`` links there
+    # and stays plain text on the ``b.B`` page.
+    registry = {
+        "a.A": _SharedA,
+        "a.A.method": _SharedBase.method,
+        "a.A.other": _SharedA.other,
+        "a.helper": _helper,
+        "b.B": _SharedB,
+        "b.B.method": _SharedBase.method,
+    }
+    method = _SharedBase.method
+    for target, expected in (("other", _SharedA.other), ("helper", _helper)):
+        assert resolve_reference(method, target, registry, registered_as="a.A.method") is expected, target
+        assert reference_resolves(method, target, registry, registered_as="a.A.method"), target
+        assert resolve_reference(method, target, registry, registered_as="b.B.method") is None, target
+        assert not reference_resolves(method, target, registry, registered_as="b.B.method"), target
+        # Without a registered name the scopes of every registration count, as for a top-level object.
+        assert resolve_reference(method, target, registry) is expected, target
+    assert resolve_reference(method, "a.A.other", registry, registered_as="b.B.method") is _SharedA.other
+    with pytest.raises(ValueError, match="does not register"):
+        resolve_reference(method, "other", registry, registered_as="a.A.other")
+
+
 def _alias_target(a, b=1, *args, c=2, **kwargs):
     return a
 
