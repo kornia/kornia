@@ -684,7 +684,9 @@ class XFeat(nn.Module):
 
         Pair ``b`` is image ``b`` of ``img1`` with image ``b`` of ``img2``. Each batch goes through
         :meth:`detectAndCompute` in one call, and then the descriptors of each pair are matched on their own by
-        mutual nearest neighbour.
+        mutual nearest neighbour. A backend may round a batched convolution differently from a single-image one (MPS,
+        and CUDA with cuDNN's default TF32 convolutions), so a pair matched in a batch can gain or lose a few
+        near-tied matches compared with matching it alone.
 
         Args:
             img1: first images ``(B, C, H, W)``.

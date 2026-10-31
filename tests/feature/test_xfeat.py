@@ -273,7 +273,8 @@ class TestXFeat(BaseTester):
         # differently, which can reorder near-tied keypoints (MPS does with these random weights).
         out1, out2 = model.detectAndCompute(img1), model.detectAndCompute(img2)
         for b in range(3):
-            idx0, idx1 = model._match_mnn(out1[b]["descriptors"], out2[b]["descriptors"])
+            # match_xfeat's default min_cossim, not _match_mnn's
+            idx0, idx1 = model._match_mnn(out1[b]["descriptors"], out2[b]["descriptors"], min_cossim=-1)
             assert idx0.shape[0] > 0
             expected = torch.cat([out1[b]["keypoints"][idx0], out2[b]["keypoints"][idx1]], dim=-1)
             self.assert_close(batched[b], expected, rtol=0, atol=0)
