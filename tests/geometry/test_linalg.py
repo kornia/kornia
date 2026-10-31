@@ -29,6 +29,14 @@ from testing.geometry.create import create_random_homography
 from testing.geometry.linalg import euler_angles_to_rotation_matrix, identity_matrix
 
 
+def _indexed_translations(*batch, device, dtype):
+    """Translations whose x shift is the matrix flat index, so a swapped batch axis changes the result."""
+    trans = torch.eye(4, device=device, dtype=dtype).repeat(*batch, 1, 1)
+    flat = trans.reshape(-1, 4, 4)
+    flat[:, 0, 3] = torch.arange(flat.shape[0], device=device, dtype=dtype)
+    return trans
+
+
 def _rigid_transforms(batch_size, device, dtype):
     """Distinct, non-identity rigid transforms, so a swapped or dropped operand changes the result."""
     angles = torch.linspace(0.1, 0.9, batch_size, device=device, dtype=dtype)
@@ -109,6 +117,39 @@ class TestTransformPoints(BaseTester):
         points = torch.zeros(num_points, 3, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Input batch size must be the same"):
             kgl.transform_points(transform, points)
+
+    @pytest.mark.parametrize(
+        ("matrix_batch", "point_batch", "expected_x"),
+        [
+            # (1, 2) broadcasts on the leading axis (#6473). Count-based repeat gives [[0, 0], [0, 1], [1, 1]].
+            ((1, 2), (3, 2), ((0, 1), (0, 1), (0, 1))),
+            # (A, B) with (A, B, N, D) pairs each matrix with its own point set.
+            ((2, 2), (2, 2), ((0, 1), (2, 3))),
+            # (A, 1) with (A, C, N, D) broadcasts the size-1 axis.
+            ((2, 1), (2, 3), ((0, 0, 0), (1, 1, 1))),
+            # (B,) with (B, C, N, D) applies trans[b] to every points[b, c].
+            ((2,), (2, 3), ((0, 0, 0), (1, 1, 1))),
+            # A trailing matrix axis of 1 is not another point axis, as in warp_grid's (N, 1, 3, 3).
+            ((2, 1, 1), (2, 3), ((0, 0, 0), (1, 1, 1))),
+        ],
+    )
+    def test_matrix_batch_aligns_with_leading_point_axes(
+        self, matrix_batch, point_batch, expected_x, device, dtype
+    ):
+        trans = _indexed_translations(*matrix_batch, device=device, dtype=dtype)
+        points = torch.zeros(*point_batch, 1, 3, device=device, dtype=dtype)
+        result = kgl.transform_points(trans, points)
+        expected = torch.tensor(expected_x, device=device, dtype=dtype)
+        assert result.shape == points.shape
+        self.assert_close(result[..., 0, 0], expected)
+
+    @pytest.mark.parametrize("point_batch", [(2, 4), (2, 3)])
+    def test_misaligned_multi_axis_batch_raises(self, point_batch, device, dtype):
+        # (2, 2) with (2, 4) used to return the wrong matrices; (2, 2) with (2, 3) raised RuntimeError (#6473).
+        trans = _indexed_translations(2, 2, device=device, dtype=dtype)
+        points = torch.zeros(*point_batch, 1, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Input batch size must be the same"):
+            kgl.transform_points(trans, points)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
