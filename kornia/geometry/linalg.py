@@ -234,7 +234,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
           ``(D+1, D+1)`` or ``(B, D+1, D+1)``. A matrix batch with several axes, ``(B1, ..., Bk, D+1, D+1)``,
           aligns with the first ``k`` batch axes of ``points_1``; each of its axes must match or be 1.
           Trailing size-1 axes broadcast over the remaining point axes, as in ``(B, 1, 1, D+1, D+1)``.
-        points_1: tensor of points of shape ``(N, D)`` or ``(B, N, D)``.
+        points_1: tensor of points of shape ``(..., N, D)``, where ``...`` are zero or more leading batch axes.
 
     Returns:
         transformed points with the same shape as ``points_1``.
