@@ -207,15 +207,16 @@ def match_mnn(
     match_dists2, idxs_in_1 = torch.min(distance_matrix, dim=0)
     minsize_idxs = torch.arange(ms, device=distance_matrix.device)
 
+    # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
     if distance_matrix.size(0) <= distance_matrix.size(1):
-        mutual_nns = minsize_idxs == idxs_in_1[idxs_in_2][:ms]
-        matches_idxs = torch.cat([minsize_idxs.view(-1, 1), idxs_in_2.view(-1, 1)], 1)[mutual_nns]
-        match_dists = match_dists[mutual_nns]
+        mutual = torch.nonzero(minsize_idxs == idxs_in_1[idxs_in_2][:ms])[:, 0]  # rows of desc1
+        matches_idxs = torch.stack([mutual, idxs_in_2[mutual]], 1)
+        match_dists = match_dists[mutual]
     else:
-        mutual_nns = minsize_idxs == idxs_in_2[idxs_in_1][:ms]
-        matches_idxs = torch.cat([idxs_in_1.view(-1, 1), minsize_idxs.view(-1, 1)], 1)[mutual_nns]
-        match_dists = match_dists2[mutual_nns]
-    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+        mutual = torch.nonzero(minsize_idxs == idxs_in_2[idxs_in_1][:ms])[:, 0]  # rows of desc2
+        matches_idxs = torch.stack([idxs_in_1[mutual], mutual], 1)
+        match_dists = match_dists2[mutual]
+    return match_dists.view(-1, 1), matches_idxs
 
 
 def _first_to_second_nearest_ratio(distance_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -249,6 +250,18 @@ def _first_to_second_nearest_ratio(distance_matrix: torch.Tensor) -> Tuple[torch
     return torch.where(defined, ratio, (first / second).detach()), first_idx
 
 
+def _nearest_neighbour_ratio(distance_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return each row's nearest column and its ratio of the nearest to the second-nearest distance.
+
+    The ratio test of :func:`match_snn` and :func:`match_smnn`: :func:`_first_to_second_nearest_ratio` on MPS and
+    ``torch.topk`` elsewhere. A row needs at least two columns.
+    """
+    if is_mps_tensor_safe(distance_matrix):
+        return _first_to_second_nearest_ratio(distance_matrix)
+    vals, idxs = torch.topk(distance_matrix, 2, dim=1, largest=False)
+    return vals[:, 0] / vals[:, 1], idxs[:, 0]
+
+
 def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -279,19 +292,13 @@ def match_snn(
     if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    if is_mps_tensor_safe(distance_matrix):
-        ratio, idxs_in_2 = _first_to_second_nearest_ratio(distance_matrix)
-    else:
-        vals, idxs = torch.topk(distance_matrix, 2, dim=1, largest=False)
-        ratio, idxs_in_2 = vals[:, 0] / vals[:, 1], idxs[:, 0]
-    mask = ratio <= th
-    match_dists = ratio[mask]
-    if len(match_dists) == 0:
+    ratio, idxs_in_2 = _nearest_neighbour_ratio(distance_matrix)
+    # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
+    idxs_in1 = torch.nonzero(ratio <= th)[:, 0]
+    if idxs_in1.numel() == 0:
         return _no_match(distance_matrix)
-    idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
-    idxs_in_2 = idxs_in_2[mask]
-    matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
-    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+    matches_idxs = torch.stack([idxs_in1, idxs_in_2[idxs_in1]], 1)
+    return ratio[idxs_in1].view(-1, 1), matches_idxs
 
 
 def match_smnn(
@@ -326,23 +333,18 @@ def match_smnn(
     if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
         return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-
-    dists1, idx1 = match_snn(desc1, desc2, th, distance_matrix)
-    dists2, idx2 = match_snn(desc2, desc1, th, distance_matrix.t())
-
-    if len(dists2) > 0 and len(dists1) > 0:
-        # Each target occurs at most once in idx2. Join on its integer index instead of
-        # comparing every pair of matches in floating point (quadratic memory and inexact in half).
-        reverse_lookup = torch.full((desc2.size(0),), -1, dtype=torch.long, device=idx2.device)
-        reverse_lookup[idx2[:, 0]] = torch.arange(idx2.size(0), device=idx2.device)
-        reverse_positions = reverse_lookup[idx1[:, 1]]
-        mutual = (reverse_positions >= 0) & (idx2[reverse_positions, 1] == idx1[:, 0])
-        # match_snn already returns source indices in ascending order.
-        matches_idxs = idx1[mutual]
-        match_dists = torch.maximum(dists1[mutual], dists2[reverse_positions[mutual]])
-    else:
-        match_dists, matches_idxs = _no_match(distance_matrix)
-    return match_dists, matches_idxs
+    ratio1, nearest2 = _nearest_neighbour_ratio(distance_matrix)
+    ratio2, nearest1 = _nearest_neighbour_ratio(distance_matrix.t())
+    # Join the two directions on integer indices: i and nearest2[i] are mutual when nearest1[nearest2[i]] == i. Both
+    # ratio tests and the mutual check form one mask, so one nonzero is the only wait for the device.
+    reverse_ratio = ratio2[nearest2]
+    mutual = nearest1[nearest2] == torch.arange(distance_matrix.size(0), device=distance_matrix.device)
+    idxs_in1 = torch.nonzero(mutual & (ratio1 <= th) & (reverse_ratio <= th))[:, 0]
+    if idxs_in1.numel() == 0:
+        return _no_match(distance_matrix)
+    matches_idxs = torch.stack([idxs_in1, nearest2[idxs_in1]], 1)
+    match_dists = torch.maximum(ratio1[idxs_in1], reverse_ratio[idxs_in1])
+    return match_dists.view(-1, 1), matches_idxs
 
 
 def match_smnn_batched(

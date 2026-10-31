@@ -16,6 +16,7 @@
 #
 
 import math
+import warnings
 
 import pytest
 import torch
@@ -43,6 +44,30 @@ from kornia.feature.steerers import DiscreteSteerer
 
 from testing.base import BaseTester, supports_matmul
 from testing.casts import dict_to
+
+
+def _host_synchronizations(match, *args):
+    """Count the CUDA host synchronizations of one call to ``match``, after a warm-up call."""
+    match(*args)
+    torch.cuda.synchronize()
+    previous = torch.cuda.get_sync_debug_mode()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        torch.cuda.set_sync_debug_mode("warn")
+        try:
+            match(*args)
+        finally:
+            torch.cuda.set_sync_debug_mode(previous)
+    return sum("called a synchronizing CUDA operation" in str(warning.message) for warning in caught)
+
+
+def _descriptors_with_planted_matches(device, swap):
+    """300 and 280 unit descriptors whose first 200 are noisy copies of each other, in either order."""
+    gen = torch.Generator().manual_seed(0)
+    desc1 = torch.randn(300, 32, generator=gen)
+    desc2 = torch.cat([desc1[:200] + 0.05 * torch.randn(200, 32, generator=gen), torch.randn(80, 32, generator=gen)])
+    desc1, desc2 = (torch.nn.functional.normalize(d, dim=1).to(device) for d in (desc1, desc2))
+    return (desc2, desc1) if swap else (desc1, desc2)
 
 
 class TestMatchNN(BaseTester):
@@ -105,6 +130,20 @@ class TestMatchMNN(BaseTester):
         desc1 = torch.rand(5, 8, device=device, dtype=torch.float64)
         desc2 = torch.rand(7, 8, device=device, dtype=torch.float64)
         self.gradcheck(match_mnn, (desc1, desc2), nondet_tol=1e-4)
+
+    def test_larger_desc1_lists_matches_in_desc2_order(self, device):
+        # With more descriptors in desc1 than in desc2, the matches come in the order of desc2: 2 -> 0, then 1 -> 1.
+        desc1 = torch.tensor([[0.0], [1.0], [5.0]], device=device)
+        desc2 = torch.tensor([[4.8], [1.1]], device=device)
+        dists, idxs = match_mnn(desc1, desc2)
+        self.assert_close(idxs, torch.tensor([[2, 0], [1, 1]], device=device))
+        self.assert_close(dists, torch.tensor([[0.2], [0.1]], device=device))
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_waits_for_the_device_once(self, device, swap):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        assert _host_synchronizations(match_mnn, *_descriptors_with_planted_matches(device, swap)) == 1
 
 
 class TestMatchSNN(BaseTester):
@@ -173,6 +212,12 @@ class TestMatchSNN(BaseTester):
                 match_snn(desc1, desc2, 0.8)
         else:
             match_snn(desc1, desc2, 0.8)
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_waits_for_the_device_once(self, device, swap):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        assert _host_synchronizations(match_snn, *_descriptors_with_planted_matches(device, swap), 0.9) == 1
 
 
 class TestFirstToSecondNearestRatio(BaseTester):
@@ -418,6 +463,33 @@ class TestMatchSMNN(BaseTester):
         matcher_jit = torch.jit.script(DescriptorMatcher(match_type, 0.8).to(device))
         self.assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2)[0])
         self.assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2)[1])
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_waits_for_the_device_once(self, device, swap):
+        if device.type != "cuda":
+            pytest.skip("Host synchronization is observable on CUDA only.")
+        assert _host_synchronizations(match_smnn, *_descriptors_with_planted_matches(device, swap), 0.9) == 1
+
+    @pytest.mark.parametrize("swap", [False, True])
+    def test_matches_the_definition_on_random_descriptors(self, device, dtype, swap):
+        # Reference: (i, j) is a match when j is the nearest neighbour of i and i that of j, and both ratios of the
+        # nearest to the second-nearest distance are <= th; its ratio is the larger one. Sorted by i.
+        desc1, desc2 = (d.to(dtype) for d in _descriptors_with_planted_matches(device, swap))
+        th = 0.9
+        dists, idxs = match_smnn(desc1, desc2, th)
+        dm = torch.cdist(desc1.cpu().double(), desc2.cpu().double())
+        rows, cols = dm.sort(dim=1), dm.t().sort(dim=1)
+        expected_idxs, expected_dists = [], []
+        for i in range(dm.shape[0]):
+            j = int(rows.indices[i, 0])
+            ratio1 = float(rows.values[i, 0] / rows.values[i, 1])
+            ratio2 = float(cols.values[j, 0] / cols.values[j, 1])
+            if int(cols.indices[j, 0]) == i and ratio1 <= th and ratio2 <= th:
+                expected_idxs.append([i, j])
+                expected_dists.append([max(ratio1, ratio2)])
+        assert len(expected_idxs) > 100
+        self.assert_close(idxs, torch.tensor(expected_idxs, device=device))
+        self.assert_close(dists, torch.tensor(expected_dists, device=device, dtype=dtype))
 
 
 class TestMatchFGINN(BaseTester):
