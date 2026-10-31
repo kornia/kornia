@@ -2605,20 +2605,11 @@ class TestPolCartConversions(BaseTester):
         rho_origin = kornia.geometry.conversions.cart2pol(zero, zero)[0]
         self.assert_close(rho_origin, zero, atol=0.0, rtol=0.0)
 
-        # Use float64 for the tiny-radius regression where supported so the
-        # sqrt(x**2) round-trip is not dominated by float32 precision.
-        tiny_dtype = torch.float32 if device.type == "mps" else torch.float64
-        tiny_rtol = 2e-3 if tiny_dtype == torch.float32 else 1e-12
-        tiny_atol = 1e-7 if tiny_dtype == torch.float32 else 1e-15
-
-        x = torch.tensor(5.0e-5, device=device, dtype=tiny_dtype)
-        y = torch.tensor(0.0, device=device, dtype=tiny_dtype)
-        rho_sub_eps = kornia.geometry.conversions.cart2pol(x, y)[0]
-        self.assert_close(rho_sub_eps, x, rtol=tiny_rtol, atol=tiny_atol)
-
-        x = torch.tensor(1.0e-4, device=device, dtype=tiny_dtype)
-        rho_at_eps = kornia.geometry.conversions.cart2pol(x, y)[0]
-        self.assert_close(rho_at_eps, x, rtol=tiny_rtol, atol=tiny_atol)
+        # inside the eps neighbourhood and at its edge the radius is |x| exactly, in the test dtype; it used to be
+        # (rho + 1) - 1, which this test tolerated with float64 and rtol=2e-3 (#6440)
+        x = torch.tensor([5.0e-5, 1.0e-4], device=device, dtype=dtype)
+        rho_sub_eps = kornia.geometry.conversions.cart2pol(x, torch.zeros_like(x))[0]
+        self.assert_close(rho_sub_eps, x, atol=0.0, rtol=0.0)
 
         x = torch.tensor(3.0, device=device, dtype=dtype)
         y = torch.tensor(4.0, device=device, dtype=dtype)

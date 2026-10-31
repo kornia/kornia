@@ -195,11 +195,9 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.
 
     ``x, y = pol2cart(rho, phi)`` takes radii and angles in radians and returns two tensors, ``x = rho * cos(phi)`` and
     ``y = rho * sin(phi)``, in the broadcast shape of ``rho`` and ``phi``. It undoes :func:`cart2pol`:
-    ``pol2cart(*cart2pol(x, y))`` returns ``(x, y)`` to rounding as long as ``x ** 2 + y ** 2`` is above the ``eps``
-    of :func:`cart2pol` and neither overflows nor underflows in the working dtype. Inside the ``eps`` neighbourhood of
-    the origin :func:`cart2pol` rounds the radius, so in ``float32`` ``(1e-5, 2e-5)`` comes back as
-    ``(1.0023e-5, 2.0045e-5)`` and ``(3e-8, 4e-8)`` as ``(0, 0)``
-    (`#6440 <https://github.com/kornia/kornia/issues/6440>`_).
+    ``pol2cart(*cart2pol(x, y))`` returns ``(x, y)`` to rounding, near the origin included (in ``float32``
+    ``(3e-8, 4e-8)`` comes back as ``(3e-8, 4e-8)``), as long as :func:`cart2pol` can form ``x ** 2 + y ** 2``: it
+    does so in ``float32`` for ``float16`` and ``bfloat16`` input and in the input dtype otherwise.
 
     Convention:
         - ``rho = 5``, ``phi = atan2(4, 3)`` gives ``(3., 4.)``, and ``rho = 2``, ``phi = pi / 6`` gives
@@ -235,30 +233,26 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     r"""Convert cartesian coordinates (x, y) to polar coordinates (rho, phi), phi in radians.
 
     ``rho, phi = cart2pol(x, y)`` returns two tensors in the broadcast shape of ``x`` and ``y``: the radius
-    ``sqrt(x ** 2 + y ** 2)`` and the angle ``atan2(y, x)`` in radians, in :math:`[-\pi, \pi]`. The radius is
-    computed from the unscaled ``x ** 2 + y ** 2``, so it is ``nan`` once that overflows
-    (`#6414 <https://github.com/kornia/kornia/issues/6414>`_). ``eps`` keeps the gradient of ``rho`` finite at the
-    origin, but it also rounds every radius with ``x ** 2 + y ** 2 <= eps``, as the convention below details
-    (`#6440 <https://github.com/kornia/kornia/issues/6440>`_). For the reverse, use :func:`pol2cart`.
+    ``sqrt(x ** 2 + y ** 2)`` and the angle ``atan2(y, x)`` in radians, in :math:`[-\pi, \pi]`. ``float16`` and
+    ``bfloat16`` radii are computed in ``float32`` and rounded once; ``float32`` and ``float64`` radii are computed
+    from the unscaled square sum in the input dtype, so they are ``inf`` once it overflows. ``eps`` keeps the gradient
+    of ``rho`` finite at the origin without changing its value. For the reverse, use :func:`pol2cart`.
 
     Convention:
         - ``(3., 4.)`` gives ``(5., 0.9273)``
-        - ``x ** 2 + y ** 2`` overflows from a radius of about ``256`` in
-          ``float16`` (``(300., 150.)`` gives ``rho = nan``), ``1.8e19`` in
+        - every ``float16`` radius is correctly rounded, since ``float32``
+          holds the square of every ``float16`` value: ``(300., 150.)`` gives
+          ``335.5``
+        - the square sum overflows from a radius of about ``1.8e19`` in
           ``float32`` and ``bfloat16`` and ``1.3e154`` in ``float64``, and
-          ``rho`` is then ``nan``, not ``inf``
-          (`#6414 <https://github.com/kornia/kornia/issues/6414>`_)
-        - where ``x ** 2 + y ** 2 <= eps`` (radii up to about ``1e-4`` at the
-          default ``eps``), ``rho`` is computed as ``(rho + 1) - 1``, which
-          rounds it to a multiple of the spacing of the dtype at ``1``
-          (`#6440 <https://github.com/kornia/kornia/issues/6440>`_): in
-          ``float32`` ``(1e-5, 0.)`` gives ``1.0014e-5`` and every radius below
-          about ``6e-8``, ``(1e-20, 0.)`` included, gives ``0``; in ``bfloat16``
-          every radius up to ``1e-4`` gives ``0``; in ``float64`` ``(1e-14, 0.)``
-          gives ``9.992e-15``. In ``float16`` no nonzero sum is that small, so
-          only a sum of ``0`` takes that branch; there a sum that underflows
-          makes ``rho`` inexact or ``0`` instead: ``(2e-4, 0.)`` gives
-          ``2.44e-4``
+          ``rho`` is then ``inf``, as for an infinite coordinate. Below a
+          radius of about ``1e-19`` and ``1e-154`` it underflows and ``rho``
+          loses precision: in ``float32`` ``(1e-20, 0.)`` gives
+          ``9.99997e-21`` and ``(1e-25, 0.)`` gives ``0``
+        - inside the ``eps`` neighbourhood, ``x ** 2 + y ** 2 <= eps`` (radii
+          up to ``1e-4`` at the default ``eps``), the gradient of ``rho`` is
+          ``0`` and its value is still the radius: in ``float32``
+          ``(1e-5, 0.)`` gives ``1e-5``
         - ``phi`` is ``atan2(y, x)`` in **radians**, so it lies in
           :math:`[-\pi, \pi]`, is ``0`` on the ``+x`` axis and grows toward
           ``+y`` (``x = 0``, ``y = 1`` gives ``phi = 1.5708``). Both endpoints
@@ -279,9 +273,9 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
         y: the second coordinates.
         eps: squared-radius threshold: at or below it the gradient of ``rho``
             is zero, which avoids the ``0 / 0`` of the exact gradient at the
-            origin, and ``rho`` is rounded as described above
-            (`#6440 <https://github.com/kornia/kornia/issues/6440>`_). The
-            default ``1e-8`` underflows in ``float16``.
+            origin. It does not change the value of ``rho``. It is compared
+            with the square sum in the dtype that sum is formed in, ``float32``
+            for ``float16`` and ``bfloat16`` input.
 
     Returns:
         - rho: the radius, in the broadcast shape of ``x`` and ``y``.
