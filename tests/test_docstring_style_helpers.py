@@ -732,6 +732,28 @@ def test_documented_members_reads_a_member_under_every_class_that_registers_it()
     assert set(documented_members(registry, [_Converted])) == {"a.Converted.prop", "b.Converted.prop"}
 
 
+class _ClassMethodBase:
+    @classmethod
+    def build(cls):
+        """Build one, see :meth:`other`."""
+
+
+class _ClassMethodOverride(_ClassMethodBase):
+    @classmethod
+    def build(cls):
+        return cls()
+
+
+def test_documented_members_reads_the_inherited_docstring_of_a_class_method_override():
+    # The registry holds a class method as its ``__func__``, on which ``inspect.getdoc`` finds no inherited docstring.
+    # autodoc renders the base's, so its references must be checked as well.
+    build = vars(_ClassMethodOverride)["build"].__func__
+    registry = {"m.Override": _ClassMethodOverride, "m.Override.build": build}
+    assert documented_members(registry, [_ClassMethodOverride]) == {
+        "m.Override.build": (build, "Build one, see :meth:`other`.")
+    }
+
+
 class _SharedBase:
     def method(self):
         """Run it, then :meth:`other`, as :func:`helper` does."""

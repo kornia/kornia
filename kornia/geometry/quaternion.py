@@ -28,10 +28,10 @@ Which function to use:
   rotation vectors and Euler angles: :class:`Quaternion`.
 - The mean rotation of many quaternions, optionally weighted, whatever their signs: :func:`average_quaternions`.
 - The same conversions on plain tensors, without an object:
-  :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`,
-  :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`,
-  :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` and
-  :func:`~kornia.geometry.conversions.axis_angle_to_quaternion` on ``(*, 4)`` tensors;
+  :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix` and
+  :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` from ``(*, 4)`` quaternions to ``(*, 3, 3)``
+  matrices and ``(*, 3)`` rotation vectors, and :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`
+  and :func:`~kornia.geometry.conversions.axis_angle_to_quaternion` back;
   :func:`~kornia.geometry.conversions.euler_from_quaternion` and
   :func:`~kornia.geometry.conversions.quaternion_from_euler` for roll, pitch and yaw, with the quaternion as four
   separate ``w``, ``x``, ``y``, ``z`` tensors.

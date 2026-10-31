@@ -41,7 +41,8 @@ def undistort_points(
     ``points = undistort_points(distorted, K, dist)`` takes measured pixels ``(*, N, 2)``, the intrinsics
     ``(*, 3, 3)`` and OpenCV's coefficient vector ``(*, n)``, ``n`` one of 4, 5, 8, 12 or 14, and returns the
     ideal pinhole pixels ``(*, N, 2)`` after ``num_iters`` fixed-point steps; within the convergence region, with
-    the default 5 steps, the result matches ``cv2.undistortPoints(points, K, dist, P=new_K)``. For normalized
+    the default 5 steps, the result matches ``cv2.undistortPoints(points, K, dist, P=P)`` with
+    ``P = K if new_K is None else new_K``: without ``P``, OpenCV returns normalized coordinates. For normalized
     coordinates, as :func:`~kornia.geometry.epipolar.find_essential` takes, pass the result to
     :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`; for a whole image, use
     :func:`~kornia.geometry.calibration.undistort_image`.

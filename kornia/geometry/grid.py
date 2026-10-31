@@ -27,7 +27,7 @@ Which function to use:
 - The ``(1, H, W, 2)`` grid of ``(x, y)`` coordinates of an image: :func:`create_meshgrid`, which can also normalize
   to the half-pixel ``align_corners=False`` convention.
 - The ``(1, D, H, W, 3)`` grid of ``(d, x, y)`` coordinates of a volume: :func:`create_meshgrid3d`, corner-aligned
-  only.
+  only; reorder its last axis with ``grid[..., [1, 2, 0]]`` for ``grid_sample``.
 """
 
 from typing import Optional

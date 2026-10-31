@@ -531,6 +531,11 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         inclusively: pass the ``'vertices_plus'`` export. ``(B, N, 8, 3)`` input raises
         :class:`~kornia.core.exceptions.ShapeError`.
 
+        The bounds come from fixed vertices, ``x`` from the first two, ``y`` from the second and third and ``z``
+        from the first and fifth, and fill axis-aligned ranges. A sheared box that :func:`validate_bbox3d` accepts,
+        such as one whose back face is shifted in ``x``, is masked as the axis-aligned box of those vertices, not
+        rasterized.
+
     .. warning::
         For fractional coordinates the truncation differs from :func:`bbox_to_mask` and
         :meth:`~kornia.geometry.boxes.Boxes3D.to_mask`: `#4015 <https://github.com/kornia/kornia/issues/4015>`_.
@@ -638,8 +643,9 @@ def bbox_generator(
     Convention:
         The far corner is at ``start + size - 1`` (inclusive, see :func:`infer_bbox_shape`), so
         :func:`infer_bbox_shape` reads back ``width`` and ``height``; a zero size puts the far corner one before
-        the start. A scalar input gives a batch of one. The four tensors must share dtype and device, otherwise
-        ``AssertionError``.
+        the start. Scalar inputs give a batch of one, and scalar sizes broadcast against ``(B,)`` starts; scalar
+        starts with ``(B,)`` sizes, ``B > 1``, raise ``RuntimeError``. The four tensors must share dtype and device,
+        otherwise ``AssertionError``.
 
     Args:
         x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
@@ -727,8 +733,9 @@ def bbox_generator3d(
     in ``'xyzwhd'`` mode. For 2D boxes, use :func:`bbox_generator`.
 
     Convention:
-        The four front vertices precede the four back vertices. A scalar input gives a batch of one. The six
-        tensors must share dtype and device, otherwise ``AssertionError``.
+        The four front vertices precede the four back vertices. Scalar inputs give a batch of one, and scalar sizes
+        broadcast against ``(B,)`` starts; scalar starts with ``(B,)`` sizes, ``B > 1``, raise ``RuntimeError``. The
+        six tensors must share dtype and device, otherwise ``AssertionError``.
 
         The far corner is at ``start + size - 1`` (inclusive, see :func:`infer_bbox_shape3d`), so
         :func:`infer_bbox_shape3d` reads back ``size`` on every axis, matching :func:`bbox_generator`.

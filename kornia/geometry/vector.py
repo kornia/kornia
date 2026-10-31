@@ -55,7 +55,9 @@ class Scalar(TensorWrapper):
     tensor. :meth:`Vector3.dot` and :meth:`Vector3.squared_norm` return one, and
     :class:`~kornia.geometry.plane.Hyperplane` takes its offset as one and returns its distances as one. An operation
     between a ``Scalar`` and a :class:`Vector3` follows the rule of :class:`~kornia.core.TensorWrapper`, so ``s * v``
-    is a ``Vector3`` like ``v * s``.
+    is a ``Vector3`` like ``v * s``. Broadcasting follows the wrapped tensors and adds no coordinate axis: the
+    ``(B,)`` result of :meth:`Vector3.dot` meets the last axis of ``(B, 3)`` vectors, so ``s * v`` raises for
+    ``B != 3`` and scales coordinates for ``B == 3``. Scale vector by vector with ``s.data[..., None] * v``.
 
     See Also:
         - :class:`Vector3`: 3D vectors ``(*, 3)``, whose dot products and squared norms come back as a ``Scalar``.

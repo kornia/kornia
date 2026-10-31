@@ -8,8 +8,9 @@ kornia.geometry.subpix
 
 Sub-pixel locations from heatmaps and scale-space volumes. :func:`spatial_soft_argmax2d` returns one ``(x, y)`` per
 heatmap channel, the softmax-weighted mean over the whole map, and :func:`conv_soft_argmax2d` and
-:func:`conv_soft_argmax3d` one per sliding window. :func:`nms2d`, :func:`nms3d` and :func:`nms3d_minmax` keep the strict
-local maxima, and :func:`conv_quad_interp3d` and :func:`iterative_quad_interp3d` refine the maxima of a scale-space
+:func:`conv_soft_argmax3d` one per sliding window. :func:`nms2d` and :func:`nms3d` keep the strict local maxima, as
+the suppressed map or a boolean mask, and :func:`nms3d_minmax` returns two boolean masks of a volume, its strict local
+maxima and minima. :func:`conv_quad_interp3d` and :func:`iterative_quad_interp3d` refine the maxima of a scale-space
 volume by a quadratic fit, with :class:`AdaptiveQuadInterp3d` picking the faster one for the device. Coordinates are
 ``(x, y)`` in 2D and ``(d, x, y)`` in 3D; see :ref:`Coordinates and sizes <coordinate-conventions>`. Each class under
 Modules except :class:`AdaptiveQuadInterp3d` stores the arguments of its function form.

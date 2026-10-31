@@ -58,7 +58,9 @@ class Keypoints:
     batch of ``B > 1`` matrices pairs matrix ``b`` with ``points[b]`` and needs ``(B, N, 2)`` points. :meth:`pad` and
     :meth:`unpad` shift the points by image padding.
     :class:`~kornia.augmentation.container.AugmentationSequential` accepts a :class:`Keypoints` under its
-    ``'keypoints'`` data key and transforms it with the images. To transform a plain tensor once, use
+    ``'keypoints'`` data key and transforms it with the images, unless the pipeline contains a
+    :class:`~kornia.augmentation.container.VideoSequential`: such a pipeline raises ``TypeError`` for a
+    :class:`Keypoints` and takes ``VideoKeypoints`` or a ``(B, T, N, 2)`` tensor. To transform a plain tensor once, use
     :func:`~kornia.geometry.linalg.transform_points`; for 3D points, :class:`Keypoints3D`.
 
     Args:

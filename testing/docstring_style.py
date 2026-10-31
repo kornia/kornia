@@ -966,6 +966,11 @@ def documented_members(registry: Mapping[str, object], classes: Iterable[object]
             doc = _attribute_docs(member.owner.__module__).get((member.owner.__qualname__, member.name))
         else:
             doc = inspect.getdoc(member)
+            if doc is None:
+                # A class method is registered as its ``__func__``, on which ``inspect.getdoc`` does not find the
+                # docstring an override without one inherits; autodoc shows that one, so read it through the class.
+                bound = getattr(parent, name.rpartition(".")[2], None)
+                doc = None if bound is None else inspect.getdoc(bound)
         if doc:
             members[name] = (member, doc)
     return members

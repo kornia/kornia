@@ -165,15 +165,17 @@ class ParametrizedLine(nn.Module):
         """Construct a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         The origin is ``p0`` and the direction the unit vector from ``p0`` towards ``p1``, so ``point_at(t)`` is the
-        point at Euclidean distance ``t`` from ``p0``.
+        point at Euclidean distance ``t`` from ``p0``. The norm is floored at ``1e-12``: points closer than that pass
+        the check below but get a direction of length ``|p1 - p0| / 1e-12``, not a unit one, which scales
+        ``point_at`` and the projections and distances that assume a unit direction. The check that the points differ
+        is skipped under ``torch.compile`` and by ``disable_checks()``, like every kornia value check.
 
         Args:
             p0: tensor with first point ``(B, D)`` or ``(D,)``, where ``D`` is the point dimension.
             p1: tensor with second point of the same shape.
 
         Raises:
-            ValueCheckError: if ``p0`` and ``p1`` coincide in any row, so the line has no direction. Like every kornia
-                value check, it is skipped under ``torch.compile`` and by ``disable_checks()``.
+            ValueCheckError: if ``p0`` and ``p1`` coincide in any row, so the line has no direction.
 
         Example:
             >>> p0 = torch.tensor([0.0, 0.0])
@@ -279,11 +281,11 @@ class ParametrizedLine(nn.Module):
             eps: absolute threshold on ``|normal . direction|`` below which the line counts as parallel to the plane.
 
         Return:
-            - lambda, the line parameter of the intersection in units of the stored direction: ``()`` for one line
-              and one plane, ``(B,)`` for the broadcast batch, and ``(1,)`` for one unbatched line with a batch of
-              one plane.
-            - the intersection point ``point_at(lambda)``: ``(3,)`` for one unbatched line, and ``(B, 3)`` for the
-              broadcast batch; see the class conventions for one unbatched line with a batch of planes.
+            The pair ``(lambda, point)``. ``lambda`` is the line parameter of the intersection in units of the stored
+            direction, ``()`` for one line and one plane, ``(B,)`` for the broadcast batch, and ``(1,)`` for one
+            unbatched line with a batch of one plane. ``point`` is the intersection ``point_at(lambda)``, ``(3,)`` for
+            one unbatched line and ``(B, 3)`` for the broadcast batch; see the class conventions for one unbatched
+            line with a batch of planes.
 
         Note:
             If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
