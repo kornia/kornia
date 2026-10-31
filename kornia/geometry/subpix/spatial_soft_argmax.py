@@ -253,7 +253,7 @@ class ConvSoftArgmax3d(nn.Module):
     def __init__(
         self,
         kernel_size: tuple[int, int, int] = (3, 3, 3),
-        stride: tuple[int, int, int] = (1, 1, 1),
+        stride: int | tuple[int, int, int] = (1, 1, 1),
         padding: tuple[int, int, int] = (1, 1, 1),
         temperature: torch.Tensor | float = 1.0,
         normalized_coordinates: bool = False,
@@ -467,7 +467,7 @@ def conv_soft_argmax2d(
 def conv_soft_argmax3d(
     input: torch.Tensor,
     kernel_size: tuple[int, int, int] = (3, 3, 3),
-    stride: tuple[int, int, int] = (1, 1, 1),
+    stride: int | tuple[int, int, int] = (1, 1, 1),
     padding: tuple[int, int, int] = (1, 1, 1),
     temperature: torch.Tensor | float = 1.0,
     normalized_coordinates: bool = False,
