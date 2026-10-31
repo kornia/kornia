@@ -23,6 +23,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, supports_reflect_padding
@@ -1084,6 +1085,20 @@ class TestAffine2d(BaseTester):
             kornia.geometry.transform.affine(image, matrix)
         out = kornia.geometry.transform.affine(image, matrix[None])
         assert out.shape == ((2, 5, 7) if unbatched_image else (1, 2, 5, 7))
+
+    def test_function_rejects_unbatched_matrix_with_checks_disabled_6462(self, device, dtype):
+        # With checks disabled the shape check is skipped, but the (2, 3) matrix is not broadcast, so warp_affine
+        # still rejects it instead of returning two copies of the image.
+        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        matrix = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        was_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(ValueError, match="Bx2x3"):
+                kornia.geometry.transform.affine(image, matrix)
+        finally:
+            if was_enabled:
+                enable_checks()
 
     def test_affine_no_args(self):
         with pytest.raises(RuntimeError):

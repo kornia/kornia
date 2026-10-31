@@ -233,13 +233,15 @@ def affine(
         tensor = torch.unsqueeze(tensor, dim=0)
 
     # we enforce broadcasting since by default grid_sample it does not
-    # give support for that
-    if tensor.shape[0] == 1 and matrix.shape[0] != 1:
+    # give support for that. Only a (B, 2, 3) matrix is broadcast: with checks disabled, a (2, 3) one must reach
+    # warp_affine, which rejects it, rather than have its 2 rows read as a batch.
+    is_batched_matrix: bool = matrix.dim() == 3
+    if is_batched_matrix and tensor.shape[0] == 1 and matrix.shape[0] != 1:
         tensor = tensor.expand(matrix.shape[0], tensor.shape[1], tensor.shape[2], tensor.shape[3])
 
     # Keep a shared matrix singleton so warp_affine builds only one sampling grid.
     # Keep parameter-gradient reductions in their original order, and retain batch validation.
-    if matrix.shape[0] != 1 or tensor.shape[0] == 0 or matrix.requires_grad:
+    if is_batched_matrix and (matrix.shape[0] != 1 or tensor.shape[0] == 0 or matrix.requires_grad):
         matrix = matrix.expand(tensor.shape[0], -1, -1)
 
     # warp the input tensor
