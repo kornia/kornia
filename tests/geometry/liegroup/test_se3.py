@@ -810,6 +810,9 @@ class TestSe3(BaseTester):
         assert s_bcast1.adjoint().shape == (2, 6, 6)
         assert s_bcast1[0].matrix().shape == (4, 4)
         assert s_bcast1[1].matrix().shape == (4, 4)
+        assert s_bcast1[0:2].matrix().shape == (2, 4, 4)
+        assert s_bcast1[1:].matrix().shape == (1, 4, 4)
+        assert s_bcast1[1:1].matrix().shape == (0, 4, 4)
 
         s_bcast2 = Se3(
             Quaternion.identity(1, device=device, dtype=dtype), torch.zeros(2, 3, device=device, dtype=dtype)
@@ -819,6 +822,36 @@ class TestSe3(BaseTester):
         assert s_bcast2.adjoint().shape == (2, 6, 6)
         assert s_bcast2[0].matrix().shape == (4, 4)
         assert s_bcast2[1].matrix().shape == (4, 4)
+        assert s_bcast2[0:2].matrix().shape == (2, 4, 4)
+        assert s_bcast2[1:].matrix().shape == (1, 4, 4)
+        assert s_bcast2[1:1].matrix().shape == (0, 4, 4)
+
+        # Mixed unbatched and singleton batch inputs
+        s_mixed1 = Se3(q_unbatched, torch.zeros(1, 3, device=device, dtype=dtype))
+        assert s_mixed1.matrix().shape == (1, 4, 4)
+        assert s_mixed1.log().shape == (1, 6)
+        assert s_mixed1.adjoint().shape == (1, 6, 6)
+        assert s_mixed1[0].matrix().shape == (4, 4)
+        assert s_mixed1[0:1].matrix().shape == (1, 4, 4)
+
+        s_mixed2 = Se3(Quaternion.identity(1, device=device, dtype=dtype), t_unbatched)
+        assert s_mixed2.matrix().shape == (1, 4, 4)
+        assert s_mixed2.log().shape == (1, 6)
+        assert s_mixed2.adjoint().shape == (1, 6, 6)
+        assert s_mixed2[0].matrix().shape == (4, 4)
+        assert s_mixed2[0:1].matrix().shape == (1, 4, 4)
+
+        # Multi-dimensional broadcast batches: (2, 1) rotation and (1, 3) translation
+        q_2x1 = Quaternion(torch.randn(2, 1, 4, device=device, dtype=dtype))
+        t_1x3 = torch.zeros(1, 3, 3, device=device, dtype=dtype)
+        s_multi = Se3(q_2x1, t_1x3)
+        assert s_multi.matrix().shape == (2, 3, 4, 4)
+        assert s_multi.log().shape == (2, 3, 6)
+        assert s_multi.adjoint().shape == (2, 3, 6, 6)
+        assert s_multi[0].matrix().shape == (3, 4, 4)
+        assert s_multi[1].matrix().shape == (3, 4, 4)
+        assert s_multi[1:].matrix().shape == (1, 3, 4, 4)
+        assert s_multi[0:2].matrix().shape == (2, 3, 4, 4)
 
 
 class TestSe3HalfPrecision(BaseTester):

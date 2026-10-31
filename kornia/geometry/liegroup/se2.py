@@ -142,6 +142,7 @@ class Se2(nn.Module):
                 rotation's real dtype.
 
         Raises:
+            ValueError: if rotation and translation batch shapes are incompatible.
             TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
                 dtype differs from the rotation's (``log`` and the other methods cannot combine them).
             DeviceError: if the translation is on another device than the rotation.
@@ -176,13 +177,14 @@ class Se2(nn.Module):
         t = self._translation
         r_batch = r.z.shape
         t_batch = t.shape[:-1]
-        if len(r_batch) == 1 and r_batch[0] == 1 and len(t_batch) == 1 and t_batch[0] > 1:
-            r_idx = 0 if isinstance(idx, int) else slice(0, 1)
-            return Se2(r[r_idx], t[idx])
-        if len(t_batch) == 1 and t_batch[0] == 1 and len(r_batch) == 1 and r_batch[0] > 1:
-            t_idx = 0 if isinstance(idx, int) else slice(0, 1)
-            return Se2(r[idx], t[t_idx])
-        return Se2(r[idx], t[idx])
+        if len(r_batch) == 0 and len(t_batch) == 0:
+            return Se2(r[idx], t[idx])
+        r_b = (1,) if len(r_batch) == 0 else r_batch
+        t_b = (1,) if len(t_batch) == 0 else t_batch
+        b_batch = torch.broadcast_shapes(r_b, t_b)
+        z = r.z if r.z.shape == b_batch else r.z.expand(b_batch)
+        t_exp = t if t.shape[:-1] == b_batch else t.expand(b_batch + (2,))
+        return Se2(So2(z[idx]), t_exp[idx])
 
     def _mul_se2(self, right: Se2) -> Se2:
         so2 = self.so2
