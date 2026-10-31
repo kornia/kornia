@@ -1117,7 +1117,8 @@ class TestPinholeCamera(BaseTester):
             cam = kornia.geometry.camera.PinholeCamera(k, e, h, w)
         assert cam.fx.shape == (1, 2)
         self.assert_close(cam.fx, torch.full((1, 2), 100.0, device=device, dtype=dtype))
-        with pytest.raises(RuntimeError):
+        # (1, 2, 4, 4) matrices cannot pair with (1, 5, 3) points; transform_points rejects the layout (kornia#6473).
+        with pytest.raises(ValueError, match="batch axes of trans_01 must match"):
             cam.project(torch.ones(1, 5, 3, device=device, dtype=dtype))
 
     def test_rank4_construction_does_not_warn_under_trace_4266(self, device, dtype):

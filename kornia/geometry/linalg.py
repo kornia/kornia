@@ -231,7 +231,8 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Args:
         trans_01: tensor for transformations of shape
-          ``(D+1, D+1)`` or ``(B, D+1, D+1)``.
+          ``(D+1, D+1)`` or ``(B, D+1, D+1)``. A matrix batch with several axes, ``(B1, ..., Bk, D+1, D+1)``,
+          aligns with the first ``k`` batch axes of ``points_1``; each of its axes must match or be 1.
         points_1: tensor of points of shape ``(N, D)`` or ``(B, N, D)``.
 
     Returns:
@@ -259,6 +260,25 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         trans_01 = trans_01.to(out_dtype)
     if trans_01.ndim == 2:
         trans_01 = trans_01.unsqueeze(0)
+    # A matrix batch with several leading axes aligns with the points' leading batch axes, with a size-1 matrix
+    # axis broadcast. Expand it to those axes here: the flatten-and-repeat below pairs the matrices with the points by
+    # count only, so an unexpanded size-1 axis paired the wrong point sets (kornia#6473). A batch holding a single
+    # matrix, such as (1, 1, 1, D+1, D+1), already applies to every point set, whatever its rank.
+    trans_batch_ndim = trans_01.ndim - 2
+    if trans_batch_ndim > 1 and trans_01[..., 0, 0].numel() != 1:
+        points_batch_ndim = points_1.ndim - 2
+        batch_ok = points_batch_ndim >= trans_batch_ndim
+        if batch_ok:
+            for i in range(trans_batch_ndim):
+                if trans_01.shape[i] != 1 and trans_01.shape[i] != points_1.shape[i]:
+                    batch_ok = False
+        if not batch_ok:
+            raise ValueError(
+                "The batch axes of trans_01 must match the leading batch axes of points_1, or be 1. "
+                f"Got {trans_01.shape} and {points_1.shape}"
+            )
+        expanded_shape = list(points_1.shape[:trans_batch_ndim]) + list(trans_01.shape[-2:])
+        trans_01 = trans_01.expand(expanded_shape)
     # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a
     # coincidence, not a match: it used to reach ``bmm`` with an empty batch (kornia#4969).
     unbatched_points = points_1.ndim == 2 and trans_01.shape[0] > 1
