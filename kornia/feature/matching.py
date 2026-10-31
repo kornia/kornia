@@ -82,6 +82,117 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     return distances.to(output_dtype)
 
 
+# The squared path pays from these matrix sizes on. Below them, its extra operator calls cost more than the passes it
+# saves: on an RTX 4090 and an i7-14700K (torch 2.14), the CPU gains 1.02-1.10x at 256 x 256 descriptors and the
+# matchers on CUDA are 0.90-0.98x below 2048 x 2048.
+_SQUARED_MIN_NUMEL: Dict[str, int] = {"cpu": 256 * 256, "cuda": 2048 * 2048}
+
+
+def _squared_distances(
+    desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
+) -> Optional[torch.Tensor]:
+    r"""Return the squared L2 distances whose square roots ``torch.cdist`` returns, or ``None``.
+
+    For more than 25 rows on either side, ``torch.cdist`` computes the distances by matrix multiplication
+    (ATen's ``_euclidean_dist``). It appends the squared norms to the descriptors, multiplies, and then takes
+    ``clamp_min(0).sqrt()`` of the whole matrix. This function computes the same product, bit for bit, without the
+    last two passes. The matchers select on it and take the square root of the selected entries only, which returns
+    the bits ``torch.cdist`` would have returned for them. The selection is the same too, because the square root
+    keeps the order, with one difference: two distances that differ only below the precision of their square roots
+    tie in ``torch.cdist``'s matrix, and are not tied here, so a matcher returns the nearer one.
+
+    It returns ``None``, and the matchers use :func:`_get_lazy_distance_matrix`, in these cases:
+
+    - ``dm`` is given.
+    - Either descriptor set needs a gradient: the matchers' in-place selections would break autograd.
+    - The dtypes differ or are not float32 or float64.
+    - Autocast is on, where ``torch.cdist`` runs in float32 and a matrix product would not.
+    - The call is exported or traced.
+    - The device is neither the CPU nor CUDA. MPS is not measured.
+    - Neither side has more than 25 rows, the case in which ``torch.cdist`` computes the differences directly.
+    - The matrix has fewer entries than :data:`_SQUARED_MIN_NUMEL` gives for the device.
+
+    Only the matchers' non-scripted path calls it, so TorchScript never compiles it.
+    """
+    # Export first: under torch.export, the size comparisons below would become guards of the exported graph.
+    if dm is not None or is_exporting() or torch.jit.is_tracing():
+        return None
+    min_numel = _SQUARED_MIN_NUMEL.get(desc1.device.type)
+    if min_numel is None or desc1.size(0) * desc2.size(0) < min_numel:
+        return None
+    if desc1.size(0) <= 25 and desc2.size(0) <= 25:
+        return None
+    if desc1.dtype != desc2.dtype or desc1.dtype not in (torch.float32, torch.float64) or is_autocast_enabled():
+        return None
+    if torch.is_grad_enabled() and (desc1.requires_grad or desc2.requires_grad):
+        return None
+    norms1 = desc1.pow(2).sum(-1, keepdim=True)
+    norms2 = desc2.pow(2).sum(-1, keepdim=True)
+    padded1 = torch.cat([desc1.mul(-2), norms1, torch.ones_like(norms1)], -1)
+    padded2 = torch.cat([desc2, torch.ones_like(norms2), norms2], -1)
+    return padded1.matmul(padded2.mT)
+
+
+def _distance_from_squared(squared: torch.Tensor) -> torch.Tensor:
+    """Return the L2 distance ``torch.cdist`` derives from a squared distance of :func:`_squared_distances`.
+
+    No gradient flows here (see :func:`_squared_distances`), so the clamp is not a gradient guard.
+    """
+    return squared.clamp_min(0).sqrt()
+
+
+def _largest_finite(dtype: torch.dtype) -> float:
+    """Return ``torch.finfo(dtype).max`` for the float32 and float64 of :func:`_squared_distances`.
+
+    TorchScript, which compiles the matchers' calls of the helpers below, has no ``torch.finfo``.
+    """
+    return 3.4028234663852886e38 if dtype == torch.float32 else 1.7976931348623157e308
+
+
+def _topk_order_key_(squared: torch.Tensor) -> torch.Tensor:
+    """Map ``squared`` in place to a key without nan, which orders as ``torch.topk`` orders it.
+
+    ``torch.topk`` orders nan after ``+inf``. ``torch.min`` returns the first nan of a row instead. The key keeps the
+    numbers and ``-inf``, and maps ``+inf`` to the largest finite value and nan to ``+inf``. :func:`_key_to_squared`
+    maps them back. Only a squared distance of exactly the largest finite value would come back as ``+inf``.
+    """
+    return squared.nan_to_num_(nan=float("inf"), posinf=_largest_finite(squared.dtype), neginf=float("-inf"))
+
+
+def _key_to_squared(key: torch.Tensor) -> torch.Tensor:
+    """Invert :func:`_topk_order_key_` for the few entries a selection took from the key."""
+    largest = _largest_finite(key.dtype)
+    return torch.where(key == float("inf"), float("nan"), torch.where(key == largest, float("inf"), key))
+
+
+def _two_smallest_(key: torch.Tensor, dim: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return the two smallest entries of ``key`` along ``dim``, and the index of the smallest.
+
+    The values are those of ``torch.topk(key, 2, dim, largest=False)``. The index is the first of tied smallest
+    entries; ``torch.topk`` orders no ties. The second entry is the minimum after the first is masked in place with
+    ``+inf``. The mask is then undone, so ``key`` keeps its values.
+
+    The ratio tests of :func:`match_snn` and :func:`match_smnn` use it on CUDA, where :func:`_squared_distances`
+    returns a matrix of at least 2,048 x 2,048 entries. There this reads the matrix twice and writes one entry per
+    row or column, while ``torch.topk`` selects by radix. With 8,192 x 8,192 float32 distances on an RTX 4090
+    (torch 2.14), it takes 0.6 ms for each direction; ``torch.topk`` takes 1.5 ms for the rows and 3.0 ms for the
+    columns. On the CPU ``torch.topk`` stays, which is faster there than reductions, see
+    :func:`_first_to_second_nearest_ratio`.
+    """
+    first, index = key.min(dim)
+    picked = index.unsqueeze(dim)
+    key.scatter_(dim, picked, float("inf"))
+    second = key.amin(dim)
+    key.scatter_(dim, picked, first.unsqueeze(dim))
+    return first, second, index
+
+
+def _ratio_from_keys(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
+    """Return the distance ratio of the two smallest keys of :func:`_two_smallest_`, as ``torch.topk`` gives it."""
+    distances = _distance_from_squared(_key_to_squared(torch.stack([first, second])))
+    return distances[0] / distances[1]
+
+
 def _get_default_fginn_params() -> Dict[str, Any]:
     return {"th": 0.85, "mutual": False, "spatial_th": 10.0}
 
@@ -157,9 +268,12 @@ def _min_over_rows(distance_matrix: torch.Tensor, block: int = 512) -> Tuple[tor
 
 
 def _nearest_neighbour_ratio_over_rows(
-    distance_matrix: torch.Tensor, block: int = 512
+    distance_matrix: torch.Tensor, block: int = 512, squared: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Return :func:`_nearest_neighbour_ratio` of ``distance_matrix.t()``: the ratio test of each column.
+
+    With ``squared``, ``distance_matrix`` holds squared distances from :func:`_squared_distances`, and the ratio is
+    taken of the square roots of the two smallest.
 
     On CPU a matrix of more than ``2 * block`` rows takes the two smallest distances of each block of rows with
     ``torch.topk``, then the two smallest of those, see :func:`_reduces_over_row_blocks`. The two smallest values
@@ -169,7 +283,7 @@ def _nearest_neighbour_ratio_over_rows(
     is 1 or nan, which the ratio test of :func:`match_smnn` rejects for any ``th < 1``.
     """
     if not _reduces_over_row_blocks(distance_matrix, block):
-        return _nearest_neighbour_ratio(distance_matrix.t())
+        return _nearest_neighbour_ratio(distance_matrix.t(), squared)
     rows, cols = distance_matrix.shape
     full = rows - rows % block
     vals, idxs = distance_matrix[:full].reshape(full // block, block, cols).topk(2, dim=1, largest=False)
@@ -179,6 +293,8 @@ def _nearest_neighbour_ratio_over_rows(
         rest_vals, rest_idxs = distance_matrix[full:].topk(min(2, rows - full), dim=0, largest=False)
         vals, idxs = torch.cat([vals, rest_vals]), torch.cat([idxs, rest_idxs + full])
     best, pick = vals.topk(2, dim=0, largest=False)
+    if squared:
+        best = _distance_from_squared(best)
     return best[0] / best[1], idxs.gather(0, pick[:1])[0]
 
 
@@ -207,7 +323,10 @@ def match_nn(
           ``1 - dists`` as ``confidence``.
         - The ratio tests of :func:`match_snn`, :func:`match_smnn`, :func:`match_smnn_batched` and
           :func:`match_fginn` keep ``ratio <= th``: a ratio equal to ``th`` passes.
-        - Without ``dm``, the L2 distances between the descriptors are used. A given ``dm`` is read as it is:
+        - Without ``dm``, the L2 distances between the descriptors are used. On the CPU and CUDA, for inputs that
+          need no gradient, the matchers select on the squared distances and take the square roots of the selected
+          ones. The returned values are those of ``torch.cdist``, but two distances that round to the same value only
+          after the square root are not tied, and the nearer one is returned. A given ``dm`` is read as it is:
           :func:`match_nn` and :func:`match_mnn` accept any matrix in which smaller is better and return its
           entries, while the ratio tests divide its entries, so they need non-negative values, and squared
           distances need ``th ** 2``.
@@ -232,8 +351,14 @@ def match_nn(
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
+    if squared is not None:
+        match_dists = _distance_from_squared(match_dists)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
@@ -264,7 +389,11 @@ def match_mnn(
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
     ms = min(distance_matrix.size(0), distance_matrix.size(1))
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
     match_dists2, idxs_in_1 = _min_over_rows(distance_matrix)
@@ -279,6 +408,8 @@ def match_mnn(
         mutual = torch.nonzero(minsize_idxs == idxs_in_2[idxs_in_1][:ms])[:, 0]  # rows of desc2
         matches_idxs = torch.stack([idxs_in_1[mutual], mutual], 1)
         match_dists = match_dists2[mutual]
+    if squared is not None:
+        match_dists = _distance_from_squared(match_dists)
     return match_dists.view(-1, 1), matches_idxs
 
 
@@ -313,15 +444,19 @@ def _first_to_second_nearest_ratio(distance_matrix: torch.Tensor) -> Tuple[torch
     return torch.where(defined, ratio, (first / second).detach()), first_idx
 
 
-def _nearest_neighbour_ratio(distance_matrix: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def _nearest_neighbour_ratio(distance_matrix: torch.Tensor, squared: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
     """Return each row's nearest column and its ratio of the nearest to the second-nearest distance.
 
     The ratio test of :func:`match_snn` and :func:`match_smnn`: :func:`_first_to_second_nearest_ratio` on MPS and
-    ``torch.topk`` elsewhere. A row needs at least two columns.
+    ``torch.topk`` elsewhere. A row needs at least two columns. With ``squared``, ``distance_matrix`` holds squared
+    distances from :func:`_squared_distances`, which is never on MPS, and the ratio is taken of the square roots of
+    the two smallest.
     """
     if is_mps_tensor_safe(distance_matrix):
         return _first_to_second_nearest_ratio(distance_matrix)
     vals, idxs = torch.topk(distance_matrix, 2, dim=1, largest=False)
+    if squared:
+        vals = _distance_from_squared(vals)
     return vals[:, 0] / vals[:, 1], idxs[:, 0]
 
 
@@ -354,8 +489,17 @@ def match_snn(
 
     if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    ratio, idxs_in_2 = _nearest_neighbour_ratio(distance_matrix)
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    if squared is not None and squared.is_cuda:
+        distance_matrix = _topk_order_key_(squared)
+        first, second, idxs_in_2 = _two_smallest_(distance_matrix, 1)
+        ratio = _ratio_from_keys(first, second)
+    else:
+        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
+        ratio, idxs_in_2 = _nearest_neighbour_ratio(distance_matrix, squared is not None)
     # One nonzero is the only wait for the device: indexing with the boolean mask would wait once per indexed tensor.
     idxs_in1 = torch.nonzero(ratio <= th)[:, 0]
     if idxs_in1.numel() == 0:
@@ -395,9 +539,19 @@ def match_smnn(
 
     if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
         return _no_match(desc1)
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-    ratio1, nearest2 = _nearest_neighbour_ratio(distance_matrix)
-    ratio2, nearest1 = _nearest_neighbour_ratio_over_rows(distance_matrix)
+    squared: Optional[torch.Tensor] = None
+    # a separate `if`: TorchScript skips the body only under a bare `not torch.jit.is_scripting()`
+    if not torch.jit.is_scripting():
+        squared = _squared_distances(desc1, desc2, dm)
+    if squared is not None and squared.is_cuda:
+        distance_matrix = _topk_order_key_(squared)
+        first1, second1, nearest2 = _two_smallest_(distance_matrix, 1)
+        first2, second2, nearest1 = _two_smallest_(distance_matrix, 0)
+        ratio1, ratio2 = _ratio_from_keys(first1, second1), _ratio_from_keys(first2, second2)
+    else:
+        distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm) if squared is None else squared
+        ratio1, nearest2 = _nearest_neighbour_ratio(distance_matrix, squared is not None)
+        ratio2, nearest1 = _nearest_neighbour_ratio_over_rows(distance_matrix, squared=squared is not None)
     # Join the two directions on integer indices: i and nearest2[i] are mutual when nearest1[nearest2[i]] == i. Both
     # ratio tests and the mutual check form one mask, so one nonzero is the only wait for the device.
     reverse_ratio = ratio2[nearest2]
