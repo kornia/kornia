@@ -573,7 +573,7 @@ def conv_soft_argmax3d(
     grid_global = grid_global - torch.tensor([pz, px, py], device=device, dtype=grid_global.dtype)
     grid_global = grid_global.to(dtype).permute(0, 4, 1, 2, 3)
 
-    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride)
+    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=(sz, sy, sx))
 
     # Coordinates of maxima residual to window center: the softmax-weighted voxel offsets of each window
     offsets = window_kernel.reshape(3, kz * ky * kx)
