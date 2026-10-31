@@ -560,6 +560,14 @@ class Quaternion(nn.Module):
 
         """
         coeffs = (w, x, y, z)
+        for c in coeffs:
+            if isinstance(c, complex):
+                raise ValueError(f"Quaternion coefficients must be real-valued, got complex scalar {c}")
+            if isinstance(c, torch.Tensor) and c.is_complex():
+                raise ValueError(
+                    f"Quaternion coefficients must be real-valued, got complex tensor with dtype {c.dtype}"
+                )
+
         tensor_coeffs = [c for c in coeffs if isinstance(c, torch.Tensor)]
 
         if not tensor_coeffs:

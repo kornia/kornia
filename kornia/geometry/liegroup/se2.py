@@ -172,7 +172,17 @@ class Se2(nn.Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx: int | slice) -> Se2:
-        return Se2(self._rotation[idx], self._translation[idx])
+        r = self._rotation
+        t = self._translation
+        r_batch = r.z.shape
+        t_batch = t.shape[:-1]
+        if len(r_batch) == 1 and r_batch[0] == 1 and len(t_batch) == 1 and t_batch[0] > 1:
+            r_idx = 0 if isinstance(idx, int) else slice(0, 1)
+            return Se2(r[r_idx], t[idx])
+        if len(t_batch) == 1 and t_batch[0] == 1 and len(r_batch) == 1 and r_batch[0] > 1:
+            t_idx = 0 if isinstance(idx, int) else slice(0, 1)
+            return Se2(r[idx], t[t_idx])
+        return Se2(r[idx], t[idx])
 
     def _mul_se2(self, right: Se2) -> Se2:
         so2 = self.so2
@@ -305,6 +315,8 @@ class Se2(nn.Module):
         V_inv = torch.stack((row0, row1), -2)
         # the translation is read at the rotation's precision, so a bfloat16 translation beside a wider rotation works
         upsilon = V_inv @ self.t.to(theta.dtype)[..., None]
+        if theta.shape != upsilon.shape[:-2]:
+            theta = theta.expand(upsilon.shape[:-2])
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -532,6 +544,9 @@ class Se2(nn.Module):
 
         """
         rt = self.matrix()
+        b_batch = rt.shape[:-2]
         t = self.t
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (2,))
         rt[..., 0:2, 2] = torch.stack((t[..., 1], -t[..., 0]), -1)
         return rt

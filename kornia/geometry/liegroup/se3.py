@@ -172,7 +172,18 @@ class Se3(nn.Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx: int | slice) -> Se3:
-        return Se3(self._rotation[idx], self._translation[idx])
+        r = self._rotation
+        t = self._translation
+        q = r.q if isinstance(r, So3) else r
+        r_batch = q.data.shape[:-1]
+        t_batch = t.shape[:-1]
+        if len(r_batch) == 1 and r_batch[0] == 1 and len(t_batch) == 1 and t_batch[0] > 1:
+            r_idx = 0 if isinstance(idx, int) else slice(0, 1)
+            return Se3(r[r_idx], t[idx])
+        if len(t_batch) == 1 and t_batch[0] == 1 and len(r_batch) == 1 and r_batch[0] > 1:
+            t_idx = 0 if isinstance(idx, int) else slice(0, 1)
+            return Se3(r[idx], t[t_idx])
+        return Se3(r[idx], t[idx])
 
     def _mul_se3(self, right: Se3) -> Se3:
         _r = self.r * right.r
@@ -314,7 +325,13 @@ class Se3(nn.Module):
         V_inv = (
             torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
         )
-        return torch.cat(((t[..., None, :] * V_inv).sum(-1), omega), -1)
+        upsilon = (t[..., None, :] * V_inv).sum(-1)
+        b_batch = torch.broadcast_shapes(upsilon.shape[:-1], omega.shape[:-1])
+        if upsilon.shape[:-1] != b_batch:
+            upsilon = upsilon.expand(b_batch + (3,))
+        if omega.shape[:-1] != b_batch:
+            omega = omega.expand(b_batch + (3,))
+        return torch.cat((upsilon, omega), -1)
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
@@ -605,7 +622,13 @@ class Se3(nn.Module):
 
         """
         R = self.so3.matrix()
+        b_batch = torch.broadcast_shapes(R.shape[:-2], self.t.shape[:-1])
+        if R.shape[:-2] != b_batch:
+            R = R.expand(b_batch + (3, 3))
+        t = self.t
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (3,))
         z = torch.zeros_like(R)
-        row0 = torch.cat((R, So3.hat(self.t) @ R), -1)
+        row0 = torch.cat((R, So3.hat(t) @ R), -1)
         row1 = torch.cat((z, R), -1)
         return torch.cat((row0, row1), -2)
