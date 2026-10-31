@@ -46,7 +46,7 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         - The result is the matrix product ``trans_01 @ trans_12``, with the frame naming of
           :func:`relative_transformation`. Only the top three rows of each input are read and the last row of the
           result is always :math:`[0, 0, 0, 1]`: any affine pair composes exactly, and a projective input is used as
-          if its last row were :math:`[0, 0, 0, 1]`. An unbatched :math:`(4, 4)` input broadcasts as a batch of one
+          if its last row were :math:`[0, 0, 0, 1]`. An unbatched ``(4, 4)`` input broadcasts as a batch of one
           against a batched input; two unbatched inputs return an unbatched result.
 
     Args:
@@ -171,7 +171,7 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
     Convention:
         - ``trans_ab`` (:math:`T_a^{b}`) maps points in frame ``b`` to frame ``a``, :math:`p_a = T_a^{b} p_b`:
           ``transform_points(trans_01, points_1)`` returns ``points_0``, and
-          ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``. An unbatched :math:`(4, 4)` input
+          ``compose_transformations(trans_01, trans_12)`` returns ``trans_02``. An unbatched ``(4, 4)`` input
           broadcasts as a batch of one against a batched input; two unbatched inputs return an unbatched result.
           :ref:`Rotations and rigid motions <rotation-conventions>` maps this onto other libraries.
         - ``trans_01`` must be a rigid :math:`[R|t]`, as for :func:`inverse_transformation`, and the last row of
