@@ -253,7 +253,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         order = sorted(range(len(keys)), key=lambda i: dict_data_keys[i] != DataKey.INPUT)
         return [keys[i] for i in order]
 
-    def _validate_rotation90_inputs(self, inputs: _inputs_type) -> None:
+    def _validate_rotation90_inputs(self, inputs: _inputs_type, data_keys: Optional[_data_keys_type]) -> None:
         # Only the default stack: in a custom one an earlier module can resize the image, or a container can cut it into
         # patches or frames, so the input's (H, W) is not the one its RandomRotation90 receives. There the rotation
         # checks the tensor it receives, when ADA first selects a sample. An ADA pickled before this check has no flag.
@@ -263,7 +263,10 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             keys, dict_data_keys, _, _ = self._preproc_dict_data(cast(Dict[str, DataType], inputs))
             images = [inputs[key] for key, data_key in zip(keys, dict_data_keys) if data_key == DataKey.INPUT]
         else:
-            images = [inputs]
+            # A tensor is an image unless ``data_keys`` name it otherwise; a mask-only call is not checked here.
+            if data_keys is None:
+                data_keys = [k.name for k in self.data_keys] if self.data_keys is not None else ["input"]
+            images = [inputs] if DataKey.get(data_keys[0]) == DataKey.INPUT else []
         rotations = [module for module in self.modules() if isinstance(module, RandomRotation90)]
         for image in images:
             if image.dim() == 4:
@@ -342,7 +345,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         # ADA only calls its augmentations for the samples its probability selects, which at a small `p` can be many
         # calls in. Check the input here, on every call, so a shape the default `RandomRotation90` rejects fails on the
         # first one.
-        self._validate_rotation90_inputs(inputs)
+        self._validate_rotation90_inputs(inputs, data_keys)
 
         if self.p == 0:
             return inputs

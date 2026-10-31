@@ -104,6 +104,7 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         # A mask is not an image: an integer mask passes through as it did before the check.
         mask = torch.zeros(4, 1, 16, 16, device=device, dtype=torch.long)
         assert AdaptiveDiscriminatorAugmentation(initial_p=0.0)({"mask": mask})["mask"] is mask
+        assert AdaptiveDiscriminatorAugmentation(initial_p=0.0)(mask, data_keys=["mask"]) is mask
 
     @pytest.mark.parametrize(
         "stack",
