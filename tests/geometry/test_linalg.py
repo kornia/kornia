@@ -16,6 +16,7 @@
 #
 
 import math
+import warnings
 
 import pytest
 import torch
@@ -153,6 +154,25 @@ class TestTransformPoints(BaseTester):
         points = torch.zeros(*points_shape, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="batch axes of trans_01 must match"):
             kgl.transform_points(trans, points)
+
+    @pytest.mark.parametrize("trans_batch", [(2, 1, 1), (1, 3)])
+    def test_multi_axis_matrix_batch_trace_keeps_batch_size_dynamic(self, trans_batch, device, dtype):
+        # A traced (or ONNX-exported) graph must not bake in the example batch size: warp_perspective traces
+        # transform_points with a (B, 1, 1, 3, 3) matrix batch and is exported with a dynamic batch axis.
+        def fn(trans: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
+            return kgl.transform_points(trans, points)
+
+        def inputs(batch_size: int) -> tuple[torch.Tensor, torch.Tensor]:
+            trans_shape = [batch_size if n == 2 else n for n in trans_batch]
+            trans = self._translations(tuple(trans_shape), device, dtype)
+            points = torch.rand(batch_size, 3, 4, 3, device=device, dtype=dtype)
+            return trans, points
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            traced = torch.jit.trace(fn, inputs(2))
+        trans, points = inputs(4)
+        self.assert_close(traced(trans, points), fn(trans, points))
 
     @pytest.mark.parametrize("num_points", [2, 3])
     def test_unbatched_points_with_transform_batch_raise(self, num_points, device, dtype):

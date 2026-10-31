@@ -279,21 +279,20 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     # axes already broadcast correctly there (e.g. (B, 1, 1, D+1, D+1) with (B, H, W, D) points), so drop them,
     # and expand only when a leading size-1 axis must broadcast. A single matrix applies to every point set.
     if trans_01.ndim > 3 and trans_01[..., 0, 0].numel() != 1:
-        mat_shape = [trans_01.shape[-2], trans_01.shape[-1]]
-        trans_batch = [int(n) for n in trans_01.shape[:-2]]
-        while len(trans_batch) > 1 and trans_batch[-1] == 1:
-            trans_batch.pop()
-        trans_01 = trans_01.reshape(trans_batch + mat_shape)
-        trans_batch_ndim = len(trans_batch)
+        # Read sizes straight off ``.shape`` (no ``int()``) and reshape with ``squeeze``/``expand(-1)`` so that a
+        # traced or ONNX-exported graph keeps the batch sizes symbolic instead of baking in the example's.
+        trans_batch_ndim = trans_01.ndim - 2
+        while trans_batch_ndim > 1 and trans_01.shape[trans_batch_ndim - 1] == 1:
+            trans_01 = trans_01.squeeze(trans_batch_ndim - 1)
+            trans_batch_ndim -= 1
         if trans_batch_ndim > 1:
-            points_batch = [int(n) for n in points_1.shape[:-2]]
-            batch_ok = len(points_batch) >= trans_batch_ndim
+            batch_ok = points_1.ndim - 2 >= trans_batch_ndim
             needs_expand = False
             if batch_ok:
                 for i in range(trans_batch_ndim):
-                    if trans_batch[i] != points_batch[i]:
+                    if trans_01.shape[i] != points_1.shape[i]:
                         needs_expand = True
-                        if trans_batch[i] != 1:
+                        if trans_01.shape[i] != 1:
                             batch_ok = False
             if not batch_ok:
                 raise ValueError(
@@ -301,7 +300,10 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
                     f"Got {trans_01.shape} and {points_1.shape}"
                 )
             if needs_expand:
-                trans_01 = trans_01.expand(points_batch[:trans_batch_ndim] + mat_shape)
+                expand_shape = [-1] * trans_01.ndim
+                for i in range(trans_batch_ndim):
+                    expand_shape[i] = points_1.shape[i]
+                trans_01 = trans_01.expand(expand_shape)
     # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a
     # coincidence, not a match: it used to reach ``bmm`` with an empty batch (kornia#4969).
     unbatched_points = points_1.ndim == 2 and trans_01.shape[0] > 1
