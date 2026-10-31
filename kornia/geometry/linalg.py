@@ -223,6 +223,13 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
 def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Tensor:
     r"""Apply transformations to a set of points.
 
+    ``points_0 = transform_points(trans_01, points_1)`` takes homogeneous transforms ``trans_01`` of shape
+    ``(D+1, D+1)`` or ``(B1, ..., Bk, D+1, D+1)`` and Euclidean points ``points_1`` of shape ``(..., N, D)`` in
+    frame 1, and returns the same points in frame 0 with the shape of ``points_1``. The points are lifted to
+    homogeneous coordinates, multiplied by the matrices and divided by their last coordinate, so a projective
+    ``trans_01`` (a homography) works as well as a rigid one. For a camera projection with intrinsics, use
+    :func:`~kornia.geometry.camera.perspective.project_points` instead.
+
     Convention:
         Integer and boolean operands are promoted, not rejected, because a transform moves integer coordinates
         (pixel indices from ``torch.nonzero`` or ``argmax``) to fractional ones. Integer points return in the
@@ -241,6 +248,11 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Shape:
         - Output: same shape as ``points_1``.
+
+    See Also:
+        - :func:`compose_transformations`: chains two rigid transforms into the one to pass as ``trans_01``.
+        - :func:`inverse_transformation`: the inverse rigid transform, to map points back from frame 0 to frame 1.
+        - :func:`~kornia.geometry.camera.perspective.project_points`: projects camera-frame 3D points to pixels.
 
     Examples:
         >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
