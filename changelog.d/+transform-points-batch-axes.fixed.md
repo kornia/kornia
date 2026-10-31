@@ -1,0 +1,1 @@
+`transform_points` aligns a multi-axis matrix batch with the leading point-batch axes and broadcasts a size-1 matrix axis. Those batches used to be flattened and repeated by count, so some shapes paired the wrong matrices and others raised `RuntimeError` inside `bmm`. An incompatible batch now raises `ValueError`.

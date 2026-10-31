@@ -231,8 +231,11 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Args:
         trans_01: tensor for transformations of shape
-          ``(D+1, D+1)`` or ``(B, D+1, D+1)``.
-        points_1: tensor of points of shape ``(N, D)`` or ``(B, N, D)``.
+          ``(D+1, D+1)``, ``(B, D+1, D+1)``, or ``(*, D+1, D+1)``.
+          Matrix-batch axes align with the leading point-batch axes. A size-1 matrix axis
+          broadcasts, and one matrix-batch axis also covers every later point-batch axis.
+          Any other pairing raises ``ValueError``.
+        points_1: tensor of points of shape ``(N, D)`` or ``(*, N, D)``.
 
     Returns:
         transformed points with the same shape as ``points_1``.
@@ -261,11 +264,28 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         trans_01 = trans_01.unsqueeze(0)
     # A 2-D ``points_1`` is (N, D) with no batch axis, so N equal to a transform batch B > 1 is a
     # coincidence, not a match: it used to reach ``bmm`` with an empty batch (kornia#4969).
-    unbatched_points = points_1.ndim == 2 and trans_01.shape[0] > 1
-    if (not trans_01.shape[0] == points_1.shape[0] or unbatched_points) and trans_01.shape[0] != 1:
-        raise ValueError(
-            f"Input batch size must be the same for both tensors or 1. Got {trans_01.shape} and {points_1.shape}"
-        )
+    trans_shape, points_shape = trans_01.shape, points_1.shape
+    matrix_batch = trans_shape[:-2]
+    point_batch = points_shape[:-2]
+    mismatch = f"Input batch size must be the same for both tensors or 1. Got {trans_shape} and {points_shape}"
+    if len(point_batch) == 0 and points_shape[0] == 0:
+        if trans_shape[0] > 1:
+            raise ValueError(mismatch)
+    else:
+        extra = matrix_batch[len(point_batch) :]
+        if len(extra) > 0 and any(size != 1 for size in extra):
+            raise ValueError(mismatch)
+        if len(extra) > 0:
+            matrix_batch = matrix_batch[: len(point_batch)]
+            trans_01 = trans_01.reshape(matrix_batch + trans_shape[-2:])
+        try:
+            broadcast = torch.broadcast_shapes(
+                matrix_batch + (1,) * (len(point_batch) - len(matrix_batch)), point_batch
+            )
+        except RuntimeError as err:
+            raise ValueError(mismatch) from err
+        if broadcast != tuple(point_batch):
+            raise ValueError(mismatch)
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
         raise ValueError(f"Last input dimensions must differ by one unit. Got {trans_01.shape} and {points_1.shape}")
 
@@ -275,16 +295,11 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     if points_1.shape[-2] == 0:
         return points_1.to(out_dtype)
 
-    # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
+    pad = (1,) * (len(point_batch) - len(matrix_batch))
+    trans_01 = trans_01.reshape(matrix_batch + pad + trans_01.shape[-2:]).expand(point_batch + trans_01.shape[-2:])
     shape_inp = list(points_1.shape)
     points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])
     trans_01 = trans_01.reshape(-1, trans_01.shape[-2], trans_01.shape[-1])
-    # We expand trans_01 to match the dimensions needed for bmm. repeats input division is cast
-    # to integer so onnx doesn't record the value as a tensor and get a device mismatch. An empty
-    # transform batch has nothing to repeat, and the validation above guarantees an empty point
-    # batch alongside it, so skip the division rather than computing ``0 // 0``.
-    repeats = points_1.shape[0] // trans_01.shape[0] if trans_01.shape[0] > 0 else 0
-    trans_01 = torch.repeat_interleave(trans_01, repeats=int(repeats), dim=0)
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # `torch.bmm` requires both operands to share a scalar type. Callers may pass coordinate
