@@ -69,6 +69,13 @@ class TestKeypointsIndexing(BaseTester):
         with pytest.raises(IndexError):
             empty[0]
 
+    @pytest.mark.parametrize("key", [(slice(None), 0), (Ellipsis, 0)])
+    def test_coordinate_selection_raises(self, container, coordinates, key, device, dtype):
+        # one coordinate of every point is not a point, even when there are as many points as coordinates
+        data = torch.arange(coordinates * coordinates, device=device, dtype=dtype).reshape(coordinates, coordinates)
+        with pytest.raises(ValueError, match="Keypoints shape must be"):
+            container(data)[key]
+
     def test_gradcheck_scalar(self, container, coordinates, device):
         data = torch.arange(3 * coordinates, device=device, dtype=torch.float64).reshape(3, coordinates)
         self.gradcheck(lambda x: container(x)[-1].data, (data.requires_grad_(),))

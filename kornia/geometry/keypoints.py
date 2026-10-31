@@ -89,7 +89,8 @@ class Keypoints:
 
     def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "Keypoints":
         data = self._data[key]
-        if data.ndim == 1:
+        if data.ndim == 1 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one point of unbatched keypoints: keep the point axis
             data = data.unsqueeze(0)
         return type(self)(data, False)
 
@@ -424,7 +425,8 @@ class Keypoints3D:
 
     def __getitem__(self, key: Union[slice, int, torch.Tensor]) -> "Keypoints3D":
         data = self._data[key]
-        if data.ndim == 1:
+        if data.ndim == 1 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one point of unbatched keypoints: keep the point axis
             data = data.unsqueeze(0)
         return type(self)(data, False)
 
