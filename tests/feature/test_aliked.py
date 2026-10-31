@@ -287,8 +287,39 @@ class TestDeformConv2d(BaseTester):
         tol = {torch.float16: 2e-3, torch.bfloat16: 1.6e-2}.get(dtype)
         self.assert_close(actual, expected, rtol=tol, atol=tol)
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        """Compiled without autograd, the grid_sample sampler gives eager's values, or more accurate ones in half."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        g = torch.Generator().manual_seed(0)
+        # two offset groups and two convolution groups, a stride and a mask
+        x = torch.randn(2, 8, 13, 17, generator=g, dtype=torch.float64)
+        weight = torch.randn(6, 4, 3, 3, generator=g, dtype=torch.float64)
+        offset = 2 * torch.randn(2, 2 * 2 * 9, 7, 9, generator=g, dtype=torch.float64)
+        mask = torch.rand(2, 2 * 9, 7, 9, generator=g, dtype=torch.float64)
+        x, weight, offset, mask = (t.to(device, dtype) for t in (x, weight, offset, mask))
+        op = torch_optimizer(deform_conv2d, fullgraph=True)
+
+        with torch.no_grad():
+            expected = deform_conv2d(x, offset, weight, stride=2, padding=1, mask=mask)
+            actual = op(x, offset, weight, stride=2, padding=1, mask=mask)
+
+        if dtype in (torch.float16, torch.bfloat16):
+            # Inductor keeps the sample positions in float32, which eager sums in half precision. Compare both with
+            # float64 sampling of the same rounded inputs instead of with each other.
+            with torch.no_grad():
+                reference = deform_conv2d(
+                    *(t.cpu().double() for t in (x, offset, weight)), stride=2, padding=1, mask=mask.cpu().double()
+                )
+            compiled_error = (actual.cpu().double() - reference).abs().mean()
+            assert compiled_error <= (expected.cpu().double() - reference).abs().mean()
+        else:
+            self.assert_close(actual, expected)
+
     def test_inference_samples_with_grid_sample(self, device, dtype, monkeypatch):
         """Without autograd deform_conv2d does not call the absolute-coordinate sampler."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
 
         def autograd_sampler(*args):
             raise AssertionError("the absolute-coordinate sampler ran without autograd")
@@ -328,6 +359,8 @@ class TestDeformConv2d(BaseTester):
 
     def test_inference_nonfinite_offsets_give_nan(self, device, dtype):
         """A nan or infinite offset gives nan in both samplers, which grid_sample alone does not do on every device."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         x = torch.arange(15, device=device, dtype=dtype).reshape(1, 1, 3, 5)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         offset = torch.zeros(1, 2, 3, 5, device=device, dtype=dtype)
@@ -346,6 +379,8 @@ class TestDeformConv2d(BaseTester):
     @pytest.mark.parametrize("image_hw", [(1, 5), (4, 1), (3, 5)])
     def test_inference_huge_finite_offsets_sample_zero_padding(self, device, dtype, image_hw):
         """A finite offset too large to normalize lands in the zero padding instead of overflowing."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         H, W = image_hw
         x = torch.arange(1, H * W + 1, device=device, dtype=dtype).reshape(1, 1, H, W)
         weight = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
@@ -359,6 +394,8 @@ class TestDeformConv2d(BaseTester):
 
     @pytest.mark.parametrize("grad_enabled", [True, False])
     def test_empty_batch(self, device, dtype, grad_enabled):
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         x = torch.empty(0, 4, 5, 7, device=device, dtype=dtype)
         weight = torch.empty(6, 2, 3, 3, device=device, dtype=dtype)
         offset = torch.empty(0, 18, 5, 7, device=device, dtype=dtype)
