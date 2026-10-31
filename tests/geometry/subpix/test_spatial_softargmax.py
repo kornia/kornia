@@ -166,7 +166,7 @@ class TestSpatialSoftArgmax2d(BaseTester):
         m = kornia.geometry.subpix.SpatialSoftArgmax2d()
         assert m(sample).shape == (2, 1, 2)
 
-    def test_repr(self):
+    def test_repr(self) -> None:
         # The repr dropped the opening parenthesis: "SpatialSoftArgmax2dtemperature=1.0, ...)".
         assert repr(kornia.geometry.subpix.SpatialSoftArgmax2d()) == (
             "SpatialSoftArgmax2d(temperature=1.0, normalized_coordinates=True)"
@@ -644,7 +644,7 @@ class TestConvSoftArgmax3d(BaseTester):
         assert val.shape == (1, 1, 3, 3, 3)
 
     @pytest.mark.parametrize("stride", [1, 2])
-    def test_int_stride_matches_tuple_stride(self, device, dtype, stride):
+    def test_int_stride_matches_tuple_stride(self, device: torch.device, dtype: torch.dtype, stride: int) -> None:
         # An int stride raised TypeError in _unfold3d, which unpacks the stride; the 2D form accepts an int.
         sample = torch.rand(1, 1, 4, 5, 6, device=device, dtype=dtype)
 
