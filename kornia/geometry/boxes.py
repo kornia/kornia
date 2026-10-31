@@ -15,6 +15,27 @@
 # limitations under the License.
 #
 
+"""Box containers: 2D, 3D and video boxes stored as inclusive corners, with conversions.
+
+:class:`Boxes` stores 2D boxes as four ``(x, y)`` corners each, ``(N, 4, 2)`` for one image or ``(B, N, 4, 2)`` for a
+batch; :class:`Boxes3D` stores 3D boxes as eight ``(x, y, z)`` corners each; :class:`VideoBoxes` stores the 2D boxes of
+``(B, T)`` video frames. :meth:`~kornia.geometry.boxes.Boxes.from_tensor` and
+:meth:`~kornia.geometry.boxes.Boxes3D.from_tensor` import boxes in one of several formats, ``'xyxy'`` and ``'xyzxyz'``
+by default, and ``to_tensor`` exports them in any format, always as the axis-aligned bounds of the stored corners. The
+stored corners are inclusive pixel centres, ``x_max - x_min + 1`` wide, as in :mod:`kornia.geometry.bbox`
+(`#3934 <https://github.com/kornia/kornia/issues/3934>`_): the formats ending in ``_plus`` are inclusive, the others
+exclusive. The ``Convention`` block of each class gives its formats, padded batches and validation.
+
+Which class to use:
+
+- 2D boxes of images, several per image, with padding, clamping, area filtering and masks: :class:`Boxes`.
+- 2D boxes of video frames, exported with the temporal axis, ``(B, T, N, 4)`` in ``'xyxy'``: :class:`VideoBoxes`.
+- 3D boxes in volumes: :class:`Boxes3D`.
+- One box per image as a plain ``(B, 4, 2)`` corner tensor, without a container: the functions of
+  :mod:`kornia.geometry.bbox`, such as :func:`~kornia.geometry.bbox.bbox_to_mask`.
+- Points instead of boxes: :class:`~kornia.geometry.keypoints.Keypoints`.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Optional, Tuple, cast
@@ -207,7 +228,18 @@ def _boxes3d_to_polygons3d(
 
 
 class Boxes:
-    r"""2D boxes containing N or BxN boxes.
+    r"""Store 2D boxes as inclusive corners, converting to and from xyxy, xywh and vertices.
+
+    ``boxes = Boxes.from_tensor(xyxy, mode='xyxy')`` takes the ``(N, 4)`` boxes of one image or the ``(B, N, 4)`` boxes
+    of a batch (``(N, 4, 2)`` or ``(B, N, 4, 2)`` corners in the vertex modes, or a list of per-image tensors) and
+    stores them as inclusive corners; ``boxes.to_tensor('xywh')`` exports them in any mode, with the same batch layout.
+    In between, :meth:`transform_boxes` applies ``3 x 3`` matrices to all four corners, :meth:`to_mask` draws
+    ``(N, H, W)`` or ``(B, N, H, W)`` masks, :meth:`pad` shifts the corners by image padding, :meth:`clamp` limits
+    them to per-image bounds, :meth:`filter_boxes_by_area` removes boxes and :meth:`merge` appends others.
+    ``Boxes(corners)`` wraps inclusive ``'vertices_plus'`` corners as they are.
+    :class:`~kornia.augmentation.container.AugmentationSequential` accepts a :class:`Boxes` and transforms it with the
+    images. For one box per image as a plain ``(B, 4, 2)`` tensor, use the :mod:`kornia.geometry.bbox` functions; for
+    3D boxes, :class:`Boxes3D`; for the boxes of video frames, :class:`VideoBoxes`.
 
     Args:
         boxes: 2D boxes, shape of ``(N, 4, 2)``, ``(B, N, 4, 2)`` or a list of ``(N, 4, 2)``.
@@ -233,6 +265,13 @@ class Boxes:
         - :func:`~kornia.geometry.bbox.infer_bbox_shape` and :func:`~kornia.geometry.bbox.bbox_to_mask` read
           their input as inclusive: pass them the ``'vertices_plus'`` export, unbatched.
           :func:`~kornia.geometry.bbox.nms` takes exclusive ``xyxy``.
+        - The modes of :meth:`from_tensor` and :meth:`to_tensor`, case-insensitive: ``'xyxy'`` is
+          ``(xmin, ymin, xmax, ymax)`` with ``xmax`` and ``ymax`` one past the last pixel, ``'xyxy_plus'`` the same
+          on the last pixel, ``'xywh'`` is ``(xmin, ymin, width, height)``, ``'vertices'`` the corners with ``xmax``
+          and ``ymax`` one past the last pixel, and ``'vertices_plus'`` the stored corners.
+          ``from_tensor(torch.tensor([[[0., 0., 10., 20.]]]))`` stores ``[[0, 0], [9, 0], [9, 19], [0, 19]]``,
+          which ``to_tensor`` exports as ``[0, 0, 10, 20]`` in ``'xyxy'`` and ``'xywh'`` and ``[0, 0, 9, 19]`` in
+          ``'xyxy_plus'``.
         - With ``validate_boxes=True``, every mode rejects a non-finite coordinate. The ``'xy*'`` modes raise
           ``ValueError`` and also reject non-positive extents. The vertex modes raise ``RuntimeError`` through
           ``torch._assert_async`` (by the next synchronization on CUDA, and on MPS from torch 2.13), so they stay
@@ -241,7 +280,18 @@ class Boxes:
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False`` (a list is
           checked by its first element's dtype); :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
-        - :meth:`merge` and :meth:`index_put` are non-mutating by default.
+        - A list of per-image tensors, ``(N_i, 4)`` or ``(N_i, 4, 2)`` in :meth:`from_tensor` and ``(N_i, 4, 2)``
+          in the constructor, is zero-padded to one ``(B, max N_i, 4, 2)`` batch; :meth:`to_tensor` then returns a
+          list trimmed back to each image's boxes, or the padded tensor with ``as_padded_sequence=True``. Item
+          assignment and :meth:`index_put` do not update the padding counts, so the trimmed export can then drop
+          real boxes or keep padding (`#6283 <https://github.com/kornia/kornia/issues/6283>`_).
+        - :meth:`filter_boxes_by_area` removes boxes without changing the shape: it zeroes their corners and marks
+          them invalid, and every export of an invalid box is exact zeros, after later transforms too.
+        - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area`, :meth:`merge`
+          and :meth:`index_put` are non-mutating by default and return a new object; with ``inplace=True`` they
+          update and return ``self``. :meth:`pad` and :meth:`unpad` always shift ``self``. The constructor wraps a
+          floating-point tensor without copying it, so item assignment and the in-place updates of :meth:`pad`,
+          :meth:`unpad`, :meth:`clamp`, :meth:`filter_boxes_by_area` and :meth:`index_put` reach the caller's tensor.
 
     .. warning::
         The inclusive ``+1`` differs from torchvision, COCO and albumentations:
@@ -259,6 +309,18 @@ class Boxes:
         fixed vertex slots, so it deforms a quadrilateral that is not an axis-aligned rectangle in clockwise order:
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_. ``trim`` was never implemented and is deprecated:
         `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
+
+    See Also:
+        - :class:`Boxes3D`: 3D boxes as eight corners, from ``(N, 6)`` boxes, with no list input, padding or
+          filtering.
+        - :class:`VideoBoxes`: the 2D boxes of ``(B, T)`` video frames, exported with the temporal axis.
+        - :func:`~kornia.geometry.bbox.bbox_to_mask`: the mask of one box per image of a plain ``(B, 4, 2)`` tensor,
+          with unrounded inclusive bounds.
+        - :func:`~kornia.geometry.bbox.transform_bbox`: transforms plain ``xyxy`` or ``xywh`` tensors through their two
+          endpoints only.
+        - :func:`~kornia.geometry.bbox.nms`: suppresses overlapping boxes of one image, given the ``'xyxy'`` export.
+        - :class:`~kornia.geometry.keypoints.Keypoints`: ``(x, y)`` points in the same pixel frame, with matching pad,
+          unpad and transform methods.
 
     """
 
@@ -824,8 +886,8 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Convention:
-            The size is ``(height, width)`` and the mask :math:`(N, height, width)` or
-            :math:`(B, N, height, width)` in the box dtype. The exclusive ``'xyxy'`` export is clamped to the
+            The size is ``(height, width)`` and the mask ``(N, height, width)`` or
+            ``(B, N, height, width)`` in the box dtype. The exclusive ``'xyxy'`` export is clamped to the
             image, rounded to the nearest integer and filled over ``[xmin, xmax)``, ``[ymin, ymax)``. Padding
             entries of a list-backed object give empty masks. A box tensor that requires grad raises
             ``RuntimeError``.
@@ -841,7 +903,7 @@ class Boxes:
             width: width of the masked image/images.
 
         Returns:
-            the output mask tensor, shape of :math:`(N, height, width)` or :math:`(B, N, height, width)` and dtype of
+            the output mask tensor, shape of ``(N, height, width)`` or ``(B, N, height, width)`` and dtype of
             :func:`Boxes.dtype` (it can be any floating point dtype).
 
         Note:
@@ -1009,8 +1071,8 @@ class Boxes:
 
         Returns:
             Mode string used as the default by :meth:`to_tensor`, such as
-            ``"xyxy"``, ``"xywh"``, ``"vertices"``, or their ``"_plus"``
-            variants.
+            ``"xyxy"``, ``"xyxy_plus"``, ``"xywh"``, ``"vertices"`` or
+            ``"vertices_plus"``.
         """
         return self._mode
 
@@ -1025,7 +1087,11 @@ class Boxes:
         return self._data.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> Boxes:
-        """Like :func:`torch.nn.Module.to()` method."""
+        """Move or cast the stored tensor and return ``self``, as :meth:`torch.nn.Module.to` does.
+
+        The tensor is rebound, not converted in place: one obtained from :attr:`data` before the call keeps its device
+        and dtype. A ``dtype`` that is not floating point raises ``ValueError``.
+        """
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
@@ -1052,10 +1118,10 @@ class Boxes:
         """Cast the stored box coordinates to a new dtype.
 
         Args:
-            dtype: Target floating-point dtype for the coordinate tensor.
+            dtype: Target dtype for the coordinate tensor. Unlike :meth:`to`, an integer dtype is not rejected.
 
         Returns:
-            ``self`` after converting :attr:`data` in place.
+            ``self``, rebound to the converted tensor; the tensor it wrapped before is not modified.
         """
         self._data = self._data.type(dtype)
         self._valid = self._valid.to(device=self._data.device)
@@ -1063,19 +1129,21 @@ class Boxes:
 
 
 class VideoBoxes(Boxes):
-    r"""2D boxes with an explicit temporal channel for video sequences.
+    r"""Store the 2D boxes of (B, T) video frames, restoring the temporal axis on export.
 
-    Accepts and returns box corners for a batch of videos as
-    ``(B, T, N, 4, 2)`` in ``vertices_plus`` mode. Internally the corners
-    are stored flattened as :math:`(B \cdot T, N, 4, 2)`.
-    :class:`~kornia.augmentation.AugmentationSequential` uses this wrapper when
-    the pipeline contains a video sequential so that ``to_tensor`` restores the
-    temporal axis after geometric transforms.
+    ``boxes = VideoBoxes.from_tensor(corners)`` takes inclusive ``'vertices_plus'`` corners ``(B, T, N, 4, 2)``, with
+    no mode or conversion, and stores them flattened as ``(B * T, N, 4, 2)``, so the methods it inherits from
+    :class:`Boxes` act on every frame; ``boxes.to_tensor('xyxy')`` exports ``(B, T, N, 4)``, with the temporal axis
+    restored, and ``boxes.to_tensor()`` the ``(B, T, N, 4, 2)`` corners.
+    :class:`~kornia.augmentation.container.AugmentationSequential` stores the boxes of a pipeline that contains a
+    :class:`~kornia.augmentation.container.VideoSequential` in this class. Convert boxes in another format to corners
+    first: ``Boxes.from_tensor(xyxy.flatten(0, 1)).data.unflatten(0, (B, T))`` converts ``(B, T, N, 4)`` ``xyxy``
+    boxes. For the boxes of single images, use :class:`Boxes`.
 
     See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
     Convention:
-        - :meth:`from_tensor` stores ``(B, T, N, 4, 2)`` input unchanged as :math:`(B \cdot T, N, 4, 2)`
+        - :meth:`from_tensor` stores ``(B, T, N, 4, 2)`` input unchanged as ``(B * T, N, 4, 2)``
           ``'vertices_plus'`` data, with no mode or conversion; integer input is cast to ``float32``,
           or ``float64`` when that is the default dtype. Another shape or a list raises ``ValueError``.
           ``validate_boxes=True`` rejects a non-finite coordinate as
@@ -1083,16 +1151,25 @@ class VideoBoxes(Boxes):
         - :meth:`to_tensor` accepts every :class:`Boxes` mode and restores the temporal axis
           (``to_tensor('xyxy')`` is ``(B, T, N, 4)``).
         - Indexing selects the video batch axis while preserving the temporal axis. An integer index returns a
-          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape :math:`(1, T, \ldots)`. Index
+          one-video :class:`VideoBoxes` so :meth:`to_tensor` keeps the shape ``(1, T, ...)``. Index
           assignment, ``video_boxes[key] = other``, writes the same whole videos.
-        - A transformation matrix is :math:`(B \cdot T, 3, 3)`; a ``(3, 3)`` matrix raises ``ValueError``
+        - A transformation matrix is ``(B * T, 3, 3)``; a ``(3, 3)`` matrix raises ``ValueError``
           unless :math:`B \cdot T = 1`.
-        - :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area` and
-          :meth:`merge` return a new :class:`VideoBoxes`; :meth:`pad`, :meth:`unpad`, :meth:`to` and
-          :meth:`type` update ``self`` in place.
+        - :meth:`Boxes.transform_boxes`, :meth:`Boxes.translate`, :meth:`Boxes.clamp`,
+          :meth:`Boxes.filter_boxes_by_area` and :meth:`Boxes.merge` return a new :class:`VideoBoxes`;
+          :meth:`Boxes.pad`, :meth:`Boxes.unpad`, :meth:`Boxes.to` and :meth:`Boxes.type` update and return ``self``.
+        - :meth:`Boxes.compute_area`, :meth:`Boxes.to_mask` and :attr:`Boxes.shape` keep the flattened axis, with
+          ``(B * T, N)``, ``(B * T, N, H, W)`` and ``(B * T, N, 4, 2)``, while :meth:`Boxes.get_boxes_shape` and
+          :meth:`to_tensor` restore ``(B, T, ...)``: `#5614 <https://github.com/kornia/kornia/issues/5614>`_.
 
     Attributes:
         temporal_channel_size: Number of frames :math:`T` stored with the boxes.
+
+    See Also:
+        - :class:`Boxes`: the 2D boxes of single images, imported from any mode, with no temporal axis.
+        - :class:`Boxes3D`: boxes in a ``(D, H, W)`` volume, eight corners each, rather than boxes per frame.
+        - :class:`~kornia.augmentation.container.VideoSequential`: the video augmentation whose boxes
+          :class:`~kornia.augmentation.container.AugmentationSequential` keeps in this class.
 
     """
 
@@ -1114,7 +1191,7 @@ class VideoBoxes(Boxes):
                 :meth:`~kornia.geometry.boxes.Boxes.from_tensor`.
 
         Returns:
-            :class:`VideoBoxes` with :attr:`temporal_channel_size` set to
+            :class:`VideoBoxes` with ``temporal_channel_size`` set to
             ``boxes.size(1)``.
 
         Raises:
@@ -1183,12 +1260,12 @@ class VideoBoxes(Boxes):
                 changes the result of a list-backed container; a
                 :class:`VideoBoxes` built from a ``(B, T, N, 4, 2)`` tensor
                 is not list-backed, so the value makes no difference there. The
-                keyword is accepted because the inherited :meth:`get_boxes_shape`
-                and :meth:`to_mask` pass it.
+                keyword is accepted because the inherited :meth:`Boxes.get_boxes_shape`
+                and :meth:`Boxes.to_mask` pass it.
 
         Returns:
-            Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
-            :attr:`temporal_channel_size`.
+            Tensor shaped ``(B, T, ...)`` where :math:`T` is
+            ``temporal_channel_size``.
         """
         out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
         batch_size = self._data.shape[0] // self.temporal_channel_size
@@ -1202,7 +1279,7 @@ class VideoBoxes(Boxes):
 
         Returns:
             New :class:`VideoBoxes` with cloned tensor storage and the same
-            :attr:`temporal_channel_size`, mode, and batch metadata.
+            ``temporal_channel_size``, mode, and batch metadata.
         """
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
@@ -1214,7 +1291,15 @@ class VideoBoxes(Boxes):
 
 
 class Boxes3D:
-    r"""3D boxes containing N or BxN boxes.
+    r"""Store 3D boxes as eight inclusive corners, converting to and from xyzxyz and xyzwhd.
+
+    ``boxes = Boxes3D.from_tensor(xyzxyz)`` takes ``(N, 6)`` or ``(B, N, 6)`` boxes in ``'xyzxyz'`` (the default),
+    ``'xyzxyz_plus'`` or ``'xyzwhd'`` mode and stores them as ``(N, 8, 3)`` or ``(B, N, 8, 3)`` inclusive corners;
+    ``boxes.to_tensor('xyzwhd')`` exports them in any of these modes or as corners. In between,
+    :meth:`transform_boxes` applies ``4 x 4`` matrices to all eight corners and :meth:`to_mask` draws
+    ``(N, D, H, W)`` or ``(B, N, D, H, W)`` masks. Unlike :class:`Boxes` it takes no list input and has no padding,
+    clamping, merging or area filtering. For one box per volume as a plain ``(B, 8, 3)`` tensor, use
+    :func:`~kornia.geometry.bbox.bbox_to_mask3d` and :func:`~kornia.geometry.bbox.infer_bbox_shape3d`.
 
     Args:
         boxes: 3D boxes, shape of ``(N,8,3)`` or ``(B,N,8,3)``. See below for more details.
@@ -1251,6 +1336,15 @@ class Boxes3D:
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
         The :meth:`to_tensor` default differs from :meth:`Boxes.to_tensor`, which defaults to the stored mode:
         `#4251 <https://github.com/kornia/kornia/issues/4251>`_.
+
+    See Also:
+        - :class:`Boxes`: 2D boxes as four corners, with list input, padding, clamping and area filtering.
+        - :class:`VideoBoxes`: the 2D boxes of ``(B, T)`` video frames, rather than boxes in a volume.
+        - :func:`~kornia.geometry.bbox.bbox_to_mask3d`: the ``(B, 1, D, H, W)`` mask of one box per volume of a plain
+          ``(B, 8, 3)`` tensor, with truncated bounds.
+        - :func:`~kornia.geometry.bbox.infer_bbox_shape3d`: the inclusive sizes of a plain ``(B, 8, 3)`` tensor.
+        - :class:`~kornia.geometry.keypoints.Keypoints3D`: ``(x, y, z)`` points, transformed by the same ``4 x 4``
+          matrices.
 
     """
 
@@ -1422,7 +1516,7 @@ class Boxes3D:
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
                 * 'xyzxyz_plus': similar to 'xyzxyz' mode but where box width, length and depth are defined as
-                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
+                  ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
@@ -1443,7 +1537,8 @@ class Boxes3D:
         Note:
             The ``amin``/``amax`` reduction ties on every face of an axis-aligned box (4 vertices share each
             extremum), so the gradient there is a subgradient shared among the tied vertices; it sums to one
-            over them but need not match a finite-difference estimate such as :func:`torch.autograd.gradcheck`.
+            over them but need not match a finite-difference estimate such as
+            :func:`~torch.autograd.gradcheck.gradcheck`.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
@@ -1489,8 +1584,8 @@ class Boxes3D:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes3D`.
 
         Convention:
-            The size is ``(depth, height, width)`` and the mask :math:`(N, depth, height, width)` or
-            :math:`(B, N, depth, height, width)` in the box dtype, with no channel axis. The exclusive
+            The size is ``(depth, height, width)`` and the mask ``(N, depth, height, width)`` or
+            ``(B, N, depth, height, width)`` in the box dtype, with no channel axis. The exclusive
             ``'xyzxyz'`` export is clamped to the volume, rounded to the nearest integer and filled over
             half-open ranges. A box tensor that requires grad raises ``RuntimeError``.
 
@@ -1504,7 +1599,7 @@ class Boxes3D:
             width: width of the masked image/images.
 
         Returns:
-            the output mask tensor, shape of :math:`(N, depth, height, width)` or :math:`(B, N, depth, height, width)`
+            the output mask tensor, shape of ``(N, depth, height, width)`` or ``(B, N, depth, height, width)``
             and dtype of :func:`Boxes3D.dtype` (it can be any floating point dtype).
 
         Note:
@@ -1651,8 +1746,9 @@ class Boxes3D:
         """Return the 3D box format remembered by this container.
 
         Returns:
-            Mode string describing how this container should be interpreted
-            during tensor conversion.
+            The mode label given to :meth:`from_tensor` or the constructor; the new object that
+            :meth:`transform_boxes` returns is labelled ``'xyzxyz_plus'``. :meth:`to_tensor` does not read it
+            (`#4251 <https://github.com/kornia/kornia/issues/4251>`_).
         """
         return self._mode
 
@@ -1667,7 +1763,11 @@ class Boxes3D:
         return self._data.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> Boxes3D:
-        """Like :func:`torch.nn.Module.to()` method."""
+        """Move or cast the stored tensor and return ``self``, as :meth:`torch.nn.Module.to` does.
+
+        The tensor is rebound, not converted in place: one obtained from :attr:`data` before the call keeps its device
+        and dtype. A ``dtype`` that is not floating point raises ``ValueError``.
+        """
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
