@@ -194,9 +194,7 @@ class Similarity(BaseModel):
         self.reset_model()
 
     def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}(angle = {self.rot},               \n shift={self.shift}, \n scale={self.scale})"
-        )
+        return f"{self.__class__.__name__}(angle = {self.rot},\n shift={self.shift}, \n scale={self.scale})"
 
     def reset_model(self) -> None:
         """Initialize the model with identity transform."""

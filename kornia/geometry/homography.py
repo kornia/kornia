@@ -51,6 +51,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ShapeError
 from kornia.core.utils import (
     _autocast_disabled,
     _extract_device_dtype,
@@ -683,14 +684,26 @@ def _homography_dlt_system(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Build the weighted-normalized DLT design matrix and its two normalizing transforms."""
     if points1.shape != points2.shape:
-        raise AssertionError(points1.shape)
-    if points1.shape[1] < 4:
-        raise AssertionError(points1.shape)
+        raise ShapeError(
+            f"points1 and points2 must have the same shape, got {list(points1.shape)} and {list(points2.shape)}.",
+            actual_shape=list(points1.shape),
+            expected_shape=list(points2.shape),
+        )
+    if points1.ndim != 3 or points1.shape[1] < 4:
+        raise ShapeError(
+            f"points1 and points2 must have shape (B, N, 2) with N >= 4, got {list(points1.shape)}.",
+            actual_shape=list(points1.shape),
+            expected_shape=["B", "N >= 4", "2"],
+        )
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
 
     if weights is not None and weights.shape != points1.shape[:2]:
-        raise AssertionError(weights.shape)
+        raise ShapeError(
+            f"weights must have shape (B, N) = {list(points1.shape[:2])}, got {list(weights.shape)}.",
+            actual_shape=list(weights.shape),
+            expected_shape=["B", "N"],
+        )
     points1_norm, transform1 = normalize_points(points1, weights=weights)
     points2_norm, transform2 = normalize_points(points2, weights=weights)
 
@@ -769,7 +782,11 @@ def _homography_from_dlt_system(
     else:
         # We should use provided weights
         if not (len(weights.shape) == 2 and weights.shape == (A.shape[0], num_points)):
-            raise AssertionError(weights.shape)
+            raise ShapeError(
+                f"weights must have shape (B, N) = {[A.shape[0], num_points]}, got {list(weights.shape)}.",
+                actual_shape=list(weights.shape),
+                expected_shape=["B", "N"],
+            )
         w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
 
     # Only the minimal four-point LU path works from the design matrix itself (see below).
@@ -929,7 +946,11 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
 
     """
     if points1.shape != points2.shape:
-        raise AssertionError(points1.shape)
+        raise ShapeError(
+            f"points1 and points2 must have the same shape, got {list(points1.shape)} and {list(points2.shape)}.",
+            actual_shape=list(points1.shape),
+            expected_shape=list(points2.shape),
+        )
 
     # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3), gathered by slicing, shape (B, 4, 2). Index tensors
     # would be copied to the device on every call.
@@ -989,7 +1010,7 @@ def find_homography_lines_dlt(
         finite system, the whole batch is NaN and a ``RuntimeWarning`` is issued.
 
     Raises:
-        AssertionError: if fewer than four segments are given, as in :func:`find_homography_dlt`.
+        ShapeError: if fewer than four segments are given, as in :func:`find_homography_dlt`.
 
     See Also:
         - :func:`find_homography_dlt`: a homography from point correspondences.
@@ -1010,7 +1031,7 @@ def find_homography_lines_dlt(
     # Fewer segments leave the DLT system under-determined: its null space then holds an arbitrary
     # homography, or NaN for none at all (#5991).
     if N < 4:
-        raise AssertionError(f"find_homography_lines_dlt needs at least 4 line segments, got {N}: {ls1.shape}")
+        raise ShapeError(f"find_homography_lines_dlt needs at least 4 line segments, got {N}: {ls1.shape}")
     # Raises unless both segment sets share a device and a dtype.
     _extract_device_dtype([ls1, ls2])
 
@@ -1018,7 +1039,11 @@ def find_homography_lines_dlt(
     points2 = ls2.reshape(BS, 2 * N, 2)
 
     if weights is not None and weights.shape != ls1.shape[:2]:
-        raise AssertionError(weights.shape)
+        raise ShapeError(
+            f"weights must have shape (B, N) = {list(ls1.shape[:2])}, got {list(weights.shape)}.",
+            actual_shape=list(weights.shape),
+            expected_shape=["B", "N"],
+        )
     # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
     if weights is not None:
         weights = weights.to(ls1.dtype)
@@ -1056,7 +1081,11 @@ def find_homography_lines_dlt(
         else:
             # We should use provided weights
             if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
-                raise AssertionError(weights.shape)
+                raise ShapeError(
+                    f"weights must have shape (B, N) = {list(ls1.shape[:2])}, got {list(weights.shape)}.",
+                    actual_shape=list(weights.shape),
+                    expected_shape=["B", "N"],
+                )
             # Scale each segment's two design rows by its weight instead of materializing the
             # (B, 2N, 2N) diagonal weight matrix, whose storage grows quadratically with N.
             w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
@@ -1100,7 +1129,7 @@ def find_homography_lines_dlt_iterated(
         solves is, as in :func:`find_homography_lines_dlt`.
 
     Raises:
-        AssertionError: if fewer than four segments are given, as in :func:`find_homography_lines_dlt`.
+        ShapeError: if fewer than four segments are given, as in :func:`find_homography_lines_dlt`.
 
     See Also:
         - :func:`find_homography_lines_dlt`: a single weighted solve.

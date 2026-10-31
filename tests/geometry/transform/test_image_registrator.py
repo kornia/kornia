@@ -58,6 +58,9 @@ class TestSimilarity(BaseTester):
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             s = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
             assert s is not None
+            text = repr(s)
+            assert text.startswith("Similarity(angle = ")
+            assert ",\n shift=" in text
 
     @pytest.mark.parametrize(
         "height, width, expected",
