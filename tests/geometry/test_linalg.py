@@ -219,7 +219,6 @@ class TestComposeTransforms(BaseTester):
     def test_exception(self, device, dtype):
         to_check_1 = torch.rand((7, 4, 4, 3), device=device, dtype=dtype)
         to_check_2 = torch.rand((5, 10, 10), device=device, dtype=dtype)
-        to_check_3 = torch.rand((6, 4, 4), device=device, dtype=dtype)
         to_check_4 = torch.rand((4, 4), device=device, dtype=dtype)
         to_check_5 = torch.rand((3, 3), device=device, dtype=dtype)
 
@@ -230,11 +229,6 @@ class TestComposeTransforms(BaseTester):
         # Testing if exception is thrown when both inputs have shape (5, 10, 10)
         with pytest.raises(ValueError):
             _ = kornia.geometry.compose_transformations(to_check_2, to_check_2)
-
-        # Testing if exception is thrown when one input has shape (6, 4, 4)
-        # whereas the other input has shape (4, 4)
-        with pytest.raises(ValueError):
-            _ = kornia.geometry.compose_transformations(to_check_3, to_check_4)
 
         # Testing if exception is thrown when one input has shape (7, 4, 4, 3)
         # whereas the other input has shape (4, 4)
@@ -277,6 +271,18 @@ class TestComposeTransforms(BaseTester):
         assert out_ba.shape == (3, 4, 4)
         self.assert_close(out_ab, A @ B)
         self.assert_close(out_ba, B @ A)
+
+    def test_broadcast_unbatched_against_batch(self, device, dtype):
+        # The documented batch-of-one broadcast also applies when the singleton is the unbatched (4, 4) form.
+        single = _rigid_transforms(1, device=device, dtype=dtype)[0]
+        batch = _rigid_transforms(3, device=device, dtype=dtype)
+
+        out_ab = kgl.compose_transformations(single, batch)
+        out_ba = kgl.compose_transformations(batch, single)
+
+        assert out_ab.shape == out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, single.unsqueeze(0) @ batch)
+        self.assert_close(out_ba, batch @ single.unsqueeze(0))
 
     def test_mismatched_batch_exception(self, device, dtype):
         A = identity_matrix(batch_size=2, device=device, dtype=dtype)
@@ -368,7 +374,6 @@ class TestRelativeTransformation(BaseTester):
     def test_exception(self, device, dtype):
         to_check_1 = torch.rand((7, 4, 4, 3), device=device, dtype=dtype)
         to_check_2 = torch.rand((5, 10, 10), device=device, dtype=dtype)
-        to_check_3 = torch.rand((6, 4, 4), device=device, dtype=dtype)
         to_check_4 = torch.rand((4, 4), device=device, dtype=dtype)
         to_check_5 = torch.rand((3, 3), device=device, dtype=dtype)
 
@@ -378,15 +383,10 @@ class TestRelativeTransformation(BaseTester):
             with pytest.raises(ValueError, match="Input must be"):
                 _ = kornia.geometry.relative_transformation(first, second)
 
-        valid_batch = to_check_3[:5]
+        valid_batch = torch.rand((5, 4, 4), device=device, dtype=dtype)
         for first, second in ((to_check_2, valid_batch), (valid_batch, to_check_2)):
             with pytest.raises(ValueError, match="Input must be"):
                 _ = kornia.geometry.relative_transformation(first, second)
-
-        # Testing if exception is thrown when one input has shape (6, 4, 4)
-        # whereas the other input has shape (4, 4)
-        with pytest.raises(ValueError):
-            _ = kornia.geometry.relative_transformation(to_check_3, to_check_4)
 
         # Testing if exception is thrown when one input has shape (7, 4, 4, 3)
         # whereas the other input has shape (4, 4)
@@ -436,6 +436,18 @@ class TestRelativeTransformation(BaseTester):
         assert out_ba.shape == (3, 4, 4)
         self.assert_close(out_ab, kgl.inverse_transformation(A) @ B)
         self.assert_close(out_ba, kgl.inverse_transformation(B) @ A)
+
+    def test_broadcast_unbatched_against_batch(self, device, dtype):
+        # The documented batch-of-one broadcast also applies when the singleton is the unbatched (4, 4) form.
+        single = _rigid_transforms(1, device=device, dtype=dtype)[0]
+        batch = _rigid_transforms(3, device=device, dtype=dtype)
+
+        out_ab = kgl.relative_transformation(single, batch)
+        out_ba = kgl.relative_transformation(batch, single)
+
+        assert out_ab.shape == out_ba.shape == (3, 4, 4)
+        self.assert_close(out_ab, kgl.inverse_transformation(single).unsqueeze(0) @ batch)
+        self.assert_close(out_ba, kgl.inverse_transformation(batch) @ single.unsqueeze(0))
 
     def test_mismatched_batch_exception(self, device, dtype):
         A = identity_matrix(batch_size=2, device=device, dtype=dtype)
