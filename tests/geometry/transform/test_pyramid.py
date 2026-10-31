@@ -420,12 +420,12 @@ class TestScalePyramid(BaseTester):
     def test_invalid_n_levels(self, n_levels):
         # n_levels=0 divided by zero in the level-to-level blur step 2 ** (1 / n_levels), n_levels=-1 with
         # extra_levels=1 built a one-level pyramid without an error, and other negatives failed inside forward.
-        with pytest.raises(BaseError, match="Invalid n_levels, it must be a positive integer"):
+        with pytest.raises(ValueCheckError, match="Invalid n_levels, it must be a positive integer"):
             kornia.geometry.ScalePyramid(n_levels=n_levels)
 
     def test_negative_n_levels_no_longer_builds_a_pyramid(self):
         # The one negative value that used to construct and run: it returned three octaves of a single level.
-        with pytest.raises(BaseError, match="Invalid n_levels"):
+        with pytest.raises(ValueCheckError, match="Invalid n_levels"):
             kornia.geometry.ScalePyramid(n_levels=-1, extra_levels=1)
 
     @pytest.mark.parametrize(
@@ -453,7 +453,7 @@ class TestScalePyramid(BaseTester):
     def test_invalid_min_size(self, min_size):
         # A negative or NaN min_size never stopped the octave loop, which halved the image to an empty one and failed
         # inside F.interpolate.
-        with pytest.raises(BaseError, match="Invalid min_size, it must be a non-negative number"):
+        with pytest.raises(ValueCheckError, match="Invalid min_size, it must be a non-negative number"):
             kornia.geometry.ScalePyramid(min_size=min_size)
 
     @pytest.mark.parametrize(("min_size", "num_octaves"), [(0, 7), (0.0, 7), (15.0, 3), (float("inf"), 1)])
