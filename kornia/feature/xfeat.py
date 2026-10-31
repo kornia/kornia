@@ -487,20 +487,20 @@ class XFeat(nn.Module):
         B = feats1.shape[0]
         cossim = torch.bmm(feats1, feats2.permute(0, 2, 1))
         match12 = torch.argmax(cossim, dim=-1)
-        match21 = torch.argmax(cossim.permute(0, 2, 1), dim=-1)
+        cossim_max = cossim.amax(dim=-1) if min_cossim > 0 else None
+        # Free the forward matrix before the reverse one, so only one (B, N1, N2) matrix is alive at a time.
+        del cossim
+        # The second product reduces along rows, as _match_mnn does. An argmax down the columns of cossim is a strided
+        # reduction, several times slower on CPU than this matrix product, and on CUDA it allocates about six times
+        # the matrix in scratch memory.
+        match21 = torch.argmax(torch.bmm(feats2, feats1.permute(0, 2, 1)), dim=-1)
         idx0 = torch.arange(match12.shape[1], device=match12.device)
         batched_matches = []
         for b in range(B):
-            mutual = match21[b][match12[b]] == idx0
-            if min_cossim > 0:
-                cossim_max, _ = cossim[b].max(dim=1)
-                good = cossim_max > min_cossim
-                idx0_b = idx0[mutual & good]
-                idx1_b = match12[b][mutual & good]
-            else:
-                idx0_b = idx0[mutual]
-                idx1_b = match12[b][mutual]
-            batched_matches.append((idx0_b, idx1_b))
+            keep = match21[b][match12[b]] == idx0
+            if cossim_max is not None:
+                keep = keep & (cossim_max[b] > min_cossim)
+            batched_matches.append((idx0[keep], match12[b][keep]))
         return batched_matches
 
     def _extract_dense(self, x: torch.Tensor, top_k: Optional[int] = 8000) -> Tuple[torch.Tensor, torch.Tensor]:

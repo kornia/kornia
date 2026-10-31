@@ -169,6 +169,27 @@ class TestXFeat(BaseTester):
         assert dense["scales"].shape == (0, 50)
         assert model.match_xfeat_star(x, x, top_k=50) == []
 
+    @pytest.mark.parametrize("min_cossim", [-1, 0.2])
+    def test_batch_match_is_mutual_nearest_neighbour(self, device, dtype, min_cossim):
+        # Pair b keeps (i, j) when j is the most similar descriptor of the second set to descriptor i of the first,
+        # and i the most similar of the first to j, read off the one similarity matrix.
+        torch.manual_seed(0)
+        feats1 = torch.nn.functional.normalize(torch.randn(2, 70, 64, device=device, dtype=dtype), dim=-1)
+        feats2 = torch.nn.functional.normalize(torch.randn(2, 50, 64, device=device, dtype=dtype), dim=-1)
+        matches = XFeat()._batch_match(feats1, feats2, min_cossim=min_cossim)
+        # The one similarity matrix, from the same batched product that _batch_match starts with.
+        cossims = torch.bmm(feats1, feats2.permute(0, 2, 1))
+        assert len(matches) == 2
+        for b, (idx0, idx1) in enumerate(matches):
+            cossim = cossims[b]
+            best12, best21 = cossim.argmax(dim=1), cossim.argmax(dim=0)
+            keep = best21[best12] == torch.arange(70, device=device)
+            if min_cossim > 0:
+                keep &= cossim.max(dim=1).values > min_cossim
+            assert idx0.shape[0] > 0
+            assert torch.equal(idx0, keep.nonzero()[:, 0])
+            assert torch.equal(idx1, best12[keep])
+
     def test_smoke(self, device, dtype):
         model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
