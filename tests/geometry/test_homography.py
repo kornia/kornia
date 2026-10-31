@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import re
 import sys
 
 import pytest
@@ -86,6 +87,13 @@ class TestSampleValidation(BaseTester):
         pts2 = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
         mask = sample_is_valid_for_homography(pts1, pts2)
         assert mask.shape == torch.Size([batch_size])
+
+    def test_exception(self, device, dtype):
+        pts1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        message = "points1 and points2 must have the same shape, got [1, 4, 2] and [1, 5, 2]."
+        with pytest.raises(ShapeError, match=re.escape(message)):
+            sample_is_valid_for_homography(pts1, pts2)
 
 
 class TestOneWayError(BaseTester):
@@ -838,6 +846,36 @@ class TestFindHomographyDLT(BaseTester):
         H = find_homography_dlt(points1, points2, None)
         assert H.shape == (B, 3, 3)
 
+    @pytest.mark.parametrize("solver", [find_homography_dlt, find_homography_dlt_iterated])
+    def test_shape_errors_name_the_argument(self, solver, device, dtype):
+        points = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        other = torch.rand(2, 6, 2, device=device, dtype=dtype)
+        message = "points1 and points2 must have the same shape, got [2, 5, 2] and [2, 6, 2]."
+        with pytest.raises(ShapeError, match=re.escape(message)):
+            solver(points, other, None)
+        # One input per claim of "(B, N, 2) with N >= 4": no batch axis, 0-d, 1-D and 4-D inputs and too few points get
+        # this message; a last size of 3 is rejected by the KORNIA_CHECK_SHAPE that follows.
+        for shape in [(5, 2), (), (8,), (1, 5, 2, 2), (2, 3, 2)]:
+            bad = torch.rand(shape, device=device, dtype=dtype)
+            message = f"points1 and points2 must have shape (B, N, 2) with N >= 4, got {list(shape)}."
+            with pytest.raises(ShapeError, match=re.escape(message)):
+                solver(bad, bad, None)
+        bad = torch.rand(2, 5, 3, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            solver(bad, bad, None)
+        for shape in [(2, 4), (5,)]:
+            weights = torch.ones(shape, device=device, dtype=dtype)
+            message = f"weights must have shape (B, N) = [2, 5], got {list(shape)}."
+            with pytest.raises(ShapeError, match=re.escape(message)):
+                solver(points, points, weights)
+
+    def test_dlt_system_weights_shape_error(self, device, dtype):
+        A = torch.rand(1, 10, 9, device=device, dtype=dtype)
+        eye = torch.eye(3, device=device, dtype=dtype)[None]
+        weights = torch.ones(1, 4, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=re.escape("weights must have shape (B, N) = [1, 5], got [1, 4].")):
+            _homography_from_dlt_system(A, weights, eye, eye, "lu", torch.device(device), dtype)
+
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_points_noweights(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
@@ -1131,6 +1169,15 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         H = find_homography_lines_dlt(ls1, ls2, None)
         assert H.shape == (B, 3, 3)
 
+    @pytest.mark.parametrize("solver", [find_homography_lines_dlt, find_homography_lines_dlt_iterated])
+    def test_weights_shape_error(self, solver, device, dtype):
+        ls = torch.rand(2, 5, 2, 2, device=device, dtype=dtype)
+        for shape in [(2, 4), (5,)]:
+            weights = torch.ones(shape, device=device, dtype=dtype)
+            message = f"weights must have shape (B, N) = [2, 5], got {list(shape)}."
+            with pytest.raises(ShapeError, match=re.escape(message)):
+                solver(ls, ls, weights)
+
     @pytest.mark.parametrize("num_segments", [0, 1, 2, 3])
     @pytest.mark.parametrize("batched", [True, False])
     @pytest.mark.parametrize("solver", [find_homography_lines_dlt, find_homography_lines_dlt_iterated])
@@ -1143,9 +1190,9 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         ls2 = torch.rand(shape, device=device, dtype=dtype)
         weights = torch.ones(2 if batched else 1, num_segments, device=device, dtype=dtype)
 
-        with pytest.raises(AssertionError, match=f"needs at least 4 line segments, got {num_segments}"):
+        with pytest.raises(ShapeError, match=f"needs at least 4 line segments, got {num_segments}"):
             solver(ls1, ls2, weights)
-        with pytest.raises(AssertionError):
+        with pytest.raises(ShapeError):
             find_homography_dlt(ls1.reshape(1, -1, 2)[:, :num_segments], ls2.reshape(1, -1, 2)[:, :num_segments])
 
     def test_four_segments_recover_the_homography_5991(self, device, dtype):
@@ -1649,7 +1696,7 @@ class TestConventionHomography(BaseTester):
             # Relabelling the images returns the inverse.
             self.assert_close(find_homography_dlt(p2, p1), _inverse(H_true), rtol=1e-4, atol=1e-4)
         # Four or more correspondences: three are rejected before any solve.
-        with pytest.raises(AssertionError):
+        with pytest.raises(ShapeError):
             find_homography_dlt(p1[:, :3], p2[:, :3])
 
     def test_convention_find_homography_dlt_lu_equals_svd(self, device, dtype):
