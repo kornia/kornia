@@ -24,6 +24,7 @@ from torch import float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
+from kornia.augmentation.utils.helpers import _IMAGE_SHAPES, _raise_input_rank_error
 from kornia.core.ops import eye_like
 from kornia.core.utils import _to_device_nonblocking, is_autocast_enabled, is_compiling, is_exporting
 from kornia.geometry.boxes import Boxes
@@ -81,8 +82,11 @@ class AugmentationBase2D(_AugmentationBase):
           and an ``(H, W)`` input to ``(1, 1, H, W)``; ``keepdim=True`` restores the input rank on the way out
           and never drops a real batch dimension. The dtype guard accepts ``float16``, ``bfloat16``, ``float32``
           and ``float64`` and raises ``TypeError`` on an integer tensor. The output keeps the input's device.
-        - a wrong input rank raises different exception types depending on the entry point that sees it
-          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_).
+        - a wrong input rank raises :class:`~kornia.core.exceptions.InputRankError` with the same message from
+          every entry point, the class, :meth:`validate_tensor` and the containers. It is a ``ValueError`` and also a
+          ``RuntimeError`` and an ``AssertionError``, the types those entry points raised before
+          (`#4424 <https://github.com/kornia/kornia/issues/4424>`_). :meth:`validate_tensor` accepts the ranks
+          ``forward`` accepts.
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
           it can be set as an attribute on any augmentation. A sample the gate skips comes back
@@ -118,10 +122,10 @@ class AugmentationBase2D(_AugmentationBase):
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
-        """Check if the input torch.Tensor is formatted as expected."""
+        """Check that the input has a float dtype and one of the ranks ``forward`` accepts: 2, 3 or 4."""
         _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
-        if len(input.shape) != 4:
-            raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
+        if len(input.shape) not in (2, 3, 4):
+            _raise_input_rank_error(input.shape, _IMAGE_SHAPES)
 
     @_input_metadata_only
     def transform_tensor(

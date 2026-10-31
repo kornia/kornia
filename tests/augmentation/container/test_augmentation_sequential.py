@@ -657,7 +657,7 @@ class TestAugmentationSequential:
 
         with pytest.raises(
             RuntimeError,
-            match=r"3D augmentations in AugmentationSequential expect input shape",
+            match=r"Input size must have a shape of either \(D, H, W\) or \(B, C, D, H, W\)",
         ):
             aug_list(input)
 
@@ -672,7 +672,7 @@ class TestAugmentationSequential:
 
         with pytest.raises(
             RuntimeError,
-            match=r"3D augmentations in AugmentationSequential expect input shape",
+            match=r"Input size must have a shape of either \(D, H, W\) or \(B, C, D, H, W\)",
         ):
             aug_list(input_4d, params=params)
 
