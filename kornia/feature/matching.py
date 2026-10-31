@@ -163,9 +163,10 @@ def _nearest_neighbour_ratio_over_rows(
 
     On CPU a matrix of more than ``2 * block`` rows takes the two smallest distances of each block of rows with
     ``torch.topk``, then the two smallest of those, see :func:`_reduces_over_row_blocks`. The two smallest values
-    are those of one ``torch.topk``, so the ratios are bitwise the same, and so is a unique nearest row. Of tied
-    nearest rows it may return another one: ``torch.topk`` orders no ties. Such a column's ratio is 1 or nan, which
-    the ratio test of :func:`match_smnn` rejects for any ``th < 1``.
+    are those of one ``torch.topk``, so the ratios are bitwise the same, apart from the sign of a nan ratio (x86
+    bfloat16 division gives ``-nan`` in its vectorised kernel and ``+nan`` in the strided one), and so is a unique
+    nearest row. Of tied nearest rows it may return another one: ``torch.topk`` orders no ties. Such a column's ratio
+    is 1 or nan, which the ratio test of :func:`match_smnn` rejects for any ``th < 1``.
     """
     if not _reduces_over_row_blocks(distance_matrix, block):
         return _nearest_neighbour_ratio(distance_matrix.t())

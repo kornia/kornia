@@ -326,9 +326,12 @@ def _assert_bitwise_equal(actual, expected):
     """Assert two tensors hold the same values bit for bit: nan where nan, and the sign of every zero."""
     assert actual.dtype == expected.dtype
     assert actual.shape == expected.shape
-    assert torch.equal(torch.isnan(actual), torch.isnan(expected))
+    nan = torch.isnan(expected)
+    assert torch.equal(torch.isnan(actual), nan)
     assert torch.equal(actual.nan_to_num(0.0), expected.nan_to_num(0.0))
-    assert torch.equal(torch.signbit(actual), torch.signbit(expected))
+    # The sign of a nan is not part of its value: x86 bfloat16 division returns -nan from its vectorised kernel and
+    # +nan from the strided one.
+    assert torch.equal(torch.signbit(actual)[~nan], torch.signbit(expected)[~nan])
 
 
 def _distances_with_ties_and_nonfinite(rows, cols, device, dtype, levels=7):
