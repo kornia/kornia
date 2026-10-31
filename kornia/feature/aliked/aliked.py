@@ -954,8 +954,9 @@ class ALIKED(nn.Module):
                 layout up to the rounding of the normalisation, and ``score_map`` is the same either way. On CPU,
                 normalising the map and the sampling of the descriptor head are then several times faster, so
                 :meth:`forward` and :meth:`forward_laf` use it for a float32 or float64 CPU image. They keep the
-                default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout, CUDA is not measured,
-                and on CPU the float16 and bfloat16 ``grid_sample`` returns NaN for this layout
+                default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout; on CUDA the forward
+                is 0.80-0.94x as fast with it (RTX 4090, float32, float16 and bfloat16); and on CPU the float16 and
+                bfloat16 ``grid_sample`` returns NaN for this layout
                 (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). By default each channel is a plane of the
                 map, as before.
 

@@ -586,7 +586,7 @@ class TestALIKED(BaseTester):
         aliked = ALIKED(model_name="aliked-t16").to(device, torch.float64).eval()
         inp = torch.rand(1, 3, 32, 32, device=device, dtype=torch.float64, requires_grad=True)
 
-        def fn(x: torch.Tensor) -> torch.Tensor:
+        def fn(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
             fm, sm = aliked.extract_dense_map(x, channels_last=channels_last)
             return fm, sm
 
@@ -1332,11 +1332,29 @@ class TestALIKEDModes(BaseTester):
         with torch.no_grad():
             feat, score = aliked.extract_dense_map(img)
             feat_cl, score_cl = aliked.extract_dense_map(img, channels_last=True)
-        assert feat.stride(-1) == 1  # each channel a plane
-        assert feat_cl.stride(1) == 1  # the channels of a pixel next to each other
+        # Strides, not is_contiguous: a crop of either layout is contiguous in neither.
+        assert feat.stride(-1) == 1  # default layout: neighbouring pixels of a channel are next to each other
+        assert feat_cl.stride(1) == 1  # channels_last: the channels of a pixel are next to each other
         assert feat_cl.shape == feat.shape == (2, 64, 50, 70)
         self.assert_close(feat_cl, feat)
         self.assert_close(score_cl, score, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("method", ["forward", "forward_laf"])
+    def test_forward_asks_for_channels_last_on_cpu_float(self, device, dtype, method, monkeypatch):
+        # The layout measured faster per device: channels_last for float32/float64 on CPU; the default on MPS and CUDA
+        # (slower there) and for CPU float16/bfloat16, whose grid_sample returns NaN for it (#5810).
+        aliked = self._model(device, dtype)
+        original = aliked.extract_dense_map
+        requested = []
+
+        def spy(image, *, channels_last=False):
+            requested.append(channels_last)
+            return original(image, channels_last=channels_last)
+
+        monkeypatch.setattr(aliked, "extract_dense_map", spy)
+        with torch.no_grad():
+            getattr(aliked, method)(torch.rand(1, 3, 64, 96, device=device, dtype=dtype))
+        assert requested == [device.type == "cpu" and dtype in (torch.float32, torch.float64)]
 
     def test_forward_matches_the_default_layout(self, device, dtype):
         # forward reads the channels_last map on CPU; the keypoints and scores cannot depend on that choice
