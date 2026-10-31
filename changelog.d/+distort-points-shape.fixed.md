@@ -1,0 +1,1 @@
+`distort_points` raises `ShapeError` when `points` is not `(*, N, 2)`, as `undistort_points` does. Points with a third column used to be truncated silently to their first two columns, and a single `(2,)` point used to come back as `(1, 2)`.

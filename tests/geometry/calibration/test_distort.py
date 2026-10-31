@@ -256,6 +256,19 @@ class TestDistortPoints(BaseTester):
         assert not torch.allclose(distort_points(points, K, short).float(), points.float())
         assert torch.equal(distort_points(points, K, short), distort_points(points, K, padded))
 
+    def test_exception_rejects_points_whose_trailing_size_is_not_2(self, device, dtype):
+        # The points must be (*, N, 2), as in undistort_points: a third column used to be dropped silently
+        # and an unbatched (2,) point used to come back as (1, 2).
+        from kornia.core.exceptions import ShapeError
+
+        K = torch.eye(3, device=device, dtype=dtype)
+        dist = torch.zeros(4, device=device, dtype=dtype)
+        for shape in ((5, 3), (1, 5, 3), (5, 1), (2,)):
+            points = torch.rand(shape, device=device, dtype=dtype)
+            with pytest.raises(ShapeError):
+                distort_points(points, K, dist)
+        assert distort_points(torch.rand(5, 2, device=device, dtype=dtype), K, dist).shape == (5, 2)
+
     def test_convention_zero_coefficients_are_a_no_op_at_dtype_tolerance(self, device, dtype):
         # With every coefficient zero, distort_points normalizes with new_K (= K here) and denormalizes with K,
         # so it is a no-op to roundoff. The points sit half a focal length off the principal point.
