@@ -51,6 +51,17 @@ def _check_positive_temperature(temperature: torch.Tensor | float) -> None:
     raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
 
 
+def _check_std_nonzero(std: torch.Tensor) -> None:
+    """Raise ``ValueError`` if any entry of ``std`` is zero.
+
+    A zero std makes the inverse variance infinite and the rendered Gaussian comes out all NaN, so the input is
+    rejected instead. The tensor is read only outside graph capture, as in :func:`_check_positive_temperature`.
+    """
+    if is_compiling() or not bool((std == 0).any()):
+        return
+    raise ValueError(f"std should be nonzero. Got: {std}")
+
+
 def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
     r"""Apply the Softmax function over features in each image channel.
 
@@ -82,13 +93,15 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     if temperature is None:
         temperature = 1.0
     _check_positive_temperature(temperature)
-    if isinstance(temperature, torch.Tensor):
-        temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.reshape(batch_size, channels, height * width)
     # An integer map is divided in the default floating dtype, as ``x / temperature`` does; the shift below would wrap
     # in its own dtype (``uint8``).
     if not x.is_floating_point():
         x = x.to(torch.get_default_dtype())
+    if isinstance(temperature, torch.Tensor):
+        # Cast the temperature to the dtype the division runs in, not to the input's: an integer input dtype would
+        # truncate a fractional temperature first (0.5 to 0, which then divides by zero, and 2.5 to 2).
+        temperature = temperature.to(device=input.device, dtype=x.dtype)
 
     # Softmax is invariant to a shift by a constant per map. Subtracting the maximum leaves every logit at or below
     # zero, so dividing by a sharp temperature cannot overflow the input dtype (``max|logit| / temperature > 65504``
@@ -166,7 +179,7 @@ def render_gaussian2d(
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: ``(*, 2)``.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
-          Shape ``(*, 2)``. Should be able to be broadcast with `mean`.
+          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Every entry must be nonzero.
         size: the (height, width) of the output image.
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
@@ -177,6 +190,8 @@ def render_gaussian2d(
     """
     if not (std.dtype == mean.dtype and std.device == mean.device):
         raise TypeError("Expected inputs to have the same dtype and device")
+
+    _check_std_nonzero(std)
 
     height, width = size
     dtype = mean.dtype
