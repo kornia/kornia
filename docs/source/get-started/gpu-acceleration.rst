@@ -39,3 +39,119 @@ cover -- CPU and Apple silicon today, with more hardware being added -- and the
 Apple silicon (``device="mps"``) is supported as well. PyTorch's MPS backend has no ``float64`` tensors, so keep
 inputs in ``float32`` (or half precision) there, and be aware that autocast on MPS can change the effective
 dtype of an operation.
+
+Choosing a feature pipeline: measured wins and losses
+-----------------------------------------------------
+
+An accelerator-compatible implementation is not automatically faster than its reference.
+For local features, choose the detector, descriptor and matcher together, and check both
+accuracy and latency on your workload. The following **interim M1 audit** compares Kornia
+at commit ``160e0f0f7`` with pinned author implementations and explicitly named alternatives.
+These measurements do not predict CUDA or Intel performance. They also predate later Kornia
+speed-ups that this table does not reflect: faster ALIKED inference on MPS
+(`#6464 <https://github.com/kornia/kornia/pull/6464>`_) and on CPU
+(`#6498 <https://github.com/kornia/kornia/pull/6498>`_), the MPS ratio test
+(`#6465 <https://github.com/kornia/kornia/pull/6465>`_), and channels-last patch-descriptor
+convolutions on MPS and oneDNN CPUs (`#6502 <https://github.com/kornia/kornia/pull/6502>`_).
+The `audit PR <https://github.com/kornia/kornia/pull/6452>`_ records the full interim table,
+reference revisions, remaining coverage and CUDA handoff instructions, and a separate
+PhotoTourism-only replay on an NVIDIA RTX 4090 and an x86 CPU that includes those changes;
+its replay and raw evidence packages currently require a separate local transfer.
+
+.. list-table:: Baseline guidance from the feature audit
+   :header-rows: 1
+   :widths: 22 35 43
+
+   * - Pipeline / reference
+     - Measured result
+     - When to choose it
+   * - MKD / author PyTorch
+     - Oxford speedup: **2.33–2.45× CPU**, **5.97–6.34× MPS** for polar/concatenated
+       descriptors. Oxford @3 px accuracy is identical; PhotoTourism accuracy is slightly lower.
+     - A strong measured speed advantage for these descriptor pipelines. Validate accuracy
+       on your data; this is not a claim that MKD is the best descriptor overall.
+   * - ALIKED n16 / author Python
+     - **1.67× CPU** speedup on Oxford, with identical @3 px accuracy. Baseline MPS runs at
+       **0.59×** the reference speed (about 1.69× the latency).
+     - Prefer Kornia for this measured CPU workload. For MPS inference, the author Python
+       implementation is faster at this revision; benchmark again on a release that
+       includes #6464 (see *Proposed improvements* below).
+   * - XFeat / author
+     - **1.46× CPU** speedup on Oxford; @3 px accuracy **60.00% / 59.17%** (Kornia / author).
+       MPS timing is approximately tied and noisy.
+     - A measured CPU advantage. Do not assume the same speedup on an accelerator.
+   * - SIFT pipelines / OpenCV RootSIFT
+     - Kornia runs at **0.07–0.13×** OpenCV's CPU speed on Oxford (roughly 8–14× the latency).
+       @3 px accuracy spans **69.17–72.50%**, versus OpenCV's **70.00%**.
+     - Prefer OpenCV for latency-sensitive CPU SIFT inference. Choose Kornia when tensor
+       composition or differentiable components matter, and measure the resulting pipeline.
+   * - LoFTR / author
+     - Oxford speed ratios **0.99× CPU**, approximately **1.06× MPS**; MPS timing is noisy.
+       Oxford and HPatches aggregate @3 px accuracy is identical.
+     - Treat these as effective ties on this machine. Existing optimizations do not establish
+       a meaningful M1 speed advantage in this experiment.
+   * - XFeat* / author, accuracy tradeoff
+     - HPatches @3 px accuracy is **36.09% / 20.46%** (Kornia / author). However, an isolated
+       comparison of Kornia's refinement change against its earlier revision reduced
+       PhotoTourism mAA by **1.58 percentage points** while improving HPatches @3 px.
+     - The planar improvement is substantial on this subset; it is not a universal accuracy
+       improvement. Check the application metric before selecting a refinement policy.
+   * - HardNet, SOSNet, HyNet, TFeat / authors, using shared SIFT frames
+     - Near parity in full-pipeline latency; aggregate accuracy is identical on the measured cohorts.
+     - Choose based on integration needs. These results do not establish a broad speed or
+       accuracy advantage for the ports.
+
+Speedup means **reference latency / Kornia latency** on the same device and timed pairs;
+values below one favor the reference. These are full-pipeline measurements, including both
+feature extractions, matching, output transfer and shared geometry/scoring. Image I/O and
+input transfer are excluded. They are not isolated descriptor kernel timings.
+
+The accuracy cohorts are Oxford's 40 pairs, **145 pairs from 29 viewpoint-only HPatches
+sequences**, and **130 eligible PhotoTourism validation pairs from three scenes** (ten seeded
+images per scene). This is neither the full HPatches benchmark nor an official IMC score.
+Planar accuracy is the percentage with mean homography corner error below 3 px; PhotoTourism
+uses scene-macro pose mAA over 1–10 degrees. A common OpenCV MAGSAC estimator and three
+match-order permutations are used; standalone RANSAC performance is outside this audit.
+
+Inputs use FP32, requested maximum side 640 (dimensions rounded to multiples of 32), and a
+requested sparse budget of 2,048 features; native dense LoFTR is uncapped. The machine has
+an 8 GB Apple M1, Python 3.11.14 and PyTorch 2.14.0. PyTorch uses four threads; OpenCV reports
+eight. MPS fallback is enabled, so these are device-pipeline results, not a claim that every
+operation executes on the GPU. Oxford timing usually covers three pairs (XFeat: eight), with
+warmup, synchronization and repeated medians/IQRs. Small differences and noisy runs should
+not drive a deployment decision. Accuracy covers all stated pairs, independently of timing.
+
+Proposed improvements, measured separately
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+These candidate changes are **not included in the baseline above**; each was measured as a
+patch against the same Kornia commit. The first two have since been merged as separate pull
+requests, and the M1 figures below are for the candidate patches, not for the merged code:
+
+.. list-table:: Candidate versus the same Kornia baseline
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Change
+     - Measured result and limit
+   * - ALIKED MPS inference (merged as
+       `#6464 <https://github.com/kornia/kornia/pull/6464>`_)
+     - **1.59× Oxford / 1.71× HPatches** full-pipeline speedup, with unchanged aggregate accuracy.
+       Patched Kornia is approximately tied with the author on Oxford and remains slightly
+       slower on HPatches. The merged sampler also runs on CUDA and CPU; this M1 candidate
+       measurement does not establish a CUDA speedup.
+   * - MPS SNN / SMNN (merged as
+       `#6465 <https://github.com/kornia/kornia/pull/6465>`_)
+     - **1.42–1.49× / 1.26–1.33×** matcher-only speedup across the three cohorts;
+       identical indices and ratios across **315 pairs**. These gains are not whole-pipeline
+       gains, and the candidate does not universally beat OpenCV matching.
+   * - Affine-shape mirror fix (not merged)
+     - PhotoTourism mAA **+0.49 percentage points**; Oxford @3 px unchanged;
+       HPatches @3 px **−0.46 percentage points**. Correctness improves; accuracy effects are
+       mixed. No speedup is claimed.
+
+Native recipes that change the matching policy, detector or sampling convention must be
+reported separately from matched port comparisons. In particular, a higher native-pipeline
+score alone does not identify a better descriptor implementation. Reuse the same images,
+weights, feature budget and estimator when extending this audit to another machine, and
+publish losses and missing measurements alongside wins.
