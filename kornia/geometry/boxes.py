@@ -242,6 +242,8 @@ class Boxes:
           checked by its first element's dtype); :meth:`from_tensor` casts integer input to ``float32``,
           or ``float64`` when that is the default dtype.
         - :meth:`merge` and :meth:`index_put` are non-mutating by default.
+        - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 4, 2)`` for
+          unbatched input. Scalar integer tensors follow the same rule.
 
     .. warning::
         The inclusive ``+1`` differs from torchvision, COCO and albumentations:
@@ -301,9 +303,12 @@ class Boxes:
             self._valid = torch.ones(self._data.shape[:-2], device=self._data.device, dtype=torch.bool)
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
-        new_box = type(self)(self._data[key], False)
+        data = cast(torch.Tensor, self._data[key])
+        if data.ndim == 2:
+            data = data.unsqueeze(0)
+        new_box = type(self)(data, False)
         new_box._mode = self._mode
-        new_box._valid = self._valid[key]
+        new_box._valid = self._valid[key].reshape(data.shape[:-2])
         # Select padding metadata with the same key as the box batch, including boolean masks.
         if self._N is not None:
             selected = torch.as_tensor(self._N, device=self._data.device)[key]
@@ -1243,6 +1248,8 @@ class Boxes3D:
           or ``float64`` when that is the default dtype.
         - :meth:`transform_boxes` returns a new object labelled ``'xyzxyz_plus'``; :meth:`transform_boxes_`
           rebinds the internal tensor of ``self`` and keeps the label.
+        - Integer indexing selects one image's box set for batched input, or one box with shape ``(1, 8, 3)`` for
+          unbatched input. Scalar integer tensors follow the same rule.
 
     .. warning::
         The inclusive ``+1`` is `#3934 <https://github.com/kornia/kornia/issues/3934>`_ and the ``'vertices'``
@@ -1278,7 +1285,10 @@ class Boxes3D:
         self._mode = mode
 
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes3D:
-        new_box = Boxes3D(self._data[key], False, mode="xyzxyz_plus")
+        data = cast(torch.Tensor, self._data[key])
+        if data.ndim == 2:
+            data = data.unsqueeze(0)
+        new_box = Boxes3D(data, False, mode="xyzxyz_plus")
         new_box._mode = self._mode
         return new_box
 
