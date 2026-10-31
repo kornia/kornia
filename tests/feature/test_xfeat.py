@@ -176,9 +176,11 @@ class TestXFeat(BaseTester):
         feats1 = torch.nn.functional.normalize(torch.randn(2, 70, 64, device=device, dtype=dtype), dim=-1)
         feats2 = torch.nn.functional.normalize(torch.randn(2, 50, 64, device=device, dtype=dtype), dim=-1)
         matches = XFeat()._batch_match(feats1, feats2, min_cossim=min_cossim)
+        # The one similarity matrix, from the same batched product that _batch_match starts with.
+        cossims = torch.bmm(feats1, feats2.permute(0, 2, 1))
         assert len(matches) == 2
         for b, (idx0, idx1) in enumerate(matches):
-            cossim = feats1[b] @ feats2[b].t()
+            cossim = cossims[b]
             best12, best21 = cossim.argmax(dim=1), cossim.argmax(dim=0)
             keep = best21[best12] == torch.arange(70, device=device)
             if min_cossim > 0:
