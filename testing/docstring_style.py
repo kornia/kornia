@@ -17,9 +17,10 @@
 
 """Helpers shared by the tests that check kornia's docstring style.
 
-They find the public API, read the structure of a docstring (``See Also`` entries, cross-reference roles, shape
-tuples) and resolve a cross-reference the way Sphinx does, through the names that the ``.rst`` pages under
-``docs/source`` register and, for torch, Python and NumPy objects, the cached intersphinx inventories.
+They find the public API (exported by an ``__all__`` or documented on a docs page), read the structure of a
+docstring (``See Also`` entries, cross-reference roles, shape tuples) and resolve a cross-reference the way Sphinx
+does, through the names that the ``.rst`` pages under ``docs/source`` register and, for torch, Python and NumPy
+objects, the cached intersphinx inventories.
 """
 
 from __future__ import annotations
@@ -100,6 +101,10 @@ def _is_kornia_function_or_class(obj: object) -> bool:
     return module_of_obj == "kornia" or module_of_obj.startswith("kornia.")
 
 
+def _qualified_name(obj: object) -> str:
+    return f"{obj.__module__}.{obj.__qualname__}"
+
+
 @cache
 def _exported_objects() -> tuple[tuple[object, str], ...]:
     """List ``(obj, "module.qualname")`` for every exported kornia function and class, deduplicated by identity."""
@@ -114,7 +119,7 @@ def _exported_objects() -> tuple[tuple[object, str], ...]:
             exported = [getattr(module, name, None) for name in module.__all__ if not name.startswith("_")]
         for obj in exported:
             if _is_kornia_function_or_class(obj):
-                collected.setdefault(id(obj), (obj, f"{obj.__module__}.{obj.__qualname__}"))
+                collected.setdefault(id(obj), (obj, _qualified_name(obj)))
     return tuple(collected.values())
 
 
@@ -137,6 +142,33 @@ def undocumented_public_objects() -> dict[int, tuple[object, str]]:
     module could otherwise keep one forever. The dict is cached and shared between callers, who must not mutate it.
     """
     return {id(obj): (obj, qualified) for obj, qualified in _exported_objects() if not own_docstring(obj)}
+
+
+def documented_objects(registry: Mapping[str, object]) -> tuple[tuple[object, str], ...]:
+    """List ``(obj, "module.qualname")`` for every kornia function and class that a docs page registers at top level.
+
+    These are the registry entries that are kornia functions or classes and are not members of a registered class
+    (the methods and nested classes autodoc renders inside a class page are the member check's business). Together
+    with ``_exported_objects()`` they make up what the rollout checks; an object that is both exported and documented
+    is the same object in both and counted once by ``rollout_objects``.
+    """
+    collected: dict[int, tuple[object, str]] = {}
+    for name, obj in registry.items():
+        if not _is_kornia_function_or_class(obj) or inspect.isclass(registry.get(name.rpartition(".")[0])):
+            continue
+        collected.setdefault(id(obj), (obj, _qualified_name(obj)))
+    return tuple(collected.values())
+
+
+def rollout_objects(registry: Mapping[str, object], with_docstring: bool = True) -> dict[int, tuple[object, str]]:
+    """Map ``id(obj)`` to ``(obj, "module.qualname")`` for the objects the docstring checks select.
+
+    The union of the exported kornia functions and classes (``public_objects()``'s walk) and the ones a docs page
+    registers (``documented_objects(registry)``), deduplicated by identity. ``with_docstring=True`` keeps those with a
+    docstring of their own, ``with_docstring=False`` those without one. Not cached: it depends on ``registry``.
+    """
+    union = {id(obj): (obj, qualified) for obj, qualified in (*_exported_objects(), *documented_objects(registry))}
+    return {key: pair for key, pair in union.items() if bool(own_docstring(pair[0])) == with_docstring}
 
 
 def covered(module_name: str, prefixes: Iterable[str]) -> bool:

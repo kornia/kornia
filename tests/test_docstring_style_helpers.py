@@ -49,6 +49,7 @@ from testing.docstring_style import (
     public_objects,
     reference_resolves,
     resolve_reference,
+    rollout_objects,
     see_also_entries,
     sphinx_registry,
     status_target,
@@ -884,3 +885,41 @@ def test_forwards_to_rejects_a_live_function_titled_alias_of_another():
     title = "Alias of :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`."
     assert status_target(title) == "kornia.geometry.conversions.rotation_matrix_to_quaternion"
     assert not forwards_to(axis_angle_to_quaternion, rotation_matrix_to_quaternion)
+
+
+class _OnlyDocumented:
+    """A kornia class that a docs page registers and no ``__all__`` exports."""
+
+    def method(self):
+        """A registered method, not a top-level object."""
+
+
+def _undocumented_only():
+    pass
+
+
+def test_rollout_objects_union_exported_and_documented_objects(monkeypatch):
+    # Only kornia-defined classes count, so give the synthetic class a kornia ``__module__``.
+    monkeypatch.setattr(_OnlyDocumented, "__module__", "kornia.synthetic", raising=False)
+    monkeypatch.setattr(_OnlyDocumented.method, "__module__", "kornia.synthetic")
+    monkeypatch.setattr(_undocumented_only, "__module__", "kornia.synthetic")
+    exported = ((depth_to_3d, "kornia.geometry.depth.depth_to_3d"),)
+    monkeypatch.setattr(docstring_style, "_exported_objects", lambda: exported)
+    registry = {
+        "kornia.synthetic": docstring_style,
+        "kornia.synthetic.OnlyDocumented": _OnlyDocumented,
+        "kornia.synthetic.OnlyDocumented.method": _OnlyDocumented.method,
+        "kornia.geometry.depth.depth_to_3d": depth_to_3d,
+        "kornia.synthetic.alias_of_depth_to_3d": depth_to_3d,
+        "kornia.synthetic.not_kornia": inspect.getdoc,
+        "kornia.synthetic._undocumented_only": _undocumented_only,
+    }
+    selected = rollout_objects(registry)
+    names = sorted(qualified for _, qualified in selected.values())
+    assert names == ["kornia.geometry.depth.depth_to_3d", "kornia.synthetic._OnlyDocumented"]
+    assert id(_OnlyDocumented.method) not in selected
+    assert [q for _, q in rollout_objects(registry, with_docstring=False).values()] == [
+        "kornia.synthetic._undocumented_only"
+    ]
+    # One object registered under two names is one entry of the documented walk.
+    assert [q for _, q in docstring_style.documented_objects(registry)].count("kornia.geometry.depth.depth_to_3d") == 1

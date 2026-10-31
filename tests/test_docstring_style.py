@@ -20,8 +20,9 @@
 ``testing/docstring_rollout.py`` lists the modules that are converted. For those, this file enforces what a reader,
 an IDE or a coding agent relies on and what a refactor silently breaks; the shape rule applies everywhere:
 
-* every public function and class has a docstring, so none escapes the checks below;
-* every public function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
+* every public function and class, exported by an ``__all__`` or documented on a docs page, has a docstring, so none
+  escapes the checks below;
+* every such function and class has a ``See Also:`` section whose entries name a sibling and say how it differs,
   unless its title line is a status title, ``Alias of :func:`target`.`` or ``Deprecated: use :func:`target`.``,
   which points to another public kornia object and needs none (``Deprecated: use`` only on an object that
   ``kornia.core._compat.deprecated`` wraps, ``Alias of`` only on one that forwards to its target unchanged, as
@@ -72,14 +73,13 @@ from testing.docstring_style import (
     math_shape_roles,
     modules_declaring_all,
     own_docstring,
-    public_objects,
     reference_resolves,
     resolve_reference,
+    rollout_objects,
     rst_pages,
     see_also_entries,
     sphinx_registry,
     status_target,
-    undocumented_public_objects,
 )
 
 KORNIA_ROOT = Path(kornia.__file__).resolve().parent
@@ -89,13 +89,17 @@ REGISTRY = sphinx_registry(DOCS)
 INTERSPHINX = intersphinx_names(DOCS)
 
 CONVERTED = sorted(
-    ((qualified, obj) for obj, qualified in public_objects().values() if covered(obj.__module__, DOCSTRING_MODULES)),
+    (
+        (qualified, obj)
+        for obj, qualified in rollout_objects(REGISTRY).values()
+        if covered(obj.__module__, DOCSTRING_MODULES)
+    ),
     key=lambda pair: pair[0],
 )
 UNDOCUMENTED = sorted(
     (
         qualified
-        for obj, qualified in undocumented_public_objects().values()
+        for obj, qualified in rollout_objects(REGISTRY, with_docstring=False).values()
         if covered(obj.__module__, DOCSTRING_MODULES)
     ),
 )
@@ -288,7 +292,7 @@ def test_catalog_names_every_export(namespace: str) -> None:
 
 def test_rollout_progress() -> None:
     """Print, per in-scope package, the converted objects and catalogued namespaces (read it with ``-s``)."""
-    objects = [obj for obj, _ in public_objects().values()]
+    objects = [obj for obj, _ in rollout_objects(REGISTRY).values()]
     namespaces = modules_declaring_all()
     print("\npackage        converted objects   catalogued namespaces")
     for package in IN_SCOPE_PACKAGES:
