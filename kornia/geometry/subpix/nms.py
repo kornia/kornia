@@ -43,11 +43,13 @@ def _pooled_window_is_faster(x: torch.Tensor) -> bool:
 
     On CUDA the chains are launch-bound: 24 or 48 comparisons and their conjunction cost about 50 or 100 kernels,
     against about 10 for :func:`_neighbourhood_max2d`, which is 2-6x faster there (RTX 4090, 480 x 640 to
-    960 x 1280 maps). On CPU the chains are 2-20x faster than the pooled path, so they stay there, and on MPS, where
-    neither has been measured. Integer maps keep the chains everywhere, because CUDA ``max_pool2d`` takes only
-    floating-point input, and so do maps without channels, which ``max_pool2d`` rejects. TorchScript keeps them too:
-    the legacy ONNX exporter has no symbolic for the ``prim::is_cuda`` a scripted check would leave in the graph. Both
-    paths give the same mask.
+    960 x 1280 maps). On CPU the chains are 2-20x faster than the pooled path, so they stay there. MPS keeps them
+    too: before torch 2.16, its stride-1 ``max_pool2d`` drops nan and returns 0 for a window of -inf (pytorch#200910,
+    pytorch#200789), so the pooled path would change the mask there, although it is 1.4-1.9x (5 x 5) and 2.4-3.7x
+    (7 x 7) faster on an M1 with torch 2.14. Integer maps keep the chains everywhere, because CUDA ``max_pool2d`` takes
+    only floating-point input, and so do maps without channels, which ``max_pool2d`` rejects. TorchScript keeps them
+    too: the legacy ONNX exporter has no symbolic for the ``prim::is_cuda`` a scripted check would leave in the graph.
+    Both paths give the same mask.
     """
     if torch.jit.is_scripting():
         return False

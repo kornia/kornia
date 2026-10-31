@@ -236,7 +236,8 @@ class TestNMS2d(BaseTester):
         if device.type == "mps" and dtype == torch.float64:
             pytest.skip("MPS does not support float64")
         if device.type == "mps" and pooled:
-            pytest.skip("MPS maps never take the pooled path, and its max_pool2d misses this reference mask (#6474 CI)")
+            # before torch 2.16, MPS stride-1 max_pool2d drops nan and turns an all -inf window into 0
+            pytest.skip("MPS maps never take the pooled path (pytorch#200910, pytorch#200789)")
         module = importlib.import_module("kornia.geometry.subpix.nms")
         monkeypatch.setattr(module, "_pooled_window_is_faster", lambda x: pooled)
         torch.manual_seed(0)
