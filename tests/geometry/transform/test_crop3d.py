@@ -136,6 +136,24 @@ class TestCenterCrop3D(BaseTester):
         out_crop = kornia.geometry.transform.center_crop3d(inp, crop_size, align_corners=True)
         self.assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize(
+        "shape, size, start",
+        [
+            ((3, 4, 5), (2, 3, 4), (0, 0, 0)),
+            ((3, 4, 5), (2, 2, 2), (0, 1, 1)),
+            ((5, 4, 6), (2, 3, 3), (1, 0, 1)),
+        ],
+    )
+    def test_convention_center_crop3d_odd_margin_returns_a_sub_volume_6290(self, shape, size, start, device, dtype):
+        # Odd margins on every axis. The crop starts at int(src / 2 - dst / 2), as in CenterCrop3D, and leaves the
+        # extra voxel at the back/bottom/right, instead of resampling between voxels. The default align_corners=True
+        # is the setting that reproduces an integer-voxel slice (see crop_and_resize3d's convention block).
+        inp = torch.arange(float(shape[0] * shape[1] * shape[2]), device=device, dtype=dtype).view(1, 1, *shape) ** 2
+        z, y, x = start
+        expected = inp[..., z : z + size[0], y : y + size[1], x : x + size[2]]
+
+        self.assert_close(kornia.geometry.transform.center_crop3d(inp, size), expected, atol=1e-4, rtol=1e-4)
+
     def test_gradcheck(self, device):
         img = torch.arange(0.0, 343.0, device=device, dtype=torch.float64).view(1, 1, 7, 7, 7)
 
@@ -427,6 +445,71 @@ class TestCropByBoxes3D(BaseTester):
             inp, transform, (3, 3, 3), align_corners=True, padding_mode="border"
         )
         assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
+
+    def test_mismatched_batch_error_labels_dimensions_correctly(self, device, dtype):
+        # Regression for #6402: the error message used to print depth as "height" and vice versa.
+        inp = torch.rand(2, 1, 4, 4, 4, device=device, dtype=dtype)
+        src_box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 3.0, 0.0],
+                    [0.0, 3.0, 0.0],
+                    [0.0, 0.0, 3.0],
+                    [3.0, 0.0, 3.0],
+                    [3.0, 3.0, 3.0],
+                    [0.0, 3.0, 3.0],
+                ],
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 3.0, 0.0],
+                    [0.0, 3.0, 0.0],
+                    [0.0, 0.0, 3.0],
+                    [3.0, 0.0, 3.0],
+                    [3.0, 3.0, 3.0],
+                    [0.0, 3.0, 3.0],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # Batch item 0: 2x3x4 (depth=2, height=3, width=4)
+        # Batch item 1: 3x3x4 (depth=3, height=3, width=4)
+        # Depths differ across the batch, so the error should mention "depth".
+        dst_box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 2.0, 0.0],
+                    [0.0, 2.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [3.0, 0.0, 1.0],
+                    [3.0, 2.0, 1.0],
+                    [0.0, 2.0, 1.0],
+                ],
+                [
+                    [0.0, 0.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [3.0, 2.0, 0.0],
+                    [0.0, 2.0, 0.0],
+                    [0.0, 0.0, 2.0],
+                    [3.0, 0.0, 2.0],
+                    [3.0, 2.0, 2.0],
+                    [0.0, 2.0, 2.0],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # Heights are 3 and widths 4 in both items, so the match also pins the height and width labels.
+        with pytest.raises(
+            AssertionError,
+            match=r"Got depth tensor\(\[2\., 3\.\].*, height tensor\(\[3\., 3\.\].* and width tensor\(\[4\., 4\.\]",
+        ):
+            kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box)
 
 
 class TestCrop3DSizeValidation:

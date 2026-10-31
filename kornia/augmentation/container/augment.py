@@ -17,17 +17,20 @@
 
 import sys
 import warnings
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation._2d.geometric.elastic_transform import RandomElasticTransform
+from kornia.augmentation._2d.geometric.fisheye import RandomFisheye
+from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateSpline
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils.helpers import _boxes_to_padded_tensor
 from kornia.constants import DataKey, Resample
-from kornia.core._compat import torch_version_lt
+from kornia.core.check import _check_async
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.core.mixin.image_module import _rebuild_container
@@ -53,6 +56,8 @@ _KEYPOINTS_OPTIONS = (DataKey.KEYPOINTS,)
 _IMG_OPTIONS = (DataKey.INPUT, DataKey.IMAGE)
 _MSK_OPTIONS = (DataKey.MASK,)
 _CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
+# Warps without a transformation matrix: they move the image but not keypoints or boxes (#4420).
+_NON_RIGID_WARPS = (RandomElasticTransform, RandomFisheye, RandomThinPlateSpline)
 
 MaskDataType = Union[torch.Tensor, List[torch.Tensor]]
 
@@ -152,8 +157,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         - masks are resampled with nearest interpolation by default (see ``extra_args``; padding can still add the
           fill value) and come back in their own dtype. Floating masks use the image's working dtype; integer
           masks use at least float32 (float64 with a float64 image). Integer labels not exactly representable
-          in that working dtype raise ``RuntimeError`` instead of being rounded. On accelerators an asynchronous
-          assertion may report at the next synchronization; MPS before torch 2.13 checks on the host.
+          in that working dtype raise ``RuntimeError`` instead of being rounded, unless checks are disabled
+          (:func:`~kornia.core.check.disable_checks`, ``python -O`` or ``KORNIA_CHECKS=0``). On accelerators an
+          asynchronous assertion may report by the next synchronization; MPS before torch 2.13 checks on the host.
         - a ``mask`` list contains one tensor per image sample, in sample order. Each entry is
           ``(H, W)``, ``(C, H, W)`` or ``(1, C, H, W)``, with matching spatial dimensions; channel counts
           may differ. Each entry uses its sample's gate, transform parameters and matrix, including in
@@ -170,8 +176,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           the image, after a newer draw or after an edit follows ``params``. Inference tensors have no version
           counter, so an in-place edit made inside ``torch.inference_mode`` is not seen; replace the value instead.
           The mask limitations above apply; a handler the subclass does not implement raises
-          ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are left unchanged;
-          see the warning below.
+          ``NotImplementedError``. A non-rigid warp child has no matrix, so the coordinate keys are refused; see
+          the note below.
         - ``.inverse()`` undoes the 2D geometric steps and leaves intensity, custom rigid and non-rigid steps
           applied. 3D geometric children raise ``NotImplementedError``, mix children ``RuntimeError``. Tensor
           boxes come back as axis-aligned enclosures; pass :class:`~kornia.geometry.boxes.Boxes` to keep rotated
@@ -180,17 +186,18 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``True`` or ``False`` overrides it.
         - Nested :class:`AugmentationSequential` children contribute the matrix they record for the current call
           under their own ``transformation_matrix_mode``; one whose children are all non-rigid records none and is
-          skipped. A plain :class:`ImageSequential` child is still omitted from the outer matrix
-          (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
+          skipped. In ``silent`` mode, plain :class:`ImageSequential` children contribute their geometric operations,
+          using each operation's recorded parameters even when the sampled sequence repeats a member. The ``rigid``
+          mode still rejects a plain image sequence, and ``skip`` records no matrix.
 
-    .. warning::
-        A non-rigid child silently desynchronizes the coordinate data keys:
-        :class:`~kornia.augmentation.RandomElasticTransform` warps the image **and** a ``mask`` key with it,
-        but returns keypoints and boxes unchanged, and
-        :class:`~kornia.augmentation.RandomThinPlateSpline` and :class:`~kornia.augmentation.RandomFisheye`
-        return keypoints and boxes unchanged and raise ``NotImplementedError`` on a ``mask`` key,
-        with a message identifying the unsupported augmentation (including at ``p=0``).
-        Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
+    .. note::
+        :class:`~kornia.augmentation.RandomElasticTransform`, :class:`~kornia.augmentation.RandomThinPlateSpline`
+        and :class:`~kornia.augmentation.RandomFisheye` warp the image without a transformation matrix, so a
+        keypoint or box data key raises ``NotImplementedError`` when any of them is in the pipeline, nested
+        containers included. The check reads the pipeline, not the sampled gates: it raises at ``p=0`` and when
+        ``random_apply`` does not draw the warp. A ``mask`` key follows the image through
+        :class:`~kornia.augmentation.RandomElasticTransform` and raises on the other two
+        (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
     .. note::
         A mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) receives ``mask``, box and ``keypoints``
@@ -410,6 +417,60 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if matrix is not None:
             self._transform_matrices.append(matrix)
 
+    @staticmethod
+    def _image_sequence_matrices(
+        container: ImageSequential,
+        params: List[ParamItem],
+        input: DataType,
+        extra_args: Optional[Dict[str, Any]] = None,
+        sequence_matrices: Optional[Iterator[Optional[torch.Tensor]]] = None,
+    ) -> Iterator[torch.Tensor]:
+        """Read invocation snapshots and parameter-aware geometric matrices from a plain image sequence."""
+        for param in params:
+            module = container.get_submodule(param.name)
+            if type(module) is ImageSequential:
+                yield from AugmentationSequential._image_sequence_matrices(
+                    module, InputSequentialOps.get_sequential_module_param(param), input, extra_args, sequence_matrices
+                )
+            elif isinstance(module, AugmentationSequential):
+                if sequence_matrices is None and type(module) is AugmentationSequential:
+                    if module._transformation_matrix_arg != "skip":
+                        yield from AugmentationSequential._image_sequence_matrices(
+                            module, InputSequentialOps.get_sequential_module_param(param), input, extra_args
+                        )
+                else:
+                    matrix = module.transform_matrix if sequence_matrices is None else next(sequence_matrices)
+                    if matrix is not None:
+                        yield matrix
+            elif isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D)):
+                yield InputSequentialOps.get_transform_matrix(module, param, input, extra_args=extra_args)
+
+    def _update_image_sequence_matrix(
+        self,
+        module: nn.Module,
+        param: ParamItem,
+        input: DataType,
+        extra_args: Optional[Dict[str, Any]] = None,
+        image_transformed: bool = True,
+    ) -> None:
+        """Collect nested matrices, using invocation snapshots only after an image call."""
+        if (
+            type(module) is ImageSequential
+            and self._transformation_matrix_arg in ("silent", "silence")
+            and not is_exporting()
+        ):
+            self._transform_matrices.extend(
+                self._image_sequence_matrices(
+                    module,
+                    InputSequentialOps.get_sequential_module_param(param),
+                    input,
+                    extra_args,
+                    iter(module._sequence_matrices) if image_transformed else None,
+                )
+            )
+        else:
+            self._update_transform_matrix_by_module(module)
+
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
@@ -429,7 +490,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-            self._update_transform_matrix_by_module(module)
+            self._update_image_sequence_matrix(module, param, input, extra_args=extra_args)
         if not is_exporting():
             self._params = params
         return input
@@ -516,6 +577,19 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 )
             if size is not None and entry.shape[-2:] != size:
                 raise ValueError(f"Mask list entry {i} must have spatial size {tuple(size)}; got {tuple(entry.shape)}.")
+
+    def _reject_coordinates_through_non_rigid_warps(self, data_keys: List[DataKey]) -> None:
+        # The check reads the pipeline, not the sampled gates, so a call raises at any ``p`` and whichever children
+        # ``random_apply`` draws: a pipeline cannot pass on some batches and fail on others.
+        for key in data_keys:
+            if key not in _KEYPOINTS_OPTIONS and key not in _BOXES_OPTIONS:
+                continue
+            for module in self.modules():
+                if isinstance(module, _NON_RIGID_WARPS):
+                    raise NotImplementedError(
+                        f"{type(module).__name__} does not support {key.name.lower()} inputs. "
+                        "See https://github.com/kornia/kornia/issues/4420."
+                    )
 
     def _validate_args_datakeys(
         self, *args: DataType, data_keys: List[DataKey], params: Optional[List[ParamItem]] = None
@@ -711,6 +785,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         try:
             self._validate_args_datakeys(*args, data_keys=original_data_keys, params=params)
+            self._reject_coordinates_through_non_rigid_warps(original_data_keys)
 
             in_args = self._arguments_preproc(*args, data_keys=original_data_keys, params=params)
 
@@ -753,7 +828,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if len(self.transform_op.data_keys) == 1 or not isinstance(outputs, (list, tuple)):
                     # One data key can itself hold a mask list; keep it as one argument for the next child.
                     outputs = [outputs]
-                self._update_transform_matrix_by_module(module)
+                self._update_image_sequence_matrix(
+                    module,
+                    param,
+                    outputs[0],
+                    extra_args=self.extra_args.get(DataKey.INPUT),
+                    image_transformed=DataKey.INPUT in original_data_keys,
+                )
 
             if input_first_order != list(range(len(input_first_order))):
                 restore_order = [input_first_order.index(i) for i in range(len(input_first_order))]
@@ -1024,12 +1105,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 f"Integer mask labels must be exactly representable in {dtype}. "
                 "Use a float64 image where supported or remap labels to smaller integers."
             )
-            if mask.device.type == "mps" and torch_version_lt(2, 13, 0):
-                # Older MPS has no asynchronous assertion kernel. Do not skip a correctness check there.
-                if not bool(exact):
-                    raise RuntimeError(message)
-            else:
-                torch._assert_async(exact, message)
+            _check_async(exact, message)
         return converted
 
     @staticmethod
@@ -1155,6 +1231,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dtype = None
 
         if self.contains_video_sequential:
+            if isinstance(arg, VideoKeypoints):
+                return arg
+            if isinstance(arg, Keypoints):
+                raise TypeError(
+                    "A VideoSequential pipeline needs VideoKeypoints or a (B, T, N, 2) tensor for its keypoints, which"
+                    " carry the number of frames per video. Got Keypoints."
+                )
             arg = cast(Union[torch.Tensor, List[torch.Tensor]], arg)
             if isinstance(arg, list):
                 if not torch.is_floating_point(arg[0]):

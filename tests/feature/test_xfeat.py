@@ -38,6 +38,14 @@ from testing.base import (
 
 
 class TestXFeatModel(BaseTester):
+    def test_empty_batch_6266(self, device, dtype):
+        """An empty batch keeps every non-batch dimension of the three maps."""
+        model = XFeatModel().to(device, dtype).eval()
+        feats, keypoints, heatmap = model(torch.rand(0, 1, 64, 64, device=device, dtype=dtype))
+        assert feats.shape == (0, 64, 8, 8)
+        assert keypoints.shape == (0, 65, 8, 8)
+        assert heatmap.shape == (0, 1, 8, 8)
+
     def test_smoke(self, device, dtype):
         model = XFeatModel().to(device, dtype)
         x = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
@@ -149,6 +157,17 @@ class TestInterpolateSparse2d(BaseTester):
 
 
 class TestXFeat(BaseTester):
+    def test_empty_batch_6266(self, device, dtype):
+        """An empty batch gives no per-image results, an empty dense batch and no match lists."""
+        model = XFeat().to(device).eval()
+        x = torch.rand(0, 3, 64, 64, device=device)
+        assert model.detectAndCompute(x, top_k=50) == []
+        dense = model.detectAndComputeDense(x, top_k=50)
+        assert dense["keypoints"].shape == (0, 50, 2)
+        assert dense["descriptors"].shape == (0, 50, 64)
+        assert dense["scales"].shape == (0, 50)
+        assert model.match_xfeat_star(x, x, top_k=50) == []
+
     def test_smoke(self, device, dtype):
         model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
@@ -466,6 +485,20 @@ def test_lighterglue_reference_matches(device, data):
     assert frac > 0.95, f"Only {frac:.1%} of reference matches reproduced within joint distance 2.0 px"
 
 
+@pytest.mark.slow
+@pytest.mark.parametrize("data", ["xfeat_outdoor"], indirect=True)
+def test_xfeat_star_refines_an_image_matched_with_itself_in_place_6418(device, data):
+    # #6418: each cell of an image matched with itself is its own coarse match, so the mean refinement offset is the
+    # bias of the refinement. Measured from bin 4, as the reference does, it is about -1 px on each axis.
+    xfeat = XFeat.from_pretrained().to(device)
+    out = xfeat.detectAndComputeDense(data["img1"].to(device), multiscale=False)
+    refined = xfeat._refine_matches(out, out, xfeat._batch_match(out["descriptors"], out["descriptors"]), 0)
+    displacement = refined[:, :2] - refined[:, 2:]
+    assert displacement.shape[0] > 100
+    assert displacement.mean(0).abs().max() < 0.5
+    assert (displacement.norm(dim=-1) < 1).float().mean() > 0.8
+
+
 class TestConventionsXFeat(BaseTester):
     @staticmethod
     def _net_outputs(peaks, h, w, reliability=0.5):
@@ -624,6 +657,14 @@ class TestConventionsXFeat(BaseTester):
         seen.clear()
         xfeat.detectAndComputeDense(image, -1, False)
         assert seen == [None]
+
+    def test_convention_xfeat_star_offsets_are_measured_from_bin_3_6418(self, device, dtype):
+        # a heatmap peaked at bin (x, y) of its 8 x 8 window moves the keypoint by (x - 3, y - 3)
+        heatmaps = torch.zeros(3, 8, 8, device=device, dtype=dtype)
+        for i, (x, y) in enumerate(((3, 3), (5, 2), (0, 7))):
+            heatmaps[i, y, x] = 20.0
+        expected = torch.tensor([[0.0, 0.0], [2.0, -1.0], [-3.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(XFeat._subpix_softmax2d(heatmaps), expected, atol=1e-3, rtol=0)
 
     def test_smoke_xfeat_star_matching_runs_with_a_scale_of_zero_budget(self, device, dtype):
         torch.manual_seed(0)
@@ -788,7 +829,8 @@ class TestConventionsXFeat(BaseTester):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
         # maps (#5810), and torch 2.5.1 has no such kernel. XFeat's InterpolateSparse2d, ALIKED (DKD scores and SDDH
         # descriptors) and SOLD2.match call it with the half map and grid directly;
-        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead.
+        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead, and so does
+        # ALIKED's deformable convolution without autograd (#6464).
         if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
@@ -822,4 +864,5 @@ class TestConventionsXFeat(BaseTester):
                 maps = torch.rand(2, 1, 128, 24, 32, dtype=dtype)
                 SOLD2(pretrained=False).eval().match(segments, segments + 1.0, maps[0], maps[1])
         assert calls
-        assert set(calls) == {(dtype, dtype)}
+        expected = {(dtype, dtype), (torch.float32, torch.float32)} if sampler == "ALIKED" else {(dtype, dtype)}
+        assert set(calls) == expected

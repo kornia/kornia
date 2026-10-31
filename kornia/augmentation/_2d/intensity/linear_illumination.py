@@ -26,7 +26,7 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomLinearIllumination(IntensityAugmentationBase2D):
-    r"""Applies random 2D Linear illumination patterns to a batch of images.
+    r"""Brighten or darken by a linear ramp from an edge, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomLinearIllumination.png
 
@@ -36,14 +36,14 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
         insert only as a tuple or float.
-        p: Probability of applying the transformation.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -103,8 +103,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -120,8 +120,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")
@@ -146,7 +146,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
 
 
 class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
-    r"""Applies random 2D Linear from corner illumination patterns to a batch of images.
+    r"""Brighten or darken by a linear ramp from a corner, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
 
@@ -156,14 +156,14 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
         insert only as a tuple or float.
-        p: Probability of applying the transformation.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -223,8 +223,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -240,8 +240,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")

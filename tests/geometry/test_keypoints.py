@@ -20,6 +20,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.geometry.keypoints import Keypoints, Keypoints3D, VideoKeypoints
+from kornia.geometry.linalg import transform_points
 
 from testing.base import BaseTester, supports_bilinear_2d_grid_sample
 
@@ -320,6 +321,39 @@ class TestVideoKeypoints(BaseTester):
         assert isinstance(out, VideoKeypoints)
         assert out.temporal_channel_size == T
 
+    @pytest.mark.parametrize(
+        "key, videos",
+        [(0, [0]), (-1, [2]), (slice(0, 2), [0, 1]), (slice(1, None), [1, 2]), ("index", [2, 0]), ("mask", [0, 2])],
+    )
+    def test_getitem_selects_videos_6375(self, key, videos, device, dtype):
+        # As VideoBoxes (#4249): indexing selects whole videos on the video-batch axis and keeps the temporal axis.
+        # The inherited Keypoints.__getitem__ indexed frames and dropped temporal_channel_size, so to_tensor() raised.
+        data = torch.arange(3 * 4 * 5 * 2, device=device, dtype=dtype).reshape(3, 4, 5, 2)
+        vkp = VideoKeypoints.from_tensor(data)
+        if key == "index":
+            key = torch.tensor([2, 0], device=device)
+        elif key == "mask":
+            key = torch.tensor([True, False, True], device=device)
+        out = vkp[key]
+        assert isinstance(out, VideoKeypoints)
+        assert out.temporal_channel_size == 4
+        self.assert_close(out.to_tensor(), data[videos])
+
+    def test_setitem_writes_videos_6375(self, device, dtype):
+        # from_tensor shares the storage of a contiguous tensor, so build the expected values before writing.
+        data = torch.zeros(3, 4, 5, 2, device=device, dtype=dtype)
+        expected = data.clone()
+        expected[1] = 1
+        vkp = VideoKeypoints.from_tensor(data.clone())
+        vkp[1] = VideoKeypoints.from_tensor(torch.ones(1, 4, 5, 2, device=device, dtype=dtype))
+        self.assert_close(vkp.to_tensor(), expected)
+        vkp[torch.tensor([True, False, True], device=device)] = vkp[torch.tensor([1, 1], device=device)]
+        self.assert_close(vkp.to_tensor(), torch.ones_like(data))
+
+        # A value with another number of frames per video is rejected rather than regrouped.
+        with pytest.raises(ValueError, match="4 frames"):
+            vkp[0] = VideoKeypoints.from_tensor(torch.ones(2, 2, 5, 2, device=device, dtype=dtype))
+
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError):
             VideoKeypoints.from_tensor(torch.rand(5, 2, device=device, dtype=dtype))
@@ -409,16 +443,52 @@ class TestKeypoints3D(BaseTester):
         kp[:5] = new_kp
         self.assert_close(kp.data[:5], new_data)
 
+    @pytest.mark.parametrize(
+        "data_shape, matrix_shape",
+        [((2, 5, 3), (2, 4, 4)), ((2, 5, 3), (4, 4)), ((5, 3), (4, 4)), ((5, 3), (1, 4, 4))],
+    )
+    def test_transform_keypoints(self, data_shape, matrix_shape, device, dtype):
+        data = torch.rand(data_shape).to(device, dtype)
+        M = torch.rand(matrix_shape).to(device, dtype)
+        kp = Keypoints3D(data)
+        kp_t = kp.transform_keypoints(M)
+        assert kp_t is not kp
+        assert kp_t.data.device == device
+        assert kp_t.data.dtype == dtype
+        self.assert_close(kp_t.data, transform_points(M, data), rtol=0, atol=0)
+
+    def test_transform_keypoints_inplace(self, device, dtype):
+        data = torch.rand(2, 5, 3).to(device, dtype)
+        original = data.clone()
+        M = torch.rand(2, 4, 4).to(device, dtype)
+        expected = transform_points(M, data)
+
+        kp = Keypoints3D(data)
+        assert kp.transform_keypoints(M, inplace=True) is kp
+        self.assert_close(kp.data, expected, rtol=0, atol=0)
+
+        kp = Keypoints3D(data)
+        assert kp.transform_keypoints_(M) is kp
+        self.assert_close(kp.data, expected, rtol=0, atol=0)
+        self.assert_close(data, original, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("method", ["pad", "unpad"])
+    def test_pad_unpad_deprecated(self, method, device, dtype):
+        kp = Keypoints3D(torch.rand(5, 3, device=device, dtype=dtype))
+        with (
+            pytest.warns(DeprecationWarning, match=rf"`Keypoints3D\.{method}` is deprecated") as record,
+            pytest.raises(NotImplementedError, match=rf"`Keypoints3D\.{method}` is not implemented"),
+        ):
+            getattr(kp, method)(torch.zeros(1, 6, device=device, dtype=dtype))
+        assert len(record) == 1
+        assert record[0].filename == __file__
+
     def test_not_implemented(self, device, dtype):
         kp = Keypoints3D(torch.rand(5, 3, device=device, dtype=dtype))
         with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.pad` is not implemented"):
             kp.pad(torch.zeros(1, 6, device=device, dtype=dtype))
         with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.unpad` is not implemented"):
             kp.unpad(torch.zeros(1, 6, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError, match="transform_points"):
-            kp.transform_keypoints(torch.eye(4, device=device, dtype=dtype))
-        with pytest.raises(NotImplementedError, match="transform_points"):
-            kp.transform_keypoints_(torch.eye(4, device=device, dtype=dtype))
         with pytest.raises(NotImplementedError, match="from a list of tensors is not implemented"):
             Keypoints3D([torch.rand(3, 3, device=device, dtype=dtype), torch.rand(5, 3, device=device, dtype=dtype)])
         with pytest.raises(NotImplementedError, match=r"`Keypoints3D\.to_tensor\(as_padded_sequence=True\)`"):
@@ -434,16 +504,35 @@ class TestKeypoints3D(BaseTester):
         with pytest.raises(ValueError):
             Keypoints3D(torch.rand(3, 2, device=device, dtype=dtype))
 
+    def test_transform_exception(self, device, dtype):
+        kp = Keypoints3D(torch.rand(5, 3, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match=r"must be \(4, 4\) or \(B, 4, 4\)"):
+            kp.transform_keypoints(torch.eye(3, device=device, dtype=dtype))
+
     def test_int_input_converted_when_not_raising(self, device, dtype):
         data = torch.ones(5, 3, device=device, dtype=torch.int32)
         kp = Keypoints3D(data, raise_if_not_floating_point=False)
         assert kp.data.dtype == torch.float32
 
     def test_gradcheck(self, device):
-        pass  # Keypoints3D transform ops are NotImplemented
+        data = torch.rand(1, 5, 3, device=device, dtype=torch.float64, requires_grad=True)
+        M = torch.eye(4, device=device, dtype=torch.float64).unsqueeze(0)
+        M[0, 0, 3] = 1.0
+
+        def fn(x):
+            return Keypoints3D(x).transform_keypoints(M).data
+
+        self.gradcheck(fn, (data,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        pass
+        data = torch.rand(1, 5, 3, device=device, dtype=dtype)
+        M = torch.eye(4, device=device, dtype=dtype).unsqueeze(0)
+
+        def fn(x):
+            return Keypoints3D(x).transform_keypoints(M).data
+
+        op = torch_optimizer(fn)
+        self.assert_close(op(data), fn(data))
 
     def test_smoke_jit(self, device, dtype):
         pass
@@ -610,13 +699,11 @@ class TestConventionsKeypoints(BaseTester):
             "keypoints3d_to_tensor_padded_sequence",
             "keypoints3d_pad",
             "keypoints3d_unpad",
-            "keypoints3d_transform_keypoints",
-            "keypoints3d_transform_keypoints_",
         ],
     )
     def test_wart_keypoints_documented_paths_not_implemented_5023(self, path, device, dtype):
-        # Wart pin (#5023): the API offers list input (the List[Tensor] annotation), to_tensor(as_padded_sequence=True)
-        # and the Keypoints3D pad / unpad / transform_keypoints methods, and every one of these paths raises
+        # Wart pin (#5023): the API offers list input (the runtime list branch), to_tensor(as_padded_sequence=True)
+        # and the deprecated Keypoints3D pad / unpad methods, and every one of these paths raises
         # NotImplementedError. Implementing a path, or removing it from the API, flips its case. The message is
         # not asserted, so rewording it leaves every case green.
         kp2d = torch.tensor([[[8.0, 2.0], [3.0, 5.0]]], device=device, dtype=dtype)
@@ -630,12 +717,6 @@ class TestConventionsKeypoints(BaseTester):
             "keypoints3d_to_tensor_padded_sequence": lambda: Keypoints3D(kp3d).to_tensor(as_padded_sequence=True),
             "keypoints3d_pad": lambda: Keypoints3D(kp3d).pad(torch.zeros(1, 6, device=device, dtype=dtype)),
             "keypoints3d_unpad": lambda: Keypoints3D(kp3d).unpad(torch.zeros(1, 6, device=device, dtype=dtype)),
-            "keypoints3d_transform_keypoints": lambda: Keypoints3D(kp3d).transform_keypoints(
-                torch.eye(4, device=device, dtype=dtype)[None]
-            ),
-            "keypoints3d_transform_keypoints_": lambda: Keypoints3D(kp3d).transform_keypoints_(
-                torch.eye(4, device=device, dtype=dtype)[None]
-            ),
         }
         with pytest.raises(NotImplementedError):
             calls[path]()

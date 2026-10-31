@@ -23,10 +23,11 @@ from typing import Tuple, Union
 import torch
 import torch.nn.functional as F
 
+from kornia.core.check import _check_async
 from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking
 from kornia.image.utils import perform_keep_shape_image
 
-from .adjust import _check_floating_image, _lookup_value_check
+from .adjust import _check_floating_image
 from .histogram import histogram
 
 
@@ -195,7 +196,7 @@ def _spread_residual(residual: torch.Tensor, num_bins: int) -> torch.Tensor:
     by tens of levels.
 
     Args:
-        residual: residual per tile, shape :math:`(T,)`, below ``num_bins``.
+        residual: residual per tile, shape ``(T,)``, below ``num_bins``.
         num_bins: number of histogram bins.
 
     Returns:
@@ -238,9 +239,12 @@ def _compute_luts(
         # In float16 the clipped total of a 256 x 256 tile overflows to inf, and bfloat16 rounds counts above 256.
         histos = _tiles_histc(tiles, num_bins)
     else:
-        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
+        # The centres and bandwidth follow float64 tiles; every other dtype stays float32 because histogram
+        # evaluates half-precision kernels in float32.
+        centre_dtype = torch.promote_types(tiles.dtype, torch.float32)
+        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device, dtype=centre_dtype)
         # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
-        histos = histogram(tiles, bins, torch.tensor(0.001))
+        histos = histogram(tiles, bins, torch.tensor(0.001, dtype=centre_dtype))
         histos *= pixels
 
     if isinstance(clip, torch.Tensor):
@@ -499,7 +503,7 @@ def equalize_clahe(
     values are not rounded to 8-bit integers.
 
     Args:
-        input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
+        input: images tensor to equalize with values in the range [0, 1] and shape ``(*, C, H, W)``.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW). Each image axis must be larger
             than its grid size; otherwise a ``ValueError`` names the smallest image the grid admits.
@@ -526,10 +530,9 @@ def equalize_clahe(
        ``slow_and_differentiable=True`` keeps its soft histogram centred on the levels ``k / 255``. An integer
        or boolean image raises :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert
        8-bit data with ``image.float() / 255`` first, as for :func:`kornia.enhance.equalize`. Values the lookup
-       cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the range. The check is
-       ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older MPS release the
-       condition is read on the host instead, one device sync per call, and is skipped there under
-       ``torch.compile``, as for :func:`kornia.enhance.equalize`.
+       cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the range, at the same
+       point as for :func:`kornia.enhance.equalize`: during the call for a CPU image, and by the next
+       synchronization on CUDA and on MPS from torch ``2.13``, even when checks are disabled.
 
     """
     _check_floating_image(input, "equalize_clahe")
@@ -561,11 +564,13 @@ def _equalize_clahe(
     # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
     # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
     # device sync and fullgraph still compiles; on MPS before torch 2.13 it costs one host sync instead
-    # (see ``_lookup_value_check``). Inputs the lookup can index are unchanged.
-    _lookup_value_check(
+    # (see ``_check_async``). Inputs the lookup can index are unchanged. The check keeps the index in
+    # bounds, so it runs with checks disabled too: a compiled CPU gather out of range terminates the process.
+    _check_async(
         ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
         "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
+        guard=True,
     )
 
     imgs: torch.Tensor = input  # B x C x H x W

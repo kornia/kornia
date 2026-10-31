@@ -22,7 +22,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version, torch_version_lt
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 
 from testing.base import BaseTester
@@ -360,6 +360,16 @@ class TestGetPerspectiveTransform(BaseTester):
         point_right = torch.tensor([[[1.0, 0.0]]], device=device, dtype=dtype)
 
         self.assert_close(kornia.geometry.transform_points(dst_trans_src, point_left), point_right)
+
+    def test_integer_points_6396(self, device):
+        points_src = torch.tensor([[[0, 0], [10, 0], [10, 10], [0, 10]]], device=device)
+        points_dst = torch.tensor([[[1, 2], [12, 1], [11, 13], [0, 9]]], device=device)
+
+        out = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        expected = kornia.geometry.get_perspective_transform(points_src.to(out.dtype), points_dst.to(out.dtype))
+
+        assert out.dtype == torch.get_default_dtype()
+        self.assert_close(out, expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -1510,3 +1520,31 @@ class TestGetPerspectiveTransformAutocast(BaseTester):
         dst = torch.tensor([[[1.0, 0.5], [11.0, 1.0], [9.5, 8.5], [-0.5, 7.5]]], device=device, dtype=dtype)
         scripted = torch.jit.script(kornia.geometry.transform.get_perspective_transform)
         self.assert_close(scripted(src, dst), kornia.geometry.transform.get_perspective_transform(src, dst))
+
+
+class TestGetTranslationMatrix2d(BaseTester):
+    @pytest.mark.parametrize("shape", [(2,), (1,), (3,), (1, 1, 2), (2, 3), (2, 2, 2), ()])
+    def test_rejects_unsupported_shape(self, shape, device, dtype):
+        # (2,) used to give two matrices, one per component, and (1,) one matrix with dx = dy.
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.get_translation_matrix2d(torch.ones(shape, device=device, dtype=dtype))
+
+    def test_unbatched_translation_is_not_read_as_two_matrices(self, device, dtype):
+        with pytest.raises(ShapeError, match="batch dimension"):
+            kornia.geometry.transform.get_translation_matrix2d(torch.tensor([1.0, 2.0], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_batch(self, batch, device, dtype):
+        translations = torch.stack(
+            (
+                torch.arange(batch, device=device, dtype=dtype) + 1.0,
+                -2.0 * torch.arange(batch, device=device, dtype=dtype),
+            ),
+            dim=-1,
+        )  # (B, 2)
+        matrix = kornia.geometry.transform.get_translation_matrix2d(translations)
+        assert matrix.shape == (batch, 3, 3)
+
+        expected = torch.eye(3, device=device, dtype=dtype).repeat(batch, 1, 1)
+        expected[:, :2, 2] = translations
+        self.assert_close(matrix, expected)

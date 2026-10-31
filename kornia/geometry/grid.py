@@ -33,7 +33,7 @@ def create_meshgrid(
     dtype: Optional[torch.dtype] = None,
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Generate a coordinate grid for an image.
+    r"""Generate a (1, H, W, 2) grid of (x, y) pixel coordinates, normalized to [-1, 1] by default.
 
     Convention:
         - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. With
@@ -58,7 +58,7 @@ def create_meshgrid(
           outer pixel *edges*. Ignored when ``normalized_coordinates`` is ``False``.
 
     Return:
-        grid tensor with shape :math:`(1, H, W, 2)`.
+        grid tensor with shape ``(1, H, W, 2)``.
 
     Example:
         >>> create_meshgrid(2, 2)
@@ -158,7 +158,7 @@ def create_meshgrid3d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Generate a coordinate grid for an image.
+    """Generate a (1, D, H, W, 3) grid of (d, x, y) voxel coordinates, normalized to [-1, 1] by default.
 
     Convention:
         - Coordinates follow :ref:`Coordinates and sizes <coordinate-conventions>`. A normalized grid is always
@@ -178,7 +178,7 @@ def create_meshgrid3d(
         dtype: the data type of the generated grid.
 
     Return:
-        grid tensor with shape :math:`(1, D, H, W, 3)`.
+        grid tensor with shape ``(1, D, H, W, 3)``.
 
     """
     # See ``create_meshgrid``: ``arange`` keeps eager and captured pixel ramps identical at

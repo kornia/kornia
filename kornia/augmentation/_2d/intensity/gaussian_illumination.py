@@ -48,7 +48,7 @@ def _apply_gaussian_illumination(
 
 
 class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBase2D):
-    r"""Applies random 2D Gaussian illumination patterns to a batch of images.
+    r"""Add a random Gaussian-shaped illumination pattern, applied per sample with probability ``p`` (default 0.5).
 
     .. image:: _static/img/RandomGaussianIllumination.png
 
@@ -62,14 +62,14 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
         percentage of the spatial dimensions :math:(H, W).
         sign: Range for the sign of the Gaussian distribution. If only one sign is needed,
         insert only as a tuple or float.
-        p: Probability of applying the transformation.
+        p: Probability of applying the transformation to each sample.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                 to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped
@@ -137,8 +137,8 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -154,8 +154,8 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
                 center = (center[0], center[0])
             elif len(center) > 2 or len(center) <= 0:
                 raise ValueError(
-                    "The length of center must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of center must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("center must be a tuple or a float")
@@ -171,8 +171,8 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
                 sigma = (sigma[0], sigma[0])
             elif len(sigma) > 2 or len(sigma) <= 0:
                 raise ValueError(
-                    "The length of sigma must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sigma must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sigma must be a tuple or a float")
@@ -188,8 +188,8 @@ class RandomGaussianIllumination(_PicklableCompileMixin, IntensityAugmentationBa
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")

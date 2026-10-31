@@ -167,6 +167,135 @@ class TestLineSegmentOneWayError(BaseTester):
         error.sum().backward()
         assert torch.isfinite(ls2.grad).all()
 
+    def test_endpoint_mapped_to_infinity_6392(self, device, dtype):
+        # H sends x = -1 to the line at infinity (w' = x + 1). The error of a segment with an endpoint there is inf,
+        # as oneway_transfer_error's is (#4881). It used to read 1 there, because transform_points returns the
+        # numerator unchanged for |w'| <= 1e-8, and RANSAC counted the segment as an inlier.
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]] * 3], device=device, dtype=dtype)  # the line y = 0
+        near = -1.0 + 2.0**-6  # exact in every dtype: w' = 1 / 64, so the point maps to y' = 64
+        ls1 = torch.tensor(
+            [[[[-1.0, 1.0], [-1.0, 1.0]], [[-1.0, 1.0], [0.0, 1.0]], [[near, 1.0], [near, 1.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        ls1.requires_grad_()
+        for squared in (False, True):
+            error = line_segment_transfer_error_one_way(ls1, ls2, H, squared=squared)
+            assert torch.isinf(error[0, :2]).all()  # both endpoints, or one, at infinity
+            self.assert_close(error[0, 2], torch.tensor(64.0**2 if squared else 64.0, device=device, dtype=dtype))
+            # No gradient flows through the inf, not even to the finite endpoint of the second segment.
+            (grad,) = torch.autograd.grad(error[0, :2].sum(), ls1)
+            assert torch.equal(grad, torch.zeros_like(grad))
+
+        # A zero-length image-2 segment defines no line and still reads 0; a NaN endpoint gives NaN.
+        empty = torch.tensor([[[[2.0, 3.0], [2.0, 3.0]]]], device=device, dtype=dtype)
+        self.assert_close(
+            line_segment_transfer_error_one_way(ls1[:, :1].detach(), empty, H),
+            torch.zeros(1, 1, device=device, dtype=dtype),
+        )
+        nan = ls1[:, :1].detach().clone()
+        nan[..., 0, 0] = float("nan")
+        assert line_segment_transfer_error_one_way(nan, ls2[:, :1], H).isnan().all()
+        # A NaN distance at w' = 0 stays NaN rather than becoming inf.
+        nan_h = H.clone()
+        nan_h[0, 0, 0] = float("nan")
+        assert line_segment_transfer_error_one_way(ls1[:, :1].detach(), ls2[:, :1], nan_h).isnan().all()
+
+    def test_endpoint_near_infinity_float64_6392(self, device):
+        # The issue's case: at w' = 5e-9 the error is 2e8, where the OpenCV-style dehomogenization made it 1.
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=torch.float64)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=torch.float64)
+        ls1 = torch.tensor([[[[-1.0 + 5e-9, 1.0], [-1.0 + 5e-9, 1.0]]]], device=device, dtype=torch.float64)
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        self.assert_close(error, torch.full_like(error, 2e8), rtol=1e-6, atol=0.0)
+
+    def test_mixed_dtypes_and_extreme_homography(self, device, dtype):
+        # Points are mapped in the dtype of H and the error is returned in theirs, as transform_points did.
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+        ls1 = torch.tensor([[[[0.0, 0.0], [1.0, 1.0]]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[0.0, 1.0], [1.0, 1.0]]]], device=device, dtype=dtype)  # the line y = 1
+        H = torch.eye(3, device=device, dtype=torch.float64)[None]
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == dtype
+        self.assert_close(error, torch.full_like(error, 0.5))
+        # A float64 destination line keeps its precision with a float32 H and float32 points: the 1e-8 distance is
+        # not rounded away by computing in float32.
+        ls1 = torch.tensor([[[[0.0, 1.0], [1.0, 1.0]]]], device=device, dtype=torch.float32)
+        ls2 = torch.tensor([[[[0.0, 1.0 + 1e-8], [1.0, 1.0 + 1e-8]]]], device=device, dtype=torch.float64)
+        H = torch.eye(3, device=device, dtype=torch.float32)[None]
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == torch.float64
+        self.assert_close(error, torch.full_like(error, 1e-8), rtol=1e-6, atol=0.0)
+        # The distance is formed from the homogeneous coordinates, so a mapped x' past the float32 range does not
+        # turn a zero distance into inf * 0 = NaN.
+        H = torch.diag(torch.tensor([1e30, 1.0, 1e-10], device=device, dtype=torch.float32))[None]
+        ls1 = torch.tensor([[[[1.0, 0.0], [1.0, 0.0]]]], device=device, dtype=torch.float32)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=torch.float32)  # the line y = 0
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), torch.zeros(1, 1, device=device))
+
+    def test_scaling_homography_does_not_overflow_half(self, device, dtype):
+        # The distance is computed in at least float32: a scaling H maps (70, 70) to x' = 70000, past the float16
+        # maximum, and float16 arithmetic read the 1 px distance as NaN. The result keeps the input dtype.
+        H = 1000 * torch.eye(3, device=device, dtype=dtype)[None]
+        ls1 = torch.tensor([[[[70.0, 70.0], [71.0, 70.0]]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[70.0, 71.0], [71.0, 71.0]]]], device=device, dtype=dtype)  # the line y = 71
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == dtype
+        self.assert_close(error, torch.ones_like(error))
+
+    def test_mean_of_large_endpoint_distances_is_kept(self, device, dtype):
+        # The endpoint distances are averaged in the working dtype and only then cast: two distances of 32768, each
+        # representable in float16, have a sum past its maximum, and averaging in float16 read inf.
+        H = torch.diag(torch.tensor([1.0, 1.0, 2.0**-30], device=device, dtype=torch.float32))[None]
+        ls1 = torch.tensor([[[[0.0, 2.0**-15], [1.0, 2.0**-15]]]], device=device, dtype=dtype)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device, dtype=dtype)  # the line y = 0
+        error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == dtype
+        self.assert_close(error, torch.full_like(error, 32768.0))
+
+    def test_matches_the_mapped_endpoint_distances(self, device, dtype):
+        # Away from infinity the error is the mean distance of the dehomogenized mapped endpoints from the unit line.
+        _skip_half(dtype, _HALF_LINES)
+        torch.manual_seed(0)
+        ls1 = torch.rand(2, 7, 2, 2, device=device, dtype=dtype) * 10
+        ls2 = torch.rand(2, 7, 2, 2, device=device, dtype=dtype) * 10
+        H = create_random_homography(ls1, 3)
+        a, b = ls2[:, :, 0], ls2[:, :, 1]
+        normal = torch.stack([a[..., 1] - b[..., 1], b[..., 0] - a[..., 0]], -1)
+        normal = normal / normal.norm(dim=-1, keepdim=True)
+
+        def distance(p):
+            q = torch.cat([p, torch.ones_like(p[..., :1])], -1) @ H.transpose(-2, -1)
+            return ((q[..., :2] / q[..., 2:] - a) * normal).sum(-1).abs()
+
+        expected = 0.5 * (distance(ls1[:, :, 0]) + distance(ls1[:, :, 1]))
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected)
+
+    def test_batch_one_ls2_broadcasts(self, device, dtype):
+        # ls2 with a batch of 1 against a batch of ls1 and H broadcasts, as it did through transform_points.
+        torch.manual_seed(0)
+        ls1 = torch.rand(4, 5, 2, 2, device=device, dtype=dtype) * 10
+        ls2 = torch.rand(1, 5, 2, 2, device=device, dtype=dtype) * 10
+        H = create_random_homography(ls1, 3)
+        expected = line_segment_transfer_error_one_way(ls1, ls2.expand(4, 5, 2, 2), H)
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected, atol=0.0, rtol=0.0)
+
+    def test_autocast_does_not_reach_the_mapping(self, device):
+        # A caller's bfloat16 autocast ran H @ p in bfloat16, which rounds w' = 2**-10 to 0 and read inf, not 1024.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CPU and CUDA autocast")
+        H = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 1.0]]], device=device)  # w' = x + 1
+        ls1 = torch.tensor([[[[-1.0 + 2.0**-10, 1.0], [-1.0 + 2.0**-10, 1.0]]]], device=device)
+        ls2 = torch.tensor([[[[0.0, 0.0], [1.0, 0.0]]]], device=device)  # the line y = 0
+        with torch.autocast(device.type, dtype=torch.bfloat16):
+            error = line_segment_transfer_error_one_way(ls1, ls2, H)
+        assert error.dtype == torch.float32
+        self.assert_close(error, torch.full_like(error, 1024.0), atol=0.0, rtol=0.0)
+
     @pytest.mark.parametrize("batch_size, num_segments", [(256, 256), (1, 2**16)])
     def test_2_pow_16_segments(self, batch_size, num_segments, device, dtype):
         # RANSAC scores a (B, N) batch of segments; with B * N or N reaching 2**16, MPS (torch 2.5.1 and 2.14) made
@@ -1388,7 +1517,7 @@ _HALF_POINTS = (
     "of rounding in bfloat16 (0.25 px in float16), the size of the offsets these pins measure"
 )
 _HALF_LINES = (
-    "line_segment_transfer_error_one_way builds the unnormalised image-2 line in the input dtype; its constant term "
+    "the line DLT and these references build the unnormalised image-2 lines in the input dtype; their constant term "
     "is of order (pixel coordinate)**2, which overflows float16 and which bfloat16 cannot resolve"
 )
 

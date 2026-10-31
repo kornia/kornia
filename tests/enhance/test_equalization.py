@@ -23,6 +23,7 @@ import torch
 
 from kornia import enhance
 from kornia.core._compat import torch_version_ge
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.enhance.equalization import _compute_tiles
 from kornia.geometry import rotate
 
@@ -309,6 +310,22 @@ class TestEqualization(BaseTester):
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
             _sync(enhance.equalize_clahe(x).device)
 
+    def test_out_of_range_input_names_the_range_with_checks_disabled(self, device, dtype):
+        # The range check keeps the gather in bounds, so it runs with checks disabled too (``python -O``,
+        # ``KORNIA_CHECKS=0``): compiled on the CPU, the gather with an index out of range terminates the process.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+                _sync(enhance.equalize_clahe(x).device)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+
     def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
         # The check covers exactly the domain the gather can index, so a hair above 1 keeps working.
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 1.0001
@@ -332,6 +349,22 @@ class TestEqualization(BaseTester):
         x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 2.0
         torch._dynamo.reset()
         compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            _sync(compiled(x).device)
+
+    def test_dynamo_grad_out_of_range_input_names_the_range(self, device, dtype):
+        # The range check keeps the gather in bounds, so a compiled torch.func.grad keeps it, although a compiled
+        # functorch transform skips the value checks that guard no index.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        if device.type == "mps" and not torch_version_ge(2, 13):
+            pytest.skip("no MPS kernel for _assert_async before torch 2.13, so the check is skipped here")
+        if not torch_version_ge(2, 14):
+            pytest.skip("Dynamo in torch 2.9.1 and older cannot compile torch.func.grad over equalize_clahe")
+        x = torch.linspace(0, 2, 2 * 3 * 32 * 40, device=device, dtype=dtype).reshape(2, 3, 32, 40)
+        torch._dynamo.reset()
+        gradient = torch.func.grad(lambda image: enhance.equalize_clahe(image).sum())
+        compiled = torch.compile(gradient, fullgraph=True, backend="eager")
         with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
             _sync(compiled(x).device)
 
@@ -643,6 +676,43 @@ class TestEqualization(BaseTester):
         out = enhance.equalize_clahe(img, 2.0, (3, 3), slow_and_differentiable)
         flipped = enhance.equalize_clahe(img.flip(dim), 2.0, (3, 3), slow_and_differentiable)
         self.assert_close(flipped, out.flip(dim))
+
+    def test_clahe_slow_path_does_not_depend_on_the_default_dtype_6366(self, device, dtype):
+        # Differentiable CLAHE takes its bin centres and 0.001 bandwidth from the tile dtype, so
+        # torch.set_default_dtype(torch.float64) must not change the output (#6366). The image is the
+        # 2x3x32x40 seed-10 case from that report, cast to the parametrized dtype.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        x = torch.rand(2, 3, 32, 40, generator=torch.Generator().manual_seed(10), dtype=torch.float64).to(device, dtype)
+        out = enhance.equalize_clahe(x, slow_and_differentiable=True)
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            expected = enhance.equalize_clahe(x, slow_and_differentiable=True)
+        finally:
+            torch.set_default_dtype(previous)
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    def test_clahe_slow_path_centres_in_promoted_tile_dtype_6366(self, device, dtype, monkeypatch):
+        # Float64 tiles get float64 centres and bandwidth; every other dtype keeps the float32 ones it had, so its
+        # output is unchanged (#6366). The test above cannot see a dtype that ignores the default dtype but is wrong.
+        from kornia.enhance import equalization
+
+        calls = []
+        histogram = equalization.histogram
+
+        def spy(x, bins, bandwidth, *args, **kwargs):
+            calls.append((bins, bandwidth))
+            return histogram(x, bins, bandwidth, *args, **kwargs)
+
+        monkeypatch.setattr(equalization, "histogram", spy)
+        img = torch.linspace(0, 1, 256, device=device, dtype=dtype).view(1, 1, 16, 16)
+        enhance.equalize_clahe(img, slow_and_differentiable=True)
+        expected = torch.promote_types(dtype, torch.float32)
+        ((bins, bandwidth),) = calls
+        assert bins.dtype == expected
+        assert bandwidth.dtype == expected
+        self.assert_close(bins, torch.linspace(0, 1, 256, device=device, dtype=expected), rtol=0, atol=0)
 
     def test_clahe_odd_tiles_gradcheck_5812(self, device):
         torch.manual_seed(4)

@@ -410,7 +410,9 @@ def audit(
     The sequence must use one BCHW image first, followed by batched masks (``(B, C, H, W)`` or ``(B, H, W)``), boxes or
     keypoints described by positional ``data_keys``. ``params`` and ``data_keys``
     have the same meaning as in :meth:`kornia.augmentation.AugmentationSequential.forward`.
-    Unknown or non-rigid operations run normally and make composed geometry unavailable.
+    Unknown or non-rigid operations run normally and make composed geometry unavailable. Keypoints and boxes through
+    ``RandomElasticTransform``, ``RandomThinPlateSpline`` or ``RandomFisheye`` raise ``NotImplementedError``, as in
+    the sequence (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
     Reporting is an eager diagnostic operation. It snapshots executed operations and
     parameters, checks spatial round trips, and never evaluates image reconstruction.

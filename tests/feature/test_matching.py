@@ -31,6 +31,7 @@ from kornia.feature.matching import (
     DescriptorMatcherWithSteerer,
     GeometryAwareDescriptorMatcher,
     _cdist,
+    _first_to_second_nearest_ratio,
     match_adalam,
     match_fginn,
     match_mnn,
@@ -158,6 +159,119 @@ class TestMatchSNN(BaseTester):
         desc1 = torch.rand(5, 8, device=device, dtype=torch.float64)
         desc2 = torch.rand(7, 8, device=device, dtype=torch.float64)
         self.gradcheck(match_snn, (desc1, desc2, 0.8), nondet_tol=1e-4)
+
+    def test_mps_alone_uses_two_row_reductions(self, device, monkeypatch):
+        # torch.topk is two to five times faster than the two row reductions on x86 CPUs, and as fast on CUDA (#6465)
+        def two_row_reductions(*args):
+            raise AssertionError("two row reductions")
+
+        monkeypatch.setattr(matching, "_first_to_second_nearest_ratio", two_row_reductions)
+        desc1 = torch.rand(4, 8, device=device)
+        desc2 = torch.rand(5, 8, device=device)
+        if device.type == "mps":
+            with pytest.raises(AssertionError, match="two row reductions"):
+                match_snn(desc1, desc2, 0.8)
+        else:
+            match_snn(desc1, desc2, 0.8)
+
+
+class TestFirstToSecondNearestRatio(BaseTester):
+    """The ratio that match_snn and match_smnn take from two row reductions on MPS, checked on every device."""
+
+    def test_nonfinite_distances_and_ties(self, device, dtype):
+        # nan is ordered after +inf, as by torch.topk: it is a neighbour only when no number is left in the row
+        nan, inf = float("nan"), float("inf")
+        dm = torch.tensor(
+            [
+                [1.0, nan, 2.0],  # 1 / 2
+                [nan, 3.0, 1.0],  # 1 / 3
+                [1.0, nan, nan],  # no second neighbour: nan
+                [1.0, nan, inf],  # an infinitely far second neighbour: 0
+                [nan, nan, nan],  # nan
+                [2.0, 2.0, 5.0],  # a tie: 1, at the first tied column
+                [4.0, 1.0, inf],  # 1 / 4
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected = torch.tensor([1 / 2, 1 / 3, nan, 0.0, nan, 1.0, 1 / 4], device=device, dtype=dtype)
+
+        ratio, column = _first_to_second_nearest_ratio(dm)
+
+        number = ~torch.isnan(expected)
+        assert torch.equal(torch.isnan(ratio), ~number)
+        self.assert_close(ratio[number], expected[number])
+        self.assert_close(column[number], torch.tensor([0, 2, 0, 0, 1], device=device))
+
+    def test_tied_nearest_neighbours_take_the_first_column(self, device, dtype):
+        # torch.topk returns the last of these tied columns on CPU and the first on MPS
+        dm = torch.full((2, 3000), 2.0, device=device, dtype=dtype)
+        dm[:, [2000, 2500]] = 1.0
+        ratio, column = _first_to_second_nearest_ratio(dm)
+        self.assert_close(ratio, torch.ones(2, device=device, dtype=dtype))
+        self.assert_close(column, torch.tensor([2000, 2000], device=device))
+
+    @pytest.mark.parametrize("transposed", [False, True])
+    def test_matches_topk(self, device, dtype, transposed):
+        # Small integers make many ties; every 11th distance is nan and every 17th +inf. match_smnn passes the
+        # transposed matrix for its second direction.
+        flat = torch.arange(40 * 30, device=device)
+        dm = (flat * 7919 % 13).to(dtype)
+        dm = torch.where(flat % 17 == 0, float("inf"), dm)
+        dm = torch.where(flat % 11 == 0, float("nan"), dm).reshape(40, 30)
+        dm = dm.t() if transposed else dm
+
+        ratio, column = _first_to_second_nearest_ratio(dm)
+
+        values, columns = torch.topk(dm, 2, dim=1, largest=False)
+        expected = values[:, 0] / values[:, 1]
+        number = ~torch.isnan(expected)
+        assert torch.equal(torch.isnan(ratio), ~number)
+        self.assert_close(ratio[number], expected[number])
+        # A ratio below 1, the only kind a ratio test with th < 1 accepts, has a unique nearest neighbour.
+        unique = expected < 1
+        assert unique.any()
+        self.assert_close(column[unique], columns[unique, 0])
+
+    @pytest.mark.parametrize("int_dtype", [torch.int32, torch.int64])
+    def test_integer_distance_matrix(self, device, int_dtype):
+        # an integer dm, such as Hamming distances between binary descriptors
+        dm = torch.tensor([[2, 3, 5], [4, 4, 1], [7, 1, 9]], device=device, dtype=int_dtype)
+        ratio, column = _first_to_second_nearest_ratio(dm)
+        # promoted to the default floating dtype, as an integer division is
+        assert ratio.dtype == torch.get_default_dtype()
+        self.assert_close(ratio, torch.tensor([2 / 3, 1 / 4, 1 / 7], device=device))
+        self.assert_close(column, torch.tensor([0, 2, 1], device=device))
+        desc = torch.zeros(3, 2, device=device)
+        dists, idxs = match_snn(desc, desc, 0.8, dm)
+        self.assert_close(dists, torch.tensor([[2 / 3], [1 / 4], [1 / 7]], device=device))
+        self.assert_close(idxs, torch.tensor([[0, 0], [1, 2], [2, 1]], device=device))
+
+    def test_undefined_ratio_gets_no_gradient(self, device):
+        # The first row's ratio is 0 / 0. Its quotient's nan gradient would reach every distance of the row through
+        # amin's backward, and from there every descriptor of desc2.
+        dm = torch.tensor([[0.0, 0.0, 3.0], [2.0, 4.0, 1.0]], device=device, requires_grad=True)
+        ratio, _ = _first_to_second_nearest_ratio(dm)
+        assert torch.isnan(ratio[0])
+        ratio[1].backward()
+        self.assert_close(dm.grad, torch.tensor([[0.0, 0.0, 0.0], [-0.25, 0.0, 0.5]], device=device))
+
+    def test_gradcheck(self, device):
+        dm = torch.rand(6, 7, device=device, dtype=torch.float64)
+        self.gradcheck(lambda dm: _first_to_second_nearest_ratio(dm)[0], (dm,))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        flat = torch.arange(40 * 30, device=device)
+        dm = (flat * 7919 % 13).to(dtype)
+        dm = torch.where(flat % 11 == 0, float("nan"), dm).reshape(40, 30)
+        op = torch_optimizer(_first_to_second_nearest_ratio)
+        for x in (dm, dm.t()):
+            expected_ratio, expected_column = _first_to_second_nearest_ratio(x)
+            ratio, column = op(x)
+            number = ~torch.isnan(expected_ratio)
+            assert torch.equal(torch.isnan(ratio), ~number)
+            self.assert_close(ratio[number], expected_ratio[number])
+            self.assert_close(column[number], expected_column[number])
 
 
 class TestMatchSMNN(BaseTester):
@@ -914,6 +1028,13 @@ class TestMatchSteererLocal(BaseTester):
         assert num_rot is None
 
 
+def _sine_pattern(shape, frequency, chirp, phase, device, dtype):
+    """Deterministic descriptors in ``[-1, 1]`` without the random generator, the same on every device."""
+    index = torch.arange(math.prod(shape), dtype=torch.float64)
+    values = torch.sin(frequency * index + chirp * (index % shape[-1]) ** 2 + phase).view(shape)
+    return values.to(dtype).to(device)
+
+
 class TestCDist(BaseTester):
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("use_autocast", [False, True])
@@ -971,6 +1092,28 @@ class TestCDist(BaseTester):
         with pytest.raises(RuntimeError):
             _cdist(torch.ones(2, 4, device=device, dtype=dtype1), torch.ones(3, 4, device=device, dtype=dtype2))
 
+    @pytest.mark.parametrize("exporting", [False, True])
+    @pytest.mark.parametrize("rows", [10, 30])
+    def test_mixed_pair_under_mixed_precision_is_computed(self, device, monkeypatch, rows, exporting):
+        # Inside autocast a mixed pair of float16, bfloat16 and float32 is computed in float32, by `torch.cdist` and by
+        # the fallback that export takes; more than 25 rows also send `torch.cdist` through its matrix form. Autocast
+        # does not cast float64, so a pair with it raises, as outside autocast.
+        if device.type not in ("cpu", "cuda", "mps"):
+            pytest.skip("autocast region of CPU, CUDA and MPS only")
+        monkeypatch.setattr(matching, "is_exporting", lambda: exporting)
+        low = torch.bfloat16 if device.type == "cpu" else torch.float16
+        d1 = _sine_pattern((rows, 16), 0.71, 0.13, 0.0, device, torch.float32)
+        d2 = _sine_pattern((rows + 5, 16), 0.53, 0.29, 1.0, device, torch.float32)
+        with torch.autocast(device.type, dtype=low):
+            for a, b in ((d1.to(low), d2), (d1, d2.to(low))):
+                actual = _cdist(a, b)
+                assert actual.dtype == a.dtype
+                expected = torch.cdist(a.cpu().double(), b.cpu().double())
+                self.assert_close(actual.cpu().double(), expected.to(a.dtype).double(), rtol=1e-2, atol=1e-3)
+            if device.type == "cpu":
+                with pytest.raises(RuntimeError, match="same dtype"):
+                    _cdist(d1.to(low), d2.double())
+
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_zero_distance_gradient(self, device, desc_dtype):
         if not supports_matmul(device, desc_dtype):
@@ -988,6 +1131,23 @@ class TestCDist(BaseTester):
         assert torch.isfinite(d1.grad).all()
         assert d2.grad is not None
         assert torch.isfinite(d2.grad).all()
+
+    @pytest.mark.parametrize("exporting", [False, True])
+    def test_matches_float64_cdist(self, device, dtype, monkeypatch, exporting):
+        # Export takes the matrix-multiplication fallback, as MPS does before torch 2.13. Every distance is at least
+        # 2.6, where that form does not cancel; more than 25 rows also send `torch.cdist` itself through it.
+        monkeypatch.setattr(matching, "is_exporting", lambda: exporting)
+        desc1 = _sine_pattern((30, 16), 0.71, 0.13, 0.0, device, dtype).requires_grad_()
+        desc2 = _sine_pattern((40, 16), 0.53, 0.29, 1.0, device, dtype).requires_grad_()
+        reference1 = desc1.detach().cpu().double().requires_grad_()
+        reference2 = desc2.detach().cpu().double().requires_grad_()
+        expected = torch.cdist(reference1, reference2)
+        expected_grads = torch.autograd.grad(expected.sum(), (reference1, reference2))
+        actual = _cdist(desc1, desc2)
+        actual_grads = torch.autograd.grad(actual.sum(), (desc1, desc2))
+        self.assert_close(actual, expected.to(dtype).to(device))
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            self.assert_close(actual_grad, expected_grad.to(dtype).to(device))
 
 
 class TestMatchSMNNBatched(BaseTester):
@@ -1032,6 +1192,33 @@ class TestMatchSMNNBatched(BaseTester):
         actual = torch_optimizer(matching.match_smnn_batched)(a, b, **kwargs)
         self.assert_close(actual[0], expected[0])
         self.assert_close(actual[1], expected[1])
+
+    @pytest.mark.parametrize("masked", [False, True])
+    @pytest.mark.parametrize("rows", [20, 30])
+    def test_export_differences_match_cdist(self, device, dtype, monkeypatch, masked, rows):
+        # Export accumulates direct differences in chunks of 16 coordinates, as MPS does for masks, for at most 25
+        # rows and before torch 2.13. Every ratio is at least 0.02 from the threshold.
+        a = _sine_pattern((2, rows, 20), 0.71, 0.13, 0.0, device, dtype)
+        noise = _sine_pattern((2, rows, 20), 0.53, 0.29, 1.0, device, dtype)
+        b = torch.cat((a.flip(1) + 0.1 * noise, 2.0 * _sine_pattern((2, 4, 20), 0.83, 0.17, 2.0, device, dtype)), 1)
+        kwargs = {}
+        if masked:
+            limits = torch.tensor([[rows + 4], [rows]], device=device)
+            kwargs["mask1"] = torch.arange(rows, device=device).expand(2, rows) % 7 != 3
+            kwargs["mask2"] = torch.arange(rows + 4, device=device).expand(2, rows + 4) < limits
+        results = []
+        for exporting in (False, True):
+            monkeypatch.setattr(matching, "is_exporting", lambda exporting=exporting: exporting)
+            a_, b_ = a.clone().requires_grad_(), b.clone().requires_grad_()
+            ratios, indices = matching.match_smnn_batched(a_, b_, 0.95, **kwargs)
+            results.append((ratios, indices, *torch.autograd.grad(ratios.sum(), (a_, b_))))
+        (ratios, indices, *grads), (export_ratios, export_indices, *export_grads) = results
+        assert len(indices) > 20
+        self.assert_close(export_indices, indices)
+        self.assert_close(export_ratios, ratios)
+        for export_grad, grad in zip(export_grads, grads):
+            # Unmasked pairs over 25 rows take the matrix-multiplication form, which moves the gradients by 1e-5.
+            self.assert_close(export_grad, grad, low_tolerance=not masked and rows > 25)
 
     def test_masked_gradients_are_finite(self, device, dtype):
         a = torch.rand(2, 3, 4, device=device, dtype=dtype, requires_grad=True)

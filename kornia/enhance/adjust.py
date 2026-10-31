@@ -26,53 +26,17 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.core._compat import torch_version_ge
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
+    _check_async,
     are_checks_enabled,
 )
 from kornia.core.exceptions import TypeCheckError
 from kornia.core.ops import _device_literal
 from kornia.core.utils import _normalize_to_float32_or_float64, _to_device_nonblocking, is_compiling
 from kornia.image.utils import _to_bcdhw, _to_bchw
-
-
-def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
-    """Validate a tensor condition without graph breaks or hidden device syncs.
-
-    ``torch._assert_async`` keeps the check fullgraph-compilable (a Python ``if tensor: raise``
-    would break the graph), but materializing ``cond`` on MPS would drain the queued stream on
-    every call, so kornia skips the check there by design. The skip is this device check, not a
-    missing kernel: torch 2.5.1 had no ``aten::_assert_async`` MPS kernel, torch 2.14 registers
-    one, and the check is skipped on MPS either way.
-    """
-    if cond.device.type == "mps":
-        return
-    torch._assert_async(cond, msg)
-
-
-# ``aten::_assert_async.msg`` gained its MPS kernel in torch 2.13; kornia supports torch >= 2.5.1.
-_MPS_HAS_ASSERT_ASYNC = torch_version_ge(2, 13)
-
-
-def _lookup_value_check(cond: torch.Tensor, msg: str) -> None:
-    """Validate the input domain of a 256-entry lookup, including on MPS.
-
-    Same as :func:`_assert_async_value_check` on CPU and CUDA. On MPS that helper skips the check, and an
-    index the lookup cannot use then surfaces as torch's raw ``gather: index ... is out of bounds`` error,
-    which names neither the op nor the range it needs. From torch ``2.13`` the assert has an MPS kernel, so
-    the same asynchronous check runs there: no host read, and the named error is reported at the next
-    synchronization. Older releases have none, and the lookups guarded here consume the whole input anyway,
-    so the condition is read on the host instead: one stream sync per call. A host read would break a
-    ``torch.compile`` graph, so only that older fallback keeps the skip while compiling.
-    """
-    if cond.device.type == "mps" and not _MPS_HAS_ASSERT_ASYNC:
-        if not is_compiling() and not bool(cond):
-            raise RuntimeError(msg)
-        return
-    torch._assert_async(cond, msg)
 
 
 def _clip_unit_fresh(image: torch.Tensor) -> torch.Tensor:
@@ -147,7 +111,7 @@ def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> tor
 
 
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image.
+    r"""Scale the saturation channel of an HSV image by a factor and clamp it to [0, 1].
 
     Convention:
         Expects HSV, not RGB. The saturation channel is multiplied by factor
@@ -179,7 +143,7 @@ def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor
 
 
 def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image by blending the image with its grayscaled version.
+    r"""Adjust the saturation of an RGB image by blending it with its grayscale version, as PIL and torchvision do.
 
     Convention:
         factor=0 selects grayscale and factor=1 preserves RGB input; grayscale
@@ -193,12 +157,12 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
         this is just a convenience function to have compatibility with Pil
 
     Args:
-        image: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        image: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
         factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Return:
-        Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -239,7 +203,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
 
 
 def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image.
+    r"""Adjust the saturation of an RGB image by scaling its HSV saturation channel.
 
     Convention:
         Expects RGB in [0, 1] with channel dimension -3. factor=1 preserves the image;
@@ -252,12 +216,12 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     The image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        image: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        image: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
         factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Return:
-        Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        Adjusted image in the shape of ``(*, 3, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -311,7 +275,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
 
 
 def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust hue of an image.
+    r"""Shift the hue channel of an HSV image by an angle in radians, wrapping it into [0, 2π).
 
     Convention:
         Expects HSV. factor is an angle in radians added to the hue, and the sum is wrapped into
@@ -348,7 +312,7 @@ def adjust_hue_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> t
 
 
 def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust hue of an image.
+    r"""Shift the hue of an RGB image by an angle in radians.
 
     Convention:
         Expects RGB in [0, 1] with channel dimension -3. factor is a hue angle
@@ -359,14 +323,14 @@ def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch
     The image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, 3, H, W)``.
         factor: How much to shift the hue channel. Should be in [-PI, PI]. PI
           and -PI give complete reversal of hue channel in HSV space in positive and negative
           direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
           image with complementary colors while 0 gives the original image.
 
     Return:
-        Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        Adjusted image in the shape of ``(*, 3, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -408,21 +372,23 @@ def adjust_gamma(
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        input: Image to be adjusted in the shape of ``(*, H, W)``.
         gamma: Non negative real number, same as y\gammay in the equation.
             gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
             dark regions lighter.
         gain: The constant multiplier.
 
     Return:
-        Adjusted image in the shape of :math:`(*, H, W)`.
+        Adjusted image in the shape of ``(*, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     .. note::
-       The non-negativity check on ``gamma``/``gain`` runs on CPU and CUDA (via ``torch._assert_async``).
-       kornia skips it on MPS by design, so invalid values do not raise there.
+       The non-negativity check on ``gamma``/``gain`` reads a CPU value during the call and raises
+       :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`. A tensor on CUDA, or on MPS
+       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` by the
+       next synchronization; on CUDA that is a device-side assert.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -487,11 +453,11 @@ def adjust_gamma(
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
 
-    _assert_async_value_check(
+    _check_async(
         (gamma >= 0.0).all(),
         "Gamma must be non-negative. Clamp it first: max(gamma, 0.0) for floats, gamma.clamp_min(0.0) for tensors.",
     )
-    _assert_async_value_check(
+    _check_async(
         (gain >= 0.0).all(),
         "Gain must be non-negative. Clamp it first: max(gain, 0.0) for floats, gain.clamp_min(0.0) for tensors.",
     )
@@ -519,7 +485,7 @@ def adjust_gamma(
 
 
 def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], clip_output: bool = True) -> torch.Tensor:
-    r"""Adjust the contrast of an image torch.Tensor.
+    r"""Adjust the contrast of an image by multiplying its values by a factor.
 
     Convention:
         Contrast is a direct multiplicative scale of RGB values; factor=1
@@ -539,7 +505,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         https://scikit-image.org/docs/dev/auto_examples/color_exposure/plot_log_gamma.html#sphx-glr-auto-examples-color-exposure-plot-log-gamma-py
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Contrast adjust factor per element
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
@@ -547,14 +513,16 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         clip_output: whether to clip the output image with range of [0, 1].
 
     Return:
-        Adjusted image in the shape of :math:`(*, H, W)`.
+        Adjusted image in the shape of ``(*, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     .. note::
-       The non-negativity check on ``factor`` runs on CPU and CUDA (via ``torch._assert_async``).
-       kornia skips it on MPS by design, so invalid values do not raise there.
+       The non-negativity check on ``factor`` reads a CPU value during the call and raises
+       :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`. A tensor on CUDA, or on MPS
+       from torch 2.13, is checked with ``torch._assert_async`` instead and raises ``RuntimeError`` by the
+       next synchronization; on CUDA that is a device-side assert.
 
     Example:
         >>> import torch
@@ -581,7 +549,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     factor = _make_factor_broadcastable(factor, image)
 
-    _assert_async_value_check(
+    _check_async(
         (factor >= 0).all(),
         "Contrast factor must be non-negative. Clamp it first: max(factor, 0.0) for floats, "
         "factor.clamp_min(0.0) for tensors.",
@@ -598,21 +566,20 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
 
 def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust the contrast of an image torch.Tensor by subtracting the mean over channels.
+    r"""Adjust the contrast of an image by blending it with its mean gray level, as PIL and torchvision do.
 
     .. note::
         this is just a convenience function to have compatibility with Pil. For exact
         definition of image contrast adjustment consider using :func:`kornia.enhance.adjust_gamma`.
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Contrast adjust factor per element
-            in the batch. 0 generates a completely black image, 1 does not modify
-            the input image while any other non-negative number modify the
-            brightness by this factor.
+            in the batch. 0 gives a uniform image at the mean gray level, 1 does not modify
+            the input image and a larger factor increases the contrast.
 
     Return:
-        Adjusted image in the shape of :math:`(*, H, W)`.
+        Adjusted image in the shape of ``(*, H, W)``.
 
     Example:
         >>> import torch
@@ -674,14 +641,14 @@ def adjust_brightness(
         https://scikit-image.org/docs/dev/auto_examples/color_exposure/plot_log_gamma.html#sphx-glr-auto-examples-color-exposure-plot-log-gamma-py
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Brightness adjust factor per element in the batch. It's recommended to
             bound the factor by [0, 1]. 0 does not modify the input image while any other
             number modify the brightness.
         clip_output: Whether to clip output to be in [0,1].
 
     Return:
-        Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+        Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
@@ -735,14 +702,14 @@ def adjust_brightness_accumulative(
     The input image and factor is expected to be in the range of [0, 1].
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         factor: Brightness factor per element in the batch. The image is multiplied by it, so ``1``
             leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image and a factor above ``1``
             brightens it.
         clip_output: Whether to clip output to be in [0,1].
 
     Return:
-        Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+        Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -792,13 +759,13 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
              http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         cutoff: The cutoff of sigmoid function.
         gain: The multiplier of sigmoid function.
         inv: If is set to True the function will return the inverse sigmoid correction.
 
     Returns:
-         Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+         Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -826,13 +793,13 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
     [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         gain: The multiplier of logarithmic function.
         inv:  If is set to True the function will return the inverse logarithmic correction.
         clip_output: Whether to clip the output image with range of [0, 1].
 
     Returns:
-        Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
+        Adjusted torch.Tensor in the shape of ``(*, H, W)``.
 
     Example:
         >>> x = torch.zeros(1, 1, 2, 2)
@@ -905,7 +872,7 @@ def solarize(
     ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is in the closed range [-0.5, 0.5].
 
     Args:
-        input: image torch.Tensor with shapes like :math:`(*, C, H, W)` to solarize.
+        input: image torch.Tensor with shapes like ``(*, C, H, W)`` to solarize.
         thresholds: solarize thresholds.
             If int or one element torch.Tensor, input will be solarized across the whole batch.
             If 1-d torch.Tensor, input will be solarized element-wise, len(thresholds) == len(input).
@@ -915,12 +882,13 @@ def solarize(
             If 1-d torch.Tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
-        The solarized images with shape :math:`(*, C, H, W)`.
+        The solarized images with shape ``(*, C, H, W)``.
 
     .. note::
-       The range check on ``additions`` runs via ``torch._assert_async`` on the device of ``additions``.
-       kornia skips it for an ``additions`` tensor on MPS, so invalid values do not raise there, but a
-       float, or a CPU tensor, is checked on the CPU and raises for an MPS image too.
+       The range check on ``additions`` reads a float or a CPU tensor during the call and raises
+       :exc:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`, whatever the device of the image.
+       A tensor on CUDA, or on MPS from torch 2.13, is checked with ``torch._assert_async`` instead and raises
+       ``RuntimeError`` by the next synchronization; on CUDA that is a device-side assert.
 
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -950,14 +918,14 @@ def solarize(
             raise TypeError(f"The factor should be either a float or torch.Tensor. Got {type(additions)}")
 
         if isinstance(additions, float):
-            # Check the Python value on the host: rounded to float16/bfloat16, a value just past the bound
-            # passes, and the check is skipped for a tensor on MPS.
-            in_range = torch.tensor(-0.5 <= additions <= 0.5)
+            # Check the Python value on the host, whatever the default device: rounded to float16/bfloat16, a
+            # value just past the bound passes.
+            in_range = torch.tensor(-0.5 <= additions <= 0.5, device="cpu")
             additions = torch.as_tensor(additions, device=input.device, dtype=input.dtype)
         else:
             in_range = ((additions <= 0.5) & (additions >= -0.5)).all()
 
-        _assert_async_value_check(
+        _check_async(
             in_range,
             "The addition must be in the closed range [-0.5, 0.5]. Clamp it first: min(max(additions, -0.5), 0.5) "
             "for floats, additions.clamp(-0.5, 0.5) for tensors.",
@@ -999,7 +967,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Non-differentiable function, ``torch.uint8`` involved.
 
     Args:
-        input: image torch.Tensor with shape :math:`(*, C, H, W)` to posterize.
+        input: image torch.Tensor with shape ``(*, C, H, W)`` to posterize.
         bits: number of high bits. Must be in range [0, 8].
             If int or one-element torch.Tensor, the same bits value is used across the whole batch.
             A 1-d tensor with multiple elements specifies one value per sample, not per channel;
@@ -1010,7 +978,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
             match the corresponding leading dimensions of the normalized ``(B, C, H, W)`` input.
 
     Returns:
-        Image with reduced color channels with shape :math:`(*, C, H, W)`.
+        Image with reduced color channels with shape ``(*, C, H, W)``.
 
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
@@ -1104,7 +1072,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L326
 
     Args:
-        input: image torch.Tensor with shape :math:`(*, C, H, W)` to sharpen.
+        input: image torch.Tensor with shape ``(*, C, H, W)`` to sharpen.
         factor: blend factor between the smoothed copy and the input. ``0`` returns the smoothed image,
             ``1`` returns the input, and a factor above ``1`` sharpens. It is not validated: ``0`` and
             negative factors are accepted and extrapolate past the smoothed image.
@@ -1114,7 +1082,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
             when ``B`` is greater than one.
 
     Returns:
-        Sharpened image or images with shape :math:`(*, C, H, W)`.
+        Sharpened image or images with shape ``(*, C, H, W)``.
 
     Example:
         >>> x = torch.rand(1, 1, 5, 5)
@@ -1194,12 +1162,14 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``scaled.long()``,
     # which is out of bounds unless ``scaled`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
-    # on MPS before torch 2.13 it costs one host sync instead (see ``_lookup_value_check``). Inputs the
-    # lookup can index keep working exactly as before.
-    _lookup_value_check(
+    # on MPS before torch 2.13 it costs one host sync instead (see ``_check_async``). Inputs the
+    # lookup can index keep working exactly as before. The check keeps the index in bounds, so it runs
+    # with checks disabled too: a compiled CPU scatter with an index out of range terminates the process.
+    _check_async(
         ((scaled > -1.0) & (scaled < 256.0)).all(),
         "equalize expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
+        guard=True,
     )
 
     # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
@@ -1248,10 +1218,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/5f71c12a020403f863434e96982a840578fdd127/models/official/efficientnet/autoaugment.py#L355
 
     Args:
-        input: image torch.Tensor to equalize with shape :math:`(*, C, H, W)`.
+        input: image torch.Tensor to equalize with shape ``(*, C, H, W)``.
 
     Returns:
-        Equalized image torch.Tensor with shape :math:`(*, C, H, W)`.
+        Equalized image torch.Tensor with shape ``(*, C, H, W)``.
 
     .. note::
        The input is expected as a floating-point image in :math:`[0, 1]`, and each channel is equalized from
@@ -1262,9 +1232,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
        boolean image raises
        :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
        ``image.float() / 255`` first. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
-       raise a ``RuntimeError`` naming the range. The check is ``torch._assert_async``, which has an MPS kernel
-       from torch ``2.13``; on an older MPS release the condition is read on the host instead, one device sync
-       per call, and is skipped there under ``torch.compile``.
+       raise a ``RuntimeError`` naming the range, during the call for a CPU image, even when checks are
+       disabled, since the check keeps the lookup in bounds. On CUDA, and on MPS from torch ``2.13``, the check
+       is ``torch._assert_async`` and raises by the next synchronization; on an older MPS release the condition
+       is read on the host instead, one device sync per call, and is skipped there under ``torch.compile``.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
@@ -1289,21 +1260,22 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-        input: image torch.Tensor with shape :math:`(*, C, D, H, W)` to equalize.
+        input: image torch.Tensor with shape ``(*, C, D, H, W)`` to equalize.
 
     Returns:
         Equalized volume with the same shape as the input.
 
     .. note::
        The input is expected as a floating-point volume in :math:`[0, 1]`, and each channel's whole
-       :math:`(D, H, W)` volume is equalized from one 256-bin histogram. The lookup step is an integer
+       ``(D, H, W)`` volume is equalized from one 256-bin histogram. The lookup step is an integer
        division by 255, so a volume with no more than 255 voxels per channel is returned unchanged up to
        floating-point roundoff; just above that, whether it changes depends on the values. An integer or
        boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, as for :func:`equalize`. Values
        the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the
-       range. The check is ``torch._assert_async``, which has an MPS kernel from torch ``2.13``; on an older
-       MPS release the condition is read on the host instead, one device sync per call, and is skipped there
-       under ``torch.compile``.
+       range, during the call for a CPU volume, even when checks are disabled, as for :func:`equalize`. On CUDA,
+       and on MPS from torch ``2.13``, the check is ``torch._assert_async`` and raises by the next
+       synchronization; on an older MPS release the condition is read on the host instead, one device sync per
+       call, and is skipped there under ``torch.compile``.
 
     """
     _check_floating_image(input, "equalize3d")
@@ -1350,7 +1322,7 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
 
 
 class AdjustSaturation(nn.Module):
-    r"""Adjust color saturation of an image.
+    r"""Adjust the saturation of an RGB image by scaling its HSV saturation channel.
 
     Convention:
         See :func:`adjust_saturation` for the RGB input and factor policy.
@@ -1362,8 +1334,8 @@ class AdjustSaturation(nn.Module):
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Shape:
-        - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        - Input: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
+        - Output: Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -1399,7 +1371,7 @@ class AdjustSaturation(nn.Module):
         """Adjust RGB saturation using the module's configured factor.
 
         Args:
-            input: Input RGB tensor, typically shaped :math:`(*, 3, H, W)`.
+            input: Input RGB tensor, typically shaped ``(*, 3, H, W)``.
 
         Returns:
             Saturation-adjusted tensor with the same shape as ``input``.
@@ -1408,7 +1380,7 @@ class AdjustSaturation(nn.Module):
 
 
 class AdjustSaturationWithGraySubtraction(nn.Module):
-    r"""Adjust color saturation of an image.
+    r"""Adjust the saturation of an RGB image by blending it with its grayscale version, as PIL and torchvision do.
 
     Convention:
         See :func:`adjust_saturation_with_gray_subtraction` for blending.
@@ -1423,8 +1395,8 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Shape:
-        - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        - Input: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
+        - Output: Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -1463,7 +1435,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
         which follows PIL-like saturation behavior.
 
         Args:
-            input: Input image tensor, typically shaped :math:`(*, 3, H, W)`.
+            input: Input image tensor, typically shaped ``(*, 3, H, W)``.
 
         Returns:
             Saturation-adjusted tensor with the same shape as ``input``.
@@ -1472,7 +1444,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
 
 
 class AdjustHue(nn.Module):
-    r"""Adjust hue of an image.
+    r"""Shift the hue of an RGB image by an angle in radians.
 
     Convention:
         See :func:`adjust_hue` for RGB input and radians convention.
@@ -1489,8 +1461,8 @@ class AdjustHue(nn.Module):
           image with complementary colors while 0 gives the original image.
 
     Shape:
-        - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        - Input: Image/torch.Tensor to be adjusted in the shape of ``(*, 3, H, W)``.
+        - Output: Adjusted image in the shape of ``(*, 3, H, W)``.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -1526,7 +1498,7 @@ class AdjustHue(nn.Module):
 
         Args:
             input: Input RGB tensor in the expected image range, usually shaped
-                :math:`(*, 3, H, W)`.
+                ``(*, 3, H, W)``.
 
         Returns:
             Hue-adjusted tensor with the same shape as ``input``.
@@ -1549,8 +1521,8 @@ class AdjustGamma(nn.Module):
         gain: The constant multiplier.
 
     Shape:
-        - Input: Image to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1577,7 +1549,7 @@ class AdjustGamma(nn.Module):
 
         Args:
             input: Input tensor to correct, commonly image-shaped
-                :math:`(*, C, H, W)`.
+                ``(*, C, H, W)``.
 
         Returns:
             Gamma-corrected tensor with the same shape as ``input``.
@@ -1586,7 +1558,7 @@ class AdjustGamma(nn.Module):
 
 
 class AdjustContrast(nn.Module):
-    r"""Adjust Contrast of an image.
+    r"""Adjust the contrast of an image by multiplying its values by a factor.
 
     Convention:
         See :func:`adjust_contrast` for the multiplicative scale; this module always clips to [0, 1].
@@ -1601,8 +1573,8 @@ class AdjustContrast(nn.Module):
           brightness by this factor.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1626,7 +1598,7 @@ class AdjustContrast(nn.Module):
         """Adjust contrast using the configured contrast factor.
 
         Args:
-            input: Input tensor to adjust, typically shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, typically shaped ``(*, C, H, W)``.
 
         Returns:
             Contrast-adjusted tensor with the same shape as ``input``.
@@ -1635,7 +1607,7 @@ class AdjustContrast(nn.Module):
 
 
 class AdjustContrastWithMeanSubtraction(nn.Module):
-    r"""Adjust Contrast of an image.
+    r"""Adjust the contrast of an image by blending it with its mean gray level, as PIL and torchvision do.
 
     Convention:
         See :func:`adjust_contrast_with_mean_subtraction` for its mean blend.
@@ -1647,13 +1619,12 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
     Args:
         contrast_factor: Contrast adjust factor per element
           in the batch by subtracting its mean grayscaled version.
-          0 generates a completely black image, 1 does not modify
-          the input image while any other non-negative number modify the
-          brightness by this factor.
+          0 gives a uniform image at the mean gray level, 1 does not modify
+          the input image and a larger factor increases the contrast.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1680,7 +1651,7 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
         applies PIL-like contrast behavior.
 
         Args:
-            input: Input tensor to adjust, typically shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, typically shaped ``(*, C, H, W)``.
 
         Returns:
             Contrast-adjusted tensor with the same shape as ``input``.
@@ -1703,8 +1674,8 @@ class AdjustBrightness(nn.Module):
           brightness.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1728,7 +1699,7 @@ class AdjustBrightness(nn.Module):
         """Adjust image brightness using the configured brightness factor.
 
         Args:
-            input: Input tensor to adjust, commonly shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, commonly shaped ``(*, C, H, W)``.
 
         Returns:
             Brightness-adjusted tensor with the same shape as ``input``.
@@ -1749,7 +1720,7 @@ class AdjustSigmoid(nn.Module):
              http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         cutoff: The cutoff of sigmoid function.
         gain: The multiplier of sigmoid function.
         inv: If is set to True the function will return the negative sigmoid correction.
@@ -1773,7 +1744,7 @@ class AdjustSigmoid(nn.Module):
 
         Args:
             image: Input image tensor to remap, typically shaped
-                :math:`(*, C, H, W)` or :math:`(*, H, W)`.
+                ``(*, C, H, W)`` or ``(*, H, W)``.
 
         Returns:
             Tensor with sigmoid correction applied, preserving input shape.
@@ -1793,7 +1764,7 @@ class AdjustLog(nn.Module):
     [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
 
     Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of ``(*, H, W)``.
         gain: The multiplier of logarithmic function.
         inv:  If is set to True the function will return the inverse logarithmic correction.
         clip_output: Whether to clip the output image with range of [0, 1].
@@ -1817,7 +1788,7 @@ class AdjustLog(nn.Module):
 
         Args:
             image: Input image tensor to transform, typically shaped
-                :math:`(*, C, H, W)` or :math:`(*, H, W)`.
+                ``(*, C, H, W)`` or ``(*, H, W)``.
 
         Returns:
             Log-corrected tensor with the same shape as ``image``.
@@ -1841,8 +1812,8 @@ class AdjustBrightnessAccumulative(nn.Module):
           and a factor above ``1`` brightens it.
 
     Shape:
-        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
-        - Output: Adjusted image in the shape of :math:`(*, N)`.
+        - Input: Image/Input to be adjusted in the shape of ``(*, N)``.
+        - Output: Adjusted image in the shape of ``(*, N)``.
 
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
@@ -1866,7 +1837,7 @@ class AdjustBrightnessAccumulative(nn.Module):
         """Adjust brightness with accumulative (PIL-like) behavior.
 
         Args:
-            input: Input tensor to adjust, commonly shaped :math:`(*, C, H, W)`.
+            input: Input tensor to adjust, commonly shaped ``(*, C, H, W)``.
 
         Returns:
             Brightness-adjusted tensor with the same shape as ``input``.

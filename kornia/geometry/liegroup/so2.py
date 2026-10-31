@@ -53,8 +53,8 @@ class So2(nn.Module):
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
     Convention:
-        - Represents the rotation as a complex number ``z`` of shape :math:`()` or :math:`(B,)`; a :math:`(B, 1)`
-          ``z`` or angle is accepted and read as :math:`(B,)`. For unit :math:`z = \cos\theta + i \sin\theta`,
+        - Represents the rotation as a complex number ``z`` of shape :math:`()` or ``(B,)``; a ``(B, 1)``
+          ``z`` or angle is accepted and read as ``(B,)``. For unit :math:`z = \cos\theta + i \sin\theta`,
           ``matrix()`` is :math:`[[\cos\theta, -\sin\theta], [\sin\theta, \cos\theta]]`. Non-unit ``z = a + i b``
           is accepted and produces :math:`[[a, -b], [b, a]]`, which rotates and scales by :math:`|z|`. The complex
           storage has no bfloat16 counterpart in PyTorch, so ``exp``, ``identity``, ``random`` and ``from_matrix``
@@ -87,7 +87,7 @@ class So2(nn.Module):
         Internally represented by torch.complex number `z`.
 
         Args:
-            z: Complex number with the shape of :math:`(B,)` or :math:`()`; :math:`(B, 1)` is read as :math:`(B,)`.
+            z: Complex number with the shape of ``(B,)`` or :math:`()`; ``(B, 1)`` is read as ``(B,)``.
 
         Raises:
             TypeCheckError: if ``z`` is not a complex tensor (an integer, bool or real floating-point tensor).
@@ -155,8 +155,9 @@ class So2(nn.Module):
         """Perform a left-multiplication either rotation concatenation or point-transform.
 
         Args:
-            right: the other So2 transformation, or points of shape :math:`(B, 2)` or :math:`(2,)` as a tensor or
-                a ``Vector2``.
+            right: the other So2 transformation, or points as a tensor or a ``Vector2``: ``(2,)`` or ``(N, 2)``
+                for an unbatched rotation, ``(B, 2)`` or ``(2,)`` for a batch of ``B`` (a batch of one also maps
+                ``(N, 2)``).
 
         Return:
             The resulting So2 transformation, or the rotated points with the type of ``right``.
@@ -167,11 +168,18 @@ class So2(nn.Module):
             return So2(z * right.z)
         if isinstance(right, (Vector2, torch.Tensor)):
             if isinstance(right, torch.Tensor):
-                # check_so2_t_shape
+                # (2,) under any pose, (N, 2) under an unbatched pose, and one point per pose for a batch
                 is_batch_shape = KORNIA_CHECK_SHAPE(right, ["B", "2"], raises=False)
                 is_single_shape = KORNIA_CHECK_SHAPE(right, ["2"], raises=False)
+                if is_batch_shape and z.dim() == 1:
+                    is_batch_shape = right.shape[0] in (z.shape[0], 1) or z.shape[0] == 1
                 if not (is_batch_shape or is_single_shape):
-                    raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {right.shape}")
+                    raise ValueError(
+                        "Expected points of shape (2,) or (N, 2) for an unbatched pose, or (B, 2), one point per "
+                        "pose, for a batch of B poses (a batch of one pose also maps (N, 2), and one point (2,) or "
+                        f"(1, 2) maps under every pose). Got points of shape {tuple(right.shape)} for a pose of batch "
+                        f"shape {tuple(z.shape)}."
+                    )
             right_data = _unwrap(right)
             x = right_data[..., 0]
             y = right_data[..., 1]
@@ -185,10 +193,10 @@ class So2(nn.Module):
 
     @property
     def z(self) -> torch.Tensor:
-        """Return the underlying complex number of shape :math:`()` or :math:`(B,)`.
+        """Return the underlying complex number of shape :math:`()` or ``(B,)``.
 
-        A :math:`(B, 1)` ``z`` given to the constructor stays stored, and registered, as it was given, and is read
-        here as a :math:`(B,)` view.
+        A ``(B, 1)`` ``z`` given to the constructor stays stored, and registered, as it was given, and is read
+        here as a ``(B,)`` view.
         """
         return self._z.squeeze(-1) if self._z.dim() == 2 else self._z
 
@@ -197,7 +205,7 @@ class So2(nn.Module):
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
-            theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
+            theta: angle in radians of shape ``(B,)`` or :math:`()`; ``(B, 1)`` is squeezed to ``(B,)``.
 
         Raises:
             TypeCheckError: if ``theta`` is bfloat16, which has no complex dtype in PyTorch.
@@ -234,11 +242,11 @@ class So2(nn.Module):
     def hat(theta: torch.Tensor) -> torch.Tensor:
         r"""Convert an angle to the so(2) generator :math:`[[0, -\theta], [\theta, 0]]`, which :meth:`vee` inverts.
 
-        The output has shape :math:`(2, 2)` or :math:`(B, 2, 2)`; a :math:`(B, 1)` angle is squeezed to :math:`(B,)`.
+        The output has shape ``(2, 2)`` or ``(B, 2, 2)``; a ``(B, 1)`` angle is squeezed to ``(B,)``.
         Its matrix exponential is the rotation :meth:`exp` returns.
 
         Args:
-            theta: angle in radians of shape :math:`(B,)` or :math:`()`; :math:`(B, 1)` is squeezed to :math:`(B,)`.
+            theta: angle in radians of shape ``(B,)`` or :math:`()`; ``(B, 1)`` is squeezed to ``(B,)``.
 
         Example:
             >>> theta = torch.tensor(3.1415/2)
@@ -262,9 +270,9 @@ class So2(nn.Module):
 
     @staticmethod
     def vee(omega: torch.Tensor) -> torch.Tensor:
-        r"""Read the angle back from a :meth:`hat` matrix of shape :math:`(2, 2)` or :math:`(B, 2, 2)`.
+        r"""Read the angle back from a :meth:`hat` matrix of shape ``(2, 2)`` or ``(B, 2, 2)``.
 
-        Returns a scalar or a :math:`(B,)` vector, respectively.
+        Returns a scalar or a ``(B,)`` vector, respectively.
 
         It reads the ``[1, 0]`` entry, :math:`\theta` in the so(2) generator :math:`[[0, -\theta], [\theta, 0]]`.
 
@@ -305,7 +313,7 @@ class So2(nn.Module):
         """Create So2 from a rotation matrix.
 
         Args:
-            matrix: the rotation matrix to convert of shape :math:`(B, 2, 2)`.
+            matrix: the rotation matrix to convert of shape ``(B, 2, 2)``.
 
         Raises:
             TypeCheckError: if ``matrix`` is bfloat16, which has no complex dtype in PyTorch.
@@ -419,7 +427,7 @@ class So2(nn.Module):
         return cls.exp(theta)
 
     def adjoint(self) -> torch.Tensor:
-        """Return the adjoint matrix of shape :math:`(B, 2, 2)`.
+        """Return the adjoint matrix of shape ``(B, 2, 2)``.
 
         Example:
             >>> s = So2.identity()

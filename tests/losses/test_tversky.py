@@ -214,6 +214,10 @@ class TestTverskyLoss(BaseTester):
             criterion("not a tensor", torch.rand(1))
         assert "pred type is not a torch.Tensor. Got" in str(errinfo)
 
+        with pytest.raises(TypeError) as errinfo:
+            criterion(torch.rand(1, 1, 1, 1), "not a tensor")
+        assert "target type is not a torch.Tensor. Got" in str(errinfo)
+
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1), torch.rand(1))
         assert "Invalid pred shape, we expect BxNxHxW. Got:" in str(errinfo)
@@ -233,9 +237,67 @@ class TestTverskyLoss(BaseTester):
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (2, 4, 6)))
 
+        pred = torch.rand(2, 3, 4, 4)
+        target = torch.randint(0, 3, (2, 4, 4))
+        with pytest.raises(ValueError, match="alpha must be non-negative"):
+            kornia.losses.tversky_loss(pred, target, alpha=-0.1, beta=0.5)
+
+        with pytest.raises(ValueError, match="beta must be non-negative"):
+            kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=-0.1)
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=0.5, eps=-1e-6)
+
+        with pytest.raises(ValueError, match="alpha must be non-negative"):
+            kornia.losses.TverskyLoss(alpha=-0.1, beta=0.5)
+
+        with pytest.raises(ValueError, match="beta must be non-negative"):
+            kornia.losses.TverskyLoss(alpha=0.5, beta=-0.1)
+
+        with pytest.raises(ValueError, match="eps must be non-negative"):
+            kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=-1e-6)
+
+        for invalid_val in (float("nan"), float("inf")):
+            with pytest.raises(ValueError, match="alpha must be non-negative"):
+                kornia.losses.tversky_loss(pred, target, alpha=invalid_val, beta=0.5)
+            with pytest.raises(ValueError, match="alpha must be non-negative"):
+                kornia.losses.TverskyLoss(alpha=invalid_val, beta=0.5)
+
+            with pytest.raises(ValueError, match="beta must be non-negative"):
+                kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=invalid_val)
+            with pytest.raises(ValueError, match="beta must be non-negative"):
+                kornia.losses.TverskyLoss(alpha=0.5, beta=invalid_val)
+
+            with pytest.raises(ValueError, match="eps must be non-negative"):
+                kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=0.5, eps=invalid_val)
+            with pytest.raises(ValueError, match="eps must be non-negative"):
+                kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=invalid_val)
+
+        # Constructor boundary tests: 0.0 is accepted for alpha, beta, and eps
+        assert kornia.losses.TverskyLoss(alpha=0.0, beta=0.5).alpha == 0.0
+        assert kornia.losses.TverskyLoss(alpha=0.5, beta=0.0).beta == 0.0
+        assert kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, eps=0.0).eps == 0.0
+
         # A target with a channel axis, (B, 1, H, W), is not (B, H, W) either.
         with pytest.raises(ValueError, match=r"Expected target size torch.Size\(\[1, 4, 6\]\)"):
             criterion(torch.rand(1, 3, 4, 6), torch.randint(0, 3, (1, 1, 4, 6)))
+
+    def test_tensor_weights(self, device, dtype):
+        pred = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        target = torch.randint(0, 3, (2, 4, 4), device=device)
+        expected = kornia.losses.tversky_loss(pred, target, alpha=0.5, beta=0.5)
+        self.assert_close(
+            kornia.losses.tversky_loss(pred, target, alpha=torch.tensor(0.5, device=device, dtype=dtype), beta=0.5),
+            expected,
+            rtol=0,
+            atol=0,
+        )
+        self.assert_close(
+            kornia.losses.tversky_loss(pred, target, alpha=torch.full((3,), 0.5, device=device, dtype=dtype), beta=0.5),
+            expected,
+            rtol=0,
+            atol=0,
+        )
 
     @pytest.mark.parametrize("ignore_index", [-100, None])
     def test_all_zeros(self, device, dtype, ignore_index):
@@ -296,6 +358,21 @@ class TestTverskyLoss(BaseTester):
         actual = op_optimized(logits, labels, *params)
         expected = op(logits, labels, *params)
         self.assert_close(actual, expected)
+
+    def test_dynamo_float_weights_change_between_calls(self, device, dtype, torch_optimizer):
+        """The weight check keeps the graph whole when float weights change between calls and are traced as symbols."""
+        from torch._dynamo.testing import CompileCounter
+
+        logits = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        labels = torch.randint(0, 3, (2, 4, 4), device=device)
+        counter = CompileCounter()
+        op_optimized = torch_optimizer(kornia.losses.tversky_loss, backend=counter, fullgraph=True, dynamic=True)
+        for params in ((0.5, 0.5, 1e-8), (0.3, 0.7, 1e-6), (0.7, 0.2, 1e-5)):
+            self.assert_close(
+                op_optimized(logits, labels, *params), kornia.losses.tversky_loss(logits, labels, *params)
+            )
+        if not torch._dynamo.config.specialize_float:
+            assert counter.frame_count == 1
 
     def test_module(self, device, dtype):
         num_classes = 3

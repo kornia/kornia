@@ -72,8 +72,8 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
           averages.
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
-        target: labels tensor with shape :math:`(N, H, W)` where each value
+        pred: logits tensor with shape ``(N, C, H, W)`` where C = number of classes > 1.
+        target: labels tensor with shape ``(N, H, W)`` where each value
           is in range :math:`0 ≤ targets[i] ≤ C-1`.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
@@ -117,9 +117,10 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
             f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
         )
 
-    # flatten pred [B, C, -1] and target [B, -1] and to float
-    pred_flatten: Tensor = pred.reshape(pred.shape[0], pred.shape[1], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1)
+    # flatten pred to [B, C, H*W] and target to [B, H*W]; flatten keeps an empty batch, where reshape(B, -1) cannot
+    # infer the -1
+    pred_flatten: Tensor = pred.flatten(start_dim=2)
+    target_flatten: Tensor = target.flatten(start_dim=1)
 
     # get shapes
     _, C, N = pred_flatten.shape
@@ -188,8 +189,8 @@ class LovaszSoftmaxLoss(nn.Module):
         See the Convention block of :func:`~kornia.losses.lovasz_softmax_loss`.
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
-        target: labels tensor with shape :math:`(N, H, W)` where each value
+        pred: logits tensor with shape ``(N, C, H, W)`` where C = number of classes > 1.
+        target: labels tensor with shape ``(N, H, W)`` where each value
           is in range :math:`0 ≤ targets[i] ≤ C-1`.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
@@ -218,9 +219,9 @@ class LovaszSoftmaxLoss(nn.Module):
         """Compute multi-class Lovasz-Softmax loss.
 
         Args:
-            pred: Class logit tensor with shape :math:`(B, C, H, W)`, where
+            pred: Class logit tensor with shape ``(B, C, H, W)``, where
                 :math:`C` is the number of classes.
-            target: Integer class-label tensor with shape :math:`(B, H, W)`.
+            target: Integer class-label tensor with shape ``(B, H, W)``.
 
         Returns:
             Scalar tensor containing the Lovasz-Softmax surrogate for the

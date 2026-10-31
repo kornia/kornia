@@ -26,7 +26,7 @@ from kornia.enhance import sharpness
 
 
 class RandomSharpness(IntensityAugmentationBase2D):
-    r"""Blend a random amount of a ``3 x 3`` smoothed copy with the image.
+    r"""Blend each sample with a ``3 x 3`` smoothed copy by a random factor, with probability ``p`` (default 0.5).
 
     A drawn factor above ``1`` sharpens and a factor below ``1`` blurs; the default
     ``sharpness=0.5`` draws from ``[0, 0.5]`` and therefore only ever blurs.
@@ -36,7 +36,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Args:
-        p: probability of applying the transformation.
+        p: probability of applying the transformation to each sample.
         sharpness: the blend factor between the blurred image and the input. If ``sharpness`` is a single
             non-negative number ``x``, the factor is sampled from ``[0, x]``; a tuple gives the range
             directly.
@@ -45,8 +45,8 @@ class RandomSharpness(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``, Optional: ``(B, 3, 3)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped

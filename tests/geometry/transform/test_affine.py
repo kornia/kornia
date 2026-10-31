@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
+import itertools
 import math
+import warnings
 
 import numpy as np
 import pytest
@@ -44,6 +46,38 @@ class TestResize(BaseTester):
         inp = torch.rand(*shape, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize_to_be_divisible(inp, divisible_factor)
         assert out.shape == expected
+
+    @pytest.mark.parametrize("kwargs", [{}, {"side": None}])
+    def test_resize_to_be_divisible_default_side(self, kwargs, device, dtype):
+        inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            out = kornia.geometry.transform.resize_to_be_divisible(inp, 5, **kwargs)
+        assert out.shape == (1, 1, 5, 10)
+
+    @pytest.mark.parametrize("shape", [(1, 1, 6, 12), (2, 3, 17, 9), (1, 1, 5, 10), (1, 1, 0, 12)])
+    @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
+    def test_resize_to_be_divisible_deprecated_side(self, shape, side, device, dtype):
+        inp = torch.rand(*shape, device=device, dtype=dtype)
+        expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
+        with pytest.warns(DeprecationWarning, match="side.*has no effect") as records:
+            out = kornia.geometry.transform.resize_to_be_divisible(inp, 5, side=side)
+        assert len(records) == 1
+        assert records[0].filename == __file__
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_resize_to_be_divisible_compile_fullgraph(self, side, device, dtype, torch_optimizer, optimizer_backend):
+        if not optimizer_backend or optimizer_backend == "jit":
+            pytest.skip("Fullgraph requires a torch.compile backend, not TorchScript or the no-op optimizer.")
+        inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
+        expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
+        op = torch_optimizer(kornia.geometry.transform.resize_to_be_divisible, fullgraph=True)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message=r".*resize_to_be_divisible.*side", category=DeprecationWarning)
+            out = op(inp, 5, side=side)
+        self.assert_close(out, expected)
 
     def test_resize_to_be_divisible_numpy_factor_and_empty_side(self, device, dtype):
         resize_to_be_divisible = kornia.geometry.transform.resize_to_be_divisible
@@ -1396,6 +1430,22 @@ class TestGetShearMatrix(BaseTester):
         )
         assert out.device.type == center.device.type, "Output device must match center device"
         assert out.dtype == center.dtype, "Output dtype must match center dtype"
+
+    def test_get_shear_matrix3d_keeps_center_for_every_shear_subset(self, device, dtype):
+        # The translation used to come from the positive-tangent matrix while the returned linear part uses the
+        # negated tangents, so shears that meet in a product term moved the center (#6302). The center is asymmetric
+        # so that no coordinate can stand in for another.
+        names = ("sxy", "sxz", "syx", "syz", "szx", "szy")
+        values = (0.3, -0.25, 0.2, 0.15, -0.35, 0.1)
+        center = torch.tensor([[7.0, 23.0, 41.0]], device=device, dtype=dtype)
+        center_h = torch.tensor([7.0, 23.0, 41.0, 1.0], device=device, dtype=dtype)
+        # bfloat16 rounds near 41 in steps of 0.25, while the smallest displacement the bug caused here is 1.24 px.
+        tol = 0.5 if dtype in (torch.float16, torch.bfloat16) else None
+        for size in range(1, 7):
+            for subset in itertools.combinations(range(6), size):
+                shears = {names[i]: torch.tensor([values[i]], device=device, dtype=dtype) for i in subset}
+                out = kornia.geometry.transform.get_shear_matrix3d(center, **shears)
+                self.assert_close(out[0] @ center_h, center_h, rtol=tol and 0.0, atol=tol)
 
 
 class TestTransformModuleBuffers(BaseTester):

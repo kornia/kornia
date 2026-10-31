@@ -18,8 +18,8 @@
 import pytest
 import torch
 
-from kornia.geometry.camera import StereoCamera
-from kornia.geometry.camera.stereo import StereoException, reproject_disparity_to_3D
+from kornia.geometry.camera import StereoCamera, reproject_disparity_to_3D
+from kornia.geometry.camera.stereo import StereoException
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
@@ -562,3 +562,10 @@ class TestStereoCamera(BaseTester):
         assert cam.Q.shape == (1, 4, 4)
         with pytest.raises(StereoException, match="to have 3 dimensions"):
             StereoCamera(cam.rectified_left_camera[0], cam.rectified_right_camera[0])
+
+    def test_reproject_disparity_to_3d_exported_from_camera(self):
+        from kornia.geometry import camera
+
+        assert hasattr(camera, "reproject_disparity_to_3D")
+        assert "reproject_disparity_to_3D" in camera.__all__
+        assert camera.reproject_disparity_to_3D is reproject_disparity_to_3D

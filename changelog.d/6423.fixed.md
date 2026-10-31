@@ -1,0 +1,1 @@
+`ALIKED.from_pretrained` loads the checkpoint strictly, so a checkpoint whose keys do not match the model raises instead of leaving the unmatched layers at their random initialisation. `dkd.hw_grid`, which is rebuilt from `nms_radius`, is no longer part of the state dict; a state dict that contains it still loads.

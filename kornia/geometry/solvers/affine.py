@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Affine transformations estimated from point correspondences."""
+"""Fit 2D affine transformations to point correspondences by weighted least squares."""
 
 from __future__ import annotations
 
@@ -189,25 +189,42 @@ def _find_affine_triplet(
 
 
 def find_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Estimate 2D affine transformations from point correspondences.
+    r"""Fit a 2D affine transformation to point correspondences by weighted least squares.
 
-    Fits the weighted least-squares model :math:`\mathbf{y}=A\mathbf{x}+\mathbf{t}`
-    independently for each batch. The calculation centers and isotropically normalizes
-    each point set before solving its 2-by-2 normal equation. Inputs must have the
-    same floating-point dtype and device; half inputs are accumulated in float32.
-    Ambient autocast is disabled during fitting to preserve this arithmetic precision.
+    ``M = find_affine(points1, points2)`` takes source and destination points ``(B, N, 2)``, ``N >= 3``, and
+    optional weights ``(B, N)``, and returns the homogeneous source-to-destination matrices ``(B, 3, 3)``, with bottom
+    row ``[0, 0, 1]``, of the least-squares fit :math:`\mathbf{y}=A\mathbf{x}+\mathbf{t}`, independently for each
+    batch element. ``M[:, :2]`` is the ``(B, 2, 3)`` matrix that :func:`~kornia.geometry.transform.warp_affine`
+    takes. With outliers, use :class:`~kornia.geometry.ransac.RANSAC` with ``model_type="affine"``; for a perspective
+    map, :func:`~kornia.geometry.homography.find_homography_dlt`; to build an affine matrix from an angle, a scale and
+    a translation instead, :func:`~kornia.geometry.transform.get_affine_matrix2d`.
+
+    The calculation centers and isotropically normalizes each point set before solving its 2-by-2 normal equation.
+    Inputs must have the same floating-point dtype and device; half inputs are accumulated in float32. Ambient
+    autocast is disabled during fitting to preserve this arithmetic precision.
 
     Args:
-        points1: Source points with shape :math:`(B, N, 2)`, where :math:`N \geq 3`.
-        points2: Destination points with shape :math:`(B, N, 2)`.
-        weights: Optional correspondence weights with shape :math:`(B, N)`. They must be
+        points1: Source points with shape ``(B, N, 2)``, where :math:`N \geq 3`.
+        points2: Destination points with shape ``(B, N, 2)``.
+        weights: Optional correspondence weights with shape ``(B, N)``. They must be
             finite and non-negative; other values are not detected and give undefined
             results. Only relative weights matter.
 
     Returns:
-        Homogeneous affine transformations with shape :math:`(B, 3, 3)`. Degenerate
+        Homogeneous affine transformations with shape ``(B, 3, 3)``. Degenerate
         batches without three non-collinear, positive-weight source points contain
         NaNs, allowing robust estimators to reject singular fits as invalid models.
+
+    Raises:
+        ValueError: if the points are not ``(B, N, 2)`` with ``N >= 3``, if their shapes or devices differ, or if
+            ``weights`` is not ``(B, N)`` on the points' device.
+        TypeError: if the points or ``weights`` are not floating point, or the dtypes of the points differ.
+
+    See Also:
+        - :func:`~kornia.geometry.homography.find_homography_dlt`: a perspective map, the general case with eight
+          degrees of freedom.
+        - :func:`~kornia.geometry.transform.get_affine_matrix2d`: an affine matrix built from parameters, not fitted.
+        - :class:`~kornia.geometry.ransac.RANSAC`: an affine map robust to wrong correspondences.
     """
     _check_points(points1, points2, 3, batched=True)
     weights = _prepare_weights(weights, points1, points1.shape[:-2])

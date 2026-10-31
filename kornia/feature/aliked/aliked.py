@@ -239,7 +239,25 @@ class DKD(nn.Module):
         self.unfold = nn.Unfold(kernel_size=self.kernel_size, padding=self.radius)
         x = torch.linspace(-self.radius, self.radius, self.kernel_size)
         hw_grid = torch.stack(torch.meshgrid([x, x], indexing="ij")).view(2, -1).t()[:, [1, 0]]
-        self.register_buffer("hw_grid", hw_grid)
+        # derived from ``radius``, so not part of the state dict: the pretrained checkpoints do not carry it
+        self.register_buffer("hw_grid", hw_grid, persistent=False)
+
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        # A state dict that carries ``hw_grid`` still loads strictly; the grid is rebuilt from ``radius``.
+        # ``load_state_dict`` passes a copy, so the caller's dict keeps the key.
+        state_dict.pop(prefix + "hw_grid", None)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def forward(
         self,
@@ -284,21 +302,21 @@ class DKD(nn.Module):
 
         if self.top_k > 0:
             # at most top_k of the maxima: a non-maximum scores -inf here and is dropped, not used to fill up to top_k
-            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).reshape(b, -1)
+            candidate_scores = scores_nograd.masked_fill(~is_max, float("-inf")).flatten(start_dim=1)
             topk = torch.topk(candidate_scores, min(self.top_k, h * w))
             indices_keypoints = [topk.indices[i][topk.values[i] > float("-inf")] for i in range(b)]
         else:
             # the per-image mean score: the threshold when scores_th <= 0, and the fallback of an image whose maxima
             # are all at or below scores_th, decided for each image alone
-            mean = scores_nograd.reshape(b, -1).mean(dim=1).reshape(b, 1, 1, 1)
+            mean = scores_nograd.flatten(start_dim=1).mean(dim=1).reshape(b, 1, 1, 1)
             masks = is_max & (scores_nograd > mean)
             if self.scores_th > 0:
                 above = is_max & (scores_nograd > self.scores_th)
-                masks = torch.where(above.reshape(b, -1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
-            masks = masks.reshape(b, -1)
+                masks = torch.where(above.flatten(start_dim=1).any(dim=1).reshape(b, 1, 1, 1), above, masks)
+            masks = masks.flatten(start_dim=1)
 
             indices_keypoints = []
-            scores_view = scores_nograd.reshape(b, -1)
+            scores_view = scores_nograd.flatten(start_dim=1)
             for mask, scores in zip(masks, scores_view):
                 indices = mask.nonzero()[:, 0]
                 if len(indices) > self.n_limit:
@@ -404,8 +422,10 @@ class InputPadder:
     def __init__(self, h: int, w: int, divis_by: int = 8) -> None:
         self.ht = h
         self.wd = w
-        pad_ht = (((h // divis_by) + 1) * divis_by - h) % divis_by
-        pad_wd = (((w // divis_by) + 1) * divis_by - w) % divis_by
+        # The distance to the next multiple, written without `%`: under dynamic-shape torch.compile a modulo of the
+        # image size reached the float offset bound of DeformableConv2d, which inductor (torch 2.14) cannot lower.
+        pad_ht = (h + divis_by - 1) // divis_by * divis_by - h
+        pad_wd = (w + divis_by - 1) // divis_by * divis_by - w
         self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
 
     def pad(self, x: torch.Tensor) -> torch.Tensor:
@@ -692,6 +712,14 @@ class SDDH(nn.Module):
         wh = torch.tensor([[w - 1, h - 1]], device=x.device, dtype=torch.promote_types(x.dtype, torch.float32))
         max_offset = max(h, w) / 4.0
 
+        # Each convolution of the head sees one window (offset_conv) or one sample (sf_conv) per keypoint, so it is a
+        # matrix product over the flattened channels and window. F.linear with the convolution's weights computes it
+        # as one GEMM; conv2d on these (N, C, k, k) inputs made the head about 3x slower on an Apple M1 CPU.
+        conv_offset, gate, conv_offset_1x1 = self.offset_conv
+        w_offset = conv_offset.weight.flatten(1)
+        w_offset_1x1 = conv_offset_1x1.weight.flatten(1)
+        w_sf = self.sf_conv.weight.flatten(1)
+
         offsets_list = []
         descriptors = []
 
@@ -706,14 +734,16 @@ class SDDH(nn.Module):
                 kptsi_wh_long = kptsi_wh.long()
                 patch = xi[:, kptsi_wh_long[:, 1], kptsi_wh_long[:, 0]].permute(1, 0).reshape(N_kpts, c, 1, 1)
 
-            offset = self.offset_conv(patch).clamp(-max_offset, max_offset)
+            # the gate gets the (N, C, 1, 1) map the convolution would give it, so a 2-D-only module stays valid
+            offset = gate(F.linear(patch.flatten(1), w_offset, conv_offset.bias)[:, :, None, None]).flatten(1)
+            offset = F.linear(offset, w_offset_1x1, conv_offset_1x1.bias).clamp(-max_offset, max_offset)
 
             if self.mask:
-                offset = offset[:, :, 0, 0].view(N_kpts, 3, self.n_pos).permute(0, 2, 1)
+                offset = offset.view(N_kpts, 3, self.n_pos).permute(0, 2, 1)
                 mask_w = torch.sigmoid(offset[:, :, -1])
                 offset = offset[:, :, :-1]
             else:
-                offset = offset[:, :, 0, 0].view(N_kpts, 2, self.n_pos).permute(0, 2, 1)
+                offset = offset.view(N_kpts, 2, self.n_pos).permute(0, 2, 1)
                 mask_w = None
             offsets_list.append(offset)
 
@@ -722,18 +752,18 @@ class SDDH(nn.Module):
             pos = pos.reshape(1, N_kpts * self.n_pos, 1, 2)
 
             features = F.grid_sample(xi.unsqueeze(0), pos.to(xi.dtype), mode="bilinear", align_corners=True)
-            features = features.reshape(c, N_kpts, self.n_pos, 1).permute(1, 0, 2, 3)
+            features = features.reshape(c, N_kpts, self.n_pos).permute(1, 2, 0)  # [N_kpts, n_pos, C]
 
             if mask_w is not None:
-                features = torch.einsum("ncpo,np->ncpo", features, mask_w)
+                features = features * mask_w[:, :, None]
 
-            features = torch.selu_(self.sf_conv(features)).squeeze(-1)  # [N_kpts, C, n_pos]
+            features = torch.selu_(F.linear(features, w_sf, self.sf_conv.bias))  # [N_kpts, n_pos, C]
 
             if not self.conv2d:
-                descs = torch.einsum("ncp,pcd->nd", features, self.agg_weights)  # codespell:ignore
+                descs = features.flatten(1) @ self.agg_weights.flatten(0, 1)
             else:
-                features = features.reshape(N_kpts, -1)[:, :, None, None]
-                descs = self.convM(features).squeeze(-1).squeeze(-1)
+                features = features.transpose(1, 2).flatten(1)  # channel-major, the order of convM's input channels
+                descs = F.linear(features, self.convM.weight.flatten(1))
 
             descs = F.normalize(descs, p=2.0, dim=1)
             descriptors.append(descs)
@@ -775,7 +805,7 @@ class ALIKED(nn.Module):
           running statistics on every call, and a single small image raises; call ``.eval()`` for inference.
           :meth:`from_pretrained` returns the trained model in evaluation mode.
         - ``images`` are RGB in :math:`[0, 1]`, the range of the pretrained weights, and the network applies no
-          normalisation; a :math:`(B, 1, H, W)` image is repeated to three channels. Any ``H`` and ``W`` work: the
+          normalisation; a ``(B, 1, H, W)`` image is repeated to three channels. Any ``H`` and ``W`` work: the
           image is replicate-padded around its centre to multiples of 32 and the maps are cropped back, so the padding
           does not move the keypoints.
         - :meth:`forward` returns one :class:`ALIKEDFeatures` per image. Its keypoints are sub-pixel ``(x, y)`` in the
@@ -794,7 +824,7 @@ class ALIKED(nn.Module):
         - ``image_size`` holds the valid ``(W, H)`` of each image of a batch padded at the bottom and right to a
           common size: maxima closer than ``nms_radius`` pixels to that image's last valid row or column are dropped.
         - :meth:`forward_laf` returns padded tensors like :class:`~kornia.feature.LocalFeature`, but ``N`` is the
-          largest keypoint count in the batch and the responses are :math:`(B, N, 1)`. Its ``mask`` multiplies the
+          largest keypoint count in the batch and the responses are ``(B, N, 1)``. Its ``mask`` multiplies the
           score map, and it takes no ``image_size``.
         - Known defects: on CPU, float16 and bfloat16 score and feature maps go to torch's ``grid_sample`` without
           an upcast: the half-precision kernel can return wrong values, NaN or overflow, and where torch has none the
@@ -1003,7 +1033,7 @@ class ALIKED(nn.Module):
         batched tensors.
 
         Args:
-            img: image to extract features with shape :math:`(B,C,H,W)`.
+            img: image to extract features with shape ``(B,C,H,W)``.
             mask: optional spatial mask ``(B, 1, H, W)`` with values in
                 ``[0, 1]``; the score map is multiplied by this mask before
                 keypoint detection so that features are suppressed in masked
@@ -1015,9 +1045,9 @@ class ALIKED(nn.Module):
                 call entirely (useful when only keypoint positions are needed).
 
         Returns:
-            - Detected local affine frames with shape :math:`(B,N,2,3)`.
-            - Response function values for corresponding LAFs with shape :math:`(B,N,1)`.
-            - Local descriptors of shape :math:`(B,N,D)`.
+            - Detected local affine frames with shape ``(B,N,2,3)``.
+            - Response function values for corresponding LAFs with shape ``(B,N,1)``.
+            - Local descriptors of shape ``(B,N,D)``.
 
         """
         if img.shape[1] == 1:
@@ -1043,6 +1073,17 @@ class ALIKED(nn.Module):
         B, _, H, W = img.shape
         wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=torch.promote_types(img.dtype, torch.float32))
 
+        if B == 0:
+            # torch.stack rejects an empty list. Derive the empty outputs from the dense maps instead of allocating
+            # them, so they stay in the autograd graph, and sample the responses as DKD does, so they keep the
+            # dtype a non-empty batch gets (float32 under autocast).
+            responses = F.grid_sample(score_map, score_map.new_zeros(0, 1, 0, 2), mode="bilinear", align_corners=True)
+            return (
+                score_map.flatten()[:0].to(wh.dtype).view(0, 0, 2, 3),
+                responses.view(0, 0, 1),
+                feature_map.flatten()[:0].view(0, 0, feature_map.shape[1]),
+            )
+
         lafs_list: list[torch.Tensor] = []
         for i in range(B):
             kps_px = wh * (keypoints[i] + 1) / 2.0  # (N, 2)
@@ -1056,7 +1097,7 @@ class ALIKED(nn.Module):
             lafs_list.append(laf_i)
 
         # Pad to the maximum number of keypoints in the batch.
-        n_max = max(laf.shape[0] for laf in lafs_list) if lafs_list else 0
+        n_max = max(laf.shape[0] for laf in lafs_list)
 
         def _pad(t: torch.Tensor, n: int, fill: float = 0.0) -> torch.Tensor:
             pad_n = n - t.shape[0]
@@ -1103,6 +1144,6 @@ class ALIKED(nn.Module):
         ).to(device)
         urls = [t.format(model_name) for t in _CHECKPOINT_URLS]
         state_dict = load_state_dict_from_url(urls, map_location=device)
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict)
         model.eval()
         return model

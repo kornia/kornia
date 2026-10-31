@@ -15,7 +15,26 @@
 # limitations under the License.
 #
 
-from abc import abstractmethod
+"""Register two images by optimizing a homography or a similarity by gradient descent, coarse to fine.
+
+:class:`ImageRegistrator` takes a pair of ``(1, C, H, W)`` images, builds a Gaussian pyramid of each with
+:func:`~kornia.geometry.transform.build_pyramid` and, from the coarsest level to the finest, optimizes a transform
+model on the loss of each image warped onto the other. The built-in models return a ``(1, 3, 3)`` destination→source
+matrix in normalized :math:`[-1, 1]` coordinates (``align_corners=False``): the ``src_homo_dst`` of
+:func:`~kornia.geometry.transform.homography_warp` and :class:`~kornia.geometry.transform.HomographyWarper`.
+
+Which class to use:
+
+- Register two images: :class:`ImageRegistrator`, with ``model_type`` ``'homography'``, ``'similarity'``,
+  ``'translation'``, ``'rotation'`` or ``'scale'``.
+- The models it optimizes: :class:`Homography` (a full homography) and :class:`Similarity` (a rotation, a scale and a
+  shift, each one optional). A custom model subclasses :class:`BaseModel` and comes with a warper class, such as a
+  subclass of :class:`~kornia.geometry.transform.BaseWarper`.
+- To estimate a homography from matched keypoints rather than from pixel values, use
+  :class:`~kornia.geometry.ransac.RANSAC` or :func:`~kornia.geometry.homography.find_homography_dlt`.
+"""
+
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
@@ -32,8 +51,23 @@ from .pyramid import build_pyramid
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
-class BaseModel(nn.Module):
-    """Provide an abstract base class for image registration models."""
+class BaseModel(ABC, nn.Module):
+    """Declare the interface of a transform model that ImageRegistrator optimizes.
+
+    A subclass holds its transform parameters as :class:`~torch.nn.parameter.Parameter` and implements
+    ``reset_model()``, which returns them to the identity, ``forward()``, the matrix with which its warper warps the
+    source image into the destination, and ``forward_inverse()``, the matrix of the reverse warp.
+    :class:`ImageRegistrator` takes an instance as ``model_type``, together with a ``warper`` class. The three methods
+    are abstract: constructing ``BaseModel`` itself, or a subclass that does not implement all three, raises
+    ``TypeError``, as for :class:`~kornia.geometry.transform.BaseWarper`. For the built-in models, use
+    :class:`Homography` or :class:`Similarity`.
+
+    See Also:
+        - :class:`Homography`: the built-in model of a full homography.
+        - :class:`Similarity`: the built-in model of a rotation, a scale and a shift.
+        - :class:`ImageRegistrator`: optimizes a model of this interface.
+
+    """
 
     @abstractmethod
     def reset_model(self) -> None:
@@ -63,7 +97,19 @@ class BaseModel(nn.Module):
 
 
 class Homography(BaseModel):
-    r"""Homography geometric model to be used with ImageRegistrator for the optimization-based image registration."""
+    r"""Hold a learnable 3x3 homography for ImageRegistrator, starting from the identity.
+
+    ``model = Homography()`` holds one ``(3, 3)`` :class:`~torch.nn.parameter.Parameter`, initialized to the
+    identity. ``model()`` returns it as a ``(1, 3, 3)`` matrix scaled so that its ``[2, 2]`` entry is 1, and
+    ``model.forward_inverse()`` its inverse, up to scale. ``ImageRegistrator('homography')`` optimizes it as the
+    destination→source homography in normalized coordinates. For a rotation, a scale and a shift only, use
+    :class:`Similarity`.
+
+    See Also:
+        - :class:`Similarity`: four degrees of freedom instead of eight, each of rotation, scale and shift optional.
+        - :class:`ImageRegistrator`: optimizes this model with ``model_type='homography'``.
+
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -81,7 +127,7 @@ class Homography(BaseModel):
         r"""Single-batch homography, scaled so that its ``[2, 2]`` entry is 1.
 
         Returns:
-            Homography matrix with shape :math:`(1, 3, 3)`.
+            Homography matrix with shape ``(1, 3, 3)``.
 
         """
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
@@ -90,14 +136,20 @@ class Homography(BaseModel):
         r"""Inverted single-batch homography.
 
         Returns:
-            Homography matrix with shape :math:`(1, 3, 3)`.
+            Homography matrix with shape ``(1, 3, 3)``.
 
         """
         return torch.unsqueeze(_torch_inverse_cast(self.model), dim=0)
 
 
 class Similarity(BaseModel):
-    """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
+    """Hold a learnable rotation, scale and shift for ImageRegistrator, each one optional.
+
+    ``model = Similarity(rotation, scale, shift)`` holds an angle ``rot`` in degrees, a ``scale`` and a ``(1, 2, 1)``
+    ``shift`` in normalized units, each a :class:`~torch.nn.parameter.Parameter` when its flag is ``True`` and
+    otherwise a constant buffer (0, 1 and 0). ``model()`` returns the ``(1, 3, 3)`` matrix described below and
+    ``model.forward_inverse()`` its inverse. :class:`ImageRegistrator` uses it for ``'similarity'`` (all three),
+    ``'translation'`` (the shift), ``'rotation'`` and ``'scale'``. For a full homography, use :class:`Homography`.
 
     Convention:
         - ``forward()`` is ``[[scale * R, shift], [0, 0, 1]]`` in the normalized :math:`[-1, 1]` coordinates of
@@ -116,6 +168,10 @@ class Similarity(BaseModel):
         rotation: if True, the rotation is optimizable, else constant zero.
         scale: if True, the scale is optimizable, else constant one.
         shift: if True, the shift is optimizable, else constant zero.
+
+    See Also:
+        - :class:`Homography`: a full homography, eight degrees of freedom.
+        - :class:`ImageRegistrator`: optimizes this model for every ``model_type`` but ``'homography'``.
 
     """
 
@@ -163,7 +219,7 @@ class Similarity(BaseModel):
         r"""Single-batch similarity transform.
 
         Returns:
-            Similarity with shape :math:`(1, 3, 3)`
+            Similarity with shape ``(1, 3, 3)``
 
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
@@ -178,14 +234,23 @@ class Similarity(BaseModel):
         r"""Single-batch inverse similarity transform.
 
         Returns:
-            Similarity with shape :math:`(1, 3, 3)`
+            Similarity with shape ``(1, 3, 3)``
 
         """
         return _torch_inverse_cast(self.forward())
 
 
 class ImageRegistrator(nn.Module):
-    r"""nn.Module, which performs optimization-based image registration.
+    r"""Register two images by optimizing a transform model on their Gaussian pyramids, coarse to fine.
+
+    Build ``registrator = ImageRegistrator(model_type)``, then ``M = registrator.register(src_img, dst_img)`` takes two
+    ``(1, C, H, W)`` images (the built-in models hold one transform, and a larger batch raises). From the coarsest of
+    ``pyramid_levels`` Gaussian levels to the finest, it runs up to ``num_iterations`` steps of ``optimizer`` on the
+    masked loss of ``src_img`` warped onto ``dst_img`` plus ``dst_img`` warped back onto ``src_img``, and returns the
+    model's matrix, ``(1, 3, 3)`` for the built-in models (with the matrix after each level as well, when
+    ``output_intermediate_models=True``); :meth:`warp_src_into_dst` then warps an image by it. With
+    more than one level, both sides need at least ``3 * 2 ** (pyramid_levels - 2)`` pixels, 24 for the default 5. To
+    align images from matched keypoints instead, use :class:`~kornia.geometry.ransac.RANSAC`.
 
     Convention:
         - :meth:`register` returns ``self.model()`` unchanged. For the built-in string ``model_type`` values, this
@@ -216,6 +281,12 @@ class ImageRegistrator(nn.Module):
         allow_shape_mismatch: if True, :meth:`register` resizes ``src_img`` bilinearly to the height and width of
             ``dst_img``, and a different batch or channel size still raises ``ValueError``; if False, images of
             different shapes raise ``ValueError``.
+
+    See Also:
+        - :class:`Homography`: the model of ``model_type='homography'``.
+        - :class:`Similarity`: the model of the other string ``model_type`` values.
+        - :class:`~kornia.geometry.transform.HomographyWarper`: the warper of the built-in models.
+        - :class:`~kornia.geometry.ransac.RANSAC`: a homography from matched keypoints, robust to outliers.
 
     Example:
         >>> from kornia.geometry import ImageRegistrator
@@ -279,10 +350,7 @@ class ImageRegistrator(nn.Module):
         """Warp img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
-            raise ValueError(
-                "Cannot register images of different shapes                             "
-                f" {img_src.shape} {img_dst.shape:} "
-            )
+            raise ValueError(f"Cannot register images of different shapes {img_src.shape} {img_dst.shape}")
         _height, _width = img_dst.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(img_src, transform_model)

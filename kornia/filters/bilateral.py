@@ -270,11 +270,11 @@ def _bilateral_blur(
     pad_y, pad_x = _compute_zero_padding(kernel_size)
 
     # Keep both patch axes: flattening them would copy every overlapping window. The windows are viewed in the order of
-    # their elements in memory, (B, C, H, Ky, W, Kx), so that the arithmetic allocates every temporary contiguous, and
-    # every reduction, here and in the backward, runs over one axis. MPS reduces a permuted 6-D tensor about 150 times
-    # slower than a contiguous one (an M1: 238 ms against 1.4 ms for the colour distance of an 8 x 3 x 256 x 256 batch
-    # with a 5 x 5 kernel), and two axes that are not adjacent, such as Ky and Kx, about 140 times slower than one at a
-    # time, on torch 2.14 and on a 2.16 nightly alike.
+    # their elements in memory, (B, C, H, Ky, W, Kx), so that the arithmetic allocates every temporary contiguous, and,
+    # on MPS, every reduction, here and in the backward, runs over one axis. MPS reduces a permuted 6-D tensor about 150
+    # times slower than a contiguous one (an M1: 238 ms against 1.4 ms for the colour distance of an 8 x 3 x 256 x 256
+    # batch with a 5 x 5 kernel), and two axes that are not adjacent, such as Ky and Kx, about 140 times slower than one
+    # at a time, on torch 2.14 and on a 2.16 nightly alike.
     padded_input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
     unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).permute(0, 1, 2, 4, 3, 5)  # (B, C, H, Ky, W, Kx)
 
@@ -311,8 +311,12 @@ def _bilateral_blur(
     # to the system on every free, faults fewer pages back in per call.
     kernel = space_kernel * (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, Ky, W, Kx)
     del color_distance_sq
-    # Over Kx, then over Ky.
-    return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
+    # On MPS over Kx, then over Ky, for the speed above. Elsewhere one reduction over both window axes: the two-step sum
+    # rounds every partial sum over Kx to a half dtype, which costs float16 and bfloat16 gradients with respect to
+    # tensor sigmas their accuracy.
+    if input.device.type == "mps":
+        return (unfolded_input * kernel).sum(-1).sum(-2) / kernel.sum(-1).sum(-2)
+    return (unfolded_input * kernel).sum((-3, -1)) / kernel.sum((-3, -1))
 
 
 def bilateral_blur(
@@ -351,16 +355,21 @@ def bilateral_blur(
           windows for every input size. Under ``torch.compile``, only kernels of up to 25 taps are filtered tap by
           tap, since the compiled loop has a block of operations per tap. Both forms compute the same weights and add
           up the weighted values in a different order, so they agree to rounding.
+        - On MPS, each window is summed over its columns and then over its rows, because MPS reduces two non-adjacent
+          axes much more slowly than one. In float16 and bfloat16 that rounds every partial sum, so there the
+          gradients with respect to a tensor ``sigma_color`` or ``sigma_space`` are less accurate than on the CPU or
+          CUDA. Tensor sigmas are cast to the input's dtype, so keeping them in float32 does not help; pass a float32
+          input on MPS when those gradients matter.
 
     Arguments:
-        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.Tensor with shape ``(B,C,H,W)``.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
-          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
+          torch.Tensor has shape ``(1,)``, shared by the batch, or ``(B,)``, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
-          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
+          a torch.Tensor has shape ``(1, 2)``, shared by the batch, or ``(B, 2)``, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -368,7 +377,7 @@ def bilateral_blur(
           difference. Only ``'l1'`` or ``'l2'`` is allowed. Default: ``'l1'``.
 
     Returns:
-        the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
+        the blurred torch.Tensor with shape ``(B, C, H, W)``.
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
@@ -406,21 +415,21 @@ def joint_bilateral_blur(
         - See the Convention block on :func:`~kornia.filters.bilateral_blur`; the colour distances are taken in
           ``guidance``, and ``input`` is what gets averaged.
         - ``input`` comes first and ``guidance`` second, the opposite of :func:`~kornia.filters.guided_blur`.
-        - ``guidance`` may have its own channel count; its batch size and :math:`(H, W)` must equal ``input``'s.
+        - ``guidance`` may have its own channel count; its batch size and ``(H, W)`` must equal ``input``'s.
         - ``guidance`` is cast to the dtype of a floating ``input``, so the output keeps ``input``'s dtype. An integer
           ``input`` is filtered in float32, as by :func:`~kornia.filters.bilateral_blur`, and its ``guidance`` is
           cast to float32.
 
     Arguments:
-        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
-        guidance: the guidance torch.Tensor with shape :math:`(B,C_g,H,W)`.
+        input: the input torch.Tensor with shape ``(B,C,H,W)``.
+        guidance: the guidance torch.Tensor with shape ``(B,C_g,H,W)``.
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
-          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
+          torch.Tensor has shape ``(1,)``, shared by the batch, or ``(B,)``, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
-          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
+          a torch.Tensor has shape ``(1, 2)``, shared by the batch, or ``(B, 2)``, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -428,7 +437,7 @@ def joint_bilateral_blur(
           difference. Only ``'l1'`` or ``'l2'`` is allowed. Default: ``'l1'``.
 
     Returns:
-        the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
+        the blurred torch.Tensor with shape ``(B, C, H, W)``.
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive.
@@ -489,10 +498,10 @@ class BilateralBlur(_BilateralBlur):
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
-          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
+          torch.Tensor has shape ``(1,)``, shared by the batch, or ``(B,)``, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
-          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
+          a torch.Tensor has shape ``(1, 2)``, shared by the batch, or ``(B, 2)``, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -503,8 +512,8 @@ class BilateralBlur(_BilateralBlur):
         the blurred input torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
@@ -531,13 +540,13 @@ class BilateralBlur(_BilateralBlur):
         suppressed even if they are spatially close.
 
         Args:
-            input: Input image tensor with shape :math:`(B, C, H, W)`,
+            input: Input image tensor with shape ``(B, C, H, W)``,
                 where :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the image height, and :math:`W` is the
                 image width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the
+            Tensor with shape ``(B, C, H, W)`` containing the
             edge-preserving smoothed image. The output keeps the layout and
             device of ``input``, and the dtype of a floating ``input`` unless a
             tensor ``sigma_space`` of a wider dtype promotes it, while reducing
@@ -563,10 +572,10 @@ class JointBilateralBlur(_BilateralBlur):
         kernel_size: the size of the kernel. Each entry must be a positive odd integer.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges. It must be positive. A float is shared by the batch; a
-          torch.Tensor has shape :math:`(1,)`, shared by the batch, or :math:`(B,)`, one value per sample.
+          torch.Tensor has shape ``(1,)``, shared by the batch, or ``(B,)``, one value per sample.
         sigma_space: the standard deviation for spatial Gaussian kernel.
           This is similar to ``sigma`` in :func:`gaussian_blur2d()`. A tuple of two floats is shared by the batch;
-          a torch.Tensor has shape :math:`(1, 2)`, shared by the batch, or :math:`(B, 2)`, one row per sample.
+          a torch.Tensor has shape ``(1, 2)``, shared by the batch, or ``(B, 2)``, one row per sample.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -577,8 +586,8 @@ class JointBilateralBlur(_BilateralBlur):
         the blurred input torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`, :math:`(B, C_g, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``, ``(B, C_g, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Raises:
         BaseError: if an entry of ``kernel_size`` is even or not positive; raised from the constructor.
@@ -607,7 +616,7 @@ class JointBilateralBlur(_BilateralBlur):
         signal, such as a depth map, mask, or noisy feature image.
 
         Args:
-            input: Tensor to smooth with shape :math:`(B, C, H, W)`, where
+            input: Tensor to smooth with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of input
                 channels, :math:`H` is the height, and :math:`W` is the width.
             guidance: Tensor used to compute range weights. Its batch and
@@ -616,7 +625,7 @@ class JointBilateralBlur(_BilateralBlur):
                 different representation.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the filtered
+            Tensor with shape ``(B, C, H, W)`` containing the filtered
             ``input`` values. Edges present in ``guidance`` reduce mixing
             across boundaries, while smooth regions are averaged more strongly.
         """

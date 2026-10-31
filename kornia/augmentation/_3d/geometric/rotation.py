@@ -29,9 +29,9 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compu
 
 
 class RandomRotation3D(GeometricAugmentationBase3D):
-    r"""Apply random rotations to 3D volumes (5D torch.Tensor).
+    r"""Rotate 3D volumes by a random axis-angle rotation, applied per sample with probability ``p`` (default 0.5).
 
-    Input should be a torch.Tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
+    Input should be a torch.Tensor of shape (C, D, H, W) or a batch of tensors ``(B, C, D, H, W)``.
 
     Args:
         degrees: Range of degrees to select from.
@@ -45,12 +45,13 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
-        - Output: :math:`(B, C, D, H, W)`
+        - Input: ``(C, D, H, W)`` or ``(B, C, D, H, W)``
+        - Output: ``(B, C, D, H, W)``
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

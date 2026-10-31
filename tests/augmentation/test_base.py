@@ -31,6 +31,7 @@ from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
 from kornia.augmentation._2d.intensity.invert import RandomInvert
 from kornia.augmentation._2d.mix.mixup import RandomMixUpV2
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
+from kornia.augmentation._3d.geometric.depthical_flip import RandomDepthicalFlip3D
 from kornia.augmentation._3d.geometric.horizontal_flip import RandomHorizontalFlip3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
@@ -348,6 +349,55 @@ class TestGeometricAugmentationBase3D:
         assert res.dtype == dtype, "The output dtype should match the input dtype"
 
 
+class _RandomDepthicalFlip3DWithMask(RandomDepthicalFlip3D):
+    def apply_transform_mask(self, input, params, flags, transform=None):
+        return self.apply_transform(input, params, flags, transform)
+
+    def apply_non_transform_mask(self, input, params, flags, transform=None):
+        return input
+
+
+class TestTransformTensorByShape(BaseTester):
+    # Each case gives the output shape for match_channel=False and for True; None means the channel check raises.
+    @pytest.mark.parametrize("match_channel", [False, True])
+    @pytest.mark.parametrize(
+        "reference, input_shape, expected",
+        [
+            ((2, 3, 5, 6), (5, 6), ((1, 1, 5, 6), None)),
+            ((1, 3, 5, 6), (5, 6), ((1, 1, 5, 6), None)),
+            ((2, 3, 5, 6), (2, 5, 6), ((2, 1, 5, 6), None)),
+            ((2, 3, 5, 6), (3, 5, 6), ((1, 3, 5, 6), (1, 3, 5, 6))),
+            ((2, 3, 5, 6), (2, 3, 5, 6), ((2, 3, 5, 6), (2, 3, 5, 6))),
+            ((2, 3, 4, 5, 6), (4, 5, 6), ((1, 1, 4, 5, 6), None)),
+            ((1, 3, 4, 5, 6), (4, 5, 6), ((1, 1, 4, 5, 6), None)),
+            ((2, 3, 4, 5, 6), (2, 4, 5, 6), ((2, 1, 4, 5, 6), None)),
+            ((2, 3, 4, 5, 6), (3, 4, 5, 6), ((1, 3, 4, 5, 6), (1, 3, 4, 5, 6))),
+            ((2, 3, 4, 5, 6), (2, 3, 4, 5, 6), ((2, 3, 4, 5, 6), (2, 3, 4, 5, 6))),
+        ],
+    )
+    def test_shape_6354(self, device, dtype, reference, input_shape, expected, match_channel):
+        augmentation = RandomHorizontalFlip(p=1.0) if len(reference) == 4 else RandomHorizontalFlip3D(p=1.0)
+        input = torch.rand(input_shape, device=device, dtype=dtype)
+        shape = torch.tensor(reference, device=device)
+        expected = expected[match_channel]
+        if expected is None:
+            with pytest.raises(ValueError, match="C dimension"):
+                augmentation.transform_tensor(input, shape=shape, match_channel=match_channel)
+        else:
+            assert augmentation.transform_tensor(input, shape=shape, match_channel=match_channel).shape == expected
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    def test_3d_bdhw_mask_follows_the_volume_6354(self, device, dtype, keepdim):
+        volume = torch.arange(2 * 4 * 5 * 6, device=device).to(dtype).reshape(2, 1, 4, 5, 6)
+        augmentation = _RandomDepthicalFlip3DWithMask(p=1.0, keepdim=keepdim)
+        output_volume = augmentation(volume)
+        output_mask = augmentation.transform_masks(
+            volume[:, 0], augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+        )
+        expected = output_volume[:, 0] if keepdim else output_volume
+        self.assert_close(output_mask, expected, rtol=0, atol=0)
+
+
 class TestDeviceAgnosticAugmentationParameters(BaseTester):
     """Augmentations keep RNG/params on CPU while accepting accelerator inputs.
 
@@ -595,7 +645,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert any(len(set(row)) > 1 for row in rows)
 
     @pytest.mark.parametrize("augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix])
-    def test_wart_mixup_cutmix_and_patchmix_map_p_to_a_batch_gate_4425(self, augmentation_cls):
+    def test_convention_mixup_cutmix_and_patchmix_map_p_to_a_batch_gate_4425(self, augmentation_cls):
         # Their constructors map `p` to the mix base's batch-wide probability, unlike Jigsaw and Mosaic.
         rows = []
         for seed in range(8):
@@ -608,6 +658,21 @@ class TestConventionAugmentationBase2D(BaseTester):
             rows.append(params["batch_prob"].tolist())
         assert all(len(set(row)) == 1 for row in rows)
         assert {row[0] for row in rows} == {0.0, 1.0}
+
+    @pytest.mark.parametrize(
+        ("factory", "shape"),
+        [
+            (lambda: K.RandomAffine(30.0, p=1.0), (2, 3, 6, 8)),
+            (lambda: K.RandomRotation3D(30.0, p=1.0), (2, 1, 4, 6, 8)),
+        ],
+    )
+    def test_convention_p_batch_attribute_gates_any_augmentation_4425(self, factory, shape, device, dtype):
+        aug = factory()
+        aug.p_batch = 0.0
+        x = torch.rand(shape, device=device, dtype=dtype)
+        out = aug(x)
+        assert torch.equal(out, x)
+        assert not aug._params["batch_prob"].any()
 
     @pytest.mark.parametrize(
         "augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix, K.RandomJigsaw, K.RandomMosaic]
@@ -1208,7 +1273,8 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.mark.parametrize("clip_output", [False, True])
     def test_autocontrast_empty_batch_4429(self, probability, clip_output, device, dtype):
         data = torch.empty(0, 3, 6, 8, device=device, dtype=dtype, requires_grad=True)
-        augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
+        with pytest.warns(DeprecationWarning, match="clip_output"):
+            augmentation = K.RandomAutoContrast(p=probability, clip_output=clip_output)
         output = augmentation(data)
         replay = augmentation(data, params=augmentation._params)
         for actual in (output, replay):
