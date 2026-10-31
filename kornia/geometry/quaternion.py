@@ -238,36 +238,13 @@ class Quaternion(nn.Module):
         return Quaternion(result_data)
 
     def __mul__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
-        # If right is a Quaternion, do quaternion multiplication
         if isinstance(right, Quaternion):
-            new_real = self.real * right.real - batched_dot_product(self.vec, right.vec)
-            new_vec = (
-                self.real[..., None] * right.vec
-                + right.real[..., None] * self.vec
-                + torch.linalg.cross(self.vec, right.vec, dim=-1)
-            )
-            return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
-
-        # If right is a scalar/torch.Tensor, convert to scalar quaternion and multiply
-        right_quat = self._to_scalar_quaternion(right)
-        new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
-        new_vec = (
-            self.real[..., None] * right_quat.vec
-            + right_quat.real[..., None] * self.vec
-            + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
-        )
-        return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
+            return _hamilton_product(self, right)
+        return _hamilton_product(self, self._to_scalar_quaternion(right))
 
     def __rmul__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
         """Right multiplication (left * self) where left is a scalar or torch.Tensor."""
-        left_quat = self._to_scalar_quaternion(left)
-        new_real = left_quat.real * self.real - batched_dot_product(left_quat.vec, self.vec)
-        new_vec = (
-            left_quat.real[..., None] * self.vec
-            + self.real[..., None] * left_quat.vec
-            + torch.linalg.cross(left_quat.vec, self.vec, dim=-1)
-        )
-        return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
+        return _hamilton_product(self._to_scalar_quaternion(left), self)
 
     def __div__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         if isinstance(right, Quaternion):
@@ -716,6 +693,27 @@ class Quaternion(nn.Module):
 
         """
         return batched_dot_product(self.vec, self.vec) + self.real**2
+
+
+def _hamilton_product(left: "Quaternion", right: "Quaternion") -> "Quaternion":
+    """Return ``left * right``, broadcasting an unbatched operand, or batch shapes of equal rank, against the other."""
+    left_batch, right_batch = left.data.shape[:-1], right.data.shape[:-1]
+    shape: Optional[torch.Size] = None
+    if len(left_batch) == 0 or len(right_batch) == 0 or len(left_batch) == len(right_batch):
+        try:
+            shape = torch.broadcast_shapes(left.data.shape, right.data.shape)
+        except RuntimeError:
+            shape = None
+    if shape is None:
+        raise ValueError(
+            f"Cannot multiply quaternions of batch shapes {tuple(left_batch)} and {tuple(right_batch)}. One must be "
+            "unbatched, or both must have the same number of batch axes, each equal or of size 1."
+        )
+    a, b = left.data.expand(shape), right.data.expand(shape)
+    a_real, a_vec, b_real, b_vec = a[..., 0], a[..., 1:], b[..., 0], b[..., 1:]
+    new_real = a_real * b_real - batched_dot_product(a_vec, b_vec)
+    new_vec = a_real[..., None] * b_vec + b_real[..., None] * a_vec + torch.linalg.cross(a_vec, b_vec, dim=-1)
+    return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
 
 def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Quaternion":

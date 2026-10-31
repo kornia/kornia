@@ -219,6 +219,19 @@ class TestSe3(BaseTester):
         self.assert_close(s4s4inv.r.q.data, so3_expected.q.data)
         self.assert_close(s4s4inv.t, zeros_vec)
 
+    @pytest.mark.parametrize(("left_batch", "right_batch"), [(None, 3), (3, None)])
+    def test_mul_unbatched_with_batched(self, device, dtype, left_batch, right_batch):
+        # #6481: composing an unbatched Se3 with a batch used to raise in torch.linalg.cross
+        s1 = self._make_rand_se3d(device, dtype, left_batch)
+        s2 = self._make_rand_se3d(device, dtype, right_batch)
+        out = s1 * s2
+        assert out.t.shape == (3, 3)
+        self.assert_close(out.matrix(), s1.matrix() @ s2.matrix())
+
+    def test_mul_mismatched_batches_raise(self, device, dtype):
+        with pytest.raises(ValueError, match="Cannot multiply quaternions of batch shapes"):
+            Se3.random(3, device, dtype) * Se3.random(2, device, dtype)
+
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):
         omega = torch.zeros(3, device=device, dtype=dtype)
