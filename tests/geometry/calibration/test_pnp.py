@@ -447,3 +447,45 @@ class TestSolvePnpDltAutocast(BaseTester):
         assert actual.dtype == torch.float32
         self.assert_close(actual, expected, atol=0, rtol=0)
         self.assert_close(actual, expected_pose, atol=1e-4, rtol=0)
+
+
+class TestSolvePnpDltGradient(BaseTester):
+    """``solve_pnp_dlt``'s gradient is finite when other singular values of the system are equal (#6213)."""
+
+    def test_cube_corners_have_the_central_difference_gradient_6213(self, device):
+        # The corners of a cube and its centre make singular values of the DLT system equal in some poses, where
+        # torch's SVD backward made the gradient with respect to the image points NaN (6 of these 64 on CPU).
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+
+        dtype = torch.float64
+        g = torch.Generator().manual_seed(0)
+        corners = [[x, y, z] for x in (-1.0, 1.0) for y in (-1.0, 1.0) for z in (-1.0, 1.0)] + [[0.0, 0.0, 0.0]]
+        cube = torch.tensor(corners, dtype=dtype)
+        batch = 64
+        rotation = axis_angle_to_rotation_matrix(torch.rand(batch, 3, generator=g, dtype=dtype) - 0.5)
+        translation = torch.tensor([0.0, 0.0, 6.0], dtype=dtype) + torch.rand(batch, 1, 3, generator=g, dtype=dtype)
+        intrinsics = torch.tensor([[500.0, 0.0, 320.0], [0.0, 500.0, 240.0], [0.0, 0.0, 1.0]], dtype=dtype)
+        camera = cube @ rotation.mT + translation - 0.5
+        projected = camera @ intrinsics.T
+        img_points = (projected[..., :2] / projected[..., 2:]).to(device)
+        world_points = cube.expand(batch, -1, -1).to(device)
+        intrinsics = intrinsics.expand(batch, -1, -1).to(device)
+
+        def solve(u):
+            return kornia.geometry.solve_pnp_dlt(world_points, u, intrinsics).reshape(batch, -1)
+
+        u = img_points.clone().requires_grad_(True)
+        out = solve(u)
+        # Each pose depends only on its own points, so one backward per output entry gives every pose's Jacobian.
+        jac = torch.stack([torch.autograd.grad(out[:, j].sum(), u, retain_graph=True)[0] for j in range(12)], 1)
+        assert torch.isfinite(jac).all()
+        eps = 1e-5
+        columns = []
+        for i in range(img_points[0].numel()):
+            step = torch.zeros(img_points[0].numel(), device=device, dtype=dtype)
+            step[i] = eps
+            step = step.view_as(img_points[0])
+            columns.append((solve(img_points + step) - solve(img_points - step)) / (2 * eps))
+        self.assert_close(jac.reshape(batch, 12, -1), torch.stack(columns, -1), rtol=1e-5, atol=1e-7)

@@ -22,7 +22,13 @@ from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
-from kornia.core.utils import _autocast_disabled, _torch_linalg_svdvals, _torch_svd_cast
+from kornia.core.utils import (
+    _autocast_disabled,
+    _right_singular_vector,
+    _svd_work_dtype,
+    _torch_linalg_svdvals,
+    _torch_svd_cast,
+)
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
 
@@ -246,8 +252,11 @@ def solve_pnp_dlt(
 
         # Getting the solution vectors.
         # Only the right singular vectors are used; reduced SVD avoids saving the unused (2N, 2N) U.
-        _, _, v = _torch_svd_cast(system, full_matrices=False)
-        solution = v[..., -1]
+        # The SVD is of the detached system: the solution's gradient comes from _right_singular_vector, which stays
+        # finite when other singular values are equal, as for world points on the corners of a cube.
+        work = system.detach().to(_svd_work_dtype(system))
+        _, s, v = _torch_svd_cast(work, full_matrices=False)
+        solution = _right_singular_vector(system, s, v, -1).to(system.dtype)
 
         # Reshaping the solution vectors to the correct shape.
         solution = solution.reshape(B, 3, 4)

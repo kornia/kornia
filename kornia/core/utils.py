@@ -461,14 +461,7 @@ def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[to
     is what keeps the batched minimal solvers behind ``RANSAC`` working on Apple silicon.
     ``full_matrices`` selects full or reduced factors, as in ``torch.linalg.svd``.
     """
-    if is_mps_tensor_safe(input):
-        dtype = torch.float32
-    elif input.dtype == torch.float32:
-        dtype = torch.float64
-    else:
-        dtype = _normalize_to_float32_or_float64(input.dtype)
-
-    x = input.to(dtype)
+    x = input.to(_svd_work_dtype(input))
     # torch 2.14's MPS ``linalg.svd`` raises "Failed to created pipeline state object" -- a Metal
     # shader compilation failure, not memory pressure -- once an input holds 8192 elements
     # or more, whatever the per-matrix shape. The bound is inclusive: 8192 is the first failing
@@ -485,6 +478,86 @@ def _torch_svd_cast(input: torch.Tensor, full_matrices: bool = True) -> Tuple[to
     # Since kornia requires torch>=2.5.1, we can always use .mH
     out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
+
+
+def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:
+    """Return the dtype :func:`_torch_svd_cast` decomposes ``input`` in: float64 for float32, except on MPS."""
+    if is_mps_tensor_safe(input):
+        return torch.float32
+    if input.dtype == torch.float32:
+        return torch.float64
+    return _normalize_to_float32_or_float64(input.dtype)
+
+
+def _symmetric_eigenvector(
+    input: torch.Tensor, eigenvalues: torch.Tensor, eigenvectors: torch.Tensor, index: Union[int, torch.Tensor]
+) -> torch.Tensor:
+    r"""Return the eigenvector ``eigenvectors[..., :, index]`` of the symmetric ``input``, differentiably.
+
+    The backward passes of ``torch.linalg.eigh`` and ``torch.linalg.svd`` divide by the gap between every pair of
+    eigenvalues, so the gradient of a single eigenvector is NaN where two of the *other* eigenvalues are equal, although
+    the vector is well defined while its own eigenvalue :math:`\lambda_k` is simple. With
+    :math:`R = \sum_{i \ne k} v_i v_i^\top / (\lambda_k - \lambda_i)`, the eigenvector of :math:`C` moves by
+    :math:`R\,dC\,v` to first order and by
+    :math:`R\,dC\,R\,dC\,v - (v^\top dC\,v)\,R^2 dC\,v - \tfrac12 v\,\|R\,dC\,v\|^2` to second. Both divide only by the
+    gaps to :math:`\lambda_k`, and an equal pair among the other eigenvalues enters only through its projector, which
+    does not depend on the basis chosen within it. The first-order term is the derivation of ``_NullSpaceBasis`` in
+    :mod:`kornia.geometry.epipolar.essential`.
+
+    The two terms are added to the detached eigenvector with ``dC = C - C.detach()``, which is zero in value (the
+    detached-value pattern of #4229): the value is the given eigenvector, and only the derivatives come from the terms.
+    A gap that is exactly zero, where the eigenvector is not unique, contributes nothing.
+
+    Args:
+        input: the symmetric matrix ``C``, of shape :math:`(*, D, D)`.
+        eigenvalues: eigenvalues of ``C``, of shape :math:`(*, K)`; for a positive semidefinite ``C`` they can be its
+            singular values.
+        eigenvectors: the matching orthonormal eigenvectors of ``C`` as columns, of shape :math:`(*, D, K)`.
+        index: the column to return, as an ``int`` or a :math:`(*, 1)` integer tensor.
+
+    Returns:
+        The eigenvector, of shape :math:`(*, D)` in the dtype of ``eigenvectors``, with first and second derivatives
+        with respect to ``input``.
+    """
+    lam = eigenvalues.detach()
+    V = eigenvectors.detach()
+    if isinstance(index, int):
+        v = V[..., :, index]
+        lam_k = lam[..., index, None]
+    else:
+        # gather rather than indexing with a tensor, which torch.compile would turn into a data-dependent shape
+        v = V.gather(-1, index[..., None, :].expand(*V.shape[:-1], 1))[..., 0]
+        lam_k = lam.gather(-1, index)
+    if not torch.is_grad_enabled():
+        return v
+    gap = lam_k - lam
+    nonzero = gap.abs() > torch.finfo(gap.dtype).tiny
+    inv_gap = torch.where(nonzero, 1.0 / torch.where(nonzero, gap, torch.ones_like(gap)), torch.zeros_like(gap))
+    R = (V * inv_gap[..., None, :]) @ V.mT
+    C = input.to(V.dtype)
+    dC = C - C.detach()
+    v = v[..., None]
+    dv = dC @ v
+    first = R @ dv
+    second = R @ (dC @ first) - (v.mT @ dv) * (R @ first) - 0.5 * v * (first.mT @ first)
+    return (v + first + second)[..., 0]
+
+
+def _right_singular_vector(input: torch.Tensor, S: torch.Tensor, V: torch.Tensor, index: int) -> torch.Tensor:
+    """Return the right singular vector ``V[..., :, index]`` of the :math:`(*, N, D)` ``input``, differentiably.
+
+    ``S`` and ``V`` are the singular values and the right singular vectors, as columns, of ``input``. The vector is
+    the eigenvector of ``X^T X`` with eigenvalue ``S^2``, with the derivatives of :func:`_symmetric_eigenvector`.
+    ``X`` is ``input`` in the dtype of ``V`` divided by its largest magnitude, held constant, which leaves the vector
+    unchanged and keeps ``X^T X`` in range.
+    """
+    if not torch.is_grad_enabled():
+        return V.detach()[..., :, index]
+    x = input.to(V.dtype)
+    scale = x.detach().abs().amax(dim=(-2, -1), keepdim=True)
+    scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+    x = x / scale
+    return _symmetric_eigenvector(x.mT @ x, (S.detach() / scale[..., 0]) ** 2, V, index)
 
 
 def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
