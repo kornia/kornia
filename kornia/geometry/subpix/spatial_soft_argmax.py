@@ -563,7 +563,7 @@ def conv_soft_argmax3d(
     h_out = (h + 2 * py - ky) // sy + 1
     w_out = (w + 2 * px - kx) // sx + 1
     pad = [px, px, py, py, pz, pz]
-    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, stride)
+    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, (sz, sy, sx))
     weights = torch.softmax(logits, dim=2)
 
     # We need to output also coordinates
@@ -593,7 +593,7 @@ def conv_soft_argmax3d(
     if not output_value:
         return coords_max
 
-    windows = _unfold3d(F.pad(input, pad), kernel_size, stride)
+    windows = _unfold3d(F.pad(input, pad), kernel_size, (sz, sy, sx))
     x_softmaxpool = (weights * windows).sum(2).view(b, c, d_out, h_out, w_out)
     return coords_max, x_softmaxpool
 
@@ -651,7 +651,7 @@ class SpatialSoftArgmax2d(nn.Module):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
-            f"temperature={self.temperature}, "
+            f"(temperature={self.temperature}, "
             f"normalized_coordinates={self.normalized_coordinates})"
         )
 
