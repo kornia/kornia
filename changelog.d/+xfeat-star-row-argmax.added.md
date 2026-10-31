@@ -1,0 +1,1 @@
+`XFeat.match_xfeat_star` finds the nearest neighbour of each second-image descriptor with a second matrix product and a row-wise `argmax`, instead of an `argmax` down the columns of the similarity matrix. On an Apple M1 CPU, XFeat* matching of a 640 x 480 pair is 1.26x faster with identical matches; MPS is unchanged.

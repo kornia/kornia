@@ -487,7 +487,9 @@ class XFeat(nn.Module):
         B = feats1.shape[0]
         cossim = torch.bmm(feats1, feats2.permute(0, 2, 1))
         match12 = torch.argmax(cossim, dim=-1)
-        match21 = torch.argmax(cossim.permute(0, 2, 1), dim=-1)
+        # The second product reduces along rows, as _match_mnn does: an argmax down the columns of cossim is a
+        # strided reduction, several times slower on CPU than this matrix product.
+        match21 = torch.argmax(torch.bmm(feats2, feats1.permute(0, 2, 1)), dim=-1)
         idx0 = torch.arange(match12.shape[1], device=match12.device)
         batched_matches = []
         for b in range(B):
