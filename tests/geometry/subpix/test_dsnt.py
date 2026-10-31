@@ -83,6 +83,15 @@ class TestRenderGaussian2d(BaseTester):
 
         self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
 
+    @pytest.mark.parametrize("std", [[0.0, 0.25], [0.25, 0.0], [0.0, 0.0]])
+    def test_zero_std_raises(self, device, dtype, std):
+        # A zero std used to render an all-NaN map: the inverse variance is infinite and 0 * inf is NaN.
+        mean = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
+        std_t = torch.tensor([std], device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="std should be nonzero"):
+            kornia.geometry.subpix.render_gaussian2d(mean, std_t, (5, 5), True)
+
     @pytest.mark.parametrize("normalized", [False, True])
     def test_in_image_sums_to_one(self, device, dtype, normalized):
         # An off-centre, anisotropic Gaussian well inside a 9 x 11 grid: the per-axis renormalisation makes it sum to
@@ -240,6 +249,20 @@ class TestSpatialSoftmax2d(BaseTester):
         heatmap = torch.tensor([[[[0, 255], [3, 7]]]], device=device)
         expected = kornia.geometry.subpix.spatial_softmax2d(heatmap.to(torch.get_default_dtype()))
         self.assert_close(kornia.geometry.subpix.spatial_softmax2d(heatmap.to(map_dtype)), expected)
+
+    @pytest.mark.parametrize("map_dtype", [torch.uint8, torch.int64])
+    @pytest.mark.parametrize("temperature", [0.5, 2.5])
+    def test_integer_map_with_tensor_temperature(self, device, map_dtype, temperature):
+        # A tensor temperature was cast to the map's integer dtype before the logits were promoted, so 0.5
+        # became 0 (an all-NaN result) and 2.5 became 2. It must match the same temperature on the float map.
+        heatmap = torch.tensor([[[[0, 5], [0, 0]]]], device=device)
+        t = torch.tensor(temperature, device=device)
+
+        expected = kornia.geometry.subpix.spatial_softmax2d(heatmap.to(torch.get_default_dtype()), t)
+        actual = kornia.geometry.subpix.spatial_softmax2d(heatmap.to(map_dtype), t)
+
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, expected)
 
     def test_sharp_temperature_does_not_overflow_float16(self, device):
         # #6087: dividing the raw logits by a sharp temperature overflowed float16 (max|logit| / temperature >
