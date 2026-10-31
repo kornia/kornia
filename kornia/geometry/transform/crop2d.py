@@ -357,9 +357,10 @@ def crop_by_boxes(
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
-        validate_boxes: deprecated since kornia 0.9.1 and ignored; passing it emits a
-          :class:`DeprecationWarning`. The boxes are not validated, whatever its value: only the
-          shapes of ``src_box`` and ``dst_box`` and the equal size of the ``dst_box`` boxes are checked.
+        validate_boxes: deprecated since kornia 0.9.1 and ignored; passing ``True`` or ``False`` emits a
+          :class:`DeprecationWarning`, and the default ``None`` does not. The boxes are not validated, whatever
+          its value: only the shapes of ``src_box`` and ``dst_box`` and the equal size of the ``dst_box`` boxes
+          are checked.
 
     Returns:
         the patches, with shape ``(B, C, h, w)`` for the size ``(h, w)`` of ``dst_box``.

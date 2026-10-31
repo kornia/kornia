@@ -482,7 +482,8 @@ class TestCropByBoxes(BaseTester):
 
         self.assert_close(out, expected)
 
-    def test_no_warning_without_validate_boxes_6401(self, device, dtype):
+    @pytest.mark.parametrize("kwargs", [{}, {"validate_boxes": None}], ids=["omitted", "none"])
+    def test_no_warning_without_validate_boxes_6401(self, kwargs, device, dtype):
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
         inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
@@ -491,7 +492,7 @@ class TestCropByBoxes(BaseTester):
 
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
-            kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+            kornia.geometry.transform.crop_by_boxes(inp, src, dst, **kwargs)
 
     def test_scriptable_with_the_validate_boxes_deprecation_6401(self, device, dtype):
         # The deprecation warning must not take `crop_by_boxes` out of TorchScript: it scripted before #6401, and
