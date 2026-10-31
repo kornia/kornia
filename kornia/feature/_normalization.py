@@ -21,9 +21,14 @@ from collections.abc import Callable
 import torch
 from torch import nn
 
+from kornia.feature._layout import _patch_conv_layout
+
 
 class _DescriptorSequential(nn.Sequential):
-    """Keep a descriptor's final BatchNorm statistics and computation in float32 for half inputs."""
+    """Keep a descriptor's final BatchNorm statistics and computation in float32 for half inputs.
+
+    Each convolution also receives its input in the layout ``_patch_conv_layout`` picks for the device.
+    """
 
     def __init__(self, *args: nn.Module | OrderedDict[str, nn.Module]) -> None:
         super().__init__(*args)
@@ -61,6 +66,10 @@ class _DescriptorSequential(nn.Sequential):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         for module in self:
+            # SOSNet's leading InstanceNorm2d returns the default layout, so the layout is set per convolution; a
+            # convolution's output already has it, which makes the later calls free.
+            if isinstance(module, nn.Conv2d):
+                input = _patch_conv_layout(input)
             if getattr(module, "_descriptor_float32_statistics", False) and input.dtype == torch.float16:
                 # MPS also requires the input and running statistics to have the same dtype.
                 input = module(input.float()).to(input.dtype)
