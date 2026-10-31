@@ -592,6 +592,8 @@ class TestLightGlue(BaseTester):
 
         On CUDA the descriptors used to be cast to float16 under autocast, which the float64 weights then met.
         """
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         torch.manual_seed(0)
         models = {mp: _make_lightglue(device, torch.float64, mp=mp) for mp in (False, True)}
         models[True].load_state_dict(models[False].state_dict())
