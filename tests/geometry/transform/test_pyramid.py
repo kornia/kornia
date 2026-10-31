@@ -439,7 +439,8 @@ class TestScalePyramid(BaseTester):
     )
     def test_integer_like_n_levels(self, device, dtype, n_levels):
         # These were accepted before n_levels was validated; they now build the same pyramid as the Python int.
-        inp = torch.rand(1, 1, 96, 96, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 96, 96).to(device=device, dtype=dtype)
         pyramid = kornia.geometry.ScalePyramid(n_levels=n_levels)
         assert type(pyramid.n_levels) is int
         assert pyramid.n_levels == 2
@@ -458,7 +459,8 @@ class TestScalePyramid(BaseTester):
     @pytest.mark.parametrize(("min_size", "num_octaves"), [(0, 7), (0.0, 7), (15.0, 3), (float("inf"), 1)])
     def test_min_size_bounds(self, device, dtype, min_size, num_octaves):
         # min_size=0 keeps halving down to one pixel: 64, 32, ..., 1.
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64).to(device=device, dtype=dtype)
         pyr, _, _ = kornia.geometry.ScalePyramid(min_size=min_size)(inp)
         assert len(pyr) == num_octaves
         assert pyr[-1].shape[-2:] == (64 // 2 ** (num_octaves - 1),) * 2
