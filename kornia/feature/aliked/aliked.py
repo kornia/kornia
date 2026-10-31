@@ -422,8 +422,10 @@ class InputPadder:
     def __init__(self, h: int, w: int, divis_by: int = 8) -> None:
         self.ht = h
         self.wd = w
-        pad_ht = (((h // divis_by) + 1) * divis_by - h) % divis_by
-        pad_wd = (((w // divis_by) + 1) * divis_by - w) % divis_by
+        # The distance to the next multiple, written without `%`: under dynamic-shape torch.compile a modulo of the
+        # image size reached the float offset bound of DeformableConv2d, which inductor (torch 2.14) cannot lower.
+        pad_ht = (h + divis_by - 1) // divis_by * divis_by - h
+        pad_wd = (w + divis_by - 1) // divis_by * divis_by - w
         self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
 
     def pad(self, x: torch.Tensor) -> torch.Tensor:
