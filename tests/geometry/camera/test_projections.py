@@ -278,6 +278,28 @@ class TestProjectionOrthographic(BaseTester):
         extension = torch.tensor([2.0], device=device, dtype=dtype)
         self.assert_close(unproject_points_orthographic(project_points_orthographic(points), extension), points)
 
+    def test_convention_extension_accepts_n_and_n_1(self, device, dtype):
+        # Both documented forms add exactly one coordinate, so an (N,) depth and the same depth written (N, 1)
+        # agree.
+        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 2.0, 2.0], [3.0, 4.0, 3.0]], device=device, dtype=dtype)
+        depth = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
+
+        self.assert_close(unproject_points_orthographic(points, depth), expected)
+        self.assert_close(unproject_points_orthographic(points, depth[..., None]), expected)
+
+    @pytest.mark.parametrize("extension_shape", [(2, 2), (2, 4), (2, 0)])
+    def test_exception_extension_trailing_size(self, extension_shape, device, dtype):
+        # An extension with the same rank as the points used to be concatenated whole, so an (N, 2) depth came
+        # back as (N, 4) with no error. Only a trailing size of 1 is the z coordinate; reject the rest.
+        from kornia.core.exceptions import ShapeError
+
+        points = torch.rand(2, 2, device=device, dtype=dtype)
+        extension = torch.rand(*extension_shape, device=device, dtype=dtype)
+
+        with pytest.raises(ShapeError):
+            unproject_points_orthographic(points, extension)
+
     def test_dx_proj_x(self, device, dtype):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
         expected = torch.tensor([1.0], device=device, dtype=dtype)

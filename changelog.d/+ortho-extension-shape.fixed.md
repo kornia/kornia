@@ -1,0 +1,1 @@
+`unproject_points_orthographic` rejects an `extension` whose trailing size is not 1, with `ShapeError`, as `unproject_points_z1` already did. An `(N, 2)` depth used to be concatenated whole and came back as `(N, 4)`; the `(N,)` and `(N, 1)` forms still add a single `z` coordinate.

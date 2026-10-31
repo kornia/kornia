@@ -56,7 +56,7 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
 
     Convention:
         - ``extension`` becomes the ``z`` component of the result; both a ``(N,)`` and a ``(N, 1)`` extension
-          are accepted.
+          are accepted, and any other trailing size raises ``ShapeError`` instead of adding coordinates.
 
     Args:
         points_in_camera: torch.Tensor representing the points to unproject with shape (..., 2).
@@ -76,6 +76,8 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
 
     if len(points_in_camera.shape) != len(extension.shape):
         extension = extension[..., None]
+
+    KORNIA_CHECK_SHAPE(extension, ["*", "1"])
 
     return torch.cat([points_in_camera, extension], dim=-1)
 
