@@ -84,7 +84,7 @@ class TestRenderGaussian2d(BaseTester):
         self.assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
 
     @pytest.mark.parametrize("std", [[0.0, 0.25], [0.25, 0.0], [0.0, 0.0]])
-    def test_zero_std_raises(self, device, dtype, std):
+    def test_zero_std_raises(self, device: torch.device, dtype: torch.dtype, std: list[float]) -> None:
         # A zero std used to render an all-NaN map: the inverse variance is infinite and 0 * inf is NaN.
         mean = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
         std_t = torch.tensor([std], device=device, dtype=dtype)
@@ -252,7 +252,9 @@ class TestSpatialSoftmax2d(BaseTester):
 
     @pytest.mark.parametrize("map_dtype", [torch.uint8, torch.int64])
     @pytest.mark.parametrize("temperature", [0.5, 2.5])
-    def test_integer_map_with_tensor_temperature(self, device, map_dtype, temperature):
+    def test_integer_map_with_tensor_temperature(
+        self, device: torch.device, map_dtype: torch.dtype, temperature: float
+    ) -> None:
         # A tensor temperature was cast to the map's integer dtype before the logits were promoted, so 0.5
         # became 0 (an all-NaN result) and 2.5 became 2. It must match the same temperature on the float map.
         heatmap = torch.tensor([[[[0, 5], [0, 0]]]], device=device)
