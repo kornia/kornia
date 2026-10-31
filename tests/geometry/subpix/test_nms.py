@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import importlib
 import itertools
 
 import pytest
@@ -224,6 +225,39 @@ class TestNMS2d(BaseTester):
             kornia.geometry.subpix.nms2d(inp, kernel_size, mask_only=True).to(dtype),
             _reference_nms_mask(inp, kernel_size).to(dtype),
         )
+
+    @pytest.mark.parametrize("pooled", [False, True])
+    @pytest.mark.parametrize("kernel_size", [(5, 5), (7, 7)])
+    def test_pooled_and_chained_windows_match_the_reference_rule(self, device, dtype, kernel_size, pooled, monkeypatch):
+        # (5, 5) and (7, 7) take their comparison chains, or the pooled path for floating-point CUDA maps
+        # (`_pooled_window_is_faster`). Force each in turn on ties and non-finite values, which the two handle
+        # differently inside: a chain compares every neighbour, the pooled path compares with their max.
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        module = importlib.import_module("kornia.geometry.subpix.nms")
+        monkeypatch.setattr(module, "_pooled_window_is_faster", lambda x: pooled)
+        torch.manual_seed(0)
+        inp = torch.randint(0, 4, (2, 3, 23, 27), device=device).to(dtype)  # small integers: many ties
+        inp[0, 0, 5, 5] = float("nan")
+        inp[0, 1, 7, 9] = float("inf")
+        inp[1, 2, 10, 10] = float("-inf")
+        inp[0, 0, 6, 6] = 9.0  # larger than every finite value, but a nan in its window: not a maximum
+        inp[1, 0, 11, 13] = 9.0  # a strict maximum
+        mask = kornia.geometry.subpix.nms2d(inp, kernel_size, mask_only=True)
+        assert torch.equal(mask, _reference_nms_mask(inp, kernel_size))
+        assert bool(mask[0, 1, 7, 9])
+        assert bool(mask[1, 0, 11, 13])
+        assert not bool(mask[0, 0, 5, 5])
+        assert not bool(mask[0, 0, 6, 6])
+
+    @pytest.mark.parametrize("kernel_size", [(5, 5), (7, 7)])
+    def test_integer_maps_keep_the_comparison_chains(self, device, kernel_size):
+        # CUDA max_pool2d has no integer kernels, so integer maps never take the pooled path.
+        inp = torch.zeros(1, 1, 15, 15, device=device, dtype=torch.int64)
+        inp[0, 0, 7, 7] = 3
+        expected = torch.zeros(1, 1, 15, 15, device=device, dtype=torch.bool)
+        expected[0, 0, 7, 7] = True
+        assert torch.equal(kornia.geometry.subpix.nms2d(inp, kernel_size, mask_only=True), expected)
 
     @pytest.mark.parametrize("kernel_size", [(5, 5), (9, 9)])
     def test_a_plateau_holds_no_strict_maximum(self, device, dtype, kernel_size):
