@@ -413,6 +413,8 @@ def depth_from_plane_equation(
     See Also:
         - :func:`~kornia.geometry.camera.perspective.unproject_points`: turn these pixels and depths into 3D points.
         - :func:`depth_from_disparity`: a whole depth map from a rectified stereo disparity map, not from a plane.
+        - :class:`~kornia.geometry.plane.Hyperplane`: a plane object, :math:`n \cdot x + d = 0`, with the offset of
+          the opposite sign: for a batch of planes, pass ``plane.normal.data`` and ``-plane.offset.data[:, None]``.
 
     """
     KORNIA_CHECK_SHAPE(plane_normals, ["B", "3"])

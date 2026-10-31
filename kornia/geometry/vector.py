@@ -15,6 +15,26 @@
 # limitations under the License.
 #
 
+"""2D and 3D vector and scalar wrappers that planes, Lie groups and cameras take.
+
+:class:`Vector3`, :class:`Vector2` and :class:`Scalar` wrap a tensor without copying it, of shape ``(*, 3)``,
+``(*, 2)`` and any shape. They are not ``torch.Tensor`` subclasses: ``v.data`` is the wrapped tensor. Torch
+functions, tensor methods and operators accept a wrapper and wrap their result by the rule of
+:class:`~kornia.core.TensorWrapper`, while kornia functions that check for a tensor raise on one.
+
+Which class to use:
+
+- 3D points, directions and normals: :class:`Vector3`. :class:`~kornia.geometry.plane.Hyperplane` takes its normal
+  as one, and :class:`~kornia.geometry.liegroup.So3` and :class:`~kornia.geometry.liegroup.Se3` map a ``Vector3`` to
+  a ``Vector3``.
+- 2D points and directions: :class:`Vector2`. :class:`~kornia.geometry.liegroup.So2` and
+  :class:`~kornia.geometry.liegroup.Se2` map a ``Vector2`` to a ``Vector2``, and the camera models of
+  ``kornia.sensors.camera`` (:class:`~kornia.sensors.camera.CameraModelBase`) project a ``Vector3`` to one.
+- One value per vector, such as a dot product or the offset of a plane: :class:`Scalar`.
+- Points for kornia's tensor functions, such as :func:`~kornia.geometry.linalg.transform_points`: plain ``(*, 3)``
+  or ``(*, 2)`` tensors, or ``v.data``.
+"""
+
 from typing import Optional, Tuple, Union, cast
 
 import torch
@@ -29,10 +49,17 @@ __all__ = ["Scalar", "Vector2", "Vector3"]
 
 # TODO: implement more functionality to validate
 class Scalar(TensorWrapper):
-    """Wrap a tensor of scalars of any shape, such as the per-vector result of :meth:`Vector3.dot`.
+    """Wrap a tensor of scalars of any shape, such as dot products and plane offsets.
 
-    The tensor is wrapped without a copy. An operation between a ``Scalar`` and a :class:`Vector3` follows the
-    rule of :class:`~kornia.core.TensorWrapper`, so ``s * v`` is a ``Vector3`` like ``v * s``.
+    ``s = Scalar(values)`` wraps a tensor of any shape without copying it; it adds no methods, and ``s.data`` is the
+    tensor. :meth:`Vector3.dot` and :meth:`Vector3.squared_norm` return one, and
+    :class:`~kornia.geometry.plane.Hyperplane` takes its offset as one and returns its distances as one. An operation
+    between a ``Scalar`` and a :class:`Vector3` follows the rule of :class:`~kornia.core.TensorWrapper`, so ``s * v``
+    is a ``Vector3`` like ``v * s``.
+
+    See Also:
+        - :class:`Vector3`: 3D vectors ``(*, 3)``, whose dot products and squared norms come back as a ``Scalar``.
+        - :class:`Vector2`: 2D vectors ``(*, 2)``, likewise.
     """
 
     def __init__(self, data: torch.Tensor) -> None:
@@ -40,12 +67,21 @@ class Scalar(TensorWrapper):
 
 
 class Vector3(TensorWrapper):
-    r"""Wrap a tensor of 3D vectors, shape ``(*, 3)``.
+    r"""Wrap a ``(*, 3)`` tensor of 3D vectors, with coordinates, dot products and normalisation.
+
+    ``v = Vector3(points)`` wraps a ``(*, 3)`` tensor without copying it, and ``Vector3.from_coords(x, y, z)`` and
+    ``Vector3.random(shape)`` build one; ``v.x``, ``v.y`` and ``v.z`` are plain ``(*)`` tensors, ``v.dot(w)`` and
+    ``v.squared_norm()`` return a :class:`Scalar` ``(*)``, and ``v.normalized()`` the unit vectors, with the norm
+    floored at ``1e-12``. A ``Vector3`` is not a ``torch.Tensor``: torch functions, tensor methods and operators
+    accept it (``torch.linalg.cross(v, w)`` is a ``Vector3``), but a kornia function that checks for a tensor, such
+    as :func:`~kornia.geometry.linalg.transform_points`, raises, so pass it ``v.data``. For 2D vectors, use
+    :class:`Vector2` instead.
 
     Convention:
-        - The tensor is wrapped without a copy; any leading shape and dtype are accepted. :attr:`x`, :attr:`y` and
-          :attr:`z` are plain tensors of the leading shape ``(*)``, and :meth:`dot` and :meth:`squared_norm`
-          return a :class:`Scalar` of that shape (for :meth:`dot`, the two operands' broadcast leading shape).
+        - The tensor is wrapped without a copy; any leading shape and dtype are accepted, and a last axis other than
+          3 raises ``BaseError``. :attr:`x`, :attr:`y` and :attr:`z` are plain tensors of the leading shape ``(*)``,
+          and :meth:`dot` and :meth:`squared_norm` return a :class:`Scalar` of that shape (for :meth:`dot`, the two
+          operands' broadcast leading shape).
         - :meth:`random` draws vectors uniformly in the unit cube from torch's global generator, so every vector
           lies in the first octant: it is not a random direction.
         - ``copy.deepcopy``, ``copy.copy`` and pickle return a ``Vector3``. An in-place operator such as ``v += 1``
@@ -59,6 +95,18 @@ class Vector3(TensorWrapper):
         - Indexing the leading axes returns a ``Vector3`` (``v[0]``, ``v[1:]``, ``v[mask]``). An index into the
           coordinate axis returns a plain tensor, like the same index into the wrapped tensor: ``v[..., 0]`` and
           ``v[:, 0]`` have the leading shape, and an unbatched ``v[0]`` is 0-d.
+
+    See Also:
+        - :class:`Vector2`: the 2D vector ``(*, 2)``, with ``x`` and ``y`` only.
+        - :class:`Scalar`: the wrapper for one value per vector, which :meth:`dot` and :meth:`squared_norm` return.
+        - :class:`~kornia.core.TensorWrapper`: the base class, whose rule decides which results stay a ``Vector3``.
+
+    Example:
+        >>> v = Vector3.from_coords(3.0, 0.0, 4.0)
+        >>> v.normalized().data
+        tensor([0.6000, 0.0000, 0.8000])
+        >>> v.dot(Vector3(torch.tensor([1.0, 1.0, 1.0]))).data
+        tensor(7.)
     """
 
     _WIDTH = 3
@@ -175,15 +223,15 @@ class Vector3(TensorWrapper):
         """Construct a 3D vector wrapper from x, y, and z coordinates.
 
         All coordinate inputs must share the same Python type (all floats or
-        all tensors). For tensor inputs, coordinates are stacked along the last
-        dimension to produce ``(..., 3)`` output.
+        all tensors); Python ints raise, so write ``1.0``. For tensor inputs, coordinates are
+        stacked along the last dimension to produce ``(..., 3)`` output.
 
         Args:
             x: X-coordinate value or tensor.
             y: Y-coordinate value or tensor.
             z: Z-coordinate value or tensor.
-            device: Device used when scalar inputs are converted to tensor.
-            dtype: Dtype used when scalar inputs are converted to tensor.
+            device: Device used when scalar inputs are converted to tensor; ignored for tensors.
+            dtype: Dtype used when scalar inputs are converted to tensor; ignored for tensors.
 
         Returns:
             :class:`Vector3` containing the assembled coordinates.
@@ -198,10 +246,19 @@ class Vector3(TensorWrapper):
 
 
 class Vector2(TensorWrapper):
-    r"""Wrap a tensor of 2D vectors, shape ``(*, 2)``.
+    r"""Wrap a ``(*, 2)`` tensor of 2D vectors, with coordinates, dot products and normalisation.
+
+    ``v = Vector2(points)`` wraps a ``(*, 2)`` tensor without copying it, and ``Vector2.from_coords(x, y)`` and
+    ``Vector2.random(shape)`` build one; ``v.x`` and ``v.y`` are plain ``(*)`` tensors, ``v.dot(w)`` and
+    ``v.squared_norm()`` return a :class:`Scalar` ``(*)``, and ``v.normalized()`` the unit vectors, with the norm
+    floored at ``1e-12``. For 3D vectors, use :class:`Vector3` instead.
 
     See the Convention block on :class:`Vector3`, which applies to ``(x, y)`` vectors; :meth:`random` fills the
     unit square.
+
+    See Also:
+        - :class:`Vector3`: the 3D vector ``(*, 3)``, whose conventions apply here.
+        - :class:`Scalar`: the wrapper for one value per vector, which :meth:`dot` and :meth:`squared_norm` return.
     """
 
     _WIDTH = 2
@@ -289,14 +346,14 @@ class Vector2(TensorWrapper):
         """Construct a 2D vector wrapper from x and y coordinates.
 
         Both coordinates must share the same Python type (both floats or both
-        tensors). For tensor inputs, coordinates are stacked along the last
-        dimension to produce ``(..., 2)`` output.
+        tensors); Python ints raise, so write ``1.0``. For tensor inputs, coordinates are
+        stacked along the last dimension to produce ``(..., 2)`` output.
 
         Args:
             x: X-coordinate value or tensor.
             y: Y-coordinate value or tensor.
-            device: Device used when scalar inputs are converted to tensor.
-            dtype: Dtype used when scalar inputs are converted to tensor.
+            device: Device used when scalar inputs are converted to tensor; ignored for tensors.
+            dtype: Dtype used when scalar inputs are converted to tensor; ignored for tensors.
 
         Returns:
             :class:`Vector2` containing the assembled coordinates.

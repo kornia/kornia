@@ -15,6 +15,22 @@
 # limitations under the License.
 #
 
+"""Read and write point clouds as ASCII or binary PLY files of x, y, z vertices.
+
+The writers store one ``vertex`` per row of a channels-last ``(*, 3)`` tensor, with only the ``double`` properties
+``x``, ``y`` and ``z``. The readers parse the PLY header, read the ``x``, ``y`` and ``z`` of the ``vertex`` element
+whatever their scalar type, skip other vertex properties such as normals and colours and other elements such as
+faces (each reader says which ``list`` properties it rejects), and return a float32 ``(N, 3)`` tensor on the CPU.
+Every function takes a ``str`` or ``os.PathLike[str]`` ending in ``.ply``.
+
+Which function to use:
+
+- A text file: :func:`save_pointcloud_ply` writes one, :func:`load_pointcloud_ply` reads one.
+- A binary file: :func:`save_pointcloud_ply_binary` writes one in little-endian float64, 24 bytes per point, and
+  :func:`load_pointcloud_ply_binary` reads one in either byte order and with any PLY scalar type.
+- The points of a depth map, to write: :func:`~kornia.geometry.depth.depth_to_3d_v2` returns them channels-last.
+"""
+
 from __future__ import annotations
 
 import array
@@ -35,7 +51,13 @@ __all__ = [
 
 
 def save_pointcloud_ply(filename: str | os.PathLike[str], pointcloud: torch.Tensor) -> None:
-    r"""Save to disk a pointcloud in ASCII PLY format.
+    r"""Write a point cloud to an ASCII PLY file as double-precision x, y, z vertices.
+
+    ``save_pointcloud_ply(filename, pointcloud)`` writes the points of a channels-last tensor ``(*, 3)`` with at least
+    two dimensions, on any device, to a text PLY file, replacing any existing file, and returns ``None``. The file
+    holds the coordinates only: no normals, colours or faces. Read it back with :func:`load_pointcloud_ply`, which
+    returns float32, so float64 coordinates come back rounded to float32; for a binary file, use
+    :func:`save_pointcloud_ply_binary` instead.
 
     Convention:
         - The file holds one ``vertex`` per row of ``pointcloud.reshape(-1, 3)``, in order and with none dropped,
@@ -51,6 +73,16 @@ def save_pointcloud_ply(filename: str | os.PathLike[str], pointcloud: torch.Tens
         filename: path of the ``.ply`` file to write, a ``str`` or ``os.PathLike[str]``.
         pointcloud: tensor of shape ``(*, 3)`` with at least two dimensions, where the last dimension is the
           point :math:`(X, Y, Z)`.
+
+    Raises:
+        TypeError: if ``filename`` is not a ``str`` or ``os.PathLike[str]`` ending in ``.ply``, if ``pointcloud`` is
+            not a tensor, or if it has fewer than two dimensions or a last dimension other than 3.
+
+    See Also:
+        - :func:`load_pointcloud_ply`: reads the file back, as a float32 ``(N, 3)`` tensor.
+        - :func:`save_pointcloud_ply_binary`: writes the same vertices as little-endian float64 instead of text.
+        - :func:`~kornia.geometry.depth.depth_to_3d_v2`: returns the channels-last ``(*, H, W, 3)`` points of a
+          depth map, ready to write.
     """
     filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
@@ -93,7 +125,12 @@ def save_pointcloud_ply(filename: str | os.PathLike[str], pointcloud: torch.Tens
 
 
 def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: torch.Tensor) -> None:
-    r"""Save to disk a pointcloud in binary PLY format.
+    r"""Write a point cloud to a little-endian binary PLY file as float64 x, y, z vertices.
+
+    ``save_pointcloud_ply_binary(filename, pointcloud)`` writes the points of a channels-last tensor ``(*, 3)`` with
+    at least two dimensions, on any device, to a ``binary_little_endian`` PLY file, 24 bytes per point,
+    replacing any existing file, and returns ``None``. Read it back with :func:`load_pointcloud_ply_binary`; for a
+    text file, use :func:`save_pointcloud_ply` instead.
 
     See the Convention block on :func:`save_pointcloud_ply`; the payload is little-endian float64.
 
@@ -101,6 +138,14 @@ def save_pointcloud_ply_binary(filename: str | os.PathLike[str], pointcloud: tor
         filename: path of the ``.ply`` file to write, a ``str`` or ``os.PathLike[str]``.
         pointcloud: tensor of shape ``(*, 3)`` with at least two dimensions, where the last dimension is the
           point :math:`(X, Y, Z)`.
+
+    Raises:
+        TypeError: if ``filename`` is not a ``str`` or ``os.PathLike[str]`` ending in ``.ply``, if ``pointcloud`` is
+            not a tensor, or if it has fewer than two dimensions or a last dimension other than 3.
+
+    See Also:
+        - :func:`load_pointcloud_ply_binary`: reads the file back, as a float32 ``(N, 3)`` tensor.
+        - :func:`save_pointcloud_ply`: writes the same vertices as text instead.
     """
     filename = os.fspath(filename)
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
@@ -281,7 +326,12 @@ def _check_ply_filename(filename: str) -> None:
 
 
 def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
-    r"""Load from disk a pointcloud in ASCII PLY format.
+    r"""Read the x, y, z vertices of an ASCII PLY file into a float32 ``(N, 3)`` tensor.
+
+    ``points = load_pointcloud_ply(filename)`` reads an ASCII PLY file and returns the ``x``, ``y`` and ``z`` of its
+    ``N`` vertices as a float32 ``(N, 3)`` tensor on the CPU, so a float64 cloud written by
+    :func:`save_pointcloud_ply` comes back rounded to float32. For a binary PLY file, use
+    :func:`load_pointcloud_ply_binary` instead.
 
     The header is parsed up to ``end_header``; the number of points comes from the
     ``element vertex N`` declaration and the coordinates from the ``x``, ``y`` and ``z``
@@ -291,11 +341,23 @@ def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[
 
     Args:
         filename: path of an existing ``.ply`` file, a ``str`` or ``os.PathLike[str]``.
-        header_size: deprecated and ignored; the header is parsed instead of skipped.
+        header_size: deprecated and ignored, with a ``DeprecationWarning`` when given; the header is parsed instead
+            of skipped.
 
     Return:
         tensor containing the loaded points with shape ``(N, 3)`` in ``float32``, where
         :math:`N` is the declared vertex count.
+
+    Raises:
+        TypeError: if ``filename`` is not a ``str`` or ``os.PathLike[str]`` ending in ``.ply``.
+        ValueError: if the file does not exist or does not start with a well-formed PLY header; if it is a binary
+            PLY file; if it has no ``vertex`` element, no ``x``, ``y`` or ``z`` vertex property, or a ``list`` vertex
+            property; or if the payload ends early, a vertex has fewer values than declared properties, or a
+            coordinate is not a number.
+
+    See Also:
+        - :func:`save_pointcloud_ply`: writes the ASCII files this function reads.
+        - :func:`load_pointcloud_ply_binary`: reads a binary PLY file, little- or big-endian.
     """
     filename = os.fspath(filename)
     _check_ply_filename(filename)
@@ -341,7 +403,12 @@ def load_pointcloud_ply(filename: str | os.PathLike[str], header_size: Optional[
 
 
 def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Optional[int] = None) -> torch.Tensor:
-    r"""Load from disk a pointcloud in binary PLY format.
+    r"""Read the x, y, z vertices of a big- or little-endian binary PLY file as ``(N, 3)``.
+
+    ``points = load_pointcloud_ply_binary(filename)`` reads a ``binary_little_endian`` or ``binary_big_endian`` PLY
+    file and returns the ``x``, ``y`` and ``z`` of its ``N`` vertices as a float32 ``(N, 3)`` tensor on the CPU, so a
+    float64 cloud written by :func:`save_pointcloud_ply_binary` comes back rounded to float32. For an ASCII PLY file,
+    use :func:`load_pointcloud_ply` instead.
 
     The header is parsed up to ``end_header``; the number of points comes from the
     ``element vertex N`` declaration and the coordinates from the ``x``, ``y`` and ``z``
@@ -353,11 +420,23 @@ def load_pointcloud_ply_binary(filename: str | os.PathLike[str], header_size: Op
 
     Args:
         filename: path of an existing ``.ply`` file, a ``str`` or ``os.PathLike[str]``.
-        header_size: deprecated and ignored; the header is parsed instead of skipped.
+        header_size: deprecated and ignored, with a ``DeprecationWarning`` when given; the header is parsed instead
+            of skipped.
 
     Return:
         tensor containing the loaded points with shape ``(N, 3)`` in ``float32``, where
         :math:`N` is the declared vertex count.
+
+    Raises:
+        TypeError: if ``filename`` is not a ``str`` or ``os.PathLike[str]`` ending in ``.ply``.
+        ValueError: if the file does not exist or does not start with a well-formed PLY header; if it is an ASCII
+            PLY file; if it has no ``vertex`` element or no ``x``, ``y`` or ``z`` vertex property; if a ``list``
+            property is among the vertex properties or in an element before them; or if fewer bytes follow the
+            header than the vertices need.
+
+    See Also:
+        - :func:`save_pointcloud_ply_binary`: writes the little-endian files this function reads.
+        - :func:`load_pointcloud_ply`: reads an ASCII PLY file.
     """
     filename = os.fspath(filename)
     _check_ply_filename(filename)
