@@ -829,7 +829,8 @@ class TestConventionsXFeat(BaseTester):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
         # maps (#5810), and torch 2.5.1 has no such kernel. XFeat's InterpolateSparse2d, ALIKED (DKD scores and SDDH
         # descriptors) and SOLD2.match call it with the half map and grid directly;
-        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead.
+        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead, and so does
+        # ALIKED's deformable convolution without autograd (#6464).
         if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
@@ -863,4 +864,5 @@ class TestConventionsXFeat(BaseTester):
                 maps = torch.rand(2, 1, 128, 24, 32, dtype=dtype)
                 SOLD2(pretrained=False).eval().match(segments, segments + 1.0, maps[0], maps[1])
         assert calls
-        assert set(calls) == {(dtype, dtype)}
+        expected = {(dtype, dtype), (torch.float32, torch.float32)} if sampler == "ALIKED" else {(dtype, dtype)}
+        assert set(calls) == expected

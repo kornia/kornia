@@ -62,7 +62,7 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.epipolar import normalize_points, normalize_transformation
 from kornia.geometry.epipolar._metrics import _shares_points
 from kornia.geometry.epipolar.fundamental import _robust_loss
-from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero, transform_points
+from kornia.geometry.linalg import _inf_where, _nonzero, _sqrt_or_zero
 from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 __all__ = [
@@ -347,6 +347,8 @@ def line_segment_transfer_error_one_way(
         - Argument order and direction as :func:`oneway_transfer_error`.
         - The image-2 line is scaled to unit :math:`(a, b)`, so the error is the mean perpendicular distance of
           the two mapped endpoints, in pixels.
+        - An endpoint that ``H`` maps to infinity (:math:`w' = 0`) gives the segment the error ``inf``, as in
+          :func:`oneway_transfer_error`, unless the image-2 segment has zero length; a NaN input stays NaN.
 
     Args:
         ls1: line segment correspondences from the left images with shape
@@ -370,24 +372,51 @@ def line_segment_transfer_error_one_way(
     B, N = ls1.shape[:2]
     ps1, pe1 = torch.chunk(ls1, dim=2, chunks=2)
     ps2, pe2 = torch.chunk(ls2, dim=2, chunks=2)
-    ps2_h = convert_points_to_homogeneous(ps2)
-    pe2_h = convert_points_to_homogeneous(pe2)
+    # The line and the distances are computed in a dtype that holds every input, and at least float32: none of H,
+    # ls1 and ls2 loses precision, and in half precision neither the line's constant term, of order (pixel
+    # coordinate)**2, nor H @ p overflows or rounds away. They are returned in the segments' dtype, as
+    # transform_points returned the mapped points in theirs.
+    out_dtype = torch.promote_types(ls1.dtype, ls2.dtype)
+    work_dtype = torch.promote_types(torch.promote_types(H.dtype, out_dtype), torch.float32)
+    H_work = H.to(work_dtype)
+    ps2_h = convert_points_to_homogeneous(ps2).to(work_dtype)
+    pe2_h = convert_points_to_homogeneous(pe2).to(work_dtype)
     ln2 = torch.linalg.cross(ps2_h, pe2_h, dim=3)
     # Scale the image-2 line to a unit (a, b) so the error is a perpendicular distance in pixels, not that
     # distance times the image-2 segment length (#4867). A zero-length segment defines no line; as before the
     # fix its error reads as zero, and the callers that need infinity guard on the segment length themselves.
     scale = ln2[..., :, :2].norm(dim=-1, keepdim=True)
-    ln2 = ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))
-    # Pass (B, N, 2) points so transform_points applies each H once; (B, N, 1, 2) points are flattened to
-    # (B*N, 1, 2) and every H is repeated N times.
-    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1.squeeze(-2))).unsqueeze(-2)
-    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1.squeeze(-2))).unsqueeze(-2)
-    er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
-    er_end1 = (ln2 @ pe1_in2.transpose(-2, -1)).view(B, N).abs()
-    error = 0.5 * (er_st1 + er_end1)
+    # Squeeze rather than view(B, N, ...): ls2 may have a batch of 1 against the batch of ls1 and H.
+    ln2 = (ln2 / torch.where(scale > 0, scale, torch.ones_like(scale))).squeeze(-2)
+    has_line = scale[..., 0, 0] > 0
+
+    distance_start, singular_start = _line_endpoint_distance(ps1.view(B, N, 2), H_work, ln2)
+    distance_end, singular_end = _line_endpoint_distance(pe1.view(B, N, 2), H_work, ln2)
+    # Average and square in the working dtype, then cast: two float16 distances of 32768 have a representable mean
+    # but a sum past the float16 maximum.
+    error = 0.5 * (distance_start + distance_end)
     if squared:
         error = error**2
-    return error
+    # Set inf after squaring so no gradient flows through the inf, not even to the other, finite endpoint; a NaN
+    # from the other endpoint stays NaN. A zero-length image-2 segment defines no line and keeps reading 0.
+    singular = (singular_start | singular_end) & has_line & ~error.isnan()
+    return _inf_where(error, singular).to(out_dtype)
+
+
+def _line_endpoint_distance(
+    points: torch.Tensor, H: torch.Tensor, line: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the distances ``(B, N)`` of ``H``-mapped ``points`` from the unit image-2 ``line``, and ``w' == 0``.
+
+    Maps without the OpenCV-style dehomogenization of :func:`transform_points`, which returns the numerator unchanged
+    for ``|w'| <= 1e-8``: a point mapped to infinity (``w' = 0``) is singular, as in :func:`oneway_transfer_error`
+    (#4881). The distance is ``|l . (x', y', w')| / |w'|``, so no mapped coordinate is formed that could overflow.
+    """
+    # A caller's autocast region would run the matrix product in half precision.
+    with _autocast_disabled(H.device.type):
+        mapped = convert_points_to_homogeneous(points).to(H.dtype) @ H.transpose(-2, -1)
+    w = mapped[..., 2]
+    return ((mapped * line).sum(-1) / _nonzero(w)).abs(), w == 0
 
 
 def _line_segment_squared_distance_one_way(ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor) -> torch.Tensor:
@@ -1068,9 +1097,7 @@ def find_homography_lines_dlt_iterated(
 
     Returns:
         the computed homography matrix with shape ``(B, 3, 3)``. A batch element is NaN when one of its
-        solves is, as in :func:`find_homography_lines_dlt`. In float16, segments with coordinates in the hundreds
-        of pixels overflow the re-weighting distances of :func:`line_segment_transfer_error_one_way` and give NaN
-        this way.
+        solves is, as in :func:`find_homography_lines_dlt`.
 
     Raises:
         AssertionError: if fewer than four segments are given, as in :func:`find_homography_lines_dlt`.
