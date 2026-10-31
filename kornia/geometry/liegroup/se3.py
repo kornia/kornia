@@ -34,6 +34,26 @@ from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
 
+def _check_se3_r_t_shape(r: Quaternion | So3, t: torch.Tensor) -> None:
+    q = r.q if isinstance(r, So3) else r
+    r_shape = q.data.shape
+    r_batch = r_shape[:-1]
+    t_batch = t.shape[:-1]
+    if len(r_batch) == 0 and len(t_batch) == 0:
+        return
+    if len(r_batch) > 0 and len(t_batch) > 0:
+        try:
+            torch.broadcast_shapes(r_batch, t_batch)
+            return
+        except RuntimeError:
+            raise ValueError(f"Incompatible rotation shape {r_shape} and translation shape {t.shape}.") from None
+    if (len(r_batch) == 0 and t_batch == (1,)) or (r_batch == (1,) and len(t_batch) == 0):
+        return
+    raise ValueError(
+        f"Incompatible rotation shape {r_shape} and translation shape {t.shape}: both must be batched or unbatched."
+    )
+
+
 def _check_se3_r_t_dtype_device(r: Quaternion | So3, t: torch.Tensor) -> None:
     """Reject a translation the rotation's methods cannot combine with: another dtype or another device."""
     q = r.q if isinstance(r, So3) else r
@@ -138,6 +158,7 @@ class Se3(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector3) else translation
         KORNIA_CHECK_SHAPE(_t_data, ["*", "3"])
+        _check_se3_r_t_shape(rotation, _t_data)
         _check_se3_r_t_dtype_device(rotation, _t_data)
         self._translation: torch.Tensor
         self._rotation: So3
@@ -383,7 +404,14 @@ class Se3(nn.Module):
                     [0., 0., 0., 1.]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t[..., None]), -1)
+        r_matrix = self.r.matrix()
+        b_batch = torch.broadcast_shapes(r_matrix.shape[:-2], self.t.shape[:-1])
+        if r_matrix.shape[:-2] != b_batch:
+            r_matrix = r_matrix.expand(b_batch + (3, 3))
+        t = self.t.to(r_matrix.dtype)
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (3,))
+        rt = torch.cat((r_matrix, t[..., None]), -1)
         rt_4x4 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4

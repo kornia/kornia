@@ -923,3 +923,33 @@ class TestSe2(BaseTester):
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         pose = Se2.identity(batch_size, device, dtype)
         assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape
+
+    def test_se2_batch_validation(self, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Incompatible batch sizes (mismatched batches)
+        r_batched = So2.identity(2, device=device, dtype=dtype)
+        t_mismatched = torch.zeros(3, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"torch\.Size\(\[2\]\).*torch\.Size\(\[3, 2\]\)"):
+            Se2(r_batched, t_mismatched)
+
+        # Unbatched translation with batched rotation
+        t_unbatched = torch.zeros(2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"both must be batched or unbatched"):
+            Se2(r_batched, t_unbatched)
+
+        # Unbatched rotation with batched translation
+        r_unbatched = So2.identity(None, device=device, dtype=dtype)
+        t_batched = torch.zeros(2, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"both must be batched or unbatched"):
+            Se2(r_unbatched, t_batched)
+
+        # Valid inputs must continue to be preserved
+        s_unbatched = Se2(r_unbatched, t_unbatched)
+        assert s_unbatched.matrix().shape == (3, 3)
+
+        s_batched = Se2(r_batched, t_batched)
+        assert s_batched.matrix().shape == (2, 3, 3)
+
+        s_bcast = Se2(So2.identity(1, device=device, dtype=dtype), torch.zeros(2, 2, device=device, dtype=dtype))
+        assert s_bcast.matrix().shape == (2, 3, 3)

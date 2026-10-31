@@ -538,14 +538,20 @@ class Quaternion(nn.Module):
         return cls(data)
 
     @classmethod
-    def from_coeffs(cls, w: float, x: float, y: float, z: float) -> "Quaternion":
+    def from_coeffs(
+        cls,
+        w: Union[float, torch.Tensor],
+        x: Union[float, torch.Tensor],
+        y: Union[float, torch.Tensor],
+        z: Union[float, torch.Tensor],
+    ) -> "Quaternion":
         """Create a quaternion from the data coefficients.
 
         Args:
-            w: a float representing the :math:`q_w` component.
-            x: a float representing the :math:`q_x` component.
-            y: a float representing the :math:`q_y` component.
-            z: a float representing the :math:`q_z` component.
+            w: a float or tensor representing the :math:`q_w` component.
+            x: a float or tensor representing the :math:`q_x` component.
+            y: a float or tensor representing the :math:`q_y` component.
+            z: a float or tensor representing the :math:`q_z` component.
 
         Example:
             >>> q = Quaternion.from_coeffs(1., 0., 0., 0.)
@@ -553,7 +559,55 @@ class Quaternion(nn.Module):
             tensor([1., 0., 0., 0.])
 
         """
-        return cls(torch.tensor([w, x, y, z]))
+        coeffs = (w, x, y, z)
+        tensor_coeffs = [c for c in coeffs if isinstance(c, torch.Tensor)]
+
+        if not tensor_coeffs:
+            data = torch.tensor(coeffs)
+            if not data.is_floating_point():
+                data = data.to(torch.get_default_dtype())
+            return cls(data)
+
+        target_device = tensor_coeffs[0].device
+        for t in tensor_coeffs[1:]:
+            if t.device != target_device:
+                devices = [c.device for c in tensor_coeffs]
+                raise ValueError(f"Tensor coefficients must be on the same device, got {devices}")
+
+        target_dtype = None
+        for t in tensor_coeffs:
+            if t.is_floating_point():
+                if target_dtype is None:
+                    target_dtype = t.dtype
+                elif t.dtype != target_dtype:
+                    dtypes = [c.dtype for c in tensor_coeffs]
+                    raise ValueError(f"Tensor coefficients must have matching floating-point dtypes, got {dtypes}")
+        if target_dtype is None:
+            target_dtype = torch.get_default_dtype()
+
+        try:
+            common_shape = torch.broadcast_shapes(*(t.shape for t in tensor_coeffs))
+        except RuntimeError:
+            raise ValueError(
+                f"Tensor coefficients have incompatible shapes: {[t.shape for t in tensor_coeffs]}"
+            ) from None
+
+        tensors = []
+        for c in coeffs:
+            if isinstance(c, torch.Tensor):
+                if not c.is_floating_point():
+                    c = c.to(dtype=target_dtype)
+                if c.shape != common_shape:
+                    c = c.expand(common_shape)
+                tensors.append(c)
+            else:
+                c_tensor = torch.as_tensor(c, device=target_device, dtype=target_dtype)
+                if common_shape:
+                    c_tensor = c_tensor.expand(common_shape)
+                tensors.append(c_tensor)
+
+        data = torch.stack(tensors, dim=-1)
+        return cls(data)
 
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
@@ -730,7 +784,7 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
 
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).
-        w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
+        w (torch.Tensor, optional): Weights of shape (M,) or (M, 1). If None, uniform weights are used.
 
 
     Returns:
@@ -746,9 +800,11 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     if w is None:
         A = (data.T @ data) / M
     else:
+        if w.shape == (M, 1):
+            w = w.squeeze(-1)
+        elif w.shape != (M,):
+            raise ValueError(f"weights shape {tuple(w.shape)} must be ({M},) or ({M}, 1)")
         w = w.to(data.device, dtype=data.dtype)
-        if w.numel() != M:
-            raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
         if bool((w < 0).any()):
             raise ValueError("weights must be non-negative")
         w_sum = w.sum()

@@ -34,17 +34,25 @@ from kornia.geometry.vector import Vector2
 
 
 def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
-    z_shape = r.z.shape
-    if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
-        # check_se2_t_shape
-        is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
-        is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
-        if not (is_batch_shape or is_single_shape):
-            raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t.shape}")
-    else:
-        raise ValueError(
-            f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
-        )
+    is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
+    is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
+    if not (is_batch_shape or is_single_shape):
+        raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t.shape}")
+    r_batch = r.z.shape
+    t_batch = t.shape[:-1]
+    if len(r_batch) == 0 and len(t_batch) == 0:
+        return
+    if len(r_batch) == 1 and len(t_batch) == 1:
+        try:
+            torch.broadcast_shapes(r_batch, t_batch)
+            return
+        except RuntimeError:
+            raise ValueError(f"Incompatible rotation shape {r.z.shape} and translation shape {t.shape}.") from None
+    if (len(r_batch) == 0 and t_batch == (1,)) or (r_batch == (1,) and len(t_batch) == 0):
+        return
+    raise ValueError(
+        f"Incompatible rotation shape {r.z.shape} and translation shape {t.shape}: both must be batched or unbatched."
+    )
 
 
 def _check_se2_r_t_dtype_device(r: So2, t: torch.Tensor) -> None:
@@ -397,7 +405,13 @@ class Se2(nn.Module):
 
         """
         r_matrix = self.r.matrix()
-        rt = torch.cat((r_matrix, self.t.to(r_matrix.dtype)[..., None]), -1)
+        b_batch = torch.broadcast_shapes(r_matrix.shape[:-2], self.t.shape[:-1])
+        if r_matrix.shape[:-2] != b_batch:
+            r_matrix = r_matrix.expand(b_batch + (2, 2))
+        t = self.t.to(r_matrix.dtype)
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (2,))
+        rt = torch.cat((r_matrix, t[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
