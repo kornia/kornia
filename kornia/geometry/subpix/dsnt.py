@@ -27,7 +27,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, _check_async
 from kornia.core.utils import is_compiling
 from kornia.geometry.grid import create_meshgrid
 
@@ -49,20 +49,6 @@ def _check_positive_temperature(temperature: torch.Tensor | float) -> None:
     elif temperature > 0:
         return
     raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
-
-
-def _check_std_nonzero(std: torch.Tensor) -> None:
-    """Raise ``ValueError`` if any entry of ``std`` is zero.
-
-    A zero std makes the inverse variance infinite and the rendered Gaussian comes out all NaN, so the input is
-    rejected instead. The tensor is read only outside graph capture, as in :func:`_check_positive_temperature`.
-    """
-    # is_compiling is marked @torch.jit.unused and cannot run under TorchScript, so it is short-circuited there:
-    # TorchScript folds is_scripting at compile time and executes eagerly at runtime, where reading is fine.
-    if not torch.jit.is_scripting() and is_compiling():
-        return
-    if bool((std == 0).any()):
-        raise ValueError(f"std should be nonzero. Got: {std}")
 
 
 def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | float] = None) -> torch.Tensor:
@@ -194,7 +180,9 @@ def render_gaussian2d(
     if not (std.dtype == mean.dtype and std.device == mean.device):
         raise TypeError("Expected inputs to have the same dtype and device")
 
-    _check_std_nonzero(std)
+    # A zero std makes the inverse variance infinite, and the map comes out all NaN. The check runs where ``std``
+    # lives, so a device tensor is not read back on the host (see ``_check_async``).
+    _check_async((std != 0).all(), "std should be nonzero")
 
     height, width = size
     dtype = mean.dtype
