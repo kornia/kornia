@@ -1107,31 +1107,28 @@ class TestAffine2d(BaseTester):
         with pytest.raises(RuntimeError):
             kornia.geometry.transform.affine(image, matrix)
 
-    @pytest.mark.parametrize("unbatched_image", [False, True])
-    def test_function_rejects_unbatched_matrix_6462(self, device, dtype, unbatched_image):
-        # A (2, 3) matrix was read as a batch of 2 and returned two copies of the image; it is rejected, as in
-        # warp_affine, and a (1, 2, 3) matrix still warps the image once.
-        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
-        image = image[0] if unbatched_image else image
-        matrix = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
-        with pytest.raises(ShapeError):
-            kornia.geometry.transform.affine(image, matrix)
-        out = kornia.geometry.transform.affine(image, matrix[None])
-        assert out.shape == ((2, 5, 7) if unbatched_image else (1, 2, 5, 7))
-
-    def test_function_rejects_unbatched_matrix_with_checks_disabled_6462(self, device, dtype):
-        # With checks disabled the shape check is skipped, but the (2, 3) matrix is not broadcast, so warp_affine
-        # still rejects it instead of returning two copies of the image.
-        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
-        matrix = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+    @pytest.mark.parametrize("image_shape", [(0, 2, 5, 7), (1, 2, 5, 7), (2, 5, 7), (3, 2, 5, 7)])
+    @pytest.mark.parametrize("checks", [True, False])
+    def test_function_shares_unbatched_matrix_6462(self, device, dtype, image_shape, checks):
+        # A (2, 3) matrix serves every image, as (1, 2, 3) does. Read as a batch of 2, it used to warp one image,
+        # (1, C, H, W) or (C, H, W), twice; with checks disabled too, since the unbatched matrix is not a check.
+        image = torch.rand(image_shape, device=device, dtype=dtype)
+        matrix = torch.tensor([[0.9, 0.2, 1.0], [-0.1, 1.1, -0.5]], device=device, dtype=dtype)
         was_enabled = are_checks_enabled()
-        disable_checks()
+        if not checks:
+            disable_checks()
         try:
-            with pytest.raises(ValueError, match="Bx2x3"):
-                kornia.geometry.transform.affine(image, matrix)
+            out = kornia.geometry.transform.affine(image, matrix)
         finally:
             if was_enabled:
                 enable_checks()
+        assert out.shape == image.shape
+        self.assert_close(out, kornia.geometry.transform.affine(image, matrix[None]), atol=0, rtol=0)
+
+    def test_function_rejects_matrix_of_other_rank(self, device, dtype):
+        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.affine(image, torch.ones(1, 1, 2, 3, device=device, dtype=dtype))
 
     def test_affine_no_args(self):
         with pytest.raises(RuntimeError):
