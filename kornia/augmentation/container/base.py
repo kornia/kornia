@@ -24,6 +24,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.helpers import _IMAGE_SHAPES, _VOLUME_SHAPES, _raise_input_rank_error
 from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -211,11 +212,15 @@ class SequentialBase(BasicSequentialBase):
     def autofill_dim(self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
         """Fill torch.Tensor dim to the upper bound of dim_range.
 
-        If input torch.Tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
+        A rank outside ``dim_range`` raises :class:`~kornia.core.exceptions.InputRankError` with the message an
+        augmentation itself gives for that input (#4424).
         """
         ori_shape = input.shape
         if len(ori_shape) < dim_range[0] or len(ori_shape) > dim_range[1]:
-            raise RuntimeError(f"input shape expected to be in {dim_range} while got {ori_shape}.")
+            accepted = {(2, 4): _IMAGE_SHAPES, (3, 5): _VOLUME_SHAPES}.get(
+                tuple(dim_range), f"{dim_range[0]} to {dim_range[1]} dimensions"
+            )
+            _raise_input_rank_error(ori_shape, accepted)
         while len(input.shape) < dim_range[1]:
             input = input[None]
         return ori_shape, input.shape
@@ -278,9 +283,18 @@ class ImageSequentialBase(SequentialBase):
         Returns:
             Transformed tensor.
         """
+        if not is_exporting():
+            self._sequence_matrices: List[Optional[torch.Tensor]] = []
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            if not is_exporting():
+                if isinstance(module, K.AugmentationSequential):
+                    # A repeated child can replace or mutate its matrix on the next invocation.
+                    matrix = module.transform_matrix
+                    self._sequence_matrices.append(None if matrix is None else matrix.clone())
+                elif type(module) is K.ImageSequential:
+                    self._sequence_matrices.extend(module._sequence_matrices)
         return input
 
     def inverse_inputs(

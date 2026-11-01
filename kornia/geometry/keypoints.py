@@ -53,6 +53,8 @@ class Keypoints:
         - The constructor and :meth:`from_tensor` wrap a floating-point tensor without copying it. :meth:`pad`,
           :meth:`unpad`, item assignment and ``index_put(inplace=True)`` write into the stored tensor, so they
           change the caller's tensor; call :meth:`clone` first to keep it.
+        - Integer indexing selects one batch for batched input, or one point with shape ``(1, 2)`` for unbatched
+          input. Scalar integer tensors follow the same rule.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
 
@@ -86,7 +88,11 @@ class Keypoints:
         self._data = keypoints
 
     def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "Keypoints":
-        return type(self)(self._data[key], False)
+        data = self._data[key]
+        if data.ndim == 1 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one point of unbatched keypoints: keep the point axis
+            data = data.unsqueeze(0)
+        return type(self)(data, False)
 
     def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "Keypoints":
         self._data[key] = value._data
@@ -297,6 +303,10 @@ class VideoKeypoints(Keypoints):
 
     Non-contiguous inputs are copied only when flattening requires it. Empty batches and point sets
     retain their shape on conversion back to a tensor; the temporal dimension must be nonzero.
+
+    Indexing and item assignment select whole videos on the video-batch axis, as for
+    :class:`~kornia.geometry.boxes.VideoBoxes`: ``vk[i]`` is a one-video :class:`VideoKeypoints` whose
+    :meth:`to_tensor` is ``(1, T, N, 2)``, and a boolean mask has length ``B``. Index frames with ``vk.data``.
     """
 
     temporal_channel_size: int
@@ -315,6 +325,36 @@ class VideoKeypoints(Keypoints):
         out = cls(boxes.reshape(boxes.size(0) * boxes.size(1), boxes.size(2), boxes.size(3)))
         out.temporal_channel_size = temporal_channel_size
         return out
+
+    def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "VideoKeypoints":
+        r"""Select videos while preserving the temporal axis, as :meth:`VideoBoxes.__getitem__` does.
+
+        An integer or scalar tensor keeps a singleton video-batch dimension. Slices, integer tensors, and boolean
+        tensors follow the corresponding PyTorch indexing behavior on the video-batch axis.
+        """
+        batch_size = self._data.shape[0] // self.temporal_channel_size
+        selected = self._data.view(batch_size, self.temporal_channel_size, *self._data.shape[1:])[key]
+        if selected.ndim == self._data.ndim:
+            selected = selected.unsqueeze(0)
+        out = type(self)(selected.flatten(0, 1), False)
+        out.temporal_channel_size = self.temporal_channel_size
+        return out
+
+    def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "VideoKeypoints":
+        r"""Write whole videos, selected by ``key`` on the video-batch axis as in :meth:`__getitem__`.
+
+        A :class:`VideoKeypoints` value must have the same ``temporal_channel_size``: otherwise its frames would be
+        regrouped into videos of another length.
+        """
+        size = self.temporal_channel_size
+        if isinstance(value, VideoKeypoints) and value.temporal_channel_size != size:
+            raise ValueError(
+                f"Cannot assign videos of {value.temporal_channel_size} frames to videos of {size} frames."
+            )
+        # Explicit video counts: a clip with no points has 0 elements, so a -1 in the view would be ambiguous.
+        n, m = self._data.shape[0] // size, value.data.shape[0] // size
+        self._data.view(n, size, *self._data.shape[1:])[key] = value.data.view(m, size, *value.data.shape[1:])
+        return self
 
     def to_tensor(self) -> torch.torch.Tensor:
         out = super().to_tensor(as_padded_sequence=False)
@@ -348,6 +388,8 @@ class Keypoints3D:
             it to ``float32``, or ``float64`` when that is the default dtype. Floating-point input keeps its dtype.
 
     Convention:
+        - Integer indexing selects one batch for batched input, or one point with shape ``(1, 3)`` for unbatched
+          input. Scalar integer tensors follow the same rule.
         - Known defects: list input and ``to_tensor(as_padded_sequence=True)`` raise ``NotImplementedError``;
           :meth:`pad` and :meth:`unpad` are deprecated and also raise it
           (`#5023 <https://github.com/kornia/kornia/issues/5023>`_).
@@ -382,7 +424,11 @@ class Keypoints3D:
         self._data = keypoints
 
     def __getitem__(self, key: Union[slice, int, torch.Tensor]) -> "Keypoints3D":
-        return type(self)(self._data[key], False)
+        data = self._data[key]
+        if data.ndim == 1 and not isinstance(key, tuple):
+            # an integer or 0-d integer tensor selects one point of unbatched keypoints: keep the point axis
+            data = data.unsqueeze(0)
+        return type(self)(data, False)
 
     def __setitem__(self, key: Union[slice, int, torch.Tensor], value: "Keypoints3D") -> "Keypoints3D":
         self._data[key] = value._data

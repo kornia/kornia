@@ -450,13 +450,13 @@ class TestTransplantationConventions(BaseTester):
         image, mask = _labelled_batch(batch=3, spatial=(4, 6))
         volume, volume_mask = _labelled_batch(batch=3, spatial=(3, 4, 6))
         # The 2D class on a volume raises.
-        with pytest.raises(RuntimeError, match="input shape expected to be in"):
+        with pytest.raises(RuntimeError, match="Input size must have a shape of either"):
             K.AugmentationSequential(K.RandomTransplantation(p=1.0), data_keys=["image", "mask"])(volume, volume_mask)
         # The 3D class on a 2D batch is rejected because the 4D shape is ambiguous.
         inner = K.RandomTransplantation3D(p=1.0)
         with pytest.raises(
             RuntimeError,
-            match=r"3D augmentations in AugmentationSequential expect input shape",
+            match=r"Input size must have a shape of either \(D, H, W\) or \(B, C, D, H, W\)",
         ):
             K.AugmentationSequential(inner, data_keys=["image", "mask"])(image, mask)
 

@@ -58,6 +58,9 @@ class TestSimilarity(BaseTester):
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             s = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
             assert s is not None
+            text = repr(s)
+            assert text.startswith("Similarity(angle = ")
+            assert ",\n shift=" in text
 
     @pytest.mark.parametrize(
         "height, width, expected",
@@ -111,6 +114,88 @@ class TestHomography(BaseTester):
     def test_repr(self, device, dtype):
         h = kornia.geometry.transform.Homography().to(device, dtype)
         assert h is not None
+
+
+class TestBaseModel(BaseTester):
+    def test_base_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="abstract"):
+            kornia.geometry.transform.BaseModel()
+
+    def test_abstract_contract(self):
+        assert kornia.geometry.transform.BaseModel.__abstractmethods__ == {"reset_model", "forward", "forward_inverse"}
+
+    @pytest.mark.parametrize("missing", ["reset_model", "forward", "forward_inverse"])
+    def test_subclass_missing_a_method_is_rejected(self, missing):
+        methods = {
+            "reset_model": lambda self: None,
+            "forward": lambda self: torch.eye(3)[None],
+            "forward_inverse": lambda self: torch.eye(3)[None],
+        }
+        del methods[missing]
+        incomplete = type("Incomplete", (kornia.geometry.transform.BaseModel,), methods)
+
+        with pytest.raises(TypeError, match=missing):
+            incomplete()
+
+    @pytest.mark.parametrize("model_cls", [Homography, Similarity])
+    def test_builtin_models_stay_concrete(self, model_cls):
+        model = model_cls()
+        assert isinstance(model, kornia.geometry.transform.BaseModel)
+        assert not getattr(model_cls, "__abstractmethods__", None)
+
+    def test_custom_model_with_registrator(self, device, dtype):
+        """Verify registration resets and invokes a custom model in both warp directions."""
+        # A complete BaseModel subclass is still an ordinary nn.Module: ImageRegistrator resets it, calls both of its
+        # transforms, optimizes its parameters and returns what it produces.
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip(f"torch has no {dtype} bilinear grid_sample kernel with backward on {device.type}")
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip(f"torch has no {dtype} reflection padding kernel on {device.type}")
+
+        calls = {"reset_model": 0, "forward": 0, "forward_inverse": 0}
+        shift_after_reset = 0.25
+
+        class Translation(kornia.geometry.transform.BaseModel):
+            def __init__(self) -> None:
+                super().__init__()
+                self.shift = torch.nn.Parameter(torch.zeros(2))
+
+            def _homography(self, sign: float) -> torch.Tensor:
+                homography = torch.eye(3, dtype=self.shift.dtype, device=self.shift.device)
+                homography[:2, 2] = sign * self.shift
+                return homography[None]
+
+            def reset_model(self) -> None:
+                calls["reset_model"] += 1
+                torch.nn.init.constant_(self.shift, shift_after_reset)
+
+            def forward(self) -> torch.Tensor:
+                calls["forward"] += 1
+                return self._homography(1.0)
+
+            def forward_inverse(self) -> torch.Tensor:
+                calls["forward_inverse"] += 1
+                return self._homography(-1.0)
+
+        model = Translation()
+        assert [name for name, _ in model.named_parameters()] == ["shift"]
+
+        ir = ImageRegistrator(
+            model, warper=kornia.geometry.transform.HomographyWarper, num_iterations=1, pyramid_levels=1
+        ).to(device, dtype)
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 16, 16).to(device, dtype)
+        result = ir.register(image, image)
+
+        assert result.shape == (1, 3, 3)
+        # register() resets the model once and fits it through both warp directions
+        assert calls["reset_model"] == 1
+        assert calls["forward"] >= 1
+        assert calls["forward_inverse"] >= 1
+        # the result is the custom model's own transform: reset to the sentinel shift, then moved by one optimizer step
+        # of learning rate 1e-3 at most
+        expected_shift = torch.full((2,), shift_after_reset, device=device, dtype=dtype)
+        self.assert_close(result.detach()[0, :2, 2], expected_shift, atol=0.05, rtol=0.0)
 
 
 class TestImageRegistrator(BaseTester):
@@ -284,6 +369,17 @@ class TestImageRegistrator(BaseTester):
         ir = ImageRegistrator("rotation", lr=0.1, num_iterations=60, pyramid_levels=1, tolerance=0.0).to(device, dtype)
         ir.register(scene(0.0), scene(6.0))
         assert abs(ir.model.rot.item() + 6.0) < 0.4
+
+    def test_different_shapes_message_6454(self, device, dtype):
+        # The message carried a run of spaces from its string literal.
+        ir = ImageRegistrator("similarity").to(device, dtype)
+        src = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        dst = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        with pytest.raises(ValueError) as excinfo:
+            ir.get_single_level_loss(src, dst, ir.model())
+        assert str(excinfo.value) == (
+            "Cannot register images of different shapes torch.Size([1, 1, 8, 8]) torch.Size([1, 1, 6, 6])"
+        )
 
 
 class TestConventionsImageRegistrator(BaseTester):

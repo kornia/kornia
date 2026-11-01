@@ -22,7 +22,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version, torch_version_lt
-from kornia.core.exceptions import BaseError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.utils import _torch_inverse_cast
 
 from testing.base import BaseTester
@@ -361,6 +361,16 @@ class TestGetPerspectiveTransform(BaseTester):
 
         self.assert_close(kornia.geometry.transform_points(dst_trans_src, point_left), point_right)
 
+    def test_integer_points_6396(self, device):
+        points_src = torch.tensor([[[0, 0], [10, 0], [10, 10], [0, 10]]], device=device)
+        points_dst = torch.tensor([[[1, 2], [12, 1], [11, 13], [0, 9]]], device=device)
+
+        out = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        expected = kornia.geometry.get_perspective_transform(points_src.to(out.dtype), points_dst.to(out.dtype))
+
+        assert out.dtype == torch.get_default_dtype()
+        self.assert_close(out, expected)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points_dst = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -376,6 +386,103 @@ class TestGetPerspectiveTransform(BaseTester):
         points_src = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst))
+
+    # The first pair's homography is [[0, 0, 3], [0, 3, 0], [3, 0, 0]] / 8: it sends the source origin to infinity, so
+    # its bottom-right entry is zero. The second pair is an ordinary homography, scaled to M[2, 2] = 1 as before.
+    _zero_h22_src = [[[1.0, 0.0], [2.0, 0.0], [2.0, 2.0], [1.0, 2.0]], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]
+    _zero_h22_dst = [[[1.0, 0.0], [0.5, 0.0], [0.5, 1.0], [1.0, 2.0]], [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 2.0]]]
+
+    def test_zero_bottom_right_entry_6435(self, device, dtype):
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        expected = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(dst_trans_src[0], expected)
+        self.assert_close(dst_trans_src[1, 2, 2], torch.tensor(1.0, device=device, dtype=dtype))
+        self.assert_close(kornia.geometry.transform_points(dst_trans_src, points_src), points_dst)
+
+    @pytest.mark.parametrize("shift", [2**-16, 2**-20])
+    def test_near_zero_bottom_right_entry_fits_the_dtype_6435(self, device, dtype, shift):
+        # Moving one destination point of the zero-entry pair by `shift` makes M[2, 2] tiny but not zero. Its
+        # M[2, 2] = 1 form has entries of about 1 / shift, beyond float16's 65504, so float16 falls back to the
+        # geometric-mean scale; every dtype returns a finite matrix that maps the points.
+        points_src = torch.tensor(self._zero_h22_src[:1], device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst[:1], device=device, dtype=dtype)
+        points_dst[0, 0, 1] = shift
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
+    def test_zero_bottom_right_entry_rounding_residue_6435(self, device, dtype):
+        # The same homography as the first zero-entry pair, from another source quadrilateral: rounding leaves a small
+        # residue in the computed M[2, 2] instead of an exact zero. The M[2, 2] = 1 form of that residue is finite, so
+        # it is kept, with large entries, and it still maps the points.
+        points_src = torch.tensor([[[1.0, 0.5], [2.0, 0.25], [2.5, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        points_dst = torch.tensor([[[1.0, 0.5], [0.5, 0.125], [0.4, 0.8], [1.0, 2.0]]], device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        self.assert_close(dst_trans_src[0, 2, 2], torch.tensor(1.0, device=device, dtype=dtype))
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
+    @pytest.mark.parametrize("ratio", [1e5, 1e8, 1e9])
+    def test_overflowing_form_keeps_small_coefficients_6435(self, device, dtype, ratio):
+        # A rectangle stretched along x by `ratio` has M = diag(ratio, 1, 1). In float16 that M[2, 2] = 1 form
+        # overflows, and scaling its largest entry to 1 would flush the 1s to zero, leaving a matrix that maps nothing.
+        width = ratio**0.5
+        points_src = torch.tensor(
+            [[[0.0, 0.0], [1 / width, 0.0], [1 / width, 1.0], [0.0, 1.0]]], device=device, dtype=dtype
+        )
+        points_dst = torch.tensor([[[0.0, 0.0], [width, 0.0], [width, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        assert dst_trans_src.isfinite().all()
+        mapped = kornia.geometry.transform_points(dst_trans_src.cpu().double(), points_src.cpu().double())
+        self.assert_close(mapped.to(dtype), points_dst.cpu())
+
+    def test_zero_bottom_right_entry_grad_6435(self, device, dtype):
+        # Scaling jumps from the geometric mean to M[2, 2] as soon as M[2, 2] leaves zero, so the gradient is one-sided
+        # and gradcheck does not apply here; it must be finite, where dividing by zero made it NaN.
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype, requires_grad=True)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype, requires_grad=True)
+
+        kornia.geometry.get_perspective_transform(points_src, points_dst).sum().backward()
+
+        assert points_src.grad.isfinite().all()
+        assert points_dst.grad.isfinite().all()
+
+    @pytest.mark.parametrize("shift", [0.0, 2**-16])
+    def test_zero_bottom_right_entry_dynamo_6435(self, device, dtype, torch_optimizer, shift):
+        # A compiled call must take the same fallback as eager; inductor keeps a fused cast to float16 in float32, so a
+        # finiteness test that casts the M[2, 2] = 1 form to the output dtype would not see its overflow there.
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+        points_dst[0, 0, 1] = shift
+
+        op = kornia.geometry.get_perspective_transform
+        op_optimized = torch_optimizer(op)
+
+        expected = op(points_src, points_dst)
+        assert expected.isfinite().all()
+        self.assert_close(op_optimized(points_src, points_dst), expected)
+
+    def test_zero_bottom_right_entry_jit_6435(self, device, dtype):
+        points_src = torch.tensor(self._zero_h22_src, device=device, dtype=dtype)
+        points_dst = torch.tensor(self._zero_h22_dst, device=device, dtype=dtype)
+
+        op = kornia.geometry.get_perspective_transform
+        op_script = torch.jit.script(op)
+
+        self.assert_close(op_script(points_src, points_dst), op(points_src, points_dst))
 
 
 class TestRotationMatrix2d(BaseTester):
@@ -1510,3 +1617,31 @@ class TestGetPerspectiveTransformAutocast(BaseTester):
         dst = torch.tensor([[[1.0, 0.5], [11.0, 1.0], [9.5, 8.5], [-0.5, 7.5]]], device=device, dtype=dtype)
         scripted = torch.jit.script(kornia.geometry.transform.get_perspective_transform)
         self.assert_close(scripted(src, dst), kornia.geometry.transform.get_perspective_transform(src, dst))
+
+
+class TestGetTranslationMatrix2d(BaseTester):
+    @pytest.mark.parametrize("shape", [(2,), (1,), (3,), (1, 1, 2), (2, 3), (2, 2, 2), ()])
+    def test_rejects_unsupported_shape(self, shape, device, dtype):
+        # (2,) used to give two matrices, one per component, and (1,) one matrix with dx = dy.
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.get_translation_matrix2d(torch.ones(shape, device=device, dtype=dtype))
+
+    def test_unbatched_translation_is_not_read_as_two_matrices(self, device, dtype):
+        with pytest.raises(ShapeError, match="batch dimension"):
+            kornia.geometry.transform.get_translation_matrix2d(torch.tensor([1.0, 2.0], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_batch(self, batch, device, dtype):
+        translations = torch.stack(
+            (
+                torch.arange(batch, device=device, dtype=dtype) + 1.0,
+                -2.0 * torch.arange(batch, device=device, dtype=dtype),
+            ),
+            dim=-1,
+        )  # (B, 2)
+        matrix = kornia.geometry.transform.get_translation_matrix2d(translations)
+        assert matrix.shape == (batch, 3, 3)
+
+        expected = torch.eye(3, device=device, dtype=dtype).repeat(batch, 1, 1)
+        expected[:, :2, 2] = translations
+        self.assert_close(matrix, expected)

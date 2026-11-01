@@ -21,6 +21,7 @@ import pytest
 import torch
 from torch.overrides import TorchFunctionMode
 
+from kornia.core.exceptions import BaseError
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
@@ -168,6 +169,27 @@ class TestXFeat(BaseTester):
         assert dense["scales"].shape == (0, 50)
         assert model.match_xfeat_star(x, x, top_k=50) == []
 
+    @pytest.mark.parametrize("min_cossim", [-1, 0.2])
+    def test_batch_match_is_mutual_nearest_neighbour(self, device, dtype, min_cossim):
+        # Pair b keeps (i, j) when j is the most similar descriptor of the second set to descriptor i of the first,
+        # and i the most similar of the first to j, read off the one similarity matrix.
+        torch.manual_seed(0)
+        feats1 = torch.nn.functional.normalize(torch.randn(2, 70, 64, device=device, dtype=dtype), dim=-1)
+        feats2 = torch.nn.functional.normalize(torch.randn(2, 50, 64, device=device, dtype=dtype), dim=-1)
+        matches = XFeat()._batch_match(feats1, feats2, min_cossim=min_cossim)
+        # The one similarity matrix, from the same batched product that _batch_match starts with.
+        cossims = torch.bmm(feats1, feats2.permute(0, 2, 1))
+        assert len(matches) == 2
+        for b, (idx0, idx1) in enumerate(matches):
+            cossim = cossims[b]
+            best12, best21 = cossim.argmax(dim=1), cossim.argmax(dim=0)
+            keep = best21[best12] == torch.arange(70, device=device)
+            if min_cossim > 0:
+                keep &= cossim.max(dim=1).values > min_cossim
+            assert idx0.shape[0] > 0
+            assert torch.equal(idx0, keep.nonzero()[:, 0])
+            assert torch.equal(idx1, best12[keep])
+
     def test_smoke(self, device, dtype):
         model = XFeat().to(device).eval()
         x = torch.rand(1, 3, 64, 64, device=device)
@@ -258,6 +280,35 @@ class TestXFeat(BaseTester):
         mkpts0, mkpts1 = model.match_xfeat(img1, img2)
         assert mkpts0.shape == mkpts1.shape
         assert mkpts0.shape[-1] == 2
+
+    def test_match_xfeat_batch_matches_each_pair(self, device, dtype):
+        torch.manual_seed(0)
+        model = XFeat(top_k=256, detection_threshold=0.0).to(device).eval()  # random weights score below 0.05
+        img1 = torch.rand(3, 3, 64, 96, device=device)
+        img2 = torch.rand(3, 3, 64, 96, device=device)
+        batched = model.match_xfeat(img1, img2)
+        assert isinstance(batched, list)
+        assert len(batched) == 3
+        # Pair b matches image b of each batch, and no other: the features of one batched extraction, matched per
+        # pair. A batch need not equal single-image calls bit for bit: a backend may round a batched convolution
+        # differently, which can reorder near-tied keypoints (MPS does with these random weights).
+        out1, out2 = model.detectAndCompute(img1), model.detectAndCompute(img2)
+        for b in range(3):
+            # match_xfeat's default min_cossim, not _match_mnn's
+            idx0, idx1 = model._match_mnn(out1[b]["descriptors"], out2[b]["descriptors"], min_cossim=-1)
+            assert idx0.shape[0] > 0
+            expected = torch.cat([out1[b]["keypoints"][idx0], out2[b]["keypoints"][idx1]], dim=-1)
+            self.assert_close(batched[b], expected, rtol=0, atol=0)
+
+    def test_match_xfeat_empty_batch(self, device, dtype):
+        model = XFeat().to(device).eval()
+        img = torch.rand(0, 3, 64, 64, device=device)
+        assert model.match_xfeat(img, img) == []
+
+    def test_match_xfeat_batch_size_mismatch(self, device, dtype):
+        model = XFeat().to(device).eval()
+        with pytest.raises(BaseError, match="same number of images"):
+            model.match_xfeat(torch.rand(2, 3, 64, 64, device=device), torch.rand(1, 3, 64, 64, device=device))
 
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
@@ -485,6 +536,20 @@ def test_lighterglue_reference_matches(device, data):
     assert frac > 0.95, f"Only {frac:.1%} of reference matches reproduced within joint distance 2.0 px"
 
 
+@pytest.mark.slow
+@pytest.mark.parametrize("data", ["xfeat_outdoor"], indirect=True)
+def test_xfeat_star_refines_an_image_matched_with_itself_in_place_6418(device, data):
+    # #6418: each cell of an image matched with itself is its own coarse match, so the mean refinement offset is the
+    # bias of the refinement. Measured from bin 4, as the reference does, it is about -1 px on each axis.
+    xfeat = XFeat.from_pretrained().to(device)
+    out = xfeat.detectAndComputeDense(data["img1"].to(device), multiscale=False)
+    refined = xfeat._refine_matches(out, out, xfeat._batch_match(out["descriptors"], out["descriptors"]), 0)
+    displacement = refined[:, :2] - refined[:, 2:]
+    assert displacement.shape[0] > 100
+    assert displacement.mean(0).abs().max() < 0.5
+    assert (displacement.norm(dim=-1) < 1).float().mean() > 0.8
+
+
 class TestConventionsXFeat(BaseTester):
     @staticmethod
     def _net_outputs(peaks, h, w, reliability=0.5):
@@ -643,6 +708,14 @@ class TestConventionsXFeat(BaseTester):
         seen.clear()
         xfeat.detectAndComputeDense(image, -1, False)
         assert seen == [None]
+
+    def test_convention_xfeat_star_offsets_are_measured_from_bin_3_6418(self, device, dtype):
+        # a heatmap peaked at bin (x, y) of its 8 x 8 window moves the keypoint by (x - 3, y - 3)
+        heatmaps = torch.zeros(3, 8, 8, device=device, dtype=dtype)
+        for i, (x, y) in enumerate(((3, 3), (5, 2), (0, 7))):
+            heatmaps[i, y, x] = 20.0
+        expected = torch.tensor([[0.0, 0.0], [2.0, -1.0], [-3.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(XFeat._subpix_softmax2d(heatmaps), expected, atol=1e-3, rtol=0)
 
     def test_smoke_xfeat_star_matching_runs_with_a_scale_of_zero_budget(self, device, dtype):
         torch.manual_seed(0)
@@ -807,7 +880,8 @@ class TestConventionsXFeat(BaseTester):
         # torch's CPU float16 / bfloat16 grid_sample returns wrong values, NaN and overflow on sparse grids into larger
         # maps (#5810), and torch 2.5.1 has no such kernel. XFeat's InterpolateSparse2d, ALIKED (DKD scores and SDDH
         # descriptors) and SOLD2.match call it with the half map and grid directly;
-        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead.
+        # kornia.core.utils._torch_grid_sample, which the warps use, samples CPU half in float32 instead, and so does
+        # ALIKED's deformable convolution without autograd (#6464).
         if device.type != "cpu" or dtype not in (torch.float16, torch.bfloat16):
             pytest.skip("the defect is in the CPU float16 / bfloat16 path")
         if sampler == "ALIKED" and not supports_replicate_padding(device, dtype):
@@ -841,4 +915,5 @@ class TestConventionsXFeat(BaseTester):
                 maps = torch.rand(2, 1, 128, 24, 32, dtype=dtype)
                 SOLD2(pretrained=False).eval().match(segments, segments + 1.0, maps[0], maps[1])
         assert calls
-        assert set(calls) == {(dtype, dtype)}
+        expected = {(dtype, dtype), (torch.float32, torch.float32)} if sampler == "ALIKED" else {(dtype, dtype)}
+        assert set(calls) == expected

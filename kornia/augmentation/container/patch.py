@@ -25,6 +25,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.utils.helpers import _raise_input_rank_error
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
@@ -256,7 +257,7 @@ class PatchSequential(ImageSequential):
             grid_size = self.grid_size
         self._validate_grid_size(grid_size)
         if len(batch_shape) != 4:
-            raise ValueError(f"Expected image shape (B, C, H, W). Got {batch_shape}.")
+            _raise_input_rank_error(batch_shape, "(B, C, H, W)")
         height, width = batch_shape[-2:]
         if height <= 0 or width <= 0:
             raise ValueError("PatchSequential requires non-empty spatial dimensions.")
@@ -316,7 +317,7 @@ class PatchSequential(ImageSequential):
             grid_size = self.grid_size
         self._validate_grid_size(grid_size)
         if input.ndim != 4:
-            raise ValueError(f"Expected image shape (B, C, H, W). Got {input.shape}.")
+            _raise_input_rank_error(input.shape, "(B, C, H, W)")
         height, width = input.shape[-2:]
         if pad is not None:
             height, width = height + pad[2] + pad[3], width + pad[0] + pad[1]
@@ -400,7 +401,9 @@ class PatchSequential(ImageSequential):
                     (width + left + right) // self.grid_size[1],
                 )
             )
-        if len(batch_shape) != 5 or batch_shape[1] != self.grid_size[0] * self.grid_size[1]:
+        if len(batch_shape) != 5:
+            _raise_input_rank_error(batch_shape, "either (B, C, H, W) or (B, rows * columns, C, h, w)")
+        if batch_shape[1] != self.grid_size[0] * self.grid_size[1]:
             raise ValueError(
                 f"Expected image shape (B, C, H, W) or patch shape (B, rows * columns, C, h, w). Got {batch_shape}."
             )

@@ -19,11 +19,57 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
+from kornia.core.exceptions import ShapeError
 from kornia.core.ops import eye_like
 from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
 
 from testing.base import BaseTester
 from testing.error import compute_patch_abs_error
+
+
+class TestBaseWarper(BaseTester):
+    def test_base_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="abstract"):
+            kornia.geometry.transform.BaseWarper(4, 4)
+
+    def test_abstract_contract(self):
+        assert kornia.geometry.transform.BaseWarper.__abstractmethods__ == {"forward", "precompute_warp_grid"}
+
+    def test_subclass_without_forward_is_rejected(self):
+        class NoForward(kornia.geometry.transform.BaseWarper):
+            def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+                pass
+
+        with pytest.raises(TypeError, match="forward"):
+            NoForward(4, 4)
+
+    def test_subclass_without_precompute_is_rejected(self):
+        class NoPrecompute(kornia.geometry.transform.BaseWarper):
+            def forward(self, patch_src, src_homo_dst=None):
+                return patch_src
+
+        with pytest.raises(TypeError, match="precompute_warp_grid"):
+            NoPrecompute(4, 4)
+
+    def test_complete_subclass_works(self, device, dtype):
+        class Identity(kornia.geometry.transform.BaseWarper):
+            def forward(self, patch_src, src_homo_dst=None):
+                return patch_src
+
+            def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+                pass
+
+        warper = Identity(4, 4).to(device, dtype)
+        assert isinstance(warper, torch.nn.Module)
+        assert (warper.height, warper.width) == (4, 4)
+        patch = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        assert warper(patch) is patch
+
+    def test_homography_warper_stays_concrete(self):
+        warper = kornia.geometry.transform.HomographyWarper(4, 4)
+        assert isinstance(warper, kornia.geometry.transform.BaseWarper)
+        assert not getattr(type(warper), "__abstractmethods__", None)
 
 
 class TestHomographyWarper(BaseTester):
@@ -1036,3 +1082,156 @@ class TestHomographyWarper3D(BaseTester):
         self.assert_close(grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0], atol=1e-4, rtol=1e-4)
         self.assert_close(grid[..., 1].to(device=device, dtype=dtype), flow[..., 1], atol=1e-4, rtol=1e-4)
         self.assert_close(grid[..., 2].to(device=device, dtype=dtype), flow[..., 2], atol=1e-4, rtol=1e-4)
+
+
+class TestHomographyShapeChecks(BaseTester):
+    """A homography of an unsupported rank raises instead of having its first dimension read as the batch."""
+
+    @pytest.mark.parametrize("shape", [(3, 3), (2, 2, 3, 3), (1, 2, 3, 3, 1), (3,), (4, 4)])
+    def test_warp_grid_rejects_unsupported_homography_shape(self, shape, device, dtype):
+        grid = kornia.geometry.create_meshgrid(4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid(grid, torch.ones(shape, device=device, dtype=dtype))
+
+    def test_warp_grid_unbatched_identity_is_not_read_as_a_batch_of_three(self, device, dtype):
+        # The case from the issue: the 3x3 identity used to give a grid of shape (3, 4, 5, 2).
+        grid = kornia.geometry.create_meshgrid(4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match="leading batch dimension"):
+            kornia.geometry.transform.warp_grid(grid, torch.eye(3, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(3, 4, 5), (4, 5, 2), (1, 4, 5, 3), (1, 1, 4, 5, 2)])
+    def test_warp_grid_rejects_unsupported_grid_shape(self, shape, device, dtype):
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid(
+                torch.zeros(shape, device=device, dtype=dtype), eye_like(3, torch.zeros(1, device=device, dtype=dtype))
+            )
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_warp_grid_keeps_the_documented_shapes(self, batch, device, dtype):
+        grid = kornia.geometry.create_meshgrid(4, 5, normalized_coordinates=False, device=device, dtype=dtype)
+        homography = eye_like(3, torch.zeros(batch, device=device, dtype=dtype))
+        homography[:, 0, 2] = torch.arange(batch, device=device, dtype=dtype)  # a different x offset per sample
+
+        flow = kornia.geometry.transform.warp_grid(grid, homography)  # (1, H, W, 2) grid, (N, 3, 3)
+        assert flow.shape == (batch, 4, 5, 2)
+        for i in range(batch):
+            self.assert_close(flow[i, ..., 0], grid[0, ..., 0] + i)
+            self.assert_close(flow[i, ..., 1], grid[0, ..., 1])
+
+        # (N, 1, 3, 3) is the same warp as (N, 3, 3)
+        self.assert_close(kornia.geometry.transform.warp_grid(grid, homography[:, None]), flow)
+        # a batched grid with a matching batch of homographies
+        self.assert_close(kornia.geometry.transform.warp_grid(grid.expand(batch, -1, -1, -1), homography), flow)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3])
+    def test_homography_warp_pixel_homography_path_rejects_unbatched_homography(self, batch, device, dtype):
+        # normalized_homography=False is handed to warp_perspective, which raises its own ValueError for an unbatched
+        # matrix. Only "still an error for every batch" is pinned. The exception type is left open on purpose: a
+        # ShapeError there would be an improvement and is a ValueError anyway.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.geometry.transform.homography_warp(
+                image, torch.eye(3, device=device, dtype=dtype), (4, 5), normalized_homography=False
+            )
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    def test_homography_warp_shares_one_homography_with_expand(self, batch, device, dtype):
+        # The migration for an unbatched (3, 3) is one homography per image. expand shares one matrix without a copy
+        # and is what the old (3, 3) call amounted to at a batch of 3.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        homography = torch.eye(3, device=device, dtype=dtype)
+        homography[0, 2], homography[1, 2] = 0.2, -0.1
+
+        out = kornia.geometry.transform.homography_warp(image, homography.expand(batch, -1, -1), (4, 5))
+        expected = torch.cat(
+            [
+                kornia.geometry.transform.homography_warp(image[i : i + 1], homography[None], (4, 5))
+                for i in range(batch)
+            ]
+        )
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 5])
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    def test_homography_warp_rejects_unbatched_homography_for_any_batch(
+        self, batch, normalized_coordinates, device, dtype
+    ):
+        # (3, 3) used to work only for a batch of 3 images, where it was read as 3 homographies.
+        image = torch.rand(batch, 1, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.homography_warp(
+                image,
+                torch.eye(3, device=device, dtype=dtype),
+                (4, 5),
+                normalized_coordinates=normalized_coordinates,
+            )
+
+    @pytest.mark.parametrize("normalized_coordinates", [True, False])
+    def test_homography_warper_rejects_unbatched_homography(self, normalized_coordinates, device, dtype):
+        warper = kornia.geometry.transform.HomographyWarper(4, 5, normalized_coordinates=normalized_coordinates)
+        with pytest.raises(ShapeError):
+            warper(torch.rand(3, 1, 4, 5, device=device, dtype=dtype), torch.eye(3, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(4, 4), (2, 2, 4, 4), (1, 2, 4, 4, 1), (4,), (3, 3)])
+    def test_warp_grid3d_rejects_unsupported_homography_shape(self, shape, device, dtype):
+        grid = kornia.geometry.create_meshgrid3d(2, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid3d(grid, torch.ones(shape, device=device, dtype=dtype))
+
+    def test_warp_grid3d_unbatched_identity_is_not_read_as_a_batch_of_four(self, device, dtype):
+        # The case from the issue: the 4x4 identity used to give a grid of shape (4, 2, 4, 5, 3).
+        grid = kornia.geometry.create_meshgrid3d(2, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match="leading batch dimension"):
+            kornia.geometry.transform.warp_grid3d(grid, torch.eye(4, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(4, 5, 3), (2, 4, 5, 3), (1, 2, 4, 5, 2), (1, 1, 2, 4, 5, 3)])
+    def test_warp_grid3d_rejects_unsupported_grid_shape(self, shape, device, dtype):
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.warp_grid3d(
+                torch.zeros(shape, device=device, dtype=dtype), eye_like(4, torch.zeros(1, device=device, dtype=dtype))
+            )
+
+    @pytest.mark.parametrize("batch", [1, 2, 4, 5])
+    def test_warp_grid3d_keeps_the_documented_shapes(self, batch, device, dtype):
+        grid = kornia.geometry.create_meshgrid3d(2, 4, 5, normalized_coordinates=False, device=device, dtype=dtype)
+        homography = eye_like(4, torch.zeros(batch, device=device, dtype=dtype))
+        homography[:, 0, 3] = torch.arange(batch, device=device, dtype=dtype)
+
+        flow = kornia.geometry.transform.warp_grid3d(grid, homography)  # (1, D, H, W, 3) grid, (N, 4, 4)
+        assert flow.shape == (batch, 2, 4, 5, 3)
+        for i in range(batch):
+            self.assert_close(flow[i, ..., 0], grid[0, ..., 0] + i)
+            self.assert_close(flow[i, ..., 1:], grid[0, ..., 1:])
+
+        self.assert_close(kornia.geometry.transform.warp_grid3d(grid, homography[:, None]), flow)
+        self.assert_close(kornia.geometry.transform.warp_grid3d(grid.expand(batch, -1, -1, -1, -1), homography), flow)
+
+    @pytest.mark.parametrize("batch", [1, 2, 4, 5])
+    def test_homography_warp3d_shares_one_homography_with_expand(self, batch, device, dtype):
+        if device.type == "mps" and torch_version_lt(2, 9, 0):
+            pytest.skip("MPS grid_sampler_3d requires PyTorch 2.9 or newer")
+        # The 3D counterpart of the migration for an unbatched (4, 4): one homography per volume, shared with expand.
+        volume = torch.rand(batch, 1, 2, 4, 5, device=device, dtype=dtype)
+        homography = torch.eye(4, device=device, dtype=dtype)
+        homography[0, 3], homography[1, 3] = 0.2, -0.1
+
+        out = kornia.geometry.transform.homography_warp3d(volume, homography.expand(batch, -1, -1), (2, 4, 5))
+        expected = torch.cat(
+            [
+                kornia.geometry.transform.homography_warp3d(volume[i : i + 1], homography[None], (2, 4, 5))
+                for i in range(batch)
+            ]
+        )
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("batch", [1, 2, 3, 4])
+    def test_homography_warp3d_rejects_unbatched_homography_for_any_batch(self, batch, device, dtype):
+        volume = torch.rand(batch, 1, 2, 4, 5, device=device, dtype=dtype)
+        for normalized_coordinates in (True, False):
+            with pytest.raises(ShapeError):
+                kornia.geometry.transform.homography_warp3d(
+                    volume,
+                    torch.eye(4, device=device, dtype=dtype),
+                    (2, 4, 5),
+                    normalized_coordinates=normalized_coordinates,
+                )

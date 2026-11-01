@@ -256,11 +256,16 @@ class StereoCamera:
     def tx(self) -> torch.Tensor:
         r"""The horizontal baseline between the two cameras.
 
+        Integer translations are promoted to the default floating-point dtype before negation.
+
         Returns:
             torch.Tensor of shape ``(B)``
 
         """
-        return -self.rectified_right_camera[..., 0, 3] / self.fx
+        translation = self.rectified_right_camera[..., 0, 3]
+        if not translation.is_floating_point():
+            translation = translation.to(torch.get_default_dtype())
+        return -translation / self.fx
 
     @property
     def Q(self) -> torch.Tensor:
@@ -269,6 +274,9 @@ class StereoCamera:
         This matrix is used for reprojecting a disparity torch.Tensor to
         the corresponding point cloud. Note that this is in a general form that allows different focal
         lengths in the x and y direction.
+
+        Integer camera matrices use the default floating-point dtype for Q; floating-point cameras
+        retain their dtype. The stored camera matrices and intrinsic parameter properties are unchanged.
 
         Return:
             The Q matrix of shape ``(B, 4, 4)``.
@@ -283,15 +291,20 @@ class StereoCamera:
             The Q matrix of shape ``(B, 4, 4)``.
 
         """
-        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
+        floating_camera = self.rectified_left_camera.is_floating_point()
+        dtype = self.dtype if floating_camera else torch.get_default_dtype()
+        # Promote before products and negation, which can overflow for narrow integer cameras.
+        fx, fy = self.fx.to(dtype), self.fy.to(dtype)
+        cx_left, cx_right, cy = self.cx_left.to(dtype), self.cx_right.to(dtype), self.cy.to(dtype)
         baseline: torch.Tensor = -self.tx
-        Q[:, 0, 0] = self.fy * baseline
-        Q[:, 0, 3] = -self.fy * self.cx_left * baseline
-        Q[:, 1, 1] = self.fx * baseline
-        Q[:, 1, 3] = -self.fx * self.cy * baseline
-        Q[:, 2, 3] = self.fx * self.fy * baseline
-        Q[:, 3, 2] = -self.fy
-        Q[:, 3, 3] = self.fy * (self.cx_left - self.cx_right)  # NOTE: This is usually zero.
+        Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=dtype)
+        Q[:, 0, 0] = fy * baseline
+        Q[:, 0, 3] = -fy * cx_left * baseline
+        Q[:, 1, 1] = fx * baseline
+        Q[:, 1, 3] = -fx * cy * baseline
+        Q[:, 2, 3] = fx * fy * baseline
+        Q[:, 3, 2] = -fy
+        Q[:, 3, 3] = fy * (cx_left - cx_right)  # NOTE: This is usually zero.
         return Q
 
     @overload

@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Module including useful metrics for Structure from Motion."""
+"""Distances of correspondences to a fundamental matrix: Sampson, symmetric and one-sided."""
 
 import math
 
@@ -32,10 +32,10 @@ def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
     """Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
-        pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
-        pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
+        pts1: correspondences from the left images with shape ``(*, N, 2)`` or ``(*, N, 3)``. If they are not
+              homogeneous, converted automatically.
+        pts2: correspondences from the right images with shape ``(*, N, 2)`` or ``(*, N, 3)``. If they are not
+              homogeneous, converted automatically.
         Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to avoid ambiguity with torch.nn.functional.
         squared: if True (default), the squared distance is returned.
 
@@ -92,10 +92,10 @@ def _sampson_epipolar_distance_matmul_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
     """Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
-        pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
-        pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
-              converted automatically.
+        pts1: correspondences from the left images with shape ``(*, N, 2)`` or ``(*, N, 3)``. If they are not
+              homogeneous, converted automatically.
+        pts2: correspondences from the right images with shape ``(*, N, 2)`` or ``(*, N, 3)``. If they are not
+              homogeneous, converted automatically.
         Fm: Fundamental matrices with shape ``(*, 3, 3)``. Called Fm to avoid ambiguity with torch.nn.functional.
         squared: if True (default), the squared distance is returned.
 
@@ -225,17 +225,26 @@ def sampson_epipolar_distance(
     eps: float = 1e-8,
     use_matmul_at_less_than_points: int = 10000,
 ) -> Tensor:
-    r"""Return Sampson distance for correspondences given the fundamental matrix.
+    r"""Compute the Sampson distance of correspondences to a fundamental matrix, to first order.
+
+    ``d = sampson_epipolar_distance(pts1, pts2, Fm)`` takes matched points of the first and the second image,
+    ``(*, N, 2)``, and fundamental matrices ``(*, 3, 3)`` with :math:`x_2^\top F x_1 = 0`, as
+    :func:`find_fundamental` returns them, and returns the squared Sampson distance of each correspondence,
+    ``(*, N)`` with the leading dimensions of the points and ``Fm`` broadcast. It approximates to first order the
+    smallest squared distance by which the two points together must move to satisfy the epipolar constraint, in the
+    squared units of the points; ``squared=False`` returns its square root. It is the residual that
+    :class:`~kornia.geometry.ransac.RANSAC` scores fundamental and essential matrices with. For the distances of the
+    points to the epipolar lines themselves, use :func:`symmetrical_epipolar_distance` or the one-sided
+    :func:`left_to_right_epipolar_distance` and :func:`right_to_left_epipolar_distance`.
 
     Convention:
-        - ``pts1`` are first-image points, ``pts2`` second-image points, and ``Fm`` follows
-          :math:`x_2^\top F x_1 = 0`, as returned by :func:`find_fundamental`
-          (see :ref:`two-view geometry <two-view-conventions>`).
-        - Returns squared pixel distances by default; a 3-vector point is used as given, so it must have
+        - ``pts1`` are first-image points and ``pts2`` second-image points
+          (see :ref:`two-view geometry <two-view-conventions>`). A 3-vector point is used as given, so it must have
           :math:`w = 1`.
         - One set of correspondences scored against several matrices (points with leading dimensions of size 1)
-          is computed from two matrix products for all of them, in at least float32; the result matches the
-          per-matrix computation to roundoff.
+          is computed from two matrix products for all of them, in at least float32: on the CPU always, and on
+          other devices from ``2**16`` matrix-point pairs. The result matches the per-matrix computation to
+          roundoff.
         - The value does not depend on the scale of ``Fm``, and ``squared=False`` returns exactly 0, with a zero
           gradient, for an exact match. A correspondence whose two epilines both have :math:`a = b = 0`, as under a
           degenerate ``Fm``, is at distance ``inf``.
@@ -253,6 +262,14 @@ def sampson_epipolar_distance(
 
     Returns:
         the computed Sampson distance with shape ``(*, N)``.
+
+    See Also:
+        - :func:`symmetrical_epipolar_distance`: the summed squared distances of both points to their epipolar
+          lines, not a first-order geometric error.
+        - :func:`left_to_right_epipolar_distance`: the unsquared distance in image 2 only.
+        - :func:`right_to_left_epipolar_distance`: the unsquared distance in image 1 only.
+        - :func:`~kornia.geometry.homography.sampson_homography_distance`: the same first-order error for a
+          homography.
 
     """
     # Checked here because the CUDA matmul and shared-point implementations do not check Fm. A single (3, 3) Fm
@@ -344,11 +361,17 @@ def _symmetrical_epipolar_distance_matmul_impl_(pts1: Tensor, pts2: Tensor, Fm: 
 def symmetrical_epipolar_distance(
     pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
 ) -> Tensor:
-    r"""Return symmetrical epipolar distance for correspondences given the fundamental matrix.
+    r"""Compute the sum of the squared distances of both points of a correspondence to their epipolar lines.
+
+    ``d = symmetrical_epipolar_distance(pts1, pts2, Fm)`` takes the arguments of :func:`sampson_epipolar_distance`
+    and returns, per correspondence, ``(*, N)``, the squared distance of ``pts2`` to the epipolar line
+    :math:`F x_1` in image 2 plus the squared distance of ``pts1`` to the line :math:`F^\top x_2` in image 1: the
+    squares of :func:`left_to_right_epipolar_distance` and :func:`right_to_left_epipolar_distance` added.
+    ``squared=False`` returns the square root of that sum. For the first-order geometric error of moving both points,
+    use :func:`sampson_epipolar_distance`.
 
     Convention:
-        - Argument order and units as :func:`sampson_epipolar_distance`; the value is the sum of the two
-          squared point-to-epiline distances.
+        - Argument order and units as :func:`sampson_epipolar_distance`.
         - The value does not depend on the scale of ``Fm``, and ``squared=False`` returns exactly 0 for an exact
           match, as in :func:`sampson_epipolar_distance`. A correspondence with an epiline of :math:`a = b = 0` in
           either image is at distance ``inf``.
@@ -363,6 +386,12 @@ def symmetrical_epipolar_distance(
     Returns:
         the computed Symmetrical distance with shape ``(*, N)``.
 
+    See Also:
+        - :func:`sampson_epipolar_distance`: the first-order geometric error, which RANSAC scores with.
+        - :func:`left_to_right_epipolar_distance`: one of the two terms, unsquared: the distance in image 2.
+        - :func:`right_to_left_epipolar_distance`: the other term, unsquared: the distance in image 1.
+        - :func:`~kornia.geometry.homography.symmetric_transfer_error`: the two-image error of a homography.
+
     """
     # Checked here because the CUDA matmul implementation does not check Fm.
     if Fm.shape[-2:] != (3, 3):
@@ -375,11 +404,17 @@ def symmetrical_epipolar_distance(
 
 
 def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return the one-sided distance from each point in ``pts2`` to the epipolar line of its match in ``pts1``.
+    r"""Compute the distance in image 2 from each second-image point to the epipolar line of its match.
+
+    ``d = left_to_right_epipolar_distance(pts1, pts2, Fm)`` takes the arguments of
+    :func:`sampson_epipolar_distance` and returns, per correspondence, ``(*, N)``, the unsquared distance in the
+    second image from ``pts2`` to the epipolar line :math:`F x_1` of its match in ``pts1``, in the units of the
+    points. It does not measure anything in image 1: for the distance there, use
+    :func:`right_to_left_epipolar_distance`, and for both images :func:`symmetrical_epipolar_distance` or
+    :func:`sampson_epipolar_distance`.
 
     Convention:
-        - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each
-          ``pts2`` to the epipolar line of its ``pts1`` in the second image.
+        - Argument order as :func:`sampson_epipolar_distance`.
         - The value does not depend on the scale of ``Fm``; a point whose epiline has :math:`a = b = 0` is at
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
 
@@ -391,6 +426,12 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
     Returns:
         the one-sided distance with shape ``(*, N)``.
+
+    See Also:
+        - :func:`right_to_left_epipolar_distance`: the distance in image 1 instead.
+        - :func:`symmetrical_epipolar_distance`: both one-sided distances, squared and added.
+        - :func:`sampson_epipolar_distance`: the first-order geometric error over both images.
+        - :func:`~kornia.geometry.homography.oneway_transfer_error`: the image-2 error of a homography.
 
     """
     KORNIA_CHECK_IS_TENSOR(pts1)
@@ -410,11 +451,17 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
 
 def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return the one-sided distance from each point in ``pts1`` to the epipolar line of its match in ``pts2``.
+    r"""Compute the distance in image 1 from each first-image point to the epipolar line of its match.
+
+    ``d = right_to_left_epipolar_distance(pts1, pts2, Fm)`` takes the arguments of
+    :func:`sampson_epipolar_distance` and returns, per correspondence, ``(*, N)``, the unsquared distance in the
+    first image from ``pts1`` to the epipolar line :math:`F^\top x_2` of its match in ``pts2``, in the units of the
+    points. It does not measure anything in image 2: for the distance there, use
+    :func:`left_to_right_epipolar_distance`, and for both images :func:`symmetrical_epipolar_distance` or
+    :func:`sampson_epipolar_distance`.
 
     Convention:
-        - Argument order as :func:`sampson_epipolar_distance`; returns the unsquared pixel distance of each
-          ``pts1`` to the epipolar line of its ``pts2`` in the first image.
+        - Argument order as :func:`sampson_epipolar_distance`.
         - The value does not depend on the scale of ``Fm``; a point whose epiline has :math:`a = b = 0` is at
           distance ``inf``, as in :func:`~kornia.geometry.linalg.point_line_distance`.
 
@@ -426,6 +473,11 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
     Returns:
         the one-sided distance with shape ``(*, N)``.
+
+    See Also:
+        - :func:`left_to_right_epipolar_distance`: the distance in image 2 instead.
+        - :func:`symmetrical_epipolar_distance`: both one-sided distances, squared and added.
+        - :func:`sampson_epipolar_distance`: the first-order geometric error over both images.
 
     """
     KORNIA_CHECK_IS_TENSOR(pts1)

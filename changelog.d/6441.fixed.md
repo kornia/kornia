@@ -1,0 +1,1 @@
+`LightGlue(mp=True)` runs a float64 model on CUDA. It used to cast the descriptors to float16 under autocast, which does not cast float64 weights, so every float64 call raised `mat1 and mat2 must have the same dtype`. A float64 model now gives float64 scores and the matches of `mp=False`, as on CPU.

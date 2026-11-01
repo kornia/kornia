@@ -592,6 +592,18 @@ class TestMultiplyDegOnePoly(BaseTester):
         out_poly = solver.multiply_deg_one_poly(a, b)
         assert out_poly.shape == (B, 10)
 
+    def test_unbatched_input_raises_6422(self, device, dtype):
+        # An unbatched polynomial failed in unsqueeze(2) with an IndexError.
+        a = torch.rand(4, device=device, dtype=dtype)
+        b = torch.rand(4, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a, b)
+        with pytest.raises(ShapeError, match=r"b must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a[None], b)
+        # An extra batch dimension returned products of the wrong coefficients instead of raising.
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a.expand(1, 4, 4), b.expand(1, 4, 4))
+
     @pytest.mark.parametrize(
         "a_coeffs, b_coeffs, expected_coeffs",
         [
@@ -685,6 +697,26 @@ class TestMultiplyDegTwoOnePoly(BaseTester):
         expected = expected_coeffs.to(device, dtype)
         result = solver.multiply_deg_two_one_poly(a, b)
         self.assert_close(result, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize(
+        "a_shape, b_shape, message",
+        [
+            ((10,), (4,), r"a must have shape \(B, 10\)"),
+            ((1, 10), (4,), r"b must have shape \(B, 4\)"),
+            ((1, 2, 10), (1, 2, 4), r"a must have shape \(B, 10\)"),
+            ((2, 4), (2, 10), r"a must have shape \(B, 10\)"),
+            ((2, 8), (2, 5), r"a must have shape \(B, 10\)"),
+            ((2, 10), (2, 5), r"b must have shape \(B, 4\)"),
+        ],
+        ids=["unbatched_a", "unbatched_b", "extra_dim", "swapped", "other_product_40", "b_width"],
+    )
+    def test_wrong_shape_raises_6454(self, a_shape, b_shape, message, device, dtype):
+        # An unbatched a failed in unsqueeze(2) with an IndexError and an unbatched b with a RuntimeError; sizes whose
+        # product is 40 returned a (B, 20) tensor, as only the product of the last two sizes was used.
+        a = torch.rand(*a_shape, device=device, dtype=dtype)
+        b = torch.rand(*b_shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=message):
+            solver.multiply_deg_two_one_poly(a, b)
 
 
 class TestDeterminantToPolynomial(BaseTester):

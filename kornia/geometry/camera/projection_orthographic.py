@@ -74,8 +74,9 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "2"])
 
-    if len(points_in_camera.shape) != len(extension.shape):
-        extension = extension[..., None]
+    if extension.ndim == points_in_camera.ndim - 1:
+        extension = extension[..., None]  # (..., 1)
+    KORNIA_CHECK_SHAPE(extension, ["*", "1"])
 
     return torch.cat([points_in_camera, extension], dim=-1)
 

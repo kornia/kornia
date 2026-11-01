@@ -23,6 +23,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.color import RgbToBgr
+from kornia.core.exceptions import InputRankError
 
 from testing.augmentation.utils import reproducibility_test
 from testing.base import BaseTester
@@ -481,14 +482,19 @@ class TestPatchSequentialRegression(BaseTester):
     def test_three_dimensional_input_raises_value_error(self, method, device, dtype):
         seq = K.PatchSequential(nn.Identity(), grid_size=(2, 2), patchwise_apply=False)
         kwargs = {"padding": "same"} if method == "compute_padding" else {}
-        with pytest.raises(ValueError, match="Expected image shape"):
+        with pytest.raises(ValueError, match=r"Input size must have a shape of \(B, C, H, W\)"):
             getattr(seq, method)(torch.ones(3, 4, 4, device=device, dtype=dtype), **kwargs)
 
-    @pytest.mark.parametrize("shape", [(2, 3, 4), (2, 5, 3, 2, 2), (2, 6, 3, 2, 2, 1)])
-    def test_parameters_reject_invalid_shape(self, shape):
+    @pytest.mark.parametrize("shape", [(2, 3, 4), (2, 6, 3, 2, 2, 1)])
+    def test_parameters_reject_invalid_rank(self, shape):
+        seq = K.PatchSequential(nn.Identity(), grid_size=(2, 3), patchwise_apply=False)
+        with pytest.raises(InputRankError, match=r"must have a shape of either \(B, C, H, W\) or \(B, rows \* columns"):
+            seq.forward_parameters(torch.Size(shape))
+
+    def test_parameters_reject_invalid_patch_count(self):
         seq = K.PatchSequential(nn.Identity(), grid_size=(2, 3), patchwise_apply=False)
         with pytest.raises(ValueError, match=r"Expected.*shape"):
-            seq.forward_parameters(torch.Size(shape))
+            seq.forward_parameters(torch.Size((2, 5, 3, 2, 2)))
 
     @pytest.mark.parametrize("shape", [(2, 3, 1, 2), (2, 3, 0, 4)])
     def test_image_shape_parameters_reject_empty_valid_patches(self, shape):

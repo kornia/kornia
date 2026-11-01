@@ -399,15 +399,6 @@ process before they can raise.
 - `test_gradcheck[mps*]` — skipped automatically (`gradcheck` requires float64)
 - `*[mps*cdtype1*]` — skipped automatically (parametrized `torch.cdouble` tests)
 - `test_autocast[mps*]` — skipped automatically (MPS autocast changes dtype)
-- any module marked `mps_process_abort` on MPS — skipped automatically; today that is
-  `tests/geometry/test_ransac.py`. RANSAC's batched minimal solvers abort the process (SIGABRT) on
-  the paravirtualized GPU of the hosted macOS runners, at a site that moves between runs, and
-  SIGABRT carries no exception type, so these **cannot be pinned** as strict xfails — the process
-  dies and every test after it is lost ([#4204](https://github.com/kornia/kornia/issues/4204)).
-  The marker lives on the test module, so a rename cannot silently disarm the skip. Real Apple
-  hardware does not abort: `--run-mps-process-abort` (env `KORNIA_TEST_RUN_MPS_PROCESS_ABORT`)
-  runs them anyway for local diagnosis, at the cost of failures the manifest does not pin — on an
-  M1 with torch 2.14.0 that is 3 failed / 10 passed, so the skip costs 9 real-hardware passes.
 
 The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to the outermost pixel *centers*, at `±(1 - 1/size)`, and using `padding_mode="zeros"`, which is exactly equivalent. Clamping to `[-1, 1]` is not: with `align_corners=False` that is the outer edge of the border pixel, where bilinear sampling blends it with the zero padding.
 

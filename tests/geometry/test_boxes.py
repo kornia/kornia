@@ -2320,7 +2320,7 @@ class TestVideoBoxes(BaseTester):
         video[0] = filtered[1]
         self.assert_close(video.to_tensor("xyxy")[:1], expected[:1])
         assert video.to_tensor("xyxy")[1, :, 1].count_nonzero() > 0
-        assert filtered.to_mask(5, 5)[:, 1].count_nonzero() == 0
+        assert filtered.to_mask(5, 5)[:, :, 1].count_nonzero() == 0
 
     """Public API and round-trip coverage for :class:`VideoBoxes` (#4016)."""
 
@@ -2419,7 +2419,7 @@ class TestVideoBoxes(BaseTester):
         # Pin #4016: VideoBoxes is exported and the overrides are documented.
         assert "VideoBoxes" in boxes_module.__all__
         assert VideoBoxes.__doc__ is not None
-        for name in ("from_tensor", "to_tensor", "clone"):
+        for name in ("from_tensor", "to_tensor", "clone", "compute_area", "to_mask"):
             assert getattr(VideoBoxes, name).__doc__ is not None
 
     def test_gradcheck(self, device):
@@ -2520,6 +2520,27 @@ class TestVideoBoxes(BaseTester):
         expected[videos] = boxes[videos]
         self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(("target_time", "value_time", "key"), [(4, 2, 0), (2, 4, "mask"), (2, 3, 0)])
+    def test_index_assignment_rejects_another_frame_count_6388(self, target_time, value_time, key, device, dtype):
+        # A value whose videos have another number of frames used to be regrouped into videos of the target's length:
+        # two 2-frame videos were stitched into one 4-frame video, one 4-frame video was split across two, and a
+        # frame total that does not divide by the target's length raised a RuntimeError from view.
+        target = VideoBoxes.from_tensor(torch.zeros(2, target_time, 1, 4, 2, device=device, dtype=dtype))
+        num_videos = 2 if value_time == 2 else 1  # one 3-frame video does not divide into 2-frame videos
+        value = VideoBoxes.from_tensor(torch.ones(num_videos, value_time, 1, 4, 2, device=device, dtype=dtype))
+        if key == "mask":
+            key = torch.tensor([True, True], device=device)
+        original = target.to_tensor().clone()
+        with pytest.raises(ValueError, match=f"videos of {value_time} frames to videos of {target_time} frames"):
+            target[key] = value
+        self.assert_close(target.to_tensor(), original, atol=0.0, rtol=0.0)
+
+        # A plain Boxes value is read as frames of the target's length, as before.
+        target[0] = Boxes(torch.ones(target_time, 1, 4, 2, device=device, dtype=dtype))
+        expected = original.clone()
+        expected[0] = 1
+        self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
+
     def test_index_assignment_without_boxes_5871(self, device, dtype):
         # A clip with no boxes stores (B * T, 0, 4, 2): the write still lands in place.
         target = VideoBoxes.from_tensor(torch.zeros(3, 2, 0, 4, 2, device=device, dtype=dtype))
@@ -2568,6 +2589,57 @@ class TestVideoBoxes(BaseTester):
             mask = video_boxes.to_mask(4, 5)
         except TypeError as error:
             raise AssertionError(str(error)) from error
-        # One extent per box, and the mask keeps the flattened-time convention (B*T, N, H, W).
+        # One extent per box, and both compute_area and to_mask restore the temporal axis.
         assert heights.numel() == widths.numel() == 6
-        assert mask.shape == (6, 1, 4, 5)
+        assert heights.shape == (2, 3, 1)
+        assert widths.shape == (2, 3, 1)
+        assert video_boxes.compute_area().shape == (2, 3, 1)
+        assert mask.shape == (2, 3, 1, 4, 5)
+
+    def test_compute_area_and_to_mask_restore_temporal_axis_5614(self, device, dtype):
+        # Issue #5614: compute_area and to_mask restore the temporal axis (B, T, N, ...).
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=2)
+        # A different box in every frame: frame t is t pixels wider, video b sits b pixels lower.
+        boxes[..., 1:3, 0] += torch.arange(3, device=device, dtype=dtype).view(1, 3, 1, 1)
+        boxes[..., 1] += torch.arange(2, device=device, dtype=dtype).view(2, 1, 1, 1)
+        video = VideoBoxes.from_tensor(boxes)
+        heights, widths = video.get_boxes_shape()
+        area = video.compute_area()
+        mask = video.to_mask(6, 8)
+
+        assert area.shape == (2, 3, 2)
+        expected_area = torch.tensor([4.0, 6.0, 8.0], device=device, dtype=dtype).view(1, 3, 1).expand(2, 3, 2)
+        self.assert_close(area, expected_area, atol=0.0, rtol=0.0)
+        assert mask.shape == (2, 3, 2, 6, 8)
+        assert mask.dtype == dtype
+        expected_mask = torch.zeros_like(mask)
+        for b in range(2):
+            for t in range(3):
+                expected_mask[b, t, :, 1 + b : 4 + b, 1 : 4 + t] = 1
+        self.assert_close(mask, expected_mask, atol=0.0, rtol=0.0)
+
+        # Sibling method combination no longer fails with mismatched shapes
+        ratio = area / (heights * widths)
+        assert ratio.shape == (2, 3, 2)
+
+        # filter_boxes_by_area correctly updates valid flags and zeroed coordinates
+        filtered = video.filter_boxes_by_area(min_area=100.0)
+        assert isinstance(filtered, VideoBoxes)
+        assert filtered.temporal_channel_size == 3
+        assert filtered.data.shape == video.data.shape
+        assert filtered.compute_area().shape == (2, 3, 2)
+        assert filtered.compute_area().count_nonzero() == 0
+
+        # A partial filter zeroes the first frame of every video (area 4) and keeps the others.
+        partial = video.filter_boxes_by_area(min_area=5.0)
+        assert partial.to_tensor("xyxy")[:, 0].count_nonzero() == 0
+        self.assert_close(partial.to_tensor("xyxy")[:, 1:], video.to_tensor("xyxy")[:, 1:], atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("shape", [(0, 3, 2), (2, 3, 0)])
+    def test_compute_area_and_to_mask_empty_batches_5614(self, shape, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype, batch=shape[0], time=shape[1], n_boxes=shape[2])
+        video = VideoBoxes.from_tensor(boxes)
+        area = video.compute_area()
+        mask = video.to_mask(4, 5)
+        assert area.shape == (shape[0], shape[1], shape[2])
+        assert mask.shape == (shape[0], shape[1], shape[2], 4, 5)
