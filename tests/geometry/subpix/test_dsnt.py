@@ -19,6 +19,8 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_ge
+from kornia.core.exceptions import AsyncCheckError
 
 from testing.base import BaseTester
 
@@ -86,11 +88,19 @@ class TestRenderGaussian2d(BaseTester):
     @pytest.mark.parametrize("std", [[0.0, 0.25], [0.25, 0.0], [0.0, 0.0]])
     def test_zero_std_raises(self, device: torch.device, dtype: torch.dtype, std: list[float]) -> None:
         # A zero std used to render an all-NaN map: the inverse variance is infinite and 0 * inf is NaN.
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value check is a device-side assert that invalidates the context")
         mean = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
         std_t = torch.tensor([std], device=device, dtype=dtype)
 
-        with pytest.raises(ValueError, match="std should be nonzero"):
+        # From torch 2.13 the MPS assert raises at the next synchronization; elsewhere the host read raises at once.
+        if device.type == "mps" and torch_version_ge(2, 13):
             kornia.geometry.subpix.render_gaussian2d(mean, std_t, (5, 5), True)
+            with pytest.raises(RuntimeError, match="std should be nonzero"):
+                torch.mps.synchronize()
+        else:
+            with pytest.raises(AsyncCheckError, match="std should be nonzero"):
+                kornia.geometry.subpix.render_gaussian2d(mean, std_t, (5, 5), True)
 
     @pytest.mark.parametrize("normalized", [False, True])
     def test_in_image_sums_to_one(self, device, dtype, normalized):
