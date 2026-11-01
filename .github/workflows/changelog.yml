@@ -41,7 +41,7 @@ jobs:
           fi
           python3 .github/scripts/check_changelog.py "${args[@]}"
 
-      - uses: prefix-dev/setup-pixi@v0.10.2
+      - uses: prefix-dev/setup-pixi@v0.11.2
         with:
           pixi-version: v0.40.0
           cache: true
