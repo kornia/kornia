@@ -26,7 +26,8 @@ starts at voxel ``(0, 0, 0)``. Pass ``align_corners=True``: at ``False`` the mat
 voxels while ``grid_sample`` reads half-voxel ones, so the samples miss the box, and even a box of the output size is
 interpolated rather than copied (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). :func:`crop_and_resize3d`
 and :func:`crop_by_boxes3d` default to ``False``. In eager mode the box crops reject, with ``AssertionError``, a box
-whose four edges along an axis span different extents on it, or one with a non-finite coordinate. They raise
+whose four edges along an axis span different extents on it, one with a non-finite coordinate, and a pair of boxes
+that no affine map relates, such as a box that is not a parallelepiped in :func:`crop_and_resize3d`. They raise
 ``torch.linalg.LinAlgError`` for a box or an output size with a one-voxel axis
 (`#4747 <https://github.com/kornia/kornia/issues/4747>`_).
 
@@ -44,6 +45,7 @@ from typing import Tuple
 
 import torch
 
+from kornia.core.utils import is_compiling
 from kornia.geometry.bbox import _validate_bbox3d, infer_bbox_shape3d
 
 from .imgwarp import get_perspective_transform3d, warp_affine3d
@@ -62,9 +64,8 @@ def crop_and_resize3d(
 
     ``patches = crop_and_resize3d(tensor, boxes, size)`` takes volumes ``(B, C, D, H, W)`` and boxes ``(B, 8, 3)``, one
     per volume or ``(1, 8, 3)`` for all of them, and returns the ``(B, C, d, h, w)`` patches for ``size = (d, h, w)``.
-    With ``align_corners=True`` the corners of a parallelepiped box land on the corner voxels of the patch; the warp
-    keeps only the top three rows of the 3D homography between the two, so the corners of any other box miss
-    (`#6436 <https://github.com/kornia/kornia/issues/6436>`_). Pass ``align_corners=True``, since the default
+    Each box must be a parallelepiped, so that an affine map takes it onto the patch; with ``align_corners=True`` its
+    corners land on the corner voxels of the patch. Pass ``align_corners=True``, since the default
     ``False`` samples off the box (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For images, use
     :func:`crop_and_resize`; to place the crop by a second box, :func:`crop_by_boxes3d`.
 
@@ -95,8 +96,8 @@ def crop_and_resize3d(
         tensor containing the patches with shape ``(B, C, d, h, w)``.
 
     Raises:
-        AssertionError: if a box has a non-finite coordinate, or edges along one axis that span different extents on
-            it.
+        AssertionError: if a box has a non-finite coordinate, edges along one axis that span different extents on
+            it, or is not a parallelepiped.
 
     See Also:
         - :func:`crop_and_resize`: the same for images and ``(B, 4, 2)`` boxes, where, along an axis longer than one
@@ -340,12 +341,10 @@ def crop_by_boxes3d(
     r"""Crop volumes by mapping a source box onto a destination box, whose size sets the output size.
 
     ``patches = crop_by_boxes3d(tensor, src_box, dst_box)`` takes volumes ``(B, C, D, H, W)`` and two boxes per
-    volume, ``(B, 8, 3)`` each (both ``(1, 8, 3)`` for all volumes), warps each volume by the top three rows of the
-    3D homography computed from the corners of ``src_box`` and ``dst_box``, which takes every corner onto its
-    destination only when an affine map relates the two boxes, as it relates any two parallelepipeds
-    (`#6436 <https://github.com/kornia/kornia/issues/6436>`_), and returns the ``(B, C, d, h, w)`` window that
-    starts at voxel ``(0, 0, 0)``, where
-    ``(d, h, w)`` is the inclusive size of ``dst_box``; every ``dst_box`` in the batch must have that size. Pass
+    volume, ``(B, 8, 3)`` each (both ``(1, 8, 3)`` for all volumes), warps each volume by the affine map that takes
+    the corners of ``src_box`` onto those of ``dst_box``, which must exist, as it does for any two parallelepipeds or
+    two translated copies of one box, and returns the ``(B, C, d, h, w)`` window that starts at voxel ``(0, 0, 0)``,
+    where ``(d, h, w)`` is the inclusive size of ``dst_box``; every ``dst_box`` in the batch must have that size. Pass
     ``align_corners=True``: the default ``False`` samples off the box
     (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). When the output size is known, :func:`crop_and_resize3d`
     takes it instead of a second box; for images, use :func:`crop_by_boxes`.
@@ -375,8 +374,8 @@ def crop_by_boxes3d(
         the patches, with shape ``(B, C, d, h, w)`` for the size ``(d, h, w)`` of ``dst_box``.
 
     Raises:
-        AssertionError: if the boxes of ``dst_box`` differ in size, or a box has a non-finite coordinate or edges along
-            one axis that span different extents on it.
+        AssertionError: if the boxes of ``dst_box`` differ in size, a box has a non-finite coordinate or edges along
+            one axis that span different extents on it, or no affine map takes a ``src_box`` onto its ``dst_box``.
 
     See Also:
         - :func:`crop_by_boxes`: the same for images and ``(B, 4, 2)`` boxes.
@@ -459,7 +458,9 @@ def _crop_by_boxes3d_to_size(
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_perspective_transform3d(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
+    src_box, dst_box = src_box.to(tensor.dtype), dst_box.to(tensor.dtype)
+    dst_trans_src: torch.Tensor = get_perspective_transform3d(src_box, dst_box)
+    _check_boxes_related_by_affine(src_box, dst_box, dst_trans_src)
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
@@ -468,6 +469,32 @@ def _crop_by_boxes3d_to_size(
     )
 
     return patches
+
+
+def _check_boxes_related_by_affine(src_box: torch.Tensor, dst_box: torch.Tensor, dst_trans_src: torch.Tensor) -> None:
+    # The crops warp by the top three rows of the box homography, an affine map, so they place the 8 corners of
+    # ``src_box`` on those of ``dst_box`` only when an affine map relates the two boxes, as one relates any two
+    # parallelepipeds. Refuse every other pair instead of cropping it with a wrong mapping. Mapping a corner sums
+    # terms of up to ``scale`` voxels, rounded to the matrix dtype, so a pair passes when no corner misses by more
+    # than ``sqrt(eps)`` of that, with the float32 ``eps`` for float64: a parallelepiped misses by about ``eps`` of it
+    # (more on MPS, which solves for the matrix in float32), boxes off a parallelepiped by as much as the extents
+    # ``_validate_bbox3d`` lets differ (``rtol=1e-5``), such as a gradcheck step, still pass, and moving a single
+    # corner of a small box by one voxel misses by far more. Like the value checks of ``_validate_bbox3d``, this one
+    # reads the data back and is skipped under graph capture.
+    if not torch.jit.is_scripting() and is_compiling():
+        return
+    work_dtype = torch.promote_types(dst_trans_src.dtype, torch.float32)
+    mat = dst_trans_src[:, :3].detach().to(work_dtype)
+    src, dst = src_box.detach().to(work_dtype), dst_box.detach().to(work_dtype)
+    linear, translation = mat[..., :3].transpose(-1, -2), mat[..., 3:].transpose(-1, -2)
+    miss = (src @ linear + translation - dst).abs().amax((-2, -1))
+    scale = (src.abs() @ linear.abs() + translation.abs() + dst.abs()).amax((-2, -1))
+    tolerance = max(torch.finfo(dst_trans_src.dtype).eps, torch.finfo(torch.float32).eps) ** 0.5 * scale
+    if bool((miss > tolerance).any()):
+        raise AssertionError(
+            "Boxes must be related by an affine map, as two parallelepipeds are: the affine map the crop warps by "
+            f"misses the corners of dst_box by up to {miss.max().item():.3g} voxels."
+        )
 
 
 def crop_by_transform_mat3d(

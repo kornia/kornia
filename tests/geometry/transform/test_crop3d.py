@@ -531,3 +531,69 @@ class TestCrop3DSizeValidation:
         inp = torch.rand(1, 1, 4, 4, 4, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="tuple/list of length 3"):
             kornia.geometry.transform.center_crop3d(inp, (2, 2))
+
+
+class TestCrop3DAffineBoxes(BaseTester):
+    # The box crops warp by an affine map, so they take only box pairs that an affine map relates (#6436).
+
+    @staticmethod
+    def _coordinate_volume(device, dtype):
+        # each voxel stores its own (x, y, z), so a patch voxel reads the source point it was sampled at
+        z, y, x = torch.meshgrid(*(torch.arange(10, device=device, dtype=dtype) for _ in range(3)), indexing="ij")
+        return torch.stack([x, y, z])[None]
+
+    @staticmethod
+    def _box(origin, edges, device, dtype):
+        # the parallelepiped origin + i * edges[0] + j * edges[1] + k * edges[2], in bbox_generator3d corner order
+        unit = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]
+        origin_t = torch.tensor(origin, device=device, dtype=dtype)
+        edges_t = torch.tensor(edges, device=device, dtype=dtype)
+        weights = torch.tensor(unit, device=device, dtype=dtype)
+        return (origin_t + weights @ edges_t)[None]
+
+    def _skewed_box(self, device, dtype):
+        # the box of #6436: an axis-aligned box with corners 1 and 3 raised by one voxel in y. Its edges along each
+        # axis still span equal extents, so _validate_bbox3d accepts it, but it is not a parallelepiped.
+        box = self._box((2, 2, 2), ((3, 0, 0), (0, 3, 0), (0, 0, 3)), device, dtype)
+        box[0, 1, 1] += 1
+        box[0, 3, 1] += 1
+        return box
+
+    def test_crop_and_resize3d_rejects_a_box_that_is_not_a_parallelepiped_6436(self, device, dtype):
+        volume = self._coordinate_volume(device, dtype)
+        skewed = self._skewed_box(device, dtype)
+        with pytest.raises(AssertionError, match="affine map"):
+            kornia.geometry.transform.crop_and_resize3d(volume, skewed, (5, 5, 5), align_corners=True)
+
+        # one such box in a batch refuses the call
+        cube = self._box((2, 2, 2), ((3, 0, 0), (0, 3, 0), (0, 0, 3)), device, dtype)
+        with pytest.raises(AssertionError, match="affine map"):
+            kornia.geometry.transform.crop_and_resize3d(
+                volume.expand(2, -1, -1, -1, -1), torch.cat([cube, skewed]), (5, 5, 5), align_corners=True
+            )
+
+    def test_crop_and_resize3d_takes_a_sheared_parallelepiped_onto_the_patch_corners_6436(self, device, dtype):
+        volume = self._coordinate_volume(device, dtype)
+        # _validate_bbox3d takes a parallelepiped whose first edge has no y component
+        box = self._box((2, 2, 2), ((4, 0, 1), (1, 4, 0), (0, 1, 3)), device, dtype)
+        patch = kornia.geometry.transform.crop_and_resize3d(volume, box, (4, 5, 5), align_corners=True)[0]
+        corners = [(0, 0, 0), (0, 0, -1), (0, -1, -1), (0, -1, 0), (-1, 0, 0), (-1, 0, -1), (-1, -1, -1), (-1, -1, 0)]
+        sampled = torch.stack([patch[:, k, j, i] for k, j, i in corners])
+        self.assert_close(sampled, box[0])
+
+    def test_crop_by_boxes3d_takes_translated_copies_of_any_box_6436(self, device, dtype):
+        volume = self._coordinate_volume(device, dtype)
+        skewed = self._skewed_box(device, dtype)
+        patch = kornia.geometry.transform.crop_by_boxes3d(
+            volume, skewed, skewed - 2, interpolation="nearest", align_corners=True
+        )
+        # a translation by (-2, -2, -2): the window of the size crop_by_boxes3d infers from dst_box, (4, 4, 4), read
+        # from the source starting at voxel (2, 2, 2)
+        self.assert_close(patch, volume[..., 2:6, 2:6, 2:6])
+
+    def test_crop_by_boxes3d_rejects_boxes_no_affine_map_relates_6436(self, device, dtype):
+        volume = self._coordinate_volume(device, dtype)
+        cube = self._box((2, 2, 2), ((3, 0, 0), (0, 3, 0), (0, 0, 3)), device, dtype)
+        skewed = self._skewed_box(device, dtype)
+        with pytest.raises(AssertionError, match="affine map"):
+            kornia.geometry.transform.crop_by_boxes3d(volume, cube, skewed - 2, align_corners=True)
