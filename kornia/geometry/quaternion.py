@@ -26,6 +26,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_TYPE
+from kornia.core.utils import _symmetric_eigenvector
 from kornia.geometry.conversions import (
     axis_angle_to_quaternion,
     euler_from_quaternion,
@@ -760,13 +761,13 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
     orig_dtype = A.dtype
     if A.dtype in (torch.float16, torch.bfloat16):
         A = A.float()
-    eigenvalues, eigenvectors = torch.linalg.eigh(A)
+    # The decomposition is of the detached matrix: the mean's gradient comes from _symmetric_eigenvector, which stays
+    # finite when the other eigenvalues are equal, as for identical members or rotations about one axis.
+    eigenvalues, eigenvectors = torch.linalg.eigh(A.detach())
     # Use float32 eigenvalues for argmax to avoid half-precision rounding
     # changing which eigenvector is selected when eigenvalues are close.
     max_idx = torch.argmax(eigenvalues)
-    eigenvectors = eigenvectors.to(orig_dtype)
-    indices = max_idx.reshape(1, 1).expand(eigenvectors.shape[0], 1)
-    q_avg = torch.gather(eigenvectors, 1, indices).squeeze(1)
+    q_avg = _symmetric_eigenvector(A, eigenvalues, eigenvectors, max_idx.reshape(1)).to(orig_dtype)
     q_avg = q_avg / q_avg.norm()
 
     return Quaternion(q_avg.unsqueeze(0))

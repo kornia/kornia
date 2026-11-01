@@ -55,6 +55,8 @@ from kornia.core.exceptions import ShapeError
 from kornia.core.utils import (
     _autocast_disabled,
     _extract_device_dtype,
+    _svd_work_dtype,
+    _symmetric_eigenvector,
     _torch_svd_cast,
     safe_inverse_with_mask,
     safe_solve_with_mask,
@@ -752,12 +754,15 @@ def _svd_null_vector(normal: torch.Tensor) -> torch.Tensor:
     """
     finite = normal.isfinite().flatten(1).all(-1)
     safe = torch.where(finite[:, None, None], normal, torch.zeros_like(normal))
+    work = safe.detach().to(_svd_work_dtype(safe))
     try:
-        _, _, V = _torch_svd_cast(safe)
+        _, S, V = _torch_svd_cast(work)
     except RuntimeError:
         warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
         return torch.full_like(normal[..., 0], float("nan"))
-    null = V[..., -1]
+    # The normal matrix is positive semidefinite, so its singular values are its eigenvalues, and the null vector's
+    # gradient stays finite when other eigenvalues are equal, as for the identity homography on a grid.
+    null = _symmetric_eigenvector(safe, S, V, -1).to(normal.dtype)
     return torch.where(finite[:, None], null, torch.full_like(null, float("nan")))
 
 
