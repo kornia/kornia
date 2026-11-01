@@ -111,6 +111,10 @@ _NOT_CALL_STATE = {
     "RandomGaussianIllumination.compile": (("_fn",), "the compiled kernel"),
     "_PicklableCompileMixin._record_compile": (("_compile_kwargs", "_uncompiled_fns"), "compile() records its options"),
     "_PicklableCompileMixin.__setstate__": (("_uncompiled_fns",), "unpickling"),
+    "RandomRotation90.__setstate__": (
+        ("_allows_odd_turns",),
+        "unpickling an instance saved before the attribute existed",
+    ),
     "AugmentationSequentialOps.data_keys": (
         ("_data_keys",),
         "a property setter, which the container calls to set its data keys back before each call returns",

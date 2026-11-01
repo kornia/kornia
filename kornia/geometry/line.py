@@ -80,7 +80,7 @@ class ParametrizedLine(nn.Module):
         return str(self)
 
     def __getitem__(self, idx: int) -> torch.Tensor:
-        return self.origin if idx == 0 else self.direction
+        return (self.origin, self.direction)[idx]
 
     def __iter__(self) -> Iterator[torch.Tensor]:
         yield from (self.origin, self.direction)
@@ -130,8 +130,9 @@ class ParametrizedLine(nn.Module):
         """Get the point at :math:`t` along this line.
 
         Args:
-            t: step along the line: a number or a 0-d tensor for every row, or one step per row of shape
-                ``(B,)`` or ``(B, 1)`` for a line of shape ``(B, D)``.
+            t: step along the line: a number or a 0-d tensor for every row, one step per row of shape
+                ``(B,)`` or ``(B, 1)`` for a line of shape ``(B, D)``, or ``N`` steps of shape ``(N,)`` or
+                ``(N, 1)`` for a line of shape ``(D,)``, giving ``(N, D)`` points.
 
         Return:
             tensor with the point.
@@ -145,7 +146,7 @@ class ParametrizedLine(nn.Module):
         """
         if isinstance(t, Scalar):
             t = t.data
-        if isinstance(t, torch.Tensor) and t.ndim > 0 and t.ndim == self.direction.ndim - 1:
+        if isinstance(t, torch.Tensor) and t.ndim > 0 and t.ndim == max(self.direction.ndim - 1, 1):
             t = t[..., None]
         return self.origin + self.direction * t
 

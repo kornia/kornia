@@ -45,6 +45,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core._compat import _emit_deprecation_warning
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
@@ -899,7 +900,7 @@ def resize_to_be_divisible(
     divisible_factor: int,
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
-    side: str = "short",
+    side: Optional[str] = None,
     antialias: bool = False,
 ) -> torch.Tensor:
     """Resize an image so that its height and width are multiples of a factor.
@@ -907,9 +908,8 @@ def resize_to_be_divisible(
     ``out = resize_to_be_divisible(input, divisible_factor)`` resizes ``(*, H, W)`` tensors with :func:`resize` to the
     nearest multiples of ``divisible_factor``, at least ``divisible_factor`` for a positive side, and returns
     ``(*, h, w)``; an empty side stays empty. A side halfway between two multiples rounds as Python's :func:`round`
-    does, to an even quotient, so with a factor of 4 both 6 and 10 become 8. ``side`` is passed to :func:`resize` but
-    has no effect there, because the size is a pair (`#6397 <https://github.com/kornia/kornia/issues/6397>`_). For a
-    given size, use :func:`resize`.
+    does, to an even quotient, so with a factor of 4 both 6 and 10 become 8. ``side`` is deprecated and has no effect.
+    For a given size, use :func:`resize`.
 
     Convention:
         - see the convention block of :func:`resize`
@@ -923,8 +923,9 @@ def resize_to_be_divisible(
         interpolation (str, optional): Interpolation flag. Defaults to "bilinear".
         align_corners (Optional[bool], optional):
             whether to align the corners of the input and output. Defaults to None.
-        side (str, optional): passed to :func:`resize`, where it has no effect because the size is a pair.
-            Defaults to "short".
+        side (str, optional): Deprecated and ignored. Both sides are rounded independently to a multiple of
+            ``divisible_factor``. In eager mode, any explicit non-None value emits a :class:`DeprecationWarning`.
+            Defaults to None. This argument will be removed in a future release.
         antialias (bool, optional):
             If True, then image will be filtered with Gaussian before downscaling. Defaults to False.
 
@@ -940,6 +941,14 @@ def resize_to_be_divisible(
         - :func:`rescale`: resize by a factor.
 
     """
+    if not torch.jit.is_scripting():  # noqa: SIM102 - TorchScript needs a standalone guard.
+        if side is not None:
+            _emit_deprecation_warning(
+                "resize_to_be_divisible(..., side=...)",
+                None,
+                "0.9.1",
+                "The `side` argument has no effect. Both sides are rounded to a multiple of `divisible_factor`.",
+            )
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
     if input.ndim < 2:
@@ -950,7 +959,7 @@ def resize_to_be_divisible(
     height, width = input.shape[-2:]
     height = max(1, round(height / divisible_factor)) * divisible_factor if height > 0 else 0
     width = max(1, round(width / divisible_factor)) * divisible_factor if width > 0 else 0
-    return resize(input, (height, width), interpolation, align_corners, side, antialias)
+    return resize(input, (height, width), interpolation=interpolation, align_corners=align_corners, antialias=antialias)
 
 
 def rescale(
@@ -1122,9 +1131,9 @@ class Affine(nn.Module):
     then ``out = warper(input)`` warps ``(B, C, H, W)`` images, or one ``(C, H, W)`` image, by the matrix of
     :func:`get_affine_matrix2d`: a shear, a scale, a counter-clockwise rotation in degrees and a translation in pixels,
     the first three about ``center`` (by default the image centre). The parameters, and ``center`` when given, share
-    one batch size; without ``center``, it must equal the input's, a ``(C, H, W)`` input counting as 1
-    (`#6395 <https://github.com/kornia/kornia/issues/6395>`_). For a matrix you already have, use :func:`affine`;
-    for one kind of warp, :class:`Rotate`, :class:`Translate`, :class:`Scale` or :class:`Shear`.
+    one batch size ``P``. ``P`` and the input batch must be equal, or one of them 1, a ``(C, H, W)`` input counting
+    as 1: one parameter set warps every image, and ``P`` sets warp one image. For a matrix you already have, use
+    :func:`affine`; for one kind of warp, :class:`Rotate`, :class:`Translate`, :class:`Scale` or :class:`Shear`.
 
     Convention:
         - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
@@ -1155,25 +1164,23 @@ class Affine(nn.Module):
 
     Raises:
         RuntimeError: At construction, if not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is
-            set, or if their batch sizes differ. At the call with ``center`` given, if the parameter batch and the
-            input batch differ and neither is 1.
+            set, or if their batch sizes differ.
         DeviceError: If ``angle``, ``translation``, ``scale_factor`` and ``shear`` are not all on one device.
         TypeCheckError: If they are on one device but do not all have one dtype. The ones not given are
             created on that device and in that dtype.
         ValueError: At the call, if ``center`` and the parameters have different batch sizes (construction does not
-            check ``center``), or, without ``center``, if the parameter batch differs from the input batch, a
-            ``(C, H, W)`` input counting as 1 (`#6395 <https://github.com/kornia/kornia/issues/6395>`_).
+            check ``center``), or if the parameter batch and the input batch differ and neither is 1, a
+            ``(C, H, W)`` input counting as 1.
 
     Returns:
-        The transformed tensor with same shape as input, except that with ``center`` given, one image warped by
-        ``B > 1`` parameter sets returns ``(B, C, H, W)``.
+        The transformed tensor with same shape as input, except that one image warped by ``P > 1`` parameter sets
+        returns ``(P, C, H, W)``.
 
     See Also:
         - :func:`get_affine_matrix2d`: the ``(B, 3, 3)`` matrix this module warps by, whose own angle turns clockwise
           (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - :func:`affine`: warp by an affine matrix you already have.
-        - :class:`Rotate`: a rotation alone, which, unlike this module without ``center``, shares one angle across a
-          batch.
+        - :class:`Rotate`: a rotation alone.
         - :class:`Shear`: raw shear factors about pixel ``(0, 0)``, which shear the other way below ``pi / 2``.
 
     Example:
@@ -1244,8 +1251,8 @@ class Affine(nn.Module):
                 :math:`H` is height, and :math:`W` is width.
 
         Returns:
-            Affine-warped tensor with shape ``(B, C, H, W)``. Values
-            sampled outside the input image are handled by ``self.padding_mode``.
+            Affine-warped tensor with the input's shape, except that one image warped by ``P > 1`` parameter sets
+            gives ``(P, C, H, W)``. Values sampled outside the input image are handled by ``self.padding_mode``.
         """
         if self.shear is None:
             sx = sy = None
@@ -1253,9 +1260,17 @@ class Affine(nn.Module):
             sx, sy = self.shear[..., 0], self.shear[..., 1]
 
         batch = input.shape[0] if input.dim() == 4 else 1
-        center = _compute_tensor_center(input).expand(batch, -1) if self.center is None else self.center
+        params_batch = self.angle.shape[0]
+        # The default center is the same for every image, so it takes the parameters' batch: a batch-1 parameter set
+        # then warps every image, and B parameter sets warp one image, as with an explicit center.
+        center = _compute_tensor_center(input).expand(params_batch, -1) if self.center is None else self.center
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
+        if params_batch not in (batch, 1) and batch != 1:
+            raise ValueError(
+                f"Affine has {params_batch} parameter sets for an input batch of {batch}: the two must match, or one "
+                "of them must be 1."
+            )
         return affine(input, matrix[..., :2, :3], self.mode, self.padding_mode, self.align_corners)
 
 

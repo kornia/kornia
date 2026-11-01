@@ -1039,12 +1039,20 @@ class TestNMS(BaseTester):
         self.assert_close(nms(boxes.to(torch.int32), scores, iou_threshold), expected, atol=0, rtol=0)
 
     @pytest.mark.parametrize("iou_threshold", [0.0, 0.5])
-    def test_nan_box_is_still_suppressed(self, iou_threshold, device, dtype):
-        # A box with a NaN coordinate has a NaN IoU with the kept box, which does not compare as at most the
-        # threshold, so it is suppressed. The zero-union rule must not turn that NaN into 0.
+    def test_lower_scored_nan_box_does_not_suppress_or_get_suppressed(self, iou_threshold, device, dtype):
+        # A NaN IoU is not above the threshold, so the lower-scored NaN box is kept. It does not suppress any box.
         boxes = torch.tensor([[0, 0, 10, 10], [100, 100, float("nan"), 110]], device=device, dtype=dtype)
         scores = torch.tensor([0.875, 0.75], device=device, dtype=dtype)
-        expected = torch.tensor([0], device=device, dtype=torch.long)
+        expected = torch.tensor([0, 1], device=device, dtype=torch.long)
+        self.assert_close(nms(boxes, scores, iou_threshold), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("iou_threshold", [0.0, 0.5])
+    def test_highest_scored_nan_box_does_not_suppress_valid_boxes(self, iou_threshold, device, dtype):
+        boxes = torch.tensor(
+            [[100, 100, float("nan"), 110], [0, 0, 10, 10], [200, 200, 210, 210]], device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.875, 0.75, 0.625], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1, 2], device=device, dtype=torch.long)
         self.assert_close(nms(boxes, scores, iou_threshold), expected, atol=0, rtol=0)
 
     def test_zero_area_box_next_to_a_box(self, device, dtype):

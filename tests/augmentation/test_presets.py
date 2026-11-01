@@ -19,7 +19,7 @@
 import pytest
 import torch
 
-from kornia.augmentation import RandomHorizontalFlip
+from kornia.augmentation import PatchSequential, RandomHorizontalFlip, RandomRotation90, Resize
 from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
 
 from testing.base import BaseTester
@@ -88,6 +88,42 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         assert len(transforms) == len(expected_transforms)
         for t, et in zip(transforms, expected_transforms):
             assert et == str(t.__class__.__name__)
+
+    @pytest.mark.parametrize("initial_p", [1e-5, 0.0, 0.5])
+    def test_default_stack_raises_on_a_non_square_image_at_the_first_call(self, device, dtype, initial_p):
+        ada = AdaptiveDiscriminatorAugmentation(initial_p=initial_p).to(device)
+        inputs = torch.rand(8, 3, 16, 24, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="RandomRotation90"):
+            ada(inputs)
+
+    def test_default_stack_checks_the_image_entries_of_a_dict(self, device, dtype):
+        ada = AdaptiveDiscriminatorAugmentation(initial_p=1e-5).to(device)
+        square = torch.rand(4, 3, 16, 16, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="RandomRotation90"):
+            ada({"input": square, "input_wide": torch.rand(4, 3, 16, 24, device=device, dtype=dtype)})
+        # A mask is not an image: an integer mask passes through as it did before the check.
+        mask = torch.zeros(4, 1, 16, 16, device=device, dtype=torch.long)
+        assert AdaptiveDiscriminatorAugmentation(initial_p=0.0)({"mask": mask})["mask"] is mask
+        assert AdaptiveDiscriminatorAugmentation(initial_p=0.0)(mask, data_keys=["mask"]) is mask
+
+    @pytest.mark.parametrize(
+        "stack",
+        [
+            lambda: [Resize((16, 16)), RandomRotation90((0, 3), p=1.0), Resize((16, 24))],
+            lambda: [PatchSequential(RandomRotation90((0, 3), p=1.0), grid_size=(2, 3), patchwise_apply=False)],
+        ],
+    )
+    def test_custom_stack_rotation_checks_the_tensor_it_receives(self, device, dtype, stack):
+        # The rotation receives square 16x16 images or 8x8 patches of the 16x24 input, so nothing is cut off.
+        ada = AdaptiveDiscriminatorAugmentation(*stack(), initial_p=0.8).to(device)
+        inputs = torch.rand(4, 3, 16, 24, device=device, dtype=dtype)
+        assert ada(inputs).shape == inputs.shape
+
+    @pytest.mark.parametrize("rotation", [RandomRotation90((2, 2), p=1.0), RandomHorizontalFlip(p=1.0)])
+    def test_non_square_image_is_fine_when_no_rotation_may_turn_oddly(self, device, dtype, rotation):
+        ada = AdaptiveDiscriminatorAugmentation(rotation, initial_p=0.5).to(device)
+        inputs = torch.rand(4, 3, 16, 24, device=device, dtype=dtype)
+        assert ada(inputs).shape == inputs.shape
 
     def test_transforms_behaviour(self, device, dtype):
         ada_preset = AdaptiveDiscriminatorAugmentation().to(device)

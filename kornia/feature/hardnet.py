@@ -23,6 +23,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import _is_tracing_or_exporting, _l2_normalize, is_mps_tensor_safe
+from kornia.feature._layout import _patch_conv_layout
 
 urls: Dict[str, str | list[str]] = {}
 urls["hardnet++"] = [
@@ -141,11 +142,7 @@ class HardNet(nn.Module):
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
-        # oneDNN's float32 convolutions avoid repeated activation reorders with
-        # channels-last input. Keep CUDA's existing layout, which is faster there.
-        if input.device.type == "cpu" and input.dtype == torch.float32:
-            x_norm = x_norm.to(memory_format=torch.channels_last)
-        x_features: torch.Tensor = self.features(x_norm)
+        x_features: torch.Tensor = self.features(_patch_conv_layout(x_norm))
         x_out = x_features.flatten(1)
         # A constant patch drives the features to zero; the default `eps` is not representable in
         # float16, where the normalisation would then return NaN.
@@ -258,7 +255,7 @@ class HardNet8(nn.Module):
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
-        x_features: torch.Tensor = self.features(x_norm)
+        x_features: torch.Tensor = self.features(_patch_conv_layout(x_norm))
         mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)
         components: torch.Tensor = torch.jit.annotate(torch.Tensor, self.components)
         x_flat = x_features.flatten(1)

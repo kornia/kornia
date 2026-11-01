@@ -65,6 +65,7 @@ from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
 from kornia.core.download import load_state_dict_from_url
+from kornia.core.utils import is_compiling
 from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
@@ -145,6 +146,16 @@ def get_patches(tensor: torch.Tensor, required_corners: torch.Tensor, ps: int) -
     sampled = tensor.permute(1, 2, 0)[tuple(pts.T)[::-1]]
     sampled = sampled.reshape(ps, ps, -1, c)
     return sampled.permute(2, 3, 0, 1)
+
+
+def _reads_channels_last(image: torch.Tensor) -> bool:
+    """Whether :meth:`ALIKED.forward` asks for the ``channels_last`` feature map; see ``extract_dense_map``.
+
+    It does for a float32 or float64 CPU image in eager only. Under ``torch.compile`` or ``torch.export`` capture the
+    default layout is faster: inductor lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel
+    at a time across the sample points, and on the channels_last map each of those reads lands on another cache line.
+    """
+    return image.device.type == "cpu" and image.dtype in (torch.float32, torch.float64) and not is_compiling()
 
 
 # ---------------------------------------------------------------------------
@@ -422,8 +433,10 @@ class InputPadder:
     def __init__(self, h: int, w: int, divis_by: int = 8) -> None:
         self.ht = h
         self.wd = w
-        pad_ht = (((h // divis_by) + 1) * divis_by - h) % divis_by
-        pad_wd = (((w // divis_by) + 1) * divis_by - w) % divis_by
+        # The distance to the next multiple, written without `%`: under dynamic-shape torch.compile a modulo of the
+        # image size reached the float offset bound of DeformableConv2d, which inductor (torch 2.14) cannot lower.
+        pad_ht = (h + divis_by - 1) // divis_by * divis_by - h
+        pad_wd = (w + divis_by - 1) // divis_by * divis_by - w
         self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
 
     def pad(self, x: torch.Tensor) -> torch.Tensor:
@@ -933,12 +946,29 @@ class ALIKED(nn.Module):
             mask=mask,
         )
 
-    def extract_dense_map(self, image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def extract_dense_map(
+        self, image: torch.Tensor, *, channels_last: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run the backbone and return ``(feature_map, score_map)``.
 
         Args:
             image: ``(B, 3, H, W)`` float image. Inputs are internally padded to
                 a multiple of 32 and the padding is removed before returning.
+            channels_last: if ``True``, ``feature_map`` has the strides of the ``torch.channels_last`` memory
+                format (it is a crop of such a tensor when the image was padded): the ``dim`` channels of each pixel
+                lie next to each other. Its values equal those of the default
+                layout up to the rounding of the normalisation, and ``score_map`` is the same either way. On CPU,
+                normalising the map and the sampling of the descriptor head are then several times faster, so
+                :meth:`forward` and :meth:`forward_laf` use it for a float32 or float64 CPU image in eager. They keep
+                the default elsewhere: on MPS, ``grid_sample`` is about 4x slower with this layout; on CUDA the forward
+                is 0.80-0.94x as fast with it (RTX 4090, float32, float16 and bfloat16); and on CPU torch's float16
+                and bfloat16 ``grid_sample`` is unreliable in either layout: it returned NaN for this one on an Apple
+                M1, and on x86 it crashes the process for a 640 x 480 image in both
+                (`#5810 <https://github.com/kornia/kornia/issues/5810>`_). By default each channel is a plane of the
+                map, as before. Under ``torch.compile`` they keep the default too. On an x86 CPU (torch 2.14),
+                inductor lowers the descriptor head's ``grid_sample`` to a loop that gathers one channel at a time
+                across the sample points, and on this layout each of those reads lands on another cache line. The
+                compiled forward of a 416 x 640 image took 254 ms with this map and 199 ms without (4 threads).
 
         Returns:
             ``feature_map``: ``(B, dim, H, W)`` L2-normalised dense features.
@@ -964,7 +994,16 @@ class ALIKED(nn.Module):
         x1234 = torch.cat([x1, x2_up, x3_up, x4_up], dim=1)
 
         score_map = torch.sigmoid(self.score_head(x1234))
-        feature_map = F.normalize(x1234, p=2, dim=1)
+        if channels_last:
+            # Each pixel's channels are normalised in an explicit (B, H, W, C) tensor, whose permutation back has the
+            # strides of a channels_last map. Eager computes the same bits as normalising
+            # ``x1234.contiguous(memory_format=torch.channels_last)`` over dim 1. Inductor (torch 2.14, x86) differs:
+            # for that form it kept the channel-major loop of the map's producer and transposed every 8 x 8 tile into
+            # the channels_last store. For this form it writes pixel by pixel, which made the compiled forward of a
+            # 416 x 640 image 1.11x faster while it still asked for this map.
+            feature_map = F.normalize(x1234.permute(0, 2, 3, 1).contiguous(), p=2, dim=-1).permute(0, 3, 1, 2)
+        else:
+            feature_map = F.normalize(x1234, p=2, dim=1)
 
         feature_map = padder.unpad(feature_map)
         score_map = padder.unpad(score_map)
@@ -991,7 +1030,7 @@ class ALIKED(nn.Module):
         if images.shape[1] == 1:
             images = grayscale_to_rgb(images)
 
-        feature_map, score_map = self.extract_dense_map(images)
+        feature_map, score_map = self.extract_dense_map(images, channels_last=_reads_channels_last(images))
         keypoints, kptscores, _scoredispersitys = self.dkd(score_map, image_size=image_size)
         descriptors, _offsets = self.desc_head(feature_map, keypoints)
 
@@ -1051,7 +1090,7 @@ class ALIKED(nn.Module):
         if img.shape[1] == 1:
             img = grayscale_to_rgb(img)
 
-        feature_map, score_map = self.extract_dense_map(img)
+        feature_map, score_map = self.extract_dense_map(img, channels_last=_reads_channels_last(img))
 
         if mask is not None:
             # Resize mask to score map resolution and apply.

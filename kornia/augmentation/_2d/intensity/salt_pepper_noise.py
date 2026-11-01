@@ -107,15 +107,14 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
                 salt_vs_pepper = (salt_vs_pepper[0], salt_vs_pepper[0])
             elif len(salt_vs_pepper) > 2 or len(salt_vs_pepper) <= 0:
                 raise ValueError(
-                    "The length of salt_vs_pepper must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple."
+                    "The length of salt_vs_pepper must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple."
                 )
         else:
             raise ValueError("salt_vs_pepper must be a tuple or a float")
         KORNIA_CHECK(
             all(0 <= el <= 1 for el in salt_vs_pepper),
-            "Salt_vs_pepper values must be between 0 and 1. \
-                        Recommended value 0.5.",
+            "Salt_vs_pepper values must be between 0 and 1. Recommended value 0.5.",
         )
 
         if isinstance(amount, (tuple, float)):
@@ -125,15 +124,13 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
                 amount = (amount[0], amount[0])
             elif len(amount) > 2 or len(amount) <= 0:
                 raise ValueError(
-                    "The length of amount must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple."
+                    "The length of amount must be greater than 0 and less than or equal to 2, and it should be a tuple."
                 )
         else:
             raise ValueError("amount must be a tuple or a float")
         KORNIA_CHECK(
             all(0 <= el <= 1 for el in amount),
-            "amount of noise values must be between 0 and 1. \
-                        Recommended values less than 0.2.",
+            "amount of noise values must be between 0 and 1. Recommended values less than 0.2.",
         )
 
         # Generator of random parameters and masks.

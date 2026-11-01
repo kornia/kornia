@@ -17,6 +17,7 @@
 
 import itertools
 import math
+import warnings
 
 import numpy as np
 import pytest
@@ -46,6 +47,38 @@ class TestResize(BaseTester):
         inp = torch.rand(*shape, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize_to_be_divisible(inp, divisible_factor)
         assert out.shape == expected
+
+    @pytest.mark.parametrize("kwargs", [{}, {"side": None}])
+    def test_resize_to_be_divisible_default_side(self, kwargs, device, dtype):
+        inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            out = kornia.geometry.transform.resize_to_be_divisible(inp, 5, **kwargs)
+        assert out.shape == (1, 1, 5, 10)
+
+    @pytest.mark.parametrize("shape", [(1, 1, 6, 12), (2, 3, 17, 9), (1, 1, 5, 10), (1, 1, 0, 12)])
+    @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
+    def test_resize_to_be_divisible_deprecated_side(self, shape, side, device, dtype):
+        inp = torch.rand(*shape, device=device, dtype=dtype)
+        expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
+        with pytest.warns(DeprecationWarning, match="side.*has no effect") as records:
+            out = kornia.geometry.transform.resize_to_be_divisible(inp, 5, side=side)
+        assert len(records) == 1
+        assert records[0].filename == __file__
+        self.assert_close(out, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("side", ["short", "long", "vert", "horz", "bogus"])
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_resize_to_be_divisible_compile_fullgraph(self, side, device, dtype, torch_optimizer, optimizer_backend):
+        if not optimizer_backend or optimizer_backend == "jit":
+            pytest.skip("Fullgraph requires a torch.compile backend, not TorchScript or the no-op optimizer.")
+        inp = torch.rand(1, 1, 6, 12, device=device, dtype=dtype)
+        expected = kornia.geometry.transform.resize_to_be_divisible(inp, 5)
+        op = torch_optimizer(kornia.geometry.transform.resize_to_be_divisible, fullgraph=True)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message=r".*resize_to_be_divisible.*side", category=DeprecationWarning)
+            out = op(inp, 5, side=side)
+        self.assert_close(out, expected)
 
     def test_resize_to_be_divisible_numpy_factor_and_empty_side(self, device, dtype):
         resize_to_be_divisible = kornia.geometry.transform.resize_to_be_divisible
@@ -1163,6 +1196,54 @@ class TestAffine2d(BaseTester):
             kornia.geometry.transform.Affine(angle=torch.zeros(1, device=device, dtype=other), shear=shear)
         with pytest.raises(DeviceError):
             kornia.geometry.transform.Affine(angle=torch.zeros(1, device="meta", dtype=dtype), shear=shear)
+
+    @staticmethod
+    def _affine_parameters(kind, batch_size, device, dtype):
+        torch.manual_seed(0)
+        if kind == "angle":
+            value = 60.0 * torch.rand(batch_size)
+        elif kind == "scale_factor":
+            value = 1.0 + 0.3 * torch.rand(batch_size, 2)
+        else:  # translation in pixels, shear in radians
+            value = 0.3 * torch.rand(batch_size, 2)
+        return {kind: value.to(device, dtype)}
+
+    @pytest.mark.parametrize("kind", ["angle", "translation", "scale_factor", "shear"])
+    @pytest.mark.parametrize("with_center", [False, True])
+    def test_affine_batch1_parameters_warp_every_image_6395(self, device, dtype, kind, with_center):
+        # One parameter set warps every image of a batch, with or without center, as Rotate and Translate do.
+        params = self._affine_parameters(kind, 1, device, dtype)
+        center = torch.tensor([[3.0, 2.0]], device=device, dtype=dtype) if with_center else None
+        torch.manual_seed(1)
+        images = torch.rand(3, 2, 5, 7).to(device, dtype)
+
+        transform = kornia.geometry.transform.Affine(**params, center=center)
+        expected = torch.cat([transform(image[None]) for image in images])
+        self.assert_close(transform(images), expected)
+
+    @pytest.mark.parametrize("unbatched", [False, True])
+    def test_affine_parameter_sets_warp_one_image_without_center_6395(self, device, dtype, unbatched):
+        # Without center, B parameter sets warp one image into (B, C, H, W), as they do with the image centre given.
+        params = self._affine_parameters("angle", 3, device, dtype)
+        params.update(self._affine_parameters("translation", 3, device, dtype))
+        torch.manual_seed(1)
+        image = torch.rand(1, 2, 5, 7).to(device, dtype)
+        image = image[0] if unbatched else image
+        image_centre = torch.tensor([[3.0, 2.0]], device=device, dtype=dtype).expand(3, -1)
+
+        actual = kornia.geometry.transform.Affine(**params)(image)
+        expected = kornia.geometry.transform.Affine(**params, center=image_centre)(image)
+        assert actual.shape == (3, 2, 5, 7)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("with_center", [False, True])
+    def test_affine_parameter_and_input_batch_mismatch_raises_6395(self, device, dtype, with_center):
+        # Two parameter sets for three images pair in no sensible way: the error names both batch sizes.
+        params = self._affine_parameters("angle", 2, device, dtype)
+        center = torch.tensor([[3.0, 2.0]], device=device, dtype=dtype).expand(2, -1) if with_center else None
+        images = torch.zeros(3, 2, 5, 7, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Affine has 2 parameter sets for an input batch of 3"):
+            kornia.geometry.transform.Affine(**params, center=center)(images)
 
     @pytest.mark.parametrize("as_module", [False, True])
     def test_convention_shear_raw_factors_5661(self, device, dtype, as_module):

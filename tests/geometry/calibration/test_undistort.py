@@ -91,6 +91,53 @@ class TestUndistortPoints(BaseTester):
         assert actual.shape == points.shape
         self.assert_close(actual, expected)
 
+    @pytest.mark.parametrize("num_frames", [2, 3])
+    @pytest.mark.parametrize("camera_axis", [False, True])
+    def test_tilt_broadcasts_like_the_other_coefficients(self, num_frames, camera_axis, device, dtype):
+        # (T, B, N, 2) points against (B, 3, 3) cameras and (B, 14) coefficients, or their [None] forms, pair camera
+        # b with axis 1, as they do without tilt. The tilt step used to pair its transforms with axis 0 instead: a
+        # wrong result for T == B or a [None] camera axis, and a ValueError otherwise.
+        num_cams, num_points = 2, 5
+        points = torch.rand(num_frames, num_cams, num_points, 2, device=device, dtype=dtype) * 8
+        K = torch.tensor(
+            [
+                [[100.0, 0.0, 4.0], [0.0, 90.0, 3.0], [0.0, 0.0, 1.0]],
+                [[80.0, 0.0, 2.0], [0.0, 70.0, 5.0], [0.0, 0.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        dist = torch.zeros(num_cams, 14, device=device, dtype=dtype)
+        dist[:, 0] = torch.tensor([0.1, -0.05], device=device, dtype=dtype)
+        dist[:, 12] = torch.tensor([0.1, -0.2], device=device, dtype=dtype)
+        dist[:, 13] = torch.tensor([-0.15, 0.05], device=device, dtype=dtype)
+        dist.requires_grad_()
+
+        actual = undistort_points(points, K[None], dist[None]) if camera_axis else undistort_points(points, K, dist)
+        expected = torch.stack(
+            [
+                torch.stack([undistort_points(points[t, b], K[b], dist[b]) for b in range(num_cams)])
+                for t in range(num_frames)
+            ]
+        )
+
+        assert actual.shape == points.shape
+        # On MPS the batched half-precision call rounds differently from the per-camera calls, which moves a few
+        # values by 2-4 ulps over the iterations; a camera paired with the wrong axis moves them by pixels.
+        tol = {"rtol": 2e-2, "atol": 1e-2} if dtype in (torch.float16, torch.bfloat16) else {}
+        self.assert_close(actual, expected, **tol)
+        # Every frame shares a camera's coefficients, so their gradient sums over the frames, as the per-camera
+        # calls' gradients do. In half precision the tilt gradients of both forms are off the float64 gradient by
+        # up to its own magnitude, so only the wider dtypes can tell the two apart. In float32 the two forms differ
+        # by up to 3e-4 on gradients of magnitude ~5, measured over 150 seeds on CPU and MPS; swapping the cameras
+        # moves them by at least 0.58.
+        if dtype in (torch.float16, torch.bfloat16):
+            return
+        actual_grad = torch.autograd.grad(actual.sum(), dist)[0]
+        expected_grad = torch.autograd.grad(expected.sum(), dist)[0]
+        grad_tol = {"rtol": 1e-3, "atol": 2e-3} if dtype == torch.float32 else {}
+        self.assert_close(actual_grad, expected_grad, **grad_tol)
+
     @pytest.mark.parametrize(
         "batch_size, num_points, num_distcoeff", [(1, 3, 4), (2, 4, 5), (3, 5, 8), (4, 6, 12), (5, 7, 14)]
     )
