@@ -521,6 +521,43 @@ class TestRotationMatrix2d(BaseTester):
         for name, value in inputs.items():
             assert f"{name} {value.device}" in str(exc.value)
 
+    @pytest.mark.parametrize("batch_sizes", [(1, 3, 3), (3, 1, 3), (3, 3, 1), (1, 1, 3), (1, 3, 1), (3, 1, 1)])
+    def test_broadcast_singleton_batch_dimensions(self, batch_sizes, device, dtype):
+        center_batch, angle_batch, scale_batch = batch_sizes
+        center = torch.arange(center_batch * 2, device=device, dtype=dtype).reshape(center_batch, 2)
+        angle = torch.tensor([0.0, 30.0, 60.0], device=device, dtype=dtype)[:angle_batch]
+        scale = torch.ones(scale_batch, 2, device=device, dtype=dtype)
+
+        actual = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
+        expected = kornia.geometry.get_rotation_matrix2d(center.expand(3, 2), angle.expand(3), scale.expand(3, 2))
+
+        assert actual.shape == (3, 2, 3)
+        self.assert_close(actual, expected)
+
+    def test_broadcast_empty_batch_with_singletons(self, device, dtype):
+        center = torch.empty(0, 2, device=device, dtype=dtype)
+        angle = torch.zeros(1, device=device, dtype=dtype)
+        scale = torch.ones(1, 2, device=device, dtype=dtype)
+
+        actual = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
+
+        assert actual.shape == (0, 2, 3)
+
+    def test_reject_incompatible_batch_dimensions(self, device, dtype):
+        center = torch.zeros(2, 2, device=device, dtype=dtype)
+        angle = torch.zeros(3, device=device, dtype=dtype)
+        scale = torch.ones(1, 2, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="same batch size dimension"):
+            kornia.geometry.get_rotation_matrix2d(center, angle, scale)
+
+    def test_broadcast_singleton_batch_gradcheck(self, device):
+        center = torch.zeros(1, 2, device=device, dtype=torch.float64)
+        angle = torch.tensor([20.0, 35.0, 50.0], device=device, dtype=torch.float64)
+        scale = torch.ones(3, 2, device=device, dtype=torch.float64)
+
+        self.gradcheck(kornia.geometry.get_rotation_matrix2d, (center, angle, scale))
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_90deg_rotation(self, batch_size, device, dtype):
         # generate input data
