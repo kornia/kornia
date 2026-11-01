@@ -769,6 +769,90 @@ class TestSe3(BaseTester):
         assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()
 
+    def test_se3_batch_validation(self, device: torch.device, dtype: torch.dtype) -> None:
+        # Incompatible batch sizes (mismatched batches) with Quaternion: batch size 3 with shape (2, 3)
+        q_b3 = Quaternion.identity(3, device=device, dtype=dtype)
+        t_b2 = torch.zeros(2, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"torch\.Size\(\[3, 4\]\).*torch\.Size\(\[2, 3\]\)"):
+            Se3(q_b3, t_b2)
+
+        # Incompatible batch sizes with So3
+        so3_b3 = So3.identity(3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"torch\.Size\(\[3, 4\]\).*torch\.Size\(\[2, 3\]\)"):
+            Se3(so3_b3, t_b2)
+
+        # Unbatched translation (shape (3,)) with batched rotation (batch size 3)
+        t_unbatched = torch.zeros(3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"both must be batched or unbatched"):
+            Se3(q_b3, t_unbatched)
+
+        with pytest.raises(ValueError, match=r"both must be batched or unbatched"):
+            Se3(so3_b3, t_unbatched)
+
+        # Unbatched rotation with batched translation
+        q_unbatched = Quaternion.identity(None, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"both must be batched or unbatched"):
+            Se3(q_unbatched, t_b2)
+
+        # Valid inputs must continue to be preserved
+        s_unbatched = Se3(q_unbatched, t_unbatched)
+        assert s_unbatched.matrix().shape == (4, 4)
+
+        s_batched = Se3(q_b3, torch.zeros(3, 3, device=device, dtype=dtype))
+        assert s_batched.matrix().shape == (3, 4, 4)
+
+        # Test both broadcast directions: (2, 1) and (1, 2)
+        s_bcast1 = Se3(
+            Quaternion.identity(2, device=device, dtype=dtype), torch.zeros(1, 3, device=device, dtype=dtype)
+        )
+        assert s_bcast1.matrix().shape == (2, 4, 4)
+        assert s_bcast1.log().shape == (2, 6)
+        assert s_bcast1.adjoint().shape == (2, 6, 6)
+        assert s_bcast1[0].matrix().shape == (4, 4)
+        assert s_bcast1[1].matrix().shape == (4, 4)
+        assert s_bcast1[0:2].matrix().shape == (2, 4, 4)
+        assert s_bcast1[1:].matrix().shape == (1, 4, 4)
+        assert s_bcast1[1:1].matrix().shape == (0, 4, 4)
+
+        s_bcast2 = Se3(
+            Quaternion.identity(1, device=device, dtype=dtype), torch.zeros(2, 3, device=device, dtype=dtype)
+        )
+        assert s_bcast2.matrix().shape == (2, 4, 4)
+        assert s_bcast2.log().shape == (2, 6)
+        assert s_bcast2.adjoint().shape == (2, 6, 6)
+        assert s_bcast2[0].matrix().shape == (4, 4)
+        assert s_bcast2[1].matrix().shape == (4, 4)
+        assert s_bcast2[0:2].matrix().shape == (2, 4, 4)
+        assert s_bcast2[1:].matrix().shape == (1, 4, 4)
+        assert s_bcast2[1:1].matrix().shape == (0, 4, 4)
+
+        # Mixed unbatched and singleton batch inputs
+        s_mixed1 = Se3(q_unbatched, torch.zeros(1, 3, device=device, dtype=dtype))
+        assert s_mixed1.matrix().shape == (1, 4, 4)
+        assert s_mixed1.log().shape == (1, 6)
+        assert s_mixed1.adjoint().shape == (1, 6, 6)
+        assert s_mixed1[0].matrix().shape == (4, 4)
+        assert s_mixed1[0:1].matrix().shape == (1, 4, 4)
+
+        s_mixed2 = Se3(Quaternion.identity(1, device=device, dtype=dtype), t_unbatched)
+        assert s_mixed2.matrix().shape == (1, 4, 4)
+        assert s_mixed2.log().shape == (1, 6)
+        assert s_mixed2.adjoint().shape == (1, 6, 6)
+        assert s_mixed2[0].matrix().shape == (4, 4)
+        assert s_mixed2[0:1].matrix().shape == (1, 4, 4)
+
+        # Multi-dimensional broadcast batches: (2, 1) rotation and (1, 3) translation
+        q_2x1 = Quaternion(torch.randn(2, 1, 4, device=device, dtype=dtype))
+        t_1x3 = torch.zeros(1, 3, 3, device=device, dtype=dtype)
+        s_multi = Se3(q_2x1, t_1x3)
+        assert s_multi.matrix().shape == (2, 3, 4, 4)
+        assert s_multi.log().shape == (2, 3, 6)
+        assert s_multi.adjoint().shape == (2, 3, 6, 6)
+        assert s_multi[0].matrix().shape == (3, 4, 4)
+        assert s_multi[1].matrix().shape == (3, 4, 4)
+        assert s_multi[1:].matrix().shape == (1, 3, 4, 4)
+        assert s_multi[0:2].matrix().shape == (2, 3, 4, 4)
+
 
 class TestSe3HalfPrecision(BaseTester):
     # g * p and a * b compute in float32 for float16/bfloat16 inputs and round once to the input dtype, and the

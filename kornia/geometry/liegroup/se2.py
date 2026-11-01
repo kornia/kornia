@@ -34,17 +34,25 @@ from kornia.geometry.vector import Vector2
 
 
 def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
-    z_shape = r.z.shape
-    if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
-        # check_se2_t_shape
-        is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
-        is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
-        if not (is_batch_shape or is_single_shape):
-            raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t.shape}")
-    else:
-        raise ValueError(
-            f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
-        )
+    is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
+    is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
+    if not (is_batch_shape or is_single_shape):
+        raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t.shape}")
+    r_batch = r.z.shape
+    t_batch = t.shape[:-1]
+    if len(r_batch) == 0 and len(t_batch) == 0:
+        return
+    if len(r_batch) == 1 and len(t_batch) == 1:
+        try:
+            torch.broadcast_shapes(r_batch, t_batch)
+            return
+        except RuntimeError:
+            raise ValueError(f"Incompatible rotation shape {r.z.shape} and translation shape {t.shape}.") from None
+    if (len(r_batch) == 0 and t_batch == (1,)) or (r_batch == (1,) and len(t_batch) == 0):
+        return
+    raise ValueError(
+        f"Incompatible rotation shape {r.z.shape} and translation shape {t.shape}: both must be batched or unbatched."
+    )
 
 
 def _check_se2_r_t_dtype_device(r: So2, t: torch.Tensor) -> None:
@@ -134,6 +142,7 @@ class Se2(nn.Module):
                 rotation's real dtype.
 
         Raises:
+            ValueError: if rotation and translation batch shapes are incompatible.
             TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
                 dtype differs from the rotation's (``log`` and the other methods cannot combine them).
             DeviceError: if the translation is on another device than the rotation.
@@ -164,7 +173,18 @@ class Se2(nn.Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx: int | slice) -> Se2:
-        return Se2(self._rotation[idx], self._translation[idx])
+        r = self._rotation
+        t = self._translation
+        r_batch = r.z.shape
+        t_batch = t.shape[:-1]
+        if len(r_batch) == 0 and len(t_batch) == 0:
+            return Se2(r[idx], t[idx])
+        r_b = (1,) if len(r_batch) == 0 else r_batch
+        t_b = (1,) if len(t_batch) == 0 else t_batch
+        b_batch = torch.broadcast_shapes(r_b, t_b)
+        z = r.z if r.z.shape == b_batch else r.z.expand(b_batch)
+        t_exp = t if t.shape[:-1] == b_batch else t.expand(b_batch + (2,))
+        return Se2(So2(z[idx]), t_exp[idx])
 
     def _mul_se2(self, right: Se2) -> Se2:
         so2 = self.so2
@@ -297,6 +317,8 @@ class Se2(nn.Module):
         V_inv = torch.stack((row0, row1), -2)
         # the translation is read at the rotation's precision, so a bfloat16 translation beside a wider rotation works
         upsilon = V_inv @ self.t.to(theta.dtype)[..., None]
+        if theta.shape != upsilon.shape[:-2]:
+            theta = theta.expand(upsilon.shape[:-2])
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -397,7 +419,13 @@ class Se2(nn.Module):
 
         """
         r_matrix = self.r.matrix()
-        rt = torch.cat((r_matrix, self.t.to(r_matrix.dtype)[..., None]), -1)
+        b_batch = torch.broadcast_shapes(r_matrix.shape[:-2], self.t.shape[:-1])
+        if r_matrix.shape[:-2] != b_batch:
+            r_matrix = r_matrix.expand(b_batch + (2, 2))
+        t = self.t.to(r_matrix.dtype)
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (2,))
+        rt = torch.cat((r_matrix, t[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -518,6 +546,9 @@ class Se2(nn.Module):
 
         """
         rt = self.matrix()
+        b_batch = rt.shape[:-2]
         t = self.t
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (2,))
         rt[..., 0:2, 2] = torch.stack((t[..., 1], -t[..., 0]), -1)
         return rt

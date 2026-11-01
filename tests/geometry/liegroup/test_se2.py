@@ -923,3 +923,66 @@ class TestSe2(BaseTester):
             pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
         pose = Se2.identity(batch_size, device, dtype)
         assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape
+
+    def test_se2_batch_validation(self, device: torch.device, dtype: torch.dtype) -> None:
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        # Incompatible batch sizes (mismatched batches)
+        r_batched = So2.identity(2, device=device, dtype=dtype)
+        t_mismatched = torch.zeros(3, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"torch\.Size\(\[2\]\).*torch\.Size\(\[3, 2\]\)"):
+            Se2(r_batched, t_mismatched)
+
+        # Unbatched translation with batched rotation
+        t_unbatched = torch.zeros(2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"both must be batched or unbatched"):
+            Se2(r_batched, t_unbatched)
+
+        # Unbatched rotation with batched translation
+        r_unbatched = So2.identity(None, device=device, dtype=dtype)
+        t_batched = torch.zeros(2, 2, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"both must be batched or unbatched"):
+            Se2(r_unbatched, t_batched)
+
+        # Valid inputs must continue to be preserved
+        s_unbatched = Se2(r_unbatched, t_unbatched)
+        assert s_unbatched.matrix().shape == (3, 3)
+
+        s_batched = Se2(r_batched, t_batched)
+        assert s_batched.matrix().shape == (2, 3, 3)
+
+        # Test both broadcast directions: (1, 2) and (2, 1)
+        s_bcast1 = Se2(So2.identity(1, device=device, dtype=dtype), torch.zeros(2, 2, device=device, dtype=dtype))
+        assert s_bcast1.matrix().shape == (2, 3, 3)
+        assert s_bcast1.log().shape == (2, 3)
+        assert s_bcast1.adjoint().shape == (2, 3, 3)
+        assert s_bcast1[0].matrix().shape == (3, 3)
+        assert s_bcast1[1].matrix().shape == (3, 3)
+        assert s_bcast1[0:2].matrix().shape == (2, 3, 3)
+        assert s_bcast1[1:].matrix().shape == (1, 3, 3)
+        assert s_bcast1[1:1].matrix().shape == (0, 3, 3)
+
+        s_bcast2 = Se2(So2.identity(2, device=device, dtype=dtype), torch.zeros(1, 2, device=device, dtype=dtype))
+        assert s_bcast2.matrix().shape == (2, 3, 3)
+        assert s_bcast2.log().shape == (2, 3)
+        assert s_bcast2.adjoint().shape == (2, 3, 3)
+        assert s_bcast2[0].matrix().shape == (3, 3)
+        assert s_bcast2[1].matrix().shape == (3, 3)
+        assert s_bcast2[0:2].matrix().shape == (2, 3, 3)
+        assert s_bcast2[1:].matrix().shape == (1, 3, 3)
+        assert s_bcast2[1:1].matrix().shape == (0, 3, 3)
+
+        # Mixed unbatched and singleton batch inputs
+        s_mixed1 = Se2(So2.identity(None, device=device, dtype=dtype), torch.zeros(1, 2, device=device, dtype=dtype))
+        assert s_mixed1.matrix().shape == (1, 3, 3)
+        assert s_mixed1.log().shape == (1, 3)
+        assert s_mixed1.adjoint().shape == (1, 3, 3)
+        assert s_mixed1[0].matrix().shape == (3, 3)
+        assert s_mixed1[0:1].matrix().shape == (1, 3, 3)
+
+        s_mixed2 = Se2(So2.identity(1, device=device, dtype=dtype), torch.zeros(2, device=device, dtype=dtype))
+        assert s_mixed2.matrix().shape == (1, 3, 3)
+        assert s_mixed2.log().shape == (1, 3)
+        assert s_mixed2.adjoint().shape == (1, 3, 3)
+        assert s_mixed2[0].matrix().shape == (3, 3)
+        assert s_mixed2[0:1].matrix().shape == (1, 3, 3)

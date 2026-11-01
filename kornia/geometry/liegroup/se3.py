@@ -34,6 +34,26 @@ from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
 
+def _check_se3_r_t_shape(r: Quaternion | So3, t: torch.Tensor) -> None:
+    q = r.q if isinstance(r, So3) else r
+    r_shape = q.data.shape
+    r_batch = r_shape[:-1]
+    t_batch = t.shape[:-1]
+    if len(r_batch) == 0 and len(t_batch) == 0:
+        return
+    if len(r_batch) > 0 and len(t_batch) > 0:
+        try:
+            torch.broadcast_shapes(r_batch, t_batch)
+            return
+        except RuntimeError:
+            raise ValueError(f"Incompatible rotation shape {r_shape} and translation shape {t.shape}.") from None
+    if (len(r_batch) == 0 and t_batch == (1,)) or (r_batch == (1,) and len(t_batch) == 0):
+        return
+    raise ValueError(
+        f"Incompatible rotation shape {r_shape} and translation shape {t.shape}: both must be batched or unbatched."
+    )
+
+
 def _check_se3_r_t_dtype_device(r: Quaternion | So3, t: torch.Tensor) -> None:
     """Reject a translation the rotation's methods cannot combine with: another dtype or another device."""
     q = r.q if isinstance(r, So3) else r
@@ -114,6 +134,7 @@ class Se3(nn.Module):
                 tensor is what gets stored. It must have the rotation's dtype and device.
 
         Raises:
+            ValueError: if rotation and translation batch shapes are incompatible.
             TypeCheckError: if the translation is an integer, bool or complex tensor (an ``nn.Parameter`` too), or its
                 dtype differs from the rotation's (``inverse``, ``adjoint`` and the other methods cannot combine them).
             DeviceError: if the translation is on another device than the rotation.
@@ -138,6 +159,7 @@ class Se3(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector3) else translation
         KORNIA_CHECK_SHAPE(_t_data, ["*", "3"])
+        _check_se3_r_t_shape(rotation, _t_data)
         _check_se3_r_t_dtype_device(rotation, _t_data)
         self._translation: torch.Tensor
         self._rotation: So3
@@ -151,7 +173,19 @@ class Se3(nn.Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx: int | slice) -> Se3:
-        return Se3(self._rotation[idx], self._translation[idx])
+        r = self._rotation
+        t = self._translation
+        q = r.q if isinstance(r, So3) else r
+        r_batch = q.data.shape[:-1]
+        t_batch = t.shape[:-1]
+        if len(r_batch) == 0 and len(t_batch) == 0:
+            return Se3(r[idx], t[idx])
+        r_b = (1,) if len(r_batch) == 0 else r_batch
+        t_b = (1,) if len(t_batch) == 0 else t_batch
+        b_batch = torch.broadcast_shapes(r_b, t_b)
+        q_data = q.data if q.data.shape[:-1] == b_batch else q.data.expand(b_batch + (4,))
+        t_exp = t if t.shape[:-1] == b_batch else t.expand(b_batch + (3,))
+        return Se3(So3(Quaternion(q_data[idx])), t_exp[idx])
 
     def _mul_se3(self, right: Se3) -> Se3:
         _r = self.r * right.r
@@ -293,7 +327,13 @@ class Se3(nn.Module):
         V_inv = (
             torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
         )
-        return torch.cat(((t[..., None, :] * V_inv).sum(-1), omega), -1)
+        upsilon = (t[..., None, :] * V_inv).sum(-1)
+        b_batch = torch.broadcast_shapes(upsilon.shape[:-1], omega.shape[:-1])
+        if upsilon.shape[:-1] != b_batch:
+            upsilon = upsilon.expand(b_batch + (3,))
+        if omega.shape[:-1] != b_batch:
+            omega = omega.expand(b_batch + (3,))
+        return torch.cat((upsilon, omega), -1)
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
@@ -383,7 +423,14 @@ class Se3(nn.Module):
                     [0., 0., 0., 1.]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t[..., None]), -1)
+        r_matrix = self.r.matrix()
+        b_batch = torch.broadcast_shapes(r_matrix.shape[:-2], self.t.shape[:-1])
+        if r_matrix.shape[:-2] != b_batch:
+            r_matrix = r_matrix.expand(b_batch + (3, 3))
+        t = self.t.to(r_matrix.dtype)
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (3,))
+        rt = torch.cat((r_matrix, t[..., None]), -1)
         rt_4x4 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
@@ -577,7 +624,13 @@ class Se3(nn.Module):
 
         """
         R = self.so3.matrix()
+        b_batch = torch.broadcast_shapes(R.shape[:-2], self.t.shape[:-1])
+        if R.shape[:-2] != b_batch:
+            R = R.expand(b_batch + (3, 3))
+        t = self.t
+        if t.shape[:-1] != b_batch:
+            t = t.expand(b_batch + (3,))
         z = torch.zeros_like(R)
-        row0 = torch.cat((R, So3.hat(self.t) @ R), -1)
+        row0 = torch.cat((R, So3.hat(t) @ R), -1)
         row1 = torch.cat((z, R), -1)
         return torch.cat((row0, row1), -2)
