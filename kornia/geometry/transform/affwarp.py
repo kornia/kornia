@@ -262,7 +262,8 @@ def affine3d(
 
     ``out = affine3d(tensor, matrix)`` warps ``(C, D, H, W)`` or ``(B, C, D, H, W)`` volumes by ``(B, 3, 4)``
     source→destination voxel affine matrices and returns them at their own size, as :func:`warp_affine3d` with
-    ``dsize=(D, H, W)`` does; one matrix serves every volume of a batch. Pass ``align_corners=True``: at the default
+    ``dsize=(D, H, W)`` does; one matrix serves every volume of a batch, and one volume can serve a batch of
+    matrices. Pass ``align_corners=True``: at the default
     ``False`` the warp mixes two voxel normalizations, so a translation of ``t`` voxels moves the volume
     ``t * size / (size - 1)`` voxels along that axis (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For
     images, use :func:`affine`.
@@ -274,7 +275,8 @@ def affine3d(
     Args:
         tensor: The image tensor to be warped in shapes of
             ``(C, D, H, W)`` or ``(B, C, D, H, W)``.
-        matrix: The affine transformation matrix with shape ``(B, 3, 4)``.
+        matrix: The affine transformation matrix with shape ``(B, 3, 4)`` or ``(3, 4)``.
+            A single volume is broadcast across the matrix batch when ``B > 1``.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -282,7 +284,8 @@ def affine3d(
         align_corners: interpolation flag.
 
     Returns:
-        The warped image, with the shape of the input.
+        The warped volume, with the shape of the input except that one volume warped by ``B > 1`` matrices
+        returns ``(B, C, D, H, W)``.
 
     See Also:
         - :func:`affine`: the 2D warp of images, whose default ``align_corners=True`` is correct.
@@ -304,6 +307,9 @@ def affine3d(
 
     # we enforce broadcasting since by default grid_sample it does not
     # give support for that
+    if tensor.shape[0] == 1 and matrix.dim() == 3 and matrix.shape[0] > 1:
+        tensor = tensor.expand(matrix.shape[0], tensor.shape[1], tensor.shape[2], tensor.shape[3], tensor.shape[4])
+
     matrix = matrix.expand(tensor.shape[0], -1, -1)
 
     # warp the input tensor

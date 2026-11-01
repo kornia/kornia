@@ -1385,6 +1385,48 @@ class TestAffine2d(BaseTester):
         assert out[0, 0, 0, 9] == 0.0
 
 
+class TestAffine3d(BaseTester):
+    @pytest.mark.parametrize("unbatched", [False, True])
+    def test_function_batch_broadcast(self, device, dtype, unbatched):
+        volume = torch.rand(2, 4, 5, 6, device=device, dtype=dtype)
+        if not unbatched:
+            volume = volume.unsqueeze(0)
+        matrix = torch.eye(3, 4, device=device, dtype=dtype).repeat(3, 1, 1)
+        matrix[:, 0, 3] = torch.arange(3, device=device, dtype=dtype)
+
+        reference_volume = volume.unsqueeze(0) if unbatched else volume
+        expected = kornia.geometry.transform.warp_affine3d(
+            reference_volume.expand(3, -1, -1, -1, -1), matrix, (4, 5, 6), flags="nearest", align_corners=False
+        )
+        actual = kornia.geometry.transform.affine3d(volume, matrix, mode="nearest", align_corners=False)
+
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("unbatched", [False, True])
+    def test_function_unbatched_matrix(self, device, dtype, unbatched):
+        volume = torch.rand(2, 4, 5, 6, device=device, dtype=dtype)
+        if not unbatched:
+            volume = volume.unsqueeze(0)
+        matrix = torch.eye(3, 4, device=device, dtype=dtype)
+        matrix[0, 3] = 1.0
+        expected = kornia.geometry.transform.affine3d(volume, matrix.unsqueeze(0))
+        actual = kornia.geometry.transform.affine3d(volume, matrix)
+        assert actual.shape == volume.shape
+        self.assert_close(actual, expected)
+
+    def test_function_empty_matrix_batch(self, device, dtype):
+        volume = torch.rand(1, 2, 4, 5, 6, device=device, dtype=dtype)
+        matrix = torch.empty(0, 3, 4, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            kornia.geometry.transform.affine3d(volume, matrix)
+
+    def test_function_invalid_batch(self, device, dtype):
+        volume = torch.rand(2, 2, 4, 5, 6, device=device, dtype=dtype)
+        matrix = torch.eye(3, 4, device=device, dtype=dtype).repeat(3, 1, 1)
+        with pytest.raises(RuntimeError):
+            kornia.geometry.transform.affine3d(volume, matrix)
+
+
 class TestGetAffineMatrix(BaseTester):
     def test_smoke(self, device, dtype):
         H, W = 5, 5
