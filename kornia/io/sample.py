@@ -144,10 +144,10 @@ def get_sample_images(
             sizes unless ``divisible_factor`` is given.
         download: Whether to download the images if they are not already cached. Defaults to True.
         cache_dir: The directory where the downloaded images will be cached.
-            Defaults to ``<kornia_config.hub_cache_dir>/images``, relative to the working directory unless configured
-            otherwise. Created when an image has to be downloaded. A download is loaded from a temporary file of its
-            own before it is renamed into the cache, so a download that does not load as an image never reaches the
-            cache: its temporary file is removed and the error propagates.
+            Defaults to ``<kornia_config.hub_cache_dir>/images``, a per-user directory under ``torch.hub.get_dir()``
+            unless configured otherwise. Created when an image has to be downloaded. A download is loaded from a
+            temporary file of its own before it is renamed into the cache, so a download that does not load as an
+            image never reaches the cache: its temporary file is removed and the error propagates.
         as_list: ``True`` to return a list even when ``resize`` is given.
         divisible_factor:
             If not None, each side of every image is resized to a multiple of ``divisible_factor``.

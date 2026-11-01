@@ -114,17 +114,31 @@ class LazyLoaderConfig:
         self._invalid_env_value = None
 
 
+def _default_hub_cache_dir() -> str:
+    """Return the default download cache, ``<torch.hub.get_dir()>/kornia``, as an absolute path.
+
+    ``torch.hub.get_dir()`` follows ``TORCH_HOME`` (then ``XDG_CACHE_HOME``) and defaults to
+    ``~/.cache/torch/hub``, so every working directory shares one per-user cache. The path is
+    resolved when the config is created: a later ``torch.hub.set_dir`` or ``os.chdir`` does not move it.
+    """
+    import torch.hub
+
+    return os.path.abspath(os.path.join(torch.hub.get_dir(), "kornia"))
+
+
 @dataclass
 class KorniaConfig:
-    """Configure Kornia's behavior."""
+    """Configure Kornia's behavior.
 
-    hub_models_dir: str
-    hub_onnx_dir: str
+    The hub directories default to ``<torch.hub.get_dir()>/kornia`` (``hub_cache_dir``) and its
+    ``models`` and ``onnx_models`` subdirectories. Each field can be set independently.
+    """
+
+    hub_models_dir: str = field(default_factory=lambda: os.path.join(_default_hub_cache_dir(), "models"))
+    hub_onnx_dir: str = field(default_factory=lambda: os.path.join(_default_hub_cache_dir(), "onnx_models"))
     output_dir: str = "kornia_outputs"
-    hub_cache_dir: str = ".kornia_hub"
+    hub_cache_dir: str = field(default_factory=_default_hub_cache_dir)
     lazyloader: LazyLoaderConfig = field(default_factory=LazyLoaderConfig)
 
 
-kornia_config = KorniaConfig(
-    hub_models_dir=os.path.join(".kornia_hub", "models"), hub_onnx_dir=os.path.join(".kornia_hub", "onnx_models")
-)
+kornia_config = KorniaConfig()
