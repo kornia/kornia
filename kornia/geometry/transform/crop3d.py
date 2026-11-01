@@ -476,11 +476,12 @@ def _check_boxes_related_by_affine(src_box: torch.Tensor, dst_box: torch.Tensor,
     # ``src_box`` on those of ``dst_box`` only when an affine map relates the two boxes, as one relates any two
     # parallelepipeds. Refuse every other pair instead of cropping it with a wrong mapping. Mapping a corner sums
     # terms of up to ``scale`` voxels, rounded to the matrix dtype, so a pair passes when no corner misses by more
-    # than ``sqrt(eps)`` of that, with the float32 ``eps`` for float64: a parallelepiped misses by about ``eps`` of it
-    # (more on MPS, which solves for the matrix in float32), boxes off a parallelepiped by as much as the extents
-    # ``_validate_bbox3d`` lets differ (``rtol=1e-5``), such as a gradcheck step, still pass, and moving a single
-    # corner of a small box by one voxel misses by far more. Like the value checks of ``_validate_bbox3d``, this one
-    # reads the data back and is skipped under graph capture.
+    # than ``sqrt(eps)`` of that, with the float32 ``eps`` for float64: a parallelepiped whose corners are rounded to
+    # the dtype misses by up to several hundred ``eps`` of it far from the origin, where the fitted homography
+    # amplifies that rounding, still a few times below the tolerance; boxes off a parallelepiped by as much as the
+    # extents ``_validate_bbox3d`` lets differ (``rtol=1e-5``), such as a gradcheck step, still pass, and moving a
+    # single corner of a small box by one voxel misses by far more. Like the value checks of ``_validate_bbox3d``,
+    # this one reads the data back and is skipped under graph capture.
     if not torch.jit.is_scripting() and is_compiling():
         return
     work_dtype = torch.promote_types(dst_trans_src.dtype, torch.float32)
