@@ -932,6 +932,57 @@ class TestAdjustBrightness(BaseTester):
 
 class TestAdjustSigmoid(BaseTester):
     @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize(
+        "gain,cutoff", [(34.0, 0.5), (40.0, 0.5), (40.0, 0.3), (60.0, 0.5), (100.0, 0.5), (200.0, 0.5)]
+    )
+    @pytest.mark.parametrize("gain_sign", [1.0, -1.0])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_half_high_gain_grid_derivatives(self, device, half_dtype, gain, cutoff, gain_sign, inv, scripted):
+        # Use the actual half-rounded inputs in the independent Python-double reference.
+        values = torch.linspace(0, 1, 1001, dtype=half_dtype).tolist()
+        image = torch.tensor(values, device=device, dtype=half_dtype).view(1, 1, 1, -1).requires_grad_()
+        gain *= gain_sign
+        op = kornia.enhance.AdjustSigmoid(cutoff=cutoff, gain=gain, inv=inv)
+        if scripted:
+            op = torch.jit.script(op)
+        # Also exercise TorchScript's optimized backward after its profiling run.
+        for _ in range(2 if scripted else 1):
+            actual = op(image)
+            (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+            (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+
+        logits = [gain * (x - cutoff) for x in values]
+        tails = [exp(-abs(z)) for z in logits]
+        sign = -1.0 if inv else 1.0
+        expected_gradient = image.new_tensor([sign * gain * t / (1 + t) ** 2 for t in tails]).view_as(image)
+        expected_second = image.new_tensor(
+            [sign * (-1.0 if z > 0 else 1.0) * gain**2 * t * (1 - t) / (1 + t) ** 3 for z, t in zip(logits, tails)]
+        ).view_as(image)
+        assert actual.dtype == image.dtype
+        assert actual.device == image.device
+        assert actual.shape == image.shape
+        assert torch.isfinite(actual).all()
+        # Allow half rounding, including one subnormal step, but do not lose representable derivatives.
+        for result, expected in [(gradient, expected_gradient), (second, expected_second)]:
+            assert torch.isfinite(result).all()
+            assert (result[expected != 0] != 0).all()
+            self.assert_close(result, expected, rtol=2e-3, atol=2**-24)
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize("gain", [200.0, -200.0])
+    @pytest.mark.parametrize("inv", [False, True])
+    def test_half_outside_range_derivatives(self, device, half_dtype, gain, inv):
+        # These saturated pixels should have zero derivatives, not exp overflow followed by 0 * inf.
+        image = torch.tensor([-65504.0, -20.0, 21.0, 65504.0], device=device, dtype=half_dtype).requires_grad_()
+        actual = kornia.enhance.adjust_sigmoid(image, gain=gain, inv=inv)
+        (gradient,) = torch.autograd.grad(actual, image, torch.ones_like(actual), create_graph=True)
+        (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+        assert torch.isfinite(actual).all()
+        self.assert_close(gradient, torch.zeros_like(image), rtol=0, atol=0)
+        self.assert_close(second, torch.zeros_like(image), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
     @pytest.mark.parametrize("inv", [False, True])
     @pytest.mark.parametrize("gain", [23.0, -23.0, 30.0, -30.0, 32.0, -32.0])
     def test_half_high_gain_second_derivative(self, device, half_dtype, gain, inv):
