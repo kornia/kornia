@@ -89,6 +89,35 @@ class TestHomographyWarper(BaseTester):
         patch_dst = warper(patch_src, dst_homo_src)
         self.assert_close(patch_src, patch_dst)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("default_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("projective", [False, True])
+    def test_precomputed_grid_uses_homography_dtype(self, align_corners, default_dtype, projective, device, dtype):
+        height, width = 35, 47
+        image = (torch.arange(height * width, device=device).reshape(1, 1, height, width) % 2).to(dtype)
+        matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        if projective:
+            matrix[:, 0, 2] = 0.1
+            matrix[:, 2, 0] = 0.02
+
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=align_corners)
+        finally:
+            torch.set_default_dtype(previous)
+
+        image.requires_grad_()
+        matrix.requires_grad_()
+        direct = warper(image, matrix)
+        warper.precompute_warp_grid(matrix)
+        precomputed = warper(image)
+        self.assert_close(precomputed, direct, rtol=0, atol=0)
+        direct_grads = torch.autograd.grad(direct.sum(), (image, matrix))
+        precomputed_grads = torch.autograd.grad(precomputed.sum(), (image, matrix))
+        for actual, expected in zip(precomputed_grads, direct_grads):
+            self.assert_close(actual, expected, rtol=0, atol=0)
+
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_normalize_homography_identity(self, batch_size, device, dtype):
         # create input data
@@ -675,7 +704,7 @@ class TestHomographyWarper(BaseTester):
         direct = warper(image, src_homo_dst)
         warper.precompute_warp_grid(src_homo_dst)
         precomputed = warper(image)
-        # the cached path warps the module's own base grid, built once in the default dtype
+        # The cached path warps the module's base grid in the homography's dtype.
         expected_precomputed = _torch_grid_sample(
             image, kornia.geometry.transform.warp_grid(warper.grid, src_homo_dst), align_corners=align_corners
         )
