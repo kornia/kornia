@@ -2643,3 +2643,125 @@ class TestVideoBoxes(BaseTester):
         mask = video.to_mask(4, 5)
         assert area.shape == (shape[0], shape[1], shape[2])
         assert mask.shape == (shape[0], shape[1], shape[2], 4, 5)
+
+
+@pytest.mark.parametrize("container,corner_shape", [(Boxes, (4, 2)), (Boxes3D, (8, 3))])
+class TestBoxesIndexing(BaseTester):
+    def _create_boxes(self, container, shape, device, dtype):
+        if container is Boxes:
+            if len(shape) == 3:
+                n_boxes = shape[0]
+                xyxy = torch.stack(
+                    [
+                        torch.arange(n_boxes, device=device, dtype=dtype),
+                        torch.arange(n_boxes, device=device, dtype=dtype),
+                        torch.arange(n_boxes, device=device, dtype=dtype) + 2.0,
+                        torch.arange(n_boxes, device=device, dtype=dtype) + 2.0,
+                    ],
+                    dim=-1,
+                )
+                return Boxes.from_tensor(xyxy)
+            batch_size, n_boxes = shape[0], shape[1]
+            xyxy = torch.stack(
+                [
+                    torch.zeros(batch_size, n_boxes, device=device, dtype=dtype),
+                    torch.zeros(batch_size, n_boxes, device=device, dtype=dtype),
+                    torch.full((batch_size, n_boxes), 2.0, device=device, dtype=dtype),
+                    torch.full((batch_size, n_boxes), 2.0, device=device, dtype=dtype),
+                ],
+                dim=-1,
+            )
+            return Boxes.from_tensor(xyxy)
+        if len(shape) == 3:
+            n_boxes = shape[0]
+            xyzxyz = torch.stack(
+                [
+                    torch.arange(n_boxes, device=device, dtype=dtype),
+                    torch.arange(n_boxes, device=device, dtype=dtype),
+                    torch.arange(n_boxes, device=device, dtype=dtype),
+                    torch.arange(n_boxes, device=device, dtype=dtype) + 2.0,
+                    torch.arange(n_boxes, device=device, dtype=dtype) + 2.0,
+                    torch.arange(n_boxes, device=device, dtype=dtype) + 2.0,
+                ],
+                dim=-1,
+            )
+            return Boxes3D.from_tensor(xyzxyz)
+        batch_size, n_boxes = shape[0], shape[1]
+        xyzxyz = torch.stack(
+            [
+                torch.zeros(batch_size, n_boxes, device=device, dtype=dtype),
+                torch.zeros(batch_size, n_boxes, device=device, dtype=dtype),
+                torch.zeros(batch_size, n_boxes, device=device, dtype=dtype),
+                torch.full((batch_size, n_boxes), 2.0, device=device, dtype=dtype),
+                torch.full((batch_size, n_boxes), 2.0, device=device, dtype=dtype),
+                torch.full((batch_size, n_boxes), 2.0, device=device, dtype=dtype),
+            ],
+            dim=-1,
+        )
+        return Boxes3D.from_tensor(xyzxyz)
+
+    @pytest.mark.parametrize("num_boxes", [1, 4])
+    @pytest.mark.parametrize("key_kind", ["first", "last", "scalar_tensor"])
+    @pytest.mark.parametrize("strided", [False, True])
+    def test_scalar_unbatched(self, container, corner_shape, num_boxes, key_kind, strided, device, dtype):
+        boxes = self._create_boxes(container, (num_boxes, *corner_shape), device, dtype)
+        if strided:
+            boxes = container(boxes.data.transpose(0, 1).contiguous().transpose(0, 1), False)
+        key = {"first": 0, "last": -1, "scalar_tensor": torch.tensor(-1, device=device)}[key_kind]
+
+        selected = boxes[key]
+
+        assert type(selected) is container
+        assert selected.shape == (1, *corner_shape)
+        assert selected.data.dtype == dtype
+        assert selected.data.device == device
+        self.assert_close(selected.data, boxes.data[key].unsqueeze(0), atol=0, rtol=0)
+
+        # Storage alias and write-through
+        selected.data.add_(1)
+        self.assert_close(boxes.data[key], selected.data[0], atol=0, rtol=0)
+
+        # Assignment
+        new_val = container(torch.full((1, *corner_shape), 7.0, device=device, dtype=dtype), False)
+        boxes[key] = new_val
+        self.assert_close(boxes.data[key], torch.full(corner_shape, 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_existing_selection(self, container, corner_shape, batched, device, dtype):
+        shape = (2, 4, *corner_shape) if batched else (4, *corner_shape)
+        boxes = self._create_boxes(container, shape, device, dtype)
+        for key in [
+            slice(None, 1),
+            slice(0, 0),
+            torch.tensor([1, 0], device=device),
+            torch.arange(boxes.data.shape[0], device=device) % 2 == 0,
+        ]:
+            self.assert_close(boxes[key].data, boxes.data[key], atol=0, rtol=0)
+        if batched:
+            self.assert_close(boxes[0].data, boxes.data[0], atol=0, rtol=0)
+        empty = container(boxes.data[:0], False)
+        assert empty[:].shape == boxes.data[:0].shape
+        with pytest.raises(IndexError):
+            empty[0]
+
+    @pytest.mark.parametrize("key", [(slice(None), 0), (Ellipsis, 0)])
+    def test_coordinate_selection_raises(self, container, corner_shape, key, device, dtype):
+        boxes = self._create_boxes(container, (4, *corner_shape), device, dtype)
+        with pytest.raises(ValueError, match=r"(Boxes shape must be|3D bbox shape must be)"):
+            boxes[key]
+
+    def test_gradcheck_scalar(self, container, corner_shape, device):
+        shape = (3, *corner_shape)
+        boxes = self._create_boxes(container, shape, device, torch.float64)
+        data = boxes.data.clone().requires_grad_()
+        self.gradcheck(lambda x: container(x, False)[-1].data, (data,))
+
+    def test_valid_mask_tracking_on_scalar_indexing(self, container, corner_shape, device, dtype):
+        if container is not Boxes:
+            return
+        boxes = self._create_boxes(Boxes, (3, 4, 2), device, dtype)
+        filtered = boxes.filter_boxes_by_area(min_area=5.0)
+        for idx in range(3):
+            selected = filtered[idx]
+            assert selected._valid.shape == (1,)
+            assert selected._valid[0] == filtered._valid[idx]
