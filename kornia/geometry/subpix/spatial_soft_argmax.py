@@ -253,7 +253,7 @@ class ConvSoftArgmax3d(nn.Module):
     def __init__(
         self,
         kernel_size: tuple[int, int, int] = (3, 3, 3),
-        stride: tuple[int, int, int] = (1, 1, 1),
+        stride: int | tuple[int, int, int] = (1, 1, 1),
         padding: tuple[int, int, int] = (1, 1, 1),
         temperature: torch.Tensor | float = 1.0,
         normalized_coordinates: bool = False,
@@ -467,7 +467,7 @@ def conv_soft_argmax2d(
 def conv_soft_argmax3d(
     input: torch.Tensor,
     kernel_size: tuple[int, int, int] = (3, 3, 3),
-    stride: tuple[int, int, int] = (1, 1, 1),
+    stride: int | tuple[int, int, int] = (1, 1, 1),
     padding: tuple[int, int, int] = (1, 1, 1),
     temperature: torch.Tensor | float = 1.0,
     normalized_coordinates: bool = False,
@@ -563,7 +563,7 @@ def conv_soft_argmax3d(
     h_out = (h + 2 * py - ky) // sy + 1
     w_out = (w + 2 * px - kx) // sx + 1
     pad = [px, px, py, py, pz, pz]
-    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, stride)
+    logits = _unfold3d(F.pad(input / temperature, pad, value=float("-inf")), kernel_size, (sz, sy, sx))
     weights = torch.softmax(logits, dim=2)
 
     # We need to output also coordinates
@@ -573,7 +573,7 @@ def conv_soft_argmax3d(
     grid_global = grid_global - torch.tensor([pz, px, py], device=device, dtype=grid_global.dtype)
     grid_global = grid_global.to(dtype).permute(0, 4, 1, 2, 3)
 
-    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=stride)
+    grid_global_pooled = F.conv3d(grid_global, center_kernel, stride=(sz, sy, sx))
 
     # Coordinates of maxima residual to window center: the softmax-weighted voxel offsets of each window
     offsets = window_kernel.reshape(3, kz * ky * kx)
@@ -593,7 +593,7 @@ def conv_soft_argmax3d(
     if not output_value:
         return coords_max
 
-    windows = _unfold3d(F.pad(input, pad), kernel_size, stride)
+    windows = _unfold3d(F.pad(input, pad), kernel_size, (sz, sy, sx))
     x_softmaxpool = (weights * windows).sum(2).view(b, c, d_out, h_out, w_out)
     return coords_max, x_softmaxpool
 
@@ -651,7 +651,7 @@ class SpatialSoftArgmax2d(nn.Module):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
-            f"temperature={self.temperature}, "
+            f"(temperature={self.temperature}, "
             f"normalized_coordinates={self.normalized_coordinates})"
         )
 
