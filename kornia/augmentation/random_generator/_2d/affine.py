@@ -87,25 +87,34 @@ class AffineGenerator(RandomGeneratorBase):
         return f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360)).to(device=device, dtype=dtype)
+        # Normalize bounds before the device move without rounding below the requested sampler precision.
+        # Retain a wider ambient dtype so lower-precision samplers keep their existing rounding.
+        range_dtype = torch.promote_types(torch.get_default_dtype(), dtype)
+        _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360), dtype=range_dtype).to(
+            device=device, dtype=dtype
+        )
         _translate = (
             self.translate
             if self.translate is None
-            else _range_bound(self.translate, "translate", bounds=(0, 1), check="singular").to(
+            else _range_bound(self.translate, "translate", bounds=(0, 1), check="singular", dtype=range_dtype).to(
                 device=device, dtype=dtype
             )
         )
         _scale: Optional[torch.Tensor] = None
         if self.scale is not None:
             if len(self.scale) == 2:
-                _scale = _range_bound(self.scale[:2], "scale", bounds=(0, float("inf")), check="singular").to(
-                    device=device, dtype=dtype
-                )
+                _scale = _range_bound(
+                    self.scale[:2], "scale", bounds=(0, float("inf")), check="singular", dtype=range_dtype
+                ).to(device=device, dtype=dtype)
             elif len(self.scale) == 4:
                 _scale = torch.cat(
                     [
-                        _range_bound(self.scale[:2], "scale_x", bounds=(0, float("inf")), check="singular"),
-                        _range_bound(self.scale[-2:], "scale_y", bounds=(0, float("inf")), check="singular"),
+                        _range_bound(
+                            self.scale[:2], "scale_x", bounds=(0, float("inf")), check="singular", dtype=range_dtype
+                        ),
+                        _range_bound(
+                            self.scale[-2:], "scale_y", bounds=(0, float("inf")), check="singular", dtype=range_dtype
+                        ),
                     ]
                 ).to(device=device, dtype=dtype)
             else:
