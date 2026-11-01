@@ -551,17 +551,19 @@ class TestCrop3DAffineBoxes(BaseTester):
         weights = torch.tensor(unit, device=device, dtype=dtype)
         return (origin_t + weights @ edges_t)[None]
 
-    def _skewed_box(self, device, dtype):
+    def _skewed_box(self, device, dtype, corners=(1, 3), shift=1.0):
         # the box of #6436: an axis-aligned box with corners 1 and 3 raised by one voxel in y. Its edges along each
-        # axis still span equal extents, so _validate_bbox3d accepts it, but it is not a parallelepiped.
+        # axis still span equal extents, so _validate_bbox3d accepts it, but it is not a parallelepiped. Raising
+        # corners 4 and 6 instead keeps the corners the homography is solved from, 0, 1, 2, 5 and 7, on a cube.
         box = self._box((2, 2, 2), ((3, 0, 0), (0, 3, 0), (0, 0, 3)), device, dtype)
-        box[0, 1, 1] += 1
-        box[0, 3, 1] += 1
+        for corner in corners:
+            box[0, corner, 1] += shift
         return box
 
-    def test_crop_and_resize3d_rejects_a_box_that_is_not_a_parallelepiped_6436(self, device, dtype):
+    @pytest.mark.parametrize("corners", [(1, 3), (4, 6)])
+    def test_crop_and_resize3d_rejects_a_box_that_is_not_a_parallelepiped_6436(self, corners, device, dtype):
         volume = self._coordinate_volume(device, dtype)
-        skewed = self._skewed_box(device, dtype)
+        skewed = self._skewed_box(device, dtype, corners)
         with pytest.raises(AssertionError, match="affine map"):
             kornia.geometry.transform.crop_and_resize3d(volume, skewed, (5, 5, 5), align_corners=True)
 
@@ -571,6 +573,15 @@ class TestCrop3DAffineBoxes(BaseTester):
             kornia.geometry.transform.crop_and_resize3d(
                 volume.expand(2, -1, -1, -1, -1), torch.cat([cube, skewed]), (5, 5, 5), align_corners=True
             )
+
+    @pytest.mark.parametrize("corners", [(1, 3), (4, 6)])
+    def test_crop_and_resize3d_rejects_a_sub_voxel_skew_6436(self, corners, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the half-precision tolerance admits a 0.1-voxel skew of a box this size")
+        volume = self._coordinate_volume(device, dtype)
+        skewed = self._skewed_box(device, dtype, corners, shift=0.1)
+        with pytest.raises(AssertionError, match="affine map"):
+            kornia.geometry.transform.crop_and_resize3d(volume, skewed, (4, 4, 4), align_corners=True)
 
     def test_crop_and_resize3d_takes_a_sheared_parallelepiped_onto_the_patch_corners_6436(self, device, dtype):
         volume = self._coordinate_volume(device, dtype)
