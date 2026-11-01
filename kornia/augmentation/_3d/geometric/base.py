@@ -35,9 +35,8 @@ class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
     Convention:
         - subclasses record a source-to-destination ``(B, 4, 4)`` voxel-coordinate matrix. Coordinates are
           ordered ``(x, y, z)``, while volume tensor axes are ``(D, H, W)``. The source frame is the original
-          input, including for crops with pre-padding. Resampling follows the matrix at ``align_corners=True``; at
-          ``align_corners=False`` normalization can make the applied warp differ from the recorded matrix
-          (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+          input, including for crops with pre-padding. Resampling follows the matrix under either
+          ``align_corners`` setting.
           Matrices use the input dtype, so integer voxel translations are rounded when that dtype cannot represent
           them exactly.
         - a zero-parameter :class:`RandomAffine3D` or :class:`RandomRotation3D` warp reproduces its input up to

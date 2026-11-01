@@ -11,8 +11,8 @@ and normalized :math:`[-1, 1]` coordinates, pixel and normalized homographies, t
 matrices in different camera conventions. Quaternions are ``(w, x, y, z)``, real part first, in the Hamilton
 convention; axis-angle vectors and Euler angles are in radians, and :func:`angle_to_rotation_matrix` takes degrees.
 The :math:`[-1, 1]` normalizations are corner-aligned unless an ``align_corners=False`` argument selects the
-half-pixel convention, which only the 2D matrices and homographies offer
-(`#4503 <https://github.com/kornia/kornia/issues/4503>`_). See :doc:`Conventions & Pitfalls </get-started/conventions>`
+half-pixel convention, which every matrix and homography normalization offers except
+:func:`denormalize_homography3d`. See :doc:`Conventions & Pitfalls </get-started/conventions>`
 and :doc:`camera and world conventions </get-started/camera-conventions>`.
 
 Angles

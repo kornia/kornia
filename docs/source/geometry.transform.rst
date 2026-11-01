@@ -118,8 +118,7 @@ Crop operators (3D)
 
 Crop ``(B, C, D, H, W)`` volumes by ``(B, 8, 3)`` boxes, resampled to a fixed size (:func:`crop_and_resize3d`) or onto
 a second box (:func:`crop_by_boxes3d`), by a source→destination voxel matrix (:func:`crop_by_transform_mat3d`), or at
-the centre (:func:`center_crop3d`). Pass ``align_corners=True``: at ``False`` the 3D crops sample off the box
-(`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+the centre (:func:`center_crop3d`). Both ``align_corners`` settings sample the same voxels inside the volume.
 
 .. autofunction:: crop_by_boxes3d
 .. autofunction:: crop_by_transform_mat3d

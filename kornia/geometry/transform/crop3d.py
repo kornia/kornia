@@ -22,11 +22,11 @@ corners, the front face (smaller ``z``) and then the back face, each face top-le
 bottom-left, with **inclusive** coordinates as in the 2D crops of
 :func:`~kornia.geometry.transform.crop_and_resize`. Sizes are ``(d, h, w)``. Every crop resamples by a
 source→destination voxel matrix through :func:`~kornia.geometry.transform.warp_affine3d`, into an output window that
-starts at voxel ``(0, 0, 0)``. Pass ``align_corners=True``: at ``False`` the matrix is normalized for corner-aligned
-voxels while ``grid_sample`` reads half-voxel ones, so the samples miss the box, and even a box of the output size is
-interpolated rather than copied (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). :func:`crop_and_resize3d`
-and :func:`crop_by_boxes3d` default to ``False``. In eager mode the box crops reject, with ``AssertionError``, a box
-whose four edges along an axis span different extents on it, or one with a non-finite coordinate. They raise
+starts at voxel ``(0, 0, 0)``. The matrix is normalized under the same ``align_corners`` as the ``grid_sample``
+call, so both settings sample the same voxels inside the volume, and a box of the output size is copied.
+:func:`crop_and_resize3d` and :func:`crop_by_boxes3d` default to ``False``. In eager mode the box crops reject, with
+``AssertionError``, a box whose four edges along an axis span different extents on it, or one with a non-finite
+coordinate. They raise
 ``torch.linalg.LinAlgError`` for a box or an output size with a one-voxel axis
 (`#4747 <https://github.com/kornia/kornia/issues/4747>`_).
 
@@ -62,10 +62,9 @@ def crop_and_resize3d(
 
     ``patches = crop_and_resize3d(tensor, boxes, size)`` takes volumes ``(B, C, D, H, W)`` and boxes ``(B, 8, 3)``, one
     per volume or ``(1, 8, 3)`` for all of them, and returns the ``(B, C, d, h, w)`` patches for ``size = (d, h, w)``.
-    With ``align_corners=True`` the corners of a parallelepiped box land on the corner voxels of the patch; the warp
-    keeps only the top three rows of the 3D homography between the two, so the corners of any other box miss
-    (`#6436 <https://github.com/kornia/kornia/issues/6436>`_). Pass ``align_corners=True``, since the default
-    ``False`` samples off the box (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For images, use
+    Under either ``align_corners`` setting the corners of a parallelepiped box land on the corner voxels of the patch;
+    the warp keeps only the top three rows of the 3D homography between the two, so the corners of any other box miss
+    (`#6436 <https://github.com/kornia/kornia/issues/6436>`_). For images, use
     :func:`crop_and_resize`; to place the crop by a second box, :func:`crop_by_boxes3d`.
 
     Convention:
@@ -73,10 +72,12 @@ def crop_and_resize3d(
         - ``boxes``: ``(B, 8, 3)`` corner points in ``(x, y, z)`` order, front face
           then back face, each face top-left, top-right, bottom-right, bottom-left —
           same ``(x, y)``/inclusive-pixel convention as :func:`crop_and_resize`, with
-          ``z`` anchored at the top-left of the first depth slice (``z = 0``);
-          reproducing the exact integer-voxel slice requires ``align_corners=True`` —
-          the default ``False`` interpolates instead
-        - align_corners: ``False`` by default
+          ``z`` anchored at the top-left of the first depth slice (``z = 0``); an
+          integer-cornered box whose extent equals ``size`` reproduces the exact voxel slice
+          under either ``align_corners`` setting, since the box is given in voxel coordinates;
+          a box of another extent is resampled
+        - align_corners: ``False`` by default; it changes nothing on an in-bounds box, since the box is
+          given in voxel coordinates
         - a single volume does not broadcast over a batch of boxes; a box or ``size`` with a one-voxel axis raises
           ``torch.linalg.LinAlgError`` (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
 
@@ -200,10 +201,8 @@ def center_crop3d(
         - input: ``(B, C, D, H, W)``; ``size`` is ``(d, h, w)``
         - align_corners: ``True`` by default
         - offset: the crop starts at the integer voxel ``int(D / 2 - d / 2)`` (likewise for the height and width),
-          as in :class:`~kornia.augmentation.CenterCrop3D`, so with the default ``align_corners=True`` the output is a
-          sub-volume of the input. With an odd margin the extra voxel is left at the back/bottom/right.
-          ``align_corners=False`` resamples off the voxel grid even for an even margin (see
-          :func:`crop_and_resize3d`, `#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+          as in :class:`~kornia.augmentation.CenterCrop3D`, so the output is a sub-volume of the input under either
+          ``align_corners`` setting. With an odd margin the extra voxel is left at the back/bottom/right.
         - a ``size`` with a one-voxel axis raises ``torch.linalg.LinAlgError``
           (`#4747 <https://github.com/kornia/kornia/issues/4747>`_)
 
@@ -344,11 +343,9 @@ def crop_by_boxes3d(
     3D homography computed from the corners of ``src_box`` and ``dst_box``, which takes every corner onto its
     destination only when an affine map relates the two boxes, as it relates any two parallelepipeds
     (`#6436 <https://github.com/kornia/kornia/issues/6436>`_), and returns the ``(B, C, d, h, w)`` window that
-    starts at voxel ``(0, 0, 0)``, where
-    ``(d, h, w)`` is the inclusive size of ``dst_box``; every ``dst_box`` in the batch must have that size. Pass
-    ``align_corners=True``: the default ``False`` samples off the box
-    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). When the output size is known, :func:`crop_and_resize3d`
-    takes it instead of a second box; for images, use :func:`crop_by_boxes`.
+    starts at voxel ``(0, 0, 0)``, where ``(d, h, w)`` is the inclusive size of ``dst_box``; every ``dst_box`` in the
+    batch must have that size. When the output size is known, :func:`crop_and_resize3d` takes it instead of a second
+    box; for images, use :func:`crop_by_boxes`.
 
     Convention:
         - input: ``(B, C, D, H, W)``
@@ -494,8 +491,8 @@ def crop_by_transform_mat3d(
           either ``(B, 3, 4)`` affine or ``(B, 4, 4)`` homogeneous; only the top
           three rows are used, so a projective last row is ignored (unlike the 2D
           :func:`crop_by_transform_mat`)
-        - align_corners: ``True`` by default; ``False`` warps by a matrix normalized for corner-aligned voxels
-          (`#4503 <https://github.com/kornia/kornia/issues/4503>`_)
+        - align_corners: ``True`` by default; it selects the normalization of ``transform`` as well as the
+          ``grid_sample`` call
 
     Args:
         tensor: the 3D volume tensor with shape ``(B, C, D, H, W)``.

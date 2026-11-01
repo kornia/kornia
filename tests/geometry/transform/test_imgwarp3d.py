@@ -290,19 +290,22 @@ class TestWarpPerspective3d(BaseTester):
     #   identity, (4, 4, 4): max|out - in| = 45.0 at align_corners=True, 55.125 at False
     #   identity, (2, 3, 4): 9.0 and 20.125;  (1, 5, 3): 10.5 at False
     # The only prior numerical test compared an unbatched call with a batched one, and both were
-    # wrong the same way. align_corners=False is pinned as a strict xfail: after this fix the
-    # remaining residual is the 3D normalization convention tracked in #4503, not the grid order.
+    # wrong the same way. After that fix the align_corners=False residual was still 55.125 on the
+    # cube (20.125 on (2, 3, 4), 10.5 on (1, 5, 3)) because the 3D normalization was corner-aligned
+    # whatever flag reached grid_sample (#4503); the tests below now pin both conventions.
 
     @staticmethod
     def _arange_volume(dsize, device, dtype):
         d, h, w = dsize
         return torch.arange(float(d * h * w), device=device, dtype=dtype).view(1, 1, d, h, w)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("dsize", [(4, 4, 4), (2, 3, 4), (1, 5, 3), (3, 1, 4)])
-    def test_convention_identity_reproduces_input(self, dsize, device, dtype):
+    def test_convention_identity_reproduces_input(self, dsize, align_corners, device, dtype):
+        # Both conventions: the normalization now follows the flag handed to grid_sample (#4503).
         sample = self._arange_volume(dsize, device, dtype)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
-        out = proj.warp_perspective3d(sample, identity, dsize, align_corners=True)
+        out = proj.warp_perspective3d(sample, identity, dsize, align_corners=align_corners)
         self.assert_close(out, sample)
 
     @pytest.mark.parametrize("size", [8, 32])
@@ -317,16 +320,6 @@ class TestWarpPerspective3d(BaseTester):
         out = proj.warp_perspective3d(sample, identity, dsize, align_corners=True)
         assert out.dtype == torch.float64
         self.assert_close(out, sample, rtol=0.0, atol=1e-12)
-
-    @pytest.mark.parametrize("dsize", [(4, 4, 4), (2, 3, 4)])
-    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="3D normalization ignores align_corners, #4503")
-    def test_convention_identity_reproduces_input_align_corners_false(self, dsize, device, dtype):
-        # Strict xfail: turns XPASS, and so fails loudly, once #4503 threads align_corners through
-        # normal_transform_pixel3d, which is the signal to fold this into the test above.
-        sample = self._arange_volume(dsize, device, dtype)
-        identity = torch.eye(4, device=device, dtype=dtype)[None]
-        out = proj.warp_perspective3d(sample, identity, dsize, align_corners=False)
-        self.assert_close(out, sample)
 
     @pytest.mark.parametrize("dsize", [(5, 5, 5), (2, 3, 5), (3, 2, 5)])
     def test_convention_agrees_with_warp_affine3d(self, dsize, device, dtype):
@@ -373,6 +366,26 @@ class TestWarpPerspective3d(BaseTester):
         out = proj.warp_perspective3d(sample, M, dsize, align_corners=True)
         self.assert_close(out, expected)
 
+    @pytest.mark.parametrize("axis", [0, 1, 2], ids=["x", "y", "z"])
+    def test_convention_whole_voxel_translation_align_corners_false(self, axis, device, dtype):
+        # The align_corners=False twin of the test above (#4503). Sizes are powers of two here so
+        # that the half-pixel scale 2 / size is exact in every dtype, the mirror image of the
+        # 2^k + 1 sizes the corner-aligned test uses. Before #4503 the x shift on a (2, 3, 4)
+        # volume was off by 6.6667 at this setting.
+        dsize = (2, 4, 8)
+        sample = self._arange_volume(dsize, device, dtype)
+        M = torch.eye(4, device=device, dtype=dtype)[None].clone()
+        M[:, axis, 3] = 1.0
+        expected = torch.zeros_like(sample)
+        if axis == 0:
+            expected[..., 1:] = sample[..., :-1]
+        elif axis == 1:
+            expected[..., 1:, :] = sample[..., :-1, :]
+        else:
+            expected[:, :, 1:] = sample[:, :, :-1]
+        out = proj.warp_perspective3d(sample, M, dsize, align_corners=False)
+        self.assert_close(out, expected)
+
     def test_convention_projective_row_is_honoured(self, device, dtype):
         # A (B, 4, 4) matrix with a non-trivial last row must change the output; otherwise the
         # fix would only have made the function a slower warp_affine3d.
@@ -383,15 +396,19 @@ class TestWarpPerspective3d(BaseTester):
         out = proj.warp_perspective3d(sample, M, dsize, align_corners=True)
         assert not torch.allclose(out, sample)
 
-    def test_homography_warp3d_identity(self, device, dtype):
-        # The functional entry point with an identity in normalized and in voxel coordinates; the voxel mode is
-        # covered in TestHomographyWarp3dVoxelCoordinates (#6187).
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_homography_warp3d_identity(self, align_corners, device, dtype):
+        # The functional entry point with an identity in normalized and in voxel coordinates, both grid
+        # conventions: the normalized sampling grid is built under the flag grid_sample is called with (#4503). The
+        # voxel mode is covered in TestHomographyWarp3dVoxelCoordinates (#6187).
         dsize = (2, 3, 4)
         sample = self._arange_volume(dsize, device, dtype)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
-        out = proj.homography_warp3d(sample, identity, dsize, align_corners=True)
+        out = proj.homography_warp3d(sample, identity, dsize, align_corners=align_corners)
         self.assert_close(out, sample)
-        out_pix = proj.homography_warp3d(sample, identity, dsize, align_corners=True, normalized_coordinates=False)
+        out_pix = proj.homography_warp3d(
+            sample, identity, dsize, align_corners=align_corners, normalized_coordinates=False
+        )
         self.assert_close(out_pix, sample)
 
     def test_gradcheck(self, device):
@@ -621,8 +638,8 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_normalized_coordinates_path_is_the_plain_grid_warp(self, align_corners, device, dtype):
-        # The default normalized path is grid_sample over warp_grid3d of the reordered normalized meshgrid, bit for
-        # bit; the voxel-mode normalization must not reach it (#6187).
+        # The default normalized path is grid_sample over warp_grid3d of the reordered normalized meshgrid, built under
+        # the same align_corners (#4503), bit for bit; the voxel-mode normalization must not reach it (#6187).
         volume = self._volume((1, 2, 5, 6, 7), device, dtype)
         src_homo_dst = torch.tensor(
             [
@@ -638,7 +655,9 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
         )
         # a CPU float16/bfloat16 warp runs in float32 and returns the input dtype (#5751)
         work = torch.float32 if device.type == "cpu" and dtype in (torch.float16, torch.bfloat16) else dtype
-        grid = kornia.geometry.create_meshgrid3d(4, 3, 6, normalized_coordinates=True, device=device, dtype=work)
+        grid = kornia.geometry.create_meshgrid3d(
+            4, 3, 6, normalized_coordinates=True, device=device, dtype=work, align_corners=align_corners
+        )
         warped_grid = proj.warp_grid3d(grid[..., [1, 2, 0]], src_homo_dst.to(work))
         expected = _torch_grid_sample(volume.to(work), warped_grid, align_corners=align_corners).to(dtype)
 
@@ -684,6 +703,24 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
 
 
 class TestWarpAffine3d(BaseTester):
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_convention_whole_voxel_translation(self, align_corners, device, dtype):
+        # A +1 voxel translation along x must shift columns by exactly one voxel under either
+        # convention. Before #4503 normalize_homography3d was corner-aligned whatever flag went to
+        # grid_sample, so at align_corners=False this was off by 6.6667 on a (2, 3, 4) arange
+        # volume. Sizes are powers of two plus one on the corner-aligned side (2/(size-1) exact)
+        # and powers of two on the half-pixel side (2/size exact), so the pin is exact in every
+        # dtype rather than rounding at float16/bfloat16.
+        dsize = (2, 3, 5) if align_corners else (2, 4, 8)
+        d, h, w = dsize
+        sample = torch.arange(float(d * h * w), device=device, dtype=dtype).view(1, 1, d, h, w)
+        M = torch.eye(3, 4, device=device, dtype=dtype)[None].clone()
+        M[:, 0, 3] = 1.0
+        expected = torch.zeros_like(sample)
+        expected[..., 1:] = sample[..., :-1]
+        out = proj.warp_affine3d(sample, M, dsize, align_corners=align_corners)
+        self.assert_close(out, expected)
+
     def test_smoke(self, device, dtype):
         sample = torch.rand(1, 3, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(1, 3, 4, device=device, dtype=dtype)

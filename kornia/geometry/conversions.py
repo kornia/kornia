@@ -20,9 +20,9 @@
 Points and vectors sit in the last dimension, and matrices act on column vectors from the left. 2D pixel coordinates
 are ``(x, y)``, with ``x`` the column and pixel centres at integers, while size arguments are ``(height, width)`` or
 ``(depth, height, width)``. The :math:`[-1, 1]` normalizations are corner-aligned, mapping the first and last pixel
-centre of an axis to ``-1`` and ``1``; only :func:`normal_transform_pixel`, :func:`normalize_homography` and
-:func:`denormalize_homography` also offer the half-pixel convention of ``align_corners=False``, and their 3D forms
-do not (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Quaternions are ``(w, x, y, z)``, real part first,
+centre of an axis to ``-1`` and ``1``; :func:`normal_transform_pixel`, :func:`normalize_homography` and
+:func:`denormalize_homography` also offer the half-pixel convention of ``align_corners=False``, and so do the 3D forms
+of the first two. Quaternions are ``(w, x, y, z)``, real part first,
 in the Hamilton convention. 3D rotations are active and right-handed: a positive angle about ``+z`` turns ``+x``
 towards ``+y``. Axis-angle vectors and Euler angles are in radians, while :func:`angle_to_rotation_matrix` takes
 degrees and turns ``+x`` towards ``-y``, counter-clockwise as displayed with ``y`` down. The pose functions take
@@ -2145,11 +2145,10 @@ def normalize_homography(
         :func:`~kornia.geometry.transform.homography_warp` forward their own
         flag, so they are consistent under both settings; see
         `#3904 <https://github.com/kornia/kornia/issues/3904>`_.
-        :func:`~kornia.geometry.conversions.normalize_homography3d` still has
-        no ``align_corners`` parameter and is corner-aligned unconditionally, so
-        :func:`~kornia.geometry.transform.warp_affine3d` keeps this mismatch at
-        ``align_corners=False``. Tracked in
-        `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
+        :func:`~kornia.geometry.conversions.normalize_homography3d` takes the
+        same ``align_corners`` with the same default, and
+        :func:`~kornia.geometry.transform.warp_affine3d` and
+        :func:`~kornia.geometry.transform.warp_perspective3d` forward theirs.
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2256,9 +2255,9 @@ def normal_transform_pixel(
           and offset ``1 / size - 1``, so that :math:`\pm 1` fall on the outer
           pixel *edges*. :func:`~kornia.geometry.conversions.normalize_homography`
           and :func:`~kornia.geometry.conversions.denormalize_homography` forward
-          their own ``align_corners`` here, while
-          :func:`~kornia.geometry.conversions.normal_transform_pixel3d` is still
-          corner-aligned unconditionally; see the convention warning there
+          their own ``align_corners`` here, and
+          :func:`~kornia.geometry.conversions.normal_transform_pixel3d` takes the
+          same parameter with the same default
         - a singleton axis maps its only pixel to the centre of the normalized
           range: under ``align_corners=True`` with scale ``1`` and offset ``0``,
           which keeps the matrix invertible for homography composition. Zero
@@ -2422,23 +2421,26 @@ def normal_transform_pixel3d(
     eps: float = 1e-14,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Compute the ``(1, 4, 4)`` matrix that maps 3D voxel coordinates ``(x, y, z)`` to ``[-1, 1]``.
 
     ``N = normal_transform_pixel3d(depth, height, width)`` returns a single matrix ``(1, 4, 4)`` that maps the
     homogeneous voxel coordinates ``(x, y, z, 1)`` of a ``depth`` by ``height`` by ``width`` volume to
-    :math:`[-1, 1]`, corner-aligned, as :func:`normalize_homography3d` composes it. It has no ``align_corners``
-    parameter, so a homography normalized with it suits only ``align_corners=True`` sampling, a restriction the 3D
-    warps that use it inherit (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). Its ``(x, y, z)`` order
-    differs from the ``(d, x, y)`` of :func:`normalize_pixel_coordinates3d`.
+    :math:`[-1, 1]`, corner-aligned by default, as :func:`normalize_homography3d` composes it; ``align_corners=False``
+    selects the half-voxel mapping. Its ``(x, y, z)`` order differs from the ``(d, x, y)`` of
+    :func:`normalize_pixel_coordinates3d`.
 
     Convention:
         - the 3-D counterpart of
           :func:`~kornia.geometry.conversions.normal_transform_pixel`: same
-          corner-aligned ``2 / (size - 1)`` scaling with offset ``-1``, same
+          ``align_corners`` selection (``True`` by default: corner-aligned
+          ``2 / (size - 1)`` scaling with offset ``-1``; ``False``: the half-pixel
+          mapping with scale ``2 / size`` and offset ``1 / size - 1``), same
           ``dtype=None`` / ``torch.get_default_dtype()`` rule, and likewise
-          **never batched**. Singleton axes use the same invertible centre mapping, and zero or
-          negative sizes raise ``ValueError``. Only the lines below differ
+          **never batched**. Singleton axes use the same invertible centre mapping under ``True`` and land there
+          without a special case under ``False``, and zero or negative sizes raise ``ValueError``. Only the lines
+          below differ
         - the result has shape ``(1, 4, 4)`` and acts on homogeneous
           ``(x, y, z, 1)`` column vectors with ``x`` scaled by ``width``, ``y``
           by ``height`` and ``z`` by ``depth``, while the positional argument
@@ -2470,6 +2472,12 @@ def normal_transform_pixel3d(
         eps: deprecated compatibility parameter. It is ignored.
         device: device to place the result on.
         dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention to
+          normalize to. ``True`` maps voxel centers :math:`[0, size-1]` to
+          :math:`[-1, 1]`; ``False`` uses the half-pixel mapping
+          :math:`x_{norm} = (2x + 1) / W - 1`, where :math:`\pm 1` are the outer voxel
+          *edges*. Must match the ``align_corners`` of the ``grid_sample`` call that
+          consumes the result.
 
     Returns:
         normalized transform with shape ``(1, 4, 4)``.
@@ -2513,12 +2521,23 @@ def normal_transform_pixel3d(
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
         # As in 2-D, graph capture uses the tensor form below for symbolic sizes.
-        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
-        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
-        sz = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
-        tx = 0.0 if width == 1 else -1.0
-        ty = 0.0 if height == 1 else -1.0
-        tz = 0.0 if depth == 1 else -1.0
+        if align_corners:
+            sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+            sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+            sz = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
+            tx = 0.0 if width == 1 else -1.0
+            ty = 0.0 if height == 1 else -1.0
+            tz = 0.0 if depth == 1 else -1.0
+        else:
+            # As in 2-D: the half-pixel mapping is finite for a size of 1 and lands that voxel on
+            # the centre (scale 2, offset 0). The offset is one division so that the capture
+            # branch below, which evaluates it in float32, rounds once and stays bit-identical.
+            sx = 2.0 / width
+            sy = 2.0 / height
+            sz = 2.0 / depth
+            tx = (1.0 - width) / width
+            ty = (1.0 - height) / height
+            tz = (1.0 - depth) / depth
         if torch.jit.is_scripting():
             # As in 2-D: a typed anchor keeps float64 constants exact under TorchScript.
             anchor = torch.ones((), device=device, dtype=dtype)
@@ -2556,14 +2575,23 @@ def normal_transform_pixel3d(
         one = torch.ones((), device=device, dtype=work_dtype)
         zero = torch.zeros((), device=device, dtype=work_dtype)
 
-        # As in 2-D, a singleton axis maps its only pixel to the normalized centre,
-        # with unit scale so that homography composition can still invert the matrix.
-        sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
-        sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
-        sz_t = torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0))
-        tx_t = torch.where(width_t == 1, zero, -one)
-        ty_t = torch.where(height_t == 1, zero, -one)
-        tz_t = torch.where(depth_t == 1, zero, -one)
+        if align_corners:
+            # As in 2-D, a singleton axis maps its only pixel to the normalized centre,
+            # with unit scale so that homography composition can still invert the matrix.
+            sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
+            sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
+            sz_t = torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0))
+            tx_t = torch.where(width_t == 1, zero, -one)
+            ty_t = torch.where(height_t == 1, zero, -one)
+            tz_t = torch.where(depth_t == 1, zero, -one)
+        else:
+            # Single division, matching the scalar branch above bit for bit.
+            sx_t = 2.0 / width_t
+            sy_t = 2.0 / height_t
+            sz_t = 2.0 / depth_t
+            tx_t = (one - width_t) / width_t
+            ty_t = (one - height_t) / height_t
+            tz_t = (one - depth_t) / depth_t
 
         tr_mat = torch.stack(
             [
@@ -2670,23 +2698,27 @@ def denormalize_homography(
 
 
 def normalize_homography3d(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
+    dst_pix_trans_src_pix: torch.Tensor,
+    dsize_src: tuple[int, int, int],
+    dsize_dst: tuple[int, int, int],
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Express a source→destination voxel homography ``(B, 4, 4)`` in ``[-1, 1]`` coordinates.
 
     ``H_norm = normalize_homography3d(H, dsize_src, dsize_dst)`` takes homographies ``(B, 4, 4)``, or one ``(4, 4)``,
     that map **source voxels to destination voxels**, and the ``(depth, height, width)`` of both volumes, and returns
-    ``N_dst @ H @ inv(N_src)`` ``(B, 4, 4)`` with ``N`` from :func:`normal_transform_pixel3d`. It has no
-    ``align_corners`` parameter: the result suits only ``align_corners=True`` sampling
-    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For the reverse, use :func:`denormalize_homography3d`;
-    for ``(B, 3, 3)`` pixel homographies, :func:`normalize_homography`.
+    ``N_dst @ H @ inv(N_src)`` ``(B, 4, 4)`` with ``N`` from :func:`normal_transform_pixel3d`. ``align_corners``
+    (``True`` by default) selects that normalization and must match the ``grid_sample`` call that uses the result.
+    For the reverse, use :func:`denormalize_homography3d`, which is corner-aligned only; for ``(B, 3, 3)`` pixel
+    homographies, :func:`normalize_homography`.
 
     Convention:
         - the 3-D counterpart of
           :func:`~kornia.geometry.conversions.normalize_homography`: same
           composition ``N_dst @ H @ inv(N_src)``, same source-to-destination
           direction re-expressed in normalized frames, same ``dsize_src`` on the
-          right and ``dsize_dst`` on the left, and corner-aligned frames — with
+          right and ``dsize_dst`` on the left, and the same ``align_corners``
+          selection of the :math:`[-1, 1]` frames (``True`` by default) — with
           :func:`~kornia.geometry.conversions.normal_transform_pixel3d` in place
           of the 2-D helper. It is
           **not** the 2-D function with wider matrices, though: the shapes and
@@ -2711,6 +2743,10 @@ def normalize_homography3d(
           is promoted to ``(1, 4, 4)``
         dsize_src: size of the source image (depth, height, width).
         dsize_dst: size of the destination image (depth, height, width).
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention the
+          normalized :math:`[-1, 1]` coordinates follow, forwarded to
+          :func:`normal_transform_pixel3d`. Must match the ``align_corners`` of the
+          ``grid_sample`` call that ultimately consumes the result.
 
     Returns:
         the normalized homography.
@@ -2740,7 +2776,7 @@ def normalize_homography3d(
         else None
     )
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
-        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype, align_corners=align_corners
     ).to(dst_pix_trans_src_pix)
 
     # A floating pixel normalization is invertible unless a scale underflows (see `denormalize_homography`); an
@@ -2749,7 +2785,7 @@ def normalize_homography3d(
         src_norm_trans_src_pix, check_errors=not _is_floating_or_complex(src_norm_trans_src_pix)
     )
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
-        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype, align_corners=align_corners
     ).to(dst_pix_trans_src_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
@@ -2764,8 +2800,8 @@ def denormalize_homography3d(
     ``H = denormalize_homography3d(H_norm, dsize_src, dsize_dst)`` is the inverse of :func:`normalize_homography3d`: it
     takes real floating homographies ``(B, 4, 4)``, or one ``(4, 4)``, from normalized :math:`[-1, 1]` source
     coordinates to normalized destination coordinates, and the ``(depth, height, width)`` of both volumes, and returns
-    the source→destination voxel homographies ``inv(N_dst) @ H_norm @ N_src`` ``(B, 4, 4)``, always corner-aligned
-    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For ``(B, 3, 3)`` pixel homographies, use
+    the source→destination voxel homographies ``inv(N_dst) @ H_norm @ N_src`` ``(B, 4, 4)``, always corner-aligned:
+    unlike :func:`normalize_homography3d` it takes no ``align_corners``. For ``(B, 3, 3)`` pixel homographies, use
     :func:`denormalize_homography`.
 
     Convention:

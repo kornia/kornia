@@ -262,10 +262,8 @@ def affine3d(
 
     ``out = affine3d(tensor, matrix)`` warps ``(C, D, H, W)`` or ``(B, C, D, H, W)`` volumes by ``(B, 3, 4)``
     source→destination voxel affine matrices and returns them at their own size, as :func:`warp_affine3d` with
-    ``dsize=(D, H, W)`` does; one matrix serves every volume of a batch. Pass ``align_corners=True``: at the default
-    ``False`` the warp mixes two voxel normalizations, so a translation of ``t`` voxels moves the volume
-    ``t * size / (size - 1)`` voxels along that axis (`#4503 <https://github.com/kornia/kornia/issues/4503>`_). For
-    images, use :func:`affine`.
+    ``dsize=(D, H, W)`` does; one matrix serves every volume of a batch. A translation of ``t`` voxels moves the
+    volume ``t`` voxels under either ``align_corners`` setting. For images, use :func:`affine`.
 
     Convention:
         - ``matrix`` is the source→destination **pixel** affine matrix ``(B, 3, 4)``
@@ -436,10 +434,7 @@ def rotate3d(
     axis-angle vector ``(yaw, pitch, roll)`` in degrees, ``(B,)`` each, about ``center`` (``(B, 3)`` ``(x, y, z)``
     pixels, by default the volume centre), and returns them at their size. Positive angles follow the right-hand rule,
     so a positive ``roll``, about ``z``, turns clockwise on screen, the opposite of :func:`rotate`
-    (3D rotations are right-handed by design). Pass ``align_corners=True``: at the default ``False`` the
-    warp mixes two voxel normalizations, which changes the rotation unless it turns about the volume centre in a plane
-    whose two sizes are equal, as any rotation of a cube about its centre does
-    (`#4503 <https://github.com/kornia/kornia/issues/4503>`_).
+    (3D rotations are right-handed by design). Both ``align_corners`` settings give the same rotation.
 
     Convention:
         - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
