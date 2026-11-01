@@ -74,6 +74,19 @@ class TestThreshold:
         expected = torch.tensor([0.2, 0.5, 0.0], device=device, dtype=dtype)
         assert torch.allclose(out, expected)
 
+    @pytest.mark.parametrize(
+        "ttype, expected",
+        [
+            (ThresholdType.THRESH_TRUNC, [-2, 0, 0]),
+            (ThresholdType.THRESH_TOZERO, [0, 0, 2]),
+            (ThresholdType.THRESH_TOZERO_INV, [-2, 0, 0]),
+        ],
+    )
+    def test_nonbinary_modes_ignore_default_maxval(self, ttype, expected, device):
+        x = torch.tensor([-2, 0, 2], dtype=torch.int8, device=device)
+        out = threshold(x, 0, type=ttype)
+        torch.testing.assert_close(out, torch.tensor(expected, dtype=x.dtype, device=device))
+
     def test_otsu_raises(self, device, dtype):
         x = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
         with pytest.raises(NotImplementedError):
