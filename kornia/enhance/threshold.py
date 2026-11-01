@@ -85,9 +85,9 @@ def threshold(
 
     Convention:
         The comparison is strict (input > thresh). thresh and maxval broadcast
-        over input on its device. maxval is converted to the input's dtype, and
-        so is thresh on a floating-point input. On an integer input, thresh is
-        not cast: as in OpenCV, an element passes when it is greater than
+        over input on its device. In the binary modes maxval is converted to the input's
+        dtype; it is ignored in the other modes. thresh is converted on a floating-point input.
+        On an integer input, thresh is not cast: as in OpenCV, an element passes when it is greater than
         floor(thresh), so a thresh below the dtype's range passes every element
         and one at or above its maximum passes none. THRESH_TRUNC then writes
         floor(thresh), or the dtype's minimum for a thresh below its range.
@@ -127,7 +127,7 @@ def threshold(
         lambda: f"Unsupported threshold type: {type}. Supported: BINARY, BINARY_INV, TRUNC, TOZERO, TOZERO_INV.",
     )
 
-    # Make thresh/maxval tensors on same device/dtype for safe broadcasting
+    # Make thresh a tensor on the input device for safe broadcasting.
     if input.is_floating_point() or input.is_complex():
         thresh_t = thresh
         if not isinstance(thresh_t, Tensor):
@@ -138,18 +138,16 @@ def threshold(
     else:
         mask, thresh_t = _integer_threshold(input, thresh)
 
-    maxval_t = maxval
-    if not isinstance(maxval_t, Tensor):
-        maxval_t = torch.tensor(maxval_t, device=input.device, dtype=input.dtype)
-    else:
-        maxval_t = maxval_t.to(device=input.device, dtype=input.dtype)
-
     zeros = torch.zeros_like(input)
 
-    if t == int(ThresholdType.THRESH_BINARY):
-        return torch.where(mask, maxval_t, zeros)
-
-    if t == int(ThresholdType.THRESH_BINARY_INV):
+    if t == int(ThresholdType.THRESH_BINARY) or t == int(ThresholdType.THRESH_BINARY_INV):
+        maxval_t = maxval
+        if not isinstance(maxval_t, Tensor):
+            maxval_t = torch.tensor(maxval_t, device=input.device, dtype=input.dtype)
+        else:
+            maxval_t = maxval_t.to(device=input.device, dtype=input.dtype)
+        if t == int(ThresholdType.THRESH_BINARY):
+            return torch.where(mask, maxval_t, zeros)
         return torch.where(mask, zeros, maxval_t)
 
     if t == int(ThresholdType.THRESH_TRUNC):
