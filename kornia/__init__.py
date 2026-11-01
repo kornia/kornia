@@ -44,6 +44,7 @@ from . import (
     models,
     morphology,
     onnx,
+    profiler,
     tracking,
 )
 
