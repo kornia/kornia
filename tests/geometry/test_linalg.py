@@ -587,6 +587,17 @@ class TestEuclideanDistance(BaseTester):
         rtol = 2 * torch.finfo(dtype).eps
         self.assert_close(kgl.euclidean_distance(pt1, pt2), pt2[0], rtol=rtol, atol=0.0)
 
+    def test_small_multidimensional_float16_distance_underflow(self, device):
+        pt1 = torch.zeros(3, device=device, dtype=torch.float16)
+        pt2 = torch.tensor([1e-4, 1e-4, 1e-4], device=device, dtype=torch.float16)
+
+        dst = kgl.euclidean_distance(pt1, pt2)
+        reference = torch.linalg.vector_norm((pt1 - pt2).double())
+
+        assert dst.item() > 0.0
+        assert dst.dtype == torch.float16
+        torch.testing.assert_close(dst.double(), reference, rtol=2e-2, atol=0.0)
+
     @pytest.mark.parametrize("shape", [(2,), (3,), (1, 2), (2, 3)])
     def test_cardinality(self, device, dtype, shape):
         pt1 = torch.rand(shape, device=device, dtype=dtype)
