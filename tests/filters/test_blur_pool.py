@@ -35,7 +35,12 @@ from kornia.filters import (
     max_blur_pool2d,
 )
 
-from testing.base import BaseTester, dynamic_export_is_available, supports_reflect_padding
+from testing.base import (
+    BaseTester,
+    deterministic_algorithms_on_cuda,
+    dynamic_export_is_available,
+    supports_reflect_padding,
+)
 
 
 class _FunctionalBlurPool(torch.nn.Module):
@@ -404,6 +409,41 @@ class TestBlurPool(BaseTester):
 
 
 class TestEdgeAwareBlurPool(BaseTester):
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 7), (2, 7), (7, 1), (7, 2), (2, 2)])
+    @pytest.mark.parametrize("kernel_size", [3, 4, 7])
+    @pytest.mark.parametrize("edge_threshold", [1.25, 1e6])
+    def test_thin_images_match_reflected_blur(self, shape, kernel_size, edge_threshold, device, dtype):
+        """Reflect both halos even when a spatial axis has fewer than three samples."""
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        rows = torch.arange(shape[0], dtype=torch.float64)[:, None]
+        cols = torch.arange(shape[1], dtype=torch.float64)[None, :]
+        image = (0.5 + 0.2 * torch.sin(0.7 * rows + 1.3 * cols))[None, None]
+        pad = kernel_size
+        padded = torch.from_numpy(np.pad(image.numpy(), ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode="reflect"))
+        expected = _zero_padded_reference(padded, kernel_size, 1)[..., pad:-pad, pad:-pad]
+        log_image = np.log2(np.pad(image.numpy(), ((0, 0), (0, 0), (2, 2), (2, 2)), mode="reflect") + 1e-6)
+        edge_x = np.abs((log_image[..., 4:] - log_image[..., :-4]).mean(-3, keepdims=True)) > np.log2(edge_threshold)
+        edge_y = np.abs((log_image[..., 4:, :] - log_image[..., :-4, :]).mean(-3, keepdims=True)) > np.log2(
+            edge_threshold
+        )
+        edges = edge_x[..., 2:-2, :] | edge_y[..., :, 2:-2]
+        edges = np.pad(edges, ((0, 0), (0, 0), (1, 1), (1, 1)))
+        dilated = np.logical_or.reduce(
+            [edges[..., dy : dy + shape[0], dx : dx + shape[1]] for dy in range(3) for dx in range(3)]
+        )
+        expected = torch.where(torch.from_numpy(dilated), image, expected)
+        image = image.to(device=device, dtype=dtype)
+        actual = edge_aware_blur_pool2d(image, kernel_size, edge_threshold=edge_threshold)
+        self.assert_close(actual, expected.to(device=device, dtype=dtype))
+        self.assert_close(EdgeAwareBlurPool2D(kernel_size, edge_threshold=edge_threshold)(image), actual)
+
+    @pytest.mark.parametrize("shape", [(1, 1), (1, 7), (2, 7), (7, 1), (7, 2)])
+    def test_thin_images_gradcheck(self, shape, device):
+        image = torch.rand(1, 1, *shape, device=device, dtype=torch.float64) + 0.5
+        with deterministic_algorithms_on_cuda(device):
+            self.gradcheck(edge_aware_blur_pool2d, (image, 4, 1e6))
+
     @pytest.mark.parametrize("edge_dilation_kernel_size", [0, -1, 2, 4])
     def test_exception_edge_dilation_kernel_size(self, edge_dilation_kernel_size, device, dtype):
         data = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
