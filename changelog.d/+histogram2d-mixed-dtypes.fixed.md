@@ -1,0 +1,1 @@
+Fix `histogram2d` for sample tensors with different floating-point dtypes. The output dtype now includes both samples in promotion, including when a half-precision first sample previously caused the result to be cast to half precision.
