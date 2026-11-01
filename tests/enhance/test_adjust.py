@@ -932,6 +932,27 @@ class TestAdjustBrightness(BaseTester):
 
 class TestAdjustSigmoid(BaseTester):
     @pytest.mark.parametrize("half_dtype", [torch.float16])
+    @pytest.mark.parametrize("inv", [False, True])
+    @pytest.mark.parametrize("scripted", [False, True])
+    def test_half_default_mean_loss_derivatives(self, device, half_dtype, inv, scripted):
+        image = torch.zeros(1, 1, 256, 256, device=device, dtype=half_dtype, requires_grad=True)
+        op = kornia.enhance.AdjustSigmoid(gain=10.0, inv=inv)
+        if scripted:
+            op = torch.jit.script(op)
+        # The mean supplies a small backward seed: half reciprocal backward underflows even though exp(5) is finite.
+        for _ in range(2 if scripted else 1):
+            loss = op(image).float().mean()
+            (gradient,) = torch.autograd.grad(loss, image, create_graph=True)
+            (second,) = torch.autograd.grad(gradient, image, torch.ones_like(gradient))
+
+        tail = exp(-5.0)
+        scale = (-1.0 if inv else 1.0) / image.numel()
+        expected_gradient = scale * 10.0 * tail / (1 + tail) ** 2
+        expected_second = scale * 100.0 * tail * (1 - tail) / (1 + tail) ** 3
+        self.assert_close(gradient, torch.full_like(image, expected_gradient), rtol=0, atol=0)
+        self.assert_close(second, torch.full_like(image, expected_second), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16])
     @pytest.mark.parametrize(
         "gain,cutoff", [(34.0, 0.5), (40.0, 0.5), (40.0, 0.3), (60.0, 0.5), (100.0, 0.5), (200.0, 0.5)]
     )
