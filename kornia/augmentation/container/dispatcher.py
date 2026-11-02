@@ -15,11 +15,21 @@
 # limitations under the License.
 #
 
-from typing import List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from torch import Tensor, nn
 
 from .augment import AugmentationSequential
+
+
+def _fill_missing_augmentation_state(module: nn.Module, state_dict: Dict[str, Tensor], prefix: str, *args: Any) -> None:
+    # Children used to live in a plain tuple, so old checkpoints contain no augmentation state.
+    # Keep the instance's defaults for those checkpoints, but do not hide missing keys in the new layout.
+    if any(key.startswith(prefix + "augmentations.") for key in state_dict):
+        return
+    for name, value in module.state_dict(keep_vars=False).items():
+        if name.startswith("augmentations."):
+            state_dict[prefix + name] = value.detach().clone()
 
 
 class ManyToManyAugmentationDispather(nn.Module):
@@ -61,6 +71,7 @@ class ManyToManyAugmentationDispather(nn.Module):
         super().__init__()
         self._check_consistency(*augmentations)
         self.augmentations = nn.ModuleList(augmentations)
+        self._register_load_state_dict_pre_hook(_fill_missing_augmentation_state, with_module=True)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):
@@ -130,6 +141,7 @@ class ManyToOneAugmentationDispather(nn.Module):
         self.strict = strict
         self._check_consistency(*augmentations)
         self.augmentations = nn.ModuleList(augmentations)
+        self._register_load_state_dict_pre_hook(_fill_missing_augmentation_state, with_module=True)
 
     def _check_consistency(self, *augmentations: AugmentationSequential) -> bool:
         for i, aug in enumerate(augmentations):

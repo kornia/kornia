@@ -80,3 +80,36 @@ class TestDispatcherModuleState(BaseTester):
         restored.load_state_dict(state, strict=True)
         for actual, reference in zip(self.call(restored, image), expected):
             self.assert_close(actual, reference, rtol=0, atol=0)
+
+    def test_learnable_range_is_a_parameter(self, device, dtype, dispatcher_class):
+        # Ranges stay on CPU in the default dtype unless the augmentation's RNG is moved.
+        ranges = [nn.Parameter(torch.tensor([0.8, 1.2])) for _ in range(2)]
+        dispatcher = dispatcher_class(
+            *[K.AugmentationSequential(K.RandomBrightness(value, p=1.0), data_keys=["input"]) for value in ranges]
+        )
+        assert {id(parameter) for parameter in dispatcher.parameters()} == {id(value) for value in ranges}
+
+    @pytest.mark.parametrize("nested", [False, True])
+    @pytest.mark.parametrize("learnable", [False, True])
+    def test_state_dict_saved_before_registration_loads_strictly(
+        self, device, dtype, dispatcher_class, nested, learnable
+    ):
+        ranges = [nn.Parameter(torch.tensor([0.8, 1.2])) if learnable else (0.8, 1.2) for _ in range(2)]
+        dispatcher = dispatcher_class(
+            *[K.AugmentationSequential(K.RandomBrightness(value, p=1.0), data_keys=["input"]) for value in ranges]
+        ).to(device=device, dtype=dtype)
+        module = nn.Sequential(nn.Identity(), dispatcher) if nested else dispatcher
+        expected = copy.deepcopy(module.state_dict())
+        assert expected
+
+        # Before registration the dispatcher contributed no child state, including when nested.
+        legacy = {}
+        module.load_state_dict(legacy, strict=True)
+        assert legacy == {}
+        for name, value in module.state_dict().items():
+            self.assert_close(value, expected[name], rtol=0, atol=0)
+
+        # A checkpoint with any child state uses the new layout: do not hide a missing key.
+        partial = dict(list(expected.items())[:1])
+        with pytest.raises(RuntimeError, match="Missing key"):
+            module.load_state_dict(partial, strict=True)
