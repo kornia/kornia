@@ -23,44 +23,72 @@ import torch
 import kornia.feature as KF
 from kornia.core.check import ShapeError
 
-
-def _laf():
-    return KF.laf_from_center_scale_ori(torch.tensor([[[60.0, 50.0]]]), torch.full((1, 1, 1, 1), 8.0))
+from testing.base import BaseTester
 
 
-class TestLAFOrienterInputShape:
-    @pytest.mark.parametrize("channels", [2, 3])
-    def test_rejects_multichannel_image(self, channels):
-        with pytest.raises(ShapeError):
-            KF.LAFOrienter(32)(_laf(), torch.rand(1, channels, 120, 160))
+def _assert_rejected_up_front(call):
+    """The input must be refused by a shape check, not fail later with a RuntimeError or pass silently."""
+    with pytest.raises(ShapeError):
+        call()
 
-    def test_accepts_grayscale_image(self):
-        laf = _laf()
-        out = KF.LAFOrienter(32)(laf, torch.rand(1, 1, 120, 160))
+
+def _laf(device, dtype, batch_size=1, num_laf=1):
+    centers = torch.tensor([60.0, 50.0], device=device, dtype=dtype).expand(batch_size, num_laf, 2).contiguous()
+    scales = torch.full((batch_size, num_laf, 1, 1), 8.0, device=device, dtype=dtype)
+    return KF.laf_from_center_scale_ori(centers, scales)
+
+
+class TestLAFOrienterInputShape(BaseTester):
+    def test_smoke(self, device, dtype):
+        laf = _laf(device, dtype)
+        img = torch.rand(1, 1, 120, 160, device=device, dtype=dtype)
+        out = KF.LAFOrienter(32).to(device, dtype)(laf, img)
         assert out.shape == laf.shape
 
+    @pytest.mark.parametrize("channels", [2, 3])
+    def test_exception(self, channels, device, dtype):
+        orienter = KF.LAFOrienter(32).to(device, dtype)
+        laf = _laf(device, dtype)
+        img = torch.rand(1, channels, 120, 160, device=device, dtype=dtype)
+        _assert_rejected_up_front(lambda: orienter(laf, img))
 
-class TestPatchAffineShapeEstimatorInputShape:
+    @pytest.mark.parametrize("batch_size, num_laf", [(1, 1), (2, 3)])
+    def test_cardinality(self, batch_size, num_laf, device, dtype):
+        laf = _laf(device, dtype, batch_size, num_laf)
+        img = torch.rand(batch_size, 1, 120, 160, device=device, dtype=dtype)
+        out = KF.LAFOrienter(32).to(device, dtype)(laf, img)
+        assert out.shape == (batch_size, num_laf, 2, 3)
+
+class TestPatchAffineShapeEstimatorInputShape(BaseTester):
+    def test_smoke(self, device, dtype):
+        patch = torch.rand(2, 1, 19, 19, device=device, dtype=dtype)
+        out = KF.PatchAffineShapeEstimator(19).to(device, dtype)(patch)
+        assert out.shape == (2, 1, 3)
+
     @pytest.mark.parametrize(
         "shape",
         [
-            (2, 1, 1, 19),
+            (2, 1, 1, 19),  # used to broadcast silently and return (B, 1, 3)
             (2, 1, 19, 1),
             (2, 1, 18, 19),
-            (2, 1, 20, 20),
+            (2, 1, 20, 20),  # used to fail late with a broadcasting RuntimeError
             (2, 3, 19, 19),
         ],
     )
-    def test_rejects_wrong_patch_shape(self, shape):
-        with pytest.raises(ShapeError):
-            KF.PatchAffineShapeEstimator(19)(torch.rand(*shape))
+    def test_exception(self, shape, device, dtype):
+        estimator = KF.PatchAffineShapeEstimator(19).to(device, dtype)
+        patch = torch.rand(*shape, device=device, dtype=dtype)
+        _assert_rejected_up_front(lambda: estimator(patch))
 
-    def test_accepts_matching_patch(self):
-        out = KF.PatchAffineShapeEstimator(19)(torch.rand(2, 1, 19, 19))
-        assert out.shape == (2, 1, 3)
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_cardinality(self, batch_size, device, dtype):
+        patch = torch.rand(batch_size, 1, 19, 19, device=device, dtype=dtype)
+        out = KF.PatchAffineShapeEstimator(19).to(device, dtype)(patch)
+        assert out.shape == (batch_size, 1, 3)
 
-    def test_patch_size_follows_constructor(self):
-        out = KF.PatchAffineShapeEstimator(32)(torch.rand(2, 1, 32, 32))
+    def test_module(self, device, dtype):
+        # the expected patch size follows the constructor argument
+        estimator = KF.PatchAffineShapeEstimator(32).to(device, dtype)
+        out = estimator(torch.rand(2, 1, 32, 32, device=device, dtype=dtype))
         assert out.shape == (2, 1, 3)
-        with pytest.raises(ShapeError):
-            KF.PatchAffineShapeEstimator(32)(torch.rand(2, 1, 19, 19))
+        _assert_rejected_up_front(lambda: estimator(torch.rand(2, 1, 19, 19, device=device, dtype=dtype)))
