@@ -59,6 +59,7 @@ class TestLAFOrienterInputShape(BaseTester):
         out = KF.LAFOrienter(32).to(device, dtype)(laf, img)
         assert out.shape == (batch_size, num_laf, 2, 3)
 
+
 class TestPatchAffineShapeEstimatorInputShape(BaseTester):
     def test_smoke(self, device, dtype):
         patch = torch.rand(2, 1, 19, 19, device=device, dtype=dtype)
