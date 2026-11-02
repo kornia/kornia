@@ -441,7 +441,9 @@ class TestDistortionKannalaBrandt(BaseTester):
         # which optimization only shrinks, rather than with the first call.
         scripted_subs = _count_nodes(op_script.inlined_graph, "aten::sub")
         for _ in range(2):
-            self.assert_close(op_script(points, params), expected)
+            # On CUDA the optimized call fuses the loop body, and the fused kernels keep bfloat16 intermediates in
+            # float32, so that call lands up to 4 bfloat16 ulps from eager (closer to the float64 result).
+            self.assert_close(op_script(points, params), expected, low_tolerance=dtype == torch.bfloat16)
             assert _count_nodes(torch.jit.last_executed_optimized_graph(), "aten::sub") <= scripted_subs
 
     def test_jit(self, device, dtype) -> None:
