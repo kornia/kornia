@@ -809,13 +809,11 @@ class ALIKED(nn.Module):
 
     See :cite:`zhao2023aliked` for details.
 
-    Speed against the authors' Python code (640 px, 2,048 keypoints, PyTorch 2.14): on CUDA, compile the model.
-    Eager, it runs at 0.8x the authors' speed on an RTX 4090, because its pure-PyTorch deformable convolution
-    launches many small kernels; ``torch.compile(model)`` makes it 1.6x the authors' eager speed at a fixed image size
-    and 1.2x with ``dynamic=True``. On the CPU keep it eager: it runs at 1.7x the authors' speed on an Intel
-    i7-14700K and 2.0x on an Apple M1, and on the i7-14700K the compiled forward is slower than eager. On Apple MPS
-    the two tie. The device-by-device table is in the `image matching guide
-    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
+    Speed against the authors' Python code (640 px, 2,048 keypoints): on CUDA, compile the model for repeated
+    inference. Eager, it runs at 0.8x the authors' speed on an RTX 4090, because its PyTorch deformable convolution
+    launches many small kernels; ``torch.compile(model)`` runs at 1.6x (1.2x with ``dynamic=True``). On CPUs keep it
+    eager: it runs at 1.7-2.0x the authors' speed, and compiling it made it slower on an x86 CPU. See the `image
+    matching guide <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     .. image:: _static/img/ALIKED.png
 

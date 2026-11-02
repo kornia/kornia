@@ -34,9 +34,9 @@ fragile, or where the alternatives leave the GPU:
   keypoints together, and its inverse.
 - Local features: kornia's ports of ALIKED, XFeat, DISK with LightGlue, DeDoDe, LoFTR, HardNet and the other learned
   descriptors run at their authors' speed or faster on every device measured (CUDA, x86 and Apple M1 CPUs, Apple
-  MPS), and match their accuracy. The exceptions are eager ALIKED on CUDA (compile it), SIFT, where OpenCV's is
-  faster on the Apple M1 CPU, and the accuracy of XFeat*, whose refinement departs from the authors' on purpose.
-  The ``kornia.feature`` docstring gives the figures per device.
+  MPS), and are as accurate on the cohorts measured. The exceptions are eager ALIKED on CUDA (compile it), SIFT on a
+  CPU (OpenCV's is faster) and XFeat*, whose refinement departs from the authors' on purpose. The ``kornia.feature``
+  docstring says what to use where.
 - Compiles and exports: nearly all probed operator configurations run under ``torch.compile`` and match eager, and
   over 1,000 export to ONNX (``kornia.onnx``).
 - Fast on batched GPU tensors: on an RTX 4090 with batches of 32, many filters, warps, matching steps and image
@@ -48,8 +48,9 @@ just as good.
 
 Before writing code, read the conventions page, which covers image tensors, coordinates, rotations, matrices,
 ``align_corners``, boxes, color, augmentation and local features, and ends with a pitfall checklist:
-https://kornia.readthedocs.io/en/latest/get-started/conventions.html. Every benchmark result, wins and losses, is at
-https://kornia.readthedocs.io/en/latest/get-started/performance.html.
+https://kornia.readthedocs.io/en/latest/get-started/conventions.html. Operator benchmarks, wins and losses, are at
+https://kornia.readthedocs.io/en/latest/get-started/performance.html, and the local-feature comparison at
+https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device.
 """
 
 from importlib import import_module as _import_module

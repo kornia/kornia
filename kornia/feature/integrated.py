@@ -358,9 +358,9 @@ class SIFTFeature(_SIFTFeature):
     For new scale-space SIFT pipelines, start with :class:`SIFTFeatureScaleSpace` and explicitly select
     ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
 
-    For CPU throughput, use OpenCV's SIFT: on an Apple M1 CPU, an image-matching pipeline built on it ran 11x faster
-    than one built on this module (640 px, 2,048 features). Use kornia's SIFT when you need it batched, on a GPU, or
-    differentiable. See the `image matching guide
+    For CPU throughput use OpenCV's SIFT: on an Apple M1 CPU, a matching pipeline on it ran 11x faster than one on
+    this module (640 px, 2,048 features). This module takes one image per call; for batches use
+    :class:`SIFTFeatureScaleSpace`. See the `image matching guide
     <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     Convention:
@@ -437,10 +437,10 @@ class SIFTFeatureScaleSpace(LocalFeature):
 
     For new scale-space SIFT pipelines, explicitly select ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
 
-    For CPU throughput, use OpenCV's SIFT: on an Apple M1 CPU, an image-matching pipeline built on it ran 8x faster
-    than one built on this module with ``descriptor_backend="pyramid"``, and 14x faster with ``"patch"`` (640 px,
-    2,048 features). Use kornia's SIFT when you need it batched, on a GPU, or differentiable. See the `image matching
-    guide <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
+    For CPU throughput use OpenCV's SIFT: on an Apple M1 CPU, a matching pipeline on it ran 8x faster than one on this
+    module with ``descriptor_backend="pyramid"``, and 14x faster with ``"patch"`` (640 px, 2,048 features). See the
+    `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     Convention:
         - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of grayscale

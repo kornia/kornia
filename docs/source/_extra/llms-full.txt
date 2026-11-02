@@ -32,7 +32,9 @@ Kornia pays off where a hand-written version gets long or fragile, or where the 
   GPU without blocking it, and a sync-guard test keeps every public augmentation free of avoidable host
   synchronizations.
 - **Local features on the GPU.** SIFT and HardNet, DISK, ALIKED, XFeat, DeDoDe, LoFTR and LightGlue, with
-  mutual-nearest-neighbour and ratio-test matchers.
+  mutual-nearest-neighbour and ratio-test matchers. They run at their authors' speed or faster, except eager ALIKED
+  on CUDA (compile it) and SIFT on a CPU (OpenCV's is faster); what to use on each device is in the
+  [image matching guide](https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device).
 - **Morphology** with arbitrary structuring elements on batched tensors.
 - **Compiles and exports.** Nearly all probed operator configurations run under `torch.compile` and match eager,
   and over 1,000 export to ONNX; the result for every operator is on the
