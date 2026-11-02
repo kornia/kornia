@@ -16,7 +16,7 @@
 #
 
 import copy
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn.functional as F
@@ -71,7 +71,7 @@ class SOLD2(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
+    def __init__(self, pretrained: bool = True, config: Optional[Union[DetectorCfg, Dict[str, Any]]] = None) -> None:
         if isinstance(config, dict):
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
