@@ -344,10 +344,10 @@ class XFeat(nn.Module):
           :math:`[0, 255]` versions of Oxford graf and wall ``img1`` differ in at most 1 keypoint, in 1 to 2 % of them
           with the intensities multiplied by 0.1, and in 35 to 40 % multiplied by 0.01. Every output is float32.
         - :meth:`detectAndCompute` keypoints are integer pixels ``i`` of the resized image, strict maxima of the
-          keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')``. That is the
-          pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
-          (see :ref:`Local features <local-features-conventions>`) when ``H`` and ``W`` are multiples of 32;
-          otherwise the centre of the resized pixel is at ``(i + 0.5) * (W / W', H / H') - 0.5``.
+          keypoint heatmap in their 5 x 5 window (see the note), reported at ``i * (W / W', H / H')`` in the pixel
+          frame of :func:`~kornia.feature.laf_from_center_scale_ori`
+          (see :ref:`Local features <local-features-conventions>`). That is the centre of the resized pixel only
+          when ``H`` and ``W`` are multiples of 32; otherwise that centre is at ``(i + 0.5) * (W / W', H / H') - 0.5``.
         - The heatmap value must be strictly above ``detection_threshold``. ``scores`` is that value times the
           reliability map, and the ``top_k`` best keypoints come sorted by it. Each descriptor is 64-D, sampled
           bicubically from the dense map at the keypoint by :class:`InterpolateSparse2d`, and L2-normalised.

@@ -53,6 +53,7 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 """Top-level packages left out of the rollout, with the reason."""
 
 CATALOG_NAMESPACES: tuple[str, ...] = (
+    "kornia.feature",
     "kornia.feature.dedode.transformer",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",

@@ -825,9 +825,9 @@ class MultiResolutionDetector(nn.Module):
           :class:`~kornia.feature.SIFTFeature` does.
         - A detection is an integer pixel :math:`(u, v)` of a pyramid level of size ``(H_l, W_l)``, without a
           sub-pixel step. It is reported at :math:`(u W / W_l, v H / H_l)` of the ``(H, W)`` input, in the frame
-          of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`),
-          and not at the level pixel's centre :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`; the Key.Net
-          reference maps it the same way.
+          of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
+          That is the centre of the level pixel only on a level of the input's size; otherwise that centre is at
+          :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`. The Key.Net reference maps it the same way.
         - Before ``aff_module`` and ``ori_module`` run, the frame is upright and isotropic, with the scale
           ``s_mult * (W / W_l + H / H_l) / 2`` whatever the response; ``s_mult`` of ``config`` is 22 by default.
 
