@@ -25,9 +25,11 @@ from kornia.enhance import shift_rgb
 
 
 def _shift_bounds(limit: Union[torch.Tensor, float, Tuple[float, float], List[float]]) -> Tuple[Any, Any]:
-    # A number (or 0-d tensor) is a half-width, bounded by itself; a (low, high) pair -- a tuple, a list or a 1-D
-    # tensor -- is the range and only needs to be finite and ordered.
-    if isinstance(limit, (tuple, list)) or (isinstance(limit, torch.Tensor) and limit.dim() > 0):
+    # A number is a half-width, bounded by itself; a (low, high) pair -- a tuple, a list or a 1-D tensor -- is the
+    # range and only needs to be finite and ordered. A 0-d tensor is a half-width too, but bounds computed from a
+    # learnable one would carry its autograd graph into the generator, where no copy can take it. ``[-limit, limit]``
+    # is inside its own bounds by construction, so the tensor is left unbounded instead.
+    if isinstance(limit, (tuple, list, torch.Tensor)):
         return (-float("inf"), float("inf"))
     return (-limit, limit)
 

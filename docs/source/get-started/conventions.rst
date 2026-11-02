@@ -662,6 +662,11 @@ Serializing an augmentation
   wrapper in it does, and a wrapper does when its magnitude mapping is
   picklable (the built-in mappings are). What lazily computed matrices retain
   is described in :doc:`/augmentation.base`.
+- A copy made with ``copy.deepcopy``, ``pickle`` or ``torch.save`` of an
+  augmentation or container with an ``nn.Parameter`` range owns a copy of
+  that parameter: it draws from it, and its gradients reach it rather than
+  the original's. The ``_params`` it inherits from the last call keep their
+  values, detached.
 
 Morphology
 ----------

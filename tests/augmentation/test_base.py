@@ -16,6 +16,7 @@
 #
 
 import copy
+import io
 import pickle
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -1618,3 +1619,233 @@ class TestStaticProbabilityIgnoresHandMadeGate(BaseTester):
         _, inv_mask, inv_boxes = aug.inverse(out, out_mask, out_boxes, params=aug._params)
         self.assert_close(inv_mask, mask)
         self.assert_close(inv_boxes, boxes)
+
+
+def _learnable(*values: float) -> torch.nn.Parameter:
+    return torch.nn.Parameter(torch.tensor(values if len(values) > 1 else values[0]))
+
+
+# name -> (constructor, volumetric input, range receives a gradient). One augmentation per generator family that builds
+# its samplers from a range tensor, plus RandomRGBShift (a 0-d half-width) and a mix augmentation. The ranges are made
+# on the CPU and move with the module, the way a model holding the augmentation is moved.
+_LEARNABLE_RANGES = {
+    "RandomBrightness": (lambda: K.RandomBrightness(_learnable(0.8, 1.2), p=1.0), False, True),
+    "RandomRGBShift": (lambda: K.RandomRGBShift(_learnable(0.1), _learnable(0.2), _learnable(0.3), p=1.0), False, True),
+    "ColorJiggle": (
+        lambda: K.ColorJiggle(_learnable(0.8, 1.2), _learnable(0.8, 1.2), _learnable(0.8, 1.2), _learnable(-0.1, 0.1)),
+        False,
+        True,
+    ),
+    "ColorJitter": (
+        lambda: K.ColorJitter(_learnable(0.8, 1.2), _learnable(0.8, 1.2), _learnable(0.8, 1.2), _learnable(-0.1, 0.1)),
+        False,
+        True,
+    ),
+    "RandomAffine": (
+        lambda: K.RandomAffine(
+            _learnable(-10.0, 10.0), _learnable(0.1, 0.1), _learnable(0.9, 1.1), _learnable(-5.0, 5.0), p=1.0
+        ),
+        False,
+        True,
+    ),
+    "RandomRotation": (lambda: K.RandomRotation(_learnable(10.0, 20.0), p=1.0), False, True),
+    "RandomShear": (lambda: K.RandomShear(_learnable(-5.0, 5.0), p=1.0), False, True),
+    "RandomTranslate": (lambda: K.RandomTranslate(_learnable(-0.1, 0.1), _learnable(-0.1, 0.1), p=1.0), False, True),
+    "RandomPerspective": (lambda: K.RandomPerspective(_learnable(0.5), p=1.0), False, True),
+    "RandomMotionBlur": (
+        lambda: K.RandomMotionBlur(3, _learnable(-30.0, 30.0), _learnable(-0.5, 0.5), p=1.0),
+        False,
+        True,
+    ),
+    "RandomResizedCrop": (
+        lambda: K.RandomResizedCrop((6, 6), scale=_learnable(0.5, 1.0), ratio=_learnable(0.75, 1.33), p=1.0),
+        False,
+        False,
+    ),
+    "RandomErasing": (lambda: K.RandomErasing(_learnable(0.02, 0.33), _learnable(0.3, 3.3), p=1.0), False, False),
+    "RandomMixUpV2": (lambda: K.RandomMixUpV2(_learnable(0.0, 1.0), p=1.0), False, False),
+    "RandomAffine3D": (
+        lambda: K.RandomAffine3D(
+            _learnable(-10.0, 10.0), _learnable(0.1, 0.1, 0.1), _learnable(0.9, 1.1), _learnable(-5.0, 5.0), p=1.0
+        ),
+        True,
+        True,
+    ),
+    "RandomRotation3D": (lambda: K.RandomRotation3D(_learnable(-10.0, 10.0), p=1.0), True, True),
+    "RandomPerspective3D": (lambda: K.RandomPerspective3D(_learnable(0.5), p=1.0), True, True),
+    "RandomMotionBlur3D": (
+        lambda: K.RandomMotionBlur3D(3, _learnable(-30.0, 30.0), _learnable(-0.5, 0.5), p=1.0),
+        True,
+        True,
+    ),
+}
+_DIFFERENTIABLE_RANGES = [name for name, (_, _, differentiable) in _LEARNABLE_RANGES.items() if differentiable]
+
+
+def _torch_save_round_trip(module: torch.nn.Module) -> torch.nn.Module:
+    buffer = io.BytesIO()
+    torch.save(module, buffer)
+    buffer.seek(0)
+    return torch.load(buffer, weights_only=False)
+
+
+_COPIERS = {
+    "deepcopy": copy.deepcopy,
+    "pickle": lambda module: pickle.loads(pickle.dumps(module)),  # noqa: S301
+    "torch.save": _torch_save_round_trip,
+}
+
+
+class TestLearnableRangeCopies(BaseTester):
+    """``copy.deepcopy``, pickle and ``torch.save`` of augmentations whose range is a learnable ``nn.Parameter``."""
+
+    @staticmethod
+    def _case(name, device, dtype):
+        make, volumetric, _ = _LEARNABLE_RANGES[name]
+        torch.manual_seed(0)
+        aug = make().to(device=device, dtype=dtype)
+        shape = (2, 3, 4, 8, 8) if volumetric else (2, 3, 8, 8)
+        return aug, torch.rand(shape, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _draw(module, seed, *inputs):
+        torch.manual_seed(seed)
+        return module(*inputs)
+
+    @staticmethod
+    def _ranges(module):
+        # The dispatcher keeps its sequences in a plain list, so their parameters are reached through it.
+        members = module.augmentations if isinstance(module, K.ManyToOneAugmentationDispather) else [module]
+        return [p for member in members for p in member.parameters()]
+
+    @pytest.mark.parametrize("name", list(_LEARNABLE_RANGES))
+    def test_deepcopy_draws_like_the_original(self, name, device, dtype):
+        aug, x = self._case(name, device, dtype)
+        before = copy.deepcopy(aug)
+        self._draw(aug, 1, x)
+        after = copy.deepcopy(aug)
+        expected = self._draw(aug, 2, x)
+        for clone in (before, after):
+            assert all(q is not p for p, q in zip(aug.parameters(), clone.parameters()))
+            self.assert_close(self._draw(clone, 2, x), expected, rtol=0, atol=0)
+            _assert_params_equal(clone._params, aug._params)
+
+    @pytest.mark.parametrize("name", list(_LEARNABLE_RANGES))
+    def test_deepcopy_keeps_the_last_draw_detached(self, name, device, dtype):
+        aug, x = self._case(name, device, dtype)
+        self._draw(aug, 1, x)
+        clone = copy.deepcopy(aug)
+        _assert_params_equal(clone._params, aug._params)
+        assert all(value.grad_fn is None for value in clone._params.values() if isinstance(value, torch.Tensor))
+        if getattr(aug, "_transform_matrix_params", None) is aug._params:
+            # Records that share values in the original still share them in the copy.
+            assert clone._transform_matrix_params is clone._params
+
+    @pytest.mark.parametrize("copier", list(_COPIERS))
+    @pytest.mark.parametrize("name", _DIFFERENTIABLE_RANGES)
+    def test_gradients_reach_the_range_of_the_copy(self, name, copier, device, dtype):
+        aug, x = self._case(name, device, dtype)
+        clone = _COPIERS[copier](aug)
+        self._draw(aug, 3, x).sum().backward()
+        expected = [None if p.grad is None else p.grad.clone() for p in aug.parameters()]
+        assert any(grad is not None and bool(grad.ne(0).any()) for grad in expected)
+        aug.zero_grad(set_to_none=True)
+
+        self._draw(clone, 3, x).sum().backward()
+
+        assert all(p.grad is None for p in aug.parameters())
+        clone_ranges = list(clone.parameters())
+        assert len(clone_ranges) == len(expected)
+        for q, grad in zip(clone_ranges, expected):
+            if grad is None:
+                assert q.grad is None
+            else:
+                self.assert_close(q.grad, grad)
+
+    def test_copy_keeps_the_state_dict(self, device, dtype):
+        aug, x = self._case("RandomRotation", device, dtype)
+        self._draw(aug, 1, x)
+        clone = copy.deepcopy(aug)
+        assert list(clone.state_dict()) == list(aug.state_dict()) == ["_param_generator.degrees"]
+        for key, value in aug.state_dict().items():
+            self.assert_close(clone.state_dict()[key], value, rtol=0, atol=0)
+        target = _LEARNABLE_RANGES["RandomRotation"][0]().to(device=device, dtype=dtype)
+        target.load_state_dict(clone.state_dict())
+        self.assert_close(target._param_generator.degrees, aug._param_generator.degrees, rtol=0, atol=0)
+
+    def test_copy_follows_device_and_dtype_moves(self, device, dtype):
+        aug, x = self._case("RandomAffine", torch.device("cpu"), torch.float32)
+        clone = copy.deepcopy(aug)
+        aug.to(device=device, dtype=dtype)
+        clone.to(device=device, dtype=dtype)
+        x = x.to(device=device, dtype=dtype)
+        expected = self._draw(aug, 2, x)
+        actual = self._draw(clone, 2, x)
+        self.assert_close(actual, expected, rtol=0, atol=0)
+        actual.sum().backward()
+        for q in clone.parameters():
+            assert q.device == x.device
+            assert q.dtype == dtype
+            assert q.grad is not None
+
+    @pytest.mark.parametrize("container", ["AugmentationSequential", "ManyToOneAugmentationDispather"])
+    def test_container_copy_draws_and_trains_like_the_original(self, container, device, dtype):
+        def sequence():
+            return K.AugmentationSequential(
+                _LEARNABLE_RANGES["RandomBrightness"][0](),
+                _LEARNABLE_RANGES["RandomAffine"][0](),
+                data_keys=["input", "mask", "bbox_xyxy"],
+            ).to(device=device, dtype=dtype)
+
+        def outputs(out):
+            # AugmentationSequential returns [image, mask, boxes]; the dispatcher returns one such list per sequence.
+            return [out] if container == "AugmentationSequential" else out
+
+        torch.manual_seed(0)
+        module = (
+            sequence()
+            if container == "AugmentationSequential"
+            else K.ManyToOneAugmentationDispather(sequence(), sequence())
+        )
+        image = torch.rand(2, 3, 8, 8, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        mask = (image[:, :1] > 0.5).to(dtype)
+        boxes = torch.tensor([[[1.0, 1.0, 5.0, 6.0]]], device=device, dtype=dtype).repeat(2, 1, 1)
+        before = copy.deepcopy(module)
+        self._draw(module, 1, image, mask, boxes)
+        after = copy.deepcopy(module)
+        expected = outputs(self._draw(module, 2, image, mask, boxes))
+        sum(out[0].sum() for out in expected).backward()
+        expected_grads = [p.grad.clone() for p in self._ranges(module)]
+        for p in self._ranges(module):
+            p.grad = None
+
+        for clone in (before, after):
+            actual = outputs(self._draw(clone, 2, image, mask, boxes))
+            for actual_out, expected_out in zip(actual, expected):
+                for actual_value, expected_value in zip(actual_out, expected_out):
+                    self.assert_close(actual_value, expected_value, rtol=0, atol=0)
+            sum(out[0].sum() for out in actual).backward()
+            assert all(p.grad is None for p in self._ranges(module))
+            clone_ranges = self._ranges(clone)
+            assert len(clone_ranges) == len(expected_grads) == 5 * len(expected)
+            for q, grad in zip(clone_ranges, expected_grads):
+                self.assert_close(q.grad, grad)
+
+    def test_averaged_model_of_a_learnable_range(self, device, dtype):
+        aug, x = self._case("RandomAffine", device, dtype)
+        averaged = torch.optim.swa_utils.AveragedModel(aug)
+        averaged.update_parameters(aug)
+        expected = self._draw(aug, 2, x)
+        self.assert_close(self._draw(averaged, 2, x), expected, rtol=0, atol=0)
+        for p, q in zip(aug.parameters(), averaged.module.parameters()):
+            assert q is not p
+            self.assert_close(q, p, rtol=0, atol=0)
+
+    def test_rgb_shift_takes_a_half_width_tensor_in_any_dtype(self, device, dtype):
+        # A 0-d limit is a half-width. Its bounds are not computed from the tensor, so a value that rounds when the
+        # generator samples in float32 is not reported out of its own bounds.
+        limit = torch.tensor(0.3, device=device, dtype=dtype)
+        aug = K.RandomRGBShift(limit, limit, limit, p=1.0)
+        params = aug.forward_parameters((2, 3, 4, 4))
+        for key in ("r_shift", "g_shift", "b_shift"):
+            assert bool((params[key].abs() <= float(limit) * (1 + 1e-3)).all())
