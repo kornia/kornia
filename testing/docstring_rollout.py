@@ -88,6 +88,11 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
 DOCSTRING_MODULES: tuple[str, ...] = (
+    "kornia.feature.adalam",
+    "kornia.feature.lightglue",
+    "kornia.feature.lightglue_onnx",
+    "kornia.feature.loftr",
+    "kornia.feature.matching",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",
     "kornia.geometry.calibration",

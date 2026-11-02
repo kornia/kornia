@@ -3,6 +3,17 @@ Matching
 
 .. currentmodule:: kornia.feature
 
+The descriptor matchers take the descriptors of two images, and some of them their LAFs, and return
+``(dists, idxs)``: a quality and an ``(index in desc1, index in desc2)`` pair per match.
+:func:`match_nn` keeps every nearest neighbour, :func:`match_mnn` the mutual ones, :func:`match_snn` and
+:func:`match_smnn` add Lowe's ratio test, and :func:`match_fginn` and :func:`match_adalam` also read the LAFs.
+:class:`DescriptorMatcher` and :class:`GeometryAwareDescriptorMatcher` are their module forms, and
+:class:`LocalFeatureMatcher` runs a detector and a descriptor on two images before a descriptor-only matcher.
+The learned matchers are networks with pretrained weights: :class:`LightGlueMatcher`, :class:`LightGlue` and
+:class:`OnnxLightGlue` match detected keypoints and their descriptors, and :class:`LoFTR` matches the images
+themselves, without a detector. To keep the matches that one geometric model explains, pass them to
+:class:`~kornia.geometry.ransac.RANSAC`.
+
 Descriptor matching
 -------------------
 

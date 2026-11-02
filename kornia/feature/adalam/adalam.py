@@ -58,9 +58,17 @@ def match_adalam(
     hw2: Optional[Sequence[int]] = None,
     dm: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Perform descriptor matching, followed by AdaLAM filtering.
+    """Match descriptors by nearest neighbour, then keep the matches that local affine models support (AdaLAM).
 
-    See :cite:`AdaLAM2020` for more details.
+    ``dists, idxs = match_adalam(desc1, desc2, lafs1, lafs2, hw1=(H1, W1), hw2=(H2, W2))`` takes two descriptor sets
+    ``(B1, D)`` and ``(B2, D)``, their LAFs ``(1, B1, 2, 3)`` and ``(1, B2, 2, 3)`` and, optionally, the image sizes
+    in the units of the LAF centres, pixels for LAFs in pixels. It matches every row of ``desc1`` to its nearest
+    neighbour in ``desc2`` and returns the matches that the local RANSACs around confident seed matches accept, each
+    match once: the inverse RANSAC confidences ``(B3, 1)``, float32, and the index pairs ``(B3, 2)``. The local
+    models read the LAF orientations and scales as well as the centres, and need no global model of the scene, see
+    :cite:`AdaLAM2020` for more details. To keep the matches that one global model explains instead, pass the
+    matches of :func:`~kornia.feature.match_snn` or :func:`~kornia.feature.match_smnn` to
+    :class:`~kornia.geometry.ransac.RANSAC`.
 
     Convention:
         - See the Convention block on :func:`~kornia.feature.match_nn`. ``dists`` is the inverse of the confidence of
@@ -87,24 +95,33 @@ def match_adalam(
           seed and minimal fitting pair. Unlike the reference implementation, equal tiny residuals alone do not
           imply duplicate keypoints. Their confidence uses a conservative residual-area floor of ``2**-24`` in
           normalized coordinates, so inverse confidence stays finite even for an exact fit.
+        - Known defect: more accurate keypoints can keep fewer correct matches. On large images, keypoints with
+          sub-pixel noise lose correct matches that noisier ones keep, and a neighbourhood that mixes exact and
+          slightly noisy correct matches keeps the exact ones and few of the others
+          (`#5943 <https://github.com/kornia/kornia/issues/5943>`_).
 
     Args:
         desc1: Batch of descriptors of a shape ``(B1, D)``.
         desc2: Batch of descriptors of a shape ``(B2, D)``.
         lafs1: LAFs of a shape ``(1, B1, 2, 3)``.
         lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
-        config: dict with AdaLAM config
-        dm: torch.Tensor containing the non-negative distances (not squared) from each descriptor in desc1
-          to each descriptor in desc2, shape of ``(B1, B2)``. Smaller is better.
+        config: dict with AdaLAM config, merged into the defaults; see the Convention block.
         hw1: size of the first image, ``(H, W)`` or ``(W, H)``.
         hw2: size of the second image, ``(H, W)`` or ``(W, H)``.
-
+        dm: torch.Tensor containing the non-negative distances (not squared) from each descriptor in desc1
+          to each descriptor in desc2, shape of ``(B1, B2)``. Smaller is better.
 
     Return:
         - Inverse local RANSAC confidence of each match, float32, shape of ``(B3, 1)``; see the Convention
           block.
         - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: ``(B3, 2)``,
           where 0 <= B3 <= B1.
+
+    See Also:
+        - :func:`match_fginn`: a ratio test that reads the LAF centres of desc2 only, with no local models.
+        - :class:`GeometryAwareDescriptorMatcher`: the module form, with ``match_mode="adalam"`` and no image sizes.
+        - :class:`~kornia.geometry.ransac.RANSAC`: one global model, such as a homography or a fundamental matrix, for
+          all the matches.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])

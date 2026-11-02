@@ -775,7 +775,17 @@ class KeyNetAffNetHardNet(LocalFeature):
 
 
 class LocalFeatureMatcher(nn.Module):
-    r"""nn.Module, which finds correspondences between two images based on local features.
+    r"""Detect, describe and match the local features of two images with a descriptor matcher.
+
+    ``matcher = LocalFeatureMatcher(local_feature, DescriptorMatcher("snn", 0.8))`` builds the module and
+    ``out = matcher({"image0": img0, "image1": img1})`` runs ``local_feature`` on both batches of images, which the
+    :class:`LocalFeature` presets take as grayscale ``(B, 1, H, W)``, except :class:`SIFTFeature`,
+    :class:`KeyNetHardNet` and :class:`KeyNetAffNetHardNet`, which take one image per call, ``(1, 1, H, W)``. It
+    matches the descriptors of each pair of images and returns a dict of the matches of all pairs: ``keypoints0``
+    and ``keypoints1`` ``(NC, 2)``, ``lafs0`` and ``lafs1`` ``(1, NC, 2, 3)``, ``confidence`` ``(NC,)`` and the pair
+    of each match, ``batch_indexes`` ``(NC,)``. Features already computed for an image can be passed instead of
+    running ``local_feature`` on it. For a matcher that reads the LAFs, such as :class:`LightGlueMatcher`, call it on
+    the outputs of the local feature yourself; for matching without a detector, use :class:`LoFTR`.
 
     Convention:
         - ``keypoints0`` and ``keypoints1`` are the centres ``(x, y)`` of the returned LAF tensors ``lafs0`` and
@@ -790,11 +800,21 @@ class LocalFeatureMatcher(nn.Module):
           need LAFs and do not fit.
 
     Args:
-        local_feature: Local feature detector. See :class:`~kornia.feature.GFTTAffNetHardNet`.
+        local_feature: Local feature detector and descriptor, called as ``local_feature(image, mask)`` and returning
+            ``(lafs, responses, descriptors)`` like :class:`~kornia.feature.LocalFeature`. See
+            :class:`~kornia.feature.GFTTAffNetHardNet`.
         matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`.
 
     Returns:
         Dict[str, torch.Tensor]: Dictionary with image correspondences and confidence scores.
+
+    See Also:
+        - :class:`LocalFeature`: the detector and descriptor pipeline that ``local_feature`` usually is.
+        - :class:`DescriptorMatcher`: the descriptor-only matcher it takes.
+        - :class:`LightGlueMatcher`: a learned matcher, which takes the LAFs and the image sizes as well.
+        - :class:`LoFTR`: matches two images directly, without a detector.
+        - :class:`~kornia.geometry.ransac.RANSAC`: the next step, which keeps the matches one geometric model
+          explains.
 
     Example:
         >>> img1 = torch.rand(1, 1, 320, 200)
@@ -847,8 +867,10 @@ class LocalFeatureMatcher(nn.Module):
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
-            image0: left image with shape ``(N, 1, H1, W1)``.
-            image1: right image with shape ``(N, 1, H2, W2)``.
+            image0: left image with shape ``(N, 1, H1, W1)``. Required also with ``lafs0`` and ``descriptors0``:
+                its first dimension gives the number of image pairs.
+            image1: right image with shape ``(N, 1, H2, W2)``; not read when ``lafs1`` and ``descriptors1`` are
+                given.
             mask0 (optional): left image mask. '0' suppresses detection, with shape
                 ``(N, H1, W1)`` or ``(N, 1, H1, W1)``.
             mask1 (optional): right image mask. '0' suppresses detection, with shape
@@ -975,10 +997,17 @@ class LocalFeatureMatcher(nn.Module):
 
 
 class LightGlueMatcher(GeometryAwareDescriptorMatcher):
-    r"""LightGlue-based matcher in kornia API.
+    r"""Match descriptors and LAFs with LightGlue, called like GeometryAwareDescriptorMatcher.
 
-    This is based on the original code from paper "LightGlue: Local Feature Matching at Light Speed".
-    See :cite:`LightGlue2023` for more details.
+    ``matcher = LightGlueMatcher("disk")`` loads the LightGlue weights trained for that local feature, and
+    ``scores, idxs = matcher(desc1, desc2, lafs1, lafs2, hw1, hw2)`` takes the descriptors ``(B1, D)`` and
+    ``(B2, D)`` of two images, their LAFs ``(1, B1, 2, 3)`` and ``(1, B2, 2, 3)`` in pixels and, optionally, the
+    image sizes ``(H, W)``, and returns LightGlue's matching scores ``(B3, 1)``, higher for better matches, and the
+    index pairs ``(B3, 2)``, in the format of :class:`GeometryAwareDescriptorMatcher`. The descriptors must come from
+    the feature the weights were trained for, see ``feature_name`` in the Convention block. To pass batches of
+    keypoints in dicts and read every output of the network, use :class:`LightGlue`; for an exported ONNX model, use
+    :class:`OnnxLightGlue`. It is based on the original code of "LightGlue: Local Feature Matching at Light Speed",
+    see :cite:`LightGlue2023` for more details.
 
     Convention:
         - ``lafs1`` and ``lafs2`` are LAFs in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
@@ -1017,6 +1046,13 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
     Args:
         feature_name: type of feature for matching, one of ``known_modes``.
         params: keyword arguments of :class:`~kornia.feature.LightGlue`, such as ``filter_threshold``.
+
+    See Also:
+        - :class:`LightGlue`: the network itself, which takes batches of keypoints in dicts and returns every output.
+        - :class:`OnnxLightGlue`: an exported LightGlue model run by onnxruntime, for one image pair.
+        - :class:`LocalFeatureMatcher`: detects, describes and matches two images with a descriptor-only matcher.
+        - :class:`LoFTR`: matches two images directly, without a detector.
+        - :class:`GeometryAwareDescriptorMatcher`: its base class, with the same call, for FGINN and AdaLAM.
 
     """
 
