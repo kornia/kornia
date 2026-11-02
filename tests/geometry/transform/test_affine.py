@@ -855,6 +855,17 @@ class TestTranslate(BaseTester):
         transform = kornia.geometry.transform.Translate(translation, align_corners=True)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("image_shape", [(0, 2, 4, 5), (1, 2, 4, 5), (2, 4, 5), (2, 2, 4, 5), (3, 2, 4, 5)])
+    def test_unbatched_translation_is_shared_6521(self, device, dtype, image_shape):
+        # A (2,) translation serves every image, as (1, 2) does. Its 2 components used to be read as a batch of 2,
+        # which returned one image twice and raised for 3 images.
+        image = torch.rand(image_shape, device=device, dtype=dtype)
+        translation = torch.tensor([1.0, -0.5], device=device, dtype=dtype)
+        out = kornia.geometry.transform.translate(image, translation)
+        assert out.shape == image.shape
+        self.assert_close(out, kornia.geometry.transform.translate(image, translation[None]), atol=0, rtol=0)
+        self.assert_close(kornia.geometry.transform.Translate(translation)(image), out, atol=0, rtol=0)
+
     def test_gradcheck(self, device):
         # test parameters
         translation = torch.tensor([[1.0, 0.0]], device=device, dtype=torch.float64)
@@ -1069,6 +1080,17 @@ class TestShear(BaseTester):
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Shear(shear, align_corners=False)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("image_shape", [(0, 2, 4, 5), (1, 2, 4, 5), (2, 4, 5), (2, 2, 4, 5), (3, 2, 4, 5)])
+    def test_unbatched_shear_is_shared_6521(self, device, dtype, image_shape):
+        # A (2,) pair of factors serves every image, as (1, 2) does. Its 2 factors used to be read as a batch of 2,
+        # which returned one image twice and raised for 3 images.
+        image = torch.rand(image_shape, device=device, dtype=dtype)
+        shear = torch.tensor([0.5, -0.25], device=device, dtype=dtype)
+        out = kornia.geometry.transform.shear(image, shear)
+        assert out.shape == image.shape
+        self.assert_close(out, kornia.geometry.transform.shear(image, shear[None]), atol=0, rtol=0)
+        self.assert_close(kornia.geometry.transform.Shear(shear, align_corners=False)(image), out, atol=0, rtol=0)
 
     def test_gradcheck(self, device):
         # test parameters
