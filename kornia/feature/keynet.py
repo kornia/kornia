@@ -34,6 +34,8 @@ class KeyNet_conf(TypedDict):
     Attributes:
         num_filters: The number of filters in the convolutional layers.
         num_levels: The number of levels in the image pyramid.
+        kernel_size: The kernel size of the last convolution, which merges the levels' features.
+        Detector_conf: The configuration of the :class:`MultiResolutionDetector` that :class:`KeyNetDetector` builds.
     """
 
     num_filters: int
@@ -136,18 +138,25 @@ def _KeyNetConvBlock(
 
 
 class KeyNet(nn.Module):
-    """Key.Net model definition -- local feature detector (response function).
+    """Compute the learned Key.Net keypoint response map of a grayscale image, at the input's size.
 
-    This is based on the original code
-    from paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters". See :cite:`KeyNet2019` for
-    more details.
+    ``response = KeyNet()(img)`` takes grayscale images ``(B, 1, H, W)`` in ``[0, 1]`` and returns their Key.Net
+    response, a non-negative ``(B, 1, H, W)`` map, without non-maxima suppression: handcrafted first- and second-order
+    derivative filters and a small CNN run on the image and on ``num_levels - 1`` successive 1.2x downscales of it (two
+    by default), and a last convolution merges their features, resized back to the input size. The pretrained weights,
+    the default, come back in evaluation mode; a random model (``pretrained=False``) stays in training mode, so call
+    ``.eval()`` before inference (see :ref:`pretrained-models-conventions`). For keypoints, use
+    :class:`KeyNetDetector`, which finds the maxima of this response on an image pyramid.
+
+    This is based on the original code from the paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN
+    Filters". See :cite:`KeyNet2019` for more details.
 
     .. image:: _static/img/KeyNet.png
 
     Convention:
         - The input is a grayscale image, and the pretrained weights expect it in ``[0, 1]``, as the Key.Net
           reference scales its images. The response is not proportional to the intensity, so an image in
-          ``[0, 255]`` gives other detections.
+          ``[0, 255]`` gives other detections. A multi-channel image raises ``RuntimeError``.
         - The response is a non-negative map of the input's size.
 
     Args:
@@ -162,6 +171,11 @@ class KeyNet(nn.Module):
     Shape:
         - Input: ``(B, 1, H, W)``
         - Output: ``(B, 1, H, W)``
+
+    See Also:
+        - :class:`KeyNetDetector`: detects LAFs at the maxima of this response on an image pyramid.
+        - :class:`BlobHessian`: a handcrafted blob response, with no weights to load.
+        - :class:`KeyNetHardNet`: KeyNet detection with OriNet orientation and HardNet descriptors.
 
     """
 
@@ -201,11 +215,22 @@ class KeyNet(nn.Module):
 
 
 class KeyNetDetector(MultiResolutionDetector):
-    """Multi-scale feature detector based on KeyNet.
+    """Detect LAFs at the maxima of the learned Key.Net response on an image pyramid, one image per call.
 
-    This is based on the original code from paper
-    "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
-    See :cite:`KeyNet2019` for more details.
+    ``detector = KeyNetDetector(num_features=2048)``, then ``lafs, responses = detector(img)`` takes one grayscale
+    image ``(1, 1, H, W)`` in ``[0, 1]`` and returns ``(1, num_features, 2, 3)`` LAFs in input pixels and their
+    ``(1, num_features)`` KeyNet responses, strongest first; the slots no detection filled hold a zero response and a
+    zero LAF, which :func:`laf_is_filled` finds. It is a :class:`MultiResolutionDetector` on the :class:`KeyNet`
+    response with the default ``config``: maxima at the integer pixels of six pyramid levels, in upright frames unless
+    ``ori_module`` or ``aff_module`` change them. With the pretrained weights, only the KeyNet network is put in
+    evaluation mode: the detector reports ``training=True`` (see :ref:`local-features-conventions`), and a
+    ``.train()`` call on it switches KeyNet's batch normalisation to batch statistics, which changes the detections
+    and, on every call in that mode, the running statistics. With ``pretrained=False`` KeyNet stays in training mode
+    too. For KeyNet detections with orientation and HardNet descriptors, use :class:`KeyNetHardNet` or
+    :class:`KeyNetAffNetHardNet` instead.
+
+    This is based on the original code from the paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN
+    Filters". See :cite:`KeyNet2019` for more details.
 
     .. image:: _static/img/keynet.jpg
 
@@ -226,7 +251,18 @@ class KeyNetDetector(MultiResolutionDetector):
         compile_model: wrap the response function and the non-maxima suppression with :func:`torch.compile`.
         score_threshold: minimum response for a position to count as a detection. Must be non-negative:
             non-maxima suppression writes an exact zero at every suppressed position, so a negative
-            threshold would admit all of them.
+            threshold would admit all of them; it raises ``ValueError``.
+
+    See Also:
+        - :class:`KeyNet`: the response network alone, a dense ``(B, 1, H, W)`` map.
+        - :class:`MultiResolutionDetector`: the same detector on another response function.
+        - :class:`ScaleSpaceDetector`: batched detection at the sub-pixel scale-space extrema of a pluggable response,
+          the Hessian determinant by default.
+        - :class:`KeyNetHardNet`: this detector with OriNet orientation and HardNet descriptors.
+        - :class:`KeyNetAffNetHardNet`: the same, with AffNet affine shapes before the orientation.
+        - :class:`LAFOrienter`: an ``ori_module`` that orients each frame from its image patch.
+        - :class:`LAFAffineShapeEstimator`: an ``aff_module`` that adapts each frame to its patch's second moments.
+        - :func:`laf_is_filled`: finds the slots that hold a detection rather than the zero padding.
 
     """
 
