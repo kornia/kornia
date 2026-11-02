@@ -42,7 +42,8 @@ def undistort_points(
     ``(*, 3, 3)`` and OpenCV's coefficient vector ``(*, n)``, ``n`` one of 4, 5, 8, 12 or 14, and returns the
     ideal pinhole pixels ``(*, N, 2)`` after ``num_iters`` fixed-point steps; within the convergence region, with
     the default 5 steps, the result matches ``cv2.undistortPoints(points, K, dist, P=P)`` with
-    ``P = K if new_K is None else new_K``: without ``P``, OpenCV returns normalized coordinates. For normalized
+    ``P = K if new_K is None else new_K`` and no skew in ``P``: OpenCV applies ``P[0, 1]``, which this function
+    ignores, and without ``P`` it returns normalized coordinates. For normalized
     coordinates, as :func:`~kornia.geometry.epipolar.find_essential` takes, pass the result to
     :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`; for a whole image, use
     :func:`~kornia.geometry.calibration.undistort_image`.
@@ -63,7 +64,7 @@ def undistort_points(
         - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved, and the leading dimensions
           broadcast as in :func:`~kornia.geometry.calibration.distort_points`, the sensor-tilt step of 14
           coefficients included.
-        - the skew entry ``K[0, 1]`` is ignored, as in
+        - the skew entries ``K[0, 1]`` and ``new_K[0, 1]`` are ignored, as in
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
 
     .. warning::

@@ -199,7 +199,7 @@ class ParametrizedLine(nn.Module):
                 shape ``(N,)`` or ``(N, 1)`` for a line of shape ``(D,)``, giving ``(N, D)`` points.
 
         Return:
-            the points :math:`o + t d`, ``(D,)`` or ``(B, D)``, or ``(N, D)`` for an ``(N, 1)`` step.
+            the points :math:`o + t d`, ``(D,)`` or ``(B, D)``, or ``(N, D)`` for an ``(N,)`` or ``(N, 1)`` step.
 
         Example:
             >>> p0 = torch.tensor([0.0, 0.0])

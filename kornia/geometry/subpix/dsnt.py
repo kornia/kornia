@@ -204,8 +204,8 @@ def render_gaussian2d(
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: ``(*, 2)``.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
-          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Every entry must be nonzero; its sign is
-          ignored.
+          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Every entry must be nonzero, else
+          :class:`~kornia.core.exceptions.AsyncCheckError`; its sign is ignored.
         size: the (height, width) of the output image.
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.

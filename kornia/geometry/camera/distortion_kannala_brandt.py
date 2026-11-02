@@ -143,9 +143,10 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     :func:`distort_points_kannala_brandt` and returns the normalized points ``(..., 2)`` that it maps to them,
     solving for the ray angle iteratively. The result matches OpenCV's ``cv2.fisheye.undistortPoints`` where the
     distorted angle, the distance of the normalized distorted point from the axis, is below :math:`\pi / 2`, the
-    polynomial increases up to the solution, and the solved ray angle is below :math:`\pi / 2` too. Where the
-    first two fail, OpenCV clamps the distorted angle to :math:`\pi / 2` or returns ``(-1e6, -1e6)`` for a point
-    it cannot invert, while this function returns its last iterate, unflagged. Where only the solved angle is past
+    polynomial increases up to the solution, the solved ray angle is below :math:`\pi / 2` too, and both
+    iterations converge within their ten steps. Where the first two fail, or OpenCV's iteration does not converge,
+    OpenCV clamps the distorted angle to :math:`\pi / 2` or returns ``(-1e6, -1e6)`` for a point it cannot invert,
+    while this function returns its last iterate, unflagged. Where only the solved angle is past
     :math:`\pi / 2`, the ray points behind the camera: OpenCV's signed tangent puts the point on the far side of
     the centre, and this function's absolute tangent keeps it on the side of the pixel. For
     OpenCV's Brown-Conrady coefficients on pixel coordinates, use

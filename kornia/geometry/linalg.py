@@ -310,9 +310,9 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     Convention:
         - ``(B, D + 1, D + 1)`` matrices with ``B > 1`` raise ``ValueError`` for ``(N, D)`` points, whatever ``N``,
           and for ``(1, N, D)`` points: neither has a leading axis of size ``B``.
-        - A matrix batch with more than one leading axis pairs with the leading batch axes of the points once its
-          size-1 axes are left out, as the ``trans_01`` argument describes; any other multi-axis batch raises
-          ``ValueError``.
+        - A matrix batch with more than one leading axis pairs with the leading batch axes of the points, either as
+          it stands or once its size-1 axes are left out, as the ``trans_01`` argument describes; any other
+          multi-axis batch raises ``ValueError``.
         - A point mapped to ``|w| <= 1e-8`` is returned undivided, as
           :func:`~kornia.geometry.conversions.convert_points_from_homogeneous` does.
         - Integer and boolean operands are promoted, not rejected, because a transform moves integer coordinates
@@ -325,8 +325,9 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     Args:
         trans_01: tensor for transformations of shape
           ``(D+1, D+1)`` or ``(B, D+1, D+1)``. A batch with several axes, ``(*, D+1, D+1)``, pairs with the
-          leading batch axes of ``points_1`` in order once its size-1 axes are left out, so ``(B, 1, D+1, D+1)``
-          and ``(1, B, D+1, D+1)`` both apply matrix ``b`` to ``points_1[b]``; any other multi-axis batch raises.
+          leading batch axes of ``points_1`` in order, as it stands or once its size-1 axes are left out, so
+          ``(B, 1, D+1, D+1)`` and ``(1, B, D+1, D+1)`` both apply matrix ``b`` to ``points_1[b]``; any other
+          multi-axis batch raises.
         points_1: tensor of points of shape ``(N, D)`` or ``(B, N, D)``.
 
     Returns:
