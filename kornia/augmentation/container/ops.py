@@ -23,7 +23,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils.helpers import deepcopy_dict
+from kornia.augmentation.utils.helpers import deepcopy_dict, override_parameters
 from kornia.constants import DataKey
 from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
@@ -62,7 +62,9 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         return _params
 
     @classmethod
-    def get_transform_matrix(cls, module: nn.Module, param: ParamItem, input: Any) -> torch.Tensor:
+    def get_transform_matrix(
+        cls, module: nn.Module, param: ParamItem, input: Any, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         """Get the matrix recorded by these params, not by the module's most recent image call."""
         params = cls.get_instance_module_param(param)
         # The image call records the params dict it was given, and its values and their versions, next to the matrix
@@ -99,7 +101,8 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         # Compute from a copy of the params, as the image call does (its ``data_keys`` override copies the dict). Under
         # export the caller's tensors can be graph constants, and a child that copies one as-is into its matrix, as
         # ``RandomAffine`` does with ``center``, makes torch 2.9's dynamo ONNX exporter rename that constant and fail.
-        return module.generate_transformation_matrix(matrix_input, deepcopy_dict(params), module.flags)
+        flags = module.flags if extra_args is None else override_parameters(module.flags, extra_args, in_place=False)
+        return module.generate_transformation_matrix(matrix_input, deepcopy_dict(params), flags)
 
     @classmethod
     def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:

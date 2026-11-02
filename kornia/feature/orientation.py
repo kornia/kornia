@@ -27,6 +27,7 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
+from ._layout import _patch_conv_layout
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 from .siftdesc import _gradient_magnitude_orientation
 
@@ -189,7 +190,10 @@ class PatchDominantGradientOrientation(nn.Module):
         # A flat patch has an empty histogram (a zero-gradient pixel contributes no magnitude), and a
         # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
         denom = left + right - 2.0 * center
-        c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
+        has_peak = denom != 0
+        # Guard the division itself: masking 0 / 0 afterwards still gives NaN smoothing-weight gradients.
+        safe_denom = torch.where(has_peak, denom, torch.ones_like(denom))
+        c_subpix = torch.where(has_peak, 0.5 * (left - right) / safe_denom, torch.zeros_like(denom))
         return -((2.0 * math.pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - math.pi)
 
 
@@ -281,7 +285,7 @@ class OriNet(nn.Module):
             angle in radians: ``(B)``
 
         """
-        xy = self.features(self._normalize_input(patch)).view(-1, 2)
+        xy = self.features(_patch_conv_layout(self._normalize_input(patch))).view(-1, 2)
         return torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
 
 

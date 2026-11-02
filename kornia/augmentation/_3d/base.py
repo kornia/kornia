@@ -23,6 +23,7 @@ from torch import float16, float32, float64
 import kornia
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
+from kornia.augmentation.utils.helpers import _VOLUME_SHAPES, _raise_input_rank_error
 from kornia.core.utils import _to_device_nonblocking
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
@@ -63,10 +64,10 @@ class AugmentationBase3D(_AugmentationBase):
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
-        """Check if the input torch.Tensor is formatted as expected."""
+        """Check that the input has a float dtype and one of the ranks ``forward`` accepts: 3, 4 or 5."""
         _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
-        if len(input.shape) != 5:
-            raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
+        if len(input.shape) not in (3, 4, 5):
+            _raise_input_rank_error(input.shape, _VOLUME_SHAPES)
 
     def transform_tensor(
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True

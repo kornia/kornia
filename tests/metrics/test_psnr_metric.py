@@ -179,6 +179,41 @@ class TestConventionsPsnr(BaseTester):
         assert torch.isfinite(kornia.metrics.psnr(a.to(dtype), b.to(dtype), 255.0))
 
 
+class TestPSNRIntegerRange(BaseTester):
+    def test_int64_range_keeps_its_arithmetic(self, device, dtype):
+        """Keep int64 squares, or the existing float32 computation for half images."""
+        image = torch.zeros(3, device=device, dtype=dtype)
+        target = torch.ones_like(image)
+        max_val = torch.tensor([2**24 + 1, 2**30 + 1], device=device, dtype=torch.int64)
+        if dtype in (torch.float16, torch.bfloat16):
+            expected = (10 * max_val.float().square().log10()).to(dtype)
+        else:
+            expected = 10 * (max_val.square() / torch.ones((), device=device, dtype=dtype)).log10()
+        self.assert_close(kornia.metrics.psnr(image, target, max_val), expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "range_dtype,range_value",
+        [(torch.uint8, 255), (torch.int8, 127), (torch.int16, 255), (torch.int32, 65535), (torch.int64, 65535)],
+    )
+    @pytest.mark.parametrize("scalar_range", [True, False])
+    @pytest.mark.parametrize("integer_image", [True, False])
+    def test_tensor_range_does_not_overflow(self, device, dtype, range_dtype, range_value, scalar_range, integer_image):
+        """An MSE of one gives 20 log10(range), including ordinary 8-bit and 16-bit image ranges."""
+        image = torch.zeros(1, 3, 4, 4, device=device, dtype=torch.uint8 if integer_image else dtype)
+        target = torch.ones_like(image)
+        values = range_value if scalar_range else [range_value, 1]
+        max_val = torch.tensor(values, device=device, dtype=range_dtype)
+        expected_dtype = torch.float32 if integer_image else dtype
+        expected = (20 * max_val.cpu().double().log10()).to(device=device, dtype=expected_dtype)
+        actual = kornia.metrics.psnr(image, target, max_val)
+        assert actual.shape == max_val.shape
+        assert actual.dtype == expected_dtype
+        assert torch.isfinite(actual).all()
+        self.assert_close(actual, expected)
+        self.assert_close(kornia.losses.psnr_loss(image, target, max_val), -expected)
+        self.assert_close(kornia.losses.PSNRLoss(max_val)(image, target), -expected)
+
+
 class TestPSNRHalfPrecision(BaseTester):
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("range_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])

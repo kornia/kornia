@@ -40,6 +40,7 @@ torch.manual_seed(0)
 
 IMG = torch.rand(2, 3, 32, 40)
 IMG1 = torch.rand(1, 3, 32, 40)
+IMG_SQUARE = IMG[..., :32]  # RandomRotation90 raises on a non-square image when it may turn it oddly
 VOL = torch.rand(2, 1, 8, 16, 16)
 LABEL = torch.tensor([0, 1])
 MASK = (torch.rand(2, 1, 32, 40) > 0.5).float()
@@ -317,7 +318,7 @@ build(
     note="pad_mode=reflect",
     rand=False,
 )
-build("RandomRotation90", G2, lambda: KA.RandomRotation90(times=(1, 3), p=1.0), [IMG])
+build("RandomRotation90", G2, lambda: KA.RandomRotation90(times=(1, 3), p=1.0), [IMG_SQUARE])
 build("RandomShear", G2, lambda: KA.RandomShear(shear=10.0, p=1.0), [IMG])
 build("RandomTranslate", G2, lambda: KA.RandomTranslate((0.1, 0.2), (0.1, 0.2), p=1.0), [IMG])
 build("RandomChannelDropout[b1]", G2, lambda: KA.RandomChannelDropout(p=1.0), [IMG1], rand=False, note="batch 1")

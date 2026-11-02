@@ -492,7 +492,8 @@ class LightGlue(nn.Module):
           float64 model gives float64 scores for float64 descriptors. Float16 descriptors with any other model, and
           bfloat16 descriptors with a float16 model, are not supported there
           (`#5929 <https://github.com/kornia/kornia/issues/5929>`_). On MPS, float32, float16 and bfloat16
-          descriptors give float32 scores; on CUDA, float32 descriptors give float32 scores. An image without
+          descriptors give float32 scores; on CUDA, float32 descriptors give float32 scores, and a float64 model gives
+          float64 scores for float64 descriptors, as on CPU, because autocast does not cast float64. An image without
           descriptors runs no layer, and its zero scores keep the descriptor dtype, also with ``mp=True``.
         - Each pair of a batch gives the matches and scores it gives on its own when point pruning can run, that is
           with ``width_confidence > 0``, no padding to the static lengths of :meth:`compile`, and an image with more
@@ -847,7 +848,8 @@ class LightGlue(nn.Module):
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
         device_type = desc0.device.type
-        if device_type != "cpu" and torch.is_autocast_enabled(device_type):
+        # Autocast does not cast float64, so the float64 weights of a float64 model would meet half descriptors here.
+        if device_type != "cpu" and torch.is_autocast_enabled(device_type) and desc0.dtype != torch.float64:
             desc0 = desc0.half()
             desc1 = desc1.half()
 

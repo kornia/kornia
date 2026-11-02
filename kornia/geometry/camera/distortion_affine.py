@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""nn.Module containing the affine distortion model."""
+"""The affine camera model: flat [fx, fy, cx, cy] intrinsics between normalized z = 1 points and pixels."""
 
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/affine.rs
 import torch
@@ -24,7 +24,13 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
-    r"""Distort one or more points from the canonical z=1 plane into the camera frame.
+    r"""Apply flat [fx, fy, cx, cy] intrinsics to normalized z = 1 points, giving pixels.
+
+    ``uv = distort_points_affine(xy, params)`` takes points on the normalized ``z = 1`` plane ``(..., 2)`` and the
+    vector ``params = [fx, fy, cx, cy]``, ``(..., 4)``, and returns the pixels ``(fx x + cx, fy y + cy)`` as
+    ``(..., 2)``. Despite its name it adds no lens distortion: it is the intrinsics step of a camera model, the
+    one :func:`distort_points_kannala_brandt` applies after its fisheye distortion. For a ``(*, 3, 3)`` ``K``, use
+    :func:`~kornia.geometry.conversions.denormalize_points_with_intrinsics` instead.
 
     .. math::
         \begin{bmatrix} u \\ v \end{bmatrix} =
@@ -39,19 +45,32 @@ def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, par
         - :func:`~kornia.geometry.calibration.distort_points` is the same camera parametrized by a
           ``(*, 3, 3)`` ``K`` and an OpenCV coefficient vector; it takes a **pixel** input instead.
         - :func:`undistort_points_affine` is the closed-form inverse.
+        - the leading dimensions ``...`` of the points and of ``params`` broadcast by torch's rules: one ``(4,)``
+          vector serves every point, and per-camera ``params`` for ``(B, N, 2)`` points are ``(B, 1, 4)``, since
+          a ``(B, 4)`` vector lines up with the ``N`` axis.
 
     Args:
-        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
-        params: torch.Tensor representing the parameters of the affine distortion model with shape (..., 4).
+        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape
+            ``(..., 2)``.
+        params: torch.Tensor representing the parameters of the affine distortion model with shape ``(..., 4)``.
 
     Returns:
-        torch.Tensor representing the distorted points with shape (..., 2).
+        torch.Tensor representing the distorted points with shape ``(..., 2)``.
+
+    See Also:
+        - :func:`undistort_points_affine`: the closed-form inverse, pixels to normalized points.
+        - :func:`dx_distort_points_affine`: its ``(..., 2, 2)`` Jacobian with respect to the point.
+        - :func:`distort_points_kannala_brandt`: the same intrinsics after a fisheye distortion of the ray angle.
+        - :func:`~kornia.geometry.calibration.distort_points`: OpenCV's Brown-Conrady distortion with a ``3x3``
+          ``K``, from pixels to pixels.
+        - :func:`~kornia.geometry.conversions.denormalize_points_with_intrinsics`: the same map from a
+          ``(*, 3, 3)`` ``K``.
 
     Example:
-        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
+        >>> points = torch.tensor([0.1, -0.2])  # on the normalized z = 1 plane
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> distort_points_affine(points, params)
-        tensor([192019.5000, 143939.5000])
+        tensor([379.5000, 119.5000])
 
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
@@ -70,7 +89,12 @@ def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, par
 
 
 def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
-    r"""Undistort one or more points from the camera frame into the canonical z=1 plane.
+    r"""Map pixels back to normalized z = 1 points with flat [fx, fy, cx, cy] intrinsics.
+
+    ``xy = undistort_points_affine(uv, params)`` takes pixels ``(..., 2)`` and the ``(..., 4)`` vector
+    ``[fx, fy, cx, cy]`` and returns ``((u - cx) / fx, (v - cy) / fy)`` as ``(..., 2)``, on the normalized
+    ``z = 1`` plane; it removes no lens distortion. For a ``(*, 3, 3)`` ``K``, use
+    :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics` instead.
 
     .. math::
         \begin{bmatrix} x \\ y \end{bmatrix} =
@@ -84,13 +108,23 @@ def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: to
           :func:`distort_points_affine` takes, and this function is its closed-form inverse.
         - ``params`` values are not validated (a design choice shared with the other intrinsics consumers): a
           zero ``fx`` or ``fy`` gives ``inf`` or ``nan`` on that axis.
+        - the leading dimensions of the points and of ``params`` broadcast as in :func:`distort_points_affine`.
 
     Args:
-        distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
-        params: torch.Tensor representing the parameters of the affine distortion model with shape (..., 4).
+        distorted_points_in_camera: torch.Tensor representing the points to undistort with shape ``(..., 2)``.
+        params: torch.Tensor representing the parameters of the affine distortion model with shape ``(..., 4)``.
 
     Returns:
-        torch.Tensor representing the undistorted points with shape (..., 2).
+        torch.Tensor representing the undistorted points with shape ``(..., 2)``.
+
+    See Also:
+        - :func:`distort_points_affine`: the forward map, normalized points to pixels.
+        - :func:`dx_distort_points_affine`: the Jacobian of the forward map.
+        - :func:`undistort_points_kannala_brandt`: the inverse of the fisheye model, found iteratively.
+        - :func:`~kornia.geometry.calibration.undistort_points`: removes OpenCV's Brown-Conrady distortion, from
+          pixels to pixels.
+        - :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`: the same map from a
+          ``(*, 3, 3)`` ``K``.
 
     Example:
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
@@ -115,7 +149,11 @@ def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: to
 
 
 def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
-    r"""Compute the Jacobian of the affine distortion with respect to the point.
+    r"""Compute the 2x2 Jacobian of the affine [fx, fy, cx, cy] model with respect to the point.
+
+    ``J = dx_distort_points_affine(xy, params)`` takes normalized points ``(..., 2)`` and the ``(..., 4)`` vector
+    ``[fx, fy, cx, cy]`` and returns the Jacobian of :func:`distort_points_affine` at each point, ``diag(fx, fy)``,
+    as ``(..., 2, 2)``. Chain it after :func:`dx_project_points_z1` for the Jacobian of a pinhole camera model.
 
     .. math::
         \frac{\partial (u, v)}{\partial (x, y)} =
@@ -129,15 +167,23 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, 
           :func:`distort_points_affine`: ``N`` points with one set of params give ``N`` Jacobians.
 
     Args:
-        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
-        params: torch.Tensor representing the parameters of the affine distortion model with shape (..., 4).
+        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape
+            ``(..., 2)``.
+        params: torch.Tensor representing the parameters of the affine distortion model with shape ``(..., 4)``.
 
     Returns:
         torch.Tensor representing the Jacobian of the distortion with respect to the point
-        with shape (..., 2, 2).
+        with shape ``(..., 2, 2)``.
+
+    See Also:
+        - :func:`distort_points_affine`: the map this differentiates.
+        - :func:`undistort_points_affine`: the inverse map; its Jacobian is ``diag(1 / fx, 1 / fy)``.
+        - :func:`dx_distort_points_kannala_brandt`: the Jacobian of the fisheye model, equal to this one at the
+          optical axis.
+        - :func:`dx_project_points_z1`: the Jacobian of the projection step before it.
 
     Example:
-        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
+        >>> points = torch.tensor([0.1, -0.2])  # on the normalized z = 1 plane
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> dx_distort_points_affine(points, params)
         tensor([[600.,   0.],

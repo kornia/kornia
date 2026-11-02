@@ -288,6 +288,7 @@
     "BaseError",
     "DeviceError",
     "ImageError",
+    "InputRankError",
     "ShapeError",
     "TypeCheckError",
     "ValueCheckError"

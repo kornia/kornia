@@ -73,8 +73,8 @@ class SOLD2_detector(nn.Module):
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         if isinstance(config, dict):
             warnings.warn(
-                "Usage of config as a plain dictionary is deprecated in favor of"
-                "`kornia.features.sold2.structures.DetectorCfg`. The support of plain"
+                "Usage of config as a plain dictionary is deprecated in favor of "
+                "`kornia.feature.sold2.structures.DetectorCfg`. The support of plain "
                 "dictionaries as config will be removed in a future release.",
                 category=DeprecationWarning,
                 stacklevel=2,

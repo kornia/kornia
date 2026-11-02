@@ -52,10 +52,65 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 }
 """Top-level packages left out of the rollout, with the reason."""
 
-CATALOG_NAMESPACES: tuple[str, ...] = ("kornia.geometry.depth",)
+CATALOG_NAMESPACES: tuple[str, ...] = (
+    "kornia.geometry.bbox",
+    "kornia.geometry.boxes",
+    "kornia.geometry.calibration",
+    "kornia.geometry.camera",
+    "kornia.geometry.camera.stereo",
+    "kornia.geometry.conversions",
+    "kornia.geometry.depth",
+    "kornia.geometry.epipolar",
+    "kornia.geometry.grid",
+    "kornia.geometry.homography",
+    "kornia.geometry.keypoints",
+    "kornia.geometry.liegroup",
+    "kornia.geometry.linalg",
+    "kornia.geometry.line",
+    "kornia.geometry.plane",
+    "kornia.geometry.pointcloud",
+    "kornia.geometry.pose",
+    "kornia.geometry.ransac",
+    "kornia.geometry.solvers",
+    "kornia.geometry.subpix",
+    "kornia.geometry.transform.affwarp",
+    "kornia.geometry.transform.crop2d",
+    "kornia.geometry.transform.crop3d",
+    "kornia.geometry.transform.elastic_transform",
+    "kornia.geometry.transform.flips",
+    "kornia.geometry.transform.homography_warper",
+    "kornia.geometry.transform.image_registrator",
+    "kornia.geometry.transform.imgwarp",
+    "kornia.geometry.transform.pyramid",
+    "kornia.geometry.transform.thin_plate_spline",
+    "kornia.geometry.vector",
+)
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
-DOCSTRING_MODULES: tuple[str, ...] = ("kornia.geometry.depth",)
+DOCSTRING_MODULES: tuple[str, ...] = (
+    "kornia.geometry.bbox",
+    "kornia.geometry.boxes",
+    "kornia.geometry.calibration",
+    "kornia.geometry.camera",
+    "kornia.geometry.conversions",
+    "kornia.geometry.depth",
+    "kornia.geometry.epipolar",
+    "kornia.geometry.grid",
+    "kornia.geometry.homography",
+    "kornia.geometry.keypoints",
+    "kornia.geometry.liegroup",
+    "kornia.geometry.linalg",
+    "kornia.geometry.line",
+    "kornia.geometry.plane",
+    "kornia.geometry.pointcloud",
+    "kornia.geometry.pose",
+    "kornia.geometry.quaternion",
+    "kornia.geometry.ransac",
+    "kornia.geometry.solvers",
+    "kornia.geometry.subpix",
+    "kornia.geometry.transform",
+    "kornia.geometry.vector",
+)
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
 SEE_ALSO_EXCEPTIONS: dict[str, str] = {}

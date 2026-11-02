@@ -15,13 +15,20 @@
 # limitations under the License.
 #
 
-"""Module containing numerical functionalities for SfM."""
+"""Numerical helpers of the epipolar functions: the cross-product matrix and the cofactor matrix."""
 
 import torch
 
+from kornia.core.exceptions import ShapeError
+
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
-    r"""Return the skew-symmetric cross-product matrix of a vector.
+    r"""Build the skew-symmetric cross-product matrices of 3-vectors with any number of leading dimensions.
+
+    ``S = cross_product_matrix(x)`` takes vectors ``(*, 3)`` and returns the matrices :math:`[x]_\times`,
+    ``(*, 3, 3)``, with ``S @ w == cross(x, w)``: the matrix that :func:`essential_from_Rt` multiplies the relative
+    rotation by. :func:`~kornia.geometry.conversions.vector_to_skew_symmetric_matrix` builds the same matrix for a
+    ``(3,)`` or ``(B, 3)`` vector only.
 
     Convention:
         - Same matrix as :func:`~kornia.geometry.conversions.vector_to_skew_symmetric_matrix`,
@@ -33,9 +40,17 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
     Returns:
         The skew-symmetric matrix with shape ``(*, 3, 3)``.
 
+    See Also:
+        - :func:`~kornia.geometry.conversions.vector_to_skew_symmetric_matrix`: the same matrix, for ``(3,)`` or
+          ``(B, 3)`` vectors only.
+        - :meth:`~kornia.geometry.liegroup.So3.hat`: the same matrix, as the Lie-algebra element of a rotation
+          vector.
+
     """
-    if not x.shape[-1] == 3:
-        raise AssertionError(x.shape)
+    if x.ndim == 0 or x.shape[-1] != 3:
+        raise ShapeError(
+            f"x must have shape (*, 3), got {list(x.shape)}.", actual_shape=list(x.shape), expected_shape=["*", "3"]
+        )
     # get vector compononens
     x0 = x[..., 0]
     x1 = x[..., 1]

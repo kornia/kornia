@@ -1,0 +1,1 @@
+`AugmentationSequential.transform_matrix` now includes geometric operations inside plain `ImageSequential` children in `silent` mode instead of omitting them. Each operation contributes its current matrix in execution order, including repeated sampled members. The `rigid` and `skip` modes retain their behavior.

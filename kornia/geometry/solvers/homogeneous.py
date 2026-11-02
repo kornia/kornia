@@ -63,7 +63,12 @@ def _det3(
 
 
 def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
-    r"""Return the null vector of a rank-3 matrix of shape ``(*, 3, 4)``.
+    r"""Compute the null vector of rank-3 ``(*, 3, 4)`` matrices from cofactors, without an SVD.
+
+    ``v = null_vector_3x4(A)`` takes matrices ``(*, 3, 4)`` and returns unnormalized vectors ``(*, 4)`` with
+    :math:`A v = 0`: the last right singular vector up to scale and sign when ``A`` has rank 3, and the zero vector
+    when its rank is lower. Each component is a signed ``3 x 3`` determinant, so no LAPACK or cuSOLVER call is made.
+    For a least-squares null vector of a matrix with more rows, use an SVD (:func:`torch.linalg.svd`).
 
     The null vector :math:`\mathbf{v} \in \mathbb{R}^4` satisfies
     :math:`A\,\mathbf{v} = \mathbf{0}`.  For a matrix of rank 3 this solution
@@ -104,6 +109,10 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
     Raises:
         TypeCheckError: if ``A`` is not a :class:`torch.Tensor`.
         ShapeError: if the last two dimensions of ``A`` are not ``(3, 4)``.
+
+    See Also:
+        - :func:`~kornia.geometry.epipolar.triangulate_points`: its ``"cofactor"`` solver uses these minors on the
+          ``4 x 4`` DLT systems of a triangulation.
 
     Example:
         >>> A = torch.tensor([[[1., 0., 0., 0.],
