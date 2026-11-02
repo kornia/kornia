@@ -1400,10 +1400,11 @@ class TestEqualize3D(BaseTester):
             _sync(kornia.enhance.equalize3d(x).device)
 
     def test_at_most_255_voxels_per_channel_is_unchanged(self, device, dtype):
-        # As the docstring states: the lookup step is an integer division by 255.
+        # As the docstring states: the lookup step is an integer division by 255. Such a volume comes back as it is,
+        # not as (x * 255) / 255, which can be a unit in the last place off.
         torch.manual_seed(0)
         x = torch.rand(2, 3, 3, 5, 17, device=device, dtype=dtype) * 0.5
-        self.assert_close(kornia.enhance.equalize3d(x), x)
+        assert torch.equal(kornia.enhance.equalize3d(x), x)
 
     @pytest.mark.parametrize("shape", [(3, 6, 10, 10), (2, 3, 6, 10, 10), (3, 2, 3, 6, 10, 10)])
     def test_shape_equalize3d(self, shape, device, dtype):
@@ -1909,7 +1910,8 @@ def _equalize_reference(input):
             hist.cumsum(0) + torch.div(step, 2, rounding_mode="trunc"), step.clamp(min=1), rounding_mode="trunc"
         )
         lut = torch.cat([torch.zeros_like(lut[:1]), lut[:-1]]).clamp(0, 255).to(input.dtype)
-        outputs.append(torch.where(step == 0, scaled, lut[scaled.long()]) / 255.0)
+        # A plane whose step is 0 comes back as it is.
+        outputs.append(torch.where(step == 0, plane, lut[scaled.long()] / 255.0))
     return torch.stack(outputs).reshape(input.shape)
 
 

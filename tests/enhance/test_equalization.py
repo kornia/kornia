@@ -35,6 +35,7 @@ def _clahe_interpolation_reference(img, luts, tile_size):
     # these centres pixel by pixel, independently of production's half-tile indexing.
     values = img.detach().cpu().double()
     tables = luts.detach().cpu().double()
+    scale = 255 * (1 + 2**-21) if img.dtype in (torch.float32, torch.float64) else 255
     expected = torch.zeros_like(values)
     gh, gw = tables.shape[1:3]
     for y in range(values.shape[-2]):
@@ -45,8 +46,9 @@ def _clahe_interpolation_reference(img, luts, tile_size):
             fx = (x + 0.5) / tile_size[1] - 0.5
             x0 = math.floor(fx)
             ax = fx - x0
-            # Preserve the input dtype's lookup quantization; this reference tests only interpolation.
-            index = (img[..., y, x] * 255).long().cpu().unsqueeze(-1)
+            # Preserve the input dtype's lookup quantization, the 8-bit level with 255 raised by four float32
+            # epsilons in float32 and float64; this reference tests only interpolation.
+            index = (img[..., y, x] * scale).long().cpu().unsqueeze(-1)
             for row, wy in [(y0, 1 - ay), (y0 + 1, ay)]:
                 for col, wx in [(x0, 1 - ax), (x0 + 1, ax)]:
                     lut = tables[:, min(max(row, 0), gh - 1), min(max(col, 0), gw - 1)]
@@ -575,9 +577,11 @@ class TestEqualization(BaseTester):
         clip = torch.tensor([40.0], device=device) if clip_as_tensor else 40.0
         luts = enhance.equalization._compute_luts(tiles, clip=clip)
         count_dtype = torch.float64 if dtype == torch.float64 else torch.float32
-        # A pixel is counted in the level it reads, (x * 255).long() in the image dtype; float16 can round 255 x to
-        # another level than float32 does, so the reference tiles hold those levels.
-        levels = (tiles * 255).long().to(count_dtype) / 255
+        # A pixel is counted in the level it reads, (x * 255).long() in the image dtype, with the 255 raised by four
+        # float32 epsilons, relative, in float32 and float64; float16 can round 255 x to another level than float32
+        # does, so the reference tiles hold those levels.
+        scale = 255 * (1 + 2**-21) if dtype in (torch.float32, torch.float64) else 255
+        levels = (tiles * scale).long().to(count_dtype) / 255
         expected = enhance.equalization._compute_luts(levels, clip=clip)
         assert luts.dtype == dtype
         assert torch.equal(luts.to(count_dtype), expected)

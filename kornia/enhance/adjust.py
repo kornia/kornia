@@ -89,6 +89,26 @@ def _check_floating_image(image: torch.Tensor, op: str) -> None:
     )
 
 
+def _level_scale(dtype: torch.dtype, top: float = 255.0) -> float:
+    """Return the factor that turns a value in ``[0, 1]`` into the level in ``0 .. top`` its truncation reads.
+
+    ``(x * _level_scale(x.dtype)).long()`` is the 8-bit level ``(x * 255).long()``, except that ``k / 255`` reads
+    level ``k`` even when it was rounded a few units in the last place below ``k / 255``. CUDA divides by a Python
+    number by multiplying with its rounded reciprocal, as ``x * (1 / 255)`` does on any device, which leaves 24 of the
+    256 float64 levels one unit below ``k / 255``; truncating ``x * 255`` read those as ``k - 1``. For float32 and
+    float64 the factor is ``top`` raised by four float32 epsilons, relative (``2**-21``, eight units in the last place
+    of 255 in float32), so the margin grows with the level as that roundoff does, and a continuous value moves up a
+    level only within that margin below a level boundary, about 7 in 100000 values of a uniform image. float64 takes
+    the float32 margin rather than its own, so the same values read the same levels in both dtypes, and float32
+    roundoff carried into a float64 image is covered too. Half precision gets ``top`` itself, so the levels it reads
+    are unchanged: ``x * 255`` is rounded to the half-precision grid, which already gives ``k`` back for ``k / 255``
+    rounded to half precision.
+    """
+    if dtype in (torch.float32, torch.float64):
+        return top * (1.0 + 2.0**-21)
+    return top
+
+
 def _make_factor_broadcastable(factor: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
     """Right-pad ``factor`` with singleton dimensions so it broadcasts against ``image``.
 
@@ -978,7 +998,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     .. image:: _static/img/posterize.png
 
-    Non-differentiable function, ``torch.uint8`` involved.
+    Non-differentiable function, ``torch.uint8`` involved. Each value is read at its 8-bit level
+    ``(x * 255).long()``, with the 255 raised by four float32 epsilons, relative, in float32 and float64, so
+    ``k / 255`` reads level ``k`` even when its division was rounded a unit low, as dividing by 255 on CUDA does.
 
     Args:
         input: image torch.Tensor with shape ``(*, C, H, W)`` to posterize.
@@ -1033,11 +1055,14 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     # Ref: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L222
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
+    # Both shifts read an 8-bit level by truncation; ``_level_scale`` keeps ``k / 255`` rounded a unit low at ``k``.
+    scale = _level_scale(input.dtype)
+
     def _left_shift(input: torch.Tensor, shift: torch.Tensor) -> torch.Tensor:
-        return ((input * 255).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
+        return ((input * scale).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
 
     def _right_shift(input: torch.Tensor, shift: torch.Tensor) -> torch.Tensor:
-        return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
+        return (input * scale).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
 
     def _posterize_one(input: torch.Tensor, bits: torch.Tensor) -> torch.Tensor:
         # Branchless for torch.compile: the bits==0 / bits==8 special cases guard a uint8
@@ -1159,9 +1184,9 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
 
     Computes all per-plane histograms/LUTs in a single batched pass instead of a Python loop of
     ``B * C`` serial calls. Each pixel is counted in the LUT entry it reads, its 8-bit level
-    ``(x * 255).long()`` computed in the input dtype, so a plane whose LUT step is not 0 comes out as
-    ``PIL.ImageOps.equalize`` of those levels while the counts and their running sums are exact (a plane of
-    up to ``2**24`` pixels in float32); a plane whose step is 0 is returned unchanged.
+    ``(x * _level_scale(x.dtype)).long()`` computed in the input dtype, so a plane whose LUT step is not 0 comes
+    out as ``PIL.ImageOps.equalize`` of those levels while the counts and their running sums are exact (a plane
+    of up to ``2**24`` pixels in float32); a plane whose step is 0 is returned as it is.
 
     Args:
         input: image tensor shaped ``(B, C, *spatial)`` with values in ``[0, 1]``.
@@ -1171,16 +1196,20 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     """
     shape = input.shape
     n = shape[0] * shape[1]
-    scaled = input.flatten(0, 1).flatten(1) * 255.0  # (N, P)
+    flat = input.flatten(0, 1).flatten(1)  # (N, P)
+    # The level each pixel reads, before truncation. The factor is 255 raised by four float32 epsilons, relative, in
+    # float32 and float64, so k / 255 rounded a unit low, as dividing by 255 on CUDA leaves 24 float64 levels,
+    # still reads level k (see ``_level_scale``); half precision keeps 255.
+    levels = flat * _level_scale(flat.dtype)
 
-    # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``scaled.long()``,
-    # which is out of bounds unless ``scaled`` is in (-1, 256).
+    # Input is expected in [0, 1]. The histogram and the LUT lookup both index with ``levels.long()``,
+    # which is out of bounds unless ``levels`` is in (-1, 256).
     # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
     # on MPS before torch 2.13 it costs one host sync instead (see ``_check_async``). Inputs the
     # lookup can index keep working exactly as before. The check keeps the index in bounds, so it runs
     # with checks disabled too: a compiled CPU scatter with an index out of range terminates the process.
     _check_async(
-        ((scaled > -1.0) & (scaled < 256.0)).all(),
+        ((levels > -1.0) & (levels < 256.0)).all(),
         "equalize expects input values in [0, 1]. Scale the image into that range first, "
         "for example image / 255.0 for 8-bit data.",
         guard=True,
@@ -1189,13 +1218,13 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     # Count in float32 (float64 stays float64): a count grows with the plane size, which half precision
     # cannot hold. float16 rounds counts above 2048 and their total overflows to inf past 65504, and
     # bfloat16 rounds counts above 256.
-    count_dtype = _normalize_to_float32_or_float64(scaled.dtype)
+    count_dtype = _normalize_to_float32_or_float64(flat.dtype)
     # Per-plane 256-bin histogram on the index the lookup below reads, so every pixel is counted in its own
     # entry, as PIL counts and reads one 8-bit level. ``torch.histc(x, 256, 0, 255)`` bins in ``floor(256 x)``,
     # which puts every value in ``[k/256, k/255)``, about half of a continuous image, one bin above that entry.
-    index = scaled.long()
+    index = levels.long()
     histo = torch.zeros(n, 256, device=input.device, dtype=count_dtype)
-    histo.scatter_add_(1, index, torch.ones_like(scaled, dtype=count_dtype))
+    histo.scatter_add_(1, index, torch.ones_like(levels, dtype=count_dtype))
 
     # step = (sum(nonzero) - last_nonzero) // 255, per plane.
     total = histo.sum(1)
@@ -1211,11 +1240,12 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     lut = torch.div(histo.cumsum(1) + step_trunc, step_col.clamp(min=1), rounding_mode="trunc")
     lut = torch.cat([torch.zeros(n, 1, device=input.device, dtype=lut.dtype), lut[:, :-1]], 1)
     # The LUT holds integers in [0, 255], which every floating dtype represents exactly.
-    lut = torch.clamp(lut, 0, 255).to(scaled.dtype)
+    lut = torch.clamp(lut, 0, 255).to(flat.dtype)
 
-    result = lut.gather(1, index)
-    result = torch.where(step_col == 0, scaled, result)
-    return (result / 255.0).reshape(shape)
+    # A plane whose step is 0 comes back as it is, not as (x * 255) / 255, which can be a unit off; it also keeps
+    # ``x * 255`` from being one more image-sized temporary next to ``levels``.
+    result = lut.gather(1, index) / 255.0
+    return torch.where(step_col == 0, flat, result).reshape(shape)
 
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
@@ -1241,7 +1271,10 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
        The input is expected as a floating-point image in :math:`[0, 1]`, and each channel is equalized from
        a 256-bin histogram. Each pixel is counted in the lookup-table entry it reads, its 8-bit level
        ``(x * 255).long()`` in the input dtype, so a float32 or float64 image gives ``PIL.ImageOps.equalize``
-       of those levels. A channel whose lookup step is 0 is returned unchanged, and a float32 image counts in
+       of those levels. In float32 and float64 the 255 is raised by four float32 epsilons, relative (``2**-21``),
+       so ``k / 255`` reads level ``k`` even when its division was rounded a unit low, as dividing by 255 on CUDA
+       leaves 24 of the 256 float64 levels; a continuous value moves up a level only that close below a level
+       boundary. A channel whose lookup step is 0 is returned unchanged, and a float32 image counts in
        float32, which is exact while a channel holds at most ``2**24`` pixels (4096 x 4096). An integer or
        boolean image raises
        :exc:`~kornia.core.exceptions.TypeCheckError` (a :exc:`TypeError`); convert 8-bit data with
@@ -1281,9 +1314,10 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
     .. note::
        The input is expected as a floating-point volume in :math:`[0, 1]`, and each channel's whole
-       ``(D, H, W)`` volume is equalized from one 256-bin histogram. The lookup step is an integer
-       division by 255, so a volume with no more than 255 voxels per channel is returned unchanged up to
-       floating-point roundoff; just above that, whether it changes depends on the values. An integer or
+       ``(D, H, W)`` volume is equalized from one 256-bin histogram, reading each voxel at its 8-bit level as
+       :func:`equalize` reads a pixel. The lookup step is an integer
+       division by 255, so a volume with no more than 255 voxels per channel is returned unchanged; just above
+       that, whether it changes depends on the values. An integer or
        boolean volume raises :exc:`~kornia.core.exceptions.TypeCheckError`, as for :func:`equalize`. Values
        the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError`` naming the
        range, during the call for a CPU volume, even when checks are disabled, as for :func:`equalize`. On CUDA,
