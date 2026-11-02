@@ -1681,6 +1681,18 @@ _LEARNABLE_RANGES = {
 }
 _DIFFERENTIABLE_RANGES = [name for name, (_, _, differentiable) in _LEARNABLE_RANGES.items() if differentiable]
 
+# name -> (constructor, (2,) range, 0-d half-width). Ranges made directly on the test device and dtype. The four colour
+# classes used to check theirs with ``_range_bound``, which kept a CPU float32 copy (or, for a half-width, a derived
+# range) that the module did not own; RandomAffine and ColorJitter check theirs in the generator and are controls.
+_RANGES_ON_DEVICE = {
+    "RandomBrightness": (lambda r: K.RandomBrightness(r, p=1.0), (0.8, 1.2), 0.2),
+    "RandomContrast": (lambda r: K.RandomContrast(r, p=1.0), (0.8, 1.2), 0.2),
+    "RandomSaturation": (lambda r: K.RandomSaturation(r, p=1.0), (0.8, 1.2), 0.2),
+    "RandomHue": (lambda r: K.RandomHue(r, p=1.0), (-0.1, 0.1), 0.1),
+    "RandomAffine": (lambda r: K.RandomAffine(r, p=1.0), (-10.0, 10.0), 10.0),
+    "ColorJitter": (lambda r: K.ColorJitter(r, p=1.0), (0.8, 1.2), 0.2),
+}
+
 
 def _torch_save_round_trip(module: torch.nn.Module) -> torch.nn.Module:
     buffer = io.BytesIO()
@@ -1840,6 +1852,41 @@ class TestLearnableRangeCopies(BaseTester):
         for p, q in zip(aug.parameters(), averaged.module.parameters()):
             assert q is not p
             self.assert_close(q, p, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("form", ["range", "half-width"])
+    @pytest.mark.parametrize("name", list(_RANGES_ON_DEVICE))
+    def test_range_made_on_the_device_is_owned_and_copied(self, name, form, device, dtype):
+        make, pair, half_width = _RANGES_ON_DEVICE[name]
+        param = torch.nn.Parameter(torch.tensor(pair if form == "range" else half_width, device=device, dtype=dtype))
+        torch.manual_seed(0)
+        aug = make(param)
+        owned = list(aug.parameters())
+        assert len(owned) == 1
+        assert owned[0] is param
+        x = torch.rand(2, 3, 8, 8, generator=torch.Generator().manual_seed(0)).to(device=device, dtype=dtype)
+        # The same draws as the same augmentation built from a plain tensor with these values.
+        expected = self._draw(make(param.detach().clone()), 2, x)
+        self.assert_close(self._draw(aug, 2, x), expected, rtol=0, atol=0)
+
+        before = copy.deepcopy(aug)
+        self._draw(aug, 1, x)
+        after = copy.deepcopy(aug)
+        self._draw(aug, 2, x).sum().backward()
+        grad = param.grad.clone()
+        assert bool(grad.ne(0).any())
+        param.grad = None
+        for clone in (before, after):
+            (clone_param,) = clone.parameters()
+            assert clone_param is not param
+            actual = self._draw(clone, 2, x)
+            self.assert_close(actual, expected, rtol=0, atol=0)
+            actual.sum().backward()
+            assert param.grad is None
+            self.assert_close(clone_param.grad, grad)
+
+        other = torch.float32 if dtype == torch.float64 else torch.float64
+        aug.to(dtype=other)
+        assert param.dtype == other
 
     def test_rgb_shift_takes_a_half_width_tensor_in_any_dtype(self, device, dtype):
         # A 0-d limit is a half-width. Its bounds are not computed from the tensor, so a value that rounds when the

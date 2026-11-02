@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D, _clamp_unit_range
-from kornia.augmentation.utils import _range_bound
+from kornia.augmentation.utils.param_validation import _learnable_range_bound
 from kornia.core.utils import _to_device_nonblocking
 from kornia.enhance.adjust import adjust_saturation
 
@@ -93,8 +93,9 @@ class RandomSaturation(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.saturation: torch.Tensor = _range_bound(saturation, "saturation", center=1.0)
-        self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
+        factor, center, bounds = _learnable_range_bound(saturation, "saturation", center=1.0)
+        self.saturation: torch.Tensor = factor
+        self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", center, bounds))
 
     def apply_transform(
         self,

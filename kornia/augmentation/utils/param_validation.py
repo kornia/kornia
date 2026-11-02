@@ -126,6 +126,30 @@ def _range_bound(
     return factor_bound
 
 
+def _learnable_range_bound(
+    factor: Union[torch.Tensor, float, Tuple[float, float], List[float]],
+    name: str,
+    center: Optional[float] = 0.0,
+    bounds: Optional[Tuple[float, float]] = (0, float("inf")),
+) -> Tuple[torch.Tensor, Optional[float], Optional[Tuple[float, float]]]:
+    r"""Check a sampling range like :func:`_range_bound`, keeping a learnable one as the leaf that was passed.
+
+    Returns the range to keep on the module, then the ``center`` and ``bounds`` that ``PlainUniformGenerator`` still
+    has to apply when it builds its samplers. :func:`_range_bound` converts a range to the default device and dtype and
+    derives ``[center - factor, center + factor]`` from a number, which turns an ``nn.Parameter`` into a tensor that the
+    module does not own and a copy cannot take. A parameter is therefore checked on a detached copy and kept as it is:
+    a ``(2,)`` one is the range itself, and the range of a 0-d one is derived in ``make_samplers``, on the generator's
+    device and dtype, from the parameter of whichever module builds the samplers. Any other input returns the
+    :func:`_range_bound` result with no ``center`` or ``bounds`` left to apply.
+    """
+    if not isinstance(factor, torch.nn.Parameter):
+        return _range_bound(factor, name, center=center, bounds=bounds), None, None
+    _range_bound(factor.detach(), name, center=center, bounds=bounds)
+    if factor.dim() == 0:
+        return factor, center, bounds
+    return factor, None, None
+
+
 def _shear_bound(
     shear: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float]],
     device: torch.device,
