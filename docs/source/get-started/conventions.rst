@@ -381,9 +381,9 @@ that should be an identity is one under both settings, and ``warp_affine`` and
 Where the two settings genuinely differ is out-of-bounds sampling, since ``±1``
 covers a slightly different extent of the source image.
 
-The 3-D warps are consistent. ``normal_transform_pixel3d``, ``normalize_homography3d``
-and ``create_meshgrid3d`` take the same ``align_corners`` as their 2-D counterparts, with
-the same ``True`` default, and :func:`kornia.geometry.transform.warp_affine3d`,
+The 3-D warps are consistent. ``normal_transform_pixel3d``, ``normalize_homography3d``,
+``denormalize_homography3d`` and ``create_meshgrid3d`` take the same ``align_corners`` as
+their 2-D counterparts, with the same ``True`` default, and :func:`kornia.geometry.transform.warp_affine3d`,
 :func:`kornia.geometry.transform.warp_perspective3d` and
 :func:`kornia.geometry.transform.homography_warp3d` forward their own flag, so an identity
 warp reproduces the input under either setting.

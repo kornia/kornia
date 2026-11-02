@@ -3919,9 +3919,9 @@ class TestNormalizeHomography(BaseTester):
     # denormalize_homography now take an align_corners argument and forward it to
     # normal_transform_pixel, but it defaults to True, so the composition, direction, round-trip,
     # batching and 3-D pins here -- and the #3957 singleton pin -- still see the
-    # corner-aligned 2/(size - 1) constants they were written against. normalize_homography3d has no
-    # such argument at all, and neither has denormalize_homography3d. A change to that default, not
-    # the parameter, is what would flip them.
+    # corner-aligned 2/(size - 1) constants they were written against. normalize_homography3d and
+    # denormalize_homography3d take the same argument with the same default since #4503. A change to
+    # that default, not the parameter, is what would flip them.
     # They record current default behavior; none of them ratifies that choice as contract.
 
     def test_gradcheck(self, device):

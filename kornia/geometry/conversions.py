@@ -21,8 +21,8 @@ Points and vectors sit in the last dimension, and matrices act on column vectors
 are ``(x, y)``, with ``x`` the column and pixel centres at integers, while size arguments are ``(height, width)`` or
 ``(depth, height, width)``. The :math:`[-1, 1]` normalizations are corner-aligned, mapping the first and last pixel
 centre of an axis to ``-1`` and ``1``; :func:`normal_transform_pixel`, :func:`normalize_homography` and
-:func:`denormalize_homography` also offer the half-pixel convention of ``align_corners=False``, and so do the 3D forms
-of the first two. Quaternions are ``(w, x, y, z)``, real part first,
+:func:`denormalize_homography` also offer the half-pixel convention of ``align_corners=False``, and so do their 3D
+forms. Quaternions are ``(w, x, y, z)``, real part first,
 in the Hamilton convention. 3D rotations are active and right-handed: a positive angle about ``+z`` turns ``+x``
 towards ``+y``. Axis-angle vectors and Euler angles are in radians, while :func:`angle_to_rotation_matrix` takes
 degrees and turns ``+x`` towards ``-y``, counter-clockwise as displayed with ``y`` down. The pose functions take
@@ -2176,7 +2176,7 @@ def normalize_homography(
 
     See Also:
         - :func:`denormalize_homography`: the reverse, a normalized homography back to pixels.
-        - :func:`normalize_homography3d`: the 3D form for ``(B, 4, 4)`` voxel homographies, always corner-aligned.
+        - :func:`normalize_homography3d`: the 3D form for ``(B, 4, 4)`` voxel homographies, with ``align_corners``.
         - :func:`normal_transform_pixel`: the ``(1, 3, 3)`` normalization matrix ``N`` composed here.
         - :func:`~kornia.geometry.transform.warp_perspective`: warps by the pixel homography, normalizing it with
           this function.
@@ -2303,7 +2303,7 @@ def normal_transform_pixel(
         normalized transform with shape ``(1, 3, 3)``.
 
     See Also:
-        - :func:`normal_transform_pixel3d`: the 3D ``(1, 4, 4)`` matrix, always corner-aligned.
+        - :func:`normal_transform_pixel3d`: the 3D ``(1, 4, 4)`` matrix, with ``align_corners``.
         - :func:`normalize_pixel_coordinates`: the same corner-aligned map applied to ``(*, 2)`` points.
         - :func:`normalize_homography`: conjugates a pixel homography with this matrix.
 
@@ -2660,7 +2660,7 @@ def denormalize_homography(
 
     See Also:
         - :func:`normalize_homography`: the forward conversion, pixels to normalized coordinates.
-        - :func:`denormalize_homography3d`: the 3D form for ``(B, 4, 4)`` homographies, always corner-aligned.
+        - :func:`denormalize_homography3d`: the 3D form for ``(B, 4, 4)`` homographies, with ``align_corners``.
         - :func:`normal_transform_pixel`: the ``(1, 3, 3)`` normalization matrix ``N`` composed here.
 
     """
@@ -2718,7 +2718,7 @@ def normalize_homography3d(
     that map **source voxels to destination voxels**, and the ``(depth, height, width)`` of both volumes, and returns
     ``N_dst @ H @ inv(N_src)`` ``(B, 4, 4)`` with ``N`` from :func:`normal_transform_pixel3d`. ``align_corners``
     (``True`` by default) selects that normalization and must match the ``grid_sample`` call that uses the result.
-    For the reverse, use :func:`denormalize_homography3d`, which is corner-aligned only; for ``(B, 3, 3)`` pixel
+    For the reverse, use :func:`denormalize_homography3d` with the same ``align_corners``; for ``(B, 3, 3)`` pixel
     homographies, :func:`normalize_homography`.
 
     Convention:
@@ -2741,7 +2741,7 @@ def normalize_homography3d(
           vectors, while both ``dsize`` arguments are
           ``(depth, height, width)`` triples
         - :func:`~kornia.geometry.conversions.denormalize_homography3d`
-          computes the reverse ``inv(N_dst) @ H @ N_src``
+          computes the reverse ``inv(N_dst) @ H @ N_src`` under the same ``align_corners``
         - the shape guard is the 2-D function's for 4x4 matrices: ``(4, 4)``
           (returned as ``(1, 4, 4)``) or ``(B, 4, 4)``, anything else raises
           ``ValueError``
@@ -2802,22 +2802,25 @@ def normalize_homography3d(
 
 
 def denormalize_homography3d(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
+    dst_pix_trans_src_pix: torch.Tensor,
+    dsize_src: tuple[int, int, int],
+    dsize_dst: tuple[int, int, int],
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Express a ``[-1, 1]`` homography ``(B, 4, 4)`` as a source→destination voxel homography.
 
     ``H = denormalize_homography3d(H_norm, dsize_src, dsize_dst)`` is the inverse of :func:`normalize_homography3d`: it
     takes real floating homographies ``(B, 4, 4)``, or one ``(4, 4)``, from normalized :math:`[-1, 1]` source
     coordinates to normalized destination coordinates, and the ``(depth, height, width)`` of both volumes, and returns
-    the source→destination voxel homographies ``inv(N_dst) @ H_norm @ N_src`` ``(B, 4, 4)``, always corner-aligned:
-    unlike :func:`normalize_homography3d` it takes no ``align_corners``. For ``(B, 3, 3)`` pixel homographies, use
+    the source→destination voxel homographies ``inv(N_dst) @ H_norm @ N_src`` ``(B, 4, 4)``. Pass the
+    ``align_corners`` that produced ``H_norm``. For ``(B, 3, 3)`` pixel homographies, use
     :func:`denormalize_homography`.
 
     Convention:
         - the mirror of
           :func:`~kornia.geometry.conversions.normalize_homography3d`. The ``(depth, height, width)``
           ``dsize`` roles, the ``(x, y, z, 1)`` column vectors, per-sample
-          batching, the corner-aligned frames and the shape guard are as
+          batching, the ``align_corners``-selected frames and the shape guard are as
           documented there
         - ``inv(N_dst)`` goes through ``torch.linalg.inv`` (so ``cusolver`` on
           ``cuda``, and a ``float32`` upcast for ``float16``/``bfloat16``), the
@@ -2841,6 +2844,9 @@ def denormalize_homography3d(
           is promoted to ``(1, 4, 4)``
         dsize_src: size of the source image (depth, height, width).
         dsize_dst: size of the destination image (depth, height, width).
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention the
+          incoming normalized coordinates follow. Must match the value used to produce
+          them, so that this function inverts :func:`normalize_homography3d`.
 
     Returns:
         the denormalized homography.
@@ -2878,11 +2884,11 @@ def denormalize_homography3d(
     # compute the transformation pixel/norm for src/dst
     normalization_dtype = dst_pix_trans_src_pix.dtype
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
-        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype, align_corners=align_corners
     ).to(dst_pix_trans_src_pix)
 
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
-        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype
+        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=normalization_dtype, align_corners=align_corners
     ).to(dst_pix_trans_src_pix)
     # A floating pixel normalization is invertible unless a scale underflows (see `denormalize_homography`); an
     # integer one keeps the error check (kornia#3959).

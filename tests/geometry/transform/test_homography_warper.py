@@ -860,12 +860,12 @@ class TestHomographyNormalTransform(BaseTester):
     @pytest.mark.parametrize("height", [1, 2, 5])
     @pytest.mark.parametrize("width", [1, 2, 5])
     def test_normalize_homography3d_identity_align_corners_false(self, depth, height, width, device, dtype):
-        # There is no denormalize_homography3d (#3962), so the round trip is pinned two ways:
-        # an identity stays an identity under the half-pixel frames, including at size 1 where the
+        # An identity stays an identity under the half-pixel frames, including at size 1 where the
         # mapping is finite without a guard, and the result equals the explicit composition
         # N_dst @ H @ inv(N_src) built from normal_transform_pixel3d(align_corners=False). The
         # inverse goes through kornia's _torch_inverse_cast, as in the function itself, because
-        # torch.linalg.inv has no float16/bfloat16 kernel.
+        # torch.linalg.inv has no float16/bfloat16 kernel. The round trip through
+        # denormalize_homography3d is pinned in TestHomographyWarper3D.
         dsize = (depth, height, width)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
         normalized = kornia.geometry.conversions.normalize_homography3d(identity, dsize, dsize, align_corners=False)
@@ -1056,6 +1056,37 @@ class TestHomographyWarper3D(BaseTester):
         ).expand(batch_size, -1, -1)
         assert dst_homo_src.shape == (batch_size, 4, 4)
         self.assert_close(dst_homo_src, res)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("dsizes", [((1, 2, 5), (3, 1, 4)), ((2, 3, 4), (5, 5, 2)), ((4, 4, 4), (4, 4, 4))])
+    def test_denormalize_homography3d_inverts_normalize(self, dsizes, align_corners, device, dtype):
+        # denormalize_homography3d under the align_corners that produced H_norm is
+        # inv(N_dst) @ H_norm @ N_src with N = normal_transform_pixel3d(align_corners), and so takes
+        # normalize_homography3d's output back to its input, including for a size-1 axis (#4503).
+        dsize_src, dsize_dst = dsizes
+        homo = torch.tensor(
+            [[[1.0, 0.2, 0.0, 0.5], [-0.1, 1.0, 0.1, -0.3], [0.0, 0.05, 1.0, 0.2], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        conversions = kornia.geometry.conversions
+        normalized = conversions.normalize_homography3d(homo, dsize_src, dsize_dst, align_corners=align_corners)
+        restored = conversions.denormalize_homography3d(normalized, dsize_src, dsize_dst, align_corners=align_corners)
+        # Two rounded matrix products each way: a half-precision round trip is a few ulps off under either setting.
+        half = dtype in (torch.float16, torch.bfloat16)
+        tol = 4 * torch.finfo(dtype).eps if half else None
+        self.assert_close(restored, homo, rtol=tol, atol=tol)
+
+        def n(dsize):
+            return conversions.normal_transform_pixel3d(*dsize, device=device, dtype=dtype, align_corners=align_corners)
+
+        # Associated as the function associates it, so the two agree in every dtype.
+        expected = _torch_inverse_cast(n(dsize_dst)) @ (normalized @ n(dsize_src))
+        self.assert_close(restored, expected)
+        if align_corners:
+            # True is the default, unchanged from before the argument existed.
+            default = conversions.denormalize_homography3d(normalized, dsize_src, dsize_dst)
+            self.assert_close(default, restored, rtol=0, atol=0)
 
     def test_denormalize_homography_invalid_input(self, device):
         with pytest.raises(TypeError, match=r"Input type is not a torch.Tensor"):
