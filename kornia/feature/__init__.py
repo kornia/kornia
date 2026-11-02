@@ -19,12 +19,16 @@
 
 This subpackage provides modules for keypoint detection, descriptors, and feature matching.
 
-Choosing an implementation by device. Each figure below is the reference implementation's latency divided by
-kornia's, so above 1 favours kornia. The reference is the authors' code, or OpenCV for SIFT. The figures were
-measured on kornia's main branch between 30 October and 2 November 2026, with PyTorch 2.14, 640 px images and
-2,048 features, on an Apple M1, an Intel i7-14700K and an NVIDIA RTX 4090. On every cohort, kornia's accuracy is
-within 2.5 points of the reference, except :meth:`XFeat.match_xfeat_star`, whose refinement departs from the
-authors' on purpose (see :class:`XFeat`).
+Choosing an implementation by device. With two exceptions, kornia's local-feature pipelines run at the authors'
+speed or faster on every device measured, and are as accurate. Eager :class:`ALIKED` on CUDA is slower, because
+kornia's deformable convolution is written in PyTorch rather than calling torchvision's kernel; compile it there.
+OpenCV's SIFT is 8-14x faster than kornia's on the Apple M1 CPU.
+
+Each figure below is the reference implementation's latency divided by kornia's, so above 1 favours kornia. The
+reference is the authors' code, or OpenCV for SIFT. The figures were measured on kornia's main branch between 30
+October and 2 November 2026, with PyTorch 2.14, 640 px images and 2,048 features, on an Apple M1, an Intel
+i7-14700K and an NVIDIA RTX 4090. On every cohort, kornia's accuracy is within 2.5 points of the reference, except
+:meth:`XFeat.match_xfeat_star`, whose refinement departs from the authors' on purpose (see :class:`XFeat`).
 
 - CUDA: most ports tie. :class:`LoFTR` (1.26x), :class:`DeDoDe` with the G descriptor (1.19x) and the polar or
   concatenated :class:`MKDDescriptor` (1.1-1.3x) are faster. Eager :class:`ALIKED` is slower (0.8x). With

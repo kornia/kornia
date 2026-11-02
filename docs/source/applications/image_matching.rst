@@ -120,11 +120,23 @@ their speed and accuracy with the authors' code, device by device.
 Speed and accuracy against the reference implementations
 --------------------------------------------------------
 
-A kornia port that runs on a GPU is not automatically faster than the authors' code, and the answer changes with
-the device. The table compares each of kornia's local-feature pipelines with its reference implementation: the
-authors' code, or OpenCV for SIFT. A speed figure is the reference's latency divided by kornia's, so a value above
-1 means kornia is faster. ``~`` marks a noisy measurement, with a relative spread above 10 %, and ``—`` a cell
-that was not measured.
+With two exceptions, kornia's local-feature pipelines run at the authors' speed or faster on every device measured,
+and are as accurate. The largest speed gains are the MKD descriptor (1.5–8.5× on CPUs, 2.9–6.3× on MPS), ALIKED and
+XFeat on CPUs (1.5–2.0×), DISK + LightGlue on the x86 CPU (1.50×) and LoFTR on CUDA (1.26×). No other cell in the
+table is under 0.96×. On accuracy, XFeat\* is the one difference: much better on planar scenes, mixed on
+PhotoTourism.
+
+The two exceptions:
+
+- **Eager ALIKED on CUDA** runs at 0.79× the authors' speed. The authors call torchvision's deformable-convolution
+  kernel; kornia does not depend on torchvision, and its PyTorch deformable convolution launches many small
+  kernels. Compile the model: ``torch.compile(model)`` runs at 1.63× the authors' speed at a fixed image size.
+- **SIFT**: OpenCV's SIFT is 8–14× faster than kornia's on the Apple M1 CPU. Use kornia's SIFT when you need it
+  batched, on a GPU, or differentiable.
+
+The table compares each pipeline with its reference implementation: the authors' code, or OpenCV for SIFT. A speed
+figure is the reference's latency divided by kornia's, so a value above 1 means kornia is faster. ``~`` marks a
+noisy measurement, with a relative spread above 10 %, and ``—`` a cell that was not measured.
 
 .. list-table:: kornia against the reference implementations: speed ratio by device, and accuracy
    :header-rows: 1
@@ -231,13 +243,12 @@ below it with the CUDA protocol.
 What this means on each device:
 
 - **CUDA.** Most ports run at the authors' speed. Kornia is faster with LoFTR, DeDoDe G and the polar and
-  concatenated MKD descriptors. Eager ALIKED is the one clear loss. Compile it, ``torch.compile(model)``: it then
-  runs at 1.63× the authors' eager speed at a fixed image size, and 1.23× with ``dynamic=True``.
+  concatenated MKD descriptors. Compile ALIKED: it then runs at 1.63× the authors' eager speed at a fixed image
+  size, and 1.23× with ``dynamic=True``.
 - **x86 CPU.** Kornia is faster or tied everywhere except DeDoDe B (0.96×). Keep ALIKED eager there. Compiled, it
   is slower than eager on this CPU: 0.75× at a fixed image size and 0.89× with ``dynamic=True``.
 - **Apple M1 CPU.** ALIKED, XFeat and MKD are faster. DISK's 1.23× is a noisy measurement, and the other ports are
-  within 10 % of the authors'. OpenCV's SIFT is 8–14× faster than kornia's SIFT pipelines. Use kornia's SIFT when
-  you need it batched, on a GPU, or differentiable.
+  within 10 % of the authors'. OpenCV's SIFT is 8–14× faster than kornia's SIFT pipelines.
 - **Apple MPS.** MKD and HyNet are faster, and DISK + LightGlue slightly (1.11×). Everything else, ALIKED included,
   is within 6 % of the authors'.
 
