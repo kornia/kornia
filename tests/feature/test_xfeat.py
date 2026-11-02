@@ -340,10 +340,12 @@ class TestXFeat(BaseTester):
         lafs1 = laf_from_center_scale_ori(out1["keypoints"][None])
         lafs2 = laf_from_center_scale_ori(out2["keypoints"][None])
         # Before #6533 this call raised: the descriptors were inference tensors and LightGlue's input
-        # projection saved them for backward.
-        mkpts0, mkpts1 = matcher(out1["descriptors"], out2["descriptors"], lafs1, lafs2)
-        assert mkpts0.ndim == mkpts1.ndim == 2
-        assert mkpts0.shape[0] == mkpts1.shape[0]
+        # projection saved them for backward. For "xfeat" the first value is the matching score.
+        score, matches = matcher(out1["descriptors"], out2["descriptors"], lafs1, lafs2)
+        assert score.ndim == matches.ndim == 2
+        assert score.shape[0] == matches.shape[0]
+        assert score.shape[-1] == 1
+        assert matches.shape[-1] == 2
 
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
