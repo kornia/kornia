@@ -15,8 +15,9 @@ This module, the original core of the library, groups its submodules by task:
 - Apply a homogeneous transformation to points, compose, invert or relate ``4 x 4`` transformations, and measure
   distances of points to points and lines: :doc:`linalg <geometry.linalg>`. Grids of pixel coordinates:
   :doc:`grid <geometry.grid>`.
-- Camera models, and the projection and unprojection of points: :doc:`camera <geometry.camera>`; lens distortion and
-  pose from 2D-3D correspondences: :doc:`calibration <geometry.calibration>`.
+- Camera models, the projection and unprojection of points, and the Kannala-Brandt fisheye and affine distortion
+  models on normalized points: :doc:`camera <geometry.camera>`; OpenCV (Brown-Conrady) lens distortion and
+  undistortion of pixels and images, and pose from 2D-3D correspondences: :doc:`calibration <geometry.calibration>`.
 - 3D points and surface normals from depth maps, and images warped by depth: :doc:`depth <geometry.depth>`.
 - Two-view geometry, fundamental and essential matrices, relative pose and triangulation:
   :doc:`epipolar <geometry.epipolar>`; homographies from points or line segments:
