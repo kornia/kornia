@@ -27,7 +27,7 @@ from torch import nn
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SIZE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal
-from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling
+from kornia.core.utils import _autocast_disabled, _to_device_nonblocking, is_compiling, is_exporting
 from kornia.enhance.adjust import _check_floating_image
 from kornia.filters import gaussian_blur2d
 from kornia.image.utils import perform_keep_shape_image
@@ -197,6 +197,109 @@ def _unpatchify_8x8(input: torch.Tensor, H: int, W: int) -> torch.Tensor:
     # Unpatch to [B, H, W]
     output: torch.Tensor = input.view(B, H // 8, W // 8, 8, 8).permute(0, 1, 3, 2, 4).reshape(B, H, W)
     return output
+
+
+# The gather helpers below exist for ``torch.export``. A ``view`` that splits a chroma plane into
+# ``(H // 8, 8, W // 8, 8)`` gives the patch grid sizes of its own, ``H // 16`` and ``W // 16`` of the padded image,
+# and either can be 1. Torch reads whether a size is 1 when it checks the result of a view for contiguity, so the
+# exported program would guard ``(H + 15) // 16 != 1`` and fail for a side of 16 pixels. The luma grid and the ``2N``
+# concatenated chroma patches are provably larger than 1, which is why only the chroma planes are routed around the
+# view. Both routes move the same values, so the result is bit for bit the eager one. Sizes are symbolic while
+# exporting, and the ONNX exporter cannot translate ``torch.remainder`` by a symbolic size, so the indices use
+# ``a - a // b * b`` where ``b`` is a size.
+
+
+def _patchify_chroma_gather(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Tensor:
+    """Patchify Cb and Cr by one gather instead of by views, for ``torch.export``.
+
+    Args:
+        input_cb: Cb plane of the shape ``(B, H, W)``, with ``H`` and ``W`` multiples of 8.
+        input_cr: Cr plane of the shape ``(B, H, W)``.
+
+    Returns:
+        The Cb patches followed by the Cr patches, of the shape ``(B, 2N, 8, 8)``, in the order of
+        :func:`_patchify_8x8`.
+
+    """
+    B, H, W = input_cb.shape
+    n_cols = W // 8
+    n_patches = (H // 8) * n_cols
+    planes = torch.stack((input_cb, input_cr), dim=1).reshape(B, -1)
+    # For every output element (plane, patch, row, column), in that order, the position it reads in ``planes``.
+    out_idx = torch.arange(2 * n_patches * 64, device=input_cb.device)
+    col = torch.remainder(out_idx, 8)
+    row = torch.remainder(torch.div(out_idx, 8, rounding_mode="floor"), 8)
+    patch_idx = torch.div(out_idx, 64, rounding_mode="floor")
+    plane = torch.div(patch_idx, n_patches, rounding_mode="floor")
+    patch = patch_idx - plane * n_patches
+    patch_row = torch.div(patch, n_cols, rounding_mode="floor")
+    patch_col = patch - patch_row * n_cols
+    src = plane * (H * W) + (patch_row * 8 + row) * W + patch_col * 8 + col
+    return planes.index_select(1, src).reshape(B, 2 * n_patches, 8, 8)
+
+
+def _unpatchify_chroma_gather(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Reverse :func:`_patchify_chroma_gather` with one gather instead of views, for ``torch.export``.
+
+    Args:
+        input: Cb patches followed by Cr patches, of the shape ``(B, 2N, 8, 8)``.
+        H: height of each plane, a multiple of 8.
+        W: width of each plane, a multiple of 8.
+
+    Returns:
+        The Cb and the Cr plane, each of the shape ``(B, H, W)``.
+
+    """
+    B = input.shape[0]
+    n_cols = W // 8
+    n_patches = (H // 8) * n_cols
+    patches = input.reshape(B, -1)
+    # For every output element (plane, row, column), in that order, the position it reads in ``patches``.
+    out_idx = torch.arange(2 * H * W, device=input.device)
+    rest = torch.div(out_idx, W, rounding_mode="floor")
+    col = out_idx - rest * W
+    plane = torch.div(rest, H, rounding_mode="floor")
+    row = rest - plane * H
+    patch_row = torch.div(row, 8, rounding_mode="floor")
+    patch_col = torch.div(col, 8, rounding_mode="floor")
+    patch = plane * n_patches + patch_row * n_cols + patch_col
+    src = (patch * 8 + (row - patch_row * 8)) * 8 + (col - patch_col * 8)
+    planes = patches.index_select(1, src).reshape(B, 2, H, W)
+    return planes[:, 0], planes[:, 1]
+
+
+def _patchify_chroma(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Tensor:
+    """Extract the non-overlapping 8 x 8 patches of the Cb and Cr planes.
+
+    Args:
+        input_cb: Cb plane of the shape ``(B, H, W)``.
+        input_cr: Cr plane of the shape ``(B, H, W)``.
+
+    Returns:
+        The Cb patches followed by the Cr patches, of the shape ``(B, 2N, 8, 8)``.
+
+    """
+    if is_exporting():
+        return _patchify_chroma_gather(input_cb, input_cr)
+    return torch.cat((_patchify_8x8(input_cb), _patchify_8x8(input_cr)), dim=1)
+
+
+def _unpatchify_chroma(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Reverse :func:`_patchify_chroma`.
+
+    Args:
+        input: Cb patches followed by Cr patches, of the shape ``(B, 2N, 8, 8)``.
+        H: height of each plane.
+        W: width of each plane.
+
+    Returns:
+        The Cb and the Cr plane, each of the shape ``(B, H, W)``.
+
+    """
+    if is_exporting():
+        return _unpatchify_chroma_gather(input, H, W)
+    input_cb, input_cr = _split_cb_cr(input, input.shape[1] // 2)
+    return _unpatchify_8x8(input_cb, H, W), _unpatchify_8x8(input_cr, H, W)
 
 
 def _dct_8x8(input: torch.Tensor) -> torch.Tensor:
@@ -409,7 +512,7 @@ def _jpeg_encode(
     jpeg_quality: torch.Tensor,
     quantization_table_y: torch.Tensor,
     quantization_table_c: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Perform JPEG encoding.
 
     Args:
@@ -420,8 +523,9 @@ def _jpeg_encode(
 
     Returns:
         y_encoded (torch.Tensor): Encoded Y component of the shape ``(B, N, 8, 8)``.
-        cb_encoded (torch.Tensor): Encoded Cb component of the shape ``(B, N, 8, 8)``.
-        cr_encoded (torch.Tensor): Encoded Cr component of the shape ``(B, N, 8, 8)``.
+        cb_cr_encoded (torch.Tensor): Encoded Cb component followed by the encoded Cr component, of the shape
+            ``(B, 2N_c, 8, 8)``. They stay together between encoding and decoding: a ``(B, N_c, 8, 8)`` half of them
+            can have a single patch, which ``torch.export`` cannot trace for a dynamic image size.
 
     """
     # Convert RGB image to YCbCr.
@@ -431,33 +535,26 @@ def _jpeg_encode(
     # Perform chroma subsampling
     input_y, input_cb, input_cr = _chroma_subsampling(image_ycbcr)
     # Patchify, DCT, and rounding
-    input_y, input_cb, input_cr = (
-        _patchify_8x8(input_y),
-        _patchify_8x8(input_cb),
-        _patchify_8x8(input_cr),
-    )
+    input_y = _patchify_8x8(input_y)
+    input_cb_cr = _patchify_chroma(input_cb, input_cr)
     dct_y = _dct_8x8(input_y)
-    dct_cb_cr = _dct_8x8(torch.cat((input_cb, input_cr), dim=1))
+    dct_cb_cr = _dct_8x8(input_cb_cr)
     y_encoded: torch.Tensor = _quantize(
         dct_y,
         jpeg_quality,
         quantization_table_y,
     )
-    cb_encoded, cr_encoded = _split_cb_cr(
-        _quantize(
-            dct_cb_cr,
-            jpeg_quality,
-            quantization_table_c,
-        ),
-        input_cb.shape[1],
+    cb_cr_encoded: torch.Tensor = _quantize(
+        dct_cb_cr,
+        jpeg_quality,
+        quantization_table_c,
     )
-    return y_encoded, cb_encoded, cr_encoded
+    return y_encoded, cb_cr_encoded
 
 
 def _jpeg_decode(
     input_y: torch.Tensor,
-    input_cb: torch.Tensor,
-    input_cr: torch.Tensor,
+    input_cb_cr: torch.Tensor,
     jpeg_quality: torch.Tensor,
     H: int,
     W: int,
@@ -468,8 +565,8 @@ def _jpeg_decode(
 
     Args:
         input_y (torch.Tensor): Compressed Y component of the shape ``(B, N, 8, 8)``.
-        input_cb (torch.Tensor): Compressed Cb component of the shape ``(B, N, 8, 8)``.
-        input_cr (torch.Tensor): Compressed Cr component of the shape ``(B, N, 8, 8)``.
+        input_cb_cr (torch.Tensor): Compressed Cb component followed by the compressed Cr component, of the shape
+            ``(B, 2N_c, 8, 8)``.
         jpeg_quality (torch.Tensor): Compression strength of the shape ``(B)``.
         H (int): Original image height.
         W (int): Original image width.
@@ -487,17 +584,16 @@ def _jpeg_decode(
         quantization_table_y,
     )
     input_cb_cr = _dequantize(
-        torch.cat((input_cb, input_cr), dim=1),
+        input_cb_cr,
         jpeg_quality,
         quantization_table_c,
     )
     # Perform inverse DCT
     idct_y: torch.Tensor = _idct_8x8(input_y)
-    idct_cb, idct_cr = _split_cb_cr(_idct_8x8(input_cb_cr), input_cb.shape[1])
+    idct_cb_cr: torch.Tensor = _idct_8x8(input_cb_cr)
     # Reverse patching
     image_y: torch.Tensor = _unpatchify_8x8(idct_y, H, W)
-    image_cb: torch.Tensor = _unpatchify_8x8(idct_cb, H // 2, W // 2)
-    image_cr: torch.Tensor = _unpatchify_8x8(idct_cr, H // 2, W // 2)
+    image_cb, image_cr = _unpatchify_chroma(idct_cb_cr, H // 2, W // 2)
     # Perform chroma upsampling
     image_cb = _chroma_upsampling(image_cb)
     image_cr = _chroma_upsampling(image_cr)
@@ -529,6 +625,26 @@ def _perform_padding(image: torch.Tensor) -> tuple[torch.Tensor, int, int]:
     # Perform padding (we follow JPEG and F.pad only the bottom and right side of the image)
     image_padded: torch.Tensor = F.pad(image, (0, w_pad, 0, h_pad), "replicate")
     return image_padded, h_pad, w_pad
+
+
+def _crop_padding(image: torch.Tensor, H: int, W: int) -> torch.Tensor:
+    """Crop the bottom and right padding of :func:`_perform_padding` off ``image``.
+
+    Args:
+        image: Image of the shape ``(*, C, H_{new}, W_{new})``.
+        H: height of the image before the padding.
+        W: width of the image before the padding.
+
+    Returns:
+        The top-left ``(*, C, H, W)`` part of ``image``.
+
+    """
+    if is_exporting():
+        # ``image[..., :H, :W]`` asks torch whether ``H`` is at most the padded height, a guard that torch.export
+        # cannot show true for every ``H``. A negative pad crops without asking, and gives the same values.
+        h_pad, w_pad = image.shape[-2] - H, image.shape[-1] - W
+        return F.pad(image, (0, -w_pad, 0, -h_pad))
+    return image[..., :H, :W]
 
 
 @perform_keep_shape_image
@@ -698,7 +814,7 @@ def jpeg_codec_differentiable(
     # compute it in dtype.
     with _autocast_disabled(input.device.type):
         # Perform encoding
-        y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
+        y_encoded, cb_cr_encoded = _jpeg_encode(
             image_rgb=input,
             jpeg_quality=jpeg_quality,
             quantization_table_c=quantization_table_c,
@@ -706,8 +822,7 @@ def jpeg_codec_differentiable(
         )
         image_rgb_jpeg: torch.Tensor = _jpeg_decode(
             input_y=y_encoded,
-            input_cb=cb_encoded,
-            input_cr=cr_encoded,
+            input_cb_cr=cb_cr_encoded,
             jpeg_quality=jpeg_quality,
             H=H,
             W=W,
@@ -717,7 +832,7 @@ def jpeg_codec_differentiable(
         # Clip coded image
         image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
-    return image_rgb_jpeg[..., :H_in, :W_in].to(out_dtype)
+    return _crop_padding(image_rgb_jpeg, H_in, W_in).to(out_dtype)
 
 
 def _get_dct8_basis_scale(

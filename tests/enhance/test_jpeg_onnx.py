@@ -22,7 +22,15 @@ import torch
 
 from kornia.core._compat import torch_version_lt
 from kornia.enhance import JPEGCodecDifferentiable
-from kornia.enhance.jpeg import _chroma_subsampling, _chroma_upsampling, _perform_padding
+from kornia.enhance import jpeg as jpeg_module
+from kornia.enhance.jpeg import (
+    _chroma_subsampling,
+    _chroma_upsampling,
+    _patchify_8x8,
+    _patchify_chroma_gather,
+    _perform_padding,
+    _unpatchify_chroma_gather,
+)
 from kornia.geometry.transform import rescale
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_available
@@ -138,3 +146,95 @@ def test_chroma_resampling_matches_rescale(size):
         assert_close(actual, expected[:, 0], rtol=0.0, atol=0.0)
         up = rescale(actual[:, None], factor=2.0, interpolation="bilinear", align_corners=False, antialias=False)
         assert_close(_chroma_upsampling(actual), up[:, 0], rtol=0.0, atol=0.0)
+
+
+# Sizes the exported programs and routes below are checked at: the padded block grid is a single block (16 x 16, 1 x 1,
+# 5 x 9), a row or a column of blocks, and several; the padding is zero, partial and one short of a block.
+_EXPORT_SHAPES = [
+    (2, 3, 32, 48),
+    (1, 3, 32, 48),
+    (3, 3, 48, 64),
+    (2, 3, 64, 32),
+    (1, 3, 41, 70),
+    (2, 3, 17, 17),
+    (1, 3, 16, 16),
+    (2, 3, 16, 40),
+    (1, 3, 33, 16),
+    (1, 3, 5, 9),
+    (1, 3, 1, 1),
+    (1, 3, 100, 131),
+]
+
+
+@pytest.mark.timeout(240)
+@pytest.mark.skipif(
+    torch_version_lt(2, 14, 0), reason="torch.export keeps the codec's height and width dynamic on 2.14"
+)
+@pytest.mark.parametrize("dim_min", [None, 1], ids=["default_range", "min_1"])
+def test_jpeg_codec_torch_export_matches_eager_at_other_shapes(dim_min):
+    """``torch.export`` with a dynamic height and width gives a program that holds at every size, not at the traced one.
+
+    The program used to raise ``ConstraintViolationError`` for named dims (#6294), and with ``Dim.AUTO`` it asserted
+    outside the traced padding class and at a size of 16 pixels.
+    """
+    from torch.export import Dim, export
+
+    model = JPEGCodecDifferentiable().eval()
+    example = (torch.rand(2, 3, 32, 48), torch.tensor([50.0, 80.0]))
+    options = {} if dim_min is None else {"min": dim_min}
+    batch, height, width = Dim("batch", **options), Dim("height", **options), Dim("width", **options)
+    program = export(
+        model, example, dynamic_shapes={"image_rgb": {0: batch, 2: height, 3: width}, "jpeg_quality": {0: batch}}
+    )
+    exported = program.module()
+
+    generator = torch.Generator().manual_seed(0)
+    for shape in _EXPORT_SHAPES:
+        image = torch.rand(*shape, generator=generator)
+        quality = torch.rand(shape[0], generator=generator) * 90.0 + 5.0
+        with torch.no_grad():
+            actual = exported(image, quality)
+            expected = model(image, quality)
+        assert actual.shape == expected.shape, f"traced at (32, 48), run at {shape}"
+        # Same operations on the same values: only the layout of the patches differs.
+        assert_close(actual, expected, rtol=0.0, atol=0.0)
+
+
+@pytest.mark.parametrize("grid", [(1, 1), (1, 3), (3, 1), (2, 5), (4, 6), (7, 2)])
+@pytest.mark.parametrize("batch", [1, 3])
+def test_chroma_patch_gather_matches_views(grid, batch):
+    """The gather torch.export takes for the chroma patches moves the same values as the views eager takes."""
+    generator = torch.Generator().manual_seed(0)
+    height, width = 8 * grid[0], 8 * grid[1]
+    cb = torch.randn(batch, height, width, generator=generator)
+    cr = torch.randn(batch, height, width, generator=generator)
+
+    patches = _patchify_chroma_gather(cb, cr)
+    assert_close(patches, torch.cat((_patchify_8x8(cb), _patchify_8x8(cr)), dim=1), rtol=0.0, atol=0.0)
+
+    cb_back, cr_back = _unpatchify_chroma_gather(patches, height, width)
+    assert_close(cb_back, cb, rtol=0.0, atol=0.0)
+    assert_close(cr_back, cr, rtol=0.0, atol=0.0)
+
+
+@pytest.mark.parametrize("shape", [(1, 3, 16, 16), (2, 3, 32, 48), (1, 3, 41, 70), (2, 3, 17, 33), (1, 3, 1, 1)])
+def test_export_routes_keep_eager_values_and_gradients(monkeypatch, shape):
+    """What ``torch.export`` takes for the chroma patches and the crop gives the eager values and gradients."""
+    model = JPEGCodecDifferentiable()
+    generator = torch.Generator().manual_seed(0)
+    image = torch.rand(*shape, generator=generator)
+    quality = torch.rand(shape[0], generator=generator) * 90.0 + 5.0
+    weights = torch.rand(*shape, generator=generator)
+
+    def run() -> tuple[torch.Tensor, torch.Tensor]:
+        x = image.clone().requires_grad_(True)
+        out = model(x, quality)
+        (out * weights).sum().backward()
+        return out.detach(), x.grad
+
+    expected, expected_grad = run()
+    monkeypatch.setattr(jpeg_module, "is_exporting", lambda: True)
+    actual, actual_grad = run()
+
+    assert_close(actual, expected, rtol=0.0, atol=0.0)
+    assert_close(actual_grad, expected_grad, rtol=0.0, atol=0.0)
