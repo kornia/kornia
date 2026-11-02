@@ -16,7 +16,6 @@
 #
 
 import math
-import warnings
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
@@ -56,8 +55,8 @@ class SOLD2_detector(nn.Module):
           ``LineDetectorCfg``) moves each of them by at most 1 pixel per axis, in 0.25 pixel steps.
 
     Args:
-        config (DetectorCfg): Configuration object containing all parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px.
+        config (DetectorCfg): Configuration object containing all parameters, or a dict of its fields. None will load
+            the default parameters, which are tuned for images in the range 400~800 px.
         pretrained (bool): If True, download and set pretrained weights to the model.
 
     Returns:
@@ -72,13 +71,6 @@ class SOLD2_detector(nn.Module):
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         if isinstance(config, dict):
-            warnings.warn(
-                "Usage of config as a plain dictionary is deprecated in favor of "
-                "`kornia.feature.sold2.structures.DetectorCfg`. The support of plain "
-                "dictionaries as config will be removed in a future release.",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
