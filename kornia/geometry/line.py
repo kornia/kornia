@@ -82,11 +82,8 @@ class ParametrizedLine(nn.Module):
           result is ``(B, B)``.
         - :meth:`intersect` returns ``(lambda, point)`` with ``point = point_at(lambda)``: ``lambda`` is in units of
           the stored direction, and the plane's normal need not be unit. It takes a 3D line. A batch of ``B`` lines
-          meets one plane, a batch of ``B`` planes or a batch of one, and a batch of one line meets a batch of
-          planes of any size. One unbatched line meets one plane or a batch of one, but with a batch of ``M > 1``
-          planes it raises ``RuntimeError``, except for ``M = 3``, where it silently returns one wrong point
-          (`#6483 <https://github.com/kornia/kornia/issues/6483>`_); build the line from ``origin[None]`` and
-          ``direction[None]`` instead.
+          meets one plane, a batch of ``B`` planes or a batch of one, and one unbatched line or a batch of one meets a
+          batch of planes of any size.
         - ``origin`` and ``direction`` are registered module state, so ``state_dict()`` and ``.to()`` include them.
           Outside graph capture, a floating-point tensor that takes no part in autograd (no ``grad_fn`` and
           ``requires_grad=False``) becomes an ``nn.Parameter``, so a line built from plain tensors, including the
@@ -141,7 +138,7 @@ class ParametrizedLine(nn.Module):
         return str(self)
 
     def __getitem__(self, idx: int) -> torch.Tensor:
-        return self.origin if idx == 0 else self.direction
+        return (self.origin, self.direction)[idx]
 
     def __iter__(self) -> Iterator[torch.Tensor]:
         yield from (self.origin, self.direction)
@@ -197,11 +194,9 @@ class ParametrizedLine(nn.Module):
         """Get the point at :math:`t` along this line.
 
         Args:
-            t: step along the line, in units of the direction's length: a number or a 0-d tensor for every row, or
-                one step per row of shape ``(B,)`` or ``(B, 1)`` for a line of shape ``(B, D)``. For ``N`` points on
-                one line of shape ``(D,)``, pass ``(N, 1)``: a ``(1,)`` step gives one ``(D,)`` point, an ``(N,)``
-                step raises for ``N`` other than 1 and ``D``, and with ``N = D`` it multiplies each coordinate of the
-                direction by its own value (`#6483 <https://github.com/kornia/kornia/issues/6483>`_).
+            t: step along the line, in units of the direction's length: a number or a 0-d tensor for every row,
+                one step per row of shape ``(B,)`` or ``(B, 1)`` for a line of shape ``(B, D)``, or ``N`` steps of
+                shape ``(N,)`` or ``(N, 1)`` for a line of shape ``(D,)``, giving ``(N, D)`` points.
 
         Return:
             the points :math:`o + t d`, ``(D,)`` or ``(B, D)``, or ``(N, D)`` for an ``(N, 1)`` step.
@@ -215,7 +210,7 @@ class ParametrizedLine(nn.Module):
         """
         if isinstance(t, Scalar):
             t = t.data
-        if isinstance(t, torch.Tensor) and t.ndim > 0 and t.ndim == self.direction.ndim - 1:
+        if isinstance(t, torch.Tensor) and t.ndim > 0 and t.ndim == max(self.direction.ndim - 1, 1):
             t = t[..., None]
         return self.origin + self.direction * t
 
@@ -282,10 +277,9 @@ class ParametrizedLine(nn.Module):
 
         Return:
             The pair ``(lambda, point)``. ``lambda`` is the line parameter of the intersection in units of the stored
-            direction, ``()`` for one line and one plane, ``(B,)`` for the broadcast batch, and ``(1,)`` for one
-            unbatched line with a batch of one plane. ``point`` is the intersection ``point_at(lambda)``, ``(3,)`` for
-            one unbatched line and ``(B, 3)`` for the broadcast batch; see the class conventions for one unbatched
-            line with a batch of planes.
+            direction, ``()`` for one unbatched line and one unbatched plane, and ``(B,)`` for the broadcast batch,
+            which for one unbatched line is the batch of the planes. ``point`` is the intersection
+            ``point_at(lambda)``, ``(3,)`` or ``(B, 3)`` with the same batch.
 
         Note:
             If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique

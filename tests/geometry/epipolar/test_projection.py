@@ -15,12 +15,14 @@
 # limitations under the License.
 #
 
+import re
+
 import pytest
 import torch
 from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
-from kornia.core.exceptions import ShapeError
+from kornia.core.exceptions import ShapeError, ValueCheckError
 from kornia.geometry.camera import PinholeCamera
 
 from testing.base import BaseTester
@@ -43,6 +45,17 @@ class TestIntrinsicsLike:
         assert camera_matrix.shape == (B, 3, 3)
         assert camera_matrix.device == image.device
         assert camera_matrix.dtype == image.dtype
+
+    def test_wrong_input_shape_raises_6454(self, device, dtype):
+        # An input that is not 4-D raised a bare AssertionError.
+        with pytest.raises(ShapeError, match=r"input must have shape \(B, C, H, W\), got \[3, 4, 5\]\."):
+            epi.intrinsics_like(1.0, torch.rand(3, 4, 5, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("focal", [0.0, -1.0])
+    def test_nonpositive_focal_raises_6454(self, focal, device, dtype):
+        # A zero or negative focal length raised a bare AssertionError; it is a value, not a shape.
+        with pytest.raises(ValueCheckError, match=re.escape(f"focal must not be zero or negative, got {focal}")):
+            epi.intrinsics_like(focal, torch.rand(1, 3, 4, 5, device=device, dtype=dtype))
 
 
 class TestScaleIntrinsics(BaseTester):
@@ -323,7 +336,7 @@ class TestConventionProjection(BaseTester):
         self.assert_close(Pb[:1], torch.cat([K1, torch.zeros_like(t)], -1))
         self.assert_close(Pb[1:], P)
         # K, R and t must have the same number of dimensions.
-        with pytest.raises(AssertionError):
+        with pytest.raises(ShapeError, match=r"K, R and t must have shapes .* with the same number of dimensions, got"):
             epi.projection_from_KRt(K2[0], R, t)
 
     def test_convention_krt_from_projection_returns_extrinsic_t(self, device, dtype):

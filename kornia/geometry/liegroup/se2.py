@@ -203,7 +203,7 @@ class Se2(nn.Module):
         Args:
             right: the other Se2 transformation, or points as a tensor or a ``Vector2``: ``(2,)`` or ``(N, 2)``
                 for an unbatched pose, ``(B, 2)``, one point per pose, or a single ``(2,)`` point for a batch of
-                ``B``.
+                ``B`` (a batch of one also maps ``(N, 2)``).
 
         Return:
             The resulting Se2 transformation, or the transformed points.

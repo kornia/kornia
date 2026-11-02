@@ -46,6 +46,7 @@ import torch
 from torch import nn
 
 from kornia.core._compat import _emit_deprecation_warning
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
@@ -185,9 +186,10 @@ def affine(
 
     ``out = affine(tensor, matrix)`` warps ``(C, H, W)`` or ``(B, C, H, W)`` images by ``(B, 2, 3)`` source→destination
     pixel affine matrices and returns them at their own size: :func:`warp_affine` with ``dsize=(H, W)``, plus an
-    unbatched image and broadcasting. One matrix serves every image of a batch, and one image, unbatched or of batch 1,
-    is warped by every matrix, so it returns ``(B, C, H, W)`` for ``B > 1`` matrices. For another output size, use
-    :func:`warp_affine`; to build the matrix from an angle, a shift, a scale and a shear, use :class:`Affine`.
+    unbatched image and broadcasting. One matrix, ``(1, 2, 3)`` or ``(2, 3)``, serves every image of a batch, and one
+    image, unbatched or of batch 1, is warped by every matrix, so it returns ``(B, C, H, W)`` for ``B > 1`` matrices.
+    For another output size, use :func:`warp_affine`; to build the matrix from an angle, a shift, a scale and a shear,
+    use :class:`Affine`.
 
     .. image:: _static/img/warp_affine.png
 
@@ -195,12 +197,13 @@ def affine(
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
         defaults and sampling rules.
 
-        - ``matrix`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``
+        - ``matrix`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``; an unbatched ``(2, 3)`` matrix
+          is read as ``(1, 2, 3)``.
 
     Args:
         tensor: The image tensor to be warped in shapes of
             ``(C, H, W)`` or ``(B, C, H, W)``.
-        matrix: The 2x3 affine transformation matrices, with shape ``(B, 2, 3)``.
+        matrix: The 2x3 affine transformation matrices, with shape ``(B, 2, 3)``, or one ``(2, 3)`` matrix.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
@@ -224,6 +227,12 @@ def affine(
         torch.Size([1, 2, 3, 5])
 
     """
+    # One (2, 3) matrix serves every image, as a (1, 2, 3) one does; read as a batch below, its 2 rows warped a single
+    # image twice (#6462).
+    if matrix.dim() == 2:
+        matrix = matrix.unsqueeze(0)
+    KORNIA_CHECK_SHAPE(matrix, ["B", "2", "3"])
+
     # warping needs data in the shape of BCHW
     is_unbatched: bool = tensor.dim() == 3
     if is_unbatched:
@@ -1125,9 +1134,9 @@ class Affine(nn.Module):
     then ``out = warper(input)`` warps ``(B, C, H, W)`` images, or one ``(C, H, W)`` image, by the matrix of
     :func:`get_affine_matrix2d`: a shear, a scale, a counter-clockwise rotation in degrees and a translation in pixels,
     the first three about ``center`` (by default the image centre). The parameters, and ``center`` when given, share
-    one batch size; without ``center``, it must equal the input's, a ``(C, H, W)`` input counting as 1
-    (`#6395 <https://github.com/kornia/kornia/issues/6395>`_). For a matrix you already have, use :func:`affine`;
-    for one kind of warp, :class:`Rotate`, :class:`Translate`, :class:`Scale` or :class:`Shear`.
+    one batch size ``P``. ``P`` and the input batch must be equal, or one of them 1, a ``(C, H, W)`` input counting
+    as 1: one parameter set warps every image, and ``P`` sets warp one image. For a matrix you already have, use
+    :func:`affine`; for one kind of warp, :class:`Rotate`, :class:`Translate`, :class:`Scale` or :class:`Shear`.
 
     Convention:
         - ``shear`` contains angles in radians, using the negative-tangent, x-then-y convention
@@ -1158,25 +1167,23 @@ class Affine(nn.Module):
 
     Raises:
         RuntimeError: At construction, if not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is
-            set, or if their batch sizes differ. At the call with ``center`` given, if the parameter batch and the
-            input batch differ and neither is 1.
+            set, or if their batch sizes differ.
         DeviceError: If ``angle``, ``translation``, ``scale_factor`` and ``shear`` are not all on one device.
         TypeCheckError: If they are on one device but do not all have one dtype. The ones not given are
             created on that device and in that dtype.
         ValueError: At the call, if ``center`` and the parameters have different batch sizes (construction does not
-            check ``center``), or, without ``center``, if the parameter batch differs from the input batch, a
-            ``(C, H, W)`` input counting as 1 (`#6395 <https://github.com/kornia/kornia/issues/6395>`_).
+            check ``center``), or if the parameter batch and the input batch differ and neither is 1, a
+            ``(C, H, W)`` input counting as 1.
 
     Returns:
-        The transformed tensor with same shape as input, except that with ``center`` given, one image warped by
-        ``B > 1`` parameter sets returns ``(B, C, H, W)``.
+        The transformed tensor with same shape as input, except that one image warped by ``P > 1`` parameter sets
+        returns ``(P, C, H, W)``.
 
     See Also:
         - :func:`get_affine_matrix2d`: the ``(B, 3, 3)`` matrix this module warps by, whose own angle turns clockwise
           (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - :func:`affine`: warp by an affine matrix you already have.
-        - :class:`Rotate`: a rotation alone, which, unlike this module without ``center``, shares one angle across a
-          batch.
+        - :class:`Rotate`: a rotation alone.
         - :class:`Shear`: raw shear factors about pixel ``(0, 0)``, which shear the other way below ``pi / 2``.
 
     Example:
@@ -1247,8 +1254,8 @@ class Affine(nn.Module):
                 :math:`H` is height, and :math:`W` is width.
 
         Returns:
-            Affine-warped tensor with shape ``(B, C, H, W)``. Values
-            sampled outside the input image are handled by ``self.padding_mode``.
+            Affine-warped tensor with the input's shape, except that one image warped by ``P > 1`` parameter sets
+            gives ``(P, C, H, W)``. Values sampled outside the input image are handled by ``self.padding_mode``.
         """
         if self.shear is None:
             sx = sy = None
@@ -1256,9 +1263,17 @@ class Affine(nn.Module):
             sx, sy = self.shear[..., 0], self.shear[..., 1]
 
         batch = input.shape[0] if input.dim() == 4 else 1
-        center = _compute_tensor_center(input).expand(batch, -1) if self.center is None else self.center
+        params_batch = self.angle.shape[0]
+        # The default center is the same for every image, so it takes the parameters' batch: a batch-1 parameter set
+        # then warps every image, and B parameter sets warp one image, as with an explicit center.
+        center = _compute_tensor_center(input).expand(params_batch, -1) if self.center is None else self.center
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
+        if params_batch not in (batch, 1) and batch != 1:
+            raise ValueError(
+                f"Affine has {params_batch} parameter sets for an input batch of {batch}: the two must match, or one "
+                "of them must be 1."
+            )
         return affine(input, matrix[..., :2, :3], self.mode, self.padding_mode, self.align_corners)
 
 

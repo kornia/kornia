@@ -60,10 +60,12 @@ def normalize_points(
           :math:`[-1, 1]` by the image size, not by the point statistics.
 
     """
-    if points.ndim != 3:
-        raise AssertionError(points.shape)
-    if points.shape[-1] != 2:
-        raise AssertionError(points.shape)
+    if points.ndim != 3 or points.shape[-1] != 2:
+        raise ShapeError(
+            f"points must have shape (B, N, 2), got {list(points.shape)}.",
+            actual_shape=list(points.shape),
+            expected_shape=["B", "N", "2"],
+        )
 
     B, _N, _ = points.shape
     device, dtype = points.device, points.dtype
@@ -72,7 +74,11 @@ def normalize_points(
         x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
     else:
         if weights.shape != points.shape[:2]:
-            raise AssertionError(weights.shape)
+            raise ShapeError(
+                f"weights must have shape (B, N) = {list(points.shape[:2])}, got {list(weights.shape)}.",
+                actual_shape=list(weights.shape),
+                expected_shape=["B", "N"],
+            )
         # Accumulate in at least float32: in half precision a sum followed by a division rounds twice where
         # ``mean`` rounds once, and uniform weights would then not reproduce the unweighted statistics.
         acc_dtype = torch.promote_types(dtype, torch.float32)
@@ -138,7 +144,11 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
 
     """
     if len(M.shape) < 2:
-        raise AssertionError(M.shape)
+        raise ShapeError(
+            f"M must have shape (*, m, n), got {list(M.shape)}.",
+            actual_shape=list(M.shape),
+            expected_shape=["*", "m", "n"],
+        )
     norm_val: torch.Tensor = M[..., -1:, -1:]
     mask = norm_val.abs() > eps
     divisor = torch.where(mask, norm_val, torch.ones_like(norm_val))
@@ -546,11 +556,19 @@ def run_8point(
     KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
     if points1.shape[1] < 8:
-        raise AssertionError(points1.shape)
+        raise ShapeError(
+            f"points1 and points2 must have shape (B, N, 2) with N >= 8, got {list(points1.shape)}.",
+            actual_shape=list(points1.shape),
+            expected_shape=["B", "N >= 8", "2"],
+        )
     if weights is not None:
         KORNIA_CHECK_SHAPE(weights, ["B", "N"])
-        if weights.shape[1] != points1.shape[1]:
-            raise AssertionError(weights.shape)
+        if weights.shape != points1.shape[:2]:
+            raise ShapeError(
+                f"weights must have shape (B, N) = {list(points1.shape[:2])}, got {list(weights.shape)}.",
+                actual_shape=list(weights.shape),
+                expected_shape=["B", "N"],
+            )
     # Weights take the points' dtype, as a caller's autocast used to cast them; mixed dtypes now fit outside it too.
     if weights is not None:
         weights = weights.to(points1.dtype)
@@ -698,7 +716,11 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
     elif points.shape[-1] == 3:
         points_h = points
     else:
-        raise AssertionError(points.shape)
+        raise ShapeError(
+            f"points must have shape (*, N, 2) or (*, N, 3), got {list(points.shape)}.",
+            actual_shape=list(points.shape),
+            expected_shape=["*", "N", "2 or 3"],
+        )
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
     # project points and retrieve lines components
     points_h = torch.transpose(points_h, dim0=-2, dim1=-1)
@@ -853,7 +875,10 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
     if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
-        raise AssertionError
+        raise ShapeError(
+            "E_mat, K1 and K2 must have shape (*, 3, 3) with the same number of dimensions, "
+            f"got {list(E_mat.shape)}, {list(K1.shape)} and {list(K2.shape)}."
+        )
 
     K1_inv, valid1 = safe_inverse_with_mask(K1)
     K2_inv, valid2 = safe_inverse_with_mask(K2)
@@ -903,7 +928,9 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
     KORNIA_CHECK_SHAPE(P1, ["*", "3", "4"])
     KORNIA_CHECK_SHAPE(P2, ["*", "3", "4"])
     if P1.shape[:-2] != P2.shape[:-2]:
-        raise AssertionError
+        raise ShapeError(
+            f"P1 and P2 must have shape (*, 3, 4) with the same batch shape, got {list(P1.shape)} and {list(P2.shape)}."
+        )
 
     def vstack(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         return torch.cat([x, y], dim=-2)

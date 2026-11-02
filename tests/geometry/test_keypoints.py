@@ -17,12 +17,103 @@
 
 import pytest
 import torch
+from torch._dynamo.exc import BackendCompilerFailed, Unsupported, UserError
 
 import kornia.augmentation as K
 from kornia.geometry.keypoints import Keypoints, Keypoints3D, VideoKeypoints
 from kornia.geometry.linalg import transform_points
 
 from testing.base import BaseTester, supports_bilinear_2d_grid_sample
+
+
+@pytest.mark.parametrize("container,coordinates", [(Keypoints, 2), (Keypoints3D, 3)])
+class TestKeypointsIndexing(BaseTester):
+    @pytest.mark.parametrize("num_points", [1, 4])
+    @pytest.mark.parametrize("key_kind", ["first", "last", "scalar_tensor"])
+    @pytest.mark.parametrize("strided", [False, True])
+    def test_scalar_unbatched(self, container, coordinates, num_points, key_kind, strided, device, dtype):
+        data = torch.arange(num_points * coordinates, device=device, dtype=dtype).reshape(num_points, coordinates)
+        if strided:
+            data = data.t().contiguous().t()
+        key = {"first": 0, "last": -1, "scalar_tensor": torch.tensor(-1, device=device)}[key_kind]
+        keypoints = container(data)
+
+        selected = keypoints[key]
+
+        assert type(selected) is container
+        assert selected.shape == (1, coordinates)
+        assert selected.data.dtype == dtype
+        assert selected.data.device == device
+        self.assert_close(selected.to_tensor(), data[key].unsqueeze(0), atol=0, rtol=0)
+        selected.data.add_(1)
+        self.assert_close(keypoints.data[key], selected.data[0], atol=0, rtol=0)
+        keypoints[key] = container(torch.full((1, coordinates), 7.0, device=device, dtype=dtype))
+        self.assert_close(data[key], torch.full((coordinates,), 7.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_existing_selection(self, container, coordinates, batched, device, dtype):
+        shape = (2, 4, coordinates) if batched else (4, coordinates)
+        data = torch.arange(8 * coordinates if batched else 4 * coordinates, device=device, dtype=dtype).reshape(shape)
+        keypoints = container(data)
+        for key in [
+            slice(None, 1),
+            slice(0, 0),
+            torch.tensor([1, 0], device=device),
+            torch.arange(data.shape[0], device=device) % 2 == 0,
+        ]:
+            self.assert_close(keypoints[key].data, data[key], atol=0, rtol=0)
+        if batched:
+            self.assert_close(keypoints[0].data, data[0], atol=0, rtol=0)
+        empty = container(data[:0])
+        assert empty[:].shape == data[:0].shape
+        with pytest.raises(IndexError):
+            empty[0]
+
+    @pytest.mark.parametrize("key", [(slice(None), 0), (Ellipsis, 0)])
+    def test_coordinate_selection_raises(self, container, coordinates, key, device, dtype):
+        # one coordinate of every point is not a point, even when there are as many points as coordinates
+        data = torch.arange(coordinates * coordinates, device=device, dtype=dtype).reshape(coordinates, coordinates)
+        with pytest.raises(ValueError, match="Keypoints shape must be"):
+            container(data)[key]
+
+    def test_gradcheck_scalar(self, container, coordinates, device):
+        data = torch.arange(3 * coordinates, device=device, dtype=torch.float64).reshape(3, coordinates)
+        self.gradcheck(lambda x: container(x)[-1].data, (data.requires_grad_(),))
+
+    @pytest.mark.parametrize("scalar_tensor", [False, True])
+    def test_dynamo_scalar(
+        self, container, coordinates, scalar_tensor, device, dtype, torch_optimizer, optimizer_backend
+    ):
+        data = torch.arange(4 * coordinates, device=device, dtype=dtype).reshape(4, coordinates)
+        key = torch.tensor(-1, device=device) if scalar_tensor else -1
+
+        def select(x, index):
+            return container(x)[index].data
+
+        expected = data[-1:]
+        self.assert_close(select(data, key), expected, atol=0, rtol=0)
+        compiled = torch_optimizer(select, fullgraph=True)
+        try:
+            actual = compiled(data, key)
+        except UserError as exc:
+            if (
+                scalar_tensor
+                and device.type == "cuda"
+                and optimizer_backend == "inductor"
+                and "Could not extract specialized integer from data-dependent expression" in str(exc)
+            ):
+                pytest.xfail("Dynamo cannot specialize a CUDA scalar tensor index, including raw tensor indexing")
+            raise
+        except Unsupported as exc:
+            if torch.__version__.startswith("2.5.") and "UserDefinedClassVariable" in str(exc):
+                pytest.xfail("PyTorch 2.5 cannot compile the keypoint type(self) constructor")
+            raise
+        except BackendCompilerFailed as exc:
+            if scalar_tensor and optimizer_backend == "inductor" and "GuardOnDataDependentSymNode" in str(exc):
+                pytest.xfail("Inductor cannot specialize a scalar tensor index, including raw tensor indexing")
+            raise
+        assert actual.shape == (1, coordinates)
+        self.assert_close(actual, expected, atol=0, rtol=0)
 
 
 class TestKeypoints(BaseTester):

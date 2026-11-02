@@ -93,6 +93,19 @@ class TestNormalizePoints(BaseTester):
         points = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
         self.gradcheck(epi.normalize_points, (points,))
 
+    @pytest.mark.parametrize("shape", [(5, 2), (1, 5, 3)])
+    def test_wrong_points_shape_raises_6454(self, shape, device, dtype):
+        # Points without the batch dimension or with three coordinates raised a bare AssertionError.
+        points = torch.rand(*shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"points must have shape \(B, N, 2\), got \["):
+            epi.normalize_points(points)
+
+    def test_wrong_weights_shape_raises_6454(self, device, dtype):
+        points = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        weights = torch.rand(1, 4, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"weights must have shape \(B, N\) = \[1, 5\], got \[1, 4\]\."):
+            epi.normalize_points(points, weights=weights)
+
 
 class TestNormalizeTransformation(BaseTester):
     def test_smoke(self, device, dtype):
@@ -126,6 +139,11 @@ class TestNormalizeTransformation(BaseTester):
     def test_gradcheck(self, device):
         trans = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
         self.gradcheck(epi.normalize_transformation, (trans,))
+
+    def test_vector_raises_6454(self, device, dtype):
+        # A tensor with fewer than two dimensions raised a bare AssertionError.
+        with pytest.raises(ShapeError, match=r"M must have shape \(\*, m, n\), got \[3\]\."):
+            epi.normalize_transformation(torch.rand(3, device=device, dtype=dtype))
 
 
 class TestFindFundamental(BaseTester):
@@ -367,6 +385,17 @@ class TestFindFundamental(BaseTester):
         assert grads[1][0, 3].abs() > 1e-3  # control: the dropped match moves F, so a zero gradient would be wrong
         self.assert_close(grads[0], grads[1], **tol)
 
+    def test_run_8point_wrong_sizes_raise_6454(self, device, dtype):
+        # Fewer than 8 points, or weights of another shape, raised a bare AssertionError.
+        points = torch.rand(1, 7, 2, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"points1 and points2 must have shape \(B, N, 2\) with N >= 8, got"):
+            fundamental_module.run_8point(points, points)
+        points = torch.rand(1, 8, 2, device=device, dtype=dtype)
+        for weights_shape in [(1, 9), (3, 8)]:
+            weights = torch.rand(*weights_shape, device=device, dtype=dtype)
+            with pytest.raises(ShapeError, match=r"weights must have shape \(B, N\) = \[1, 8\], got \["):
+                fundamental_module.run_8point(points, points, weights)
+
 
 class TestFundamentalAutocast(BaseTester):
     @pytest.mark.parametrize(
@@ -501,6 +530,18 @@ class TestComputeCorrespondEpilines(BaseTester):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         self.gradcheck(epi.compute_correspond_epilines, (point, F_mat), requires_grad=(True, False))
 
+    @pytest.mark.parametrize("shape", [(1, 5, 4), (5, 1)])
+    def test_wrong_points_width_raises_6454(self, shape, device, dtype):
+        # A last dimension other than 2 or 3 raised a bare AssertionError, batched or not.
+        F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        points = torch.rand(*shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"points must have shape \(\*, N, 2\) or \(\*, N, 3\), got \["):
+            epi.compute_correspond_epilines(points, F_mat)
+        # get_closest_point_on_epipolar_line passes pts1 straight here.
+        pts2 = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"points must have shape \(\*, N, 2\) or \(\*, N, 3\), got \["):
+            epi.get_closest_point_on_epipolar_line(points, pts2, F_mat)
+
 
 class TestFundamentlFromEssential(BaseTester):
     def test_smoke(self, device, dtype):
@@ -556,6 +597,17 @@ class TestFundamentlFromEssential(BaseTester):
         K1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         K2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         self.gradcheck(epi.fundamental_from_essential, (E_mat, K1, K2), requires_grad=(True, False, False))
+
+    def test_mismatched_dimensions_raise_6454(self, device, dtype):
+        # A different number of batch dimensions raised an AssertionError without a message.
+        E_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        with pytest.raises(
+            ShapeError,
+            match=r"E_mat, K1 and K2 must have shape \(\*, 3, 3\) with the same number of dimensions, "
+            r"got \[1, 3, 3\], \[3, 3\] and \[1, 3, 3\]\.",
+        ):
+            epi.fundamental_from_essential(E_mat, K, E_mat)
 
 
 class TestFundamentalFromProjections(BaseTester):
@@ -660,6 +712,17 @@ class TestFundamentalFromProjections(BaseTester):
         F_batch = epi.fundamental_from_projections(P1_batch, P2_batch)
         F = epi.fundamental_from_projections(P1, P2)
         self.assert_close(F_batch[0], F[0])
+
+    def test_mismatched_batch_shapes_raise_6454(self, device, dtype):
+        # Different batch shapes raised an AssertionError without a message.
+        P1 = torch.rand(1, 3, 4, device=device, dtype=dtype)
+        P2 = torch.rand(2, 3, 4, device=device, dtype=dtype)
+        with pytest.raises(
+            ShapeError,
+            match=r"P1 and P2 must have shape \(\*, 3, 4\) with the same batch shape, "
+            r"got \[1, 3, 4\] and \[2, 3, 4\]\.",
+        ):
+            epi.fundamental_from_projections(P1, P2)
 
 
 class TestPerpendicular(BaseTester):

@@ -941,9 +941,8 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         For ``float32`` or ``float64`` boxes with finite coordinates, distinct scores and ``iou_threshold >= 0`` it
         keeps the same boxes, in the same order, as ``torchvision.ops.nms``. Equal scores are ordered by
         :func:`torch.sort`, which is not stable, so with ties the order, and which of two overlapping tied boxes is
-        kept, can differ from torchvision. A box with a NaN coordinate is dropped by any higher-scored kept box and,
-        when kept, drops every lower-scored box, where torchvision keeps them
-        (`#6477 <https://github.com/kornia/kornia/issues/6477>`_).
+        kept, can differ from torchvision. A box with a NaN coordinate has a NaN IoU with every other box, which is
+        not above ``iou_threshold``: it neither suppresses nor is suppressed, as in ``torchvision.ops.nms``.
 
     Note:
         Two boxes whose union is empty, such as two zero-width boxes, have an IoU of ``0``, so at an ``iou_threshold``
@@ -1004,12 +1003,14 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
         union = areas[i] + areas[order[1:]] - inter
-        # Two zero-area boxes have a zero union, and their IoU is 0 rather than 0 / 0: a NaN would compare as an
-        # overlap below and suppress a disjoint box. torchvision keeps such a box too. The intersection is 0 whenever
-        # the union is not positive, so dividing it by 1 there gives 0, and a NaN coordinate still gives a NaN IoU.
+        # Two zero-area boxes have a zero union, and their IoU is 0 rather than 0 / 0, so they compare with
+        # iou_threshold like disjoint boxes. The intersection is 0 whenever the union is not positive, so dividing it
+        # by 1 there gives 0, and a NaN coordinate still gives a NaN IoU.
         ovr = inter / torch.where(union > 0, union, torch.ones_like(union))
 
-        inds = torch.where(ovr <= iou_threshold)[0]
+        # Suppress only when IoU is strictly above the threshold. In particular, NaN IoUs compare false here, so a
+        # box with NaN coordinates does not suppress the remaining boxes.
+        inds = torch.where(~(ovr > iou_threshold))[0]
         order = order[inds + 1]
 
     if len(keep) > 0:

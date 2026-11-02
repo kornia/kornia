@@ -85,11 +85,35 @@ def _so3_rotate(q: Quaternion, points: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(points, ["*", "3"])
     if _computes_in_float32(torch.promote_types(q.data.dtype, points.dtype)):
         q, points = q.to(torch.float32), points.float()
+    if q.data.dim() == 1 and points.dim() == 2:
+        # an unbatched rotation rotates every point of an (N, 3) point set, as So2 does for (N, 2)
+        q = Quaternion(q.data.expand(points.shape[0], 4))
     w = torch.zeros(*points.shape[:-1], 1, device=points.device, dtype=points.dtype)
     quat = Quaternion(torch.cat((w, points), -1))
     # q p q* scales p by |q|^2, so rotate by the unit direction of q
     q = q.normalize()
     return (q * quat * q.conj()).vec
+
+
+def _check_points_layout(q: Quaternion, points: torch.Tensor) -> None:
+    """Raise unless So3 and Se3 map ``points``: ``(3,)`` or ``(N, 3)`` unbatched, one point per pose for a batch.
+
+    For a batch of ``B`` poses the points are ``(B, 3)``; a batch of one pose also maps ``(N, 3)``, and one point
+    ``(1, 3)`` maps under every pose.
+    """
+    batch = q.data.shape[:-1]
+    if len(batch) == 0:
+        accepted = points.dim() in (1, 2)
+    else:
+        accepted = points.dim() == len(batch) + 1 and all(
+            p in (b, 1) or b == 1 for p, b in zip(points.shape[:-1], batch)
+        )
+    if not accepted:
+        raise ValueError(
+            "Expected points of shape (3,) or (N, 3) for an unbatched pose, or (B, 3), one point per pose, for a batch "
+            "of B poses (a batch of one pose also maps (N, 3), and one point (1, 3) maps under every pose). Got points "
+            f"of shape {tuple(points.shape)} for a pose of batch shape {tuple(batch)}."
+        )
 
 
 class So3(nn.Module):
@@ -98,14 +122,12 @@ class So3(nn.Module):
     ``r = So3.exp(omega)`` builds rotations from rotation vectors ``omega`` of shape ``(B, 3)``, the axis times the
     angle in radians; ``So3(q)`` wraps a ``(B, 4)`` :class:`~kornia.geometry.quaternion.Quaternion`,
     :meth:`from_matrix` reads ``(B, 3, 3)`` matrices, and ``So3.identity(B)`` and ``So3.random(B)`` build ``B``
-    rotations, or an unbatched one with ``batch_size=None``. ``r1 * r2`` composes a batch with a batch of the same size
-    or of one, but an unbatched rotation with a batch raises
-    (`#6481 <https://github.com/kornia/kornia/issues/6481>`_); ``r.inverse()`` inverts, ``r.log()`` returns the
-    ``(B, 3)`` rotation vectors and ``r.matrix()`` the ``(B, 3, 3)`` matrices; an unbatched rotation drops the ``B``.
-    ``r * p`` rotates points as :math:`R p`: one ``(3,)`` point for an unbatched rotation, and ``(B, 3)``, one point
-    per rotation, or a single ``(1, 3)`` point, not ``(3,)``, for a batch of ``B``; a batch of one also maps
-    ``(N, 3)``, but an unbatched rotation raises on ``(N, 3)``
-    (`#6426 <https://github.com/kornia/kornia/issues/6426>`_). For a rotation and a translation, use :class:`Se3`; for
+    rotations, or an unbatched one with ``batch_size=None``. ``r1 * r2`` composes a batch with a batch of the same size,
+    a batch of one or an unbatched rotation; ``r.inverse()`` inverts, ``r.log()`` returns the ``(B, 3)`` rotation
+    vectors and ``r.matrix()`` the ``(B, 3, 3)`` matrices; an unbatched rotation drops the ``B``. ``r * p`` rotates
+    points as :math:`R p`: ``(3,)`` or ``(N, 3)`` points for an unbatched rotation, and ``(B, 3)``, one point per
+    rotation, or a single ``(1, 3)`` point, not ``(3,)``, for a batch of ``B``; a batch of one also maps ``(N, 3)``.
+    For a rotation and a translation, use :class:`Se3`; for
     quaternion arithmetic, interpolation and Euler angles, :class:`~kornia.geometry.quaternion.Quaternion`.
 
     SO(3) is the group of rotations of :math:`R^3` about the origin under composition; see
@@ -118,7 +140,9 @@ class So3(nn.Module):
           :class:`~kornia.geometry.quaternion.Quaternion`, and returns the principal vector, of norm at most
           :math:`\pi`, the same for ``q`` and ``-q`` below a half turn.
         - ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p`` rotates points ``p``, a
-          tensor or a ``Vector3``, as :math:`R p`; and ``adjoint()`` is :math:`R` itself.
+          tensor or a ``Vector3``, as :math:`R p`: ``(3,)`` or ``(N, 3)`` for an unbatched ``So3``, and ``(B, 3)``,
+          one point per rotation, or ``(1, 3)``, not ``(3,)``, for a batch of ``B`` (a batch of one also maps
+          ``(N, 3)``); other layouts raise ``ValueError``. ``adjoint()`` is :math:`R` itself.
           :ref:`Rotations and rigid motions <rotation-conventions>` compares these with scipy, Sophus and Eigen.
         - A non-unit quaternion stands for the rotation of its direction :math:`q / |q|`, as for
           :meth:`~kornia.geometry.quaternion.Quaternion.matrix`: ``matrix()`` and ``s * p`` normalise it where they
@@ -193,11 +217,10 @@ class So3(nn.Module):
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
-            right: the other So3 transformation, a batch of the same size or of one (an unbatched rotation with a
-                batch raises, `#6481 <https://github.com/kornia/kornia/issues/6481>`_), or points as a tensor or a
-                ``Vector3``: ``(B, 3)``, one point per rotation, or ``(1, 3)``, not ``(3,)``, for a batch of ``B``,
-                and one ``(3,)`` point for an unbatched rotation. A batch of one also maps ``(N, 3)``; an unbatched
-                rotation raises on ``(N, 3)`` (`#6426 <https://github.com/kornia/kornia/issues/6426>`_).
+            right: the other So3 transformation, unbatched, a batch of the same size or a batch of one, or points
+                as a tensor or a ``Vector3``: ``(3,)`` or ``(N, 3)`` for an unbatched rotation, and ``(B, 3)``, one
+                point per rotation, or ``(1, 3)``, not ``(3,)``, for a batch of ``B`` (a batch of one also maps
+                ``(N, 3)``).
 
         Return:
             The resulting So3 transformation, or the rotated points of the type of ``right``.
@@ -212,6 +235,7 @@ class So3(nn.Module):
             return So3(self.q * right.q)
         if isinstance(right, (torch.Tensor, Vector3)):
             _right_data = _unwrap(right)
+            _check_points_layout(self.q, _right_data)
             out = _so3_rotate(self.q, _right_data).to(torch.promote_types(self.q.data.dtype, _right_data.dtype))
             return Vector3(out) if isinstance(right, Vector3) else out
         raise TypeError(f"Not So3 or torch.Tensor type. Got: {type(right)}")

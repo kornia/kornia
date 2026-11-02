@@ -201,29 +201,28 @@ class PyrUp(nn.Module):
         return pyrup(input, self.border_type, self.align_corners)
 
 
-def _extra_levels_as_int(extra_levels: Any) -> int:
-    """Return ``extra_levels`` as a positive ``int``, or raise :class:`~kornia.core.exceptions.ValueCheckError`.
+def _positive_int(name: str, value: Any) -> int:
+    """Return ``value`` as a positive ``int``, or raise :class:`~kornia.core.exceptions.ValueCheckError`.
 
-    ``_extra_levels_as_int(extra_levels)`` converts a positive integer-like value to ``int`` through ``operator.index``.
+    ``_positive_int(name, value)`` converts a positive integer-like value to ``int`` through ``operator.index``.
     Python and NumPy integers, 0-d integer arrays and integer tensors are accepted, as is anything else that
-    ``operator.index`` converts to a positive integer; bools of every kind are rejected. The error is raised directly
-    instead of through ``KORNIA_CHECK``: with ``extra_levels < 1`` the level that seeds the next octave does not exist,
-    so the guard must also hold under ``python -O``, ``KORNIA_CHECKS=0`` and ``disable_checks()``.
+    ``operator.index`` converts to a positive integer; bools of every kind are rejected. ``name`` is the argument named
+    in the error. The error is raised directly instead of through ``KORNIA_CHECK``: :class:`ScalePyramid` cannot build
+    an octave from ``n_levels < 1`` or seed the next one from ``extra_levels < 1``, so the guard must also hold under
+    ``python -O``, ``KORNIA_CHECKS=0`` and ``disable_checks()``.
     """
-    dtype = getattr(extra_levels, "dtype", None)
+    dtype = getattr(value, "dtype", None)
     # ``operator.index`` turns ``True``, ``torch.tensor(True)`` and, on older NumPy, ``np.bool_`` into 1.
-    is_bool = isinstance(extra_levels, bool) or dtype is torch.bool or getattr(dtype, "kind", None) == "b"
-    value: int | None = None
+    is_bool = isinstance(value, bool) or dtype is torch.bool or getattr(dtype, "kind", None) == "b"
+    index: int | None = None
     if not is_bool:
         try:
-            value = operator.index(extra_levels)
+            index = operator.index(value)
         except TypeError:
-            value = None
-    if value is None or value < 1:
-        raise ValueCheckError(
-            f"Invalid extra_levels, it must be a positive integer. Got: {extra_levels!r}", actual_value=extra_levels
-        )
-    return value
+            index = None
+    if index is None or index < 1:
+        raise ValueCheckError(f"Invalid {name}, it must be a positive integer. Got: {value!r}", actual_value=value)
+    return index
 
 
 class ScalePyramid(nn.Module):
@@ -252,10 +251,12 @@ class ScalePyramid(nn.Module):
           :math:`2^o` (:math:`2^{o - 1}` with ``double_image=True``), not this map
 
     Args:
-        n_levels: number of the levels in octave.
+        n_levels: number of levels per octave over which the blur doubles, a positive integer (a NumPy integer or
+          integer tensor is converted to ``int``). Each level is blurred ``2 ** (1 / n_levels)`` times more than
+          the one before.
         init_sigma: initial blur level.
-        min_size: the minimum size of the octave in pixels: an octave after the first is built only when its shorter
-          side is larger than ``min_size``.
+        min_size: the minimum size of the octave in pixels, a non-negative number: an octave after the first is built
+          only when its shorter side is larger than ``min_size``, so ``0`` halves the image down to one pixel.
         double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
         extra_levels: number of levels per octave beyond ``n_levels``, a positive integer (a NumPy integer or
           integer tensor is converted to ``int``); the default 3 is what DoG non-maximum suppression needs. Level
@@ -268,8 +269,9 @@ class ScalePyramid(nn.Module):
         3rd output: pixel_dists, the nominal pixel spacing of each level relative to the input.
 
     Raises:
-        ValueCheckError: if ``extra_levels`` is not a positive integer. Raised even when the ``KORNIA_CHECK``
-            helpers are disabled, because ``forward`` could not build the pyramid.
+        ValueCheckError: if ``n_levels`` or ``extra_levels`` is not a positive integer, or ``min_size`` is negative
+            or NaN. Raised even when the ``KORNIA_CHECK`` helpers are disabled, because ``forward`` could not build
+            the pyramid.
 
     Shape:
         - Input: ``(B, C, H, W)``
@@ -298,7 +300,14 @@ class ScalePyramid(nn.Module):
         extra_levels: int = 3,
     ) -> None:
         super().__init__()
-        extra_levels = _extra_levels_as_int(extra_levels)
+        n_levels = _positive_int("n_levels", n_levels)
+        extra_levels = _positive_int("extra_levels", extra_levels)
+        # `not (min_size >= 0)` also rejects NaN; a negative or NaN min_size never stops the octave loop, which then
+        # halves the image down to an empty one.
+        if not (min_size >= 0):
+            raise ValueCheckError(
+                f"Invalid min_size, it must be a non-negative number. Got: {min_size!r}", actual_value=min_size
+            )
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
         self.extra_levels = extra_levels

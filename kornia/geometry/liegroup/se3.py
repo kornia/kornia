@@ -28,7 +28,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import DeviceError, TypeCheckError
 from kornia.core.utils import register_module_state
-from kornia.geometry.liegroup.so3 import So3, _so3_rotate, _so3_small_angle_coefficients
+from kornia.geometry.liegroup.so3 import So3, _check_points_layout, _so3_rotate, _so3_small_angle_coefficients
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -73,12 +73,11 @@ class Se3(nn.Module):
     :math:`v = [\upsilon, \omega]` of shape ``(B, 6)``, translation first, :meth:`from_matrix` from ``(B, 4, 4)``
     matrices, :meth:`from_qxyz` from ``(B, 7)`` rows ``[qw, qx, qy, qz, x, y, z]``, and ``Se3.identity(B)`` and
     ``Se3.random(B)`` build ``B`` poses, or an unbatched one with ``batch_size=None``. ``g1 * g2`` composes a batch
-    with a batch of the same size or of one, but an unbatched pose with a batch raises
-    (`#6481 <https://github.com/kornia/kornia/issues/6481>`_); ``g.inverse()`` inverts, ``g.log()`` returns the
-    ``(B, 6)`` tangent vectors and ``g.matrix()`` the ``(B, 4, 4)`` matrices; an unbatched pose drops the ``B``.
-    ``g * p`` maps points as :math:`R p + t`: one ``(3,)`` point for an unbatched pose, and ``(B, 3)``, one point per
-    pose, or a single ``(1, 3)`` point, not ``(3,)``, for a batch of ``B``; a batch of one also maps ``(N, 3)``, but
-    an unbatched pose raises on ``(N, 3)`` (`#6426 <https://github.com/kornia/kornia/issues/6426>`_). For a pose that
+    with a batch of the same size, a batch of one or an unbatched pose; ``g.inverse()`` inverts, ``g.log()`` returns
+    the ``(B, 6)`` tangent vectors and ``g.matrix()`` the ``(B, 4, 4)`` matrices; an unbatched pose drops the ``B``.
+    ``g * p`` maps points as :math:`R p + t`: ``(3,)`` or ``(N, 3)`` points for an unbatched pose, and ``(B, 3)``,
+    one point per pose, or a single ``(1, 3)`` point, not ``(3,)``, for a batch of ``B``; a batch of one also maps
+    ``(N, 3)``. For a pose that
     names its frames and checks them when composing, use :class:`~kornia.geometry.pose.NamedPose`; for plain
     ``(N, 4, 4)`` matrices, :func:`~kornia.geometry.linalg.compose_transformations`.
 
@@ -198,11 +197,9 @@ class Se3(nn.Module):
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
-            right: the other Se3 transformation, a batch of the same size or of one (an unbatched pose with a batch
-                raises, `#6481 <https://github.com/kornia/kornia/issues/6481>`_), or points as a tensor or ``Vector3``:
-                ``(B, 3)``, one point per pose, or ``(1, 3)``, not ``(3,)``, for a batch of ``B``, and one ``(3,)``
-                point for an unbatched pose. A batch of one also maps ``(N, 3)``; an unbatched pose raises on
-                ``(N, 3)`` (`#6426 <https://github.com/kornia/kornia/issues/6426>`_).
+            right: the other Se3 transformation, unbatched, a batch of the same size or a batch of one, or points
+                as a tensor or ``Vector3``: ``(3,)`` or ``(N, 3)`` for an unbatched pose, and ``(B, 3)``, one point
+                per pose, or ``(1, 3)``, not ``(3,)``, for a batch of ``B`` (a batch of one also maps ``(N, 3)``).
 
         Return:
             The resulting Se3 transformation, or the transformed points.
@@ -216,6 +213,7 @@ class Se3(nn.Module):
         if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
+            _check_points_layout(so3.q, _right_data)
             # R p + t is rounded once, so float16/bfloat16 add the translation to the float32 rotated point
             out = (_so3_rotate(so3.q, _right_data) + t).to(torch.promote_types(t.dtype, _right_data.dtype))
             return Vector3(out) if isinstance(right, Vector3) else out

@@ -58,6 +58,9 @@ class TestSimilarity(BaseTester):
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             s = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
             assert s is not None
+            text = repr(s)
+            assert text.startswith("Similarity(angle = ")
+            assert ",\n shift=" in text
 
     @pytest.mark.parametrize(
         "height, width, expected",
@@ -366,6 +369,17 @@ class TestImageRegistrator(BaseTester):
         ir = ImageRegistrator("rotation", lr=0.1, num_iterations=60, pyramid_levels=1, tolerance=0.0).to(device, dtype)
         ir.register(scene(0.0), scene(6.0))
         assert abs(ir.model.rot.item() + 6.0) < 0.4
+
+    def test_different_shapes_message_6454(self, device, dtype):
+        # The message carried a run of spaces from its string literal.
+        ir = ImageRegistrator("similarity").to(device, dtype)
+        src = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        dst = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        with pytest.raises(ValueError) as excinfo:
+            ir.get_single_level_loss(src, dst, ir.model())
+        assert str(excinfo.value) == (
+            "Cannot register images of different shapes torch.Size([1, 1, 8, 8]) torch.Size([1, 1, 6, 6])"
+        )
 
 
 class TestConventionsImageRegistrator(BaseTester):

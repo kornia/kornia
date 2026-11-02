@@ -27,6 +27,7 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
+from ._layout import _patch_conv_layout
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 from .siftdesc import _gradient_magnitude_orientation
 
@@ -284,7 +285,7 @@ class OriNet(nn.Module):
             angle in radians: ``(B)``
 
         """
-        xy = self.features(self._normalize_input(patch)).view(-1, 2)
+        xy = self.features(_patch_conv_layout(self._normalize_input(patch))).view(-1, 2)
         return torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
 
 

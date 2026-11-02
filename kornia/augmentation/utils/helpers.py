@@ -16,13 +16,14 @@
 #
 
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, NoReturn, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from torch.distributions import Beta, Uniform
 
 # Both moved to kornia.core.ops; re-exported so that existing imports from this module keep working.
+from kornia.core.exceptions import InputRankError
 from kornia.core.ops import _constant_tensor, _flatten_constant  # noqa: F401
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -260,6 +261,22 @@ def _transform_input3d_by_shape(
     return input
 
 
+# The input shapes an augmentation accepts, as listed in the error for any other rank (#4424).
+_IMAGE_SHAPES = "either (H, W), (C, H, W) or (*, C, H, W)"
+_VOLUME_SHAPES = "either (D, H, W), (C, D, H, W) or (*, C, D, H, W)"
+
+
+def _raise_input_rank_error(shape: torch.Size, accepted: str) -> NoReturn:
+    """Raise the :class:`~kornia.core.exceptions.InputRankError` every augmentation entry point uses for a bad rank.
+
+    Args:
+        shape: the shape of the rejected input.
+        accepted: the accepted shapes, such as ``_IMAGE_SHAPES``, completing "must have a shape of ...".
+
+    """
+    raise InputRankError(f"Input size must have a shape of {accepted}. Got {shape}", actual_shape=tuple(shape))
+
+
 def _transform_input(input: torch.Tensor) -> torch.Tensor:
     r"""Unsqueeze an ``(H, W)`` or ``(C, H, W)`` image tensor to 4 dims, ``(B, C, H, W)``; a 4-dim input is kept.
 
@@ -274,7 +291,7 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) not in [2, 3, 4]:
-        raise ValueError(f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
+        _raise_input_rank_error(input.shape, _IMAGE_SHAPES)
 
     if len(input.shape) == 2:
         input = input.unsqueeze(0)
@@ -299,9 +316,7 @@ def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) not in [3, 4, 5]:
-        raise ValueError(
-            f"Input size must have a shape of either (D, H, W), (C, D, H, W) or (*, C, D, H, W). Got {input.shape}"
-        )
+        _raise_input_rank_error(input.shape, _VOLUME_SHAPES)
 
     if len(input.shape) == 3:
         input = input.unsqueeze(0)

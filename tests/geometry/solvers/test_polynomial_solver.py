@@ -698,6 +698,26 @@ class TestMultiplyDegTwoOnePoly(BaseTester):
         result = solver.multiply_deg_two_one_poly(a, b)
         self.assert_close(result, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize(
+        "a_shape, b_shape, message",
+        [
+            ((10,), (4,), r"a must have shape \(B, 10\)"),
+            ((1, 10), (4,), r"b must have shape \(B, 4\)"),
+            ((1, 2, 10), (1, 2, 4), r"a must have shape \(B, 10\)"),
+            ((2, 4), (2, 10), r"a must have shape \(B, 10\)"),
+            ((2, 8), (2, 5), r"a must have shape \(B, 10\)"),
+            ((2, 10), (2, 5), r"b must have shape \(B, 4\)"),
+        ],
+        ids=["unbatched_a", "unbatched_b", "extra_dim", "swapped", "other_product_40", "b_width"],
+    )
+    def test_wrong_shape_raises_6454(self, a_shape, b_shape, message, device, dtype):
+        # An unbatched a failed in unsqueeze(2) with an IndexError and an unbatched b with a RuntimeError; sizes whose
+        # product is 40 returned a (B, 20) tensor, as only the product of the last two sizes was used.
+        a = torch.rand(*a_shape, device=device, dtype=dtype)
+        b = torch.rand(*b_shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=message):
+            solver.multiply_deg_two_one_poly(a, b)
+
 
 class TestDeterminantToPolynomial(BaseTester):
     def test_smoke(self, device, dtype):

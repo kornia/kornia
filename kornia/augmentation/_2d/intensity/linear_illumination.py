@@ -103,8 +103,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -120,8 +120,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")
@@ -223,8 +223,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -240,8 +240,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")

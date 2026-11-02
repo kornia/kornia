@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 from torch.utils._python_dispatch import TorchDispatchMode
@@ -447,6 +449,83 @@ class TestCropByBoxes(BaseTester):
 
         patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
         self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("validate_boxes", [True, False])
+    def test_validate_boxes_is_deprecated_and_ignored_6401(self, validate_boxes, device, dtype):
+        # `validate_boxes` is read nowhere: the boxes are not validated, whatever its value. It now warns when
+        # passed, and the result stays what the call without it returns.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+        expected = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+
+        with pytest.warns(DeprecationWarning, match="validate_boxes") as record:
+            out = kornia.geometry.transform.crop_by_boxes(inp, src, dst, validate_boxes=validate_boxes)
+
+        # The warning names the caller's line, not a line inside kornia.
+        assert [w.filename for w in record if "validate_boxes" in str(w.message)] == [__file__]
+        self.assert_close(out, expected)
+
+    def test_validate_boxes_positional_is_deprecated_6401(self, device, dtype):
+        # It is the seventh parameter, so a caller can also pass it by position.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+        expected = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+
+        with pytest.warns(DeprecationWarning, match="validate_boxes"):
+            out = kornia.geometry.transform.crop_by_boxes(inp, src, dst, "bilinear", "zeros", True, True)
+
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize("kwargs", [{}, {"validate_boxes": None}], ids=["omitted", "none"])
+    def test_no_warning_without_validate_boxes_6401(self, kwargs, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            kornia.geometry.transform.crop_by_boxes(inp, src, dst, **kwargs)
+
+    def test_scriptable_with_the_validate_boxes_deprecation_6401(self, device, dtype):
+        # The deprecation warning must not take `crop_by_boxes` out of TorchScript: it scripted before #6401, and
+        # the scripted call matches eager.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        src = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)  # 1x4x2
+
+        scripted = torch.jit.script(kornia.geometry.transform.crop_by_boxes)
+
+        self.assert_close(scripted(inp, src, dst), kornia.geometry.transform.crop_by_boxes(inp, src, dst))
+
+    @pytest.mark.parametrize("validate_boxes", [None, True, False])
+    def test_convention_boxes_are_not_validated_6401(self, validate_boxes, device, dtype):
+        # A trapezoid is not a rectangle, and `crop_by_boxes` does not require one: it maps `src_box` onto
+        # `dst_box` by a perspective transform. No value of `validate_boxes` makes it reject this box, so
+        # validating by default would change a result that works today.
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("bilinear 2D grid_sample is unavailable for this device and dtype")
+        inp = torch.arange(36.0, device=device, dtype=dtype).view(1, 1, 6, 6)
+        src = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [5.0, 4.0], [0.0, 4.0]]], device=device, dtype=dtype)  # 1x4x2
+        dst = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]]], device=device, dtype=dtype)  # 1x4x2
+        expected = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            out = kornia.geometry.transform.crop_by_boxes(inp, src, dst, validate_boxes=validate_boxes)
+
+        assert out.shape == (1, 1, 4, 4)
+        assert out.isfinite().all()
+        self.assert_close(out, expected)
 
     @pytest.mark.parametrize("size", [(1, 3), (3, 1), (1, 1)])
     def test_convention_size_one_axis_4747(self, size, device, dtype):

@@ -2605,20 +2605,11 @@ class TestPolCartConversions(BaseTester):
         rho_origin = kornia.geometry.conversions.cart2pol(zero, zero)[0]
         self.assert_close(rho_origin, zero, atol=0.0, rtol=0.0)
 
-        # Use float64 for the tiny-radius regression where supported so the
-        # sqrt(x**2) round-trip is not dominated by float32 precision.
-        tiny_dtype = torch.float32 if device.type == "mps" else torch.float64
-        tiny_rtol = 2e-3 if tiny_dtype == torch.float32 else 1e-12
-        tiny_atol = 1e-7 if tiny_dtype == torch.float32 else 1e-15
-
-        x = torch.tensor(5.0e-5, device=device, dtype=tiny_dtype)
-        y = torch.tensor(0.0, device=device, dtype=tiny_dtype)
-        rho_sub_eps = kornia.geometry.conversions.cart2pol(x, y)[0]
-        self.assert_close(rho_sub_eps, x, rtol=tiny_rtol, atol=tiny_atol)
-
-        x = torch.tensor(1.0e-4, device=device, dtype=tiny_dtype)
-        rho_at_eps = kornia.geometry.conversions.cart2pol(x, y)[0]
-        self.assert_close(rho_at_eps, x, rtol=tiny_rtol, atol=tiny_atol)
+        # inside the eps neighbourhood and at its edge the radius is |x| exactly, in the test dtype; it used to be
+        # (rho + 1) - 1, which this test tolerated with float64 and rtol=2e-3 (#6440)
+        x = torch.tensor([5.0e-5, 1.0e-4], device=device, dtype=dtype)
+        rho_sub_eps = kornia.geometry.conversions.cart2pol(x, torch.zeros_like(x))[0]
+        self.assert_close(rho_sub_eps, x, atol=0.0, rtol=0.0)
 
         x = torch.tensor(3.0, device=device, dtype=dtype)
         y = torch.tensor(4.0, device=device, dtype=dtype)
@@ -2632,6 +2623,136 @@ class TestPolCartConversions(BaseTester):
 
         self.assert_close(rho, torch.tensor(0.0, device=device, dtype=torch.float32))
         self.assert_close(xy.grad, torch.zeros_like(xy))
+
+    @pytest.mark.parametrize(
+        "rho_dtype, x, y",
+        [
+            # a float16 x**2 + y**2 overflows from a radius of about 256 (#6414); float32 holds it
+            (torch.float16, 300.0, 150.0),
+            (torch.float16, 60000.0, 30000.0),
+            # a float16 x**2 + y**2 underflows: the radius came back inexact
+            (torch.float16, 2e-4, 0.0),
+        ],
+    )
+    def test_cart2pol_rho_is_correctly_rounded_when_square_sum_is_not_representable(self, rho_dtype, x, y, device):
+        # Expected: the float64 hypot of the dtype-rounded inputs, rounded once to the dtype.
+        xt = torch.tensor(x, device=device, dtype=rho_dtype)
+        yt = torch.tensor(y, device=device, dtype=rho_dtype)
+        # rounded to rho_dtype on the CPU before it moves, so no float64 tensor reaches the device (MPS has none)
+        expected = torch.tensor(math.hypot(xt.item(), yt.item()), dtype=torch.float64).to(rho_dtype).to(device)
+
+        rho = kornia.geometry.conversions.cart2pol(xt, yt)[0]
+
+        self.assert_close(rho, expected, atol=0.0, rtol=0.0)
+
+    def test_cart2pol_float16_rho_with_a_0d_float32_operand_is_formed_in_float32(self, device):
+        # rho is float16 under torch's rank-aware promotion, so its square sum must still be formed in float32 (#6414):
+        # promote_types(float16, float32) would say float32 and skip that
+        x = torch.tensor([300.0], device=device, dtype=torch.float16)
+        y = torch.tensor(150.0, device=device, dtype=torch.float32)
+
+        rho = kornia.geometry.conversions.cart2pol(x, y)[0]
+
+        assert rho.dtype == torch.float16
+        self.assert_close(rho, torch.tensor([335.5], device=device, dtype=torch.float16), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("radius", [1e-4, 5e-5, 1e-5, 1e-6, 5e-8])
+    def test_cart2pol_rho_is_exact_inside_eps_6440(self, radius, device, dtype):
+        # Inside the eps neighbourhood rho was computed as (rho + 1) - 1, which rounded it to a multiple of the
+        # spacing at 1 (#6440); it is now the exact square root, sqrt(x ** 2) = |x|.
+        x = torch.tensor([radius, -radius], device=device, dtype=dtype)
+
+        rho = kornia.geometry.conversions.cart2pol(x, torch.zeros_like(x))[0]
+
+        self.assert_close(rho, x.abs(), atol=0.0, rtol=0.0)
+
+    def test_cart2pol_rho_gradient_is_finite_for_a_large_radius(self, device):
+        # d rho / d (x, y) = (x, y) / rho = (2, 1) / sqrt(5), also where the float16 x**2 + y**2 overflows.
+        rho_dtype = torch.float16
+        xy = torch.tensor([300.0, 150.0], device=device, dtype=rho_dtype, requires_grad=True)
+
+        kornia.geometry.conversions.cart2pol(xy[0], xy[1])[0].backward()
+
+        expected = torch.tensor([2.0, 1.0], device=device, dtype=torch.float32) / math.sqrt(5.0)
+        self.assert_close(xy.grad.float(), expected, atol=1e-2, rtol=1e-2)
+
+    @pytest.mark.parametrize("rho_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_cart2pol_rho_gradient_does_not_overflow_for_a_large_upstream_gradient(self, rho_dtype, device):
+        # The backward pass must not form upstream * x before dividing by rho: in float16 a 30000 upstream
+        # gradient times x = 3 overflows although the result, 30000 * (0.6, 0.8), is representable.
+        xy = torch.tensor([3.0, 4.0], device=device, dtype=rho_dtype, requires_grad=True)
+
+        rho = kornia.geometry.conversions.cart2pol(xy[0], xy[1])[0]
+        rho.backward(torch.tensor(30000.0, device=device, dtype=rho_dtype))
+
+        expected = torch.tensor([18000.0, 24000.0], device=device, dtype=torch.float32)
+        self.assert_close(xy.grad.float(), expected, atol=0.0, rtol=1e-2)
+
+    @pytest.mark.parametrize(
+        "x_dtype, x_shape, y_dtype, y_shape, expected",
+        [
+            (torch.float32, (3,), torch.float64, (), torch.float32),
+            (torch.float16, (3,), torch.float32, (), torch.float16),
+            (torch.float64, (), torch.float32, (3,), torch.float32),
+            (torch.int64, (3,), torch.int64, (3,), None),  # None: the default float dtype
+        ],
+    )
+    def test_cart2pol_rho_dtype_follows_torch_promotion_like_phi(
+        self, x_dtype, x_shape, y_dtype, y_shape, expected, device
+    ):
+        # rho has the dtype of sqrt(x**2 + y**2) under torch's rank-aware promotion, as phi = atan2(y, x) does: a 0-d
+        # operand does not decide it, and integer input gives the default float dtype.
+        if device.type == "mps" and torch.float64 in (x_dtype, y_dtype):
+            pytest.skip("MPS does not support float64")
+        expected = torch.get_default_dtype() if expected is None else expected
+        x = torch.full(x_shape, 3, device=device, dtype=x_dtype)
+        y = torch.full(y_shape, 4, device=device, dtype=y_dtype)
+
+        rho, phi = kornia.geometry.conversions.cart2pol(x, y)
+
+        assert rho.dtype == phi.dtype == expected
+        self.assert_close(rho, torch.full_like(rho, 5.0))
+
+    def test_cart2pol_torchscript_matches_eager(self, device, dtype):
+        # cart2pol is reached from scripted code (kornia.feature.mkd), so it must stay scriptable. (300, 150) and
+        # (1e4, 5e3) overflow a float16 square sum, 5e-5 lies inside eps, and (0, 0) is the origin.
+        x = torch.tensor([3.0, 0.0, 300.0, 1e4, 5e-5], device=device, dtype=dtype)
+        y = torch.tensor([4.0, 0.0, 150.0, 5e3, 0.0], device=device, dtype=dtype)
+        scripted = torch.jit.script(kornia.geometry.conversions.cart2pol)
+
+        rho, phi = scripted(x, y)
+
+        expected_rho, expected_phi = kornia.geometry.conversions.cart2pol(x, y)
+        self.assert_close(rho, expected_rho, atol=0.0, rtol=0.0)
+        self.assert_close(phi, expected_phi, atol=0.0, rtol=0.0)
+
+    @pytest.mark.device_agnostic
+    def test_cart2pol_onnx_export_legacy_matches_eager(self, dtype):
+        # cart2pol must stay exportable: 5e-5 takes the inside-eps branch and (0, 0) is the origin, the rest the
+        # outside one.
+        if dtype != torch.float32:
+            pytest.skip("the exported graph is checked once, in float32")
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+
+        class Cart2Pol(torch.nn.Module):
+            def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+                return torch.stack(kornia.geometry.conversions.cart2pol(x, y), -1)
+
+        x = torch.tensor([3.0, 0.0, 300.0, 5e-5, -2.0], dtype=dtype)
+        y = torch.tensor([4.0, 0.0, 150.0, 0.0, -1.0], dtype=dtype)
+        model = Cart2Pol()
+        buffer = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, (x, y), buffer, input_names=["x", "y"], opset_version=17, dynamo=False)
+        session = ort.InferenceSession(buffer.getvalue(), providers=["CPUExecutionProvider"])
+        exported = torch.from_numpy(session.run(None, {"x": x.numpy(), "y": y.numpy()})[0])
+        eager = model(x, y)
+        self.assert_close(exported[:, 0], eager[:, 0])
+        # phi is compared off the origin only: the exported atan2(0, 0) is nan, independently of the radius
+        off_origin = (x != 0) | (y != 0)
+        self.assert_close(exported[off_origin, 1], eager[off_origin, 1])
 
     def test_convention_positive_rotation_decreases_cart2pol_phi(self, device, dtype):
         # Cross-symbol convention pin: enforces the opposite-sense relation between

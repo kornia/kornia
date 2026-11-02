@@ -423,6 +423,7 @@ See [the fragment guide](changelog.d/README.md) for examples and release instruc
 - Respond to review feedback when you can
 - Be open to feedback and explain your decisions when questioned
 - Remember that review is done by people with limited time and may not happen quickly
+- Pull requests are reviewed by maintainers. Please do not post reviews or approvals on other contributors' pull requests; if you found a problem in one, describe it on the linked issue instead
 
 ### Working with AI
 

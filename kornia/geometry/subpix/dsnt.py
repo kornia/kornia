@@ -28,7 +28,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, _check_async
 from kornia.core.utils import is_compiling
 from kornia.geometry.grid import create_meshgrid
 
@@ -58,9 +58,8 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     ``probs = spatial_softmax2d(heatmap, temperature)`` takes a ``(B, N, H, W)`` heatmap and returns, for each of its
     ``B x N`` channels, the softmax of ``heatmap / temperature`` over all ``H x W`` pixels, ``(B, N, H, W)``: each map
     sums to one. This differs from :py:class:`torch.nn.Softmax2d`, which applies the softmax across channels at each
-    pixel. An integer heatmap returns torch's default floating dtype; with a tensor ``temperature`` it gives wrong
-    probabilities, because the temperature is cast to the integer dtype first
-    (`#6472 <https://github.com/kornia/kornia/issues/6472>`_), so pass a Python float. Pass the result to
+    pixel. An integer heatmap returns torch's default floating dtype, with a float or a tensor ``temperature``. Pass the
+    result to
     :func:`spatial_expectation2d` for its expected ``(x, y)``, or use :func:`spatial_soft_argmax2d` for both steps in
     one call.
 
@@ -100,13 +99,15 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor | 
     if temperature is None:
         temperature = 1.0
     _check_positive_temperature(temperature)
-    if isinstance(temperature, torch.Tensor):
-        temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.reshape(batch_size, channels, height * width)
     # An integer map is divided in the default floating dtype, as ``x / temperature`` does; the shift below would wrap
     # in its own dtype (``uint8``).
     if not x.is_floating_point():
         x = x.to(torch.get_default_dtype())
+    if isinstance(temperature, torch.Tensor):
+        # Cast the temperature to the dtype the division runs in, not to the input's: an integer input dtype would
+        # truncate a fractional temperature first (0.5 to 0, which then divides by zero, and 2.5 to 2).
+        temperature = temperature.to(device=input.device, dtype=x.dtype)
 
     # Softmax is invariant to a shift by a constant per map. Subtracting the maximum leaves every logit at or below
     # zero, so dividing by a sharp temperature cannot overflow the input dtype (``max|logit| / temperature > 65504``
@@ -203,8 +204,8 @@ def render_gaussian2d(
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: ``(*, 2)``.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
-          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Nonzero; its sign is ignored. A zero std
-          returns an all-NaN map instead of raising (`#6472 <https://github.com/kornia/kornia/issues/6472>`_).
+          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Every entry must be nonzero; its sign is
+          ignored.
         size: the (height, width) of the output image.
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
@@ -225,6 +226,10 @@ def render_gaussian2d(
     """
     if not (std.dtype == mean.dtype and std.device == mean.device):
         raise TypeError("Expected inputs to have the same dtype and device")
+
+    # A zero std makes the inverse variance infinite, and the map comes out all NaN. The check runs where ``std``
+    # lives, so a device tensor is not read back on the host (see ``_check_async``).
+    _check_async((std != 0).all(), "std should be nonzero")
 
     height, width = size
     dtype = mean.dtype

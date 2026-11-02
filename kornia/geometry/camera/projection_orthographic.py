@@ -74,8 +74,8 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
           are accepted.
         - ``extension`` must have the points' leading dimensions exactly: it does not broadcast, unlike in
           :func:`unproject_points_z1`, so a ``(1,)`` extension for ``(N, 2)`` points raises ``RuntimeError``.
-          Its trailing size is not checked: a same-rank ``(N, 2)`` extension for ``(N, 2)`` points returns
-          ``(N, 4)`` (`#6466 <https://github.com/kornia/kornia/issues/6466>`_), so pass one value per point.
+          A same-rank extension must have a trailing size of 1: an ``(N, 2)`` extension for ``(N, 2)`` points
+          raises :class:`~kornia.core.exceptions.ShapeError`.
 
     Args:
         points_in_camera: torch.Tensor representing the points to unproject with shape ``(..., 2)``.
@@ -98,8 +98,9 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "2"])
 
-    if len(points_in_camera.shape) != len(extension.shape):
-        extension = extension[..., None]
+    if extension.ndim == points_in_camera.ndim - 1:
+        extension = extension[..., None]  # (..., 1)
+    KORNIA_CHECK_SHAPE(extension, ["*", "1"])
 
     return torch.cat([points_in_camera, extension], dim=-1)
 

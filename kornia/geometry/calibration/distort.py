@@ -22,6 +22,8 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
+
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
@@ -149,9 +151,8 @@ def distort_points(
           ``(B, N, 2)``.
         - the skew entry ``K[0, 1]`` is ignored, as in
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
-        - the trailing size of ``points`` is not checked today: ``(N, 3)`` points are truncated to their first two
-          columns, and a single ``(2,)`` point returns ``(1, 2)``
-          (`#6467 <https://github.com/kornia/kornia/issues/6467>`_).
+        - ``points`` must be ``(*, N, 2)``: a trailing size other than 2, or a single ``(2,)`` point, raises
+          :class:`~kornia.core.exceptions.ShapeError`.
 
     Args:
         points: Input image points with shape ``(*, N, 2)``.
@@ -187,8 +188,7 @@ def distort_points(
         >>> points_dist = distort_points(points, K, dist_coeff)
 
     """
-    if points.dim() < 2 and points.shape[-1] != 2:
-        raise ValueError(f"points shape is invalid. Got {points.shape}.")
+    KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
 
     if K.shape[-2:] != (3, 3):
         raise ValueError(f"K matrix shape is invalid. Got {K.shape}.")

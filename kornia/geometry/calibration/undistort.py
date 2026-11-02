@@ -61,14 +61,8 @@ def undistort_points(
           :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy the iteration reaches;
           within its convergence region more steps improve it down to the dtype's rounding.
         - matching leading dimensions of ``points``, ``K`` and ``dist`` are preserved, and the leading dimensions
-          broadcast as in :func:`~kornia.geometry.calibration.distort_points`, except in the sensor-tilt step of
-          14 coefficients (`#6468 <https://github.com/kornia/kornia/issues/6468>`_). That step pairs each camera
-          with its points only when ``dist`` holds one camera, or when the batch shape of ``dist`` equals that of
-          the points broadcast with ``K`` except for trailing sizes of 1, such as ``(B, 1, 14)`` for
-          ``(B, T, N, 2)`` points; any other layout gives wrong points or raises :class:`ValueError`. For
-          ``(T, B, N, 2)`` points, ``(B, 3, 3)`` cameras with ``(B, 14)`` coefficients give wrong points for
-          ``T == B`` and raise otherwise, and ``K[None]`` with ``dist[None]`` give wrong points for every
-          ``T > 1``; ``(N, 2)`` points with ``(B, 14)`` coefficients and a ``(3, 3)`` ``K`` raise.
+          broadcast as in :func:`~kornia.geometry.calibration.distort_points`, the sensor-tilt step of 14
+          coefficients included.
         - the skew entry ``K[0, 1]`` is ignored, as in
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`.
 
@@ -151,11 +145,16 @@ def undistort_points(
     # coefficient count, not its values, so calibration can learn tilt from a zero initialization.
     if has_tilt:
         inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
-        if inv_tilt.dim() == 2:
-            inv_tilt = inv_tilt.unsqueeze(0)
+        xy = torch.stack([x, y], dim=-1)
+        # transform_points pairs a batch of transforms with the leading axis of the points, so give it one transform
+        # per point set: the tilt then broadcasts against the points like the other coefficients.
+        # (TorchScript has no torch.broadcast_shapes, so broadcast 1 x 1 corners for the batch shape.)
+        batch_shape = list(torch.broadcast_tensors(xy[..., :1, :1], inv_tilt[..., :1, :1])[0].shape[:-2])
+        inv_tilt = inv_tilt.expand(batch_shape + [3, 3])
+        xy = xy.expand(batch_shape + list(xy.shape[-2:]))
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
+        x, y = transform_points(inv_tilt, xy).unbind(-1)
 
     # Iteratively undistort points
     x0, y0 = x, y
