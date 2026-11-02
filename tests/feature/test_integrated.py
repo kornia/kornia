@@ -897,7 +897,7 @@ class TestDoGHardNet(BaseTester):
 
 
 class TestLightGlueMatcherBatch(BaseTester):
-    def test_batch_of_one_descriptors_match_like_unbatched(self, device, monkeypatch):
+    def test_batch_of_one_descriptors_match_like_unbatched(self, device, dtype, monkeypatch):
         from kornia.feature import LightGlueMatcher
 
         class _RecordingLightGlue(nn.Module):
@@ -916,9 +916,9 @@ class TestLightGlueMatcherBatch(BaseTester):
 
         monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
         matcher = LightGlueMatcher("disk")
-        centers = torch.rand(1, 5, 2, device=device)
+        centers = torch.rand(1, 5, 2, device=device, dtype=dtype)
         lafs = kornia.feature.laf_from_center_scale_ori(centers)
-        descriptors = torch.rand(5, 8, device=device)
+        descriptors = torch.rand(5, 8, device=device, dtype=dtype)
         unbatched_scores, unbatched_matches = matcher(descriptors, descriptors, lafs, lafs, (10, 20), (10, 20))
         batched_scores, batched_matches = matcher(descriptors[None], descriptors[None], lafs, lafs, (10, 20), (10, 20))
         # (1, N, D) used to take the fewer-than-two-descriptors early exit, which read the batch size (1) as the
