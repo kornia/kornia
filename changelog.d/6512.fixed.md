@@ -1,0 +1,1 @@
+Fixed four defects in `kornia.geometry.subpix`: the `SpatialSoftArgmax2d` repr dropped its opening parenthesis, `conv_soft_argmax3d` raised a `TypeError` for an integer `stride`, `render_gaussian2d` returned an all-NaN map for a zero `std` instead of raising, and `spatial_softmax2d` truncated a tensor temperature cast to an integer heatmap's dtype.

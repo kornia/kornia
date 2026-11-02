@@ -24,7 +24,8 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.exceptions import DeviceError, TypeCheckError
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
+from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, supports_reflect_padding
 
@@ -854,6 +855,17 @@ class TestTranslate(BaseTester):
         transform = kornia.geometry.transform.Translate(translation, align_corners=True)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("image_shape", [(0, 2, 4, 5), (1, 2, 4, 5), (2, 4, 5), (2, 2, 4, 5), (3, 2, 4, 5)])
+    def test_unbatched_translation_is_shared_6521(self, device, dtype, image_shape):
+        # A (2,) translation serves every image, as (1, 2) does. Its 2 components used to be read as a batch of 2,
+        # which returned one image twice and raised for 3 images.
+        image = torch.rand(image_shape, device=device, dtype=dtype)
+        translation = torch.tensor([1.0, -0.5], device=device, dtype=dtype)
+        out = kornia.geometry.transform.translate(image, translation)
+        assert out.shape == image.shape
+        self.assert_close(out, kornia.geometry.transform.translate(image, translation[None]), atol=0, rtol=0)
+        self.assert_close(kornia.geometry.transform.Translate(translation)(image), out, atol=0, rtol=0)
+
     def test_gradcheck(self, device):
         # test parameters
         translation = torch.tensor([[1.0, 0.0]], device=device, dtype=torch.float64)
@@ -1069,6 +1081,17 @@ class TestShear(BaseTester):
         transform = kornia.geometry.transform.Shear(shear, align_corners=False)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("image_shape", [(0, 2, 4, 5), (1, 2, 4, 5), (2, 4, 5), (2, 2, 4, 5), (3, 2, 4, 5)])
+    def test_unbatched_shear_is_shared_6521(self, device, dtype, image_shape):
+        # A (2,) pair of factors serves every image, as (1, 2) does. Its 2 factors used to be read as a batch of 2,
+        # which returned one image twice and raised for 3 images.
+        image = torch.rand(image_shape, device=device, dtype=dtype)
+        shear = torch.tensor([0.5, -0.25], device=device, dtype=dtype)
+        out = kornia.geometry.transform.shear(image, shear)
+        assert out.shape == image.shape
+        self.assert_close(out, kornia.geometry.transform.shear(image, shear[None]), atol=0, rtol=0)
+        self.assert_close(kornia.geometry.transform.Shear(shear, align_corners=False)(image), out, atol=0, rtol=0)
+
     def test_gradcheck(self, device):
         # test parameters
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=torch.float64)
@@ -1105,6 +1128,29 @@ class TestAffine2d(BaseTester):
         matrix = torch.eye(2, 3, device=device, dtype=dtype).expand(2, -1, -1)
         with pytest.raises(RuntimeError):
             kornia.geometry.transform.affine(image, matrix)
+
+    @pytest.mark.parametrize("image_shape", [(0, 2, 5, 7), (1, 2, 5, 7), (2, 5, 7), (3, 2, 5, 7)])
+    @pytest.mark.parametrize("checks", [True, False])
+    def test_function_shares_unbatched_matrix_6462(self, device, dtype, image_shape, checks):
+        # A (2, 3) matrix serves every image, as (1, 2, 3) does. Read as a batch of 2, it used to warp one image,
+        # (1, C, H, W) or (C, H, W), twice; with checks disabled too, since the unbatched matrix is not a check.
+        image = torch.rand(image_shape, device=device, dtype=dtype)
+        matrix = torch.tensor([[0.9, 0.2, 1.0], [-0.1, 1.1, -0.5]], device=device, dtype=dtype)
+        was_enabled = are_checks_enabled()
+        if not checks:
+            disable_checks()
+        try:
+            out = kornia.geometry.transform.affine(image, matrix)
+        finally:
+            if was_enabled:
+                enable_checks()
+        assert out.shape == image.shape
+        self.assert_close(out, kornia.geometry.transform.affine(image, matrix[None]), atol=0, rtol=0)
+
+    def test_function_rejects_matrix_of_other_rank(self, device, dtype):
+        image = torch.rand(1, 2, 5, 7, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.geometry.transform.affine(image, torch.ones(1, 1, 2, 3, device=device, dtype=dtype))
 
     def test_affine_no_args(self):
         with pytest.raises(RuntimeError):

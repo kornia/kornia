@@ -46,6 +46,7 @@ import torch
 from torch import nn
 
 from kornia.core._compat import _emit_deprecation_warning
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.ops import _device_literal, eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
@@ -185,9 +186,10 @@ def affine(
 
     ``out = affine(tensor, matrix)`` warps ``(C, H, W)`` or ``(B, C, H, W)`` images by ``(B, 2, 3)`` source→destination
     pixel affine matrices and returns them at their own size: :func:`warp_affine` with ``dsize=(H, W)``, plus an
-    unbatched image and broadcasting. One matrix serves every image of a batch, and one image, unbatched or of batch 1,
-    is warped by every matrix, so it returns ``(B, C, H, W)`` for ``B > 1`` matrices. For another output size, use
-    :func:`warp_affine`; to build the matrix from an angle, a shift, a scale and a shear, use :class:`Affine`.
+    unbatched image and broadcasting. One matrix, ``(1, 2, 3)`` or ``(2, 3)``, serves every image of a batch, and one
+    image, unbatched or of batch 1, is warped by every matrix, so it returns ``(B, C, H, W)`` for ``B > 1`` matrices.
+    For another output size, use :func:`warp_affine`; to build the matrix from an angle, a shift, a scale and a shear,
+    use :class:`Affine`.
 
     .. image:: _static/img/warp_affine.png
 
@@ -195,12 +197,13 @@ def affine(
         See :doc:`Conventions & Pitfalls </get-started/conventions>` for the ``align_corners``
         defaults and sampling rules.
 
-        - ``matrix`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``
+        - ``matrix`` is the source→destination **pixel** affine matrix ``(B, 2, 3)``; an unbatched ``(2, 3)`` matrix
+          is read as ``(1, 2, 3)``.
 
     Args:
         tensor: The image tensor to be warped in shapes of
             ``(C, H, W)`` or ``(B, C, H, W)``.
-        matrix: The 2x3 affine transformation matrices, with shape ``(B, 2, 3)``.
+        matrix: The 2x3 affine transformation matrices, with shape ``(B, 2, 3)``, or one ``(2, 3)`` matrix.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
@@ -224,6 +227,12 @@ def affine(
         torch.Size([1, 2, 3, 5])
 
     """
+    # One (2, 3) matrix serves every image, as a (1, 2, 3) one does; read as a batch below, its 2 rows warped a single
+    # image twice (#6462).
+    if matrix.dim() == 2:
+        matrix = matrix.unsqueeze(0)
+    KORNIA_CHECK_SHAPE(matrix, ["B", "2", "3"])
+
     # warping needs data in the shape of BCHW
     is_unbatched: bool = tensor.dim() == 3
     if is_unbatched:
@@ -522,11 +531,11 @@ def translate(
 
     ``out = translate(tensor, translation)`` shifts ``(C, H, W)`` or ``(B, C, H, W)`` images by ``translation``
     ``(B, 2)``, ``(dx, dy)`` in pixels, a positive ``dx`` to the right and a positive ``dy`` down, and returns them at
-    their size; a fractional shift interpolates, and the uncovered border is padded by ``padding_mode``, except
-    along a one-pixel axis, which the default ``align_corners=True`` repeats
-    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). One
-    translation serves every image of a batch, and one image, unbatched or of batch 1, is shifted by every
-    translation. For a stored translation, use :class:`Translate`; for the matrix, :func:`get_translation_matrix2d`.
+    their size; a fractional shift interpolates, and the uncovered border is padded by ``padding_mode``, except along a
+    one-pixel axis, which the default ``align_corners=True`` repeats
+    (`#6433 <https://github.com/kornia/kornia/issues/6433>`_). One translation, ``(1, 2)`` or ``(2,)``, serves every
+    image of a batch, and one image, unbatched or of batch 1, is shifted by every translation. For a stored translation,
+    use :class:`Translate`; for the matrix, :func:`get_translation_matrix2d`.
 
     .. image:: _static/img/translate.png
 
@@ -537,7 +546,7 @@ def translate(
         tensor: The image tensor to be warped in shapes of ``(C, H, W)`` or ``(B, C, H, W)``.
         translation: tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
-          (B, 2), where B is batch size, last dimension contains dx dy.
+          (B, 2), where B is batch size, last dimension contains dx dy, or (2,) for one translation.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -569,6 +578,11 @@ def translate(
 
     if len(tensor.shape) not in (3, 4):
         raise ValueError(f"Invalid tensor shape, we expect CxHxW or BxCxHxW. Got: {tensor.shape}")
+
+    # One (2,) translation serves every image, as a (1, 2) one does; its 2 components used to be read as a batch of 2
+    # and return one image twice (#6521).
+    if translation.dim() == 1:
+        translation = translation.unsqueeze(0)
 
     # compute the translation matrix
     translation_matrix: torch.Tensor = _compute_translation_matrix(translation)
@@ -665,11 +679,11 @@ def shear(
     """Shear an image by raw shear factors about pixel (0, 0).
 
     ``out = shear(tensor, shear)`` shears ``(C, H, W)`` or ``(B, C, H, W)`` images by ``shear`` ``(B, 2)``, the raw
-    factors ``(shx, shy)`` described below, and returns them at their size. One pair of factors serves every image of
-    a batch, and one image, unbatched or of batch 1, is sheared by every pair. For shear angles in radians, use
-    :class:`Affine`, about the image centre by default, or :func:`get_shear_matrix2d`, about a centre you pass; both
-    shear by the negative tangent, so values below ``pi / 2`` in magnitude shear the other way there. For stored
-    factors, use :class:`Shear`.
+    factors ``(shx, shy)`` described below, and returns them at their size. One pair of factors, ``(1, 2)`` or ``(2,)``,
+    serves every image of a batch, and one image, unbatched or of batch 1, is sheared by every pair. For shear angles in
+    radians, use :class:`Affine`, about the image centre by default, or :func:`get_shear_matrix2d`, about a centre you
+    pass; both shear by the negative tangent, so values below ``pi / 2`` in magnitude shear the other way there. For
+    stored factors, use :class:`Shear`.
 
     .. image:: _static/img/shear.png
 
@@ -686,7 +700,7 @@ def shear(
         tensor: The image tensor to be skewed with shape of ``(C, H, W)`` or ``(B, C, H, W)``.
         shear: tensor containing raw shear factors
           in the x and y direction about pixel (0, 0). The tensor must have a shape of
-          (B, 2), where B is batch size, last dimension contains shx shy.
+          (B, 2), where B is batch size, last dimension contains shx shy, or (2,) for one pair.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -720,7 +734,12 @@ def shear(
     if len(tensor.shape) not in (3, 4):
         raise ValueError(f"Invalid tensor shape, we expect CxHxW or BxCxHxW. Got: {tensor.shape}")
 
-    # compute the translation matrix
+    # One (2,) pair serves every image, as a (1, 2) one does; its 2 factors used to be read as a batch of 2 and
+    # return one image twice (#6521).
+    if shear.dim() == 1:
+        shear = shear.unsqueeze(0)
+
+    # compute the shear matrix
     shear_matrix: torch.Tensor = _compute_shear_matrix(shear)
 
     # warp using the affine transform

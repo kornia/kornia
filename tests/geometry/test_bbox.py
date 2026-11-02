@@ -798,9 +798,10 @@ class TestBbox3D(BaseTester):
     def test_wart_validate_bbox3d_checks_equal_edge_extents_not_cuboids_4013(self, device, dtype, monkeypatch):
         # Wart pin for kornia#4013 (the 3D validator raises where the 2D one returns False, and its one
         # False result, a non-finite coordinate, warns that it will raise too): the check compares
-        # the inclusive extents of the four edges parallel to each axis, so a sheared parallelepiped
-        # and a zero-extent box pass, and only unequal edges raise. Under graph capture the extent
-        # check is skipped and the shape check alone returns True.
+        # the inclusive x extents of the four left-to-right edges, the y extents of the two diagonals
+        # of the front face and of the back face, and the z extents of the four front-to-back edges,
+        # so a sheared parallelepiped and a zero-extent box pass, and only disagreeing extents raise.
+        # Under graph capture the extent check is skipped and the shape check alone returns True.
         cuboid = self._unit_cuboid(device, dtype)
         assert validate_bbox3d(cuboid) is True
         assert validate_bbox3d(cuboid[None]) is True

@@ -117,13 +117,21 @@ def _check_points_layout(q: Quaternion, points: torch.Tensor) -> None:
 
 
 class So3(nn.Module):
-    r"""Base class to represent the So3 group.
+    r"""Represent a 3D rotation as an SO(3) Lie group element stored as a quaternion.
 
-    The SO(3) is the group of all rotations about the origin of three-dimensional Euclidean space
-    :math:`R^3` under the operation of composition.
-    See more: https://en.wikipedia.org/wiki/3D_rotation_group
+    ``r = So3.exp(omega)`` builds rotations from rotation vectors ``omega`` of shape ``(B, 3)``, the axis times the
+    angle in radians; ``So3(q)`` wraps a ``(B, 4)`` :class:`~kornia.geometry.quaternion.Quaternion`,
+    :meth:`from_matrix` reads ``(B, 3, 3)`` matrices, and ``So3.identity(B)`` and ``So3.random(B)`` build ``B``
+    rotations, or an unbatched one with ``batch_size=None``. ``r1 * r2`` composes a batch with a batch of the same size,
+    a batch of one or an unbatched rotation; ``r.inverse()`` inverts, ``r.log()`` returns the ``(B, 3)`` rotation
+    vectors and ``r.matrix()`` the ``(B, 3, 3)`` matrices; an unbatched rotation drops the ``B``. ``r * p`` rotates
+    points as :math:`R p`: ``(3,)`` or ``(N, 3)`` points for an unbatched rotation, and ``(B, 3)``, one point per
+    rotation, or a single ``(1, 3)`` point, not ``(3,)``, for a batch of ``B``; a batch of one also maps ``(N, 3)``.
+    For a rotation and a translation, use :class:`Se3`; for
+    quaternion arithmetic, interpolation and Euler angles, :class:`~kornia.geometry.quaternion.Quaternion`.
 
-    We internally represent the rotation by a :class:`~kornia.geometry.quaternion.Quaternion`.
+    SO(3) is the group of rotations of :math:`R^3` about the origin under composition; see
+    https://en.wikipedia.org/wiki/3D_rotation_group.
 
     Convention:
         - The tangent vector is the rotation vector, the axis times the angle in radians, and ``hat(v)`` is its
@@ -133,13 +141,14 @@ class So3(nn.Module):
           :math:`\pi`, the same for ``q`` and ``-q`` below a half turn.
         - ``a * b`` composes like ``a.matrix() @ b.matrix()``, so ``b`` acts first; ``s * p`` rotates points ``p``, a
           tensor or a ``Vector3``, as :math:`R p`: ``(3,)`` or ``(N, 3)`` for an unbatched ``So3``, and ``(B, 3)``,
-          one point per rotation, for a batch of ``B`` (a batch of one also maps ``(N, 3)``); other layouts raise
-          ``ValueError``. ``adjoint()`` is :math:`R` itself.
+          one point per rotation, or ``(1, 3)``, not ``(3,)``, for a batch of ``B`` (a batch of one also maps
+          ``(N, 3)``); other layouts raise ``ValueError``. ``adjoint()`` is :math:`R` itself.
           :ref:`Rotations and rigid motions <rotation-conventions>` compares these with scipy, Sophus and Eigen.
         - A non-unit quaternion stands for the rotation of its direction :math:`q / |q|`, as for
           :meth:`~kornia.geometry.quaternion.Quaternion.matrix`: ``matrix()`` and ``s * p`` normalise it where they
-          use it, so ``matrix()`` is always a rotation and ``s * p`` keeps the norm of ``p``. ``q`` returns the
-          quaternion as stored, which keeps an ``nn.Parameter`` registered and following optimiser steps.
+          use it, so ``matrix()`` is a rotation and ``s * p`` keeps the norm of ``p`` within the range limits stated
+          on :class:`~kornia.geometry.quaternion.Quaternion`. ``q`` returns the quaternion as stored, which keeps an
+          ``nn.Parameter`` registered and following optimiser steps.
         - For a small :math:`\delta`,
           :math:`\exp(\omega + \delta) \approx \exp(\omega) \exp(J_r \delta) = \exp(J_l \delta) \exp(\omega)`,
           with :math:`J_r` = ``right_jacobian(omega)`` and :math:`J_l` = ``left_jacobian(omega)`` =
@@ -153,6 +162,14 @@ class So3(nn.Module):
         - ``matrix()``, ``adjoint()``, ``a * b`` and ``s * p`` compute in float32 for float16/bfloat16 inputs and
           return the input dtype, rounding once; float32 and float64 are evaluated in their own dtype.
 
+    See Also:
+        - :class:`So2`: the 2D rotation group, stored as a complex number.
+        - :class:`Se3`: a 3D rotation followed by a translation, mapping points as :math:`R p + t`.
+        - :class:`~kornia.geometry.quaternion.Quaternion`: the stored quaternion, with the Hamilton product,
+          ``slerp`` and Euler angles but no action on points.
+        - :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`: the matrix of ``So3.exp(v)`` in one
+          call on a plain ``(*, 3)`` tensor.
+
     Example:
         >>> q = Quaternion.identity()
         >>> s = So3(q)
@@ -162,10 +179,10 @@ class So3(nn.Module):
     """
 
     def __init__(self, q: Quaternion) -> None:
-        """Construct the base class.
+        """Construct an So3 that stores the quaternion ``q`` as given.
 
         Args:
-            q: Quaternion with the shape of ``(B, 4)``.
+            q: Quaternion with the shape of ``(B, 4)`` or ``(4,)``.
 
         Example:
             >>> data = torch.tensor([[1., 0., 0., 0.], [0., 1., 0., 0.]])
@@ -200,8 +217,10 @@ class So3(nn.Module):
         Both compute in float32 for float16/bfloat16 inputs and return the input dtype.
 
         Args:
-            right: the other So3 transformation, or points as a tensor or a ``Vector3``: ``(3,)`` or ``(N, 3)``
-                for an unbatched rotation, ``(B, 3)`` for a batch of ``B`` (a batch of one also maps ``(N, 3)``).
+            right: the other So3 transformation, unbatched, a batch of the same size or a batch of one, or points
+                as a tensor or a ``Vector3``: ``(3,)`` or ``(N, 3)`` for an unbatched rotation, and ``(B, 3)``, one
+                point per rotation, or ``(1, 3)``, not ``(3,)``, for a batch of ``B`` (a batch of one also maps
+                ``(N, 3)``).
 
         Return:
             The resulting So3 transformation, or the rotated points of the type of ``right``.
@@ -223,7 +242,7 @@ class So3(nn.Module):
 
     @property
     def q(self) -> Quaternion:
-        """Return the underlying data with shape ``(B,4)``."""
+        """Return the stored :class:`~kornia.geometry.quaternion.Quaternion`: ``(B, 4)``, or ``(4,)`` unbatched."""
         return self._q
 
     @staticmethod
@@ -338,7 +357,7 @@ class So3(nn.Module):
     def matrix(self) -> torch.Tensor:
         r"""Convert the quaternion to a rotation matrix of shape ``(B,3,3)``.
 
-        The matrix is of the form:
+        The matrix is of the form, with :math:`(w, x, y, z)` the unit quaternion :math:`q / |q|`:
 
         .. math::
             \begin{bmatrix} 1-2y^2-2z^2 & 2xy-2zw & 2xz+2yw \\

@@ -358,6 +358,11 @@ class SIFTFeature(_SIFTFeature):
     For new scale-space SIFT pipelines, start with :class:`SIFTFeatureScaleSpace` and explicitly select
     ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
 
+    For CPU throughput use OpenCV's SIFT: on an Apple M1 CPU, a matching pipeline on it ran 11x faster than one on
+    this module (640 px, 2,048 features). This module takes one image per call; for batches use
+    :class:`SIFTFeatureScaleSpace`. See the `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
+
     Convention:
         - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of one grayscale
           image per call, ``(1, 1, H, W)``. The detector is a :class:`~kornia.feature.MultiResolutionDetector` on
@@ -431,6 +436,11 @@ class SIFTFeatureScaleSpace(LocalFeature):
     """DoG scale-space detection, position/scale refinement and (Root)SIFT description.
 
     For new scale-space SIFT pipelines, explicitly select ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
+
+    For CPU throughput use OpenCV's SIFT: on an Apple M1 CPU, a matching pipeline on it ran 8x faster than one on this
+    module with ``descriptor_backend="pyramid"``, and 14x faster with ``"patch"`` (640 px, 2,048 features). See the
+    `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     Convention:
         - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of grayscale
@@ -1047,8 +1057,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape ``(B1, D)``.
-            desc2: Batch of descriptors of a shape ``(B2, D)``.
+            desc1: Batch of descriptors of a shape ``(B1, D)``, or ``(1, B1, D)`` for a batch of one.
+            desc2: Batch of descriptors of a shape ``(B2, D)``, or ``(1, B2, D)`` for a batch of one.
             lafs1: LAFs of a shape ``(1, B1, 2, 3)``.
             lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
             hw1: ``(H, W)`` of the first image; see the Convention block.
@@ -1060,7 +1070,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
                 shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
 
         """
-        if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
+        if (desc1.shape[-2] < 2) or (desc2.shape[-2] < 2):
             return _no_match(desc1)
         keypoints1 = get_laf_center(lafs1)
         keypoints2 = get_laf_center(lafs2)
