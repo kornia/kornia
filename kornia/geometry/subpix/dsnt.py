@@ -204,8 +204,12 @@ def render_gaussian2d(
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: ``(*, 2)``.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
-          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Every entry must be nonzero, else
-          :class:`~kornia.core.exceptions.AsyncCheckError`; its sign is ignored.
+          Shape ``(*, 2)``. Should be able to be broadcast with `mean`. Its sign is ignored. Every entry must be
+          nonzero: a zero raises :class:`~kornia.core.exceptions.AsyncCheckError`, a :exc:`RuntimeError`, during
+          the call on the CPU and on MPS before torch 2.13, and a plain ``RuntimeError`` by the next
+          synchronization on CUDA and on MPS from torch 2.13. A compiled call raises ``RuntimeError`` on a device
+          with that assert kernel, with Inductor from torch 2.9. With checks disabled nothing is raised and the
+          heatmap is NaN.
         size: the (height, width) of the output image.
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.

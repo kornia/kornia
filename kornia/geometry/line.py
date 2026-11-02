@@ -452,7 +452,9 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
         points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is ``(B, N, D)``.
         weights: per-point weights, used in the centroid and in the fit. The expected
-            shape of the tensor is ``(B, N)``.
+            shape of the tensor is ``(B, N)``. A ``(B, 1)`` tensor is not rejected: it broadcasts, makes the
+            centroid the sum of the points instead of their mean and skips the weight checks under Raises
+            (`#6525 <https://github.com/kornia/kornia/issues/6525>`_).
 
     Return:
         The fitted line, with origin and direction of shape ``(B, D)``.
@@ -461,7 +463,7 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
         TypeCheckError: if ``points`` or ``weights`` is not a tensor.
         ShapeError: if ``points`` is not 3-D, or ``weights`` is not 2-D.
         BaseError: if ``weights`` has another batch size than ``points``.
-        RuntimeError: if ``weights`` has another number of points than ``points``, from torch.
+        RuntimeError: if ``weights`` has another number of points than ``points``, other than one, from torch.
         ValueCheckError: if the points do not determine a line — fewer than two points,
             all points identical, or (with weights) a zero weight sum, a negative weight, or all
             points with positive weight identical. Like every kornia value check, these are skipped under

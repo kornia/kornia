@@ -328,7 +328,8 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
           leading batch axes of ``points_1`` in order, as it stands or once its size-1 axes are left out, so
           ``(B, 1, D+1, D+1)`` and ``(1, B, D+1, D+1)`` both apply matrix ``b`` to ``points_1[b]``; any other
           multi-axis batch raises.
-        points_1: tensor of points of shape ``(N, D)`` or ``(B, N, D)``.
+        points_1: tensor of points of shape ``(*, N, D)``: ``(N, D)``, ``(B, N, D)``, or with several leading
+          axes, such as ``(M, B, N, D)``, which pair with a multi-axis ``trans_01`` as described there.
 
     Returns:
         transformed points with the same shape as ``points_1``.

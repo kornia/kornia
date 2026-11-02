@@ -242,7 +242,7 @@ class So3(nn.Module):
 
     @property
     def q(self) -> Quaternion:
-        """Return the stored :class:`~kornia.geometry.quaternion.Quaternion`, with shape ``(B, 4)``."""
+        """Return the stored :class:`~kornia.geometry.quaternion.Quaternion`: ``(B, 4)``, or ``(4,)`` unbatched."""
         return self._q
 
     @staticmethod
