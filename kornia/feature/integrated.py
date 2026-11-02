@@ -1057,8 +1057,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         """Run forward.
 
         Args:
-            desc1: Batch of descriptors of a shape ``(B1, D)``.
-            desc2: Batch of descriptors of a shape ``(B2, D)``.
+            desc1: Batch of descriptors of a shape ``(B1, D)``, or ``(1, B1, D)`` for a batch of one.
+            desc2: Batch of descriptors of a shape ``(B2, D)``, or ``(1, B2, D)`` for a batch of one.
             lafs1: LAFs of a shape ``(1, B1, 2, 3)``.
             lafs2: LAFs of a shape ``(1, B2, 2, 3)``.
             hw1: ``(H, W)`` of the first image; see the Convention block.
@@ -1070,7 +1070,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
                 shape of ``(B3, 2)`` where :math:`0 <= B3 <= B1`.
 
         """
-        if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
+        if (desc1.shape[-2] < 2) or (desc2.shape[-2] < 2):
             return _no_match(desc1)
         keypoints1 = get_laf_center(lafs1)
         keypoints2 = get_laf_center(lafs2)

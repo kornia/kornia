@@ -896,6 +896,39 @@ class TestDoGHardNet(BaseTester):
         self.assert_close(seen["image0"]["scales"] * scale_coef, expected, low_tolerance=preset == "DoGAffNetHardNet")
 
 
+class TestLightGlueMatcherBatch(BaseTester):
+    def test_batch_of_one_descriptors_match_like_unbatched(self, device, monkeypatch):
+        from kornia.feature import LightGlueMatcher
+
+        class _RecordingLightGlue(nn.Module):
+            # Stands in for the network, whose construction downloads weights. It pairs descriptors row by row, so
+            # both layouts return the same matches if they reach it.
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+
+            def forward(self, data):
+                desc0 = data["image0"]["descriptors"]
+                desc1 = data["image1"]["descriptors"]
+                count = min(desc0.shape[1], desc1.shape[1])
+                matches0 = torch.full((desc0.shape[0], desc0.shape[1]), -1, device=desc0.device)
+                matches0[:, :count] = torch.arange(count, device=desc0.device)
+                return {"matches0": matches0, "matching_scores0": torch.ones_like(matches0, dtype=torch.float32)}
+
+        monkeypatch.setattr("kornia.feature.integrated.LightGlue", _RecordingLightGlue)
+        matcher = LightGlueMatcher("disk")
+        centers = torch.rand(1, 5, 2, device=device)
+        lafs = kornia.feature.laf_from_center_scale_ori(centers)
+        descriptors = torch.rand(5, 8, device=device)
+        unbatched_scores, unbatched_matches = matcher(descriptors, descriptors, lafs, lafs, (10, 20), (10, 20))
+        batched_scores, batched_matches = matcher(descriptors[None], descriptors[None], lafs, lafs, (10, 20), (10, 20))
+        # (1, N, D) used to take the fewer-than-two-descriptors early exit, which read the batch size (1) as the
+        # descriptor count and silently returned no matches.
+        assert unbatched_matches.shape == (5, 2)
+        assert batched_matches.shape == unbatched_matches.shape
+        self.assert_close(batched_scores, unbatched_scores)
+        assert torch.equal(batched_matches, unbatched_matches)
+
+
 class TestLocalFeatureMatcher(BaseTester):
     def test_smoke(self, device):
         matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("snn", 0.8)).to(device)
