@@ -617,7 +617,10 @@ class TestHomographyWarp3dVoxelCoordinates(BaseTester):
 
         assert actual.dtype == actual_scripted.dtype == torch.float32
         self.assert_close(actual, expected, rtol=0, atol=0)
-        self.assert_close(actual_scripted, expected, rtol=0, atol=0)
+        # From its second call on CUDA, TorchScript's fuser may contract the voxel normalization into
+        # FMAs, a few float32 ulps from eager; a bfloat16 matrix product would be whole voxels off.
+        tol = 0.0 if device.type == "cpu" else 1e-3
+        self.assert_close(actual_scripted, expected, rtol=0, atol=tol)
         self.assert_close(expected[0, ..., 1:-1], volume[0, ..., 1:-1])
 
     @pytest.mark.parametrize("align_corners", [True, False])
