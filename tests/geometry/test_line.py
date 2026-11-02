@@ -1038,7 +1038,7 @@ class TestFitLine(BaseTester):
                 line = fit_line(points, weights)
                 return line.origin, line.direction
 
-        n = Dim("n", min=2)
+        n = Dim("n", min=2, max=64)
         points = torch.nn.functional.pad(
             torch.tensor([[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]], device=device), (0, d - 2)
         )
