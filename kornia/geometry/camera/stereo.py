@@ -91,8 +91,9 @@ class StereoCamera:
     the right camera, such as ``P1`` and ``P2`` of ``cv2.stereoRectify``, and
     ``points = stereo.reproject_disparity_to_3D(disparity)`` takes a channels-last ``(B, H, W, 1)`` disparity map
     ``d = u_left - u_right``, in pixels, and returns the 3D point of every pixel in the left rectified camera
-    frame, ``(B, H, W, 3)``, in the units of the baseline: ``Z = fx * tx / d``. For nonzero disparities the result
-    matches ``cv2.reprojectImageTo3D`` with OpenCV's ``Q``. With a ``Q`` matrix from elsewhere, call
+    frame, ``(B, H, W, 3)``, in the units of the baseline: ``Z = fx * tx / d``. Where ``abs(fy * d) > 1e-8`` the
+    result matches ``cv2.reprojectImageTo3D`` with OpenCV's ``Q``; a smaller disparity, zero included, gets a
+    placeholder (see the warning below). With a ``Q`` matrix from elsewhere, call
     :func:`reproject_disparity_to_3D` instead; for a depth map rather than points,
     :func:`~kornia.geometry.depth.depth_from_disparity`.
 
@@ -111,9 +112,10 @@ class StereoCamera:
           the result is ``X = (u - cx) Z / fx``, ``Y = (v - cy) Z / fy``, ``Z = fx * tx / disparity``.
         - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``.
         - a disparity map is channels-**last**, ``(B, H, W, 1)`` (a ``(B, 1, H, W)`` map is rejected),
-          and the point cloud is ``(B, H, W, 3)``. A positive disparity puts the point in front of the rig and a
-          negative one behind it. A rig with ``B = 1`` serves a batch of disparity maps; any other batch must
-          match the disparity batch, else :class:`ValueError`.
+          and the point cloud is ``(B, H, W, 3)``. Where ``abs(fy * d) > 1e-8``, a positive disparity puts the
+          point in front of the rig and a negative one behind it; a smaller disparity, positive or not, gets the
+          placeholder of the warning below. A rig with ``B = 1`` serves a batch of disparity maps; any other
+          batch must match the disparity batch, else :class:`ValueError`.
         - pixel centres are integers; see the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
         - the constructor raises :class:`StereoException` for a matrix that is not ``(B, 3, 4)``, for matrices on
@@ -127,9 +129,11 @@ class StereoCamera:
         A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
         case, so it is zero on every rig the constructor accepts outside graph capture:
         `#4270 <https://github.com/kornia/kornia/issues/4270>`_. A zero disparity (a point at infinity) makes
-        ``W = 0``; the divide is then skipped and a finite placeholder, behind the camera on a real rig, is
-        returned. Request ``return_mask=True`` from :meth:`reproject_disparity_to_3D` to identify numerical
-        reconstruction failures without changing those coordinates or their gradients.
+        ``W = -fy * d = 0``. Wherever ``abs(W) <= 1e-8``, which includes small nonzero disparities such as
+        ``d = 1e-9`` at ``fy = 1``, the divide is skipped and a finite placeholder, behind the camera on a real
+        rig, is returned, so ``d > 0`` alone does not select points in front of the rig. Request
+        ``return_mask=True`` from :meth:`reproject_disparity_to_3D` to identify numerical reconstruction failures
+        without changing those coordinates or their gradients.
 
     Args:
         rectified_left_camera: The rectified left camera projection matrix of shape ``(B, 3, 4)``.
