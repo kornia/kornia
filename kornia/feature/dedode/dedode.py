@@ -77,7 +77,18 @@ urls: Dict[str, Dict[str, str]] = {
 
 
 class DeDoDe(nn.Module):
-    r"""nn.Module which detects and/or describes local features in an image using the DeDode method.
+    r"""Detect the n best keypoints of each RGB image and describe them with two networks (DeDoDe).
+
+    ``dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")`` loads the trained
+    weights in evaluation mode, and ``keypoints, scores, descriptions = dedode(images, n=10_000)`` takes RGB images
+    ``(B, 3, H, W)`` in :math:`[0, 1]` and returns the ``n`` best keypoints of each image, ``(B, N, 2)`` as ``(x, y)``
+    pixels with the centre of pixel ``i`` at ``i + 0.5``, their scores ``(B, N)`` and their descriptions
+    ``(B, N, 256)``, which are not normalised, with ``N = min(n, H W)``. :meth:`detect` and :meth:`describe` run the
+    detector and the descriptor on their own. The default descriptor, ``G``, runs a frozen DINOv2 ViT-L/14 backbone
+    (built by ``kornia.feature.dedode.transformer.vit_large``) besides VGG19 and loads the DINOv2 weights already in
+    the constructor; ``B`` runs VGG19 only. To match two images, pass the descriptions with LAFs centred on the
+    keypoints to :class:`LightGlueMatcher` in ``"dedodeb"`` or ``"dedodeg"`` mode; for a keypoint count that follows
+    the image content, use :class:`ALIKED` or :class:`DISK` instead.
 
     See :cite:`edstedt2024dedode` for details.
 
@@ -91,12 +102,11 @@ class DeDoDe(nn.Module):
           :meth:`detect` returns it normalized, as ``(2 i + 1) / (W, H) - 1`` in :math:`[-1, 1]`
           (``align_corners=False``), the form :meth:`describe` takes; ``(k + 1) * (W, H) / 2 - 0.5`` converts such a
           ``k`` to kornia's frame. A description is read at the centre of pixel ``i``.
-        - Each image gives its ``n`` best keypoints by score, in descending order: :math:`N = \min(n, H W)`, with no
-          threshold and no padding. Keypoints, and the descriptions of :meth:`forward` and of
-          ``describe(images, keypoints)``, are float32; descriptions are not normalized. The scoremap softmax and the
-          keypoint sampling run in at least float32, so the scores are float32 for a half-precision model and float64
-          for a float64 one. The dense map of ``describe(images)`` follows the network dtype: ``amp_dtype`` on CUDA,
-          the dtype of the model on CPU and MPS.
+        - The keypoints of an image come in descending order of score, with no threshold and no padding. Keypoints,
+          and the descriptions of :meth:`forward` and of ``describe(images, keypoints)``, are float32. The scoremap
+          softmax and the keypoint sampling run in at least float32, so the scores are float32 for a half-precision
+          model and float64 for a float64 one. The dense map of ``describe(images)`` follows the network dtype:
+          ``amp_dtype`` on CUDA, the dtype of the model on CPU and MPS.
         - kornia detects and describes at the size of the input. The authors resize every image to 784 x 784, without
           keeping its aspect ratio, in ``detect_from_path`` and ``describe_keypoints_from_path``, and train the
           detector and the ``B`` descriptor at 512 x 512 (``G`` at 560 x 560). The 51-pixel coverage window of the
@@ -108,9 +118,19 @@ class DeDoDe(nn.Module):
           and MPS it has no effect, so the default argument runs there with float32 weights and images.
 
     Args:
-        detector_model: The detector model kind. Available options are: `L`.
-        descriptor_model: The descriptor model kind. Available options are: `G` or `B`
+        detector_model: The detector model kind. Available options are: ``"L"``.
+        descriptor_model: The descriptor model kind. Available options are: ``"G"`` or ``"B"``.
         amp_dtype: The dtype of the automatic mixed precision used on CUDA; it has no effect on other devices.
+
+    See Also:
+        - :class:`ALIKED`: learned sub-pixel keypoints whose count follows each image's score map, for RGB images of
+          any size.
+        - :class:`DISK`: learned integer-pixel keypoints with 128-D descriptors from one U-Net, for RGB images whose
+          sides are multiples of 16.
+        - :class:`XFeat`: learned keypoints with 64-D descriptors, and its own mutual-nearest-neighbour and refined
+          matching of image pairs.
+        - :class:`LightGlueMatcher`: matches the descriptions and keypoints with the ``"dedodeb"`` weights for the
+          ``B`` descriptor and the ``"dedodeg"`` weights for ``G``.
 
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
@@ -162,7 +182,7 @@ class DeDoDe(nn.Module):
         Args:
             images: A torch.Tensor of shape ``(B, 3, H, W)`` containing the RGB input images in the range
                 :math:`[0, 1]`.
-            n: The number of keypoints to detect.
+            n: The number of keypoints to detect in each image, at most ``H W``; ``None`` keeps every pixel.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images. Pass
                 ``False`` if they are already ImageNet-normalized.
             pad_if_not_divisible: Zero-pad the (normalised) image on the bottom and right so that H and W are
@@ -170,8 +190,8 @@ class DeDoDe(nn.Module):
                 keypoints are never reported in it.
 
         Returns:
-            keypoints: A torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints in the image range,
-                unlike `.detect()` function.
+            keypoints: A torch.Tensor of shape ``(B, N, 2)`` containing the detected keypoints in pixels, with pixel
+                ``i`` at ``i + 0.5``, unlike :meth:`detect`, which normalises them.
 
             scores: A torch.Tensor of shape ``(B, N)`` containing the scores of the detected keypoints.
 

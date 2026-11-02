@@ -42,7 +42,16 @@ urls: dict[str, list[str]] = {
 
 
 class DISK(nn.Module):
-    r"""nn.Module which detects and describes local features in an image using the DISK method.
+    r"""Detect integer-pixel keypoints and describe them with the dense maps of one U-Net (DISK).
+
+    ``disk = DISK.from_pretrained("depth")`` loads the trained weights in evaluation mode (``DISK()`` builds random
+    ones in training mode), and ``features = disk(images, n=2048)`` takes RGB images ``(B, 3, H, W)``, with ``H`` and
+    ``W`` multiples of 16 unless ``pad_if_not_divisible=True``, and returns a list of ``B`` :class:`DISKFeatures`, one
+    per image: up to ``n`` keypoints ``(N, 2)`` as integer ``(x, y)`` pixels in raster order, their detection scores
+    ``(N,)`` and L2-normalised descriptors ``(N, 128)``, with ``N`` set by each image's heatmap. To match two images,
+    pass the descriptors with ``laf_from_center_scale_ori(keypoints[None])`` to :class:`LightGlueMatcher` in
+    ``"disk"`` mode. For sub-pixel keypoints, use :class:`ALIKED` instead; for the same number of keypoints in every
+    image, :class:`DeDoDe`.
 
     See :cite:`tyszkiewicz2020disk` for details.
 
@@ -58,8 +67,10 @@ class DISK(nn.Module):
           bark ``img1`` differ in 0 to 2 keypoints, in 2 to 6 % of them with the intensities multiplied by 0.1, and
           in about 30 % multiplied by 0.01. ``H`` and ``W`` must be multiples of 16, unless
           ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps are cropped back to the
-          image before the suppression and no keypoint lies in the padding.
-        - Each image gives a :class:`DISKFeatures`. Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
+          image before the suppression and no keypoint lies in the padding. The image must have the network's
+          dtype: a float16 or float64 image raises on a float32 model, so cast the model first,
+          ``disk.to(images.dtype)``.
+        - Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
           maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), listed in raster order (row by row, then column
           by column) rather than by score, in float32 for a float16 or bfloat16 network and otherwise in the dtype
@@ -75,8 +86,7 @@ class DISK(nn.Module):
         unet: The U-Net to use. If None, a default U-Net is used. Kornia doesn't provide the training code for DISK
               so this is only useful when using a custom checkpoint trained using the code released with the paper.
               The unet should take as input a torch.Tensor of shape ``(B, C, H, W)`` and output
-              a torch.Tensor of shape
-              :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
+              a torch.Tensor of shape ``(B, desc_dim + 1, H, W)``: the descriptors, then the heatmap.
 
     Note:
         Keypoints are the strict local maxima of the heatmap: :func:`~kornia.geometry.subpix.nms2d` keeps a position
@@ -90,6 +100,18 @@ class DISK(nn.Module):
         ``(n + 1)``-th largest, which drops the weakest maximum, with every maximum tied with it, of an image with
         ``n`` maxima or fewer, and every maximum tied across the cut. kornia's ``n`` is an upper bound, so such an
         image keeps every maximum, and a tie at the cut is filled in raster order.
+
+    See Also:
+        - :class:`DISKFeatures`: the per-image result of :meth:`forward`.
+        - :class:`ALIKED`: learned sub-pixel keypoints for RGB images of any size, also as padded LAF tensors.
+        - :class:`XFeat`: learned keypoints with 64-D descriptors, and its own mutual-nearest-neighbour and refined
+          matching of image pairs.
+        - :class:`DeDoDe`: separate learned detector and descriptor networks, with ``n`` keypoints in every image.
+        - :class:`LocalFeature`: a classical detector and LAF descriptor in one call, returning padded LAF tensors
+          instead of a list per image.
+        - :func:`laf_from_center_scale_ori`: turns the keypoints of one image into the LAFs that
+          :class:`LightGlueMatcher` and :class:`LAFDescriptor` take.
+        - :class:`LightGlueMatcher`: matches DISK's descriptors and keypoints with the ``"disk"`` weights.
 
     Example:
         >>> disk = DISK.from_pretrained('depth')
@@ -118,7 +140,7 @@ class DISK(nn.Module):
         Returns:
             A tuple of dense detection scores and descriptors.
             Shapes are ``(B, 1, H, W)`` and ``(B, D, H, W)``, where
-            :math:`D` is the descriptor dimension.
+            ``D`` is the descriptor dimension; the descriptors are not normalised.
 
         """
         unet_output = self.unet(images)

@@ -26,19 +26,26 @@ import torch.nn.functional as F
 
 @dataclass
 class DISKFeatures:
-    r"""A data structure holding DISK keypoints, descriptors and detection scores for an image.
+    r"""Hold the integer-pixel keypoints, descriptors and detection scores that DISK detects in one image.
 
-    Since DISK detects a varying number of keypoints per image, `DISKFeatures` is not batched.
+    ``features = disk(images)[b]`` is what :class:`DISK` returns for image ``b``: ``features.keypoints`` ``(N, 2)``,
+    integer ``(x, y)`` pixels, also read as :attr:`x` and :attr:`y`, ``features.descriptors`` ``(N, D)``,
+    L2-normalised, and ``features.detection_scores`` ``(N,)``, with ``N = features.n``. It is not batched, because
+    DISK detects a different number of keypoints in each image; ``features.to(device)`` moves the three tensors.
 
     Convention:
         The keypoints, scores and descriptors that :class:`~kornia.feature.DISK` returns for one image; its
         Convention block gives their frame and order.
 
     Args:
-        keypoints: torch.Tensor of shape ``(N, 2)``, where :math:`N` is the number of keypoints.
-        descriptors: torch.Tensor of shape ``(N, D)``, where :math:`D` is the descriptor dimension.
+        keypoints: torch.Tensor of shape ``(N, 2)``, where ``N`` is the number of keypoints.
+        descriptors: torch.Tensor of shape ``(N, D)``, where ``D`` is the descriptor dimension.
         detection_scores: torch.Tensor of shape ``(N,)``, the detection heatmap value at each keypoint: a raw
                           logit of the network, not a log-probability.
+
+    See Also:
+        - :class:`DISK`: the detector, which returns one of these per image.
+        - :class:`ALIKEDFeatures`: the same container for :class:`ALIKED`, whose keypoints are sub-pixel.
 
     """
 
@@ -75,17 +82,16 @@ class DISKFeatures:
         return self.keypoints[:, 1]
 
     def to(self, *args: Any, **kwargs: Any) -> DISKFeatures:
-        """Call :func:`torch.Tensor.to` on each torch.tensor to move the keypoints, descriptors and detection scores to
-        the specified device and/or data type.
+        """Return a copy whose keypoints, descriptors and detection scores went through :meth:`torch.Tensor.to`.
 
         Args:
-            *args: Arguments passed to :func:`torch.Tensor.to`.
-            **kwargs: Keyword arguments passed to :func:`torch.Tensor.to`.
+            *args: Arguments passed to :meth:`torch.Tensor.to`.
+            **kwargs: Keyword arguments passed to :meth:`torch.Tensor.to`.
 
         Returns:
             A new DISKFeatures object with tensors of appropriate type and location.
 
-        """  # noqa:D205
+        """
         return DISKFeatures(
             self.keypoints.to(*args, **kwargs),
             self.descriptors.to(*args, **kwargs),

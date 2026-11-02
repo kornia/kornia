@@ -53,6 +53,7 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 """Top-level packages left out of the rollout, with the reason."""
 
 CATALOG_NAMESPACES: tuple[str, ...] = (
+    "kornia.feature.dedode.transformer",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",
     "kornia.geometry.calibration",
@@ -90,7 +91,10 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
+    "kornia.feature.aliked",
+    "kornia.feature.dedode",
     "kornia.feature.defmo",
+    "kornia.feature.disk",
     "kornia.feature.hardnet",
     "kornia.feature.hynet",
     "kornia.feature.integrated",
@@ -107,8 +111,10 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.feature.sift",
     "kornia.feature.siftdesc",
     "kornia.feature.sold2.sold2",
+    "kornia.feature.sold2.sold2_detector",
     "kornia.feature.sosnet",
     "kornia.feature.tfeat",
+    "kornia.feature.xfeat",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",
     "kornia.geometry.calibration",

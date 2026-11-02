@@ -38,15 +38,18 @@ urls["wireframe"] = [
 
 
 class SOLD2_detector(nn.Module):
-    r"""nn.Module, which detects line segments in an image.
+    r"""Detect line segments in grayscale images with SOLD2, without building its descriptor head.
 
-    This is based on the original code from the paper "SOLD²: Self-supervised
-    Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
+    ``detector = SOLD2_detector()`` builds the network with its pretrained weights, in evaluation mode, and
+    ``outputs = detector(images)`` takes grayscale images ``(B, 1, H, W)`` in :math:`[0, 1]`, with ``H`` and ``W``
+    multiples of 8, and returns a dict: ``"line_segments"``, one ``(N, 2, 2)`` tensor of ``(row, col)`` endpoints in
+    pixels per image, and the ``"junction_heatmap"`` and ``"line_heatmap"``, ``(B, H, W)`` each. With the same weights
+    and ``config``, these are the segments and heatmaps of :class:`SOLD2`; to also describe the segments and match them
+    between images, use :class:`SOLD2` instead. This is based on the original code from the paper "SOLD²:
+    Self-supervised Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
     Convention:
-        - The input is a grayscale image ``(B, 1, H, W)``, in :math:`[0, 1]` for the pretrained weights, with
-          ``H`` and ``W`` multiples of 8; other sizes raise an error or give heatmaps of another size.
-          ``junction_heatmap`` and ``line_heatmap`` are ``(B, H, W)``.
+        - Sizes that are not multiples of 8 raise an error or give heatmaps of another size.
         - ``line_segments`` holds one ``(N, 2, 2)`` tensor per image: the two endpoints of each segment as
           ``(row, col)`` in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`), so ``flip(-1)`` gives ``(x, y)``. The endpoints
@@ -57,11 +60,16 @@ class SOLD2_detector(nn.Module):
 
     Args:
         config (DetectorCfg): Configuration object containing all parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px.
-        pretrained (bool): If True, download and set pretrained weights to the model.
+            which are tuned for images in the range 400~800 px. A dict of its fields is deprecated and warns. A
+            ``config`` with ``use_descriptor=True`` builds the descriptor head, which the outputs do not use.
+        pretrained (bool): If True, download and set pretrained weights to the model, and return it in eval mode;
+            otherwise the weights are random and the model is in training mode.
 
     Returns:
         The raw junction and line heatmaps, as well as the list of detected line segments (ij coordinates convention).
+
+    See Also:
+        - :class:`SOLD2`: the same line detection plus the descriptor map and line matching.
 
     Example:
         >>> img = torch.rand(1, 1, 128, 128)
@@ -125,7 +133,7 @@ class SOLD2_detector(nn.Module):
             img: batched images with shape ``(B, 1, H, W)``.
 
         Returns:
-            line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
+            line_segments: a list of ``B`` tensors ``(N, 2, 2)``, the ``(row, col)`` segment endpoints per image.
             junction_heatmap: raw junction heatmap of shape ``(B, H, W)``.
             line_heatmap: raw line heatmap of shape ``(B, H, W)``.
 

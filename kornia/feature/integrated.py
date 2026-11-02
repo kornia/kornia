@@ -298,8 +298,8 @@ class LocalFeature(nn.Module):
     :class:`HardNet` in :class:`LAFDescriptor`. The two modules decide which batch sizes, channels and intensity
     ranges the call accepts. :class:`SIFTFeatureScaleSpace`, :class:`SIFTFeature` and the HardNet presets such as
     :class:`DoGHardNet` are its subclasses. To match the features of two images, use :class:`LocalFeatureMatcher`; for
-    a learned detector and descriptor in one network, :class:`DISK`, :class:`ALIKED`, :class:`XFeat` or
-    :class:`DeDoDe` instead.
+    learned detectors and descriptors, :class:`DISK`, :class:`ALIKED` or :class:`XFeat`, one network each, or
+    :class:`DeDoDe`, a detector network and a descriptor network, instead.
 
     Convention:
         - The returned LAFs are in the frame of :func:`~kornia.feature.laf_from_center_scale_ori`
@@ -367,8 +367,8 @@ class LocalFeature(nn.Module):
           the same on Hessian blobs.
         - :class:`KeyNetHardNet`: KeyNet detections with OriNet and HardNet, one image per call;
           :class:`KeyNetAffNetHardNet` adds AffNet shapes.
-        - :class:`DISK`: a learned detector and descriptor in one network, not a subclass, like :class:`ALIKED`,
-          :class:`XFeat` and :class:`DeDoDe`.
+        - :class:`DISK`: a learned detector and descriptor in one network, not a subclass, like :class:`ALIKED` and
+          :class:`XFeat`; :class:`DeDoDe`, not a subclass either, runs a detector network and a descriptor network.
 
     Example:
         >>> feature = LocalFeature(ScaleSpaceDetector(10), LAFDescriptor(SIFTDescriptor(32), patch_size=32))
@@ -1352,7 +1352,9 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
           - ``"aliked"``, ``"dedodeb"``, ``"dedodeg"``, ``"disk"``, ``"raco-aliked"``, ``"superpoint"``, ``"xfeat"``:
             nothing else. For ``"xfeat"``, the LighterGlue weights of :class:`~kornia.feature.XFeat`, pass the 64-D
             descriptors of :meth:`~kornia.feature.XFeat.detectAndCompute` and LAFs centred on its keypoints, such as
-            ``laf_from_center_scale_ori(keypoints[None])``.
+            ``laf_from_center_scale_ori(keypoints[None])``, and call the matcher under ``torch.no_grad()`` or
+            ``torch.inference_mode()``: it raises on XFeat's inference tensors with gradients enabled
+            (`#6533 <https://github.com/kornia/kornia/issues/6533>`_).
           - ``"sift"``: the scale and orientation of the COLMAP keypoints the weights were trained on: the negated
             LAF orientation in :math:`(-\pi, \pi]`, and a sixth of the LAF scale, which is the detection sigma for
             6-sigma DoG frames such as :class:`~kornia.feature.SIFTFeatureScaleSpace`'s. The descriptors must be in
@@ -1391,6 +1393,10 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         - :class:`DoGHardNet`: the features for ``"doghardnet"``; :class:`DoGAffNetHardNet` those for
           ``"dog_affnet_hardnet"``.
         - :class:`KeyNetAffNetHardNet`: the features for ``"keynet_affnet_hardnet"``, one image per call.
+        - :class:`DISK`: the features for ``"disk"``; :class:`ALIKED` those for ``"aliked"``, except the 64-D
+          descriptors of ``"aliked-t16"``.
+        - :class:`XFeat`: the features for ``"xfeat"``, inference tensors to match with gradients disabled.
+        - :class:`DeDoDe`: the features for ``"dedodeb"`` with its ``B`` descriptor and for ``"dedodeg"`` with ``G``.
 
     """
 

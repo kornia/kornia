@@ -9,9 +9,9 @@ its subclasses. Each preset returns LAFs ``(B, N, 2, 3)`` in pixels, their respo
 share one descriptor, so drop them with :func:`laf_is_filled` before matching; :class:`LocalFeatureMatcher` does it
 for you. :class:`SIFTFeature`, :class:`KeyNetHardNet` and :class:`KeyNetAffNetHardNet` take one image per call,
 ``(1, 1, H, W)``; the other presets take a batch of grayscale images ``(B, 1, H, W)``, and
-``SIFTFeatureScaleSpace(descriptor_backend="pyramid")`` also converts an RGB batch to grayscale. The learned models
-of the API reference below, :class:`ALIKED`, :class:`DeDoDe`, :class:`DISK`, :class:`XFeat` and
-:class:`SOLD2_detector`, are not :class:`LocalFeature` subclasses; their docstrings give their outputs.
+``SIFTFeatureScaleSpace(descriptor_backend="pyramid")`` also converts an RGB batch to grayscale. The learned models,
+:class:`ALIKED`, :class:`DeDoDe`, :class:`DISK`, :class:`XFeat` and :class:`SOLD2_detector`, are not
+:class:`LocalFeature` subclasses; :ref:`learned-local-features` gives their inputs and outputs.
 
 .. _sift-pipelines:
 
@@ -176,13 +176,60 @@ in the images they take:
 For a preset with a :class:`LightGlueMatcher` mode, drop the padded slots and pass its LAFs and descriptors to the
 matcher in that mode. The DoG presets return the 12-sigma frames that the ``"doghardnet"`` weights expect.
 
+.. _learned-local-features:
+
+Learned local features
+----------------------
+
+:class:`ALIKED`, :class:`DISK`, :class:`XFeat` and :class:`DeDoDe` detect and describe keypoints with learned
+networks, and :class:`SOLD2_detector` detects line segments. Load the first four with their ``from_pretrained``,
+which returns the model in evaluation mode: their constructors build random weights in training mode, although
+``DeDoDe()`` with its default ``G`` descriptor already loads a pretrained DINOv2 backbone. ``SOLD2_detector()``
+loads its pretrained weights. The four return keypoints as ``(x, y)`` pixels, not LAFs (except
+:meth:`ALIKED.forward_laf`), and ``laf_from_center_scale_ori(keypoints[None])`` (:func:`laf_from_center_scale_ori`)
+turns the keypoints of one image into the LAFs that :class:`LightGlueMatcher` takes in the mode of the table. Call
+the matcher on the outputs of :class:`XFeat`, which are inference tensors, under ``torch.no_grad()`` or
+``torch.inference_mode()`` (`#6533 <https://github.com/kornia/kornia/issues/6533>`_). The
+:doc:`image matching guide </applications/image_matching>` compares the speed and accuracy of the four keypoint
+models with the authors' code, device by device.
+
+.. list-table:: Learned local features
+   :header-rows: 1
+   :widths: 14 30 38 18
+
+   * - Model
+     - Input
+     - Output
+     - ``LightGlueMatcher`` mode
+   * - :class:`ALIKED`
+     - RGB ``(B, 3, H, W)`` in ``[0, 1]``, or grayscale ``(B, 1, H, W)``, of any size
+     - one :class:`ALIKEDFeatures` per image: sub-pixel keypoints and 128-D descriptors (64-D for ``"aliked-t16"``);
+       :meth:`ALIKED.forward_laf` pads them into LAF tensors
+     - ``"aliked"`` (not for ``"aliked-t16"``)
+   * - :class:`DISK`
+     - RGB ``(B, 3, H, W)``, sides multiples of 16 unless ``pad_if_not_divisible=True``
+     - one :class:`DISKFeatures` per image: integer-pixel keypoints in raster order and 128-D descriptors
+     - ``"disk"``
+   * - :class:`XFeat`
+     - ``(B, C, H, W)``, any channel count, resized to multiples of 32
+     - :meth:`XFeat.detectAndCompute`: one dict per image, keypoints and 64-D descriptors;
+       :meth:`XFeat.match_xfeat` and :meth:`XFeat.match_xfeat_star` also match image pairs
+     - ``"xfeat"``
+   * - :class:`DeDoDe`
+     - RGB ``(B, 3, H, W)`` in ``[0, 1]``, padded to multiples of 14
+     - tensors of the ``n`` best keypoints of each image, ``(B, N, 2)`` with pixel ``i`` at ``i + 0.5``, their
+       scores and 256-D descriptions
+     - ``"dedodeb"``, ``"dedodeg"``
+   * - :class:`SOLD2_detector`
+     - grayscale ``(B, 1, H, W)`` in ``[0, 1]``, sides multiples of 8
+     - line segments, one ``(N, 2, 2)`` tensor of ``(row, col)`` endpoints per image; :class:`SOLD2` also describes
+       and matches them
+     - none
+
 API reference
 -------------
 
 .. autoclass:: LocalFeature
-   :members: forward
-
-.. autoclass:: SOLD2_detector
    :members: forward
 
 .. autoclass:: ALIKED
@@ -198,6 +245,10 @@ API reference
 .. autoclass:: DISK
    :members: forward, from_pretrained, heatmap_and_dense_descriptors
 
+.. autoclass:: DISKFeatures
+   :undoc-members:
+   :members: x, y, to
+
 .. autoclass:: XFeat
    :members: from_pretrained, detectAndCompute, detectAndComputeDense, match_xfeat, match_xfeat_star
 
@@ -207,9 +258,8 @@ API reference
 .. autoclass:: InterpolateSparse2d
    :members: forward
 
-.. autoclass:: DISKFeatures
-   :undoc-members:
-   :members: x, y, to
+.. autoclass:: SOLD2_detector
+   :members: forward
 
 .. autoclass:: SIFTFeatureScaleSpace
    :members: forward
