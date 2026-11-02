@@ -16,7 +16,7 @@
 #
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -69,7 +69,7 @@ class SOLD2_detector(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
+    def __init__(self, pretrained: bool = True, config: Optional[Union[DetectorCfg, Dict[str, Any]]] = None) -> None:
         if isinstance(config, dict):
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
