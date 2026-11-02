@@ -81,6 +81,29 @@ class TestDispatcherModuleState(BaseTester):
         for actual, reference in zip(self.call(restored, image), expected):
             self.assert_close(actual, reference, rtol=0, atol=0)
 
+    def test_moved_children_sample_like_a_moved_sequence(self, device, dtype, dispatcher_class):
+        # After a move the children draw on that device and in that dtype, as an AugmentationSequential moved the
+        # same way does. A CPU run with a non-default dtype checks the dtype half; a CUDA run checks the device.
+        def sequences():
+            return [
+                K.AugmentationSequential(K.RandomHorizontalFlip(p=0.5), K.RandomBrightness((0.8, 1.2), p=1.0))
+                for _ in range(2)
+            ]
+
+        dispatcher = dispatcher_class(*sequences()).to(device=device, dtype=dtype)
+        reference = [sequence.to(device=device, dtype=dtype) for sequence in sequences()]
+        for sequence in dispatcher.augmentations:
+            for augmentation in sequence.children():
+                assert augmentation.device.type == device.type
+                assert augmentation.dtype == dtype
+        image = torch.rand(4, 3, 4, 5, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        actual = self.call(dispatcher, image)
+        torch.manual_seed(0)
+        expected = [sequence(image) for sequence in reference]
+        for output, target in zip(actual, expected):
+            self.assert_close(output, target, rtol=0, atol=0)
+
     def test_learnable_range_is_a_parameter(self, device, dtype, dispatcher_class):
         # Ranges stay on CPU in the default dtype unless the augmentation's RNG is moved.
         ranges = [nn.Parameter(torch.tensor([0.8, 1.2])) for _ in range(2)]
