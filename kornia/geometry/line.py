@@ -23,7 +23,7 @@ from typing import Iterator, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, are_checks_enabled
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
 from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
 from kornia.geometry.conversions import _normalize_last_dim
@@ -361,12 +361,14 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
         points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is ``(B, N, D)``.
         weights: per-point weights, used in the centroid and in the fit. The expected
-            shape of the tensor is ``(B, N)``.
+            shape of the tensor is ``(B, N)``, with the same ``B`` and ``N`` as ``points``.
 
     Return:
         The fitted line, with origin and direction of shape ``(B, D)``.
 
     Raises:
+        ShapeError: if ``points`` is not of shape ``(B, N, D)``, or ``weights`` is not of shape ``(B, N)`` with the
+            same ``B`` and ``N`` as ``points``, a ``(B, 1)`` tensor included.
         ValueCheckError: if the points do not determine a line — fewer than two points,
             all points identical, or (with weights) a zero weight sum, a negative weight, or all
             points with positive weight identical.
@@ -381,25 +383,26 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
 
-    _B, _N, D = points.shape
+    B, N, D = points.shape
+
+    # Validate the weights once, for both branches, against the points' own B and N. A bare "N" in the shape spec
+    # is only a label, so a (B, 1) tensor used to pass: it broadcasts in the weighted sums but not in the
+    # normaliser, which made the centroid the sum of the points, and it skipped the weight checks in
+    # _reject_degenerate_line, which compare the weights' shape with the points'.
+    if weights is not None:
+        KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
+        KORNIA_CHECK_SHAPE(weights, [str(B), str(N)])
 
     _reject_degenerate_line(points, weights)
 
     # Fast path: closed-form total least squares for the 2D case
     if D == 2:
         if weights is not None:
-            KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
-            KORNIA_CHECK_SHAPE(weights, ["B", "N"])
-            KORNIA_CHECK(points.shape[0] == weights.shape[0])
             return _fit_line_weighted_tls_2d(points, weights)
         return _fit_line_tls_2d(points)
 
     # The scatter matrix is quadratic in the coordinates. Form it from centred, unit-scale
     # offsets in a compute dtype before SVD; casting an already-overflowed half matrix cannot recover it.
-    if weights is not None:
-        KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
-        KORNIA_CHECK_SHAPE(weights, ["B", "N"])
-        KORNIA_CHECK(points.shape[0] == weights.shape[0])
     # The output keeps the promoted dtype of points and weights, as in the D = 2 branch.
     out_dtype = points.dtype if weights is None else torch.promote_types(points.dtype, weights.dtype)
     compute_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype

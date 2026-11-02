@@ -21,7 +21,7 @@ import pytest
 import torch
 
 from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
-from kornia.core.exceptions import TypeCheckError, ValueCheckError
+from kornia.core.exceptions import ShapeError, TypeCheckError, ValueCheckError
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
 from kornia.geometry.vector import Scalar, Vector3
@@ -984,6 +984,41 @@ class TestFitLine(BaseTester):
                 self.assert_close(
                     (line.direction * expected.direction).sum(-1).abs(), torch.ones(1, device=device, dtype=dtype)
                 )
+
+    def test_fit_line_weights_shape_must_match_points_6525(self, device, dtype):
+        # #6525: the shape check named the weights' dimensions "B" and "N" without tying them to the points', so
+        # (B, 1) weights passed. They broadcast in the weighted sums but not in the normaliser, so the centroid came
+        # out as the sum of the points rather than their mean. They also skipped the weight checks of
+        # _reject_degenerate_line, which compare the weights' shape with the points': zero weights gave a NaN line
+        # in 2-D, and a negative weight was accepted.
+        points_2d = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]], device=device, dtype=dtype)
+        points_3d = torch.nn.functional.pad(points_2d, (0, 1))
+        for points in (points_2d, points_3d):
+            # Weights of the points' shape still give the weighted centroid, here the mean of the points.
+            line = fit_line(points, torch.ones(1, 4, device=device, dtype=dtype))
+            self.assert_close(line.origin, points.mean(-2))
+
+            # Any other second dimension is a shape error, (B, 1) included, whatever the weights' values.
+            for n in (1, 3, 5):
+                for value in (1.0, 0.0, -1.0):
+                    with pytest.raises(ShapeError, match="expected 4, got"):
+                        fit_line(points, torch.full((1, n), value, device=device, dtype=dtype))
+
+            # So is a weights tensor of the wrong rank.
+            for weights in (torch.ones(4, device=device, dtype=dtype), torch.ones(1, 4, 1, device=device, dtype=dtype)):
+                with pytest.raises(ShapeError, match="dimension mismatch"):
+                    fit_line(points, weights)
+
+            # The batch dimension is tied as well, and a (B, 1) tensor is no exception in a batch.
+            batch = torch.cat([points, points])
+            with pytest.raises(ShapeError, match="expected 2, got 1"):
+                fit_line(batch, torch.ones(1, 4, device=device, dtype=dtype))
+            with pytest.raises(ShapeError, match="expected 4, got 1"):
+                fit_line(batch, torch.ones(2, 1, device=device, dtype=dtype))
+
+            # With N == 1 the (B, 1) weights have the points' shape, and the single point is rejected as before.
+            with pytest.raises(ValueCheckError, match="at least two points"):
+                fit_line(points[:, :1], torch.ones(1, 1, device=device, dtype=dtype))
 
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call
