@@ -90,15 +90,24 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
+    "kornia.feature.defmo",
+    "kornia.feature.hardnet",
+    "kornia.feature.hynet",
     "kornia.feature.keynet",
     "kornia.feature.laf",
     "kornia.feature.lightglue",
     "kornia.feature.lightglue_onnx",
     "kornia.feature.loftr",
     "kornia.feature.matching",
+    "kornia.feature.mkd",
     "kornia.feature.orientation",
     "kornia.feature.responses",
     "kornia.feature.scale_space_detector",
+    "kornia.feature.sift",
+    "kornia.feature.siftdesc",
+    "kornia.feature.sold2.sold2",
+    "kornia.feature.sosnet",
+    "kornia.feature.tfeat",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",
     "kornia.geometry.calibration",
@@ -124,7 +133,9 @@ DOCSTRING_MODULES: tuple[str, ...] = (
 )
 """Prefixes of the defining modules whose public objects carry the converted docstring style."""
 
-SEE_ALSO_EXCEPTIONS: dict[str, str] = {}
+SEE_ALSO_EXCEPTIONS: dict[str, str] = {
+    "kornia.feature.defmo.DeFMO": "the only deblurring model in kornia; no other object serves a nearby task",
+}
 """Qualified name of a converted object that needs no ``See Also:`` section, with the reason."""
 
 MATH_NON_SHAPES: dict[str, dict[str, str]] = {

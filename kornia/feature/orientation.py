@@ -360,6 +360,7 @@ class LAFOrienter(nn.Module):
         - :class:`PassLAF`: keeps the input orientation, for upright features.
         - :func:`rotate_laf`: rotates LAFs by known angles, as this module does with the estimated ones.
         - :class:`LAFAffineShapeEstimator`: estimates the affine shape, which a detector runs before this module.
+        - :class:`LAFDescriptor`: describes the oriented LAFs, from patches that follow their orientation.
 
     """  # pylint: disable
 

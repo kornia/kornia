@@ -3,6 +3,25 @@ Descriptors
 
 .. currentmodule:: kornia.feature
 
+Patch descriptors and LAFs
+--------------------------
+
+:class:`SIFTDescriptor`, :class:`MKDDescriptor` and the learned :class:`HardNet`, :class:`HardNet8`,
+:class:`HyNet`, :class:`SOSNet` and :class:`TFeat` describe grayscale patches ``(B, 1, PS, PS)``, one
+descriptor per patch. ``PS`` is 32 for the learned networks, which raise for another size, and the
+``patch_size`` argument of SIFT (41 by default) and MKD (32 by default). All but TFeat return L2-normalised
+descriptors. HardNet, HardNet8, MKD and SIFT ignore a positive gain and an offset of the patch intensities, as do
+SOSNet and TFeat up to the variance floor of their first ``InstanceNorm2d``; HyNet ignores only a positive gain (see
+each Convention block). The learned networks load their pretrained weights by default.
+
+To describe the LAFs of an image, :class:`LAFDescriptor`, which holds a pretrained :class:`HardNet` by default, or
+:func:`get_laf_descriptors`, which takes the descriptor in each call, samples one patch per LAF with
+:func:`extract_patches_from_pyramid` and runs the patch descriptor on it; pass the patch size of any descriptor
+other than the default. The patches follow the orientation of their LAFs, so orient the LAFs first, e.g. with
+:class:`LAFOrienter`. For SIFT descriptors of LAFs without sampling patches, use :class:`SIFTDescriptorFromPyramid`
+(see below). The pipelines of :doc:`feature.local_features` combine a detector with these descriptors.
+:class:`SOLD2` instead detects, describes and matches line segments of whole images.
+
 .. _sift-descriptor-interfaces:
 
 Choosing a SIFT descriptor interface

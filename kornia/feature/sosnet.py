@@ -36,10 +36,14 @@ urls["hp_a"] = [
 
 
 class SOSNet(nn.Module):
-    r"""128-dimensional SOSNet model definition for 32x32 patches.
+    r"""Describe 32 x 32 grayscale patches with SOSNet, trained with second-order similarity.
 
-    This is based on the original code from paper
-    "SOSNet:Second Order Similarity Regularization for Local Descriptor Learning".
+    ``sosnet = SOSNet()`` builds the network with its pretrained weights (trained on Liberty), in eval mode, and
+    ``descs = sosnet(patches)`` takes grayscale patches ``(B, 1, 32, 32)`` and returns unit-norm descriptors
+    ``(B, 128)``. It has the convolution stack of :class:`HardNet`, preceded by an ``InstanceNorm2d``, and was trained
+    with a second-order similarity regularisation. To describe LAFs on an image, pass it to :class:`LAFDescriptor`.
+    This is based on the original code from paper "SOSNet: Second Order Similarity Regularization for Local
+    Descriptor Learning".
 
     Convention:
         - See the Convention block on :class:`~kornia.feature.HardNet`.
@@ -50,6 +54,14 @@ class SOSNet(nn.Module):
     Shape:
         - Input: ``(B, 1, 32, 32)``
         - Output: ``(B, 128)``
+
+    See Also:
+        - :class:`HardNet`: the same convolution stack, trained without the second-order regularisation.
+        - :class:`HyNet`: a descriptor of the same patches with FRN layers, which subtract no mean.
+        - :class:`HardNet8`: the wider follow-up of HardNet, with a PCA to 128 dimensions.
+        - :class:`TFeat`: a shallow network for the same patches that also starts with an ``InstanceNorm2d``, without
+          L2 normalisation.
+        - :class:`LAFDescriptor`: runs a patch descriptor such as this one on a patch per LAF of an image.
 
     Note:
         With float16 weights, the final BatchNorm keeps its running statistics in float32.

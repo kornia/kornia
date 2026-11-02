@@ -138,13 +138,22 @@ def get_laf_descriptors(
     patch_size: int = 32,
     grayscale_descriptor: bool = True,
 ) -> torch.Tensor:
-    r"""Get local descriptors, corresponding to LAFs (keypoints).
+    r"""Describe LAFs on an image by running a patch descriptor on one patch sampled per LAF.
+
+    ``descs = get_laf_descriptors(img, lafs, patch_descriptor, patch_size)`` takes images ``(B, C, H, W)``, their
+    LAFs ``(B, N, 2, 3)`` in pixels and a patch descriptor module, and returns one descriptor per LAF, ``(B, N, D)``,
+    in the dtype of a floating-point ``img``. It converts a 3-channel image to grayscale when
+    ``grayscale_descriptor`` is set, samples a ``patch_size`` x ``patch_size`` patch per LAF with
+    :func:`extract_patches_from_pyramid`, and runs the descriptor on the stack of the ``B * N`` patches.
+    The patch follows the LAF's scale and orientation, so orient the LAFs first, e.g. with :class:`LAFOrienter`,
+    unless upright descriptors are wanted. ``patch_size`` must be what the descriptor takes: 32 for :class:`HardNet`
+    and the other learned descriptors, 41 for a default :class:`SIFTDescriptor`. For the module form, use
+    :class:`LAFDescriptor`; for SIFT descriptors of LAFs without sampling patches, :class:`SIFTDescriptorFromPyramid`.
 
     Convention:
         - The descriptor sees the patches of :func:`~kornia.feature.extract_patches_from_pyramid` at ``patch_size``;
           see its Convention block for how they are sampled. ``patch_size`` is this argument, 32 by default, and is
           not read from the descriptor, so it has to be a size the descriptor accepts.
-        - With ``grayscale_descriptor=True``, a 3-channel image is converted to grayscale first.
         - The descriptor runs in eval mode, with its floating-point parameters and buffers cast to the device and
           dtype of ``img`` for the call (a TorchScript module is called on a cast copy). SOSNet and HyNet retain their
           final BatchNorm statistics in float32 for float16 images. The module keeps its device, dtype and
@@ -156,15 +165,24 @@ def get_laf_descriptors(
 
     Args:
         img: image features with shape ``(B,C,H,W)``.
-        lafs: local affine frames ``(B,N,2,3)``.
+        lafs: local affine frames ``(B,N,2,3)`` in the pixels of ``img``, with its batch size.
         patch_descriptor: patch descriptor module, e.g. :class:`~kornia.feature.SIFTDescriptor`
             or :class:`~kornia.feature.HardNet`.
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image; a 3-channel ``img`` is
-            then converted to grayscale.
+            then converted to grayscale. An image with another channel count is passed on unchanged.
 
     Returns:
         Local descriptors of shape ``(B,N,D)`` where :math:`D` is descriptor size.
+
+    See Also:
+        - :class:`LAFDescriptor`: the module form, which holds the descriptor, a pretrained :class:`HardNet` by
+          default.
+        - :func:`extract_patches_from_pyramid`: the patch sampler, for the patches themselves.
+        - :func:`laf_from_center_scale_ori`: LAFs from keypoint centres, scales and orientations, to describe here.
+        - :class:`SIFTDescriptorFromPyramid`: SIFT descriptors of LAFs, pooled from a gradient pyramid without
+          sampling patches.
+        - :class:`LAFOrienter`: orients LAFs from their patches, before they are described.
 
     """
     KORNIA_CHECK_LAF(lafs)
@@ -197,7 +215,17 @@ def get_laf_descriptors(
 
 
 class LAFDescriptor(nn.Module):
-    r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
+    r"""Describe LAFs with a held patch descriptor, as a module (HardNet by default).
+
+    ``describer = LAFDescriptor()``, then ``descs = describer(img, lafs)`` takes images ``(B, C, H, W)`` and their
+    LAFs ``(B, N, 2, 3)`` in pixels and returns one descriptor per LAF, ``(B, N, D)``: ``forward`` calls
+    :func:`get_laf_descriptors` with the held descriptor, ``patch_size`` and ``grayscale_descriptor``, which samples a
+    patch per LAF with :func:`extract_patches_from_pyramid`. By default it holds a pretrained :class:`HardNet` on
+    32 x 32 grayscale patches, converts an RGB image to grayscale and returns ``(B, N, 128)``; with another
+    descriptor, pass the patch size it takes, e.g. ``LAFDescriptor(SIFTDescriptor(41), patch_size=41)``. It is the
+    descriptor of the HardNet local features, such as :class:`DoGHardNet`, and of the ``"patch"`` backend of
+    :class:`SIFTFeature` and :class:`SIFTFeatureScaleSpace`. For SIFT descriptors of LAFs without sampling patches,
+    use :class:`SIFTDescriptorFromPyramid` instead.
 
     Convention:
         See the Convention block on :func:`~kornia.feature.get_laf_descriptors`, which ``forward`` calls with this
@@ -211,6 +239,16 @@ class LAFDescriptor(nn.Module):
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image; a 3-channel image is then
             converted to grayscale.
+
+    See Also:
+        - :func:`get_laf_descriptors`: the function form, which takes the descriptor in each call.
+        - :class:`HardNet`: the default descriptor; :class:`SIFTDescriptor`, :class:`HardNet8`, :class:`HyNet`,
+          :class:`SOSNet`, :class:`TFeat` and :class:`MKDDescriptor` fit as well.
+        - :func:`extract_patches_from_pyramid`: the patch sampler, for the patches themselves.
+        - :func:`laf_from_center_scale_ori`: LAFs from keypoint centres, scales and orientations, to describe here.
+        - :class:`SIFTDescriptorFromPyramid`: SIFT descriptors of LAFs, pooled from a gradient pyramid without
+          sampling patches.
+        - :class:`LocalFeature`: runs a detector and a descriptor such as this module in one call.
 
     """
 
@@ -1055,6 +1093,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         - :class:`LocalFeatureMatcher`: detects, describes and matches two images with a descriptor-only matcher.
         - :class:`LoFTR`: matches two images directly, without a detector.
         - :class:`GeometryAwareDescriptorMatcher`: its base class, with the same call, for FGINN and AdaLAM.
+        - :func:`convert_sift_descriptor_layout`: reorders kornia's SIFT descriptors into the OpenCV layout that the
+          ``"sift"`` weights expect.
 
     """
 

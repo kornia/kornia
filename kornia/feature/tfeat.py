@@ -40,11 +40,14 @@ urls["yosemite"] = [
 
 
 class TFeat(nn.Module):
-    r"""Module, which computes TFeat descriptors of given grayscale patches of 32x32.
+    r"""Describe 32 x 32 grayscale patches with the shallow TFeat CNN, without L2 normalisation.
 
-    This is based on the original code from paper "Learning local feature descriptors
-    with triplets and shallow convolutional neural networks".
-    See :cite:`TFeat2016` for more details
+    ``tfeat = TFeat()`` builds the network with its pretrained weights (trained on Liberty), in eval mode, and
+    ``descs = tfeat(patches)`` takes grayscale patches ``(B, 1, 32, 32)`` and returns ``(B, 128)`` descriptors with
+    entries in ``[-1, 1]``, not unit vectors (see the Convention block). It has two convolutions and one linear layer.
+    For unit-norm descriptors of the same patches, use :class:`HardNet` instead; to describe LAFs on an image, pass it
+    to :class:`LAFDescriptor`. This is based on the original code from paper "Learning local feature descriptors
+    with triplets and shallow convolutional neural networks". See :cite:`TFeat2016` for more details.
 
     Convention:
         - It takes the patches of :class:`~kornia.feature.HardNet`, with the intensity rule of HardNet's Convention
@@ -61,6 +64,11 @@ class TFeat(nn.Module):
     Shape:
         - Input: ``(B, 1, 32, 32)``
         - Output: ``(B, 128)``
+
+    See Also:
+        - :class:`HardNet`: a deeper network for the same patches, with unit-norm descriptors.
+        - :class:`SOSNet`: a deeper network for the same patches that also starts with an ``InstanceNorm2d``.
+        - :class:`LAFDescriptor`: runs a patch descriptor such as this one on a patch per LAF of an image.
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
