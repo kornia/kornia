@@ -452,9 +452,9 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
         points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is ``(B, N, D)``.
         weights: per-point weights, used in the centroid and in the fit. The expected
-            shape of the tensor is ``(B, N)``. A ``(B, 1)`` tensor is not rejected: it broadcasts, makes the
-            centroid the sum of the points instead of their mean and skips the weight checks under Raises
-            (`#6525 <https://github.com/kornia/kornia/issues/6525>`_).
+            shape of the tensor is ``(B, N)``; pass that shape. For ``N > 1`` a ``(B, 1)`` tensor is not rejected:
+            it broadcasts, skips the weight checks under Raises and gives a wrong line, wrong in a different way
+            for ``D = 2`` and ``D >= 3`` (`#6525 <https://github.com/kornia/kornia/issues/6525>`_).
 
     Return:
         The fitted line, with origin and direction of shape ``(B, D)``.
