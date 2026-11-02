@@ -898,6 +898,40 @@ class TestDownloadImage:
         assert dst.read_bytes() == b"previous image"
         assert "Could not remove the temporary image download file" in caplog.text
 
+    @pytest.mark.parametrize("failure_type", [ValueError, OSError, KeyboardInterrupt])
+    @pytest.mark.parametrize("handler_kind", ["file", "custom"])
+    def test_logging_failure_preserves_the_original_error(self, tmp_path, failure_type, handler_kind):
+        import logging
+        from unittest import mock
+
+        from kornia.io.sample import _download
+
+        class FailingHandler(logging.Handler):
+            def emit(self, record):
+                raise RuntimeError("logging handler failed")
+
+        handler = (
+            logging.FileHandler(tmp_path / "missing" / "download.log", delay=True)
+            if handler_kind == "file"
+            else FailingHandler()
+        )
+        dst = tmp_path / "panda.png"
+        dst.write_bytes(b"previous image")
+        original_error = failure_type("image loading failed")
+        try:
+            with (
+                mock.patch.object(logging.getLogger(), "handlers", [handler]),
+                mock.patch.object(logging.getLogger(), "level", logging.WARNING),
+                mock.patch("kornia.io.sample.urlopen", return_value=io.BytesIO(b"response body")),
+                mock.patch("kornia.io.sample.os.remove", side_effect=PermissionError("cleanup failed")),
+                pytest.raises(failure_type) as caught,
+            ):
+                _download(self.URL, str(dst), load=mock.Mock(side_effect=original_error))
+            assert caught.value is original_error
+            assert dst.read_bytes() == b"previous image"
+        finally:
+            handler.close()
+
     def test_saves_the_fetched_bytes(self, tmp_path):
         from unittest import mock
 
