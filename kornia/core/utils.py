@@ -489,6 +489,17 @@ def _svd_work_dtype(input: torch.Tensor) -> torch.dtype:
     return _normalize_to_float32_or_float64(input.dtype)
 
 
+def _needs_derivatives(input: torch.Tensor) -> bool:
+    """Return whether autograd can ask for a derivative through ``input``.
+
+    Reverse mode needs grad mode and an ``input`` that requires grad; forward mode (``torch.func.jvp``, ``jacfwd``,
+    ``torch.autograd.forward_ad``) gives ``input`` a tangent instead, whatever the grad mode.
+    """
+    if torch.is_grad_enabled() and input.requires_grad:
+        return True
+    return torch.autograd.forward_ad.unpack_dual(input).tangent is not None
+
+
 def _symmetric_eigenvector(
     input: torch.Tensor, eigenvalues: torch.Tensor, eigenvectors: torch.Tensor, index: Union[int, torch.Tensor]
 ) -> torch.Tensor:
@@ -509,14 +520,14 @@ def _symmetric_eigenvector(
     A gap that is exactly zero, where the eigenvector is not unique, contributes nothing.
 
     Args:
-        input: the symmetric matrix ``C``, of shape :math:`(*, D, D)`.
-        eigenvalues: eigenvalues of ``C``, of shape :math:`(*, K)`; for a positive semidefinite ``C`` they can be its
+        input: the symmetric matrix ``C``, of shape ``(*, D, D)``.
+        eigenvalues: eigenvalues of ``C``, of shape ``(*, K)``; for a positive semidefinite ``C`` they can be its
             singular values.
-        eigenvectors: the matching orthonormal eigenvectors of ``C`` as columns, of shape :math:`(*, D, K)`.
-        index: the column to return, as an ``int`` or a :math:`(*, 1)` integer tensor.
+        eigenvectors: the matching orthonormal eigenvectors of ``C`` as columns, of shape ``(*, D, K)``.
+        index: the column to return, as an ``int`` or a ``(*, 1)`` integer tensor.
 
     Returns:
-        The eigenvector, of shape :math:`(*, D)` in the dtype of ``eigenvectors``, with first and second derivatives
+        The eigenvector, of shape ``(*, D)`` in the dtype of ``eigenvectors``, with first and second derivatives
         with respect to ``input``.
     """
     lam = eigenvalues.detach()
@@ -528,10 +539,15 @@ def _symmetric_eigenvector(
         # gather rather than indexing with a tensor, which torch.compile would turn into a data-dependent shape
         v = V.gather(-1, index[..., None, :].expand(*V.shape[:-1], 1))[..., 0]
         lam_k = lam.gather(-1, index)
-    if not torch.is_grad_enabled():
+    if not _needs_derivatives(input):
         return v
+    columns = torch.arange(lam.shape[-1], device=lam.device)
+    others = columns != (index % lam.shape[-1] if isinstance(index, int) else index)
     gap = lam_k - lam
-    nonzero = gap.abs() > torch.finfo(gap.dtype).tiny
+    # The kept column is excluded by position, not by its gap being zero: CUDA Inductor can evaluate an eigenvalue
+    # computed in the graph, such as (S / scale)^2, differently at its two reads, and a gap of 1e-20 there put 1e20
+    # into R.
+    nonzero = others & (gap.abs() > torch.finfo(gap.dtype).tiny)
     inv_gap = torch.where(nonzero, 1.0 / torch.where(nonzero, gap, torch.ones_like(gap)), torch.zeros_like(gap))
     R = (V * inv_gap[..., None, :]) @ V.mT
     C = input.to(V.dtype)
@@ -544,14 +560,14 @@ def _symmetric_eigenvector(
 
 
 def _right_singular_vector(input: torch.Tensor, S: torch.Tensor, V: torch.Tensor, index: int) -> torch.Tensor:
-    """Return the right singular vector ``V[..., :, index]`` of the :math:`(*, N, D)` ``input``, differentiably.
+    """Return the right singular vector ``V[..., :, index]`` of the ``(*, N, D)`` ``input``, differentiably.
 
     ``S`` and ``V`` are the singular values and the right singular vectors, as columns, of ``input``. The vector is
     the eigenvector of ``X^T X`` with eigenvalue ``S^2``, with the derivatives of :func:`_symmetric_eigenvector`.
     ``X`` is ``input`` in the dtype of ``V`` divided by its largest magnitude, held constant, which leaves the vector
     unchanged and keeps ``X^T X`` in range.
     """
-    if not torch.is_grad_enabled():
+    if not _needs_derivatives(input):
         return V.detach()[..., :, index]
     x = input.to(V.dtype)
     scale = x.detach().abs().amax(dim=(-2, -1), keepdim=True)

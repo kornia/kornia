@@ -910,3 +910,21 @@ class TestQuaternionAverageGradient(BaseTester):
         weights = torch.tensor([0.5, 1.0, 2.0, 0.25], device=device, dtype=torch.float64)
         reference = average_quaternions(Quaternion(data), weights).data.detach()
         self.gradcheck(lambda q, w: _average_with_fixed_sign_6213(q, reference, w), (data, weights), fast_mode=False)
+
+    def test_forward_mode_under_no_grad_6213(self, device):
+        # torch.func.jvp runs under no_grad too, so a call whose input carries a tangent needs the gradient path even
+        # when grad mode is off; skipping it there made the tangent 0.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64")
+        g = torch.Generator().manual_seed(0)
+        q = torch.randn(6, 4, generator=g, dtype=torch.float64).to(device)
+        t = torch.randn(6, 4, generator=g, dtype=torch.float64).to(device)
+
+        def average(x):
+            return average_quaternions(Quaternion(x)).data
+
+        _, expected = torch.func.jvp(average, (q,), (t,))
+        with torch.no_grad():
+            _, actual = torch.func.jvp(average, (q,), (t,))
+        assert expected.abs().max() > 1e-3
+        self.assert_close(actual, expected)

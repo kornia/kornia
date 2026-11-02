@@ -932,3 +932,21 @@ class TestFitPlaneGradient(BaseTester):
         jac64 = torch.autograd.functional.jacobian(lambda p: _plane_with_fixed_sign_6213(p, reference), points.double())
         jac32 = torch.autograd.functional.jacobian(lambda p: _plane_with_fixed_sign_6213(p, reference.float()), points)
         self.assert_close(jac32.double(), jac64, rtol=0, atol=1e-3 * jac64.abs().max().item())
+
+    def test_dynamo_gradient_matches_eager_6213(self, device, dtype, torch_optimizer):
+        # The kept vector's own gap is excluded by position: CUDA Inductor evaluated (S / scale)^2 differently at its
+        # two reads, a gap of 1e-20 instead of 0, and the compiled gradient was 1e18 times too large.
+        g = torch.Generator().manual_seed(0)
+        points = torch.randn(2, 30, 3, generator=g, dtype=torch.float64) * torch.tensor([1.0, 0.5, 0.01]).double()
+        points = points.to(device, dtype)
+        weights = torch.randn(2, 4, generator=g, dtype=torch.float64).to(device, dtype)
+
+        def op(p):
+            plane = fit_plane(Vector3(p))
+            return torch.cat([plane.normal.data, plane.offset.data[..., None]], -1)
+
+        p_eager = points.clone().requires_grad_(True)
+        p_compiled = points.clone().requires_grad_(True)
+        (expected,) = torch.autograd.grad((op(p_eager) * weights).sum(), p_eager)
+        (actual,) = torch.autograd.grad((torch_optimizer(op)(p_compiled) * weights).sum(), p_compiled)
+        self.assert_close(actual, expected)
