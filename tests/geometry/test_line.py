@@ -988,9 +988,9 @@ class TestFitLine(BaseTester):
     def test_fit_line_weights_shape_must_match_points_6525(self, device, dtype):
         # #6525: the shape check named the weights' dimensions "B" and "N" without tying them to the points', so
         # (B, 1) weights passed. They broadcast in the weighted sums but not in the normaliser, so the centroid came
-        # out as the sum of the points rather than their mean. They also skipped the weight checks of
-        # _reject_degenerate_line, which compare the weights' shape with the points': zero weights gave a NaN line
-        # in 2-D, and a negative weight was accepted.
+        # out wrong: the sum of the points for D >= 3, and for D = 2 the first point plus the sum of the offsets
+        # from it. They also skipped the weight checks of _reject_degenerate_line, which compare the weights' shape
+        # with the points': zero weights gave a NaN line in 2-D, and a negative weight was accepted.
         points_2d = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]], device=device, dtype=dtype)
         points_3d = torch.nn.functional.pad(points_2d, (0, 1))
         for points in (points_2d, points_3d):
@@ -1001,24 +1001,69 @@ class TestFitLine(BaseTester):
             # Any other second dimension is a shape error, (B, 1) included, whatever the weights' values.
             for n in (1, 3, 5):
                 for value in (1.0, 0.0, -1.0):
-                    with pytest.raises(ShapeError, match="expected 4, got"):
+                    with pytest.raises(ShapeError, match=r"expected \(1, 4\)"):
                         fit_line(points, torch.full((1, n), value, device=device, dtype=dtype))
 
-            # So is a weights tensor of the wrong rank.
+            # So is a weights tensor of the wrong rank, or the wrong batch size, and a (B, 1) tensor is no exception
+            # in a batch.
             for weights in (torch.ones(4, device=device, dtype=dtype), torch.ones(1, 4, 1, device=device, dtype=dtype)):
-                with pytest.raises(ShapeError, match="dimension mismatch"):
+                with pytest.raises(ShapeError, match=r"expected \(1, 4\)"):
                     fit_line(points, weights)
-
-            # The batch dimension is tied as well, and a (B, 1) tensor is no exception in a batch.
             batch = torch.cat([points, points])
-            with pytest.raises(ShapeError, match="expected 2, got 1"):
-                fit_line(batch, torch.ones(1, 4, device=device, dtype=dtype))
-            with pytest.raises(ShapeError, match="expected 4, got 1"):
-                fit_line(batch, torch.ones(2, 1, device=device, dtype=dtype))
+            for weights in (torch.ones(1, 4, device=device, dtype=dtype), torch.ones(2, 1, device=device, dtype=dtype)):
+                with pytest.raises(ShapeError, match=r"expected \(2, 4\)"):
+                    fit_line(batch, weights)
 
             # With N == 1 the (B, 1) weights have the points' shape, and the single point is rejected as before.
             with pytest.raises(ValueCheckError, match="at least two points"):
                 fit_line(points[:, :1], torch.ones(1, 1, device=device, dtype=dtype))
+
+    def test_fit_line_weights_shape_2d_centroid_not_at_origin_6525(self, device, dtype):
+        # The first point is not at the origin here, so the 2-D branch's wrong centroid (the first point plus the sum
+        # of the offsets from it) differs from the sum of the points: (2, 0), (4, 0) with one weight gave (4, 0).
+        points = torch.tensor([[[2.0, 0.0], [4.0, 0.0]]], device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"expected \(1, 2\)"):
+            fit_line(points, torch.ones(1, 1, device=device, dtype=dtype))
+        self.assert_close(fit_line(points, torch.ones(1, 2, device=device, dtype=dtype)).origin, points.mean(-2))
+
+    @pytest.mark.parametrize("d", [2, 3])
+    def test_fit_line_weights_shape_with_dynamic_n_export_6525(self, device, d):
+        # Under a dynamic torch.export the point count N is symbolic. The weights' size must be compared with it as
+        # a number: turned into a string it was read as a label, the check was skipped, and static (B, 1) weights
+        # exported with the wrong centroid baked in.
+        from torch.export import Dim
+
+        class FitLine(torch.nn.Module):
+            def forward(self, points, weights):
+                line = fit_line(points, weights)
+                return line.origin, line.direction
+
+        n = Dim("n", min=2)
+        points = torch.nn.functional.pad(
+            torch.tensor([[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]], device=device), (0, d - 2)
+        )
+
+        # Static (B, 1) weights do not match a symbolic N, which is at least 2.
+        with pytest.raises(ShapeError):
+            torch.export.export(
+                FitLine(),
+                (points, torch.ones(1, 1, device=device)),
+                dynamic_shapes={"points": {1: n}, "weights": None},
+                strict=False,
+            )
+
+        # Weights that share the points' symbolic N still export, and the program runs for another N.
+        program = torch.export.export(
+            FitLine(),
+            (points, torch.ones(1, 4, device=device)),
+            dynamic_shapes={"points": {1: n}, "weights": {1: n}},
+            strict=False,
+        )
+        longer = torch.nn.functional.pad(
+            torch.stack([torch.arange(6.0, device=device), torch.zeros(6, device=device)], -1)[None], (0, d - 2)
+        )
+        origin, _ = program.module()(longer, torch.ones(1, 6, device=device))
+        self.assert_close(origin, longer.mean(-2))
 
     def test_dynamo_skips_degenerate_checks(self, device, dtype, torch_optimizer):
         # The degeneracy checks depend on tensor values, so they are skipped under torch.compile: a compiled call

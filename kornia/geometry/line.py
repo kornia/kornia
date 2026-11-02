@@ -41,7 +41,7 @@ from typing import Iterator, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, are_checks_enabled
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SIZES, are_checks_enabled
 from kornia.core.exceptions import ValueCheckError
 from kornia.core.utils import _torch_svd_cast, is_compiling, register_module_state
 from kornia.geometry.conversions import _normalize_last_dim
@@ -486,11 +486,14 @@ def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Pa
 
     # Validate the weights once, for both branches, against the points' own B and N. A bare "N" in the shape spec
     # is only a label, so a (B, 1) tensor used to pass: it broadcasts in the weighted sums but not in the
-    # normaliser, which made the centroid the sum of the points, and it skipped the weight checks in
-    # _reject_degenerate_line, which compare the weights' shape with the points'.
+    # normaliser, which gave a wrong centroid (the sum of the points for D >= 3; for D = 2, the first point plus
+    # the sum of the offsets from it), and it skipped the weight checks in _reject_degenerate_line, which compare
+    # the weights' shape with the points'. The sizes are compared as numbers, not turned into strings for
+    # KORNIA_CHECK_SHAPE: a symbolic size, as under a dynamic torch.export, would then be read as a label and the
+    # check skipped.
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
-        KORNIA_CHECK_SHAPE(weights, [str(B), str(N)])
+        KORNIA_CHECK_SIZES(weights, [B, N])
 
     _reject_degenerate_line(points, weights)
 
