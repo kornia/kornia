@@ -306,7 +306,12 @@ class TestWarpPerspective3d(BaseTester):
         sample = self._arange_volume(dsize, device, dtype)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
         out = proj.warp_perspective3d(sample, identity, dsize, align_corners=align_corners)
-        self.assert_close(out, sample)
+        if dtype == torch.float16:
+            # float16 interpolation weights carry a few ulps of the neighbouring voxels into each output, so the
+            # absolute error scales with the data: CUDA reads 1.7e-3 at a zero voxel of the (1, 5, 3) ramp at False.
+            self.assert_close(out, sample, rtol=1e-3, atol=2 * torch.finfo(dtype).eps * sample.abs().max().item())
+        else:
+            self.assert_close(out, sample)
 
     @pytest.mark.parametrize("size", [8, 32])
     def test_identity_float64_precision(self, device, size):
