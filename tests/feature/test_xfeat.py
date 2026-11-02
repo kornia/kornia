@@ -22,6 +22,8 @@ import torch
 from torch.overrides import TorchFunctionMode
 
 from kornia.core.exceptions import BaseError
+from kornia.feature.integrated import LightGlueMatcher
+from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
@@ -151,8 +153,7 @@ class TestInterpolateSparse2dHalfPrecision(BaseTester):
 
 
 class TestXFeat(BaseTester):
-    # No gradcheck or torch.compile test: detectAndCompute runs under inference_mode, and its NMS is data-dependent
-    # control flow.
+    # No gradcheck or torch.compile test: detectAndCompute's NMS is data-dependent control flow.
 
     def test_empty_batch_6266(self, device):
         """An empty batch gives no per-image results, an empty dense batch and no match lists."""
@@ -349,6 +350,39 @@ class TestXFeat(BaseTester):
         model = XFeat().to(device).eval()
         with pytest.raises(BaseError, match="same number of images"):
             model.match_xfeat(torch.rand(2, 3, 64, 64, device=device), torch.rand(1, 3, 64, 64, device=device))
+
+    def test_match_xfeat_star_batch_size_mismatch(self, device, dtype):
+        model = XFeat().to(device).eval()
+        with pytest.raises(BaseError, match="same number of images"):
+            model.match_xfeat_star(torch.rand(2, 3, 64, 64, device=device), torch.rand(1, 3, 64, 64, device=device))
+
+    def test_convention_xfeat_inference_methods_return_ordinary_tensors_6533(self, device):
+        # An inference tensor cannot be saved for backward, and the documented XFeat output goes into a matcher that
+        # does save it, so the four inference methods must leave ordinary tensors behind (#6533).
+        model = XFeat(top_k=64, detection_threshold=0.0).to(device).eval()
+        x = torch.rand(2, 3, 64, 64, device=device)
+        out1, out2 = model.detectAndCompute(x, top_k=64)
+        dense = model.detectAndComputeDense(x, top_k=64)
+        outputs = [out1["descriptors"], out2["scores"], dense["descriptors"], dense["scales"]]
+        outputs += list(model.match_xfeat(x[:1], x[:1], top_k=32))
+        outputs += list(model.match_xfeat_star(x[:1], x[:1], top_k=32))
+        for tensor in outputs:
+            assert isinstance(tensor, torch.Tensor)
+            assert not tensor.is_inference()
+
+    def test_smoke_xfeat_outputs_match_through_lightglue_in_default_grad_mode_6533(self, device, monkeypatch):
+        # Random weights with the "xfeat" configuration: the point is the grad mode, not the trained matcher.
+        monkeypatch.setattr("kornia.feature.lightglue.load_state_dict_from_url", lambda *args, **kwargs: {})
+        model = XFeat(top_k=64, detection_threshold=0.0).to(device).eval()
+        out1, out2 = model.detectAndCompute(torch.rand(2, 3, 64, 64, device=device), top_k=64)
+        matcher = LightGlueMatcher("xfeat", {"n_layers": 1}).to(device, torch.float32).eval()
+        lafs1 = laf_from_center_scale_ori(out1["keypoints"][None])
+        lafs2 = laf_from_center_scale_ori(out2["keypoints"][None])
+        # Before #6533 this call raised: the descriptors were inference tensors and LightGlue's input
+        # projection saved them for backward.
+        mkpts0, mkpts1 = matcher(out1["descriptors"], out2["descriptors"], lafs1, lafs2)
+        assert mkpts0.ndim == mkpts1.ndim == 2
+        assert mkpts0.shape[0] == mkpts1.shape[0]
 
     @pytest.mark.slow
     def test_pretrained_smoke(self, device):
