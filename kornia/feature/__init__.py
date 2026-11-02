@@ -18,6 +18,21 @@
 """Kornia Feature — Feature detection, description, and matching for Kornia.
 
 This subpackage provides modules for keypoint detection, descriptors, and feature matching.
+
+Choosing an implementation by device. Kornia's local-feature pipelines run at their authors' speed or faster on
+CUDA, x86 and Apple M1 CPUs and Apple MPS, and are as accurate on the cohorts measured. Choose differently here:
+
+- :class:`ALIKED` on CUDA: compile it for repeated inference. Eager, it runs at 0.8x the authors' speed; compiled, at
+  1.6x. On CPUs keep it eager, at 1.7-2.0x.
+- SIFT on a CPU: use OpenCV's, 8-14x faster than kornia's on the Apple M1 CPU. Kornia's is for images on a GPU,
+  gradients or batches; :class:`SIFTFeature` takes one image per call, :class:`SIFTFeatureScaleSpace` a batch.
+- :func:`match_snn` and :func:`match_smnn` on CUDA or the Apple M1 CPU: faiss's exact k-nearest-neighbour search
+  returns the same matches up to 2.2x faster. On the x86 CPU, kornia is the fastest.
+- :meth:`XFeat.match_xfeat_star` departs from the authors' refinement on purpose: much more accurate on planar
+  scenes, mixed on PhotoTourism (see :class:`XFeat`).
+
+Figures per device and the protocol (640 px images, 2,048 features, PyTorch 2.14):
+https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device
 """
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
