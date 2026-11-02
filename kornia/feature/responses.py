@@ -513,7 +513,7 @@ class BlobDoGSingle(nn.Module):
 
 
 class CornerHarris(nn.Module):
-    r"""Compute the Harris corner response with k fixed at construction; the module form of harris_response.
+    r"""Compute the Harris corner response with a fixed k; the module form of harris_response.
 
     ``R = CornerHarris(k)(img, sigmas)`` returns ``harris_response(img, k, grads_mode, sigmas)``, the ``(B, C, H, W)``
     Harris response of ``(B, C, H, W)`` images, positive at a corner. ``k`` is stored as a buffer, so it moves with

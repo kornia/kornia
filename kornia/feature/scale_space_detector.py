@@ -205,13 +205,11 @@ class ScaleSpaceDetector(nn.Module):
 
     ``detector = ScaleSpaceDetector(num_features)``, then ``lafs, responses = detector(img)`` takes grayscale images
     ``(B, 1, H, W)`` and returns ``(B, num_features, 2, 3)`` LAFs in input pixels and their ``(B, num_features)``
-    responses, strongest first; the slots no detection filled hold a zero response and a zero LAF, which
-    :func:`laf_is_filled` finds. Five replaceable modules run in turn: ``scale_pyr_module`` builds the octaves,
-    ``resp_module`` scores them (:class:`BlobHessian` by default, which keeps the channels, so a multi-channel image
-    needs a response that returns one map), the strict maxima of the response over level, row and column are refined
-    by ``subpix_module``, and ``aff_module`` and then ``ori_module`` change the upright frames (:class:`PassLAF`, the
-    default for both, keeps them). With the default modules the responses, centres and scales carry gradients to the
-    image. ``detector.detect(img, num_feats)`` returns ``(responses, lafs)``, in that order, before the last two
+    responses, strongest first; :func:`laf_is_filled` finds the slots no detection filled. Five replaceable modules
+    run in turn: ``scale_pyr_module`` builds the octaves, ``resp_module`` scores them (:class:`BlobHessian` by
+    default), ``subpix_module`` refines the strict maxima of the response over level, row and column, and
+    ``aff_module`` and then ``ori_module`` change the upright frames (:class:`PassLAF`, the default for both, keeps
+    them). ``detector.detect(img, num_feats)`` returns ``(responses, lafs)``, in that order, before the last two
     modules. For the 2D maxima of a response that takes only the image, such as :class:`KeyNet`, on each level of an
     image pyramid, use :class:`MultiResolutionDetector`; for SIFT features, :class:`SIFTFeatureScaleSpace`.
 
@@ -224,7 +222,8 @@ class ScaleSpaceDetector(nn.Module):
           refinement extrapolates it below minus its sampled value. There is no response threshold. The
           ``num_features`` strongest candidates of all octaves are kept; a minimum is ranked and returned with its
           refined response negated.
-        - The default Hessian response is a maximum at bright and dark blobs alike. A DoG response
+        - The default Hessian response is a maximum at bright and dark blobs alike. It keeps the channels, so a
+          multi-channel image needs a ``resp_module`` that returns one map. A DoG response
           (:class:`~kornia.feature.BlobDoG`) is a maximum at a dark blob and a minimum at a bright one, which only
           ``minima_are_also_good=True`` detects.
         - A LAF centre is the refined sub-pixel position, mapped to input pixels as given under
@@ -239,6 +238,7 @@ class ScaleSpaceDetector(nn.Module):
         - The LAFs are float32 for a float16 or bfloat16 image and float64 for a float64 one; the responses keep the
           response function's dtype. Non-maximum suppression and sub-pixel refinement run on the response promoted to
           at least float32.
+        - With the default modules the responses, centres and scales carry gradients to the image.
         - A batch of zero images returns empty outputs of the documented shapes, after the checks a non-empty batch
           runs.
         - Known defects: an octave passes only its ``num_features`` strongest candidates to the border test and to the
@@ -272,8 +272,8 @@ class ScaleSpaceDetector(nn.Module):
             With a built-in ``subpix_module`` of the exact class, without ``max_candidates``, both signs are refined
             in one stacked call, which roughly doubles the peak memory of the refinement step against refining the
             maxima alone: the response volume and its three coordinate maps are materialised for ``2B`` images at
-            once. Any other refiner, a subclass or
-            one with ``max_candidates`` included, refines the two signs in separate calls.
+            once. Any other refiner, a subclass or one with ``max_candidates`` included, refines the two signs in
+            separate calls.
         scale_space_response: if True, ``resp_module`` gets each whole octave ``(B, C, L, H, W)`` with its
             sigmas ``(B * L,)`` and returns a ``(B, 1, L', H, W)`` scale-space response, as
             :class:`~kornia.feature.BlobDoG` does. If False (the default), it gets the octave's levels
@@ -828,6 +828,9 @@ class MultiResolutionDetector(nn.Module):
           of :func:`~kornia.feature.laf_from_center_scale_ori` (see :ref:`Local features <local-features-conventions>`).
           That is the centre of the level pixel only on a level of the input's size; otherwise that centre is at
           :math:`((u + 0.5) W / W_l - 0.5, (v + 0.5) H / H_l - 0.5)`. The Key.Net reference maps it the same way.
+          The reported point minus that centre, :math:`-0.5 (f - 1)` px along x for :math:`f = W / W_l` and likewise
+          along y, is a known defect (`#6536 <https://github.com/kornia/kornia/issues/6536>`_): about +0.15 px on the
+          default up level, and -0.21, -0.50, -0.92 and -1.51 px on the four default down levels.
         - Before ``aff_module`` and ``ori_module`` run, the frame is upright and isotropic, with the scale
           ``s_mult * (W / W_l + H / H_l) / 2`` whatever the response; ``s_mult`` of ``config`` is 22 by default.
 

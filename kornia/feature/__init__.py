@@ -22,11 +22,12 @@ the frame of :func:`laf_from_center_scale_ori`, except that :class:`DeDoDe` and 
 ``i + 0.5`` and :class:`SOLD2` and :class:`SOLD2_detector` give line endpoints as ``(row, col)``. :class:`XFeat` and
 :class:`MultiResolutionDetector`, with :class:`KeyNetDetector`, :class:`SIFTFeature`, :class:`KeyNetHardNet` and
 :class:`KeyNetAffNetHardNet` built on it, report a pixel of a resized image or pyramid level at its index times the
-resize factor, which is that pixel's centre only for a factor of 1 (see their Convention blocks). A local affine frame
-(LAF) ``[A | c]`` is ``(B, N, 2, 3)`` in pixels, with centre ``c``, scale :math:`\sqrt{|\det A|}` and orientation
-``atan2(a12, a11)`` in degrees. The detectors that return LAFs, the :class:`LocalFeature` presets and
-:meth:`~kornia.feature.ALIKED.forward_laf` pad the slots no detection filled with zero LAFs, which :func:`laf_is_filled`
-finds: drop those slots before matching.
+resize factor, which is that pixel's centre only for a factor of 1 (see their Convention blocks): a known defect of
+MultiResolutionDetector, `#6536 <https://github.com/kornia/kornia/issues/6536>`_, and of XFeat,
+`#6537 <https://github.com/kornia/kornia/issues/6537>`_. A local affine frame (LAF) ``[A | c]`` is ``(B, N, 2, 3)`` in
+pixels, with centre ``c``, scale :math:`\sqrt{|\det A|}` and orientation ``atan2(a12, a11)`` in degrees. The detectors
+that return LAFs, the :class:`LocalFeature` presets and :meth:`~kornia.feature.ALIKED.forward_laf` pad the slots no
+detection filled with zero LAFs, which :func:`laf_is_filled` finds: drop those slots before matching.
 
 Which function to use:
 
@@ -37,8 +38,8 @@ Which function to use:
   keypoints of RGB or grayscale images of any size, one :class:`ALIKEDFeatures` per image; :class:`DISK`, integer-pixel
   keypoints of RGB images, one :class:`DISKFeatures` per image; :class:`XFeat`, any channel count; :class:`DeDoDe`, two
   networks, the ``n`` best keypoints of each RGB image. For :class:`LightGlueMatcher`, centre LAFs on the ``(N, 2)``
-  keypoints of each image, ``laf_from_center_scale_ori(keypoints[None])``. XFeat's outputs are inference tensors: call
-  the matcher on them under ``torch.no_grad()`` or ``torch.inference_mode()``, or ``clone()`` them first (#6533).
+  keypoints of each image, ``laf_from_center_scale_ori(keypoints[None])`` (subtract 0.5 from DeDoDe's keypoints first,
+  and match XFeat's with gradients disabled; see their Convention blocks).
 - Detect and describe LAFs in one call: :class:`LocalFeature`, a given detector and LAF descriptor. Its presets, on
   grayscale images: SIFT, :class:`SIFTFeatureScaleSpace` (refined DoG scale-space extrema; start new pipelines with
   ``descriptor_backend="pyramid"``) or :class:`SIFTFeature` (a DoG on each pyramid level); HardNet on DoG blobs

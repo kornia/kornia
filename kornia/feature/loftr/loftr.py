@@ -85,11 +85,12 @@ class LoFTR(nn.Module):
     returns a dict of the matches of all pairs: the pixel positions ``keypoints0`` and ``keypoints1`` ``(NC, 2)``, as
     ``(x, y)`` in the frame of the reference implementation, half a pixel off kornia's (see the Convention block),
     their ``confidence`` ``(NC,)`` and the pair of each match, ``batch_indexes`` ``(NC,)``. It needs no keypoints or
-    descriptors: the matches of image0 lie on a grid of 8-pixel cells, not at detected keypoints. The backbone
-    features of an image do not depend on the image it is matched with, so to match one image against many, compute
-    them once with :meth:`extract_features` and pass them as ``features0`` or ``features1``. For matching detected
-    keypoints and their descriptors, use :class:`LightGlueMatcher` or :class:`LocalFeatureMatcher` instead. This is
-    based on the original code of "LoFTR: Detector-Free Local Feature Matching with Transformers", see
+    descriptors: the matches of image0 lie on a grid of 8-pixel cells, not at detected keypoints. To match one image
+    against many, compute its backbone features, which do not depend on the other image, once with
+    :meth:`extract_features` and pass them as ``features0`` or ``features1``. For matching detected keypoints and
+    their descriptors, use :class:`LightGlueMatcher` or :class:`LocalFeatureMatcher` instead.
+
+    This is based on the original code of "LoFTR: Detector-Free Local Feature Matching with Transformers", see
     :cite:`LoFTR2021` for more details.
 
     Convention:
@@ -234,8 +235,8 @@ class LoFTR(nn.Module):
         Returns:
             - ``keypoints0``, matching keypoints from image0 ``(NC, 2)``.
             - ``keypoints1``, matching keypoints from image1 ``(NC, 2)``.
-            - ``confidence``, the coarse matching score, see the Convention block ``(NC)``.
-            - ``batch_indexes``, batch index of each match ``(NC)``.
+            - ``confidence``, the coarse matching score, see the Convention block ``(NC,)``.
+            - ``batch_indexes``, batch index of each match ``(NC,)``.
 
         """
         # Pixel strides of the coarse and the fine feature map, (8, 2) by default. Every stride-2 stage of the backbone

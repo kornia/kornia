@@ -230,7 +230,7 @@ class XFeatModel(nn.Module):
 
 
 class InterpolateSparse2d(nn.Module):
-    """Sample a feature map at sparse (x, y) image pixels with the coordinate scaling of the XFeat weights.
+    """Sample a feature map at sparse (x, y) pixels with the XFeat weights' coordinate scaling.
 
     ``interp = InterpolateSparse2d("bicubic")`` and ``out = interp(x, pos, H, W)`` take a feature map ``(B, C, h, w)``
     and positions ``(B, N, 2)`` as ``(x, y)`` pixels of an image of height ``H`` and width ``W``, and return the
@@ -348,6 +348,8 @@ class XFeat(nn.Module):
           frame of :func:`~kornia.feature.laf_from_center_scale_ori`
           (see :ref:`Local features <local-features-conventions>`). That is the centre of the resized pixel only
           when ``H`` and ``W`` are multiples of 32; otherwise that centre is at ``(i + 0.5) * (W / W', H / H') - 0.5``.
+          Reporting it ``0.5 * (W / W' - 1)`` px left of that centre and ``0.5 * (H / H' - 1)`` px above it is a known
+          defect (`#6537 <https://github.com/kornia/kornia/issues/6537>`_).
         - The heatmap value must be strictly above ``detection_threshold``. ``scores`` is that value times the
           reliability map, and the ``top_k`` best keypoints come sorted by it. Each descriptor is 64-D, sampled
           bicubically from the dense map at the keypoint by :class:`InterpolateSparse2d`, and L2-normalised.
@@ -356,12 +358,16 @@ class XFeat(nn.Module):
           ``top_k`` cells of highest reliability, or every cell when there are fewer or ``top_k`` is below 1. With
           the default ``multiscale=True``, it rescales the image bilinearly by 0.6 and by 1.3, runs that extraction
           on each with ``int(0.2 * top_k)`` and the remaining ``top_k - int(0.2 * top_k)`` cells, and divides each
-          keypoint by its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. A share of 0 yields no
-          cell from its scale, and a scale with fewer cells than its share returns all of them, so there are never
-          more than ``top_k`` keypoints, and exactly ``top_k`` when both scales have enough cells. A ``top_k`` below
-          1 keeps every cell of both scales. Its descriptors are not normalised. The reference implementation gives
-          the 1.3 scale ``int(0.8 * top_k)`` and reads a share of 0 as "every cell"; kornia does not, because that
-          returns more keypoints than ``top_k`` asks for.
+          keypoint by its factor; ``scales`` is ``1 / 0.6`` or ``1 / 1.3`` for each keypoint. Dividing by the factor,
+          rather than mapping a pixel ``i`` to ``(i + 0.5) / s - 0.5`` for a factor ``s``, is a known defect too
+          (`#6537 <https://github.com/kornia/kornia/issues/6537>`_): when the rescaled sizes are multiples of 32, the
+          keypoints of the 0.6 scale lie 0.33 px up and to the left of the pixel they come from, and those of the 1.3
+          scale 0.12 px down and to the right. A share of 0 yields no cell from its scale, and a scale with fewer
+          cells than its share returns all of them, so there are never more than ``top_k`` keypoints, and exactly
+          ``top_k`` when both scales have enough cells. A ``top_k`` below 1 keeps every cell of both scales. Its
+          descriptors are not normalised. The reference implementation gives the 1.3 scale ``int(0.8 * top_k)`` and
+          reads a share of 0 as "every cell"; kornia does not, because that returns more keypoints than ``top_k`` asks
+          for.
         - Known defects: converting the model to float16 or bfloat16 makes every extraction raise, because
           ``_preprocess_tensor`` passes float32 input to the half-precision weights
           (`#5957 <https://github.com/kornia/kornia/issues/5957>`_). Autograd cannot save the inference tensors of

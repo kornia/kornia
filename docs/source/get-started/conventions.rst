@@ -1269,9 +1269,10 @@ x axis and its second column that of the patch's y axis. The Convention blocks o
 :func:`~kornia.feature.laf_from_center_scale_ori` and :func:`~kornia.feature.extract_patches_from_pyramid` give the
 full rules.
 
-- The scale is :math:`\sqrt{|\det A|}` and the orientation is ``atan2(a12, a11)`` in degrees. A positive orientation
-  turns the patch's x axis counter-clockwise on screen, with image y pointing down: with an orientation of ``90``, the
-  ``+x`` side of the patch shows what lies above the centre.
+- The scale is :math:`\sqrt{|\det A|}` and the orientation is ``atan2(a12, a11)`` in degrees. For a LAF of positive
+  determinant, a positive orientation turns the patch's x axis counter-clockwise on screen, with image y pointing
+  down: with an orientation of ``90``, the ``+x`` side of the patch shows what lies above the centre. For a mirrored
+  LAF, of negative determinant, it turns clockwise, and ``90`` puts the ``+x`` side below the centre.
 - The region of a LAF is the ellipse ``c + A u`` over the unit vectors ``u``, and a ``PS x PS`` patch covers the
   square ``c + A [-1, 1]^2``: patch row 0 is on the patch's ``-y`` side, the top for an upright LAF, and the columns
   run along the patch's x axis.
@@ -1298,7 +1299,8 @@ OpenCV keypoints and SIFT descriptors convert as follows:
      - ``KeyPoint.pt``, in the same pixel frame: copy it unchanged. The default upscaling of ``cv2.SIFT`` biases
        ``pt`` by a fraction of a pixel; ``enable_precise_upscale=True`` removes the bias
    * - orientation
-     - degrees, counter-clockwise on screen, read by :func:`~kornia.feature.get_laf_orientation`
+     - degrees, counter-clockwise on screen for a LAF of positive determinant (clockwise for a mirrored one), read by
+       :func:`~kornia.feature.get_laf_orientation`
      - ``KeyPoint.angle``, degrees clockwise on screen: ``angle = (-orientation) mod 360`` and
        ``orientation = -angle``
    * - scale

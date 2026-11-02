@@ -558,7 +558,7 @@ def match_snn(
 def match_smnn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.95, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Match mutual nearest neighbors of desc1 and desc2 that also pass Lowe's ratio test in both directions.
+    """Match mutual nearest neighbors that also pass Lowe's ratio test in both directions.
 
     ``dists, idxs = match_smnn(desc1, desc2, th)`` takes two descriptor sets ``(B1, D)`` and ``(B2, D)``, keeps the
     mutual nearest neighbours whose nearest-to-second-nearest distance ratio is at most ``th`` both from ``desc1``

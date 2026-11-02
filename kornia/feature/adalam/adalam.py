@@ -58,7 +58,7 @@ def match_adalam(
     hw2: Optional[Sequence[int]] = None,
     dm: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Match descriptors by nearest neighbour, then keep the matches that local affine models support (AdaLAM).
+    """Match descriptors by nearest neighbour, filtered by local affine model support (AdaLAM).
 
     ``dists, idxs = match_adalam(desc1, desc2, lafs1, lafs2, hw1=(H1, W1), hw2=(H2, W2))`` takes two descriptor sets
     ``(B1, D)`` and ``(B2, D)``, their LAFs ``(1, B1, 2, 3)`` and ``(1, B2, 2, 3)`` and, optionally, the image sizes

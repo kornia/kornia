@@ -87,8 +87,8 @@ class DeDoDe(nn.Module):
     detector and the descriptor on their own. The default descriptor, ``G``, runs a frozen DINOv2 ViT-L/14 backbone
     (built by ``kornia.feature.dedode.transformer.vit_large``) besides VGG19 and loads the DINOv2 weights already in
     the constructor; ``B`` runs VGG19 only. To match two images, pass the descriptions with LAFs centred on the
-    keypoints to :class:`LightGlueMatcher` in ``"dedodeb"`` or ``"dedodeg"`` mode; for a keypoint count that follows
-    the image content, use :class:`ALIKED` or :class:`DISK` instead.
+    keypoints minus 0.5 to :class:`LightGlueMatcher` in ``"dedodeb"`` or ``"dedodeg"`` mode; for a keypoint count that
+    follows the image content, use :class:`ALIKED` or :class:`DISK` instead.
 
     See :cite:`edstedt2024dedode` for details.
 

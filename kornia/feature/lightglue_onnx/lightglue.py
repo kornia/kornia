@@ -158,7 +158,7 @@ class OnnxLightGlue:
         ``output`` (``dict``):
             ``matches`` (`int64`): ``(S, 2)``
 
-            ``scores`` (`float32`): ``(S)``
+            ``scores`` (`float32`): ``(S,)``
 
         """
         # Input validation.

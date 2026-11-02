@@ -5,13 +5,14 @@ Local features (detector and descriptor together)
 
 :class:`LocalFeature` runs a detector and a LAF descriptor in one call, and the SIFT and HardNet presets below are
 its subclasses. Each preset returns LAFs ``(B, N, 2, 3)`` in pixels, their responses ``(B, N)`` and descriptors
-``(B, N, D)``, with ``N = num_features`` slots for every image. The slots no detection filled hold a zero LAF and
-share one descriptor, so drop them with :func:`laf_is_filled` before matching; :class:`LocalFeatureMatcher` does it
-for you. :class:`SIFTFeature`, :class:`KeyNetHardNet` and :class:`KeyNetAffNetHardNet` take one image per call,
-``(1, 1, H, W)``; the other presets take a batch of grayscale images ``(B, 1, H, W)``, and
-``SIFTFeatureScaleSpace(descriptor_backend="pyramid")`` also converts an RGB batch to grayscale. The learned models,
-:class:`ALIKED`, :class:`DeDoDe`, :class:`DISK`, :class:`XFeat` and :class:`SOLD2_detector`, are not
-:class:`LocalFeature` subclasses; :ref:`learned-local-features` gives their inputs and outputs.
+``(B, N, D)``, with ``N = num_features`` slots for every image. The slots no detection filled hold a zero LAF and,
+within an image, share one descriptor, so drop them with :func:`laf_is_filled` before matching;
+:class:`LocalFeatureMatcher` does it for you. :class:`SIFTFeature`, :class:`KeyNetHardNet` and
+:class:`KeyNetAffNetHardNet` take one image per call, ``(1, 1, H, W)``; the other presets take a batch of grayscale
+images ``(B, 1, H, W)``, and ``SIFTFeatureScaleSpace(descriptor_backend="pyramid")`` also converts an RGB batch to
+grayscale. The learned models, :class:`ALIKED`, :class:`DeDoDe`, :class:`DISK`, :class:`XFeat` and
+:class:`SOLD2_detector`, are not :class:`LocalFeature` subclasses; :ref:`learned-local-features` gives their inputs
+and outputs.
 
 .. _sift-pipelines:
 
@@ -187,9 +188,10 @@ which returns the model in evaluation mode: their constructors build random weig
 ``DeDoDe()`` with its default ``G`` descriptor already loads a pretrained DINOv2 backbone. ``SOLD2_detector()``
 loads its pretrained weights. The four return keypoints as ``(x, y)`` pixels, not LAFs (except
 :meth:`ALIKED.forward_laf`), and ``laf_from_center_scale_ori(keypoints[None])`` (:func:`laf_from_center_scale_ori`)
-turns the keypoints of one image into the LAFs that :class:`LightGlueMatcher` takes in the mode of the table. Call
-the matcher on the outputs of :class:`XFeat`, which are inference tensors, under ``torch.no_grad()`` or
-``torch.inference_mode()`` (`#6533 <https://github.com/kornia/kornia/issues/6533>`_). The
+turns the keypoints of one image into the LAFs that :class:`LightGlueMatcher` takes in the mode of the table
+(subtract 0.5 from DeDoDe's keypoints first, see its Convention block). Call the matcher on the outputs of
+:class:`XFeat`, which are inference tensors, under ``torch.no_grad()`` or ``torch.inference_mode()``
+(`#6533 <https://github.com/kornia/kornia/issues/6533>`_). The
 :doc:`image matching guide </applications/image_matching>` compares the speed and accuracy of the four keypoint
 models with the authors' code, device by device.
 

@@ -68,7 +68,7 @@ class DISK(nn.Module):
           in about 30 % multiplied by 0.01. ``H`` and ``W`` must be multiples of 16, unless
           ``pad_if_not_divisible=True`` zero-pads the bottom and right, in which case the maps are cropped back to the
           image before the suppression and no keypoint lies in the padding. The image must have the network's
-          dtype: a float16 or float64 image raises on a float32 model, so cast the model first,
+          dtype: a float16, bfloat16 or float64 image raises on a float32 model, so cast the model first,
           ``disk.to(images.dtype)``.
         - Keypoints are the integer ``(x, y)`` pixels of the strict heatmap
           maxima (see the note), in the pixel frame of :func:`~kornia.feature.laf_from_center_scale_ori`

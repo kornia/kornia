@@ -47,8 +47,10 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     ``scale = get_laf_scale(laf)`` takes ``(B, N, 2, 3)`` LAFs and returns their scales :math:`\sqrt{|\det A|}` as a
     ``(B, N, 1, 1)`` tensor, in pixels for LAFs in pixels: the radius of a circular LAF's region, and the geometric
     mean of the two semi-axes of an elliptical one. The result broadcasts against the shape ``A``, so
-    ``scale_laf(laf, 1.0 / scale)`` gives every LAF of nonzero determinant a unit scale. For the orientation and the
-    centre, use :func:`get_laf_orientation` and :func:`get_laf_center`.
+    ``scale_laf(laf, 1.0 / scale)`` gives a LAF of scale ``1e-3`` or more a unit scale, to within about ``5e-5`` or
+    the rounding of a half-precision LAF. The ``1e-10`` that the scale adds to the determinant moves a smaller frame
+    further off: by 0.5 % at ``1e-4``, and far from 1 at ``1e-5``. For the orientation and the centre, use
+    :func:`get_laf_orientation` and :func:`get_laf_center`.
 
     Convention:
         - See the Convention block on :func:`~kornia.feature.laf_from_center_scale_ori`, which defines the scale.
@@ -664,7 +666,7 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """Normalize pixel LAFs by the image size: the centre to [0, 1], the shape by the smaller of W - 1 and H - 1.
+    """Normalize pixel LAFs by the image size: centre to [0, 1], shape by min(W - 1, H - 1).
 
     ``nlaf = normalize_laf(laf, images)`` takes ``(B, N, 2, 3)`` LAFs in pixels and an image tensor ``(B, CH, H, W)``,
     read for its height and width only, and returns the ``(B, N, 2, 3)`` LAFs with the centre divided by

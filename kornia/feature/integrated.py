@@ -576,14 +576,14 @@ class SIFTFeatureScaleSpace(LocalFeature):
     takes grayscale images ``(B, 1, H, W)`` and returns ``num_features`` slots per image, 8000 by default: LAFs
     ``(B, N, 2, 3)`` in pixels, of six times the detection sigma and oriented unless ``upright``, their absolute DoG
     responses ``(B, N)``, strongest first, and 128-D descriptors ``(B, N, 128)``, RootSIFT in kornia's layout by
-    default; :func:`laf_is_filled` finds the slots no detection filled. It searches the 3-D extrema of a DoG scale
-    space and refines their position and scale, as Lowe's SIFT does, without its contrast and edge rejection.
-    ``descriptor_backend="pyramid"`` runs a dedicated detector whose Gaussian images also serve the orientation and
-    the description, and converts an RGB image to grayscale; ``"patch"``, the default, runs
-    :class:`ScaleSpaceDetector` and describes resampled patches, and raises for a color image. For new scale-space
-    SIFT pipelines, explicitly select ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`. For LightGlue,
-    pass ``descriptor_layout="opencv"`` and match with ``LightGlueMatcher("sift")``; for HardNet descriptors of the
-    ``"patch"`` backend's detections, use :class:`DoGHardNet` instead.
+    default; :func:`laf_is_filled` finds the slots no detection filled. It refines the position and scale of the 3-D
+    extrema of a DoG scale space, as Lowe's SIFT does, without its contrast and edge rejection.
+    ``descriptor_backend="pyramid"`` orients and describes from its own detector's Gaussian images and converts an
+    RGB image to grayscale; ``"patch"``, the default, describes resampled patches of :class:`ScaleSpaceDetector`
+    detections and raises for a color image. For new scale-space SIFT pipelines, explicitly select
+    ``descriptor_backend="pyramid"`` (see :ref:`sift-pipelines`), and ``descriptor_layout="opencv"`` to match with
+    ``LightGlueMatcher("sift")``; for HardNet descriptors of the ``"patch"`` backend's detections, use
+    :class:`DoGHardNet` instead.
 
     For CPU throughput use OpenCV's SIFT: on an Apple M1 CPU, a matching pipeline on it ran 8x faster than one on this
     module with ``descriptor_backend="pyramid"``, and 14x faster with ``"patch"`` (640 px, 2,048 features). See the
@@ -1216,14 +1216,14 @@ class LocalFeatureMatcher(nn.Module):
         Returns:
             - ``keypoints0``, matching keypoints from image0 ``(NC, 2)``.
             - ``keypoints1``, matching keypoints from image1 ``(NC, 2)``.
-            - ``confidence``, ``1 - descriptor distance`` ``(NC)``. This lies in :math:`[0, 1]`
+            - ``confidence``, ``1 - descriptor distance`` ``(NC,)``. This lies in :math:`[0, 1]`
               only for the ratio-based ``DescriptorMatcher`` modes (``snn``, ``smnn``); ``nn`` and
               ``mnn`` return raw distances, which are unbounded for an arbitrary descriptor, so the
               confidence has no lower bound in general -- it goes at least down to -1, the value
               reached by unit-norm descriptors, whose distance tops out at 2.0.
             - ``lafs0``, matching LAFs from image0 ``(1, NC, 2, 3)``.
             - ``lafs1``, matching LAFs from image1 ``(1, NC, 2, 3)``.
-            - ``batch_indexes``, batch indexes for the keypoints and lafs ``(NC)``.
+            - ``batch_indexes``, batch indexes for the keypoints and lafs ``(NC,)``.
 
         """
         num_image_pairs: int = data["image0"].shape[0]
@@ -1333,10 +1333,11 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
 
     ``matcher = LightGlueMatcher("disk")`` loads the LightGlue weights trained for that local feature, and
     ``scores, idxs = matcher(desc1, desc2, lafs1, lafs2, hw1, hw2)`` takes the descriptors ``(B1, D)`` and
-    ``(B2, D)`` of two images, their LAFs ``(1, B1, 2, 3)`` and ``(1, B2, 2, 3)`` in pixels and, optionally, the
-    image sizes ``(H, W)``, and returns LightGlue's matching scores ``(B3, 1)``, higher for better matches, and the
-    index pairs ``(B3, 2)``, in the format of :class:`GeometryAwareDescriptorMatcher`. The descriptors must come from
-    the feature the weights were trained for, see ``feature_name`` in the Convention block. To pass batches of
+    ``(B2, D)`` of two images (or ``(1, B1, D)`` and ``(1, B2, D)``), their LAFs ``(1, B1, 2, 3)`` and
+    ``(1, B2, 2, 3)`` in pixels and, optionally, the image sizes ``(H, W)``, and returns LightGlue's matching scores
+    ``(B3, 1)``, higher for better matches, and the index pairs ``(B3, 2)``, in the format of
+    :class:`GeometryAwareDescriptorMatcher`. The descriptors must come from the feature the weights were trained for,
+    see ``feature_name`` in the Convention block. To pass batches of
     keypoints in dicts and read every output of the network, use :class:`LightGlue`; for an exported ONNX model, use
     :class:`OnnxLightGlue`. It is based on the original code of "LightGlue: Local Feature Matching at Light Speed",
     see :cite:`LightGlue2023` for more details.
@@ -1395,8 +1396,9 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         - :class:`KeyNetAffNetHardNet`: the features for ``"keynet_affnet_hardnet"``, one image per call.
         - :class:`DISK`: the features for ``"disk"``; :class:`ALIKED` those for ``"aliked"``, except the 64-D
           descriptors of ``"aliked-t16"``.
-        - :class:`XFeat`: the features for ``"xfeat"``, inference tensors to match with gradients disabled.
-        - :class:`DeDoDe`: the features for ``"dedodeb"`` with its ``B`` descriptor and for ``"dedodeg"`` with ``G``.
+        - :class:`XFeat`: the features for ``"xfeat"``.
+        - :class:`DeDoDe`: the features for ``"dedodeb"`` with its ``B`` descriptor and for ``"dedodeg"`` with ``G``,
+          its keypoints minus 0.5.
 
     """
 

@@ -253,8 +253,8 @@ class OriNet(nn.Module):
         Angle in radians.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B)
+        - Input: ``(B, 1, 32, 32)``
+        - Output: ``(B,)``
 
     See Also:
         - :class:`PatchDominantGradientOrientation`: the hand-crafted dominant gradient direction, with no weights.

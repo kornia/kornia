@@ -54,13 +54,10 @@ class SIFTDescriptorFromPyramid(nn.Module):
     LAF the orientation of its dominant gradient first, sharing one pyramid between the two steps. Each LAF reads
     histograms pooled at one octave of a pyramid that this module builds from ``image``, not reused from a detector:
     it describes the square ``c + A [-1, 1]^2`` that :class:`SIFTDescriptor` sees in the patch of
-    :func:`extract_patches_from_pyramid`, without sampling that patch, so the values approximate those of
-    :class:`SIFTDescriptor` but are not equal to them. For the patch descriptors themselves, of the same image and
-    LAFs, use :class:`LAFDescriptor` with a 41-pixel :class:`SIFTDescriptor` instead:
-    ``LAFDescriptor(SIFTDescriptor(41), patch_size=41)`` is the descriptor of the ``"patch"`` backend of
-    :class:`SIFTFeature`, and this module that of its ``"pyramid"`` backend. It detects nothing; to describe patches
-    you have already sampled, use :class:`SIFTDescriptor`, and for a descriptor at every position of an image,
-    :class:`DenseSIFTDescriptor`.
+    :func:`extract_patches_from_pyramid`, without sampling that patch, so its values approximate those of
+    :class:`SIFTDescriptor` without equalling them. For the patch descriptors themselves, use
+    ``LAFDescriptor(SIFTDescriptor(41), patch_size=41)`` (:class:`LAFDescriptor`) instead, the descriptor of the
+    ``"patch"`` backend of :class:`SIFTFeature`; this module is that of its ``"pyramid"`` backend.
 
     The performance and accuracy acceptance criteria of its automatic
     orientation are tracked in
