@@ -89,10 +89,13 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 
 DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.feature.adalam",
+    "kornia.feature.affine_shape",
+    "kornia.feature.laf",
     "kornia.feature.lightglue",
     "kornia.feature.lightglue_onnx",
     "kornia.feature.loftr",
     "kornia.feature.matching",
+    "kornia.feature.orientation",
     "kornia.geometry.bbox",
     "kornia.geometry.boxes",
     "kornia.geometry.calibration",

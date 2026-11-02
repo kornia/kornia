@@ -64,8 +64,10 @@ def _lightglue_keypoint_scale_ori(lafs: torch.Tensor, feature_name: str) -> Tupl
     r"""Return the keypoint scales and orientations, shape ``(1, N)``, that LightGlue takes for ``lafs``.
 
     LightGlue's ``"sift"`` weights were trained on COLMAP keypoints, whose scale is the detection sigma and whose
-    orientation is the image angle of the frame's x-axis in :math:`(-\pi, \pi]`: the negative of the LAF
-    orientation. The scale is taken as a sixth of the LAF scale, which is sigma for 6-sigma DoG frames such as
+    orientation is, for the similarity frames ``A = s R`` of the SIFT features (nearly so for
+    :class:`SIFTFeatureScaleSpace`'s), the image angle of the frame's x-axis in :math:`(-\pi, \pi]`, which is the
+    negative of the LAF orientation; for another frame the two differ, and the negated LAF orientation is passed.
+    The scale is taken as a sixth of the LAF scale, which is sigma for 6-sigma DoG frames such as
     :class:`SIFTFeatureScaleSpace`'s. Every other feature keeps the LAF scale and the LAF orientation in
     :math:`[0, 2\pi)`. The ``"sift"`` scale is converted here rather than through :class:`LightGlue`'s
     ``scale_coef``, which the ``"doghardnet"`` configurations use, so that ``LightGlue("sift")`` itself keeps taking
