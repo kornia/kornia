@@ -467,6 +467,12 @@ def match_snn(
 
     The ratio of the first to the second nearest neighbor distance must be <= th.
 
+    Speed on 1,024 to 8,192 RootSIFT descriptors per image, with the same matches: on an Intel i7-14700K this is
+    faster than faiss's exact k-nearest-neighbour search and OpenCV's ``BFMatcher``. faiss runs this ratio test
+    1.2-2.2x faster on an RTX 4090 and 1.6-2.0x faster on an Apple M1 CPU, where this is still 2.1-2.5x faster
+    than ``BFMatcher``. See the `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
+
     Convention:
         See the Convention block on :func:`match_nn`; ``dists`` is the ratio of the nearest to the second-nearest
         distance.
@@ -514,6 +520,12 @@ def match_smnn(
     """Match mutual nearest neighbors of desc1 and desc2 that also pass the second-nearest ratio test both ways.
 
     The ratio of the first to the second nearest neighbor distance must be <= th in both directions.
+
+    Speed on 1,024 to 8,192 RootSIFT descriptors per image, with the same matches: on an Intel i7-14700K this is
+    faster than faiss's exact k-nearest-neighbour search and OpenCV's ``BFMatcher``. faiss, searching both ways, is
+    1.3-1.6x faster on an RTX 4090, except at 4,096 descriptors, where the two tie, and 1.3-2.0x faster on an Apple
+    M1 CPU, where this is still 2.4-2.6x faster than ``BFMatcher``. See the `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     Convention:
         - See the Convention block on :func:`match_nn`. A pair is kept when the two descriptors are mutual nearest

@@ -18,6 +18,34 @@
 """Kornia Feature — Feature detection, description, and matching for Kornia.
 
 This subpackage provides modules for keypoint detection, descriptors, and feature matching.
+
+Choosing an implementation by device. Each figure below is the reference implementation's latency divided by
+kornia's, so above 1 favours kornia. The reference is the authors' code, or OpenCV for SIFT. The figures were
+measured on kornia's main branch between 30 October and 2 November 2026, with PyTorch 2.14, 640 px images and
+2,048 features, on an Apple M1, an Intel i7-14700K and an NVIDIA RTX 4090. On every cohort, kornia's accuracy is
+within 2.5 points of the reference, except :meth:`XFeat.match_xfeat_star`, whose refinement departs from the
+authors' on purpose (see :class:`XFeat`).
+
+- CUDA: most ports tie. :class:`LoFTR` (1.26x), :class:`DeDoDe` with the G descriptor (1.19x) and the polar or
+  concatenated :class:`MKDDescriptor` (1.1-1.3x) are faster. Eager :class:`ALIKED` is slower (0.8x). With
+  ``torch.compile`` it runs at 1.6x the authors' eager speed at a fixed image size, and 1.2x with ``dynamic=True``.
+- x86 CPU: kornia is faster or tied everywhere except DeDoDe with the B descriptor (0.96x): :class:`ALIKED` 1.7x,
+  :class:`XFeat` 1.6x, :class:`DISK` with :class:`LightGlue` 1.5x, :class:`HardNet`, :class:`SOSNet`,
+  :class:`HyNet` and :class:`TFeat` 1.2-1.3x, :class:`MKDDescriptor` 3.9-8.5x. Keep ALIKED eager there: compiled,
+  its forward is slower than eager.
+- Apple M1 CPU: :class:`ALIKED` 2.0x, :class:`XFeat` 1.5x and :class:`MKDDescriptor` 1.5-2.5x; the other ports are
+  within 10 % (DISK's noisy 1.2x aside). OpenCV's SIFT is 8-14x faster than :class:`SIFTFeature` and
+  :class:`SIFTFeatureScaleSpace`.
+- Apple MPS: :class:`MKDDescriptor` 2.9-6.3x and :class:`HyNet` 1.35x are faster; the other ports, ALIKED
+  included, are within about 10 %.
+- Matching: :func:`match_nn`, :func:`match_mnn`, :func:`match_snn` and :func:`match_smnn` return the same matches as
+  OpenCV's ``BFMatcher`` and faiss's exact k-nearest-neighbour search. On the x86 CPU kornia is the fastest of the
+  three. On CUDA, faiss runs the ratio tests (:func:`match_snn`, :func:`match_smnn`) up to 2.2x faster. On the
+  Apple M1 CPU, kornia is faster for :func:`match_nn` and :func:`match_mnn` (1.9-2.4x) and faiss for the ratio
+  tests (1.3-2.0x).
+
+The tables and the protocol are in the image matching guide:
+https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device
 """
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator

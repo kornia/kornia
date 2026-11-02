@@ -358,6 +358,11 @@ class SIFTFeature(_SIFTFeature):
     For new scale-space SIFT pipelines, start with :class:`SIFTFeatureScaleSpace` and explicitly select
     ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
 
+    For CPU throughput, use OpenCV's SIFT: on an Apple M1 CPU, an image-matching pipeline built on it ran 11x faster
+    than one built on this module (640 px, 2,048 features). Use kornia's SIFT when you need it batched, on a GPU, or
+    differentiable. See the `image matching guide
+    <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
+
     Convention:
         - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of one grayscale
           image per call, ``(1, 1, H, W)``. The detector is a :class:`~kornia.feature.MultiResolutionDetector` on
@@ -431,6 +436,11 @@ class SIFTFeatureScaleSpace(LocalFeature):
     """DoG scale-space detection, position/scale refinement and (Root)SIFT description.
 
     For new scale-space SIFT pipelines, explicitly select ``descriptor_backend="pyramid"``; see :ref:`sift-pipelines`.
+
+    For CPU throughput, use OpenCV's SIFT: on an Apple M1 CPU, an image-matching pipeline built on it ran 8x faster
+    than one built on this module with ``descriptor_backend="pyramid"``, and 14x faster with ``"patch"`` (640 px,
+    2,048 features). Use kornia's SIFT when you need it batched, on a GPU, or differentiable. See the `image matching
+    guide <https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device>`_.
 
     Convention:
         - A :class:`~kornia.feature.LocalFeature`, whose Convention block gives the output contract, of grayscale
