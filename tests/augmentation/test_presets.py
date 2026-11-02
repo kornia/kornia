@@ -199,6 +199,14 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         ada.load_state_dict(state_dict)
         assert ada.p == 0.3
 
+    def test_nested_state_dict_without_adapted_state_still_loads(self):
+        # The same for ADA inside a larger model: its entry is prefixed, and strict loading must still accept it.
+        state_dict = torch.nn.Sequential(AdaptiveDiscriminatorAugmentation()).state_dict()
+        assert state_dict.pop("0._extra_state", None) is not None
+        model = torch.nn.Sequential(AdaptiveDiscriminatorAugmentation(initial_p=0.3))
+        model.load_state_dict(state_dict, strict=True)
+        assert model[0].p == 0.3
+
     @pytest.mark.parametrize("route", ["call", "forward_data_keys", "init_data_keys"])
     def test_dict_input(self, device, dtype, route):
         # Every dictionary route raised: ADA always set `data_keys`, which the parent rejects with a dictionary, and
