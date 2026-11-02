@@ -91,13 +91,13 @@ class PatchAffineShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            patch: ``(B, 1, H, W)``
+            patch: ``(B, 1, patch_size, patch_size)``
 
         Returns:
             torch.Tensor: ellipse_shape ``(B, 1, 3)``
 
         """
-        KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
+        KORNIA_CHECK_SHAPE(patch, ["B", "1", str(self.patch_size), str(self.patch_size)])
         dtype = patch.dtype
         # Squared weighted gradients and the degeneracy threshold can underflow in half precision.
         if dtype in (torch.float16, torch.bfloat16):
