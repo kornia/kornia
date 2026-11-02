@@ -210,15 +210,23 @@ def _unpatchify_8x8(input: torch.Tensor, H: int, W: int) -> torch.Tensor:
 
 
 def _patchify_chroma_gather(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Tensor:
-    """Patchify Cb and Cr by one gather instead of by views, for ``torch.export``.
+    """Patchify Cb and Cr with one gather, the route ``torch.export`` takes.
+
+    ``patches = _patchify_chroma_gather(input_cb, input_cr)`` takes the Cb and Cr planes of the shape ``(B, H, W)``,
+    with ``H`` and ``W`` multiples of 8, and returns their non-overlapping 8 x 8 patches, the Cb ones followed by the
+    Cr ones. The values and the patch order are those of ``_patchify_8x8`` on each plane, read with one
+    ``torch.index_select`` instead of views, so that ``torch.export`` adds no guard for a chroma grid of one patch
+    along a side. Use ``_patchify_chroma``, which takes this route only while exporting.
 
     Args:
-        input_cb: Cb plane of the shape ``(B, H, W)``, with ``H`` and ``W`` multiples of 8.
+        input_cb: Cb plane of the shape ``(B, H, W)``.
         input_cr: Cr plane of the shape ``(B, H, W)``.
 
     Returns:
-        The Cb patches followed by the Cr patches, of the shape ``(B, 2N, 8, 8)``, in the order of
-        :func:`_patchify_8x8`.
+        The Cb patches followed by the Cr patches, of the shape ``(B, 2N, 8, 8)`` with ``N = (H // 8) * (W // 8)``.
+
+    See Also:
+        - :func:`jpeg_codec_differentiable`: the public codec, whose export reaches this helper.
 
     """
     B, H, W = input_cb.shape
@@ -239,7 +247,12 @@ def _patchify_chroma_gather(input_cb: torch.Tensor, input_cr: torch.Tensor) -> t
 
 
 def _unpatchify_chroma_gather(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """Reverse :func:`_patchify_chroma_gather` with one gather instead of views, for ``torch.export``.
+    """Unpatchify Cb and Cr with one gather, the route ``torch.export`` takes.
+
+    ``cb, cr = _unpatchify_chroma_gather(input, H, W)`` takes the Cb patches followed by the Cr patches, of the shape
+    ``(B, 2N, 8, 8)``, and returns the Cb and the Cr plane, each of the shape ``(B, H, W)``. It undoes
+    ``_patchify_chroma_gather`` and gives the values of ``_unpatchify_8x8`` on each half, read with one
+    ``torch.index_select`` instead of views. Use ``_unpatchify_chroma``, which takes this route only while exporting.
 
     Args:
         input: Cb patches followed by Cr patches, of the shape ``(B, 2N, 8, 8)``.
@@ -248,6 +261,9 @@ def _unpatchify_chroma_gather(input: torch.Tensor, H: int, W: int) -> tuple[torc
 
     Returns:
         The Cb and the Cr plane, each of the shape ``(B, H, W)``.
+
+    See Also:
+        - :func:`jpeg_codec_differentiable`: the public codec, whose export reaches this helper.
 
     """
     B = input.shape[0]
@@ -269,7 +285,12 @@ def _unpatchify_chroma_gather(input: torch.Tensor, H: int, W: int) -> tuple[torc
 
 
 def _patchify_chroma(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Tensor:
-    """Extract the non-overlapping 8 x 8 patches of the Cb and Cr planes.
+    """Patchify the Cb and Cr planes together into one tensor of 8 x 8 patches.
+
+    ``patches = _patchify_chroma(input_cb, input_cr)`` takes the Cb and Cr planes of the shape ``(B, H, W)`` and returns
+    their 8 x 8 patches, the Cb ones followed by the Cr ones. Eager and the TorchScript tracer view each plane with
+    ``_patchify_8x8`` and concatenate; ``torch.export`` takes ``_patchify_chroma_gather``, which gives the same values
+    and adds no guard for a chroma grid of one patch along a side.
 
     Args:
         input_cb: Cb plane of the shape ``(B, H, W)``.
@@ -278,6 +299,9 @@ def _patchify_chroma(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Te
     Returns:
         The Cb patches followed by the Cr patches, of the shape ``(B, 2N, 8, 8)``.
 
+    See Also:
+        - :func:`jpeg_codec_differentiable`: the public codec, whose encoder calls this helper.
+
     """
     if is_exporting():
         return _patchify_chroma_gather(input_cb, input_cr)
@@ -285,7 +309,13 @@ def _patchify_chroma(input_cb: torch.Tensor, input_cr: torch.Tensor) -> torch.Te
 
 
 def _unpatchify_chroma(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """Reverse :func:`_patchify_chroma`.
+    """Unpatchify the joint Cb and Cr patches back into two planes.
+
+    ``cb, cr = _unpatchify_chroma(input, H, W)`` takes the Cb patches followed by the Cr patches, of the shape
+    ``(B, 2N, 8, 8)``, and returns the Cb and the Cr plane, each of the shape ``(B, H, W)``. Eager and the TorchScript
+    tracer split the patches and reverse them with ``_unpatchify_8x8``; ``torch.export`` takes
+    ``_unpatchify_chroma_gather``, which gives the same values and adds no guard for a chroma grid of one patch along a
+    side.
 
     Args:
         input: Cb patches followed by Cr patches, of the shape ``(B, 2N, 8, 8)``.
@@ -294,6 +324,9 @@ def _unpatchify_chroma(input: torch.Tensor, H: int, W: int) -> tuple[torch.Tenso
 
     Returns:
         The Cb and the Cr plane, each of the shape ``(B, H, W)``.
+
+    See Also:
+        - :func:`jpeg_codec_differentiable`: the public codec, whose decoder calls this helper.
 
     """
     if is_exporting():
@@ -628,15 +661,23 @@ def _perform_padding(image: torch.Tensor) -> tuple[torch.Tensor, int, int]:
 
 
 def _crop_padding(image: torch.Tensor, H: int, W: int) -> torch.Tensor:
-    """Crop the bottom and right padding of :func:`_perform_padding` off ``image``.
+    """Crop the bottom and right padding off an image padded to a multiple of 16.
+
+    ``cropped = _crop_padding(image, H, W)`` takes an image of the shape ``(*, C, H_new, W_new)`` that
+    ``_perform_padding`` padded from ``H`` x ``W``, and returns its top-left ``(*, C, H, W)`` part. Eager slices;
+    ``torch.export`` pads by the negative of the padding, which gives the same values and adds no guard that ``H`` is at
+    most ``H_new``.
 
     Args:
-        image: Image of the shape ``(*, C, H_{new}, W_{new})``.
+        image: Padded image of the shape ``(*, C, H_new, W_new)``.
         H: height of the image before the padding.
         W: width of the image before the padding.
 
     Returns:
-        The top-left ``(*, C, H, W)`` part of ``image``.
+        The top-left part of ``image``, of the shape ``(*, C, H, W)``.
+
+    See Also:
+        - :func:`jpeg_codec_differentiable`: the public codec, whose last step is this crop.
 
     """
     if is_exporting():

@@ -22,15 +22,7 @@ import torch
 
 from kornia.core._compat import torch_version_lt
 from kornia.enhance import JPEGCodecDifferentiable
-from kornia.enhance import jpeg as jpeg_module
-from kornia.enhance.jpeg import (
-    _chroma_subsampling,
-    _chroma_upsampling,
-    _patchify_8x8,
-    _patchify_chroma_gather,
-    _perform_padding,
-    _unpatchify_chroma_gather,
-)
+from kornia.enhance.jpeg import _chroma_subsampling, _chroma_upsampling, _perform_padding
 from kornia.geometry.transform import rescale
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_available
@@ -198,43 +190,3 @@ def test_jpeg_codec_torch_export_matches_eager_at_other_shapes(dim_min):
         assert actual.shape == expected.shape, f"traced at (32, 48), run at {shape}"
         # Same operations on the same values: only the layout of the patches differs.
         assert_close(actual, expected, rtol=0.0, atol=0.0)
-
-
-@pytest.mark.parametrize("grid", [(1, 1), (1, 3), (3, 1), (2, 5), (4, 6), (7, 2)])
-@pytest.mark.parametrize("batch", [1, 3])
-def test_chroma_patch_gather_matches_views(grid, batch):
-    """The gather torch.export takes for the chroma patches moves the same values as the views eager takes."""
-    generator = torch.Generator().manual_seed(0)
-    height, width = 8 * grid[0], 8 * grid[1]
-    cb = torch.randn(batch, height, width, generator=generator)
-    cr = torch.randn(batch, height, width, generator=generator)
-
-    patches = _patchify_chroma_gather(cb, cr)
-    assert_close(patches, torch.cat((_patchify_8x8(cb), _patchify_8x8(cr)), dim=1), rtol=0.0, atol=0.0)
-
-    cb_back, cr_back = _unpatchify_chroma_gather(patches, height, width)
-    assert_close(cb_back, cb, rtol=0.0, atol=0.0)
-    assert_close(cr_back, cr, rtol=0.0, atol=0.0)
-
-
-@pytest.mark.parametrize("shape", [(1, 3, 16, 16), (2, 3, 32, 48), (1, 3, 41, 70), (2, 3, 17, 33), (1, 3, 1, 1)])
-def test_export_routes_keep_eager_values_and_gradients(monkeypatch, shape):
-    """What ``torch.export`` takes for the chroma patches and the crop gives the eager values and gradients."""
-    model = JPEGCodecDifferentiable()
-    generator = torch.Generator().manual_seed(0)
-    image = torch.rand(*shape, generator=generator)
-    quality = torch.rand(shape[0], generator=generator) * 90.0 + 5.0
-    weights = torch.rand(*shape, generator=generator)
-
-    def run() -> tuple[torch.Tensor, torch.Tensor]:
-        x = image.clone().requires_grad_(True)
-        out = model(x, quality)
-        (out * weights).sum().backward()
-        return out.detach(), x.grad
-
-    expected, expected_grad = run()
-    monkeypatch.setattr(jpeg_module, "is_exporting", lambda: True)
-    actual, actual_grad = run()
-
-    assert_close(actual, expected, rtol=0.0, atol=0.0)
-    assert_close(actual_grad, expected_grad, rtol=0.0, atol=0.0)

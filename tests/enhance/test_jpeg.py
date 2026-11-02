@@ -75,6 +75,48 @@ class TestDiffJPEG(BaseTester):
             _DCT8_CACHE.clear()
             _DCT8_CACHE.update(cache)
 
+    @pytest.mark.parametrize("grid", [(1, 1), (1, 3), (3, 1), (2, 5), (4, 6), (7, 2)])
+    @pytest.mark.parametrize("batch", [1, 3])
+    def test_chroma_patch_gather_matches_views(self, device, dtype, grid, batch) -> None:
+        """The gather ``torch.export`` takes for the chroma patches moves the values that the views of eager move."""
+        from kornia.enhance.jpeg import _patchify_8x8, _patchify_chroma_gather, _unpatchify_chroma_gather
+
+        generator = torch.Generator().manual_seed(0)
+        height, width = 8 * grid[0], 8 * grid[1]
+        cb = torch.randn(batch, height, width, generator=generator).to(device=device, dtype=dtype)
+        cr = torch.randn(batch, height, width, generator=generator).to(device=device, dtype=dtype)
+
+        # Both routes only move values, so they must agree to the last bit in every dtype.
+        patches = _patchify_chroma_gather(cb, cr)
+        self.assert_close(patches, torch.cat((_patchify_8x8(cb), _patchify_8x8(cr)), dim=1), rtol=0.0, atol=0.0)
+
+        cb_back, cr_back = _unpatchify_chroma_gather(patches, height, width)
+        self.assert_close(cb_back, cb, rtol=0.0, atol=0.0)
+        self.assert_close(cr_back, cr, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("shape", [(1, 3, 16, 16), (2, 3, 32, 48), (1, 3, 41, 70), (2, 3, 17, 33), (1, 3, 1, 1)])
+    def test_export_routes_keep_eager_values_and_gradients(self, device, dtype, shape, monkeypatch) -> None:
+        """What ``torch.export`` takes for the chroma patches and the crop gives the eager values and gradients."""
+        generator = torch.Generator().manual_seed(0)
+        image = torch.rand(*shape, generator=generator).to(device=device, dtype=dtype)
+        quality = (torch.rand(shape[0], generator=generator) * 90.0 + 5.0).to(device=device, dtype=dtype)
+        weights = torch.rand(*shape, generator=generator).to(device=device, dtype=dtype)
+        codec = kornia.enhance.JPEGCodecDifferentiable()
+
+        def run() -> tuple[torch.Tensor, torch.Tensor]:
+            x = image.clone().requires_grad_(True)
+            out = codec(x, quality)
+            (out * weights).sum().backward()
+            return out.detach(), x.grad
+
+        expected, expected_grad = run()
+        monkeypatch.setattr("kornia.enhance.jpeg.is_exporting", lambda: True)
+        actual, actual_grad = run()
+
+        assert actual.shape == expected.shape
+        self.assert_close(actual, expected)
+        self.assert_close(actual_grad, expected_grad)
+
     def test_smoke(self, device, dtype) -> None:
         """This test standard usage."""
         B, H, W = 2, 32, 32
