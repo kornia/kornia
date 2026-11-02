@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numpy as np
 import pytest
 import torch
 
@@ -45,7 +46,104 @@ class TestHausdorffLoss(BaseTester):
 
         loss(logits, labels)
 
+    @pytest.mark.parametrize("loss_cls", [kornia.losses.HausdorffERLoss, kornia.losses.HausdorffERLoss3D])
+    def test_input_type_validation(self, loss_cls):
+        with pytest.raises(TypeError) as errinf:
+            loss_cls()(None, torch.zeros(1, 1, 1, 1, dtype=torch.long))
+        assert "pred type is not a torch.Tensor" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            loss_cls()(torch.zeros(1, 2, 1, 1), [1, 2, 3])
+        assert "target type is not a torch.Tensor" in str(errinf)
+
+    def test_integer_like_k_negative_alpha_and_zero_k(self, device, dtype):
+        # The loss sums k erosions weighted by (i + 1) ** alpha: any integer type of k, k = 0 (an empty sum), alpha < 0,
+        # alpha = -inf (only the first erosion counts) and a per-sample alpha tensor are valid.
+        hd = kornia.losses.HausdorffERLoss
+        # Two offset squares: unlike near-uniform softmax maps, every erosion up to k = 4 adds to the loss.
+        labels = torch.zeros(2, 1, 16, 16, dtype=torch.long, device=device)
+        labels[..., 4:12, 4:12] = 1
+        fg = torch.zeros(2, 1, 16, 16, device=device, dtype=dtype)
+        fg[..., 7:15, 7:15] = 1
+        pred = torch.cat([1 - fg, fg], 1)
+
+        expected = hd(k=3)(pred, labels)
+        assert hd(k=4)(pred, labels) > expected > hd(k=2)(pred, labels) > 0
+        for k in (np.int64(3), np.int32(3), torch.tensor(3), torch.tensor(3, dtype=torch.int32)):
+            self.assert_close(hd(k=k)(pred, labels), expected, rtol=0, atol=0)
+        self.assert_close(hd(k=0)(pred, labels), torch.zeros_like(expected), rtol=0, atol=0)
+        assert 0 < hd(k=3, alpha=-1.0)(pred, labels) < expected
+        self.assert_close(hd(alpha=float("-inf"))(pred, labels), hd(k=1)(pred, labels), rtol=0, atol=0)
+
+        alpha = torch.tensor([2.0, -1.0], device=device, dtype=dtype).view(2, 1, 1, 1)
+        per_sample = hd(k=3, alpha=alpha, reduction="none")(pred, labels)
+        self.assert_close(per_sample[:, :1], hd(k=3, alpha=2.0, reduction="none")(pred, labels)[:, :1])
+        self.assert_close(per_sample[:, 1:], hd(k=3, alpha=-1.0, reduction="none")(pred, labels)[:, 1:])
+
+    @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+    @pytest.mark.parametrize(
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (4, 4)), (kornia.losses.HausdorffERLoss3D, (3, 4, 4))]
+    )
+    def test_empty_batch(self, hd, shape, reduction, device, dtype):
+        pred = torch.empty(0, 2, *shape, device=device, dtype=dtype)
+        target = torch.empty(0, 1, *shape, device=device, dtype=torch.long)
+
+        actual = hd(reduction=reduction)(pred, target)
+
+        if reduction == "none":
+            assert actual.shape == (2, 0, 1, *shape)
+        elif reduction == "sum":
+            self.assert_close(actual, torch.tensor(0.0, device=device, dtype=dtype))
+        else:
+            assert actual.ndim == 0
+            assert torch.isnan(actual)
+
+    @pytest.mark.parametrize(
+        "hd,shape", [(kornia.losses.HausdorffERLoss, (4, 4)), (kornia.losses.HausdorffERLoss3D, (3, 4, 4))]
+    )
+    @pytest.mark.parametrize("label", [-1, 2])
+    def test_nonempty_target_out_of_range(self, hd, shape, label, device, dtype):
+        pred = torch.rand(1, 2, *shape, device=device, dtype=dtype)
+        target = torch.full((1, 1, *shape), label, device=device, dtype=torch.long)
+
+        with pytest.raises(ValueError, match="Expect long type target value in range"):
+            hd()(pred, target)
+
     def test_exception_2d(self):
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss()(
+                torch.zeros(1, 2, 1, 1), torch.zeros(1, 1, 1, 1, dtype=torch.long, device="meta")
+            )
+        assert "Device mismatch" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss(k=1.5)
+        assert "k must be an integer" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            kornia.losses.HausdorffERLoss(k="10")
+        assert "k must be an integer" in str(errinf)
+
+        for k in (True, False, np.bool_(True), torch.tensor(True), torch.tensor(False)):
+            with pytest.raises(TypeError) as errinf:
+                kornia.losses.HausdorffERLoss(k=k)
+            assert "k must be an integer" in str(errinf)
+
+        for k in (-1, torch.tensor(-1)):
+            with pytest.raises(ValueError) as errinf:
+                kornia.losses.HausdorffERLoss(k=k)
+            assert "k must be non-negative" in str(errinf)
+
+        for alpha in (float("nan"), float("inf"), torch.tensor(float("nan")), torch.tensor([2.0, float("inf")])):
+            with pytest.raises(ValueError) as errinf:
+                kornia.losses.HausdorffERLoss(alpha=alpha)
+            assert "alpha must not be NaN or +inf" in str(errinf)
+
+        with pytest.raises(NotImplementedError) as errinf:
+            kornia.losses.HausdorffERLoss(reduction="invalid")
+        assert "reduction `invalid` has not been implemented yet" in str(errinf)
+
         with pytest.raises(ValueError) as errinf:
             kornia.losses.HausdorffERLoss()((torch.rand(1, 2, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
         assert "Only 2D images supported. Got " in str(errinf)

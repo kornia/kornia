@@ -124,7 +124,7 @@ def get_sample_images(
     Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.
 
     Convention:
-        - Each image loads with :func:`~kornia.io.load_image`'s default type, ``RGB32``: :math:`(3, H, W)`
+        - Each image loads with :func:`~kornia.io.load_image`'s default type, ``RGB32``: ``(3, H, W)``
           ``float32`` in [0, 1].
         - A path is a URL only when its scheme is ``http`` or ``https``. A URL is cached under ``cache_dir`` with the
           file name of its path, byte for byte as downloaded, and a cached file is loaded without downloading it
@@ -134,8 +134,8 @@ def get_sample_images(
         - ``resize`` is ``(height, width)`` and goes to :func:`~kornia.geometry.transform.resize`; ``divisible_factor``
           is applied after it by :func:`~kornia.geometry.transform.resize_to_be_divisible`, so the final size can
           differ from ``resize``. ``**kwargs`` reach both.
-        - The result is one :math:`(B, 3, H, W)` tensor when ``resize`` is given and ``as_list`` is not ``True``, and a
-          list of :math:`(3, H, W)` tensors otherwise; ``as_list=False`` without ``resize`` still gives a list.
+        - The result is one ``(B, 3, H, W)`` tensor when ``resize`` is given and ``as_list`` is not ``True``, and a
+          list of ``(3, H, W)`` tensors otherwise; ``as_list=False`` without ``resize`` still gives a list.
 
     Args:
         paths: A list of path or URL from which to load or download images.
@@ -185,7 +185,8 @@ def get_sample_images(
         if resize is not None:
             img_tensor = kornia.geometry.resize(img_tensor, resize, **kwargs)
         if divisible_factor is not None:
-            img_tensor = kornia.geometry.transform.resize_to_be_divisible(img_tensor, divisible_factor, **kwargs)
+            div_kwargs = kwargs if resize is None else {key: value for key, value in kwargs.items() if key != "side"}
+            img_tensor = kornia.geometry.transform.resize_to_be_divisible(img_tensor, divisible_factor, **div_kwargs)
         tensors.append(img_tensor)
 
     if not as_list and resize is not None:

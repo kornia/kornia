@@ -592,6 +592,18 @@ class TestMultiplyDegOnePoly(BaseTester):
         out_poly = solver.multiply_deg_one_poly(a, b)
         assert out_poly.shape == (B, 10)
 
+    def test_unbatched_input_raises_6422(self, device, dtype):
+        # An unbatched polynomial failed in unsqueeze(2) with an IndexError.
+        a = torch.rand(4, device=device, dtype=dtype)
+        b = torch.rand(4, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a, b)
+        with pytest.raises(ShapeError, match=r"b must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a[None], b)
+        # An extra batch dimension returned products of the wrong coefficients instead of raising.
+        with pytest.raises(ShapeError, match=r"a must have shape \(B, 4\)"):
+            solver.multiply_deg_one_poly(a.expand(1, 4, 4), b.expand(1, 4, 4))
+
     @pytest.mark.parametrize(
         "a_coeffs, b_coeffs, expected_coeffs",
         [
@@ -686,6 +698,26 @@ class TestMultiplyDegTwoOnePoly(BaseTester):
         result = solver.multiply_deg_two_one_poly(a, b)
         self.assert_close(result, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize(
+        "a_shape, b_shape, message",
+        [
+            ((10,), (4,), r"a must have shape \(B, 10\)"),
+            ((1, 10), (4,), r"b must have shape \(B, 4\)"),
+            ((1, 2, 10), (1, 2, 4), r"a must have shape \(B, 10\)"),
+            ((2, 4), (2, 10), r"a must have shape \(B, 10\)"),
+            ((2, 8), (2, 5), r"a must have shape \(B, 10\)"),
+            ((2, 10), (2, 5), r"b must have shape \(B, 4\)"),
+        ],
+        ids=["unbatched_a", "unbatched_b", "extra_dim", "swapped", "other_product_40", "b_width"],
+    )
+    def test_wrong_shape_raises_6454(self, a_shape, b_shape, message, device, dtype):
+        # An unbatched a failed in unsqueeze(2) with an IndexError and an unbatched b with a RuntimeError; sizes whose
+        # product is 40 returned a (B, 20) tensor, as only the product of the last two sizes was used.
+        a = torch.rand(*a_shape, device=device, dtype=dtype)
+        b = torch.rand(*b_shape, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=message):
+            solver.multiply_deg_two_one_poly(a, b)
+
 
 class TestDeterminantToPolynomial(BaseTester):
     def test_smoke(self, device, dtype):
@@ -693,12 +725,45 @@ class TestDeterminantToPolynomial(BaseTester):
         poly = solver.determinant_to_polynomial(A)
         assert poly.shape == (1, 11)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 8])
+    @pytest.mark.parametrize("batch_size", [0, 1, 2, 8])
     def test_shape(self, batch_size, device, dtype):
         B: int = batch_size
         A = torch.rand(B, 3, 13, device=device, dtype=dtype)
         poly = solver.determinant_to_polynomial(A)
         assert poly.shape == (B, 11)
+        assert poly.device == A.device
+        assert poly.dtype == A.dtype
+
+    def test_empty_batch_backward_6266(self, device, dtype):
+        """Empty coefficients retain their autograd connection to the input."""
+        A = torch.empty(0, 3, 13, device=device, dtype=dtype, requires_grad=True)
+        poly = solver.determinant_to_polynomial(A)
+        poly.sum().backward()
+        assert A.grad is not None
+        self.assert_close(A.grad, A.detach())
+
+    def test_non_contiguous_input(self, device, dtype):
+        A = torch.rand(2, 13, 3, device=device, dtype=dtype).mT
+        self.assert_close(solver.determinant_to_polynomial(A), solver.determinant_to_polynomial(A.contiguous()))
+
+    def test_gradcheck(self, device):
+        A = torch.rand(2, 3, 13, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(solver.determinant_to_polynomial, (A,), fast_mode=True)
+
+    @pytest.mark.parametrize("batch_size", [0, 2])
+    def test_dynamo_fullgraph_6266(self, batch_size, device, dtype, torch_optimizer, optimizer_backend):
+        """Both batch sizes compile, and empty coefficients retain their autograd connection."""
+        if optimizer_backend == "jit":
+            pytest.skip("This regression exercises torch.compile(fullgraph=True).")
+        A = torch.rand(batch_size, 3, 13, device=device, dtype=dtype, requires_grad=batch_size == 0)
+        expected = solver.determinant_to_polynomial(A)
+        actual = torch_optimizer(solver.determinant_to_polynomial, fullgraph=True)(A)
+        assert actual.shape == (batch_size, 11)
+        self.assert_close(actual, expected)
+        if batch_size == 0:
+            actual.sum().backward()
+            assert A.grad is not None
+            self.assert_close(A.grad, A.detach())
 
     @pytest.mark.parametrize(
         "A_in, expected_poly_coeffs",

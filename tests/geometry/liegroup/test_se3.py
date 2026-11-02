@@ -20,7 +20,7 @@ import math
 import pytest
 import torch
 
-from kornia.core.exceptions import DeviceError, TypeCheckError
+from kornia.core.exceptions import DeviceError, ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.pose import NamedPose
@@ -79,9 +79,18 @@ class TestSe3(BaseTester):
         se: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         assert se.r.q.shape[0] == batch_size
 
-    # TODO: implement me
     def test_exception(self, device, dtype):
-        pass
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 3, got 2"):
+            Se3(So3.identity(1, device, dtype), torch.zeros(1, 2, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 6, got 5"):
+            Se3.exp(torch.zeros(1, 5, device=device, dtype=dtype))
+
+        with pytest.raises(ShapeError, match=r"Shape mismatch at dimension 1: expected 4, got 3"):
+            Se3.from_matrix(torch.eye(3, device=device, dtype=dtype).repeat(1, 1, 1))
+
+        with pytest.raises(TypeError, match=r"Unsupported type"):
+            Se3(So3.identity(1, device, dtype), torch.zeros(1, 3, device=device, dtype=dtype)) * 4
 
     def test_gradcheck(self, device):
         v = torch.tensor([[1.0, 2.0, 3.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64)
@@ -183,6 +192,40 @@ class TestSe3(BaseTester):
         self._assert_chains_agree(pt_in_s1, pt_in_s2_in_s1, pt_in_world, *translations)
         self._assert_chains_agree(pt_in_s2, pt_in_s1_in_s2, pt_in_world, *translations)
 
+    @pytest.mark.parametrize("points_shape", [(7, 3), (1, 3)])
+    def test_unbatched_pose_transforms_a_point_set(self, points_shape, device, dtype):
+        # #6426: an unbatched Se3 maps every point of a point set, as Se2 does for (N, 2); it used to raise in
+        # torch.linalg.cross. Expected: R p + t for each point.
+        torch.manual_seed(0)
+        g = Se3.exp(torch.tensor([0.3, -0.5, 0.2, 1.0, -2.0, 0.5], device=device, dtype=dtype))
+        p = (2 * torch.rand(points_shape) - 1).to(device, dtype)
+
+        out = g * p
+
+        assert out.shape == p.shape
+        self.assert_close(out, torch.stack([g * q for q in p.reshape(-1, 3)]).reshape(points_shape))
+        # R p + t in float64, on the CPU, from the same rounded pose and points: only the output is rounded
+        r = So3(Quaternion(g.so3.q.data.cpu().double())).matrix()
+        self.assert_close(out.cpu(), (p.cpu().double() @ r.mT + g.t.cpu().double()).to(dtype))
+
+    # #6426: a pose maps (3,) or (N, 3) unbatched and one point per pose for a batch; other layouts, such as a
+    # batch of poses with a point set, raise a ValueError that names the accepted layouts.
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape"), [(None, (2, 5, 3)), (2, (3,)), (2, (7, 3)), (2, (2, 7, 3)), (1, (1, 7, 3))]
+    )
+    def test_point_layout_outside_the_contract_raises(self, batch_size, points_shape, device, dtype):
+        pose = Se3.identity(batch_size, device, dtype)
+        with pytest.raises(ValueError, match=r"Expected points of shape \(3,\) or \(N, 3\)"):
+            pose * torch.zeros(points_shape, device=device, dtype=dtype)
+
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape", "out_shape"),
+        [(None, (3,), (3,)), (None, (7, 3), (7, 3)), (1, (7, 3), (7, 3)), (2, (2, 3), (2, 3)), (2, (1, 3), (2, 3))],
+    )
+    def test_point_layout_in_the_contract_maps(self, batch_size, points_shape, out_shape, device, dtype):
+        pose = Se3.identity(batch_size, device, dtype)
+        assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape
+
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_mul_vector(self, device, dtype, batch_size):
         world_pose_s1: Se3 = self._make_rand_se3d(device, dtype, batch_size)
@@ -209,6 +252,19 @@ class TestSe3(BaseTester):
         self.assert_close(s3s4.t, s4.t)
         self.assert_close(s4s4inv.r.q.data, so3_expected.q.data)
         self.assert_close(s4s4inv.t, zeros_vec)
+
+    @pytest.mark.parametrize(("left_batch", "right_batch"), [(None, 3), (3, None)])
+    def test_mul_unbatched_with_batched(self, device, dtype, left_batch, right_batch):
+        # #6481: composing an unbatched Se3 with a batch used to raise in torch.linalg.cross
+        s1 = self._make_rand_se3d(device, dtype, left_batch)
+        s2 = self._make_rand_se3d(device, dtype, right_batch)
+        out = s1 * s2
+        assert out.t.shape == (3, 3)
+        self.assert_close(out.matrix(), s1.matrix() @ s2.matrix())
+
+    def test_mul_mismatched_batches_raise(self, device, dtype):
+        with pytest.raises(ValueError, match="Cannot multiply quaternions of batch shapes"):
+            Se3.random(3, device, dtype) * Se3.random(2, device, dtype)
 
     @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_exp(self, device, dtype, batch_size):

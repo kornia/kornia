@@ -331,15 +331,15 @@ class TestRandomCrop3DEmptyValidation(BaseTester):
     def test_legal_empty_crop_keeps_shape_4429(
         self, size, padding, pad_if_needed, probability, in_sequence, device, dtype
     ):
-        """Empty crops validate against the padded canvas and preserve the skip shape."""
+        """Empty crops validate against the padded canvas and take the crop size under any probability."""
         volume = torch.empty(0, 1, 4, 5, 6, device=device, dtype=dtype)
         crop = RandomCrop3D(size, padding=padding, pad_if_needed=pad_if_needed, p=probability)
         augmentation = AugmentationSequential(crop) if in_sequence else crop
 
         output = augmentation(volume)
 
-        expected_size = size if probability == 1.0 else (4, 5, 6)
-        assert output.shape == (0, 1, *expected_size)
+        # An empty batch has no sample for the gate to skip (#4429).
+        assert output.shape == (0, 1, *size)
         assert output.device == volume.device
         assert output.dtype == volume.dtype
 

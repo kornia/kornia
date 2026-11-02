@@ -24,9 +24,11 @@ from typing import Any, Optional
 import torch
 
 __all__ = [
+    "AsyncCheckError",
     "BaseError",
     "DeviceError",
     "ImageError",
+    "InputRankError",
     "ShapeError",
     "TypeCheckError",
     "ValueCheckError",
@@ -38,7 +40,8 @@ class BaseError(Exception):
 
     A failed ``KORNIA_CHECK`` raises it directly; it is neither a :exc:`ValueError` nor a :exc:`TypeError`. Each
     subclass also derives from the one of those two built-ins that matches its failure, so the matching ``except``
-    clause catches the subclass as well.
+    clause catches the subclass as well. :exc:`AsyncCheckError` is also a :exc:`RuntimeError`, and :exc:`InputRankError`
+    also a :exc:`RuntimeError` and an :exc:`AssertionError`.
     """
 
 
@@ -60,6 +63,16 @@ class ShapeError(BaseError, ValueError):
         super().__init__(message)
         self.actual_shape = actual_shape
         self.expected_shape = expected_shape
+
+
+class InputRankError(ShapeError, RuntimeError, AssertionError):
+    """Raised when an input has a number of dimensions the operation does not accept. Also a :exc:`ValueError`.
+
+    The augmentation classes and their containers raise it for one user error: an image or a volume with too few or
+    too many dimensions. They used to raise :exc:`ValueError`, :exc:`RuntimeError` or :exc:`AssertionError` for it,
+    depending on the entry point (`#4424 <https://github.com/kornia/kornia/issues/4424>`_), so this class also
+    derives from :exc:`RuntimeError` and :exc:`AssertionError`, and each of those ``except`` clauses still catches it.
+    """
 
 
 class TypeCheckError(BaseError, TypeError):
@@ -100,6 +113,16 @@ class ValueCheckError(BaseError, ValueError):
         super().__init__(message)
         self.actual_value = actual_value
         self.expected_range = expected_range
+
+
+class AsyncCheckError(ValueCheckError, RuntimeError):
+    """Raised on the host by a value check that an accelerator runs as ``torch._assert_async``.
+
+    On CUDA, and on MPS from torch 2.13, the same check is not read back on the host: torch raises a
+    :exc:`RuntimeError` by the next synchronization instead, and on CUDA that is a device-side assert after which the
+    context cannot be used. This class is also a :exc:`RuntimeError`, so ``except RuntimeError`` handles a failure on
+    every device, and a :exc:`ValueCheckError` for the callers that catch the host failure as a value check.
+    """
 
 
 class DeviceError(BaseError, ValueError):

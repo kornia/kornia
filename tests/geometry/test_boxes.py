@@ -23,6 +23,7 @@ from functools import partial
 import pytest
 import torch
 
+from kornia.core.check import are_checks_enabled, disable_checks, enable_checks
 from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
@@ -85,7 +86,7 @@ class TestBoxes2D(BaseTester):
         # Kornia#4177: vertex modes accept arbitrary finite quadrilaterals, but
         # validate_boxes=True rejects non-finite coordinates.
         if device.type != "cpu":
-            # The check is torch._assert_async: skipped on MPS by design, a device-side assert on CUDA.
+            # On CUDA and MPS (torch >= 2.13) torch._assert_async raises at the next sync; CUDA then cannot recover.
             pytest.skip("the vertex check raises synchronously only on CPU")
         vertices = torch.tensor(
             [[[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]]],
@@ -922,7 +923,7 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data, original, atol=0.0, rtol=0.0)
 
     def test_wart_clamp_tuple_bounds_and_outside_box_behavior_4017(self, device, dtype):
-        # Wart pin for kornia#4017: tuple bounds are advertised but unsupported;
+        # Wart pin for kornia#4017: tuple bounds are no longer advertised and raise, as documented;
         # tensor bounds clamp every vertex, collapsing a wholly outside box.
         boxes = Boxes.from_tensor(
             torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype),
@@ -943,14 +944,19 @@ class TestBoxes2D(BaseTester):
             rtol=0.0,
         )
 
-    def test_wart_trim_and_fast_translate_are_unimplemented_4017(self, device, dtype):
-        # Wart pin for kornia#4017: both documented entry points raise instead
-        # of implementing their advertised operations.
+    def test_wart_trim_is_deprecated_and_fast_translate_is_unsupported_4017(self, device, dtype):
+        # Wart pin for kornia#4017: trim warns that it's deprecated and still raises,
+        # and "fast" is no longer advertised and raises.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
-        with pytest.raises(NotImplementedError, match=r"Boxes\.trim.*not implemented"):
-            boxes.trim()
-        with pytest.raises(NotImplementedError, match=r"fast.*not implemented.*warp"):
+        with pytest.raises(NotImplementedError, match=r"accepts `method='warp'`"):
             boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="fast")
+        with (
+            pytest.warns(DeprecationWarning, match=r"Boxes\.trim") as record,
+            pytest.raises(NotImplementedError, match=r"Boxes\.trim.*not implemented"),
+        ):
+            boxes.trim()
+        assert len(record) == 1
+        assert record[0].filename == __file__
 
     def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
         # transform_boxes leaves its input unchanged by default. Its in-place
@@ -991,9 +997,9 @@ class TestBoxes2D(BaseTester):
         assert translated is not boxes
 
     def test_translate_unknown_method_raises(self, device, dtype):
-        # The message names the accepted methods and repeats the rejected one, so a typo is visible.
+        # The message names the accepted method and repeats the rejected one, so a typo is visible.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
-        with pytest.raises(NotImplementedError, match=r"method='warp'.*method='fast'.*got method='wrap'"):
+        with pytest.raises(NotImplementedError, match=r"accepts `method='warp'`; got method='wrap'"):
             boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="wrap")
 
     def test_wart_filter_boxes_by_area_zeroes_small_boxes_4010(self, device, dtype):
@@ -1253,15 +1259,18 @@ class TestBoxes2D(BaseTester):
         assert transformed.data.shape == original.shape
 
     def test_wart_to_mask_and_bbox_to_mask_take_opposite_size_orders_4014(self, device, dtype):
-        # Wart pin for kornia#4014: Boxes.to_mask(height, width) and bbox_to_mask(boxes, width, height)
-        # are the same call, and both return (N, height, width) in the box dtype.
+        # Wart pin for kornia#4014: Boxes.to_mask(height, width) and bbox_to_mask(boxes, size=(height, width))
+        # are the same call, and both return (N, height, width) in the box dtype. The deprecated pair stays
+        # wrapped at the bottom, because the opposite order it implied is the wart that was reported.
         vertices = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         method = Boxes(vertices).to_mask(3, 5)
         assert method.shape == (1, 3, 5)
         assert method.dtype == dtype
-        self.assert_close(method, bbox_to_mask(vertices, 5, 3), atol=0.0, rtol=0.0)
+        self.assert_close(method, bbox_to_mask(vertices, size=(3, 5)), atol=0.0, rtol=0.0)
         assert Boxes(vertices).to_mask(5, 3).shape == (1, 5, 3)
         assert Boxes(vertices[None]).to_mask(3, 5).shape == (1, 1, 3, 5)
+        with pytest.warns(DeprecationWarning, match=r"size=\(height, width\)"):
+            self.assert_close(method, bbox_to_mask(vertices, 5, 3), atol=0.0, rtol=0.0)
 
     def test_wart_to_mask_rounds_the_exclusive_export_half_open_4015(self, device, dtype):
         # Wart pin for kornia#4015: the fractional box [1.4, 3.6] x [1.4, 2.6] exports as xyxy
@@ -1272,7 +1281,7 @@ class TestBoxes2D(BaseTester):
         expected = torch.zeros(1, 5, 6, device=device, dtype=dtype)
         expected[0, 1:4, 1:5] = 1.0
         self.assert_close(Boxes(boxes).to_mask(5, 6), expected, atol=0.0, rtol=0.0)
-        assert bbox_to_mask(boxes, 6, 5).sum().item() == 2.0
+        assert bbox_to_mask(boxes, size=(5, 6)).sum().item() == 2.0
 
         outside = torch.tensor([[[6.0, 6.0], [9.0, 6.0], [9.0, 9.0], [6.0, 9.0]]], device=device, dtype=dtype)
         assert Boxes(outside).to_mask(5, 5).sum().item() == 0.0
@@ -2311,7 +2320,7 @@ class TestVideoBoxes(BaseTester):
         video[0] = filtered[1]
         self.assert_close(video.to_tensor("xyxy")[:1], expected[:1])
         assert video.to_tensor("xyxy")[1, :, 1].count_nonzero() > 0
-        assert filtered.to_mask(5, 5)[:, 1].count_nonzero() == 0
+        assert filtered.to_mask(5, 5)[:, :, 1].count_nonzero() == 0
 
     """Public API and round-trip coverage for :class:`VideoBoxes` (#4016)."""
 
@@ -2342,6 +2351,18 @@ class TestVideoBoxes(BaseTester):
         video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
 
         self.assert_close(video_boxes.data, boxes.reshape(-1, 1, 4, 2), atol=0.0, rtol=0.0)
+
+    def test_vertex_check_is_skipped_when_checks_are_disabled(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        boxes[0, 0, 0, 0, 0] = float("nan")
+        were_checks_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            video_boxes = VideoBoxes.from_tensor(boxes, validate_boxes=True)
+        finally:
+            if were_checks_enabled:
+                enable_checks()
+        assert video_boxes.data.shape == boxes.reshape(-1, 1, 4, 2).shape
 
     @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
     def test_validate_boxes_rejects_non_finite_vertices_4177(self, value, device, dtype):
@@ -2398,7 +2419,7 @@ class TestVideoBoxes(BaseTester):
         # Pin #4016: VideoBoxes is exported and the overrides are documented.
         assert "VideoBoxes" in boxes_module.__all__
         assert VideoBoxes.__doc__ is not None
-        for name in ("from_tensor", "to_tensor", "clone"):
+        for name in ("from_tensor", "to_tensor", "clone", "compute_area", "to_mask"):
             assert getattr(VideoBoxes, name).__doc__ is not None
 
     def test_gradcheck(self, device):
@@ -2499,6 +2520,27 @@ class TestVideoBoxes(BaseTester):
         expected[videos] = boxes[videos]
         self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(("target_time", "value_time", "key"), [(4, 2, 0), (2, 4, "mask"), (2, 3, 0)])
+    def test_index_assignment_rejects_another_frame_count_6388(self, target_time, value_time, key, device, dtype):
+        # A value whose videos have another number of frames used to be regrouped into videos of the target's length:
+        # two 2-frame videos were stitched into one 4-frame video, one 4-frame video was split across two, and a
+        # frame total that does not divide by the target's length raised a RuntimeError from view.
+        target = VideoBoxes.from_tensor(torch.zeros(2, target_time, 1, 4, 2, device=device, dtype=dtype))
+        num_videos = 2 if value_time == 2 else 1  # one 3-frame video does not divide into 2-frame videos
+        value = VideoBoxes.from_tensor(torch.ones(num_videos, value_time, 1, 4, 2, device=device, dtype=dtype))
+        if key == "mask":
+            key = torch.tensor([True, True], device=device)
+        original = target.to_tensor().clone()
+        with pytest.raises(ValueError, match=f"videos of {value_time} frames to videos of {target_time} frames"):
+            target[key] = value
+        self.assert_close(target.to_tensor(), original, atol=0.0, rtol=0.0)
+
+        # A plain Boxes value is read as frames of the target's length, as before.
+        target[0] = Boxes(torch.ones(target_time, 1, 4, 2, device=device, dtype=dtype))
+        expected = original.clone()
+        expected[0] = 1
+        self.assert_close(target.to_tensor(), expected, atol=0.0, rtol=0.0)
+
     def test_index_assignment_without_boxes_5871(self, device, dtype):
         # A clip with no boxes stores (B * T, 0, 4, 2): the write still lands in place.
         target = VideoBoxes.from_tensor(torch.zeros(3, 2, 0, 4, 2, device=device, dtype=dtype))
@@ -2547,6 +2589,57 @@ class TestVideoBoxes(BaseTester):
             mask = video_boxes.to_mask(4, 5)
         except TypeError as error:
             raise AssertionError(str(error)) from error
-        # One extent per box, and the mask keeps the flattened-time convention (B*T, N, H, W).
+        # One extent per box, and both compute_area and to_mask restore the temporal axis.
         assert heights.numel() == widths.numel() == 6
-        assert mask.shape == (6, 1, 4, 5)
+        assert heights.shape == (2, 3, 1)
+        assert widths.shape == (2, 3, 1)
+        assert video_boxes.compute_area().shape == (2, 3, 1)
+        assert mask.shape == (2, 3, 1, 4, 5)
+
+    def test_compute_area_and_to_mask_restore_temporal_axis_5614(self, device, dtype):
+        # Issue #5614: compute_area and to_mask restore the temporal axis (B, T, N, ...).
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=2)
+        # A different box in every frame: frame t is t pixels wider, video b sits b pixels lower.
+        boxes[..., 1:3, 0] += torch.arange(3, device=device, dtype=dtype).view(1, 3, 1, 1)
+        boxes[..., 1] += torch.arange(2, device=device, dtype=dtype).view(2, 1, 1, 1)
+        video = VideoBoxes.from_tensor(boxes)
+        heights, widths = video.get_boxes_shape()
+        area = video.compute_area()
+        mask = video.to_mask(6, 8)
+
+        assert area.shape == (2, 3, 2)
+        expected_area = torch.tensor([4.0, 6.0, 8.0], device=device, dtype=dtype).view(1, 3, 1).expand(2, 3, 2)
+        self.assert_close(area, expected_area, atol=0.0, rtol=0.0)
+        assert mask.shape == (2, 3, 2, 6, 8)
+        assert mask.dtype == dtype
+        expected_mask = torch.zeros_like(mask)
+        for b in range(2):
+            for t in range(3):
+                expected_mask[b, t, :, 1 + b : 4 + b, 1 : 4 + t] = 1
+        self.assert_close(mask, expected_mask, atol=0.0, rtol=0.0)
+
+        # Sibling method combination no longer fails with mismatched shapes
+        ratio = area / (heights * widths)
+        assert ratio.shape == (2, 3, 2)
+
+        # filter_boxes_by_area correctly updates valid flags and zeroed coordinates
+        filtered = video.filter_boxes_by_area(min_area=100.0)
+        assert isinstance(filtered, VideoBoxes)
+        assert filtered.temporal_channel_size == 3
+        assert filtered.data.shape == video.data.shape
+        assert filtered.compute_area().shape == (2, 3, 2)
+        assert filtered.compute_area().count_nonzero() == 0
+
+        # A partial filter zeroes the first frame of every video (area 4) and keeps the others.
+        partial = video.filter_boxes_by_area(min_area=5.0)
+        assert partial.to_tensor("xyxy")[:, 0].count_nonzero() == 0
+        self.assert_close(partial.to_tensor("xyxy")[:, 1:], video.to_tensor("xyxy")[:, 1:], atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("shape", [(0, 3, 2), (2, 3, 0)])
+    def test_compute_area_and_to_mask_empty_batches_5614(self, shape, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype, batch=shape[0], time=shape[1], n_boxes=shape[2])
+        video = VideoBoxes.from_tensor(boxes)
+        area = video.compute_area()
+        mask = video.to_mask(4, 5)
+        assert area.shape == (shape[0], shape[1], shape[2])
+        assert mask.shape == (shape[0], shape[1], shape[2], 4, 5)

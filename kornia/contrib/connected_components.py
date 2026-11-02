@@ -39,7 +39,7 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
           onto SciPy, OpenCV and scikit-image.
         - Foreground is a value exactly equal to 1: 0.5 and 2 are background. Other values and dtypes are accepted.
         - The label of a component is 1 plus the largest raster index of its pixels in the batch flattened to
-          :math:`(N, H, W)`; background is 0. Labels are therefore not contiguous, and an image gets other labels at
+          ``(N, H, W)``; background is 0. Labels are therefore not contiguous, and an image gets other labels at
           another batch position or transposed. On MPS an image of more than :math:`2^{24}` pixels raises
           ``ValueError``.
         - ``num_iterations`` is a fixed number of max-pooling steps, not a convergence test, and a label travels one
@@ -48,7 +48,7 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
         - The labels carry no gradient.
 
     Args:
-        image: the binary input image with shape :math:`(*, 1, H, W)`.
+        image: the binary input image with shape ``(*, 1, H, W)``.
         num_iterations: the number of max-pooling steps, at least 1.
 
     Return:
@@ -119,7 +119,7 @@ def connected_components_union_find(image: torch.Tensor) -> torch.Tensor:
         :func:`connected_components`.
 
     Args:
-        image: Binary image of shape :math:`(*, 1, H, W)`. Boolean, integer and
+        image: Binary image of shape ``(*, 1, H, W)``. Boolean, integer and
             floating-point tensors are accepted. Only values equal to 1 are
             foreground, as in :func:`connected_components`.
 

@@ -160,8 +160,8 @@ class KeyNet(nn.Module):
         KeyNet response score.
 
     Shape:
-        - Input: :math:`(B, 1, H, W)`
-        - Output: :math:`(B, 1, H, W)`
+        - Input: ``(B, 1, H, W)``
+        - Output: ``(B, 1, H, W)``
 
     """
 

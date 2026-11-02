@@ -47,7 +47,7 @@ def unsharp_mask(
           :func:`~kornia.enhance.sharpness`.
 
     Args:
-        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.Tensor with shape ``(B,C,H,W)``.
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
@@ -55,7 +55,7 @@ def unsharp_mask(
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        the sharpened torch.Tensor with shape :math:`(B,C,H,W)`.
+        the sharpened torch.Tensor with shape ``(B,C,H,W)``.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -86,11 +86,11 @@ class UnsharpMask(nn.Module):
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        the sharpened torch.Tensor with shape :math:`(B,C,H,W)`.
+        the sharpened torch.Tensor with shape ``(B,C,H,W)``.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/unsharp_mask.html>`__.
@@ -124,13 +124,13 @@ class UnsharpMask(nn.Module):
         keeping the tensor layout unchanged.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the image height, and :math:`W` is the
                 image width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the sharpened
+            Tensor with shape ``(B, C, H, W)`` containing the sharpened
             image. The spatial scale of sharpening is set by the configured
             Gaussian kernel size and sigma; the amount is fixed.
         """

@@ -119,6 +119,51 @@ class TestPatchDominantGradientOrientation(BaseTester):
         expected = torch.tensor([90.0], device=device)
         self.assert_close(rad2deg(ang), expected)
 
+    @pytest.mark.parametrize("value", [0.0, 0.5])
+    def test_flat_patch_weight_gradient(self, device, dtype, value):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-pad kernel for {dtype} on {device.type}")
+        patches = torch.full((2, 1, 32, 32), value, device=device, dtype=dtype, requires_grad=True)
+        model = PatchDominantGradientOrientation(32).to(device, dtype)
+
+        angles = model(patches)
+        patch_grad, weight_grad = torch.autograd.grad(angles.sum(), (patches, model.angular_smooth.weight))
+
+        # An empty histogram gives the existing fallback angle regardless of the smoothing weights.
+        self.assert_close(angles, torch.full_like(angles, math.pi))
+        self.assert_close(patch_grad, torch.zeros_like(patch_grad), atol=0.0, rtol=0.0)
+        self.assert_close(weight_grad, torch.zeros_like(weight_grad), atol=0.0, rtol=0.0)
+
+    def test_flat_patch_does_not_change_textured_weight_gradient(self, device, dtype):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip(f"no replicate-pad kernel for {dtype} on {device.type}")
+        ramp = torch.linspace(0, 1, 32, device=device, dtype=dtype).expand(1, 1, 32, 32)
+        model = PatchDominantGradientOrientation(32).to(device, dtype)
+        expected_angle = model(ramp)
+        (expected_grad,) = torch.autograd.grad(expected_angle.sum(), (model.angular_smooth.weight,))
+        assert torch.isfinite(expected_grad).all()
+        assert expected_grad.count_nonzero() > 0
+
+        # Flat patches must contribute zero to the sum, without poisoning the textured sample's gradient.
+        patches = torch.cat((torch.zeros_like(ramp), ramp, torch.full_like(ramp, 0.5)))
+        angles = model(patches)
+        (weight_grad,) = torch.autograd.grad(angles.sum(), (model.angular_smooth.weight,))
+
+        self.assert_close(angles[1:2], expected_angle)
+        self.assert_close(weight_grad, expected_grad)
+
+    @pytest.mark.parametrize("flat", [False, True])
+    def test_weight_gradcheck(self, device, flat):
+        model = PatchDominantGradientOrientation(13).to(device, torch.float64)
+        patches = torch.zeros(1, 1, 13, 13, device=device, dtype=torch.float64)
+        if not flat:
+            patches[:, :, :, :] = torch.linspace(0, 1, 13, device=device, dtype=torch.float64)
+
+        def orientation_from_weight(weight):
+            return torch.func.functional_call(model, {"angular_smooth.weight": weight}, (patches,))
+
+        self.gradcheck(orientation_from_weight, (model.angular_smooth.weight,))
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
         ori = PatchDominantGradientOrientation(width).to(device)

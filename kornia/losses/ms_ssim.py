@@ -64,9 +64,9 @@ class MS_SSIMLoss(nn.Module):
         - ``data_range`` is the ``max_val`` of :func:`~kornia.metrics.ssim`: it sets :math:`C_1` and :math:`C_2` and
           divides the L1 term; pixel values are not rescaled.
         - The defaults follow [3]: ``alpha=0.025``, as in [2], and ``compensation=200``, which neither [1] nor [2]
-          applies; [1] sets :math:`\alpha = 0.84`. The default ``reduction='mean'`` averages the :math:`(B, H, W)`
+          applies; [1] sets :math:`\alpha = 0.84`. The default ``reduction='mean'`` averages the ``(B, H, W)``
           map, whose channels are already averaged.
-        - The two images must have the same :math:`(C, H, W)` shape. Their batch sizes must match, or one of them
+        - The two images must have the same ``(C, H, W)`` shape. Their batch sizes must match, or one of them
           must be 1, and that image is then compared with every image of the other batch.
 
     Reference:
@@ -89,9 +89,9 @@ class MS_SSIMLoss(nn.Module):
         The computed loss.
 
     Shape:
-        - Input1: :math:`(N, C, H, W)`.
-        - Input2: :math:`(N, C, H, W)`.
-        - Output: :math:`(N, H, W)` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
+        - Input1: ``(N, C, H, W)``.
+        - Input2: ``(N, C, H, W)``.
+        - Output: ``(N, H, W)`` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
     Note:
         Integer and bool images count as the dtype of the Gaussian masks: float32, unless the module was moved to
@@ -198,8 +198,8 @@ class MS_SSIMLoss(nn.Module):
         """Compute MS_SSIM loss.
 
         Args:
-            img1: the predicted image with shape :math:`(B, C, H, W)`.
-            img2: the target image with a shape of :math:`(B, C, H, W)`.
+            img1: the predicted image with shape ``(B, C, H, W)``.
+            img2: the target image with a shape of ``(B, C, H, W)``.
 
         Returns:
             Estimated MS-SSIM_L1 loss.

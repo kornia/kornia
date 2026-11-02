@@ -1,0 +1,1 @@
+The `RandomSnow`, `TwoWayTransformer` and `TwoWayAttentionBlock` docstrings now state the defaults the constructors use (`p=1.0` and `nn.ReLU`) and document `attention_downsample_rate` instead of a nonexistent `attention_type` argument.

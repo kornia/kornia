@@ -38,6 +38,10 @@ pytest_plugins = ["pytester"]
 _skip_fixture_fn = getattr(skip_half_precision_on_cuda, "__wrapped__", skip_half_precision_on_cuda)
 
 
+def test_cudnn_tf32_follows_tf32_option(request):
+    assert torch.backends.cudnn.allow_tf32 is request.config.getoption("--tf32")
+
+
 @pytest.fixture(autouse=True)
 def _neutral_runner_env(monkeypatch):
     """Keep the ambient run's runner flags out of the pytester subprocesses.

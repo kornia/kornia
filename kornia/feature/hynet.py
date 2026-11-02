@@ -22,6 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.feature._layout import _patch_conv_layout
 from kornia.feature._normalization import _DescriptorSequential
 
 urls: Dict[str, str | list[str]] = {}
@@ -233,7 +234,7 @@ class HyNet(nn.Module):
         HyNet descriptor of the patches.
 
     Shape:
-        - Input: :math:`(B, 1, 32, 32)`
+        - Input: ``(B, 1, 32, 32)``
         - Output: :math:`(B, \text{dim\_desc})`
 
     Note:
@@ -328,7 +329,8 @@ class HyNet(nn.Module):
             HyNet descriptors with shape ``(B, D)``.
         """
         KORNIA_CHECK_SHAPE(x, ["B", "1", "32", "32"])
-        x = self.layer1(x)
+        # The leading FilterResponseNorm2d and TLU are pointwise, so the layout reaches the first convolution.
+        x = self.layer1(_patch_conv_layout(x))
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)

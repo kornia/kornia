@@ -51,7 +51,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
           :func:`~kornia.filters.filter2d` and :func:`~kornia.filters.laplacian`, whose default is ``'reflect'``.
 
     Args:
-        input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
+        input: input image torch.Tensor with shape ``(B, C, H, W)``.
         mode: derivatives modality, can be: `sobel` or `diff`, case-insensitive.
         order: the order of the derivatives.
         normalized: if ``True``, scale the kernels so that every output channel estimates the derivative
@@ -59,8 +59,8 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
           surfaces for ``order=2``. If ``False``, return the raw kernel responses.
 
     Return:
-        the derivatives of the input feature map, with shape :math:`(B, C, 2, H, W)` holding
-        :math:`(dx, dy)` for ``order=1`` and :math:`(B, C, 3, H, W)` holding :math:`(dxx, dxy, dyy)`
+        the derivatives of the input feature map, with shape ``(B, C, 2, H, W)`` holding
+        :math:`(dx, dy)` for ``order=1`` and ``(B, C, 3, H, W)`` holding :math:`(dxx, dxy, dyy)`
         for ``order=2``.
 
     .. note::
@@ -130,13 +130,13 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
           as :func:`~kornia.filters.filter3d` does (`#5155 <https://github.com/kornia/kornia/issues/5155>`_).
 
     Args:
-        input: input features torch.Tensor with shape :math:`(B, C, D, H, W)`.
+        input: input features torch.Tensor with shape ``(B, C, D, H, W)``.
         mode: derivatives modality, case-insensitive; only ``'diff'`` is implemented.
         order: the order of the derivatives.
 
     Return:
-        the spatial gradients of the input feature map with shape :math:`(B, C, 3, D, H, W)` holding
-        :math:`(dx, dy, dz)` for ``order=1`` or :math:`(B, C, 6, D, H, W)` holding
+        the spatial gradients of the input feature map with shape ``(B, C, 3, D, H, W)`` holding
+        :math:`(dx, dy, dz)` for ``order=1`` or ``(B, C, 6, D, H, W)`` holding
         :math:`(dxx, dyy, dzz, dxy, dyz, dxz)` for ``order=2``.
 
     Examples:
@@ -203,12 +203,12 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
           default, not 0.
 
     Args:
-        input: the input image with shape :math:`(B,C,H,W)`.
+        input: the input image with shape ``(B,C,H,W)``.
         normalized: if True, L1 norm of the kernel is set to 1.
         eps: regularization number to avoid NaN during backprop.
 
     Return:
-        the sobel edge gradient magnitudes map with shape :math:`(B,C,H,W)`.
+        the sobel edge gradient magnitudes map with shape ``(B,C,H,W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_edges.html>`__.
@@ -251,8 +251,8 @@ class SpatialGradient(nn.Module):
         the derivatives of the input feature map.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, 2, H, W)` for ``order=1`` and :math:`(B, C, 3, H, W)` for ``order=2``
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, 2, H, W)`` for ``order=1`` and ``(B, C, 3, H, W)`` for ``order=2``
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -281,16 +281,16 @@ class SpatialGradient(nn.Module):
         derivatives describe how that slope changes.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
             Gradient tensor from :func:`spatial_gradient`. For first-order
-            derivatives the shape is :math:`(B, C, 2, H, W)`, where
+            derivatives the shape is ``(B, C, 2, H, W)``, where
             the derivative axis of size ``2`` stores the response along
             :math:`x` (width) and :math:`y` (height). For second-order
-            derivatives it is :math:`(B, C, 3, H, W)`, holding
+            derivatives it is ``(B, C, 3, H, W)``, holding
             :math:`(dxx, dxy, dyy)`.
         """
         return spatial_gradient(input, self.mode, self.order, self.normalized)
@@ -310,8 +310,8 @@ class SpatialGradient3d(nn.Module):
         the spatial gradients of the input feature map.
 
     Shape:
-        - Input: :math:`(B, C, D, H, W)`. D, H, W are spatial dimensions, gradient is calculated w.r.t to them.
-        - Output: :math:`(B, C, 3, D, H, W)` or :math:`(B, C, 6, D, H, W)`
+        - Input: ``(B, C, D, H, W)``. D, H, W are spatial dimensions, gradient is calculated w.r.t to them.
+        - Output: ``(B, C, 3, D, H, W)`` or ``(B, C, 6, D, H, W)``
 
     Examples:
         >>> input = torch.rand(1, 4, 2, 4, 4)
@@ -342,7 +342,7 @@ class SpatialGradient3d(nn.Module):
         or feature maps with an explicit depth dimension.
 
         Args:
-            input: Volume tensor with shape :math:`(B, C, D, H, W)`, where
+            input: Volume tensor with shape ``(B, C, D, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the channel count,
                 :math:`D` is the depth, :math:`H` is the height, and
                 :math:`W` is the width.
@@ -369,8 +369,8 @@ class Sobel(nn.Module):
         the sobel edge gradient magnitudes map.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -395,12 +395,12 @@ class Sobel(nn.Module):
         boundaries.
 
         Args:
-            input: Image tensor with shape :math:`(B, C, H, W)`, where
+            input: Image tensor with shape ``(B, C, H, W)``, where
                 :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the gradient
+            Tensor with shape ``(B, C, H, W)`` containing the gradient
             magnitude for each channel. The ``self.eps`` value is used by the
             underlying function to keep magnitude computation numerically
             stable near zero.

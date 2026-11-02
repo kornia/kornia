@@ -15,12 +15,29 @@
 # limitations under the License.
 #
 
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation._2d.intensity.base import _clamp_unit_range
+from kornia.augmentation._2d.intensity.brightness import RandomBrightness
+from kornia.augmentation._2d.intensity.contrast import RandomContrast
+from kornia.augmentation._2d.intensity.saturation import RandomSaturation
 from kornia.augmentation.auto.operations.base import OperationBase
+from kornia.core.utils import _to_device_nonblocking
+from kornia.enhance import (
+    adjust_brightness_accumulative,
+    adjust_contrast_with_mean_subtraction,
+    adjust_saturation_with_gray_subtraction,
+)
+
+
+def _fraction_to_pixels(mag: Optional[torch.Tensor], size: int) -> Optional[torch.Tensor]:
+    # RandomTranslate's generator samples a fraction of the image and stores it in pixels, so a magnitude that
+    # replaces the draw has to be converted the same way.
+    return None if mag is None else mag * size
+
 
 __all__ = [
     "AutoContrast",
@@ -43,6 +60,45 @@ __all__ = [
     "TranslateY",
     "VerticalFlip",
 ]
+
+
+class _PILBrightness(RandomBrightness):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Apply the sampled PIL-style enhancement factor to the input."""
+        factor = _to_device_nonblocking(params["brightness_factor"], input.device, input.dtype)
+        return adjust_brightness_accumulative(_clamp_unit_range(input), factor)
+
+
+class _PILContrast(RandomContrast):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Apply the sampled PIL-style enhancement factor to the input."""
+        factor = _to_device_nonblocking(params["contrast_factor"], input.device, input.dtype)
+        return adjust_contrast_with_mean_subtraction(_clamp_unit_range(input), factor)
+
+
+class _PILSaturation(RandomSaturation):
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Apply the sampled PIL-style enhancement factor to the input."""
+        factor = _to_device_nonblocking(params["saturation_factor"], input.device, input.dtype)
+        return adjust_saturation_with_gray_subtraction(_clamp_unit_range(input), factor)
 
 
 class AutoContrast(OperationBase):
@@ -68,7 +124,10 @@ class AutoContrast(OperationBase):
 
 
 class Brightness(OperationBase):
-    """Apply brightness operation.
+    """Apply PIL-style multiplicative brightness for automatic augmentation.
+
+    Unlike :class:`~kornia.augmentation.RandomBrightness`, the factor multiplies
+    the input. The policy factors match the PIL ImageEnhance convention.
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
@@ -89,7 +148,7 @@ class Brightness(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
+            _PILBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("brightness_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -97,7 +156,10 @@ class Brightness(OperationBase):
 
 
 class Contrast(OperationBase):
-    """Apply contrast operation.
+    """Apply PIL-style contrast by blending each image towards its mean grayscale value.
+
+    Unlike :class:`~kornia.augmentation.RandomContrast`, the factor scales the
+    difference from the mean rather than multiplying the input directly.
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
@@ -118,7 +180,7 @@ class Contrast(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomContrast(magnitude_range, same_on_batch=False, p=initial_probability),
+            _PILContrast(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("contrast_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -155,7 +217,10 @@ class Hue(OperationBase):
 
 
 class Saturate(OperationBase):
-    """Apply saturation operation.
+    """Apply PIL-style color enhancement by blending with grayscale.
+
+    Unlike :class:`~kornia.augmentation.RandomSaturation`, this blends RGB
+    values with grayscale rather than scaling HSV saturation.
 
     Args:
         initial_probability: the initial probability. If None, the augmentation will be randomly
@@ -176,7 +241,7 @@ class Saturate(OperationBase):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
-            K.RandomSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
+            _PILSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("saturation_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -439,8 +504,12 @@ class Rotate(OperationBase):
 class ShearX(OperationBase):
     """Apply shear operation along x-axis.
 
+    The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`. It is mapped to the wrapped augmentation's degrees with
+    ``rad2deg(atan(magnitude))``, so a magnitude of ``0.3`` shears by about ``16.7`` degrees.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a shear factor.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -451,8 +520,9 @@ class ShearX(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
@@ -479,8 +549,12 @@ class ShearX(OperationBase):
 class ShearY(OperationBase):
     """Apply shear operation along y-axis.
 
+    The magnitude is the shear factor, as in PIL and torchvision, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`. It is mapped to the wrapped augmentation's degrees with
+    ``rad2deg(atan(magnitude))``, so a magnitude of ``0.3`` shears by about ``16.7`` degrees.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a shear factor.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -491,8 +565,9 @@ class ShearY(OperationBase):
 
     @staticmethod
     def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
-        # make it sign-agnostic
-        return magnitude * 180
+        # the magnitude is the shear factor; map it to degrees as torchvision
+        # does (atan keeps the sign)
+        return torch.atan(magnitude) * 57.29577951308232  # 180/pi; aten::rad2deg is not ONNX-exportable
 
     def __init__(
         self,
@@ -524,8 +599,12 @@ class ShearY(OperationBase):
 class TranslateX(OperationBase):
     """Apply translate operation along x-axis.
 
+    The magnitude is a fraction of the image width, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`; the wrapped augmentation translates by that fraction
+    of the width in pixels.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a fraction of the image width.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -554,12 +633,31 @@ class TranslateX(OperationBase):
             symmetric_megnitude=symmetric_megnitude,
         )
 
+    def forward_parameters(
+        self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Sample parameters, converting a set magnitude from a fraction of the width to pixels.
+
+        Args:
+            batch_shape: Input batch shape used for sampling.
+            mag: Optional magnitude override, a fraction of the image width.
+
+        Returns:
+            Parameter dictionary consumed by :meth:`forward`.
+        """
+        mag = _fraction_to_pixels(self.magnitude if mag is None else mag, batch_shape[-1])
+        return super().forward_parameters(batch_shape, mag)
+
 
 class TranslateY(OperationBase):
     """Apply translate operation along y-axis.
 
+    The magnitude is a fraction of the image height, whether it is sampled from ``magnitude_range``,
+    learned, or passed to :meth:`forward_parameters`; the wrapped augmentation translates by that fraction
+    of the height in pixels.
+
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_magnitude: the initial magnitude, a fraction of the image height.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
@@ -587,3 +685,18 @@ class TranslateY(OperationBase):
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
+
+    def forward_parameters(
+        self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
+        """Sample parameters, converting a set magnitude from a fraction of the height to pixels.
+
+        Args:
+            batch_shape: Input batch shape used for sampling.
+            mag: Optional magnitude override, a fraction of the image height.
+
+        Returns:
+            Parameter dictionary consumed by :meth:`forward`.
+        """
+        mag = _fraction_to_pixels(self.magnitude if mag is None else mag, batch_shape[-2])
+        return super().forward_parameters(batch_shape, mag)

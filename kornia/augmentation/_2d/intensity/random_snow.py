@@ -37,12 +37,12 @@ class RandomSnow(IntensityAugmentationBase2D):
         brightness: A tuple of floats (lower and upper bound) of ``1`` or greater that controls the
         brightness of the snow.
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
-        p: Probability of applying the transformation. Default: 0.5.
+        p: Probability of applying the transformation. Default: 1.0.
         keepdim: Keep the output torch.Tensor with the same shape as input. Default: False.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(C, H, W)`` or ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Convention:
         - input values are clamped into ``[0, 1]`` before the operation, and the result is clamped

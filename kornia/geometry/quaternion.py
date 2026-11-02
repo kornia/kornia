@@ -15,6 +15,30 @@
 # limitations under the License.
 #
 
+"""Quaternions in ``(w, x, y, z)`` order: Hamilton product, slerp, averaging and rotation conversions.
+
+A quaternion is stored real part first, with shape ``(*, 4)``, and ``q1 * q2`` is the Hamilton product, so
+``(q1 * q2).matrix()`` is ``q1.matrix() @ q2.matrix()``: the right operand acts first, as for the Lie groups of
+``kornia.geometry.liegroup``. ``q`` and ``-q`` are the same rotation. Nothing normalises the stored data; the
+conversions to a rotation read only its direction :math:`q / |q|`, within the limits stated on :class:`Quaternion`.
+
+Which function to use:
+
+- Quaternions as objects that multiply, invert, interpolate (``slerp``) and convert to and from rotation matrices,
+  rotation vectors and Euler angles: :class:`Quaternion`.
+- The mean rotation of many quaternions, optionally weighted, whatever their signs: :func:`average_quaternions`.
+- The same conversions on plain tensors, without an object:
+  :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix` and
+  :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` from ``(*, 4)`` quaternions to ``(*, 3, 3)``
+  matrices and ``(*, 3)`` rotation vectors, and :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`
+  and :func:`~kornia.geometry.conversions.axis_angle_to_quaternion` back;
+  :func:`~kornia.geometry.conversions.euler_from_quaternion` and
+  :func:`~kornia.geometry.conversions.quaternion_from_euler` for roll, pitch and yaw, with the quaternion as four
+  separate ``w``, ``x``, ``y``, ``z`` tensors.
+- A rotation that acts on points, with ``exp``, ``log`` and Jacobians: :class:`~kornia.geometry.liegroup.So3`; with a
+  translation: :class:`~kornia.geometry.liegroup.Se3`.
+"""
+
 # kornia.geometry.quaternion module inspired by Eigen, Sophus-sympy, and PyQuaternion.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/quaternion.py
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
@@ -40,10 +64,15 @@ from kornia.geometry.linalg import batched_dot_product
 
 
 class Quaternion(nn.Module):
-    r"""Base class to represent a Quaternion.
+    r"""Represent (w, x, y, z) quaternions: Hamilton product, slerp and rotation conversions.
 
-    A quaternion is a four dimensional vector representation of a rotation transformation in 3d.
-    See more: https://en.wikipedia.org/wiki/Quaternion
+    ``q = Quaternion(data)`` wraps a ``(*, 4)`` tensor of quaternions, real part first, without copying it;
+    :meth:`from_axis_angle`, :meth:`from_matrix`, :meth:`from_euler`, :meth:`identity` and :meth:`random` build one.
+    ``q1 * q2`` is the Hamilton product, ``q.inv()`` the inverse and ``q0.slerp(q1, t)`` the interpolation along the
+    shorter arc; ``q.matrix()`` returns the ``(*, 3, 3)`` rotation matrices and ``q.to_axis_angle()`` the ``(*, 3)``
+    rotation vectors of the direction :math:`q / |q|`. A quaternion does not act on points: for a rotation that maps
+    points and has ``exp``, ``log`` and Jacobians, use :class:`~kornia.geometry.liegroup.So3`; for the same
+    conversions on plain tensors, the functions of ``kornia.geometry.conversions``.
 
     The general definition of a quaternion is given by:
 
@@ -51,19 +80,20 @@ class Quaternion(nn.Module):
 
         Q = a + b \cdot \mathbf{i} + c \cdot \mathbf{j} + d \cdot \mathbf{k}
 
-    Thus, we represent a rotation quaternion as a contiguous torch.Tensor structure to
-    perform rigid bodies transformations:
+    A unit quaternion represents a rotation in 3D; see https://en.wikipedia.org/wiki/Quaternion. The last axis of
+    ``data`` holds:
 
     .. math::
 
         Q = \begin{bmatrix} q_w & q_x & q_y & q_z \end{bmatrix}
 
     Convention:
-        - ``data`` is ``(w, x, y, z)``, real part first, with shape :math:`(*, 4)`; only the last axis is checked.
+        - ``data`` is ``(w, x, y, z)``, real part first, with shape ``(*, 4)``; only the last axis is checked.
           Other libraries' orders, such as scipy's default ``(x, y, z, w)``, are mapped on
           :ref:`Rotations and rigid motions <rotation-conventions>`.
         - ``*`` between quaternions is the Hamilton product, so ``(q1 * q2).matrix()`` is
           ``q1.matrix() @ q2.matrix()``, ``q1 / q2`` is ``q1 * q2.inv()``, and ``q`` and ``-q`` are the same rotation.
+          A batch multiplies with a batch of the same size, a batch of one or an unbatched quaternion.
           A float or tensor operand of ``+``, ``-``, ``*`` or ``/`` is the real quaternion ``[s, 0, 0, 0]``, and a
           tensor of the shape of ``q.w`` holds one such scalar per quaternion of the batch.
         - Nothing normalises the stored data or the results of ``*``, ``**`` and ``inv()``. ``matrix()``,
@@ -75,8 +105,23 @@ class Quaternion(nn.Module):
           an enclosing module's device and dtype conversions. Construction preserves the input tensor and its
           autograd history. ``Quaternion.to()`` returns a new quaternion; enclosing module conversions update the
           existing module's state.
-        - Known defects: below a norm of ``1e-12``, ``matrix()`` and ``slerp`` give wrong results, and the zero
-          quaternion's ``matrix()`` is the identity (`#3952 <https://github.com/kornia/kornia/issues/3952>`_).
+        - Below a norm of ``1e-12``, ``matrix()`` and ``slerp`` read ``q`` through the norm floor of
+          :func:`~kornia.geometry.conversions.normalize_quaternion`, so they do not give the rotation of its
+          direction, and the zero quaternion's ``matrix()`` is the identity.
+
+    See Also:
+        - :class:`~kornia.geometry.liegroup.So3`: the rotation group stored as a quaternion, which rotates points
+          and adds ``exp``, ``log`` and Jacobians.
+        - :func:`average_quaternions`: the mean rotation of many quaternions, instead of interpolating two.
+        - :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`,
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`: :meth:`matrix` and :meth:`from_matrix`
+          on plain ``(*, 4)`` and ``(*, 3, 3)`` tensors.
+        - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`,
+          :func:`~kornia.geometry.conversions.axis_angle_to_quaternion`: :meth:`to_axis_angle` and
+          :meth:`from_axis_angle` on plain ``(*, 4)`` and ``(*, 3)`` tensors.
+        - :func:`~kornia.geometry.conversions.euler_from_quaternion`,
+          :func:`~kornia.geometry.conversions.quaternion_from_euler`: :meth:`to_euler` and :meth:`from_euler` on plain
+          tensors, with the quaternion as four separate ``w``, ``x``, ``y``, ``z`` tensors.
 
     Example:
         >>> q = Quaternion.identity(batch_size=4)
@@ -101,7 +146,7 @@ class Quaternion(nn.Module):
         """Construct a quaternion from torch.Tensor or parameter data.
 
         Args:
-            data: torch.Tensor or parameter containing the quaternion data with the shape of :math:`(*, 4)`.
+            data: torch.Tensor or parameter containing the quaternion data with the shape of ``(*, 4)``.
                 Stored without copying as a persistent buffer, or as a parameter if already an ``nn.Parameter``.
 
         Example:
@@ -238,36 +283,13 @@ class Quaternion(nn.Module):
         return Quaternion(result_data)
 
     def __mul__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
-        # If right is a Quaternion, do quaternion multiplication
         if isinstance(right, Quaternion):
-            new_real = self.real * right.real - batched_dot_product(self.vec, right.vec)
-            new_vec = (
-                self.real[..., None] * right.vec
-                + right.real[..., None] * self.vec
-                + torch.linalg.cross(self.vec, right.vec, dim=-1)
-            )
-            return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
-
-        # If right is a scalar/torch.Tensor, convert to scalar quaternion and multiply
-        right_quat = self._to_scalar_quaternion(right)
-        new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
-        new_vec = (
-            self.real[..., None] * right_quat.vec
-            + right_quat.real[..., None] * self.vec
-            + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
-        )
-        return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
+            return _hamilton_product(self, right)
+        return _hamilton_product(self, self._to_scalar_quaternion(right))
 
     def __rmul__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
         """Right multiplication (left * self) where left is a scalar or torch.Tensor."""
-        left_quat = self._to_scalar_quaternion(left)
-        new_real = left_quat.real * self.real - batched_dot_product(left_quat.vec, self.vec)
-        new_vec = (
-            left_quat.real[..., None] * self.vec
-            + self.real[..., None] * left_quat.vec
-            + torch.linalg.cross(left_quat.vec, self.vec, dim=-1)
-        )
-        return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
+        return _hamilton_product(self._to_scalar_quaternion(left), self)
 
     def __div__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         if isinstance(right, Quaternion):
@@ -358,7 +380,7 @@ class Quaternion(nn.Module):
 
     @property
     def data(self) -> torch.Tensor:
-        """Return the underlying data with shape :math:`(B, 4)`."""
+        """Return the underlying data with shape ``(*, 4)``."""
         return self._data
 
     @property
@@ -368,7 +390,7 @@ class Quaternion(nn.Module):
 
     @property
     def real(self) -> torch.Tensor:
-        """Return the real part with shape :math:`(B,)`.
+        """Return the real part with shape ``(*,)``.
 
         Alias for :attr:`~kornia.geometry.quaternion.Quaternion.w`.
         """
@@ -376,20 +398,20 @@ class Quaternion(nn.Module):
 
     @property
     def vec(self) -> torch.Tensor:
-        """Return the vector with the imaginary part with shape :math:`(B, 3)`."""
+        """Return the vector with the imaginary part with shape ``(*, 3)``."""
         return self.data[..., 1:]
 
     @property
     def q(self) -> torch.Tensor:
-        """Return the underlying data with shape :math:`(B, 4)`.
+        """Return the underlying data with shape ``(*, 4)``.
 
-        Alias for :func:`~kornia.geometry.quaternion.Quaternion.data`
+        Alias for :attr:`~kornia.geometry.quaternion.Quaternion.data`.
         """
         return self.data
 
     @property
     def scalar(self) -> torch.Tensor:
-        """Return a scalar with the real with shape :math:`(B,)`.
+        """Return a scalar with the real with shape ``(*,)``.
 
         Alias for :attr:`~kornia.geometry.quaternion.Quaternion.w`.
         """
@@ -397,32 +419,32 @@ class Quaternion(nn.Module):
 
     @property
     def w(self) -> torch.Tensor:
-        """Return the :math:`q_w` with shape :math:`(B,)`."""
+        """Return the :math:`q_w` with shape ``(*,)``."""
         return self.data[..., 0]
 
     @property
     def x(self) -> torch.Tensor:
-        """Return the :math:`q_x` with shape :math:`(B,)`."""
+        """Return the :math:`q_x` with shape ``(*,)``."""
         return self.data[..., 1]
 
     @property
     def y(self) -> torch.Tensor:
-        """Return the :math:`q_y` with shape :math:`(B,)`."""
+        """Return the :math:`q_y` with shape ``(*,)``."""
         return self.data[..., 2]
 
     @property
     def z(self) -> torch.Tensor:
-        """Return the :math:`q_z` with shape :math:`(B,)`."""
+        """Return the :math:`q_z` with shape ``(*,)``."""
         return self.data[..., 3]
 
     @property
     def shape(self) -> Tuple[int, ...]:
-        """Return the shape of the underlying data with shape :math:`(B, 4)`."""
+        """Return the shape of the underlying data, ``(*, 4)``."""
         return tuple(self.data.shape)
 
     @property
     def polar_angle(self) -> torch.Tensor:
-        r"""Return the polar angle :math:`\arccos(w / |q|)` in :math:`[0, \pi]`, with shape :math:`(B,)`.
+        r"""Return the polar angle :math:`\arccos(w / |q|)` in :math:`[0, \pi]`, with shape ``(*,)``.
 
         ``q`` rotates by twice this angle about the axis ``vec``.
 
@@ -437,7 +459,7 @@ class Quaternion(nn.Module):
         return torch.atan2(self.vec.norm(dim=-1), self.scalar)
 
     def matrix(self) -> torch.Tensor:
-        """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
+        """Convert the quaternion to a rotation matrix of shape ``(*, 3, 3)``.
 
         Example:
             >>> q = Quaternion.identity()
@@ -455,7 +477,7 @@ class Quaternion(nn.Module):
         """Create a quaternion from a rotation matrix.
 
         Args:
-            matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+            matrix: the rotation matrix to convert of shape ``(*, 3, 3)``.
             check_rotation: if ``True``, raise ``ValueError`` unless every input
                 is a rotation matrix. The default ``False`` keeps the unchecked
                 behaviour, under which a reflection such as
@@ -512,7 +534,7 @@ class Quaternion(nn.Module):
         """Create a quaternion from axis-angle representation.
 
         Args:
-            axis_angle: rotation vector of shape :math:`(B, 3)`.
+            axis_angle: rotation vector of shape ``(*, 3)``.
 
         Example:
             >>> axis_angle = torch.tensor([[1., 0., 0.]])
@@ -587,7 +609,7 @@ class Quaternion(nn.Module):
         device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
-        """Create a random unit quaternion of shape :math:`(B, 4)`.
+        """Create a random unit quaternion of shape ``(B, 4)``, or ``(4,)`` without a ``batch_size``.
 
         Uniformly distributed across the rotation space as per: http://planning.cs.uiuc.edu/node198.html
 
@@ -625,8 +647,8 @@ class Quaternion(nn.Module):
         Args:
             q1: second quaternion to be interpolated between.
             t: interpolation ratio, ``0`` at ``self`` and ``1`` at ``q1``. It is not validated: values outside
-                ``[0, 1]`` extrapolate along the same arc. A per-batch ratio has shape :math:`(B,)`, like
-                ``self.w``, or :math:`(B, 1)`.
+                ``[0, 1]`` extrapolate along the same arc. A per-quaternion ratio has shape ``(*,)``, like
+                ``self.w``, or ``(*, 1)``.
 
         Example:
             >>> q0 = Quaternion.identity()
@@ -718,25 +740,66 @@ class Quaternion(nn.Module):
         return batched_dot_product(self.vec, self.vec) + self.real**2
 
 
+def _hamilton_product(left: "Quaternion", right: "Quaternion") -> "Quaternion":
+    """Return ``left * right``, broadcasting an unbatched operand, or batch shapes of equal rank, against the other."""
+    left_batch, right_batch = left.data.shape[:-1], right.data.shape[:-1]
+    shape: Optional[torch.Size] = None
+    if len(left_batch) == 0 or len(right_batch) == 0 or len(left_batch) == len(right_batch):
+        try:
+            shape = torch.broadcast_shapes(left.data.shape, right.data.shape)
+        except RuntimeError:
+            shape = None
+    if shape is None:
+        raise ValueError(
+            f"Cannot multiply quaternions of batch shapes {tuple(left_batch)} and {tuple(right_batch)}. One must be "
+            "unbatched, or both must have the same number of batch axes, each equal or of size 1."
+        )
+    a, b = left.data.expand(shape), right.data.expand(shape)
+    a_real, a_vec, b_real, b_vec = a[..., 0], a[..., 1:], b[..., 0], b[..., 1:]
+    new_real = a_real * b_real - batched_dot_product(a_vec, b_vec)
+    new_vec = a_real[..., None] * b_vec + b_real[..., None] * a_vec + torch.linalg.cross(a_vec, b_vec, dim=-1)
+    return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
+
+
 def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Quaternion":
-    r"""Compute (weighted) average of multiple quaternions.
+    r"""Average quaternions as their weighted chordal mean rotation, whatever their signs.
+
+    ``q_mean = average_quaternions(Q, w)`` takes a :class:`Quaternion` of ``M`` quaternions, ``(M, 4)``, and optional
+    non-negative weights ``w`` of shape ``(M,)``, uniform by default, and returns their mean rotation as a unit
+    :class:`Quaternion` of shape ``(1, 4)``. To interpolate between two rotations instead, use
+    :meth:`Quaternion.slerp`.
 
     Convention:
         - The chordal mean of scipy's ``Rotation.mean``: the eigenvector of
           :math:`\sum_i w_i q_i q_i^\top / \sum_i w_i` with the largest eigenvalue. ``q_i`` and ``-q_i`` count the
           same, and the sign of the result is arbitrary.
-        - ``w`` need not sum to one: scaling it by a positive factor does not change the result. A negative weight,
-          or weights that are all zero, raise ``ValueError``.
+        - ``w`` need not sum to one: scaling it by a positive factor does not change the result.
         - The members are normalised first, so only their directions count: a member stored as ``3 * q`` weighs
           the same as ``q``.
 
     Args:
-        Q (Quaternion): quaternion object containing data of shape (M, 4).
-        w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
-
+        Q: quaternions of shape ``(M, 4)``.
+        w: weights of shape ``(M,)``. If None, uniform weights are used. ``(M, 1)`` weights raise a
+            ``RuntimeError`` (`#6482 <https://github.com/kornia/kornia/issues/6482>`_).
 
     Returns:
-        Quaternion: averaged quaternion of shape (1, 4), wrapped back in the Quaternion class.
+        the averaged quaternion, of unit norm and shape ``(1, 4)``.
+
+    Raises:
+        TypeCheckError: if ``Q`` is not a :class:`Quaternion`.
+        ValueError: if ``w`` does not have ``M`` elements, has a negative entry, or sums to zero.
+
+    See Also:
+        - :class:`Quaternion`: holds ``Q`` and the result; it composes, inverts and converts quaternions one at a
+          time rather than averaging them.
+        - :meth:`Quaternion.slerp`: interpolates between two rotations along the shorter arc instead of averaging
+          many.
+
+    Example:
+        >>> Q = Quaternion(torch.tensor([[1., 0., 0., 0.], [-1., 0., 0., 0.]]))
+        >>> average_quaternions(Q).data.abs()
+        tensor([[1., 0., 0., 0.]])
+
     """
     KORNIA_CHECK_TYPE(Q, Quaternion)
     # the chordal mean is the top eigenvector of sum_i w_i q_i q_i^T, which is sign invariant but weights each member

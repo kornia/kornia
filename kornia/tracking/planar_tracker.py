@@ -31,9 +31,9 @@ class HomographyTracker(nn.Module):
     r"""Perform local-feature-based tracking of the target planar object in the sequence of the frames.
 
     Convention:
-        - The returned homography ``H`` is :math:`(3, 3)` and maps target pixel coordinates :math:`(x, y)` to frame
+        - The returned homography ``H`` is ``(3, 3)`` and maps target pixel coordinates :math:`(x, y)` to frame
           pixel coordinates, the direction of ``cv2.findHomography(target_points, frame_points)``.
-        - The target and every frame are one grayscale image, :math:`(1, 1, H, W)`; a frame can have another size than
+        - The target and every frame are one grayscale image, ``(1, 1, H, W)``; a frame can have another size than
           the target. Call :meth:`set_target` before the first frame. The target is not a buffer, so
           :meth:`~torch.nn.Module.to` leaves it where it is: call :meth:`set_target` again after moving the tracker.
         - For a :class:`~kornia.feature.LoFTR`, a :class:`~kornia.feature.LocalFeatureMatcher` or a matcher with an

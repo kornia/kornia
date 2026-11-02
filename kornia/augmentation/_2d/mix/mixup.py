@@ -33,7 +33,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
     The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
-    while the labels is a :math:`(B, 3)` torch.Tensor that contains (label_batch, label_permuted_batch, lambda) for
+    while the labels is a ``(B, 3)`` torch.Tensor that contains (label_batch, label_permuted_batch, lambda) for
     each image.
 
     The implementation is on top of the following repository:
@@ -68,13 +68,13 @@ class RandomMixUpV2(MixAugmentationBaseV2):
                         to the batch form (False).
 
     Inputs:
-        - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Label: raw labels, shape of :math:`(B)`.
+        - Input image tensors, shape of ``(B, C, H, W)``.
+        - Label: raw labels, shape of ``(B)``.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
-        - Adjusted image, shape of :math:`(B, C, H, W)`.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, 3)`.
+        - Adjusted image, shape of ``(B, C, H, W)``.
+        - Raw labels, permuted labels and lambdas for each mix, shape of ``(B, 3)``.
 
     Convention:
         - With ``data_keys=["input", "class"]``, the class output is ``(B, 3)``: its columns are the original
@@ -82,8 +82,8 @@ class RandomMixUpV2(MixAugmentationBaseV2):
           ``input * (1 - lambda) + paired_input * lambda``. Labels must be one-dimensional and are returned as
           floating values in the image dtype, except that a ``float16`` or ``bfloat16`` image yields ``float32``
           labels so integer class ids up to ``2 ** 24`` stay exact.
-        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`
-          (`#4425 <https://github.com/kornia/kornia/issues/4425>`_): ``_params["batch_prob"]`` is all ones or all zeros,
+        - ``p`` is a batch-wide gate applied once, unlike the per-sample ``p`` of :class:`RandomJigsaw`:
+          ``_params["batch_prob"]`` is all ones or all zeros,
           and every row of a selected batch draws its lambda from ``lambda_val``. At ``p=0`` the image is unchanged
           and the class output holds the original label twice with a zero lambda. ``same_on_batch=True`` shares
           the lambda draw but not the pairing, which may pair a sample with itself.

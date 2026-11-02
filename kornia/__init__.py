@@ -17,8 +17,40 @@
 
 """Kornia — Differentiable computer vision and image processing for PyTorch.
 
-This package exposes core modules (filters, geometry, etc.) and provides
-convenience imports at the top level.
+Kornia's operators work on batched ``torch.Tensor`` inputs, run on the input's device (CPU, CUDA or Apple MPS)
+without a NumPy round trip, and most are differentiable. Kornia pays off where a hand-written version gets long or
+fragile, or where the alternatives leave the GPU:
+
+- Breadth: over 1,200 public operators, most with no torchvision equivalent. Camera models and epipolar geometry
+  (``kornia.geometry``), local features and matching (``kornia.feature``), filters and edges (``kornia.filters``),
+  morphology, Lab and Bayer color, image losses and metrics.
+- Per-sample parameters in one batched call: a different blur ``sigma``, rotation angle, warp matrix or brightness
+  factor for every image. torchvision's functional ops apply one parameter per call.
+- Batched minimal solvers and robust estimation: 7- and 8-point fundamental, 5-point essential, DLT homography and
+  PnP solvers over whole batches of samples, and a ``RANSAC`` that samples and scores hypotheses on the device.
+- Differentiable geometry: depth to 3D and back, camera models with lens distortion, and Lie groups, with gradients
+  through depth, pose and camera parameters.
+- Annotated augmentation (``kornia.augmentation``): one sampled transform applied to images, masks, boxes and
+  keypoints together, and its inverse.
+- Local features: kornia's ports of ALIKED, XFeat, DISK with LightGlue, DeDoDe, LoFTR, HardNet and the other learned
+  descriptors run at their authors' speed or faster on every device measured (CUDA, x86 and Apple M1 CPUs, Apple
+  MPS), and are as accurate on the cohorts measured. The exceptions are eager ALIKED on CUDA (compile it), SIFT on a
+  CPU (OpenCV's is faster) and XFeat*, whose refinement departs from the authors' on purpose. The ``kornia.feature``
+  docstring says what to use where.
+- Compiles and exports: nearly all probed operator configurations run under ``torch.compile`` and match eager, and
+  over 1,000 export to ONNX (``kornia.onnx``).
+- Fast on batched GPU tensors: on an RTX 4090 with batches of 32, many filters, warps, matching steps and image
+  metrics run about 10x to 70x faster in eager mode than per-image OpenCV or scikit-image on the CPU. On the small
+  overlap with torchvision, eager kornia is slower on the same GPU, and OpenCV wins single-image ``uint8`` CPU work.
+
+For a single fixed-parameter operation, such as one blur or one resize, a few lines of PyTorch or torchvision are
+just as good.
+
+Before writing code, read the conventions page, which covers image tensors, coordinates, rotations, matrices,
+``align_corners``, boxes, color, augmentation and local features, and ends with a pitfall checklist:
+https://kornia.readthedocs.io/en/latest/get-started/conventions.html. Operator benchmarks, wins and losses, are at
+https://kornia.readthedocs.io/en/latest/get-started/performance.html, and the local-feature comparison at
+https://kornia.readthedocs.io/en/latest/applications/image_matching.html#feature-speed-by-device.
 """
 
 from importlib import import_module as _import_module
@@ -100,4 +132,4 @@ def __getattr__(name: str) -> Any:
 
 
 # Version variable
-__version__ = "0.9.0rc1"
+__version__ = "0.9.1.dev"

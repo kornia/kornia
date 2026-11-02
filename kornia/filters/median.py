@@ -129,14 +129,14 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int, border_
           values, so the result equals that of ``input.float()`` exactly.
 
     Args:
-        input: the input image with shape :math:`(B,C,H,W)`.
+        input: the input image with shape ``(B,C,H,W)``.
         kernel_size: the blurring kernel size. Each entry must be a positive odd integer.
         border_type: the padding mode to be applied before filtering.
             The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
             Default: `'reflect'`.
 
     Returns:
-        the blurred input torch.Tensor with shape :math:`(B,C,H,W)`.
+        the blurred input torch.Tensor with shape ``(B,C,H,W)``.
 
     .. note::
        See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
@@ -232,8 +232,8 @@ class MedianBlur(nn.Module):
         the blurred input torch.Tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
+        - Input: ``(B, C, H, W)``
+        - Output: ``(B, C, H, W)``
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -259,12 +259,12 @@ class MedianBlur(nn.Module):
         simple mean filter.
 
         Args:
-            input: Image or feature tensor with shape :math:`(B, C, H, W)`,
+            input: Image or feature tensor with shape ``(B, C, H, W)``,
                 where :math:`B` is the batch size, :math:`C` is the number of
                 channels, :math:`H` is the height, and :math:`W` is the width.
 
         Returns:
-            Tensor with shape :math:`(B, C, H, W)` containing the median-
+            Tensor with shape ``(B, C, H, W)`` containing the median-
             filtered result for each channel independently.
         """
         return median_blur(input, self.kernel_size, self.border_type)

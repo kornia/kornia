@@ -1,0 +1,1 @@
+`kornia.geometry.transform.get_shear_matrix3d` now keeps `center` fixed for every combination of shears. Before, two or more shears that meet in a product term (for example `syx` with `szy`) moved the center by up to several pixels, so `get_affine_matrix3d` and a shear-only `RandomAffine3D` also translated the volume. Single shears and shears about the origin are unchanged.

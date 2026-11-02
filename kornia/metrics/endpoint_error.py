@@ -32,27 +32,28 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
         \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}\sqrt{(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}}
 
     Convention:
-        - Flow is channel-last, :math:`(*, 2)` such as :math:`(B, H, W, 2)`, in the units of the flow (pixels for
-          optical flow). Permute a channel-first :math:`(B, 2, H, W)` flow to :math:`(B, H, W, 2)` first: it raises
+        - Flow is channel-last, ``(*, 2)`` such as ``(B, H, W, 2)``, in the units of the flow (pixels for
+          optical flow). Permute a channel-first ``(B, 2, H, W)`` flow to ``(B, H, W, 2)`` first: it raises
           unless :math:`W = 2`, where it is read wrongly. :ref:`Losses and metrics <losses-metrics-conventions>` ports
           RAFT's endpoint error.
         - The endpoint error is the Euclidean distance between the two vectors at every position, symmetric in
           ``input`` and ``target`` and not normalized by the image size. ``reduction='mean'`` (the default) averages
           it over every position of every sample at once and ``'sum'`` adds it up, both into a 0-d tensor;
-          ``'none'`` returns the :math:`(*)` map. There is no valid mask: mask sparse ground truth on the ``'none'``
+          ``'none'`` returns the ``(*)`` map. There is no valid mask: mask sparse ground truth on the ``'none'``
           map. An unknown ``reduction`` raises ``NotImplementedError``.
         - :func:`~kornia.metrics.aepe` and :func:`~kornia.metrics.average_endpoint_error` are the same function.
+        - Float16 and bfloat16 inputs are computed in float32 and the result is returned in their promoted dtype.
 
     Args:
-        input: the input flow map with shape :math:`(*, 2)`.
-        target: the target flow map with shape :math:`(*, 2)`.
+        input: the input flow map with shape ``(*, 2)``.
+        target: the target flow map with shape ``(*, 2)``.
         reduction : Specifies the reduction to apply to the
          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
          ``'mean'``: the sum of the output will be divided by the number of elements
          in the output, ``'sum'``: the output will be summed.
 
     Return:
-        the computed AEPE as a 0-d tensor, or the endpoint-error map of shape :math:`(*)` for ``reduction='none'``.
+        the computed AEPE as a 0-d tensor, or the endpoint-error map of shape ``(*)`` for ``reduction='none'``.
 
     Examples:
         >>> ones = torch.ones(4, 4, 2)
@@ -71,7 +72,19 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
         input.shape == target.shape, f"input and target shapes must be the same. Got: {input.shape} and {target.shape}"
     )
 
-    epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).sqrt()
+    output_dtype = torch.promote_types(input.dtype, target.dtype)
+    # The distance can be representable even when its squared components overflow or underflow in half precision.
+    if output_dtype in (torch.float16, torch.bfloat16):
+        input, target = input.float(), target.float()
+
+    sq_dist: Tensor = (input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2
+    # d sqrt(x)/dx is infinite at 0 and autograd multiplies it by the zero derivative of the squares, so an exact
+    # match would get a NaN gradient (and a mask cannot hide it: NaN * 0 is NaN). Differentiate the sqrt of a safe
+    # positive argument and select 0 at zero distance, the subgradient torch.linalg.vector_norm uses. The value is
+    # unchanged: it is sqrt(sq_dist) wherever sq_dist > 0 and 0 where it is 0.
+    is_match = sq_dist == 0
+    safe_sq_dist = torch.where(is_match, torch.ones_like(sq_dist), sq_dist)
+    epe: Tensor = torch.where(is_match, torch.zeros_like(sq_dist), safe_sq_dist.sqrt())
 
     if reduction == "mean":
         epe = epe.mean()
@@ -82,7 +95,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     else:
         raise NotImplementedError("Invalid reduction option.")
 
-    return epe
+    return epe.to(output_dtype) if output_dtype in (torch.float16, torch.bfloat16) else epe
 
 
 class AEPE(nn.Module):
@@ -105,9 +118,9 @@ class AEPE(nn.Module):
          in the output, ``'sum'``: the output will be summed.
 
     Shape:
-        - input: :math:`(*, 2)`.
-        - target :math:`(*, 2)`.
-        - output: :math:`()` for ``'mean'`` and ``'sum'``, :math:`(*)` for ``'none'``.
+        - input: ``(*, 2)``.
+        - target ``(*, 2)``.
+        - output: :math:`()` for ``'mean'`` and ``'sum'``, ``(*)`` for ``'none'``.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 2)
@@ -125,7 +138,7 @@ class AEPE(nn.Module):
         """Compute average endpoint error between vector fields.
 
         Args:
-            input: Predicted vector field with shape :math:`(B, H, W, 2)`.
+            input: Predicted vector field with shape ``(B, H, W, 2)``.
             target: Target vector field with the same shape as ``input``.
 
         Returns:

@@ -211,6 +211,7 @@ class EntropyBasedLossBase(torch.nn.Module):
             "num_bins must be an integer >= 2.",
         )
         KORNIA_CHECK(window_radius > 0, "window_radius must be > 0.")
+        KORNIA_CHECK(reference_signal.shape[-1] > 0, "signals must have at least one sample.")
         if not isinstance(kernel_function, MIKernel):
             raise ValueError(f"kernel_function must be a MIKernel member, the available options are {list(MIKernel)}.")
         _validate_mask(mask, reference_signal.shape[-1:])
@@ -503,14 +504,14 @@ class MILossFromRef2D(MILossFromRef):
         """Flatten the spatial dimensions of a 2D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, H, W)`, where ``*`` is
+            tensor: Signal tensor with shape ``(*, H, W)``, where ``*`` is
                 any leading batch shape.
 
         Returns:
-            Tensor with shape :math:`(*, H * W)` suitable for histogram-based
+            Tensor with shape ``(*, H * W)`` suitable for histogram-based
             mutual-information computation.
         """
-        return tensor.reshape(tensor.shape[:-2] + (-1,))
+        return tensor.flatten(max(tensor.dim() - 2, 0))
 
     def forward(
         self,
@@ -591,14 +592,14 @@ class MILossFromRef3D(MILossFromRef):
         """Flatten the spatial dimensions of a 3D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, D, H, W)`, where
+            tensor: Signal tensor with shape ``(*, D, H, W)``, where
                 :math:`D` is depth, :math:`H` is height, and :math:`W` is
                 width.
 
         Returns:
             Tensor with shape :math:`(*, D * H * W)` for entropy estimation.
         """
-        return tensor.reshape(tensor.shape[:-3] + (-1,))
+        return tensor.flatten(max(tensor.dim() - 3, 0))
 
     def forward(
         self,
@@ -679,13 +680,13 @@ class NMILossFromRef2D(NMILossFromRef):
         """Flatten the spatial dimensions of a 2D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, H, W)`.
+            tensor: Signal tensor with shape ``(*, H, W)``.
 
         Returns:
-            Tensor with shape :math:`(*, H * W)` used by the normalized
+            Tensor with shape ``(*, H * W)`` used by the normalized
             mutual-information base implementation.
         """
-        return tensor.reshape(tensor.shape[:-2] + (-1,))
+        return tensor.flatten(max(tensor.dim() - 2, 0))
 
     def forward(
         self,
@@ -766,13 +767,13 @@ class NMILossFromRef3D(NMILossFromRef):
         """Flatten the spatial dimensions of a 3D signal batch.
 
         Args:
-            tensor: Signal tensor with shape :math:`(*, D, H, W)`.
+            tensor: Signal tensor with shape ``(*, D, H, W)``.
 
         Returns:
             Tensor with shape :math:`(*, D * H * W)` used by the normalized
             mutual-information base implementation.
         """
-        return tensor.reshape(tensor.shape[:-3] + (-1,))
+        return tensor.flatten(max(tensor.dim() - 3, 0))
 
     def forward(
         self,

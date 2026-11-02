@@ -894,3 +894,32 @@ class TestSe2(BaseTester):
         assert t.min() >= 0, (t.min(), t.max())
         assert t.max() <= 1, (t.min(), t.max())
         assert 0.45 < t.mean() < 0.55, t.mean()
+
+    # #6426: a pose maps (2,) or (N, 2) unbatched and one point per pose for a batch; other layouts, such as a
+    # batch of poses with a point set, raise a ValueError that names the accepted layouts.
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape"), [(None, (2, 5, 2)), (2, (7, 2)), (2, (2, 7, 2)), (1, (1, 7, 2))]
+    )
+    def test_point_layout_outside_the_contract_raises(self, batch_size, points_shape, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        pose = Se2.identity(batch_size, device, dtype)
+        with pytest.raises(ValueError, match=r"Expected points of shape \(2,\) or \(N, 2\)"):
+            pose * torch.zeros(points_shape, device=device, dtype=dtype)
+
+    @pytest.mark.parametrize(
+        ("batch_size", "points_shape", "out_shape"),
+        [
+            (None, (2,), (2,)),
+            (None, (7, 2), (7, 2)),
+            (1, (7, 2), (7, 2)),
+            (2, (2, 2), (2, 2)),
+            (2, (1, 2), (2, 2)),
+            (2, (2,), (2, 2)),
+        ],
+    )
+    def test_point_layout_in_the_contract_maps(self, batch_size, points_shape, out_shape, device, dtype):
+        if dtype == torch.bfloat16:
+            pytest.skip("torch has no complex bfloat16 dtype, which So2 stores its rotation in")
+        pose = Se2.identity(batch_size, device, dtype)
+        assert (pose * torch.zeros(points_shape, device=device, dtype=dtype)).shape == out_shape

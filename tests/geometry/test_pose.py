@@ -187,6 +187,15 @@ class TestNamedPose(BaseTester):
         assert b_from_a.translation.dtype == bf16
         assert isinstance((b_from_a.inverse() * b_from_a).pose, Se2)
 
+    def test_wrong_matrix_shape_message_6422(self, device, dtype):
+        # The message used to print [2, 2]x[2, 2] and carry a run of spaces from a backslash continuation.
+        with pytest.raises(ValueError) as excinfo:
+            NamedPose.from_rt(torch.eye(4, device=device, dtype=dtype), torch.zeros(4, device=device, dtype=dtype))
+        assert str(excinfo.value) == "R must be either [2, 2] or [3, 3], got torch.Size([4, 4])"
+        with pytest.raises(ValueError) as excinfo:
+            NamedPose.from_matrix(torch.eye(5, device=device, dtype=dtype))
+        assert str(excinfo.value) == "RT must be either [3, 3] or [4, 4], got torch.Size([5, 5])"
+
     def test_inverse(self, device, dtype):
         b_from_a = NamedPose(
             Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame_src="frame_a", frame_dst="frame_b"
@@ -221,6 +230,22 @@ class TestNamedPose(BaseTester):
         shift_x = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         self.assert_close(points_in_b, (points_in_a + shift_x) @ rot_z.T, low_tolerance=low_tolerance)
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a, low_tolerance=low_tolerance)
+
+    def test_transform_points_point_set_with_unbatched_se3(self, device, dtype):
+        # #6426: an unbatched 3D pose maps an (N, 3) point set, as an unbatched 2D pose maps (N, 2).
+        torch.manual_seed(0)
+        points_in_a = (2 * torch.rand(7, 3) - 1).to(device, dtype)
+        b_from_a_se3 = Se3.rot_z(torch.tensor(0.5, device=device, dtype=dtype)) * Se3.trans_x(
+            torch.tensor(1.0, device=device, dtype=dtype)
+        )
+        b_from_a = NamedPose(b_from_a_se3, frame_src="frame_a", frame_dst="frame_b")
+
+        points_in_b = b_from_a.transform_points(points_in_a)
+
+        # R p + t in float64, on the CPU, from the same rounded pose and points: only the output is rounded
+        r = So3(Quaternion(b_from_a_se3.so3.q.data.cpu().double())).matrix()
+        expected = points_in_a.cpu().double() @ r.mT + b_from_a_se3.t.cpu().double()
+        self.assert_close(points_in_b.cpu(), expected.to(dtype))
 
 
 class TestNamedPoseConventions(BaseTester):

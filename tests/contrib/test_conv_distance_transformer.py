@@ -17,6 +17,7 @@
 
 import importlib
 import math
+import sys
 
 import pytest
 import torch
@@ -45,7 +46,7 @@ class TestConvDistanceTransform(BaseTester):
         sample = torch.ones((1, 1) + (32,) * ndim, device=device, dtype=dtype)
         output = kornia.contrib.distance_transform(sample)
         self.assert_close(output, torch.zeros_like(sample))
-        expected_calls = 8 if device.type in ("cpu", "cuda") else 32
+        expected_calls = 8 if device.type in ("cpu", "cuda", "mps") else 32
         assert len(calls) == expected_calls
 
     @pytest.mark.parametrize("ndim", [2, 3])
@@ -109,8 +110,24 @@ class TestConvDistanceTransform(BaseTester):
         with torch.no_grad():
             output = kornia.contrib.distance_transform(sample)
         self.assert_close(output, torch.zeros_like(sample))
-        expected_calls = 8 if device.type in ("cpu", "cuda") else 32
+        expected_calls = 8 if device.type in ("cpu", "cuda", "mps") else 32
         assert len(calls) == expected_calls
+
+    @pytest.mark.device_agnostic
+    def test_settled_check_rounds(self):
+        # Reading whether the cascade settled synchronizes the device. CPU and CUDA read every eighth round; MPS, where
+        # a read costs a few rounds' work, reads at most a quarter of the rounds done apart and not in the last eight.
+        module = importlib.import_module("kornia.contrib.distance_transform")
+        assert sorted(module._stop_check_rounds(32, "cpu")) == [8, 16, 24, 32]
+        assert sorted(module._stop_check_rounds(17, "cuda")) == [8, 16]
+        assert sorted(module._stop_check_rounds(15, "mps")) == []
+        assert sorted(module._stop_check_rounds(17, "mps")) == [8]
+        assert sorted(module._stop_check_rounds(32, "mps")) == [8, 16, 24]
+        assert sorted(module._stop_check_rounds(256, "mps")) == [8, 16, 24, 32, 40, 50, 62, 77, 96, 120, 150, 187, 233]
+        # The schedule takes memory for the rounds it reads, not for every possible one: a set of all 131,072 reads of a
+        # 1 x 1 x 1 x 1,048,576 image took 7.9 MB.
+        assert sys.getsizeof(module._stop_check_rounds(2**20, "cpu")) < 1024
+        assert len(module._stop_check_rounds(2**20, "mps")) < 100
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("ndim", [2, 3])

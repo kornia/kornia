@@ -49,7 +49,7 @@ class DISK(nn.Module):
     .. image:: _static/img/disk_outdoor_depth.jpg
 
     Convention:
-        - ``images`` are RGB, :math:`(B, 3, H, W)`, which the U-Net sees as given, without normalisation. With the
+        - ``images`` are RGB, ``(B, 3, H, W)``, which the U-Net sees as given, without normalisation. With the
           default U-Net, a common positive gain of the input, such as :math:`[0, 255]` instead of :math:`[0, 1]`,
           changes the outputs only through the instance norms' ``eps``, which weighs more the lower the image's
           contrast. At ordinary contrast the maps barely change, though a keypoint can still swap where scores nearly
@@ -74,7 +74,7 @@ class DISK(nn.Module):
         desc_dim: The dimension of the descriptor.
         unet: The U-Net to use. If None, a default U-Net is used. Kornia doesn't provide the training code for DISK
               so this is only useful when using a custom checkpoint trained using the code released with the paper.
-              The unet should take as input a torch.Tensor of shape :math:`(B, C, H, W)` and output
+              The unet should take as input a torch.Tensor of shape ``(B, C, H, W)`` and output
               a torch.Tensor of shape
               :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
 
@@ -113,11 +113,11 @@ class DISK(nn.Module):
         .. image:: _static/img/DISK.png
 
         Args:
-            images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
+            images: The image to detect features in. Shape ``(B, 3, H, W)``.
 
         Returns:
             A tuple of dense detection scores and descriptors.
-            Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
+            Shapes are ``(B, 1, H, W)`` and ``(B, D, H, W)``, where
             :math:`D` is the descriptor dimension.
 
         """
@@ -144,7 +144,7 @@ class DISK(nn.Module):
         """Detect features in an image, returning keypoint locations, descriptors and detection scores.
 
         Args:
-            images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
+            images: The image to detect features in. Shape ``(B, 3, H, W)``.
             n: The maximum number of keypoints per image, counted among the maxima above ``score_threshold``. An
                image with ``n`` such maxima or fewer keeps all of them; with more, its ``n`` strongest, where maxima
                tied at the ``n``-th score are taken in raster order. If None, all keypoints are returned.

@@ -387,18 +387,64 @@ class TestCheckImageLayout(BaseTester):
         layout = ImageLayout(ImageSize(10, 10), 3, ChannelsOrder.CHANNELS_FIRST)
         assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
 
+    # The sizes are compared as numbers. A tensor or float size whose str() is not all digits used to be skipped
+    # like a dimension name, so a 4 x 5 image was accepted against any such height and width (#6244).
+    @pytest.mark.parametrize(
+        "size",
+        [ImageSize(torch.tensor(9), torch.tensor(9)), ImageSize(9.0, 9.0), ImageSize(4.5, 5.0)],
+        ids=["tensor", "float", "fractional"],
+    )
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_mismatched_tensor_or_float_size_raises_6244(self, size, order, device):
+        data = torch.rand((3, 4, 5) if order == ChannelsOrder.CHANNELS_FIRST else (4, 5, 3), device=device)
+        layout = ImageLayout(size, 3, order)
+        with pytest.raises(ShapeError):
+            Image(data, PixelFormat(ColorSpace.RGB, 32), layout)
+        assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
+
+    @pytest.mark.parametrize(
+        "size",
+        [
+            ImageSize(4, 5),
+            ImageSize(4.0, 5.0),
+            ImageSize(torch.tensor(4), torch.tensor(5)),
+            ImageSize(torch.tensor(4.0), torch.tensor(5.0)),
+        ],
+        ids=["int", "float", "int_tensor", "float_tensor"],
+    )
+    def test_matching_size_of_any_type_is_accepted_6244(self, size, device):
+        data = torch.rand(3, 4, 5, device=device)
+        image = Image(data, PixelFormat(ColorSpace.RGB, 32), ImageLayout(size, 3, ChannelsOrder.CHANNELS_FIRST))
+        assert (image.height, image.width) == (4, 5)
+
+    def test_dynamo_layout_check_does_not_stringify_sizes_6244(self, device, torch_optimizer):
+        # Turning a symbolic size into a string cannot be traced: under fullgraph=True with dynamic shapes, building
+        # an Image raised torch._dynamo.exc.Unsupported (tp_repr_impl) instead of compiling one graph.
+        from torch._dynamo.testing import CompileCounter
+
+        def op(x):
+            layout = ImageLayout(ImageSize(x.shape[1], x.shape[2]), 3, ChannelsOrder.CHANNELS_FIRST)
+            return Image(x, PixelFormat(ColorSpace.RGB, 32), layout).to_gray().data
+
+        counter = CompileCounter()
+        compiled = torch_optimizer(op, backend=counter, fullgraph=True, dynamic=True)
+        for height, width in ((4, 5), (6, 7)):
+            data = torch.rand(3, height, width, device=device)
+            self.assert_close(compiled(data), op(data))
+        assert counter.frame_count == 1
+
 
 class TestConventionsImage(BaseTester):
     """Pins for the unbatched layout, same-space conversions and NumPy aliasing of ``Image``."""
 
     def test_convention_image_is_unbatched(self):
         # Image holds one (H, W, C) or (C, H, W) image; a batched 4-D tensor is rejected by its dimension count.
-        # Image.from_numpy of a 4-D array raises the same ShapeError.
+        # Image.from_numpy of a 4-D array raises ShapeError too.
         batched = torch.zeros(2, 4, 5, 3, dtype=torch.uint8)
         layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_LAST)
-        with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
+        with pytest.raises(ShapeError, match=r"expected \(4, 5, 3\), got \[2, 4, 5, 3\]"):
             Image(batched, PixelFormat(ColorSpace.RGB, 8), layout)
-        with pytest.raises(ShapeError, match="expected 3 dimensions, got 4"):
+        with pytest.raises(ShapeError, match=r"got \[2, 4, 5, 3\]"):
             Image.from_numpy(np.zeros((2, 4, 5, 3), np.uint8))
 
     @pytest.mark.parametrize(

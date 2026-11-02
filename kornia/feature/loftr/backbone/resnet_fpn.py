@@ -134,11 +134,11 @@ class ResNetFPN_8_2(nn.Module):
         """Run this LoFTR component forward.
 
         Args:
-            x: Input grayscale image tensor with shape :math:`(B, 1, H, W)`.
+            x: Input grayscale image tensor with shape ``(B, 1, H, W)``.
 
         Returns:
-            List containing coarse feature map with shape :math:`(B, C_c, H/8, W/8)`
-            and fine feature map with shape :math:`(B, C_f, H/2, W/2)`.
+            List containing coarse feature map with shape ``(B, C_c, H/8, W/8)``
+            and fine feature map with shape ``(B, C_f, H/2, W/2)``.
         """
         # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))
@@ -227,11 +227,11 @@ class ResNetFPN_16_4(nn.Module):
         """Run this LoFTR component forward.
 
         Args:
-            x: Input grayscale image tensor with shape :math:`(B, 1, H, W)`.
+            x: Input grayscale image tensor with shape ``(B, 1, H, W)``.
 
         Returns:
-            List containing coarse feature map with shape :math:`(B, C_c, H/16, W/16)`
-            and fine feature map with shape :math:`(B, C_f, H/4, W/4)`.
+            List containing coarse feature map with shape ``(B, C_c, H/16, W/16)``
+            and fine feature map with shape ``(B, C_f, H/4, W/4)``.
         """
         # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))

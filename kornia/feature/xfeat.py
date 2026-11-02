@@ -92,12 +92,12 @@ class XFeatModel(nn.Module):
     Implements the architecture from
     "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
 
-    Input: float image tensor :math:`(B, C, H, W)` (grayscale or RGB, any channel count).
+    Input: float image tensor ``(B, C, H, W)`` (grayscale or RGB, any channel count).
     Output:
 
-    - ``feats``: dense descriptors :math:`(B, 64, H/8, W/8)`.
-    - ``keypoints``: keypoint logits :math:`(B, 65, H/8, W/8)`.
-    - ``heatmap``: reliability map :math:`(B, 1, H/8, W/8)`.
+    - ``feats``: dense descriptors ``(B, 64, H/8, W/8)``.
+    - ``keypoints``: keypoint logits ``(B, 65, H/8, W/8)``.
+    - ``heatmap``: reliability map ``(B, 1, H/8, W/8)``.
 
     Convention:
         - The channels are averaged and the result is instance-normalised, so any channel count is accepted and an
@@ -194,19 +194,19 @@ class XFeatModel(nn.Module):
         """Unfold spatial dims by window size ``ws`` and concatenate into channels."""
         B, C, H, W = x.shape
         x = x.unfold(2, ws, ws).unfold(3, ws, ws).reshape(B, C, H // ws, W // ws, ws**2)
-        return x.permute(0, 1, 4, 2, 3).reshape(B, -1, H // ws, W // ws)
+        return x.permute(0, 1, 4, 2, 3).flatten(start_dim=1, end_dim=2)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Run the XFeat backbone.
 
         Args:
-            x: image tensor of shape :math:`(B, C, H, W)`.
+            x: image tensor of shape ``(B, C, H, W)``.
 
         Returns:
             Tuple of:
-            - feats: dense descriptors :math:`(B, 64, H/8, W/8)`.
-            - keypoints: keypoint logits :math:`(B, 65, H/8, W/8)`.
-            - heatmap: reliability map :math:`(B, 1, H/8, W/8)`.
+            - feats: dense descriptors ``(B, 64, H/8, W/8)``.
+            - keypoints: keypoint logits ``(B, 65, H/8, W/8)``.
+            - heatmap: reliability map ``(B, 1, H/8, W/8)``.
         """
         with torch.no_grad():
             x = x.mean(dim=1, keepdim=True)
@@ -247,9 +247,9 @@ class InterpolateSparse2d(nn.Module):
             ``False``.
 
     Shape:
-        - Input ``x``: :math:`(B, C, H, W)`.
-        - Input ``pos``: :math:`(B, N, 2)` integer or float (x, y) coordinates.
-        - Output: :math:`(B, N, C)`.
+        - Input ``x``: ``(B, C, H, W)``.
+        - Input ``pos``: ``(B, N, 2)`` integer or float (x, y) coordinates.
+        - Output: ``(B, N, C)``.
     """
 
     def __init__(self, mode: str = "bicubic", align_corners: bool = False) -> None:
@@ -271,13 +271,13 @@ class InterpolateSparse2d(nn.Module):
         """Sample ``x`` at positions ``pos``.
 
         Args:
-            x: feature map :math:`(B, C, H, W)`.
-            pos: sampling positions :math:`(B, N, 2)` in pixel coordinates.
+            x: feature map ``(B, C, H, W)``.
+            pos: sampling positions ``(B, N, 2)`` in pixel coordinates.
             H: height used for coordinate normalisation.
             W: width used for coordinate normalisation.
 
         Returns:
-            Sampled features :math:`(B, N, C)`.
+            Sampled features ``(B, N, C)``.
         """
         grid = self.normgrid(pos, H, W).unsqueeze(-2).to(x.dtype)
         # align_corners=False is intentional: the pretrained XFeat weights were trained
@@ -305,7 +305,7 @@ class XFeat(nn.Module):
           running statistics on every call, and matching a single small image pair raises; call ``.eval()`` for
           inference. :meth:`from_pretrained` returns the trained model in evaluation mode. The inference methods
           run under ``torch.inference_mode``.
-        - The image is :math:`(B, C, H, W)` with any channel count. Each extraction resizes the image it gets
+        - The image is ``(B, C, H, W)`` with any channel count. Each extraction resizes the image it gets
           bilinearly to :math:`(H', W')`: ``H`` and ``W`` rounded down to multiples of 32, with a minimum of 32.
           :class:`XFeatModel` then averages the channels and instance-normalises the result, so an affine change of the
           intensities with a positive gain changes its maps only through the norm's ``eps``, which weighs more the
@@ -349,6 +349,18 @@ class XFeat(nn.Module):
         depends on rounding-level differences of the scores. Its window is also clipped at the border, so it judges
         a border position against part of its window. With the pretrained weights on Oxford graf and boat img1,
         every candidate of the reference that kornia leaves out lies in that border strip.
+
+        XFeat* (:meth:`match_xfeat_star`) moves each matched keypoint of the first image by the soft-argmax of the
+        fine matcher's 8 x 8 heatmap times the keypoint's scale, measured from bin 3 of each axis. This also departs
+        on purpose from the reference implementation, which measures it from bin 4, the window centre: the pretrained
+        fine matcher puts a zero displacement at bin 3. Matching Oxford bikes img1 with itself (pretrained weights,
+        ``multiscale=False``), the reference's refinement moves the points by (-1.04, -1.25) px on average and leaves
+        1 % of them within 1 px of their position, against (-0.04, -0.25) px and 94 % from bin 3. On 18 Oxford affine
+        pairs the median homography corner error drops from 2.58 to 2.30 px; IMC 2021 PhotoTourism relative pose
+        mAA@10 is the same within noise (0.441 and 0.443 over 813 pairs). Away from a zero displacement the soft-argmax
+        still moves a point only about half of the way, as in the reference: on Oxford graf 1-2 to 1-5 its response to
+        the true sub-cell offset has a slope of about 0.5, so bin 3 removes the constant part of the error, not that
+        shrinkage.
 
     Example:
         >>> model = XFeat.from_pretrained()
@@ -413,7 +425,7 @@ class XFeat(nn.Module):
         B = x.shape[0]
         pos = nms2d(x, (kernel_size, kernel_size), mask_only=True) & (x > threshold)
         pos_batched = [k.nonzero()[..., 1:].flip(-1) for k in pos]
-        pad_val = max(len(p) for p in pos_batched)
+        pad_val = max((len(p) for p in pos_batched), default=0)  # an empty batch pads to no keypoints
         pos_out = torch.full((B, pad_val, 2), -1, dtype=torch.long, device=x.device)
         for b in range(B):
             pos_out[b, : len(pos_batched[b])] = pos_batched[b]
@@ -421,20 +433,24 @@ class XFeat(nn.Module):
 
     @staticmethod
     def _create_xy(h: int, w: int, device: torch.device) -> torch.Tensor:
-        """Create a grid of (x, y) pixel coordinates of shape :math:`(H*W, 2)`."""
+        """Create a grid of (x, y) pixel coordinates of shape ``(H*W, 2)``."""
         y, x = torch.meshgrid(torch.arange(h, device=device), torch.arange(w, device=device), indexing="ij")
         return torch.cat([x[..., None], y[..., None]], -1).reshape(-1, 2)
 
     @staticmethod
     def _subpix_softmax2d(heatmaps: torch.Tensor, temp: float = 3.0) -> torch.Tensor:
-        """Compute soft-argmax offsets from an (N, H, W) heatmap."""
+        """Compute soft-argmax offsets from an (N, H, W) heatmap, measured from bin ``(W // 2 - 1, H // 2 - 1)``.
+
+        That bin, not the window centre the reference implementation uses, is where the pretrained fine matcher puts
+        a zero displacement; see the XFeat* note of :class:`XFeat`.
+        """
         N, H, W = heatmaps.shape
         heatmaps = torch.softmax(temp * heatmaps.view(N, H * W), -1).view(N, H, W)
         x, y = torch.meshgrid(
             torch.arange(W, device=heatmaps.device), torch.arange(H, device=heatmaps.device), indexing="xy"
         )
-        x = x - (W // 2)
-        y = y - (H // 2)
+        x = x - (W // 2 - 1)
+        y = y - (H // 2 - 1)
         coords = torch.cat([(x[None] * heatmaps)[..., None], (y[None] * heatmaps)[..., None]], -1)
         return coords.view(N, H * W, 2).sum(1)
 
@@ -471,20 +487,20 @@ class XFeat(nn.Module):
         B = feats1.shape[0]
         cossim = torch.bmm(feats1, feats2.permute(0, 2, 1))
         match12 = torch.argmax(cossim, dim=-1)
-        match21 = torch.argmax(cossim.permute(0, 2, 1), dim=-1)
+        cossim_max = cossim.amax(dim=-1) if min_cossim > 0 else None
+        # Free the forward matrix before the reverse one, so only one (B, N1, N2) matrix is alive at a time.
+        del cossim
+        # The second product reduces along rows, as _match_mnn does. An argmax down the columns of cossim is a strided
+        # reduction, several times slower on CPU than this matrix product, and on CUDA it allocates about six times
+        # the matrix in scratch memory.
+        match21 = torch.argmax(torch.bmm(feats2, feats1.permute(0, 2, 1)), dim=-1)
         idx0 = torch.arange(match12.shape[1], device=match12.device)
         batched_matches = []
         for b in range(B):
-            mutual = match21[b][match12[b]] == idx0
-            if min_cossim > 0:
-                cossim_max, _ = cossim[b].max(dim=1)
-                good = cossim_max > min_cossim
-                idx0_b = idx0[mutual & good]
-                idx1_b = match12[b][mutual & good]
-            else:
-                idx0_b = idx0[mutual]
-                idx1_b = match12[b][mutual]
-            batched_matches.append((idx0_b, idx1_b))
+            keep = match21[b][match12[b]] == idx0
+            if cossim_max is not None:
+                keep = keep & (cossim_max[b] > min_cossim)
+            batched_matches.append((idx0[keep], match12[b][keep]))
         return batched_matches
 
     def _extract_dense(self, x: torch.Tensor, top_k: Optional[int] = 8000) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -498,8 +514,8 @@ class XFeat(nn.Module):
         if top_k is None:
             top_k = _H1 * _W1
         xy1 = (self._create_xy(_H1, _W1, M1.device) * 8).expand(B, -1, -1)
-        M1 = M1.permute(0, 2, 3, 1).reshape(B, -1, C)
-        H1 = H1.permute(0, 2, 3, 1).reshape(B, -1)
+        M1 = M1.permute(0, 2, 3, 1).flatten(start_dim=1, end_dim=2)
+        H1 = H1.permute(0, 2, 3, 1).flatten(start_dim=1)
         if top_k < 1:
             return torch.zeros(B, 0, 2, device=M1.device), M1.new_zeros(B, 0, C)
         _, top_k_idx = torch.topk(H1, k=min(H1.shape[1], top_k), dim=-1)
@@ -572,16 +588,16 @@ class XFeat(nn.Module):
         """Detect sparse keypoints and compute descriptors.
 
         Args:
-            x: image tensor of shape :math:`(B, C, H, W)`.
+            x: image tensor of shape ``(B, C, H, W)``.
             top_k: number of keypoints to keep (overrides ``self.top_k``).
             detection_threshold: the heatmap value to exceed (overrides ``self.detection_threshold``).
 
         Returns:
             List of length ``B``. Each element is a dict with:
 
-            - ``'keypoints'``: :math:`(N, 2)` keypoints in (x, y) pixel coordinates.
-            - ``'scores'``: :math:`(N,)` keypoint heatmap value times reliability, in descending order.
-            - ``'descriptors'``: :math:`(N, 64)` L2-normalised descriptors.
+            - ``'keypoints'``: ``(N, 2)`` keypoints in (x, y) pixel coordinates.
+            - ``'scores'``: ``(N,)`` keypoint heatmap value times reliability, in descending order.
+            - ``'descriptors'``: ``(N, 64)`` L2-normalised descriptors.
         """
         if top_k is None:
             top_k = self.top_k
@@ -630,7 +646,7 @@ class XFeat(nn.Module):
         """Detect keypoints and compute dense coarse descriptors.
 
         Args:
-            x: image tensor of shape :math:`(B, C, H, W)`.
+            x: image tensor of shape ``(B, C, H, W)``.
             top_k: number of features to keep (overrides ``self.top_k``). A value below 1 keeps every cell. With
                 ``multiscale=True`` the budget is split between the scales, ``int(0.2 * top_k)`` for the 0.6x
                 extraction and the rest for the 1.3x one, so the result never exceeds a positive ``top_k``; a scale
@@ -641,9 +657,9 @@ class XFeat(nn.Module):
         Returns:
             Dict with:
 
-            - ``'keypoints'``: :math:`(B, K, 2)` coarse keypoints.
-            - ``'descriptors'``: :math:`(B, K, 64)` coarse descriptors.
-            - ``'scales'``: :math:`(B, K)` extraction scale per keypoint.
+            - ``'keypoints'``: ``(B, K, 2)`` coarse keypoints.
+            - ``'descriptors'``: ``(B, K, 64)`` coarse descriptors.
+            - ``'scales'``: ``(B, K)`` extraction scale per keypoint.
         """
         if top_k is None:
             top_k = self.top_k
@@ -663,24 +679,41 @@ class XFeat(nn.Module):
         img2: torch.Tensor,
         top_k: Optional[int] = None,
         min_cossim: float = -1,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Detect, describe and mutually match keypoints from two images.
+    ) -> List[torch.Tensor] | Tuple[torch.Tensor, torch.Tensor]:
+        """Detect, describe and mutually match keypoints from two batches of images.
+
+        Pair ``b`` is image ``b`` of ``img1`` with image ``b`` of ``img2``. Each batch goes through
+        :meth:`detectAndCompute` in one call, and then the descriptors of each pair are matched on their own by
+        mutual nearest neighbour. A backend may round a batched convolution differently from a single-image one (MPS,
+        and CUDA with cuDNN's default TF32 convolutions), so a pair matched in a batch can gain or lose a few
+        near-tied matches compared with matching it alone.
 
         Args:
-            img1: first image tensor of shape :math:`(1, C, H, W)`.
-            img2: second image tensor of shape :math:`(1, C, H, W)`.
+            img1: first images ``(B, C, H, W)``.
+            img2: second images ``(B, C, H, W)``, with the same ``B`` as ``img1``.
             top_k: number of top keypoints to use.
             min_cossim: minimum cosine similarity threshold. Use ``-1`` to disable.
 
         Returns:
-            Tuple ``(mkpts0, mkpts1)`` of matched keypoints, each :math:`(N, 2)`.
+            If ``B != 1``: list of ``(N, 4)`` tensors with ``(x1, y1, x2, y2)`` matches, one per pair; an empty
+            batch gives an empty list.
+            If ``B == 1``: tuple ``(mkpts0, mkpts1)`` of matched keypoints, each ``(N, 2)``.
+
+        See Also:
+            :meth:`match_xfeat_star`: the dense, refined variant, with the same return convention.
         """
+        KORNIA_CHECK(img1.shape[0] == img2.shape[0], "img1 and img2 must hold the same number of images")
         if top_k is None:
             top_k = self.top_k
-        out1 = self.detectAndCompute(img1, top_k=top_k)[0]
-        out2 = self.detectAndCompute(img2, top_k=top_k)[0]
-        idx0, idx1 = self._match_mnn(out1["descriptors"], out2["descriptors"], min_cossim=min_cossim)
-        return out1["keypoints"][idx0], out2["keypoints"][idx1]
+        out1 = self.detectAndCompute(img1, top_k=top_k)
+        out2 = self.detectAndCompute(img2, top_k=top_k)
+        pairs = []
+        for f1, f2 in zip(out1, out2):
+            idx0, idx1 = self._match_mnn(f1["descriptors"], f2["descriptors"], min_cossim=min_cossim)
+            pairs.append((f1["keypoints"][idx0], f2["keypoints"][idx1]))
+        if len(pairs) != 1:
+            return [torch.cat(pair, dim=-1) for pair in pairs]
+        return pairs[0]
 
     @torch.inference_mode()
     def match_xfeat_star(
@@ -692,13 +725,14 @@ class XFeat(nn.Module):
         """Extract coarse features, match pairs and refine matches (XFeat*).
 
         Args:
-            im_set1: batch of images :math:`(B, C, H, W)`.
-            im_set2: batch of images :math:`(B, C, H, W)`.
+            im_set1: batch of images ``(B, C, H, W)``.
+            im_set2: batch of images ``(B, C, H, W)``.
             top_k: number of top features to use.
 
         Returns:
-            If ``B > 1``: list of :math:`(N, 4)` tensors with ``(x1, y1, x2, y2)`` matches.
-            If ``B == 1``: tuple of :math:`(N, 2)` matched keypoint tensors.
+            If ``B != 1``: list of ``(N, 4)`` tensors with ``(x1, y1, x2, y2)`` matches, one per pair; an empty
+            batch gives an empty list.
+            If ``B == 1``: tuple of ``(N, 2)`` matched keypoint tensors.
         """
         if top_k is None:
             top_k = self.top_k
@@ -707,6 +741,6 @@ class XFeat(nn.Module):
         idxs_list = self._batch_match(out1["descriptors"], out2["descriptors"])
         B = im_set1.shape[0]
         matches = [self._refine_matches(out1, out2, matches=idxs_list, batch_idx=b) for b in range(B)]
-        if B > 1:
+        if B != 1:
             return matches
         return matches[0][:, :2], matches[0][:, 2:]

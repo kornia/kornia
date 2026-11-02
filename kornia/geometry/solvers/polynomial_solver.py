@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""nn.Module containing the functionalities for computing the real roots of polynomial equation."""
+"""Real roots of quadratics, cubics and quartics, and the polynomial algebra of the 5-point solver."""
 
 import math
 from typing import NamedTuple, Tuple
@@ -28,9 +28,12 @@ from kornia.core.utils import is_exporting
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
 def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
-    r"""Solve given quadratic equation.
+    r"""Solve batched quadratic equations for their real roots, with zeros in place of missing ones.
 
-    The function takes the coefficients of quadratic equation and returns the real roots.
+    ``roots = solve_quadratic(coeffs)`` takes one quadratic per row, coefficients ``(B, 3)`` highest degree first,
+    and returns its two real roots ``(B, 2)``: a repeated root twice, and ``0.0`` in each slot without a real root,
+    so a row with complex roots returns ``[0.0, 0.0]``. For degree three or four, use :func:`solve_cubic` or
+    :func:`solve_quartic`.
 
     .. math:: coeffs[0]x^2 + coeffs[1]x + coeffs[2] = 0
 
@@ -50,10 +53,14 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
           than an on-device solve. The output retains the input dtype and device.
 
     Args:
-        coeffs : The coefficients of quadratic equation :`(B, 3)`
+        coeffs : The coefficients of quadratic equation : ``(B, 3)``
 
     Returns:
-        A torch.Tensor of shape `(B, 2)` containing the real roots to the quadratic equation.
+        A torch.Tensor of shape ``(B, 2)`` containing the real roots to the quadratic equation.
+
+    See Also:
+        - :func:`solve_cubic`: the real roots of cubics, ``(B, 4)`` to ``(B, 3)``.
+        - :func:`solve_quartic`: the real roots of quartics, ``(B, 5)`` to ``(B, 4)``.
 
     Example:
         >>> coeffs = torch.tensor([[1., 4., 4.]])
@@ -218,10 +225,12 @@ def _scaled_quadratic_coefficients(coeffs: torch.Tensor) -> tuple[torch.Tensor, 
 
 
 def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
-    r"""Solve given cubic equation.
+    r"""Solve batched cubic equations for their real roots, with zeros in place of missing ones.
 
-    The function takes the coefficients of cubic equation and returns
-    the real roots.
+    ``roots = solve_cubic(coeffs)`` takes one cubic per row, coefficients ``(B, 4)`` highest degree first, and
+    returns its three real roots ``(B, 3)``, unsorted: a repeated root as often as it repeats, and ``0.0`` in each
+    slot without a real root, after the real ones. For degree two or four, use :func:`solve_quadratic` or
+    :func:`solve_quartic`.
 
     .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
 
@@ -239,10 +248,14 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
           ``5 * 10**5`` rows this is slower than an on-device solve. The output retains the input dtype and device.
 
     Args:
-        coeffs : The coefficients cubic equation : `(B, 4)`
+        coeffs : The coefficients cubic equation : ``(B, 4)``
 
     Returns:
-        A torch.Tensor of shape `(B, 3)` containing the real roots to the cubic equation.
+        A torch.Tensor of shape ``(B, 3)`` containing the real roots to the cubic equation.
+
+    See Also:
+        - :func:`solve_quadratic`: the real roots of quadratics, ``(B, 3)`` to ``(B, 2)``.
+        - :func:`solve_quartic`: the real roots of quartics, ``(B, 5)`` to ``(B, 4)``.
 
     Example:
         >>> solve_cubic(torch.tensor([[1., 0., 0., 1.]]))
@@ -893,10 +906,13 @@ def _quartic_certified_genuine(coeffs: torch.Tensor, *rest: torch.Tensor) -> tup
 
 
 def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
-    r"""Solve given quartic equation.
+    r"""Solve batched quartic equations for their real roots, with zeros in place of missing ones.
 
-    The function takes the coefficients of quartic equation and returns
-    the real roots.
+    ``roots = solve_quartic(coeffs)`` takes one quartic per row, coefficients ``(B, 5)`` highest degree first, and
+    returns its four real roots ``(B, 4)``, in descending order: a repeated root as often as it repeats, and ``0.0``
+    in each slot without a real root, after the real ones. A row that is solved as a cubic, as described below,
+    keeps the order of :func:`solve_cubic` instead. For degree two or three, use :func:`solve_quadratic` or
+    :func:`solve_cubic`.
 
     .. math:: coeffs[0]x^4 + coeffs[1]x^3 + coeffs[2]x^2 + coeffs[3]x + coeffs[4] = 0
 
@@ -916,10 +932,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
           quartic at every scale; the bound can only move a row from the cubic path to the quartic path.
 
     Args:
-        coeffs : The coefficients quartic equation : `(B, 5)`
+        coeffs : The coefficients quartic equation : ``(B, 5)``
 
     Returns:
-        A torch.Tensor of shape `(B, 4)` containing the real roots to the quartic equation.
+        A torch.Tensor of shape ``(B, 4)`` containing the real roots to the quartic equation.
+
+    See Also:
+        - :func:`solve_quadratic`: the real roots of quadratics, ``(B, 3)`` to ``(B, 2)``.
+        - :func:`solve_cubic`: the real roots of cubics, ``(B, 4)`` to ``(B, 3)``, which rows of a lower degree
+          are solved as.
 
     Example:
         >>> coeffs = torch.tensor([[1., -10., 35., -50., 24.]])
@@ -1348,7 +1369,12 @@ T_deg1[15, 9] = 1  # 1 * 1
 
 
 def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r"""Multiply two polynomials of the first order [@nister2004efficient].
+    r"""Multiply two batched polynomials of degree one in x, y and z into one of degree two.
+
+    ``c = multiply_deg_one_poly(a, b)`` takes the coefficients ``(B, 4)`` of two linear polynomials in the monomials
+    :math:`(x, y, z, 1)` and returns the coefficients ``(B, 10)`` of their product, in the monomial order given
+    under Returns. It is a step of Nister's five-point solver [@nister2004efficient]; to estimate essential matrices,
+    call :func:`~kornia.geometry.epipolar.find_essential`.
 
     Args:
         a: a first order polynomial for variables :math:`(x,y,z,1)`.
@@ -1357,7 +1383,12 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     Returns:
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
 
+    See Also:
+        - :func:`multiply_deg_two_one_poly`: the next step, a degree-two polynomial times a degree-one one.
+
     """
+    KORNIA_CHECK_SHAPE(a, ["B", "4"], "a must have shape (B, 4).")
+    KORNIA_CHECK_SHAPE(b, ["B", "4"], "b must have shape (B, 4).")
     global T_deg1  # noqa: PLW0603
     if T_deg1.device != a.device or T_deg1.dtype != a.dtype:
         T_deg1 = T_deg1.to(device=a.device, dtype=a.dtype)
@@ -1412,7 +1443,13 @@ T_deg2[39, 19] = 1  # (9*4+3)
 
 
 def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r"""Multiply two polynomials a and b of degrees two and one [@nister2004efficient].
+    r"""Multiply batched polynomials of degree two and one in x, y and z into one of degree three.
+
+    ``c = multiply_deg_two_one_poly(a, b)`` takes the coefficients ``(B, 10)`` of quadratics in the monomial order of
+    :func:`multiply_deg_one_poly`'s result and ``(B, 4)`` of linear polynomials in :math:`(x, y, z, 1)`, and returns
+    the coefficients ``(B, 20)`` of their product, in the monomial order given under Returns. It is a step of
+    Nister's five-point solver [@nister2004efficient]; to estimate essential matrices, call
+    :func:`~kornia.geometry.epipolar.find_essential`.
 
     Args:
         a: a second degree poly for variables :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
@@ -1423,7 +1460,14 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         :math:`(x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2,
         x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1)`.
 
+    See Also:
+        - :func:`multiply_deg_one_poly`: the product of two degree-one polynomials, whose result this takes as
+          ``a``.
+        - :func:`determinant_to_polynomial`: the step that follows the elimination of these cubics.
+
     """
+    KORNIA_CHECK_SHAPE(a, ["B", "10"], "a must have shape (B, 10).")
+    KORNIA_CHECK_SHAPE(b, ["B", "4"], "b must have shape (B, 4).")
     global T_deg2  # noqa: PLW0603
     if T_deg2.device != a.device or T_deg2.dtype != a.dtype:
         T_deg2 = T_deg2.to(device=a.device, dtype=a.dtype)
@@ -2900,7 +2944,14 @@ coefficient_map = torch.tensor(
 def determinant_to_polynomial(
     A: torch.Tensor,
 ) -> torch.Tensor:
-    r"""Represent the determinant by the 10th polynomial, used for 5PC solver [@nister2004efficient].
+    r"""Expand the determinant of Nister's hidden-variable matrix into a degree-ten polynomial in z.
+
+    ``cs = determinant_to_polynomial(A)`` takes matrices ``(B, 3, 13)`` whose rows hold three polynomials in ``z``,
+    the entries of a ``3 x 3`` matrix, and returns the coefficients ``(B, 11)`` of its determinant, lowest degree
+    first: the degree-ten polynomial whose real roots give the candidates of Nister's five-point solver
+    [@nister2004efficient]. To estimate essential matrices, call :func:`~kornia.geometry.epipolar.find_essential`;
+    to find the roots of a quadratic, cubic or quartic, :func:`solve_quadratic`, :func:`solve_cubic` or
+    :func:`solve_quartic`.
 
     Convention:
         - Each row of ``A`` holds two cubics (columns 0 to 3 and 4 to 7) and a quartic (columns 8 to 12) in
@@ -2908,10 +2959,14 @@ def determinant_to_polynomial(
           ``z**i``), the reverse of the :func:`solve_quadratic` layout.
 
     Args:
-        A: torch.Tensor :math:`(B, 3, 13)`.
+        A: torch.Tensor ``(B, 3, 13)``.
 
     Returns:
-        a degree 10 poly of shape :math:`(B, 11)`, representing determinant (Eqn. 14 in the paper).
+        a degree 10 poly of shape ``(B, 11)``, representing determinant (Eqn. 14 in the paper).
+
+    See Also:
+        - :func:`multiply_deg_two_one_poly`: the cubic constraints that this matrix is eliminated from.
+        - :func:`~kornia.geometry.epipolar.find_essential`: the whole five-point solver.
 
     """
     B, device, dtype = A.shape[0], A.device, A.dtype
@@ -2921,7 +2976,7 @@ def determinant_to_polynomial(
     signs = signs.to(device, dtype)
     coefficient_map = coefficient_map.to(device)
 
-    A_flat = A.view(B, -1)
+    A_flat = A.flatten(start_dim=1)
     gathered_values = A_flat[:, multiplication_indices]
     products = torch.prod(gathered_values, dim=-1)
     signed_products = products * signs

@@ -62,13 +62,13 @@ class ResizePreProcessor(nn.Module):
         r"""Resize input images to the target size.
 
         Args:
-            imgs: Input images, either a tensor of shape :math:`(B, C, H, W)` or
-                a list of tensors of shape :math:`(C, H, W)`.
+            imgs: Input images, either a tensor of shape ``(B, C, H, W)`` or
+                a list of tensors of shape ``(C, H, W)``.
 
         Returns:
             Tuple containing:
                 - resized_imgs: Resized images as a tensor of shape :math:`(B, C, H_{\text{new}}, W_{\text{new}})`.
-                - original_sizes: Original image sizes of shape :math:`(B, 2)` containing (height, width), as
+                - original_sizes: Original image sizes of shape ``(B, 2)`` containing (height, width), as
                   ``int64`` on the images' device.
         """
         # int64: a half-precision image dtype cannot hold every size (bfloat16 rounds 667 to 668). Filled in rather
@@ -119,13 +119,13 @@ class ResizePostProcessor(nn.Module):
         r"""Resize model outputs back to original dimensions.
 
         Args:
-            imgs: Input images, either a tensor of shape :math:`(B, C, H, W)` or
-                a list of tensors of shape :math:`(C, H, W)`.
-            original_sizes: Original image sizes of shape :math:`(B, 2)` containing
+            imgs: Input images, either a tensor of shape ``(B, C, H, W)`` or
+                a list of tensors of shape ``(C, H, W)``.
+            original_sizes: Original image sizes of shape ``(B, 2)`` containing
                 (height, width) pairs.
 
         Returns:
-            A list of :math:`(1, C, H, W)` tensors, one per image, each resized to its original size. If ONNX export
+            A list of ``(1, C, H, W)`` tensors, one per image, each resized to its original size. If ONNX export
             is active, returns inputs unchanged with a warning.
 
         Warning:

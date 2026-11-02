@@ -42,15 +42,6 @@ from testing.casts import dict_to
 from testing.default_device import default_device
 from testing.geometry.create import create_dominant_plane_scene
 
-# RANSAC's batched minimal solvers take the Metal shader compiler down on the paravirtualized GPU
-# of the hosted macOS runners, and the next MPS allocation aborts the pytest process (SIGABRT).
-# The abort site moves between runs — observed inside the 5-point solver and, with that class
-# deselected, later in an unrelated `F.pad` — and SIGABRT carries no exception type, so these
-# cannot be recorded as strict xfails in testing/known_failure_xfails/mps_float32.txt: the process
-# dies and every test after it is lost. conftest skips this module on MPS; real Apple hardware
-# does not abort, so `--run-mps-process-abort` runs it anyway. Tracked in #4204.
-pytestmark = pytest.mark.mps_process_abort
-
 
 class TestRANSACHomography(BaseTester):
     def test_smoke(self, device, dtype):
@@ -1586,6 +1577,16 @@ class TestRANSACValidation(BaseTester):
         with pytest.raises(ValueError):
             RANSAC(model).validate_inputs(points, points[:8])
 
+    @pytest.mark.parametrize(("model", "shape"), [("homography", (3, 2)), ("homography_from_linesegments", (3, 2, 2))])
+    def test_too_few_correspondences_message_6422(self, device, dtype, model, shape):
+        # The message used to contain runs of spaces.
+        points = torch.zeros(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError) as excinfo:
+            RANSAC(model).validate_inputs(points, points)
+        minimal = [4, *shape[1:]]
+        size = torch.Size(shape)
+        assert str(excinfo.value) == f"kp1 and kp2 should be equal shape at least {minimal}, got {size}, {size}"
+
     @staticmethod
     def _projection_case(device, dtype, extra_exact_points):
         # Every correspondence fits this rank-two F exactly. Its projection onto the essential manifold
@@ -3047,8 +3048,13 @@ class TestRANSACDegensac(BaseTester):
         calls = []
         original = ransac_module._plane_parallax_search
         monkeypatch.setattr(ransac_module, "_plane_parallax_search", lambda *a: calls.append(1) or original(*a))
-        # plane_fraction=0 puts every inlier at a random depth: no dominant plane.
-        for seed in range(6):
+        # plane_fraction=0 puts every inlier at a random depth: no dominant plane. Which seeds draw an H-degenerate
+        # record setter depends on the device's generator and batch sizes, not only on the scene (#6263): CPU and CUDA
+        # fire on different seeds, and on some CUDA setups none of the first six does. So the first six seeds always
+        # run, further seeds run until a recovery has happened, and every seed that runs must keep the accuracy.
+        for seed in range(30):
+            if seed >= 6 and calls:
+                break
             kp1, kp2, _, clean1, clean2 = create_dominant_plane_scene(1000, 0.6, 0.0, seed, device=device, dtype=dtype)
             F, mask = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=True)(kp1, kp2)
             F_plain, mask_plain = RANSAC("fundamental", inl_th=1.0, seed=seed, degensac=False)(kp1, kp2)
