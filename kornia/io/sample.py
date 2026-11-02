@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import uuid
@@ -104,8 +103,12 @@ def _download(url: str, save_to: str, load: Optional[Callable[[str], torch.Tenso
                 raise
             os.remove(part)
     except BaseException:
-        with contextlib.suppress(FileNotFoundError):
+        try:
             os.remove(part)
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            logging.warning("Could not remove the temporary image download file %s: %s", part, error)
         raise
     return image
 

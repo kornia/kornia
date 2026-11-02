@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import errno
 import io
 import re
 import struct
@@ -852,6 +853,50 @@ class TestDownloadImage:
     """Offline pins for ``kornia.io.sample.download_image``; ``urlopen`` is mocked, no network is touched."""
 
     URL = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"
+
+    @pytest.mark.parametrize("cleanup_errno", [errno.EACCES, errno.EBUSY])
+    @pytest.mark.parametrize("failure_type", [ValueError, OSError, KeyboardInterrupt])
+    def test_cleanup_failure_preserves_the_original_error(self, tmp_path, caplog, cleanup_errno, failure_type):
+        from unittest import mock
+
+        from kornia.io.sample import _download
+
+        dst = tmp_path / "panda.png"
+        dst.write_bytes(b"previous image")
+        original_error = failure_type("image loading failed")
+        cleanup_error = OSError(cleanup_errno, "temporary file is in use")
+        with (
+            mock.patch("kornia.io.sample.urlopen", return_value=io.BytesIO(b"response body")),
+            mock.patch("kornia.io.sample.os.remove", side_effect=cleanup_error),
+            pytest.raises(failure_type) as caught,
+        ):
+            _download(self.URL, str(dst), load=mock.Mock(side_effect=original_error))
+
+        assert caught.value is original_error
+        assert dst.read_bytes() == b"previous image"
+        assert "Could not remove the temporary image download file" in caplog.text
+        assert "temporary file is in use" in caplog.text
+
+    @pytest.mark.parametrize("cleanup_errno", [errno.EACCES, errno.EBUSY])
+    def test_cleanup_failure_preserves_a_failed_replace(self, tmp_path, caplog, cleanup_errno):
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        dst = tmp_path / "panda.png"
+        dst.write_bytes(b"previous image")
+        original_error = PermissionError(errno.EACCES, "destination is in use")
+        with (
+            mock.patch("kornia.io.sample.urlopen", return_value=io.BytesIO(b"replacement image")),
+            mock.patch("kornia.io.sample.os.replace", side_effect=original_error),
+            mock.patch("kornia.io.sample.os.remove", side_effect=OSError(cleanup_errno, "temporary file is in use")),
+            pytest.raises(PermissionError) as caught,
+        ):
+            download_image(self.URL, str(dst))
+
+        assert caught.value is original_error
+        assert dst.read_bytes() == b"previous image"
+        assert "Could not remove the temporary image download file" in caplog.text
 
     def test_saves_the_fetched_bytes(self, tmp_path):
         from unittest import mock
