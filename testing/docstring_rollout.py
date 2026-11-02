@@ -93,6 +93,7 @@ DOCSTRING_MODULES: tuple[str, ...] = (
     "kornia.feature.defmo",
     "kornia.feature.hardnet",
     "kornia.feature.hynet",
+    "kornia.feature.integrated",
     "kornia.feature.keynet",
     "kornia.feature.laf",
     "kornia.feature.lightglue",

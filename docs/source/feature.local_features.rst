@@ -3,6 +3,16 @@ Local features (detector and descriptor together)
 
 .. currentmodule:: kornia.feature
 
+:class:`LocalFeature` runs a detector and a LAF descriptor in one call, and the SIFT and HardNet presets below are
+its subclasses. Each preset returns LAFs ``(B, N, 2, 3)`` in pixels, their responses ``(B, N)`` and descriptors
+``(B, N, D)``, with ``N = num_features`` slots for every image. The slots no detection filled hold a zero LAF and
+share one descriptor, so drop them with :func:`laf_is_filled` before matching; :class:`LocalFeatureMatcher` does it
+for you. :class:`SIFTFeature`, :class:`KeyNetHardNet` and :class:`KeyNetAffNetHardNet` take one image per call,
+``(1, 1, H, W)``; the other presets take a batch of grayscale images ``(B, 1, H, W)``, and
+``SIFTFeatureScaleSpace(descriptor_backend="pyramid")`` also converts an RGB batch to grayscale. The learned models
+of the API reference below, :class:`ALIKED`, :class:`DeDoDe`, :class:`DISK`, :class:`XFeat` and
+:class:`SOLD2_detector`, are not :class:`LocalFeature` subclasses; their docstrings give their outputs.
+
 .. _sift-pipelines:
 
 Choosing a SIFT pipeline
@@ -113,6 +123,58 @@ documented replacement. No deprecation warning or removal version is set.
 This plan concerns the combination, not the standalone
 :class:`SIFTDescriptorFromPyramid` descriptor-only interface; see
 :ref:`sift-descriptor-interfaces`.
+
+HardNet presets
+---------------
+
+The six HardNet presets describe 32 x 32 patches with a pretrained :class:`HardNet`, through
+:class:`LAFDescriptor`. They load every network they use with its pretrained weights when they are built and come
+back in evaluation mode. They differ in the detector, in whether :class:`LAFAffNetShapeEstimator` adapts the
+affine shape of each frame before its orientation, in the orientation estimator, which ``upright=True`` skips, and
+in the images they take:
+
+.. list-table:: HardNet presets
+   :header-rows: 1
+   :widths: 22 34 14 16 14
+
+   * - Preset
+     - Detector and frames
+     - Orientation
+     - Input, ``num_features``
+     - ``LightGlueMatcher`` mode
+   * - :class:`GFTTAffNetHardNet`
+     - :class:`ScaleSpaceDetector` on :class:`CornerGFTT` corners, AffNet shapes
+     - ``LAFOrienter(19)``
+     - ``(B, 1, H, W)``, 8000
+     - none
+   * - :class:`HesAffNetHardNet`
+     - :class:`ScaleSpaceDetector` on :class:`BlobHessian` blobs, AffNet shapes
+     - ``LAFOrienter(19)``
+     - ``(B, 1, H, W)``, 2048
+     - none
+   * - :class:`DoGHardNet`
+     - The DoG detector of ``SIFTFeatureScaleSpace(descriptor_backend="patch")``, frames scaled to 12 sigma
+     - ``LAFOrienter(19)``
+     - ``(B, 1, H, W)``, 2048
+     - ``"doghardnet"``
+   * - :class:`DoGAffNetHardNet`
+     - The same, with AffNet shapes
+     - ``LAFOrienter(19)``
+     - ``(B, 1, H, W)``, 2048
+     - ``"dog_affnet_hardnet"``
+   * - :class:`KeyNetHardNet`
+     - :class:`KeyNetDetector`
+     - :class:`OriNet`
+     - ``(1, 1, H, W)`` in ``[0, 1]``, 8000
+     - none
+   * - :class:`KeyNetAffNetHardNet`
+     - :class:`KeyNetDetector`, AffNet shapes
+     - :class:`OriNet`
+     - ``(1, 1, H, W)`` in ``[0, 1]``, 8000
+     - ``"keynet_affnet_hardnet"``
+
+For a preset with a :class:`LightGlueMatcher` mode, drop the padded slots and pass its LAFs and descriptors to the
+matcher in that mode. The DoG presets return the 12-sigma frames that the ``"doghardnet"`` weights expect.
 
 API reference
 -------------
