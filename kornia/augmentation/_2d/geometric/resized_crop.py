@@ -48,7 +48,8 @@ def _one_pixel_axes(box: torch.Tensor, device: torch.device) -> torch.Tensor:
 class RandomResizedCrop(GeometricAugmentationBase2D):
     r"""Crop random patches in an image torch.Tensor and resizes to a given size.
 
-    .. image:: _static/img/RandomResizedCrop.png
+    ``crop = RandomResizedCrop(size, scale, ratio, ...)`` and ``output = crop(input)`` sample regions from images of
+    shape ``(B, C, H, W)`` and resample them to ``size``. Use :class:`RandomCrop` to preserve the sampled patch size.
 
     Args:
         size: Desired output size (out_h, out_w) of each edge.
@@ -97,13 +98,16 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         ``nearest-exact`` interpolation. With corner alignment, an axis where the output is one pixel long samples
         the crop's first row or column, and one where the crop is one pixel long repeats it, as ``F.interpolate``
         does, in both modes. Both modes support
-        :meth:`inverse`, which warps the output back onto the original canvas with the inverse of the mode's
+        ``inverse()``, which warps the output back onto the original canvas with the inverse of the mode's
         ``transform_matrix`` and cannot recover discarded information.
 
     Note:
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
         not bitwise. Eager execution retains native slicing and resizing for performance;
         the tensorized compiled path avoids recompilation as crop coordinates change.
+
+    See Also:
+        - :class:`RandomCrop`: samples a fixed-size patch without resizing it.
 
     Example:
         >>> rng = torch.manual_seed(0)
@@ -126,6 +130,8 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
+    .. image:: _static/img/RandomResizedCrop.png
 
     """
 

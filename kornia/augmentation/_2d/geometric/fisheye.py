@@ -30,6 +30,18 @@ from kornia.geometry.transform import remap
 class RandomFisheye(AugmentationBase2D):
     r"""Add a random radial (fisheye) distortion, applied per sample with probability ``p`` (default 0.5).
 
+    ``aug = RandomFisheye(...)`` and ``output = aug(input)`` radially distort each selected image of shape
+    ``(B, C, H, W)``. Use :class:`RandomPerspective` for a projective four-corner warp.
+
+    Args:
+        center_x: Ranges to sample respect to x-coordinate center with shape (2,).
+        center_y: Ranges to sample respect to y-coordinate center with shape (2,).
+        gamma: Ranges to sample for the gamma values respect to optical center with shape (2,).
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation to each sample.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
+
     .. image:: _static/img/RandomFisheye.png
 
     Convention:
@@ -42,14 +54,8 @@ class RandomFisheye(AugmentationBase2D):
         ``NotImplementedError`` identifying this augmentation, even at ``p=0``
         (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
 
-    Args:
-        center_x: Ranges to sample respect to x-coordinate center with shape (2,).
-        center_y: Ranges to sample respect to y-coordinate center with shape (2,).
-        gamma: Ranges to sample for the gamma values respect to optical center with shape (2,).
-        same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation to each sample.
-        keepdim: whether to keep the output shape the same as input (True) or broadcast it
-                 to the batch form (False).
+    See Also:
+        - :class:`RandomPerspective`: samples a projective rather than radial warp.
 
     Examples:
         >>> import torch

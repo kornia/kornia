@@ -27,6 +27,9 @@ from kornia.enhance import solarize
 class RandomSolarize(IntensityAugmentationBase2D):
     r"""Solarize images at a random threshold and addition, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomSolarize(thresholds, additions, ...)(input)`` offsets then inverts selected image values above a
+    sampled threshold, after clamping the selected input to ``[0, 1]``. Use :class:`RandomInvert` to invert every value.
+
     .. image:: _static/img/RandomSolarize.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -61,6 +64,10 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.solarize`.
+
+    See Also:
+        - :class:`RandomInvert`: inverts every pixel rather than values above a threshold.
+        - :class:`RandomPosterize`: reduces bit depth rather than applying a threshold.
 
     Examples:
         >>> rng = torch.manual_seed(0)

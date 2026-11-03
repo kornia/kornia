@@ -27,7 +27,10 @@ from kornia.core.utils import _to_device_nonblocking
 
 
 class RandomSnow(IntensityAugmentationBase2D):
-    r"""Generates snow effect on given torch.Tensor image or a batch torch.Tensor images.
+    r"""Create an HLS snow effect on selected RGB images.
+
+    ``output = RandomSnow(snow_coefficient, brightness, ...)(input)`` brightens selected pixels of
+    ``(B, 3, H, W)`` images according to a sampled snow threshold. Use :class:`RandomRain` for drawn rain streaks.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -53,6 +56,9 @@ class RandomSnow(IntensityAugmentationBase2D):
           ``1`` or greater.
         - a pixel whose lightness is below ``snow_coefficient`` has its lightness scaled by
           ``brightness``; it becomes white once that lightness reaches ``1``.
+
+    See Also:
+        - :class:`RandomRain`: creates rain streaks rather than an HLS snow effect.
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)

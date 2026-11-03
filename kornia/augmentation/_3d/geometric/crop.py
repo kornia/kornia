@@ -43,7 +43,8 @@ def _crop_translation3d(src: torch.Tensor, dst: torch.Tensor) -> torch.Tensor:
 class RandomCrop3D(GeometricAugmentationBase3D):
     r"""Apply random crop on 3D volumes (5D torch.Tensor).
 
-    Crops random sub-volumes on a given size.
+    ``crop = RandomCrop3D(size, ...)`` and ``output = crop(input)`` select patches of ``(D, H, W)`` voxels. Use
+    :class:`CenterCrop3D` for the deterministic centred subvolume.
 
     Args:
         p: probability of applying the transformation for the whole batch.
@@ -96,6 +97,12 @@ class RandomCrop3D(GeometricAugmentationBase3D):
           A valid gated-off call returns the input unchanged -- unpadded, at the input shape rather than ``size`` --
           with an identity ``transform_matrix``.
           Defaults are bilinear resampling and ``align_corners=True``.
+
+    Crops random sub-volumes on a given size.
+
+    See Also:
+        - :class:`CenterCrop3D`: extracts the deterministic centred subvolume.
+        - :class:`RandomCrop`: samples a fixed-size patch from a 2D image.
 
     Examples:
         >>> import torch

@@ -43,6 +43,9 @@ def _export_boxes(box: Boxes, mode: str, box_input: Any) -> torch.Tensor:
 class MixAugmentationBaseV2(_BasicAugmentationBase):
     r"""MixAugmentationBase base class for customized mix augmentation implementations.
 
+    Subclass ``MixAugmentationBaseV2`` to combine batch samples or rearrange image content with data-key handlers. Use
+    :class:`AugmentationBase2D` for an augmentation that processes each image independently.
+
     For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required.
     "apply_transform" will need to handle the probabilities internally.
 
@@ -75,6 +78,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
           :class:`~kornia.augmentation.RandomMosaic`); the transplantation classes read ``acceptor_indices``
           instead. The box and class-label handlers use the same gate: an unselected row's label describes an
           unmixed image (its own class twice, with lambda 0).
+
+    See Also:
+        - :class:`AugmentationBase2D`: base class for single-image 2D augmentations.
 
     """
 

@@ -30,7 +30,8 @@ from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 class RandomAffine3D(GeometricAugmentationBase3D):
     r"""Warp volumes by a random 3D affine transformation, applied per sample with probability ``p`` (default 0.5).
 
-    The transformation is computed so that the center is kept invariant.
+    ``aug = RandomAffine3D(degrees, ...)`` and ``output = aug(input)`` warp volumes of shape ``(B, C, D, H, W)``.
+    Use :class:`RandomRotation3D` when only a sampled rotation is needed.
 
     Args:
         degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from. The three
@@ -87,6 +88,12 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         - a two-value ``scale=(a, b)`` is isotropic: one factor per sample is drawn from ``[a, b]`` and applied
           to all three axes, as the 2D :class:`~kornia.augmentation.RandomAffine` does. The three-pair form
           ``((a, b), (c, d), (e, f))`` draws each axis independently.
+
+    The transformation is computed so that the center is kept invariant.
+
+    See Also:
+        - :class:`RandomRotation3D`: samples a 3D rotation without translation, scale or shear.
+        - :class:`RandomAffine`: applies the corresponding transform to 2D images.
 
     Examples:
         >>> import torch

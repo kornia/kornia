@@ -94,6 +94,9 @@ def get_planckian_coeffs(mode: str) -> torch.Tensor:
 class RandomPlanckianJitter(IntensityAugmentationBase2D):
     r"""Shift the illuminant color (Planckian jitter), applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomPlanckianJitter(...)(input)`` changes the illumination of selected RGB images ``(B, 3, H, W)``
+    along its color-temperature model. Use :class:`RandomRGBShift` to offset RGB channels independently.
+
     .. image:: _static/img/RandomPlanckianJitter.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -130,6 +133,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         ``pl``'s shape depends on ``mode``, so a ``state_dict`` saved by an instance built with one mode
         does not load into an instance built with the other. Tracked in
         `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
+
+    See Also:
+        - :class:`ColorJiggle`: samples general color adjustments instead of illuminant coefficients.
 
     Examples:
         To apply planckian jitter based on mode

@@ -27,7 +27,10 @@ from kornia.enhance.adjust import adjust_brightness
 
 
 class RandomBrightness(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness of a torch.Tensor image.
+    r"""Shift brightness by an additive random offset.
+
+    ``RandomBrightness(brightness)(image)`` adds a draw of ``brightness - 1`` to each selected image. Use
+    :class:`ColorJitter` when torchvision-compatible multiplicative brightness is required.
 
     The shift is additive: the output is ``input + (factor - 1)``, before the default clamp. torchvision's and
     PIL's brightness is multiplicative (``input * factor``); :class:`ColorJitter`'s brightness step is that
@@ -60,6 +63,11 @@ class RandomBrightness(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`
+
+    See Also:
+        - :class:`RandomContrast`: scales values instead of adding an offset.
+        - :class:`ColorJiggle`: combines this additive brightness step with color adjustments.
+        - :class:`ColorJitter`: uses torchvision-compatible multiplicative brightness.
 
     Examples:
         >>> rng = torch.manual_seed(0)

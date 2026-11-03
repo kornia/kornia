@@ -28,6 +28,10 @@ from kornia.core.utils import _to_device_nonblocking
 class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     r"""Add salt-and-pepper noise to images, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomSaltAndPepperNoise(amount, salt_vs_pepper, ...)(input)`` rewrites sampled pixels of selected
+    one- or three-channel images ``(B, C, H, W)`` to zero or one. Use :class:`RandomGaussianNoise` for dense,
+    continuous noise.
+
     .. image:: _static/img/RandomSaltAndPepperNoise.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -63,6 +67,9 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         If `amount` and `salt_vs_pepper` are floats (unique values), the transformation is applied with these
         exact values, rather than randomly sampling from the specified range. However, the masks are still
         generated randomly using these exact parameters.
+
+    See Also:
+        - :class:`RandomGaussianNoise`: adds a dense continuous noise field.
 
     Examples:
         >>> rng = torch.manual_seed(5)

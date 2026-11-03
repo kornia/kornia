@@ -28,7 +28,10 @@ from kornia.enhance.adjust import adjust_hue
 
 
 class RandomHue(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the hue of a torch.Tensor image.
+    r"""Rotate the hue of a three-channel image by a random number of turns.
+
+    ``RandomHue(hue)(image)`` samples an HSV hue rotation for each selected image. Use
+    :class:`RandomSaturation` to change chroma without changing hue.
 
     The shift is in turns of the hue circle, the unit of torchvision's ``adjust_hue`` ``hue_factor``, so a
     torchvision hue range carries over unchanged.
@@ -61,6 +64,11 @@ class RandomHue(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_hue`
+
+    See Also:
+        - :class:`RandomSaturation`: scales HSV saturation without rotating hue.
+        - :class:`ColorJiggle`: combines hue rotation with other Kornia color adjustments.
+        - :class:`ColorJitter`: combines hue rotation with torchvision-compatible color adjustments.
 
     Examples:
         >>> rng = torch.manual_seed(0)

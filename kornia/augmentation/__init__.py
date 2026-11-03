@@ -15,9 +15,98 @@
 # limitations under the License.
 #
 
-"""Kornia Augmentation — Differentiable image, video, and 3D data augmentation for PyTorch.
+"""Build image, video and volume augmentation pipelines with recorded random parameters.
 
-This subpackage provides a wide range of augmentation modules for computer vision tasks.
+Construct a transform, then call it on a floating-point tensor. Image batches use ``(B, C, H, W)`` and
+volume batches ``(B, C, D, H, W)``; color operations generally expect values in ``[0, 1]``. Each class states
+its channel, range and probability rules. Use ``AugmentationSequential`` to transform images and supported
+annotations together; use ``ImageSequential`` for images alone. In eager mode, ``_params`` records a draw
+for replay with ``params=``. An inverse geometric warp cannot recover cropped or resampled image content.
+
+Which function to use
+---------------------
+Pipelines and policies:
+    - ``AugmentationSequential``: coordinate image, mask, box and keypoint handlers.
+    - ``ImageSequential``: chain image transforms, including ordinary PyTorch modules.
+    - ``VideoSequential``: apply 2D transforms to video frames, optionally sharing a draw within each clip.
+    - ``PatchSequential``: split an image into a grid and augment its patches.
+    - ``ManyToManyAugmentationDispather``: send each input bundle to its corresponding pipeline.
+    - ``ManyToOneAugmentationDispather``: produce several augmented views of one input bundle.
+    - ``auto``: AutoAugment, RandAugment, TrivialAugment and their policy operations.
+    - ``container``: pipeline classes and their parameter records.
+
+Image size and geometry:
+    - ``Resize``: resize to a target size; ``LongestMaxSize`` and ``SmallestMaxSize`` select the controlling side.
+    - ``PadTo``: pad to a target size at the right and bottom, cropping oversized inputs by default.
+    - ``CenterCrop``: take a centered crop; ``RandomCrop`` samples its position.
+    - ``RandomResizedCrop``: sample a crop's area and aspect ratio, then resize it.
+    - ``RandomHorizontalFlip`` and ``RandomVerticalFlip``: reverse columns or rows.
+    - ``RandomAffine``: combine rotation, translation, scale and shear in one warp.
+    - ``RandomRotation``: rotate by a sampled angle; ``RandomRotation90`` samples multiples of 90 degrees.
+    - ``RandomShear`` and ``RandomTranslate``: sample only shear or translation.
+    - ``RandomPerspective``: perturb the four image corners for a projective warp.
+    - ``RandomElasticTransform``: warp with a smoothed random displacement field.
+    - ``RandomThinPlateSpline``: warp with displaced control points.
+    - ``RandomFisheye``: apply a radial distortion around a sampled center.
+
+Color and contrast:
+    - ``ColorJiggle``: combine additive brightness, multiplicative contrast and HSV saturation/hue adjustments.
+    - ``ColorJitter``: use torchvision-compatible brightness, contrast and saturation formulas.
+    - ``RandomBrightness`` and ``RandomContrast``: sample one brightness or contrast factor.
+    - ``RandomHue`` and ``RandomSaturation``: change one HSV color component.
+    - ``RandomGamma``: apply power-law intensity correction.
+    - ``RandomGrayscale``: average channels with RGB luminance weights or equal weights, keeping the channel count.
+    - ``RandomRGBShift``: shift the three RGB channels independently.
+    - ``RandomPlanckianJitter``: vary RGB illumination along a color-temperature curve.
+    - ``RandomChannelShuffle``: permute channels; ``RandomChannelDropout`` replaces selected channels.
+    - ``RandomAutoContrast``: stretch each channel's intensity range.
+    - ``RandomEqualize``: equalize a global histogram; ``RandomClahe`` uses local, contrast-limited histograms.
+    - ``RandomInvert``: subtract values from a maximum; ``RandomSolarize`` inverts values above a threshold.
+    - ``RandomPosterize``: reduce the number of retained intensity bits.
+    - ``Normalize`` and ``Denormalize``: apply or undo channel-wise mean and standard-deviation normalization.
+
+Blur, noise and occlusion:
+    - ``RandomBoxBlur``: average a rectangular window; ``RandomGaussianBlur`` uses Gaussian weights.
+    - ``RandomMedianBlur``: replace pixels with local medians.
+    - ``RandomMotionBlur``: convolve with a sampled directional motion kernel.
+    - ``RandomSharpness``: blend an image with its smoothed version.
+    - ``RandomGaussianNoise``: add Gaussian noise; ``RandomSaltAndPepperNoise`` inserts dark and bright pixels.
+    - ``RandomJPEG``: simulate JPEG compression at a sampled quality.
+    - ``RandomErasing``: fill a sampled rectangle with a constant.
+    - ``RandomDissolving``: apply a pretrained Stable Diffusion dissolving model.
+    - ``RandomRain`` and ``RandomSnow``: synthesize rain streaks or a snow effect.
+
+Spatially varying illumination:
+    - ``RandomGaussianIllumination``: add a Gaussian illumination pattern.
+    - ``RandomLinearIllumination``: add an edge-to-edge gradient.
+    - ``RandomLinearCornerIllumination``: add a gradient starting from a corner.
+    - ``RandomPlasmaBrightness``: shift brightness with a fractal map.
+    - ``RandomPlasmaContrast``: modulate contrast with a fractal map.
+    - ``RandomPlasmaShadow``: darken regions selected by a fractal map.
+
+Mixing and rearranging images:
+    - ``RandomMixUpV2``: blend paired images and return label weights when requested.
+    - ``RandomCutMixV2``: copy sampled rectangles from paired images.
+    - ``PatchMix``: copy a fixed-size square from a paired image.
+    - ``RandomMosaic``: assemble tiles from several batch images.
+    - ``RandomJigsaw``: permute an image's grid patches.
+    - ``RandomTransplantation``: copy regions selected by a donor segmentation mask.
+
+Volumes:
+    - ``CenterCrop3D`` and ``RandomCrop3D``: take centered or randomly positioned volume crops.
+    - ``RandomHorizontalFlip3D`` , ``RandomVerticalFlip3D`` and ``RandomDepthicalFlip3D`` : reverse width, height or
+      depth.
+    - ``RandomAffine3D``: sample a 3D affine warp; ``RandomRotation3D`` samples rotation alone.
+    - ``RandomPerspective3D``: perturb the volume corners for a projective warp.
+    - ``RandomEqualize3D``: equalize volume intensities; ``RandomMotionBlur3D`` applies a 3D motion kernel.
+    - ``RandomTransplantation3D``: copy regions selected by a donor volume's segmentation mask.
+
+Extending the module:
+    - ``AugmentationBase2D`` and ``AugmentationBase3D``: share shape handling, sampling and application gates.
+    - ``RigidAffineAugmentationBase2D`` and ``RigidAffineAugmentationBase3D``: add transformation-matrix tracking.
+    - ``GeometricAugmentationBase2D`` and ``GeometricAugmentationBase3D``: implement spatial transforms.
+    - ``IntensityAugmentationBase2D`` and ``IntensityAugmentationBase3D``: implement pixel-value transforms.
+    - ``MixAugmentationBaseV2``: implement transforms that combine batch samples and dispatch data keys.
 """
 
 # Lazy loading auto module

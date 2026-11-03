@@ -28,35 +28,9 @@ from kornia.core.utils import _to_device_nonblocking
 class RandomMixUpV2(MixAugmentationBaseV2):
     r"""Apply MixUp augmentation to a batch of torch.Tensor images.
 
-    .. image:: _static/img/RandomMixUpV2.png
-
-    Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
-
-    The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
-    while the labels is a ``(B, 3)`` torch.Tensor that contains (label_batch, label_permuted_batch, lambda) for
-    each image.
-
-    The implementation is on top of the following repository:
-    `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py
-    <https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py>`_.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
-
-    The loss and accuracy are computed as:
-
-    .. code-block:: python
-
-        def loss_mixup(y, logits):
-            criterion = F.cross_entropy
-            loss_a = criterion(logits, y[:, 0].long(), reduction='none')
-            loss_b = criterion(logits, y[:, 1].long(), reduction='none')
-            return ((1 - y[:, 2]) * loss_a + y[:, 2] * loss_b).mean()
-
-    .. code-block:: python
-
-        def acc_mixup(y, logits):
-            pred = torch.argmax(logits, dim=1).to(y.device)
-            return (1 - y[:, 2]) * pred.eq(y[:, 0]).float() + y[:, 2] * pred.eq(y[:, 1]).float()
+    ``aug = RandomMixUpV2(data_keys=["input", "class"])`` and ``images, labels = aug(input, label)`` return
+    blended images and the paired labels with mixing coefficients. Use :class:`RandomCutMixV2` to replace a
+    rectangular region instead.
 
     Args:
         p: probability for applying an augmentation to a batch. This param controls the augmentation
@@ -90,6 +64,39 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
     Note:
         This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.
+
+    .. image:: _static/img/RandomMixUpV2.png
+
+    Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
+
+    The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
+    while the labels is a ``(B, 3)`` torch.Tensor that contains (label_batch, label_permuted_batch, lambda) for
+    each image.
+
+    The implementation is on top of the following repository:
+    `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py
+    <https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py>`_.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    The loss and accuracy are computed as:
+
+    .. code-block:: python
+
+        def loss_mixup(y, logits):
+            criterion = F.cross_entropy
+            loss_a = criterion(logits, y[:, 0].long(), reduction='none')
+            loss_b = criterion(logits, y[:, 1].long(), reduction='none')
+            return ((1 - y[:, 2]) * loss_a + y[:, 2] * loss_b).mean()
+
+    .. code-block:: python
+
+        def acc_mixup(y, logits):
+            pred = torch.argmax(logits, dim=1).to(y.device)
+            return (1 - y[:, 2]) * pred.eq(y[:, 0]).float() + y[:, 2] * pred.eq(y[:, 1]).float()
+
+    See Also:
+        - :class:`RandomCutMixV2`: mixes paired images through sampled rectangular regions.
 
     Examples:
         >>> rng = torch.manual_seed(1)

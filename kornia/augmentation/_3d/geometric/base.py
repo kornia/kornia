@@ -21,6 +21,9 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
     r"""Base class for custom 3D geometric augmentations, applied per sample with probability ``p`` (default 0.5).
 
+    Subclass ``GeometricAugmentationBase3D`` to implement a sampled geometric warp of volumes shaped
+    ``(B, C, D, H, W)``. Use :class:`AugmentationBase3D` for a non-geometric operation.
+
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
 
     Args:
@@ -44,5 +47,8 @@ class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
           roundoff in ``float32`` and ``float64``, and in CPU ``float16``/``bfloat16``, where the warp runs in
           ``float32`` (`#5751 <https://github.com/kornia/kornia/issues/5751>`_). On other devices the half-precision
           sampling grid is itself rounded, so the error grows with the volume size.
+
+    See Also:
+        - :class:`AugmentationBase3D`: base class for general 3D augmentations.
 
     """

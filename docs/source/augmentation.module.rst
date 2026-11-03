@@ -8,9 +8,11 @@ Image Augmentations
 
 .. currentmodule:: kornia.augmentation
 
-The augmentation operators, grouped by what they change. All of them accept ``(B, C, H, W)`` float tensors in
-``[0, 1]`` (``(B, C, D, H, W)`` for the 3D transforms), sample independent parameters per batch element, and can
-be combined with :class:`~kornia.augmentation.AugmentationSequential`.
+Choose an operator by what it changes. Image batches use floating-point tensors of shape ``(B, C, H, W)``;
+volume batches use ``(B, C, D, H, W)``. Color transforms generally expect values in ``[0, 1]``. Each class states
+its channel and range requirements, whether its probability gate applies per sample or to the whole batch,
+and which parameters ``same_on_batch`` shares. Use :class:`~kornia.augmentation.container.AugmentationSequential` to
+compose transforms and coordinate their supported annotation handlers.
 
 .. list-table::
    :widths: 30 70

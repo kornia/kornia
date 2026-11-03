@@ -27,7 +27,10 @@ from kornia.enhance import normalize
 
 
 class Normalize(IntensityAugmentationBase2D):
-    r"""Normalize tensor images with mean and standard deviation.
+    r"""Normalize image channels with supplied mean and standard deviation.
+
+    ``Normalize(mean, std)(image)`` returns ``(image - mean) / std`` for selected batches. Use
+    :class:`RandomAutoContrast` when each image should instead be rescaled from its observed extrema.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -60,6 +63,10 @@ class Normalize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize`.
+
+    See Also:
+        - :class:`Denormalize`: reverses this operation when both use the same statistics and apply.
+        - :class:`RandomAutoContrast`: derives a rescaling from each image rather than supplied statistics.
 
     Examples:
         >>> norm = Normalize(mean=torch.zeros(4), std=torch.ones(4))

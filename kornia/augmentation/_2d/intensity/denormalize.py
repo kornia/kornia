@@ -25,7 +25,10 @@ from kornia.enhance import denormalize
 
 
 class Denormalize(IntensityAugmentationBase2D):
-    r"""Denormalize tensor images with mean and standard deviation.
+    r"""Restore image channels with supplied mean and standard deviation.
+
+    ``Denormalize(mean, std)(image)`` returns ``image * std + mean`` for selected batches. It reverses
+    :class:`Normalize` built with the same statistics when both probability gates apply.
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
@@ -54,6 +57,10 @@ class Denormalize(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.denormalize`.
+
+    See Also:
+        - :class:`Normalize`: subtracts mean and divides by standard deviation.
+        - :class:`RandomAutoContrast`: derives a rescaling from each image's extrema.
 
     Examples:
         >>> norm = Denormalize(mean=torch.zeros(1, 4), std=torch.ones(1, 4))

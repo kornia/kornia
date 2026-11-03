@@ -29,10 +29,8 @@ from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 class RandomTranslate(GeometricAugmentationBase2D):
     r"""Translate images by a random 2D shift, applied per sample with probability ``p`` (default 0.5).
 
-    .. note::
-        Unlike torchvision's ``RandomAffine(degrees=0, translate=...)``, which translates every image, this class
-        translates each sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for
-        the whole batch. Pass ``p=1.0`` to translate every sample.
+    ``aug = RandomTranslate(translate_x, translate_y, ...)`` and ``output = aug(input)`` shift selected images of
+    shape ``(B, C, H, W)``. Use :class:`RandomAffine` to combine translation with rotation, scaling or shear.
 
     Args:
         translate_x: tuple of maximum absolute fraction for horizontal translations.
@@ -59,6 +57,14 @@ class RandomTranslate(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
+
+    .. note::
+        Unlike torchvision's ``RandomAffine(degrees=0, translate=...)``, which translates every image, this class
+        translates each sample with probability ``p``, 0.5 by default; with ``same_on_batch=True`` one draw decides for
+        the whole batch. Pass ``p=1.0`` to translate every sample.
+
+    See Also:
+        - :class:`RandomAffine`: samples a combined affine transformation.
 
     Examples:
         >>> import torch

@@ -56,7 +56,9 @@ def _remove_padding(
 class RandomCrop(GeometricAugmentationBase2D):
     r"""Crop random patches of a torch.Tensor image on a given size.
 
-    .. image:: _static/img/RandomCrop.png
+    ``crop = RandomCrop(size, ...)`` and ``output = crop(input)`` choose crop positions in images of shape
+    ``(B, C, H, W)`` and return patches of ``size``. Use :class:`CenterCrop` for the deterministic centre patch or
+    :class:`RandomResizedCrop` to resize the sampled patch.
 
     Args:
         size: Desired output size (out_h, out_w) of the crop.
@@ -118,7 +120,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         Slice mode uses :func:`~kornia.geometry.transform.crop_by_indices` with its own defaults and ignores this
         class's ``resample`` and ``align_corners``. Resample mode uses the configured interpolation and
         ``align_corners`` and maps constant, replicate and reflect pre-padding to zero, border and reflection
-        sampler padding. Both modes support :meth:`inverse`, for images, masks, boxes and keypoints: it warps with
+        sampler padding. Both modes support ``inverse()``, for images, masks, boxes and keypoints: it warps with
         the inverse of the mode's ``transform_matrix``, removes the pre-crop padding, and cannot restore cropped or
         interpolated content.
         For an empty batch, ``forward_input_shape`` records the original, unpadded canvas for inverse replay.
@@ -127,6 +129,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         Compiled slice-mode interpolation matches eager execution to floating-point tolerance,
         not bitwise. Eager execution retains native slicing and resizing for performance;
         the tensorized compiled path avoids recompilation as crop coordinates change.
+
+    .. image:: _static/img/RandomCrop.png
+
+    See Also:
+        - :class:`CenterCrop`: extracts the deterministic centred patch.
+        - :class:`RandomResizedCrop`: samples a crop and resizes it to the requested output size.
+        - :class:`RandomCrop3D`: samples a fixed-size subvolume.
 
     Examples:
         >>> import torch

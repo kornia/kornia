@@ -13,6 +13,9 @@ image level, Kornia provides `GeometricAugmentationBase2D` for rigid transformat
 location of image pixels, `IntensityAugmentationBase2D` for transformations that preserve pixel locations, and the
 generic `AugmentationBase2D`, which allows more freedom for customized augmentation design.
 
+Subclass the narrowest base that supplies the behavior a new operator needs: ``AugmentationBase2D`` for generic image
+operations, ``GeometricAugmentationBase2D`` for coordinate transforms, and the corresponding 3D bases for volumes.
+
 The Base-Class Hierarchy
 ------------------------
 

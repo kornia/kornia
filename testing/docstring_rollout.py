@@ -53,6 +53,12 @@ EXCLUDED_PACKAGES: dict[str, str] = {
 """Top-level packages left out of the rollout, with the reason."""
 
 CATALOG_NAMESPACES: tuple[str, ...] = (
+    "kornia.augmentation",
+    "kornia.augmentation.auto",
+    "kornia.augmentation.auto.operations.ops",
+    "kornia.augmentation.container.base",
+    "kornia.augmentation.container.params",
+    "kornia.augmentation.utils",
     "kornia.feature",
     "kornia.feature.dedode.transformer",
     "kornia.geometry.bbox",
@@ -90,6 +96,7 @@ CATALOG_NAMESPACES: tuple[str, ...] = (
 """Namespaces whose module docstring must name every export in ``__all__``."""
 
 DOCSTRING_MODULES: tuple[str, ...] = (
+    "kornia.augmentation",
     "kornia.feature.adalam",
     "kornia.feature.affine_shape",
     "kornia.feature.aliked",

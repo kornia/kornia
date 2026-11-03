@@ -31,7 +31,12 @@ from kornia.core.utils import is_exporting
 
 
 class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
-    """Policy tuple for applying multiple operations.
+    """Apply one ordered sub-policy of automatic augmentation operations.
+
+    ``output = PolicySequential(*operations)(input)`` applies its
+    :class:`~kornia.augmentation.auto.operations.OperationBase`
+    children in order and records their parameters for replay. Use :class:`~kornia.augmentation.auto.AutoAugment` to
+    sample one of a searched policy's sub-policies.
 
     Convention:
         - accepts only :class:`~kornia.augmentation.auto.operations.OperationBase` children. Generated parameters
@@ -48,6 +53,10 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
 
     Args:
         operations: the operations to perform, passed as positional arguments rather than as one list.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.operations.OperationBase`: wraps an individual policy operation.
+        - :class:`~kornia.augmentation.auto.AutoAugment`: selects from a fixed searched policy.
 
     """
 

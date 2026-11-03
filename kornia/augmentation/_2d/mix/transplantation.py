@@ -33,19 +33,9 @@ __all__ = ["RandomTransplantation"]
 class RandomTransplantation(MixAugmentationBaseV2):
     r"""Paste a labelled region from the previous batch image, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomTransplantation.png
-
-    Randomly transplant (copy and paste) image features and corresponding segmentation masks between images in a batch.
-    The transplantation transform works as follows:
-
-        1. Based on the parameter `p`, a certain number of images in the batch are selected as acceptor of a
-           transplantation.
-        2. For each acceptor, the image below in the batch is selected as donor (via circling: :math:`i - 1 \mod B`).
-        3. From the donor, a random label is selected and the corresponding image features and segmentation mask are
-           transplanted to the acceptor.
-
-    The augmentation is described in `Semantic segmentation of surgical hyperspectral images under geometric domain
-    shifts` :cite:`sellner2023semantic`.
+    ``aug = RandomTransplantation(data_keys=["input", "mask"])`` and ``image_out, mask_out = aug(input, mask)`` copy
+    selected labelled image regions and their segmentation masks between batch elements. Use
+    :class:`RandomTransplantation3D` for volumetric data.
 
     Args:
         excluded_labels: sequence of labels which should not be transplanted from a donor. This can be useful if only
@@ -121,6 +111,23 @@ class RandomTransplantation(MixAugmentationBaseV2):
           (`#4707 <https://github.com/kornia/kornia/issues/4707>`_). A further mask one rank above the driving
           mask is read as ``(B, C, *spatial)``, and every channel moves through the same ``selection``. With no
           image in the call, a mask keeps its own rank and a size-1 first spatial axis is not squeezed.
+
+    .. image:: _static/img/RandomTransplantation.png
+
+    Randomly transplant (copy and paste) image features and corresponding segmentation masks between images in a batch.
+    The transplantation transform works as follows:
+
+        1. Based on the parameter `p`, a certain number of images in the batch are selected as acceptor of a
+           transplantation.
+        2. For each acceptor, the image below in the batch is selected as donor (via circling: :math:`i - 1 \mod B`).
+        3. From the donor, a random label is selected and the corresponding image features and segmentation mask are
+           transplanted to the acceptor.
+
+    The augmentation is described in `Semantic segmentation of surgical hyperspectral images under geometric domain
+    shifts` :cite:`sellner2023semantic`.
+
+    See Also:
+        - :class:`RandomTransplantation3D`: performs transplantation on 3D volumes and masks.
 
     Examples:
         >>> import torch

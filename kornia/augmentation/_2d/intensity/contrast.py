@@ -27,7 +27,10 @@ from kornia.enhance.adjust import adjust_contrast
 
 
 class RandomContrast(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the contrast of a torch.Tensor image.
+    r"""Scale pixel values by a random contrast factor.
+
+    ``RandomContrast(contrast)(image)`` multiplies each selected image by its sampled factor. Use
+    :class:`ColorJitter` for torchvision-compatible contrast, which blends with the grayscale mean.
 
     The factor scales the raw values: the output is ``input * factor``. torchvision's and PIL's contrast blends
     the image with its grayscale mean instead (``factor * input + (1 - factor) * mean``); :class:`ColorJitter`'s
@@ -60,6 +63,11 @@ class RandomContrast(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_contrast`
+
+    See Also:
+        - :class:`RandomBrightness`: adds an offset instead of scaling values.
+        - :class:`ColorJiggle`: combines this raw-value scaling with color adjustments.
+        - :class:`ColorJitter`: blends with the grayscale mean as torchvision does.
 
     Examples:
         >>> rng = torch.manual_seed(0)

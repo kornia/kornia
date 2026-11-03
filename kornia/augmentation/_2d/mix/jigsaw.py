@@ -30,12 +30,8 @@ __all__ = ["RandomJigsaw"]
 class RandomJigsaw(MixAugmentationBaseV2):
     r"""Shuffle the tiles of each image like a jigsaw puzzle, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomJigsaw.png
-
-    Make Jigsaw puzzles for each image individually. To mix with different images in a
-    batch, referring to :class:`kornia.augmentation.RandomMosaic`.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+    ``aug = RandomJigsaw(grid, ...)`` and ``output = aug(input)`` rearrange the grid cells of each selected image.
+    Use :class:`RandomMosaic` to construct an image from several batch images.
 
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
@@ -60,6 +56,16 @@ class RandomJigsaw(MixAugmentationBaseV2):
           ``arange(N).view(rows, columns).T.flatten()``, ``[0, 2, 1, 3]`` for a ``2 x 2`` grid.
         - ``p`` is a per-sample gate; ``same_on_batch=True`` shares one gate draw and one permutation. Only image
           input is implemented.
+
+    .. image:: _static/img/RandomJigsaw.png
+
+    Make Jigsaw puzzles for each image individually. To mix with different images in a
+    batch, referring to :class:`kornia.augmentation.RandomMosaic`.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    See Also:
+        - :class:`RandomMosaic`: composes a crop from multiple images in the batch.
 
     Examples:
         >>> jigsaw = RandomJigsaw((4, 4))

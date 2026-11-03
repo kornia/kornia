@@ -31,6 +31,9 @@ from kornia.geometry.keypoints import Keypoints
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""Base class for custom 2D geometric augmentations, applied per sample with probability ``p`` (default 0.5).
 
+    Subclass ``GeometricAugmentationBase2D`` to implement a sampled geometric warp of images shaped ``(B, C, H, W)``.
+    Use :class:`AugmentationBase2D` for an augmentation that does not move coordinates.
+
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
     Args:
@@ -76,11 +79,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     Note:
         Masks are resampled with nearest neighbour whatever ``resample`` the augmentation uses for images,
-        unless ``resample`` is passed explicitly to :meth:`transform_masks` or :meth:`inverse_masks` --
+        unless ``resample`` is passed explicitly to ``transform_masks()`` or ``inverse_masks()`` --
         which is what ``extra_args[DataKey.MASK]`` does in a container. An explicit value is honoured in
         both directions. Antialiasing is disabled for masks by default, even when it is enabled for images.
-        Pass ``antialias=True`` explicitly to :meth:`transform_masks` or through ``extra_args[DataKey.MASK]``
+        Pass ``antialias=True`` explicitly to ``transform_masks()`` or through ``extra_args[DataKey.MASK]``
         to filter soft masks.
+
+    See Also:
+        - :class:`AugmentationBase2D`: base class for general 2D augmentations.
 
     """
 
@@ -157,7 +163,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process masks corresponding to the inputs that are transformed.
 
         Note:
-            Uses ``flags["resample"]`` as given; :meth:`transform_masks` supplies "nearest" when the caller
+            Uses ``flags["resample"]`` as given; ``transform_masks()`` supplies "nearest" when the caller
             did not choose one.
             Treats ``align_corners=None`` as the module's own ``align_corners``, so a mask is resampled on the
             same grid as its input.

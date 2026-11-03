@@ -77,7 +77,11 @@ class _PicklableCompileMixin:
 
 
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
-    r"""Base class for custom 2D intensity augmentations, applied per sample with probability ``p`` (default 0.5).
+    r"""Build a 2D value augmentation, per sample with probability ``p`` (default 0.5).
+
+    ``class MyAugmentation(IntensityAugmentationBase2D)`` supplies the probability gate, parameter replay and
+    identity geometric transform; ``MyAugmentation(...)(image)`` must implement only the value operation. Use
+    :class:`~kornia.augmentation.GeometricAugmentationBase2D` for an augmentation that moves pixels.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
@@ -123,6 +127,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           factor such as ``contrast`` -- with its lower end floored at the bound, so ``contrast=1.5`` reads as
           ``[0, 2.5]``, while an upper end past the bound raises. :class:`RandomSharpness` reads a scalar as
           ``[0, x]`` and :class:`RandomPosterize` as ``[x, 8]``.
+
+    See Also:
+        - :class:`~kornia.augmentation.GeometricAugmentationBase2D`: base class for transforms that move pixels.
+        - :class:`~kornia.augmentation.AugmentationBase2D`: common base for all 2D augmentations.
 
     """
 

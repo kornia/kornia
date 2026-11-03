@@ -15,9 +15,18 @@
 # limitations under the License.
 #
 
-"""Kornia Augmentation Auto — Automated augmentation policies for computer vision.
+"""Choose a policy that samples image augmentation operations automatically.
 
-This subpackage provides AutoAugment and related policy-based augmentation utilities.
+The policies accept image tensors and record their chosen paths in ``_params`` for replay. Their operations are
+defined for automatic policy construction; for a hand-written sequence use ``kornia.augmentation.ImageSequential``.
+
+Which class to use:
+
+- :class:`AutoAugment`: choose one searched, dataset-specific sub-policy.
+- :class:`RandAugment`: choose a fixed number of operations at one magnitude.
+- :class:`TrivialAugment`: choose one operation, drawing magnitudes only for operations that have one.
+- :class:`PolicyAugmentBase`: build a custom policy selection class.
+- :class:`PolicySequential`: run the operations within one custom sub-policy.
 """
 
 from .autoaugment import AutoAugment

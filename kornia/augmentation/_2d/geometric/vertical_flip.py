@@ -29,7 +29,8 @@ from kornia.geometry.transform import vflip
 class RandomVerticalFlip(GeometricAugmentationBase2D):
     r"""Flip images vertically, applied per sample with probability ``p`` (default 0.5).
 
-    .. image:: _static/img/RandomVerticalFlip.png
+    ``aug = RandomVerticalFlip(...)`` and ``output = aug(input)`` reverse the height axis of selected images of shape
+    ``(B, C, H, W)``. Use :class:`RandomHorizontalFlip` to reverse the width axis instead.
 
     Args:
         p: probability of applying the transformation to each sample.
@@ -48,6 +49,12 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.vflip`.
+
+    .. image:: _static/img/RandomVerticalFlip.png
+
+    See Also:
+        - :class:`RandomVerticalFlip3D`: reverses the height axis of a volume.
+        - :class:`RandomHorizontalFlip`: reflects across the vertical centre line.
 
     Examples:
         >>> import torch

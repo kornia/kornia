@@ -32,6 +32,9 @@ from kornia.geometry.transform.affwarp import _side_to_image_size
 class Resize(GeometricAugmentationBase2D):
     """Resize to size.
 
+    ``resize = Resize(size, ...)`` and ``output = resize(input)`` resample images of shape ``(B, C, H, W)`` to
+    ``size``. Use :class:`LongestMaxSize` or :class:`SmallestMaxSize` to preserve aspect ratio from one bound.
+
     Args:
         size: Size (h, w) in pixels of the resized region or just one side.
         side: Which side to resize, if size is only of type int.
@@ -54,8 +57,12 @@ class Resize(GeometricAugmentationBase2D):
         the half-pixel map ``x' = (x + 0.5) * W_out / W_in - 0.5`` (likewise for ``y``), and at ``True`` it maps
         the corner pixel centres onto each other. Nearest sampling uses the half-pixel grid and PyTorch's
         ``nearest-exact`` interpolation.
-        :meth:`inverse` resamples to the prior canvas and cannot recover
+        ``inverse()`` resamples to the prior canvas and cannot recover
         values discarded by a resize.
+
+    See Also:
+        - :class:`LongestMaxSize`: bounds the longest image side while preserving aspect ratio.
+        - :class:`SmallestMaxSize`: sets the shortest image side while preserving aspect ratio.
 
     """
 
@@ -167,6 +174,9 @@ class Resize(GeometricAugmentationBase2D):
 class LongestMaxSize(Resize):
     """Rescale an image so that maximum side is equal to max_size, keeping the aspect ratio of the initial image.
 
+    ``resize = LongestMaxSize(max_size)`` and ``output = resize(input)`` preserve an input image's aspect ratio.
+    Use :class:`SmallestMaxSize` to set the shortest side instead.
+
     Args:
         max_size: maximum size of the image after the transformation.
 
@@ -175,6 +185,10 @@ class LongestMaxSize(Resize):
         ``Resize(max_size, side="long", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
         are not accepted constructor arguments. Its longest output side equals ``max_size`` and the other
         side is truncated while preserving aspect ratio.
+
+    See Also:
+        - :class:`SmallestMaxSize`: makes the shortest side equal to its bound.
+        - :class:`Resize`: resamples to an explicit output size.
 
     """
 
@@ -192,6 +206,9 @@ class LongestMaxSize(Resize):
 class SmallestMaxSize(Resize):
     """Rescale an image so that minimum side is equal to max_size, keeping the aspect ratio of the initial image.
 
+    ``resize = SmallestMaxSize(max_size)`` and ``output = resize(input)`` preserve an input image's aspect ratio.
+    Use :class:`LongestMaxSize` to bound the longest side instead.
+
     Args:
         max_size: maximum size of the image after the transformation.
 
@@ -200,6 +217,10 @@ class SmallestMaxSize(Resize):
         ``Resize(max_size, side="short", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
         are not accepted constructor arguments. Its shortest output side equals ``max_size`` and the other
         side is truncated while preserving aspect ratio.
+
+    See Also:
+        - :class:`LongestMaxSize`: makes the longest side equal to its bound.
+        - :class:`Resize`: resamples to an explicit output size.
 
     """
 

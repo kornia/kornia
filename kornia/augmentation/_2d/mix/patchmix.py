@@ -27,15 +27,8 @@ from kornia.constants import DataKey
 class PatchMix(MixAugmentationBaseV2):
     r"""PatchMix augmentation.
 
-    .. image:: _static/img/PatchMix.png
-
-    Replaces a random patch in each image of a batch with the corresponding
-    region from a randomly chosen batch image, which can be the same image.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
-
-    Implementation for `CutMix: Regularization Strategy to Train Strong
-    Classifiers with Localizable Features` :cite:`yun2019cutmix`.
+    ``aug = PatchMix(alpha, patch_size, ...)`` and ``output = aug(input)`` replace a same-position square patch in
+    each selected image. Use :class:`RandomCutMixV2` to sample a CutMix rectangle and return paired labels.
 
     Args:
         alpha: Hyperparameter for the Beta distribution used to generate the
@@ -55,6 +48,19 @@ class PatchMix(MixAugmentationBaseV2):
         - ``p`` is a batch-wide gate.
           ``same_on_batch=True`` shares the patch corner, not the pairing, which may pair a sample with itself.
           Only image input is implemented.
+
+    .. image:: _static/img/PatchMix.png
+
+    Replaces a random patch in each image of a batch with the corresponding
+    region from a randomly chosen batch image, which can be the same image.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
+    Implementation for `CutMix: Regularization Strategy to Train Strong
+    Classifiers with Localizable Features` :cite:`yun2019cutmix`.
+
+    See Also:
+        - :class:`RandomCutMixV2`: CutMix with paired labels and a sampled rectangle.
 
     Examples:
         >>> aug = PatchMix(alpha=1.0, patch_size=4)

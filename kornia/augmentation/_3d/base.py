@@ -32,6 +32,10 @@ from kornia.geometry.keypoints import Keypoints3D
 class AugmentationBase3D(_AugmentationBase):
     r"""Base class for custom 3D augmentations, applied per sample with probability ``p`` (default 0.5).
 
+    Subclass ``AugmentationBase3D`` to implement augmentation hooks for volumes of shape ``(B, C, D, H, W)``. Use
+    :class:`GeometricAugmentationBase3D` when the operation moves coordinates, or :class:`IntensityAugmentationBase3D`
+    when it changes voxel values alone.
+
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
@@ -61,6 +65,9 @@ class AugmentationBase3D(_AugmentationBase):
           :class:`~kornia.augmentation.MixAugmentationBaseV2` and so carries that class's ``inverse``, which
           raises ``RuntimeError``.
 
+    See Also:
+        - :class:`GeometricAugmentationBase3D`: base class for 3D geometric transforms.
+
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
@@ -87,6 +94,9 @@ class AugmentationBase3D(_AugmentationBase):
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
     r"""Base class for 3D rigid/affine augmentations, applied per sample with probability ``p`` (default 0.5).
 
+    Subclass ``RigidAffineAugmentationBase3D`` for a transform with a ``(B, 4, 4)`` matrix. Use
+    :class:`GeometricAugmentationBase3D` for geometric transform hooks.
+
     RigidAffineAugmentationBase3D enables routined transformation with given transformation matrices
     for different data types like masks, boxes, and keypoints.
 
@@ -100,6 +110,9 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
+
+    See Also:
+        - :class:`GeometricAugmentationBase3D`: applies and records 3D geometric transformations.
 
     """
 

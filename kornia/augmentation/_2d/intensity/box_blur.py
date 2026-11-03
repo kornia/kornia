@@ -28,6 +28,10 @@ from kornia.filters import box_blur
 class RandomBoxBlur(IntensityAugmentationBase2D):
     """Blur images with a box filter, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomBoxBlur(kernel_size, ...)(input)`` replaces each selected pixel with a rectangular-window mean
+    in an image of shape ``(B, C, H, W)``. Use :class:`RandomGaussianBlur` when the window should give central pixels
+    more weight.
+
     .. image:: _static/img/RandomBoxBlur.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -64,6 +68,9 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
+
+    See Also:
+        - :class:`RandomGaussianBlur`: uses Gaussian rather than uniform filter weights.
 
     Examples:
         >>> img = torch.ones(1, 1, 24, 24)

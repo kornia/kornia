@@ -35,18 +35,8 @@ __all__ = ["RandomMosaic"]
 class RandomMosaic(MixAugmentationBaseV2):
     r"""Replace each sample, with probability ``p`` (default 0.7), by a crop of a mosaic of batch images.
 
-    .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
-
-    Given a certain number of images, mosaic transform combines them into one output image.
-    The output image is composed of the parts from each sub-image. To mess up each image individually,
-    referring to :class:`kornia.augmentation.RandomJigsaw`.
-
-    The mosaic transform steps are as follows:
-
-         1. Concate selected images into a super-image.
-         2. Crop out the outcome image according to the top-left corner and crop size.
-
-    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+    ``aug = RandomMosaic(output_size, ...)`` and ``output = aug(input)`` arrange batch images in a mosaic before
+    taking one output crop. Use :class:`RandomJigsaw` to rearrange tiles from one image instead.
 
     Args:
         output_size: the output ``(height, width)`` after mosaicing.
@@ -68,16 +58,18 @@ class RandomMosaic(MixAugmentationBaseV2):
             to extract the window. Use `slice` for efficiency, or `resample` for proper
             differentiability.
 
-    Examples:
-        >>> mosaic = RandomMosaic((300, 300), data_keys=["input", "bbox_xyxy"])
-        >>> boxes = torch.tensor([[
-        ...     [70, 5, 150, 100],
-        ...     [60, 180, 175, 220],
-        ... ]]).repeat(8, 1, 1)
-        >>> input = torch.randn(8, 3, 224, 224)
-        >>> out = mosaic(input, boxes)
-        >>> out[0].shape, out[1].shape
-        (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
+    .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
+
+    Given a certain number of images, mosaic transform combines them into one output image.
+    The output image is composed of the parts from each sub-image. To mess up each image individually,
+    referring to :class:`kornia.augmentation.RandomJigsaw`.
+
+    The mosaic transform steps are as follows:
+
+         1. Concate selected images into a super-image.
+         2. Crop out the outcome image according to the top-left corner and crop size.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
 
     Convention:
         - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
@@ -106,6 +98,20 @@ class RandomMosaic(MixAugmentationBaseV2):
         - In either form, a selected sample's box that falls below ``min_bbox_size`` is zeroed by
           :meth:`~kornia.geometry.boxes.Boxes.filter_boxes_by_area`. It exports as exact zeros in every box
           format, from a direct call and from :class:`~kornia.augmentation.container.AugmentationSequential`.
+
+    See Also:
+        - :class:`RandomJigsaw`: shuffles tiles within each individual image.
+
+    Examples:
+        >>> mosaic = RandomMosaic((300, 300), data_keys=["input", "bbox_xyxy"])
+        >>> boxes = torch.tensor([[
+        ...     [70, 5, 150, 100],
+        ...     [60, 180, 175, 220],
+        ... ]]).repeat(8, 1, 1)
+        >>> input = torch.randn(8, 3, 224, 224)
+        >>> out = mosaic(input, boxes)
+        >>> out[0].shape, out[1].shape
+        (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
 
     """
 

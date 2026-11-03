@@ -44,7 +44,12 @@ class _RandomSign:
 
 
 class OperationBase(nn.Module):
-    """Base class of differentiable augmentation operations.
+    """Wrap one augmentation module for use in an automatic augmentation policy.
+
+    ``wrapped = OperationBase(op)`` and ``output = wrapped(input)`` apply the wrapped augmentation to floating
+    images of shape ``(B, C, H, W)``. To control a magnitude, pass a list such as
+    ``initial_magnitude=[("brightness_factor", 0.5)]`` for a brightness operation. Use
+    :class:`~kornia.augmentation.auto.PolicySequential` to compose operations into a policy.
 
     Args:
         operation: Kornia augmentation module.
@@ -72,6 +77,10 @@ class OperationBase(nn.Module):
         - the concrete classes in ``kornia.augmentation.auto.operations.ops`` wrap public 2D augmentations and
           inherit their input, dtype, RNG and replay contracts. A wrapper pickles, with either sign setting, when
           its magnitude mapping is picklable.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.PolicySequential`: runs the operations of a policy in order.
+        - :class:`~kornia.augmentation.auto.operations.ops.Rotate`: is a concrete geometric policy operation.
 
     """
 

@@ -29,6 +29,9 @@ from kornia.filters import motion_blur
 class RandomMotionBlur(IntensityAugmentationBase2D):
     r"""Blur images with a random motion-blur kernel, applied per sample with probability ``p`` (default 0.5).
 
+    ``output = RandomMotionBlur(kernel_size, angle, direction, ...)(input)`` convolves selected ``(B, C, H, W)``
+    images with a sampled directional kernel. Use :class:`RandomGaussianBlur` for non-directional Gaussian blur.
+
     .. image:: _static/img/RandomMotionBlur.png
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
@@ -93,6 +96,11 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.filters.motion_blur`.
+
+    See Also:
+        - :class:`RandomMotionBlur3D`: applies a directional kernel to volumes.
+        - :class:`RandomGaussianBlur`: applies isotropic Gaussian smoothing.
+        - :class:`RandomBoxBlur`: applies uniform, non-directional smoothing.
 
     Examples:
         >>> rng = torch.manual_seed(0)

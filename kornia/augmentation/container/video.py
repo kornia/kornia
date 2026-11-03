@@ -40,7 +40,12 @@ __all__ = ["VideoSequential"]
 
 
 class VideoSequential(ImageSequential):
-    r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
+    r"""Apply an image augmentation sequence to a video while optionally sharing draws across frames.
+
+    ``output = VideoSequential(*modules, data_format=...)(video)`` accepts ``(B, T, C, H, W)`` by default or
+    ``(B, C, T, H, W)`` with ``data_format="BCTHW"``, flattens it for the child modules, then restores that layout.
+    ``same_on_frame=True`` shares each clip's draw across time; use
+    :class:`~kornia.augmentation.container.AugmentationSequential` to transform a video with aligned annotations.
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
@@ -52,7 +57,7 @@ class VideoSequential(ImageSequential):
     Args:
         *args: a list of augmentation module.
         data_format: only BCTHW and BTCHW are supported.
-        same_on_frame: apply the same transformation across the channel per frame.
+        same_on_frame: share each clip's sampled transform parameters across its temporal frames.
         random_apply: randomly select a sublist (order agnostic) of args to
             apply transformation.
             If int, a fixed number of transformations will be selected.
@@ -77,6 +82,10 @@ class VideoSequential(ImageSequential):
     Note:
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
         Those transformations in ``kornia.geometry`` will not be taken into account.
+
+    See Also:
+        - :class:`~kornia.augmentation.container.ImageSequential`: applies the same kind of sequence to images.
+        - :class:`~kornia.augmentation.container.AugmentationSequential`: transforms a video with aligned annotations.
 
     Example:
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each

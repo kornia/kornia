@@ -6,16 +6,18 @@ Augmentation Containers
 
 .. currentmodule:: kornia.augmentation.container
 
-The classes in this section are containers for augmenting different data formats (e.g. images, videos).
+Choose :class:`AugmentationSequential` for images with aligned masks, boxes or keypoints, and :class:`ImageSequential`
+for images alone. :class:`VideoSequential` applies image transforms to video frames; :class:`PatchSequential` applies
+them to an image grid. The dispatchers run several pipelines on one input bundle or pair each pipeline with a bundle.
 
 
 Augmentation Sequential
 -----------------------
 
-Kornia augmentations provide a simple on-device augmentation framework with a number of conveniences
-(e.g. returning the transformation matrix, or inverting a geometric transform). On top of that, we provide an
-advanced augmentation container to ease the pain of building augmentation pipelines. This API also provides
-predefined routines that automate the processing of masks, bounding boxes, and keypoints.
+``AugmentationSequential(*transforms, data_keys=keys)(*inputs)`` applies a sequence through each child's supported
+image and annotation handlers. Its recorded parameters support replay, and matrix-based geometric steps contribute
+to the composed transform matrix. Inversion applies to supported 2D geometric steps; it leaves intensity changes
+applied and cannot recover image content lost through resampling or cropping.
 
 .. autoclass:: AugmentationSequential
 
@@ -156,6 +158,19 @@ data formats.
 .. autoclass:: VideoSequential
 
    .. automethod:: forward
+
+
+Container building blocks
+-------------------------
+
+These base classes and records support custom containers. Applications normally start with
+``AugmentationSequential``, ``ImageSequential``, ``PatchSequential`` or ``VideoSequential`` above.
+
+.. autoclass:: kornia.augmentation.container.base.BasicSequentialBase
+.. autoclass:: kornia.augmentation.container.base.SequentialBase
+.. autoclass:: kornia.augmentation.container.base.ImageSequentialBase
+.. autoclass:: kornia.augmentation.container.params.ParamItem
+.. autoclass:: kornia.augmentation.container.params.PatchParamItem
 
 
 Data keys

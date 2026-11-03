@@ -30,6 +30,21 @@ from kornia.geometry.transform import get_tps_transform, warp_image_tps
 class RandomThinPlateSpline(AugmentationBase2D):
     r"""Warp images with a random thin plate spline, applied per sample with probability ``p`` (default 0.5).
 
+    ``aug = RandomThinPlateSpline(...)`` and ``output = aug(input)`` deform selected images of shape ``(B, C, H, W)``
+    using a sampled thin-plate spline. Use :class:`RandomElasticTransform` for a smooth displacement-field warp.
+
+    Args:
+        scale: the non-negative scale factor to apply to the destination points.
+            Zero leaves the control points unchanged.
+        align_corners: Interpolation flag used by ``grid_sample``.
+        padding_mode: Padding used by ``grid_sample``: 'zeros', 'border' or 'reflection'.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation to each sample.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.warp_image_tps`.
+
     .. image:: _static/img/RandomThinPlateSpline.png
 
     Convention:
@@ -44,17 +59,8 @@ class RandomThinPlateSpline(AugmentationBase2D):
         (`#4412 <https://github.com/kornia/kornia/issues/4412>`_) are listed on
         :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
 
-    Args:
-        scale: the non-negative scale factor to apply to the destination points.
-            Zero leaves the control points unchanged.
-        align_corners: Interpolation flag used by ``grid_sample``.
-        padding_mode: Padding used by ``grid_sample``: 'zeros', 'border' or 'reflection'.
-        same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation to each sample.
-        keepdim: whether to keep the output shape the same as input (True) or broadcast it
-                 to the batch form (False).
-    .. note::
-        This function internally uses :func:`kornia.geometry.transform.warp_image_tps`.
+    See Also:
+        - :class:`RandomElasticTransform`: samples a smooth pixel displacement field.
 
     Examples:
         >>> img = torch.ones(1, 1, 2, 2)

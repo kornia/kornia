@@ -35,15 +35,23 @@ SUBPOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
-    """Base class for policy-based image augmentations.
+    """Build and replay image augmentation policies made of named operations.
+
+    A concrete subclass constructs ``PolicyAugmentBase(policy)`` and selects
+    :class:`~kornia.augmentation.auto.PolicySequential` children when it is called with a floating image tensor of
+    shape ``(B, C, H, W)``. Use :class:`~kornia.augmentation.auto.AutoAugment`,
+    :class:`~kornia.augmentation.auto.RandAugment` or :class:`~kornia.augmentation.auto.TrivialAugment` for the
+    policy families supplied by Kornia.
 
     Convention:
-        - a concrete policy selects one or more :class:`PolicySequential` children for each forward call and
+        - a concrete policy selects one or more :class:`~kornia.augmentation.auto.PolicySequential` children for each
+          forward call and
           records that selected path, including every operation parameter dictionary, in ``_params``. Passing
           that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
           path and reproduces their output.
         - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
-          and for :class:`RandAugment` the order in which its sub-policies were drawn. When matrix computation is
+          and for :class:`~kornia.augmentation.auto.RandAugment` the order in which its sub-policies were drawn. When
+          matrix computation is
           enabled, their geometric transformation matrices
           compose in that same execution order; a nonempty policy containing only intensity
           operations has the identity matrix. An empty selected sub-policy has no matrix.
@@ -54,6 +62,11 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
           per-instance generator.
 
     Concrete policies define how they select children and interpret policy magnitudes.
+
+    See Also:
+        - :class:`~kornia.augmentation.auto.PolicySequential`: runs the operations in one sub-policy.
+        - :class:`~kornia.augmentation.container.ImageSequential`: chains arbitrary image transforms without a policy.
+
     """
 
     def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:

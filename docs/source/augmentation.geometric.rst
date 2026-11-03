@@ -10,6 +10,11 @@ applied (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). `RandomErasin
 and mask values without moving coordinates. See
 :class:`~kornia.augmentation.AugmentationSequential` for the supported data-key paths and their limitations.
 
+Choose ``RandomAffine`` for one sampled rotation, translation, scale and shear; choose ``RandomPerspective`` for a
+projective warp. ``RandomCrop`` preserves a sampled patch size, while ``RandomResizedCrop`` rescales that patch and
+``CenterCrop`` is deterministic. The horizontal and vertical flips act on one image axis; ``RandomRotation90``
+restricts rotations to quarter turns.
+
 .. autoclass:: CenterCrop
 .. autoclass:: PadTo
 .. autoclass:: RandomAffine
