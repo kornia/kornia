@@ -623,11 +623,72 @@ def run_8point(
         return normalize_transformation(F)
 
 
+def run_affine(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Compute the affine fundamental matrix of two affine cameras by orthogonal regression.
+
+    Two affine cameras (parallel projection, such as weak perspective) have a fundamental matrix of the form
+    ``[[0, 0, a], [0, 0, b], [c, d, e]]``: the epipolar constraint :math:`a x_2 + b y_2 + c x_1 + d y_1 + e = 0` is a
+    hyperplane in the space of the stacked correspondences :math:`(x_2, y_2, x_1, y_1)`, and the distance of a
+    correspondence to it is the geometric error, the smallest total displacement of its two points that makes them
+    correspond. The hyperplane that minimizes the sum of the squared (weighted) distances passes through the
+    centroid, and its normal is the eigenvector of the smallest eigenvalue of the centred scatter matrix. This is
+    the Gold Standard (maximum-likelihood) estimate under Gaussian noise, exact for four correspondences.
+
+    Reference: Hartley and Zisserman, Multiple View Geometry in Computer Vision, 2nd ed., section 14.2, algorithm 14.1.
+
+    Args:
+        points1: points in the first image ``(B, N, 2)``, :math:`N \ge 4`.
+        points2: points in the second image ``(B, N, 2)``.
+        weights: optional nonnegative weights ``(B, N)`` of the correspondences' squared distances.
+
+    Returns:
+        The affine fundamental matrices ``(B, 3, 3)``, scaled so that ``F[2, 2] = 1``.
+
+    """
+    KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
+    KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
+    KORNIA_CHECK_SAME_SHAPE(points1, points2)
+    if points1.shape[1] < 4:
+        raise ShapeError(
+            f"points1 and points2 must have shape (B, N, 2) with N >= 4, got {list(points1.shape)}.",
+            actual_shape=list(points1.shape),
+            expected_shape=["B", "N >= 4", "2"],
+        )
+    if weights is not None and weights.shape != points1.shape[:2]:
+        raise ShapeError(
+            f"weights must have shape (B, N) = {list(points1.shape[:2])}, got {list(weights.shape)}.",
+            actual_shape=list(weights.shape),
+            expected_shape=["B", "N"],
+        )
+    dtype = points1.dtype
+    # Pixel coordinates in the hundreds overflow a half-precision scatter matrix, and eigh has no half kernel.
+    work = torch.promote_types(dtype, torch.float32)
+    with _autocast_disabled(points1.device.type):
+        X = torch.cat([points2, points1], dim=-1).to(work)
+        if weights is None:
+            w = torch.ones(X.shape[:2], device=X.device, dtype=work)
+        else:
+            # A negative weight counts as zero; ``where`` keeps the derivative at a zero weight one-sided (#4229).
+            w = weights.to(work)
+            w = torch.where(w < 0, 0.0, w)
+        mean = (w[..., None] * X).sum(1) / w.sum(1, keepdim=True).clamp_min(torch.finfo(work).tiny)
+        centred = X - mean[:, None]
+        # Linear in w, so a zero weight has a finite gradient, unlike row scaling by sqrt(w) (#4912).
+        scatter = (centred * w[..., None]).transpose(-2, -1) @ centred
+        normal = torch.linalg.eigh(scatter)[1][..., 0]
+        zeros = torch.zeros_like(normal[:, 0])
+        last = -(normal * mean).sum(-1)
+        F = torch.stack(
+            [zeros, zeros, normal[:, 0], zeros, zeros, normal[:, 1], normal[:, 2], normal[:, 3], last], dim=-1
+        ).view(-1, 3, 3)
+        return normalize_transformation(F).to(dtype)
+
+
 def find_fundamental(
     points1: torch.Tensor,
     points2: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    method: Literal["8POINT", "7POINT"] = "8POINT",
+    method: Literal["8POINT", "7POINT", "AFFINE"] = "8POINT",
 ) -> torch.Tensor:
     r"""Estimate the fundamental matrix from pixel correspondences with the 8- or 7-point algorithm.
 
@@ -635,7 +696,10 @@ def find_fundamental(
     second image, in pixels or any other image coordinates, and returns the rank-2 matrix ``(B, 3, 3)`` with
     :math:`x_2^\top F x_1 = 0` (the second image's point on the left) of the Hartley-normalized, optionally weighted,
     8-point least-squares fit. ``method="7POINT"`` takes exactly seven correspondences and returns the three
-    candidates ``(B, 3, 3, 3)`` of the 7-point algorithm instead. For calibrated cameras and normalized camera
+    candidates ``(B, 3, 3, 3)`` of the 7-point algorithm instead. ``method="AFFINE"`` takes ``N >= 4``
+    correspondences of two affine cameras (parallel projection, such as weak-perspective views of a distant scene)
+    and returns their affine fundamental matrix ``[[0, 0, a], [0, 0, b], [c, d, e]]``, the Gold Standard
+    (maximum-likelihood) fit of Hartley and Zisserman's algorithm 14.1. For calibrated cameras and normalized camera
     coordinates, use :func:`find_essential`; for a planar scene or a camera that only rotates, where ``F`` is not
     determined, :func:`~kornia.geometry.homography.find_homography_dlt`; with outliers,
     :class:`~kornia.geometry.ransac.RANSAC`.
@@ -645,20 +709,21 @@ def find_fundamental(
         - The result is scaled so that ``F[2, 2] = 1`` by :func:`normalize_transformation`, which leaves it at its
           unnormalised scale when ``F[2, 2]`` is numerically zero, as for exactly rectified stereo.
           ``method="7POINT"`` returns three candidates in no particular order.
-        - ``weights`` weight each correspondence's equation in the linear system: only their ratios matter, a
-          negative weight counts as zero, and ``method="7POINT"`` ignores them.
+        - ``weights`` weight each correspondence's equation in the linear system (for ``"AFFINE"``, its squared
+          distance): only their ratios matter, a negative weight counts as zero, and ``method="7POINT"`` ignores them.
+        - ``"AFFINE"`` fits and returns the affine form exactly; it computes in at least float32.
         - When the 7-point cubic has one real root, the two extra ``"7POINT"`` candidates are zero matrices.
         - A caller's autocast region does not change the fit.
 
     Args:
         points1: A set of points in the first image with a tensor shape ``(B, N, 2)``: :math:`N \ge 8` for
-            ``"8POINT"``, exactly 7 for ``"7POINT"``.
+            ``"8POINT"``, exactly 7 for ``"7POINT"``, :math:`N \ge 4` for ``"AFFINE"``.
         points2: A set of points in the second image with the shape of ``points1``.
         weights: Tensor containing the weights per point correspondence with a shape of ``(B, N)``.
-        method: The method to use for computing the fundamental matrix. Supported methods are "7POINT" and "8POINT".
+        method: The method to use for computing the fundamental matrix: "8POINT", "7POINT" or "AFFINE".
 
     Returns:
-        the computed fundamental matrix with shape ``(B, 3, 3)`` for ``"8POINT"`` and
+        the computed fundamental matrix with shape ``(B, 3, 3)`` for ``"8POINT"`` and ``"AFFINE"``, and
         ``(B, 3, 3, 3)`` for ``"7POINT"``.
 
     Raises:
@@ -677,8 +742,10 @@ def find_fundamental(
         result = run_7point(points1, points2)
     elif method.upper() == "8POINT":
         result = run_8point(points1, points2, weights)
+    elif method.upper() == "AFFINE":
+        result = run_affine(points1, points2, weights)
     else:
-        raise ValueError(f"Invalid method: {method}. Supported methods are '7POINT' and '8POINT'.")
+        raise ValueError(f"Invalid method: {method}. Supported methods are '7POINT', '8POINT' and 'AFFINE'.")
     return result
 
 

@@ -7,7 +7,7 @@ kornia.geometry.ransac
 .. currentmodule:: kornia.geometry.ransac
 
 Robust model fitting with RANSAC (Random Sample Consensus), used to estimate affine transforms, homographies,
-fundamental and essential matrices from noisy correspondences. ``RANSAC(model_type, inl_th)`` builds the estimator,
+fundamental matrices (general and affine) and essential matrices from noisy correspondences. ``RANSAC(model_type, inl_th)`` builds the estimator,
 and calling it on one set of ``(N, 2)`` correspondences (``(N, 2, 2)`` segments for
 ``"homography_from_linesegments"``) of the first and the second image returns the ``(3, 3)`` model and the ``(N,)``
 inlier mask. A homography or affine map takes the first image to the second, a fundamental matrix satisfies
@@ -47,6 +47,39 @@ set; ``batch_size`` batches hypotheses, not independent problems.
 AdaLAM shares the linear fitting primitive but retains its specialized loop:
 its local 2x2 models are constrained by a matched seed, and its variable-size
 neighborhoods, sampling and confidence-based inlier selection are unchanged.
+
+Affine fundamental matrices
+---------------------------
+
+``model_type="fundamental_affine"`` estimates the fundamental matrix of two affine
+cameras, ``[[0, 0, a], [0, 0, b], [c, d, e]]``: views in parallel projection,
+such as weak-perspective views of a distant scene (aerial or satellite images
+taken with a long focal length) or images through a telecentric lens. Its epipolar
+lines are parallel in each image, and it has four degrees of freedom against seven
+for a general fundamental matrix. Each four-point sample is solved, and each new
+best model refitted on its inliers, by
+:func:`~kornia.geometry.epipolar.find_fundamental` with ``method="AFFINE"``:
+orthogonal regression on the stacked correspondences ``(x2, y2, x1, y1)``, the
+Gold Standard estimate of Hartley and Zisserman's algorithm 14.1. A
+correspondence's Sampson distance is then exact: the smallest total displacement
+of its two points that makes them correspond, the distance ``inl_th`` bounds.
+Like any fundamental matrix, it is not determined by correspondences on one plane,
+which a single 2D affine map relates (``model_type="affine"`` tests for that).
+It suits views that are close to parallel projection. On synthetic pinhole views of
+a 60 m scene from 45 degrees off nadir (1000 px images, 0.5 px noise,
+``inl_th=2.0``), it kept 99% of the true correspondences from 3000 m away,
+89% from 1500 m and 49% from 500 m, where ``"fundamental"`` kept all of them;
+on exactly affine views both kept all of them, ``"fundamental_affine"`` with a more
+accurate matrix, six to twelve times faster on CPU and 24 to 50 times on CUDA.
+It uses ``local_optimization="dlt"``; ``"lm"``, ``compile=True`` and DEGENSAC
+are not supported.
+
+.. code-block:: python
+
+    from kornia.geometry import RANSAC
+
+    estimator = RANSAC("fundamental_affine", inl_th=2.0, seed=0)
+    F, inliers = estimator(points1, points2)
 
 Batches, scores, and refinement
 -------------------------------
@@ -102,8 +135,8 @@ endpoints to the target segment's line; zero-length target segments are outliers
 Their local optimization re-weights segments by the same distance.
 
 A model is accepted only with more inliers than its minimal sample (three
-correspondences for affine transforms, four for homographies, five for essential and seven or eight for
-fundamental matrices): a model fitted to a sample always fits that sample, so
+correspondences for affine transforms, four for homographies and affine fundamental matrices, five for essential
+and seven or eight for fundamental matrices): a model fitted to a sample always fits that sample, so
 only further inliers show a consensus. Without one, the estimator returns the
 all-zero matrix and an empty mask.
 

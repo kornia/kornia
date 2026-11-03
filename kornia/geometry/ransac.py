@@ -19,15 +19,16 @@ r"""Estimate geometric models robustly from correspondences that contain outlier
 
 :class:`RANSAC` fits one model to one set of ``(N, 2)`` correspondences (``(N, 2, 2)`` segments for
 ``"homography_from_linesegments"``), with the first image's points first: a homography or an affine map from the first
-image to the second, a fundamental matrix with :math:`x_2^\top F x_1 = 0` from pixels, or an essential matrix from
-normalized camera coordinates. Its threshold ``inl_th`` is a distance in the units of the correspondences.
+image to the second, a fundamental matrix with :math:`x_2^\top F x_1 = 0` from pixels (a general one, or the affine
+fundamental matrix of two affine cameras), or an essential matrix from normalized camera coordinates. Its threshold
+``inl_th`` is a distance in the units of the correspondences.
 :ref:`Two-view geometry <two-view-conventions>` compares this with OpenCV.
 
 Which class to use:
 
 - One model from correspondences with outliers: :class:`RANSAC`, with ``model_type`` one of ``"homography"``,
   ``"homography_from_linesegments"``, ``"affine"``, ``"fundamental"`` (seven-point samples),
-  ``"fundamental_7pt"``, ``"fundamental_8pt"`` or ``"essential"``.
+  ``"fundamental_7pt"``, ``"fundamental_8pt"``, ``"fundamental_affine"`` or ``"essential"``.
 - A model from correspondences known to be inliers, without sampling: the estimators it wraps,
   :func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`,
   :func:`~kornia.geometry.epipolar.find_fundamental` and :func:`~kornia.geometry.epipolar.find_essential`.
@@ -65,6 +66,7 @@ from kornia.geometry.epipolar.fundamental import (
     _seven_point_candidates,
     normalize_points,
     normalize_transformation,
+    run_affine,
 )
 from kornia.geometry.homography import (
     _four_point_homography,
@@ -203,7 +205,8 @@ class RANSAC(nn.Module):
     when its error under the model is at most ``inl_th``, in the units of the keypoints. The model follows the
     estimator of its type: a homography or affine map from ``kp1`` to ``kp2``
     (:func:`~kornia.geometry.homography.find_homography_dlt`, :func:`~kornia.geometry.solvers.find_affine`), a
-    fundamental matrix with :math:`x_2^\top F x_1 = 0` (:func:`~kornia.geometry.epipolar.find_fundamental`), or an
+    fundamental matrix with :math:`x_2^\top F x_1 = 0` (:func:`~kornia.geometry.epipolar.find_fundamental`; for
+    ``"fundamental_affine"`` its ``method="AFFINE"``, the matrix of two affine cameras), or an
     essential matrix for camera-normalized keypoints (:func:`~kornia.geometry.epipolar.find_essential`). Each call
     estimates one model, since ``batch_size`` batches hypotheses rather than problems; for correspondences known to be
     inliers, call those estimators directly (see also https://en.wikipedia.org/wiki/Random_sample_consensus).
@@ -211,16 +214,17 @@ class RANSAC(nn.Module):
     Convention:
         - ``kp1`` and ``kp2`` are passed as the first- and second-image arguments of the estimator selected by
           ``model_type``. ``forward`` returns an all-zero model and no inliers when no candidate has more inliers
-          than its minimal sample (three correspondences for affine transforms, four for homographies,
-          five for ``"essential"``, seven for ``"fundamental"`` and ``"fundamental_7pt"``,
+          than its minimal sample (three correspondences for affine transforms, four for homographies and
+          ``"fundamental_affine"``, five for ``"essential"``, seven for ``"fundamental"`` and ``"fundamental_7pt"``,
           eight for ``"fundamental_8pt"``).
         - ``"fundamental"`` draws seven-point samples, like ``"fundamental_7pt"``; ``"fundamental_8pt"`` draws
           eight-point ones.
         - ``inl_th`` is in the keypoints' own units (pixels, or calibrated units for ``"essential"``): a
           correspondence is an inlier when its one-way transfer error for ``"homography"`` or ``"affine"``,
-          its Sampson distance for the fundamental models and ``"essential"``, or the mean distance
-          of its transferred endpoints from the image-2 segment's line for ``"homography_from_linesegments"``
-          is at most ``inl_th``.
+          its Sampson distance for the fundamental models and ``"essential"`` (for ``"fundamental_affine"`` the
+          exact geometric distance: the smallest total displacement of the two points that makes them correspond),
+          or the mean distance of its transferred endpoints from the image-2 segment's line for
+          ``"homography_from_linesegments"`` is at most ``inl_th``.
           :ref:`two-view-conventions` compares this with OpenCV.
         - ``score_type="msac"`` (the default) ranks candidates by ``sum(1 - min(e / inl_th**2, 1))`` over the
           squared errors ``e``; acceptance and early stopping count inliers for either score.
@@ -236,12 +240,14 @@ class RANSAC(nn.Module):
           fundamental matrices are estimated on Hartley-normalized correspondences; essential matrices in the
           caller's calibrated coordinates, which a normalization would take off the essential manifold, refined on
           that manifold and returned with unit Frobenius norm.
-        - ``local_optimization="dlt"``, the only choice for ``"affine"`` and line segments, refits each new best
-          model from its inliers: with the default ``lo_sample_size=32``, ``max_lo_iters`` randomized refits on
-          32-inlier subsets followed by one full-inlier refit; ``lo_sample_size=None`` refits all inliers
-          iteratively. Affine models use a linear least-squares refit with free translation and return
-          a homogeneous matrix with bottom row ``[0, 0, 1]``; their minimal samples need three
-          non-collinear source points.
+        - ``local_optimization="dlt"``, the only choice for ``"affine"``, ``"fundamental_affine"`` and line
+          segments, refits each new best model from its inliers: with the default ``lo_sample_size=32``,
+          ``max_lo_iters`` randomized refits on 32-inlier subsets followed by one full-inlier refit;
+          ``lo_sample_size=None`` refits all inliers iteratively. Affine models use a linear least-squares refit
+          with free translation and return a homogeneous matrix with bottom row ``[0, 0, 1]``; their minimal
+          samples need three non-collinear source points. ``"fundamental_affine"`` solves its four-point samples
+          and refits its inliers by orthogonal regression, the Gold Standard estimate (Hartley and Zisserman,
+          algorithm 14.1).
         - ``degensac=True``, an opt-in for ``"fundamental"`` and ``"fundamental_7pt"`` with
           ``local_optimization="lm"``, runs DEGENSAC (Chum, Werner and Matas, CVPR 2005). Every seven-point model that
           sets a new record among the raw scores is tested for an H-degenerate sample: five or more of its seven
@@ -277,8 +283,8 @@ class RANSAC(nn.Module):
         - A caller's autocast region does not change the estimate.
 
     Args:
-        model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt", "essential", or
-            "homography_from_linesegments".
+        model_type: "affine", "homography", "fundamental", "fundamental_7pt", "fundamental_8pt",
+            "fundamental_affine", "essential", or "homography_from_linesegments".
         inl_th: positive inlier threshold, in the units given above.
         batch_size: hypotheses generated and verified at once, or ``"auto"`` to pick the batches per call from
             the device and the number of correspondences (see :meth:`resolve_batch_size`).
@@ -343,7 +349,7 @@ class RANSAC(nn.Module):
 
         Args:
             model_type: type of model to estimate: "affine", "homography", "fundamental", "fundamental_7pt",
-                "fundamental_8pt", "essential", "homography_from_linesegments".
+                "fundamental_8pt", "fundamental_affine", "essential", "homography_from_linesegments".
             inl_th: inlier threshold; the class docstring gives its unit per ``model_type``.
             batch_size: number of generated samples at once, or ``"auto"`` (see :meth:`resolve_batch_size`).
             max_iter: maximum batches to generate. At most ``batch_size * max_iter`` minimal samples are drawn
@@ -378,6 +384,7 @@ class RANSAC(nn.Module):
             "fundamental",
             "fundamental_7pt",
             "fundamental_8pt",
+            "fundamental_affine",
             "homography_from_linesegments",
             "essential",
         ]
@@ -472,6 +479,12 @@ class RANSAC(nn.Module):
             self.minimal_sample_size = 7
             self.polisher_solver = find_fundamental
             self.polisher_sample_size = 8
+        elif model_type == "fundamental_affine":
+            self.error_fn = sampson_epipolar_distance
+            self.minimal_solver = run_affine
+            self.minimal_sample_size = 4
+            self.polisher_solver = run_affine
+            self.polisher_sample_size = 4
         elif model_type == "essential":
             self.error_fn = sampson_epipolar_distance
             self.minimal_solver = find_essential

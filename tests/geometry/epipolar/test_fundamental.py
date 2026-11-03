@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Dict
+from typing import Dict, Tuple
 
 import pytest
 import torch
@@ -37,7 +37,7 @@ from kornia.geometry.solvers.homogeneous import _null_space_lu
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available, script_uncached
 from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
-from testing.two_view import two_view_scene
+from testing.two_view import affine_two_view_scene, two_view_scene
 
 
 class TestNormalizePoints(BaseTester):
@@ -395,6 +395,110 @@ class TestFindFundamental(BaseTester):
             weights = torch.rand(*weights_shape, device=device, dtype=dtype)
             with pytest.raises(ShapeError, match=r"weights must have shape \(B, N\) = \[1, 8\], got \["):
                 fundamental_module.run_8point(points, points, weights)
+
+
+class TestFindFundamentalAffine(BaseTester):
+    """``method="AFFINE"``: the affine fundamental matrix, Hartley and Zisserman's algorithm 14.1."""
+
+    @staticmethod
+    def _tol(dtype: torch.dtype) -> Dict[str, float]:
+        return {"rtol": 1e-7, "atol": 1e-9} if dtype == torch.float64 else {"rtol": 5e-5, "atol": 1e-7}
+
+    @staticmethod
+    def _noisy(scene: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+        return scene["x1"] + scene["noise"][..., :2], scene["x2"] + scene["noise"][..., 2:]
+
+    def test_exact_correspondences_give_the_cameras_matrix(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        scene = affine_two_view_scene(device, dtype)
+        F = epi.find_fundamental(scene["x1"], scene["x2"], method="AFFINE")
+        assert F.shape == (1, 3, 3)
+        assert F.dtype == dtype
+        assert not F[:, :2, :2].any()
+        self.assert_close(F, scene["F"], **self._tol(dtype))
+
+    def test_four_correspondences_determine_it(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        scene = affine_two_view_scene(device, dtype)
+        F = epi.find_fundamental(scene["x1"][:, :4], scene["x2"][:, :4], method="affine")
+        self.assert_close(F, scene["F"], **self._tol(dtype))
+
+    def test_noisy_correspondences_give_the_gold_standard(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        scene = affine_two_view_scene(device, dtype)
+        x1, x2 = self._noisy(scene)
+        F = epi.find_fundamental(x1, x2, method="AFFINE")
+        self.assert_close(F, scene["F_gold"], **self._tol(dtype))
+        # Control: the noise moves the minimizer away from the cameras' matrix by more than the tolerance.
+        assert (scene["F_gold"] - scene["F"]).abs().max() > 1e-5
+
+    def test_swapping_the_images_transposes_it(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
+        F = epi.find_fundamental(x1, x2, method="AFFINE")
+        self.assert_close(epi.find_fundamental(x2, x1, method="AFFINE"), F.transpose(-2, -1), **self._tol(dtype))
+
+    def test_weights_semantics(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
+        x2[0, 5] += torch.tensor([40.0, -25.0], device=device, dtype=dtype)
+        keep = torch.arange(12, device=device) != 5
+        w = torch.tensor([[0.5, 1.0, 2.0, 1.5, 0.75, 0.0, 3.0, 0.25, 1.0, 2.5, 0.6, 1.8]], device=device, dtype=dtype)
+        F_w = epi.find_fundamental(x1, x2, w, method="AFFINE")
+        # A weight of 0 drops the gross mismatch: the fit is the weighted fit of the other eleven.
+        self.assert_close(F_w, epi.find_fundamental(x1[:, keep], x2[:, keep], w[:, keep], method="AFFINE"))
+        # Only the ratios of the weights matter.
+        self.assert_close(epi.find_fundamental(x1, x2, 7.0 * w, method="AFFINE"), F_w, **self._tol(dtype))
+        # A negative weight counts as zero, to the bit.
+        w_neg = w.clone()
+        w_neg[0, 5] = -5.0
+        assert torch.equal(epi.find_fundamental(x1, x2, w_neg, method="AFFINE"), F_w)
+        # Control: equal weights keep the mismatch and give another matrix.
+        assert (epi.find_fundamental(x1, x2, method="AFFINE") - F_w).abs().max() > 1e-4
+
+    def test_half_precision_points_fit_in_float32(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("a half-precision input check")
+        scene = affine_two_view_scene(device, dtype)
+        # Squared pixel coordinates in the hundreds overflow float16, so the fit runs in float32.
+        F = epi.find_fundamental(scene["x1"], scene["x2"], method="AFFINE")
+        assert F.dtype == dtype
+        assert torch.isfinite(F).all()
+        expected = epi.find_fundamental(scene["x1"].float(), scene["x2"].float(), method="AFFINE").to(dtype)
+        assert torch.equal(F, expected)
+
+    def test_too_few_correspondences_raise(self, device, dtype):
+        points = torch.rand(1, 3, 2, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"points1 and points2 must have shape \(B, N, 2\) with N >= 4, got"):
+            epi.find_fundamental(points, points, method="AFFINE")
+        points = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        with pytest.raises(ShapeError, match=r"weights must have shape \(B, N\) = \[1, 4\], got \["):
+            epi.find_fundamental(points, points, torch.ones(1, 5, device=device, dtype=dtype), method="AFFINE")
+
+    def test_gradcheck(self, device):
+        x1, x2 = self._noisy(affine_two_view_scene(device, torch.float64))
+        weights = torch.ones(1, 12, device=device, dtype=torch.float64)
+
+        def fit(p1: torch.Tensor, p2: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+            return epi.find_fundamental(p1, p2, w, method="AFFINE")
+
+        self.gradcheck(fit, (x1.requires_grad_(), x2.requires_grad_(), weights.requires_grad_()))
+
+    def test_zero_weight_backward_is_the_one_sided_derivative(self, device, dtype):
+        _skip_half(dtype, _HALF_PIXELS)
+        x1, x2 = self._noisy(affine_two_view_scene(device, dtype))
+        grads = []
+        for w3 in (0.0, 1e-6):
+            weights = torch.ones(1, 12, device=device, dtype=dtype)
+            weights[0, 3] = w3
+            weights.requires_grad_()
+            F_mat = epi.find_fundamental(x1, x2, weights, method="AFFINE")
+            (F_mat * F_mat.detach().sign()).sum().backward()
+            grads.append(weights.grad)
+        assert torch.isfinite(grads[0]).all()
+        assert grads[1][0, 3].abs() > 1e-6  # control: the dropped match moves F
+        tol = {"rtol": 1e-3, "atol": 1e-8} if dtype == torch.float64 else {"rtol": 5e-2, "atol": 1e-6}
+        self.assert_close(grads[0], grads[1], **tol)
 
 
 class TestFundamentalAutocast(BaseTester):
@@ -802,6 +906,7 @@ class TestGetClosestPointOnEpipolarLine(BaseTester):
 
 
 _NO_HALF_EIGH = "find_fundamental calls torch.linalg.eigh, which has no float16/bfloat16 kernel"
+_HALF_PIXELS = "half precision rounds the fixture's pixel coordinates, 120 to 440, to steps of 0.125 to 0.25"
 _HALF_PIXEL_F = (
     "a pixel-unit F spans eight decades (entries down to ~1e-8): float16 flushes the small entries to zero and "
     "bfloat16's 8-bit mantissa cannot resolve the epipolar residual, which kornia evaluates in the input dtype"

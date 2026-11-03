@@ -92,3 +92,72 @@ def calibrated_two_view_scene(
     )
     E = tx @ R
     return {"x1": x1, "x2": x2, "E": E / E.norm(), "R": R, "t": t}
+
+
+def affine_two_view_scene(device: torch.device, dtype: torch.dtype) -> Dict[str, torch.Tensor]:
+    """Two affine cameras and twelve correspondences, built in ``dtype`` from literals.
+
+    The cameras ``x = M X + t`` (``M1 = [[1.2, 0.1, -0.3], [0.05, -1.1, 0.4]]``, ``t1 = [320, 240]``,
+    ``M2 = [[0.9, 0.5, 0.2], [-0.3, -0.8, 0.7]]``, ``t2 = [300, 260]``) see twelve non-coplanar points spread over
+    about 190 units. ``x1``/``x2`` are their exact pixel projections. ``F`` is the affine fundamental matrix of the
+    cameras, with ``[a, b] M2 + [c, d] M1 = 0`` and ``e = -([a, b] t2 + [c, d] t1)`` for
+    ``F = [[0, 0, a], [0, 0, b], [c, d, e]]``, scaled so that ``F[2, 2] = 1``. ``noise`` holds fixed offsets
+    ``[dx1, dy1, dx2, dy2]`` and ``F_gold`` the minimizer of the summed squared geometric distances of the noisy
+    correspondences, found by a general-purpose optimizer (``scipy.optimize.minimize`` on
+    ``sum(r**2) / (a**2 + b**2 + c**2 + d**2)`` with ``r = a x2 + b y2 + c x1 + d y1 + e``).
+    """
+    x1 = torch.tensor(
+        [
+            [
+                [223.9, 202.3], [377.7, 337.3], [317.9, 117.85], [356.3, 251.75], [204.2, 278.25], [332.1, 187.6],
+                [436.1, 227.55], [229.8, 342.3], [387.4, 157.1], [301.1, 311.65], [437.2, 168.55], [249.8, 265.1],
+            ]
+        ],
+        device=device,
+        dtype=dtype,
+    )  # fmt: skip
+    x2 = torch.tensor(
+        [
+            [
+                [247.9, 264.4], [330.1, 325.6], [313.3, 156.4], [365.9, 282.6], [191.9, 316.5], [345.2, 228.9],
+                [355.2, 196.7], [221.3, 374.1], [331.0, 152.8], [266.7, 320.6], [420.2, 178.8], [285.6, 325.4],
+            ]
+        ],
+        device=device,
+        dtype=dtype,
+    )  # fmt: skip
+    noise = torch.tensor(
+        [
+            [
+                [0.31, -0.12, -0.25, 0.4], [-0.44, 0.07, 0.18, -0.29], [0.05, 0.36, -0.41, 0.12],
+                [0.22, -0.33, 0.09, 0.27], [-0.15, 0.24, 0.38, -0.06], [0.42, 0.11, -0.2, -0.37],
+                [-0.3, -0.27, 0.14, 0.33], [0.08, 0.45, -0.1, -0.21], [-0.36, -0.04, 0.29, 0.16],
+                [0.19, -0.4, -0.32, 0.03], [-0.07, 0.2, 0.44, -0.39], [0.35, -0.18, -0.03, 0.25],
+            ]
+        ],
+        device=device,
+        dtype=dtype,
+    )  # fmt: skip
+    F = torch.tensor(
+        [
+            [
+                [0.0, 0.0, 0.005968045112781947],
+                [0.0, 0.0, -0.010385338345864652],
+                [-0.007471804511278188, 0.009586466165413523, 1.0],
+            ]
+        ],
+        device=device,
+        dtype=dtype,
+    )
+    F_gold = torch.tensor(
+        [
+            [
+                [0.0, 0.0, 0.0059939486403256526],
+                [0.0, 0.0, -0.010334260027148275],
+                [-0.007497428822287553, 0.009532615627438538, 1.0],
+            ]
+        ],
+        device=device,
+        dtype=dtype,
+    )
+    return {"x1": x1, "x2": x2, "noise": noise, "F": F, "F_gold": F_gold}
