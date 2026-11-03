@@ -22,14 +22,22 @@ from torch import Tensor, nn
 from .augment import AugmentationSequential
 
 
-def _fill_missing_augmentation_state(module: nn.Module, state_dict: Dict[str, Tensor], prefix: str, *args: Any) -> None:
+def _fill_missing_augmentation_state(
+    module: nn.Module,
+    state_dict: Dict[str, Any],
+    prefix: str,
+    local_metadata: Dict[str, Any],
+    *args: Any,
+) -> None:
     # Children used to live in a plain tuple, so old checkpoints contain no augmentation state.
-    # Keep the instance's defaults for those checkpoints, but do not hide missing keys in the new layout.
+    # Version 2 records the registered layout: never hide its missing keys, even if all child state is absent.
+    if local_metadata.get("version", 1) >= 2:
+        return
     if any(key.startswith(prefix + "augmentations.") for key in state_dict):
         return
     for name, value in module.state_dict(keep_vars=False).items():
         if name.startswith("augmentations."):
-            state_dict[prefix + name] = value.detach().clone()
+            state_dict[prefix + name] = value.detach().clone() if isinstance(value, Tensor) else value
 
 
 class ManyToManyAugmentationDispather(nn.Module):
@@ -66,6 +74,8 @@ class ManyToManyAugmentationDispather(nn.Module):
         >>> output = aug_list((input_1, mask_1), (input_2, mask_2))
 
     """
+
+    _version = 2
 
     def __init__(self, *augmentations: AugmentationSequential) -> None:
         super().__init__()
@@ -135,6 +145,8 @@ class ManyToOneAugmentationDispather(nn.Module):
         >>> output = aug_list(input, mask)
 
     """
+
+    _version = 2
 
     def __init__(self, *augmentations: AugmentationSequential, strict: bool = True) -> None:
         super().__init__()

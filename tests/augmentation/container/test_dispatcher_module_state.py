@@ -136,3 +136,59 @@ class TestDispatcherModuleState(BaseTester):
         partial = dict(list(expected.items())[:1])
         with pytest.raises(RuntimeError, match="Missing key"):
             module.load_state_dict(partial, strict=True)
+
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_current_state_dict_missing_all_child_state_is_reported(self, device, dtype, dispatcher_class, nested):
+        dispatcher = dispatcher_class(
+            *[
+                K.AugmentationSequential(K.RandomBrightness(nn.Parameter(torch.tensor([0.8, 1.2])), p=1.0))
+                for _ in range(2)
+            ]
+        ).to(device=device, dtype=dtype)
+        module = nn.Sequential(nn.Identity(), dispatcher) if nested else dispatcher
+        state = copy.deepcopy(module.state_dict())
+        missing_keys = set(state)
+        assert missing_keys
+        # Removing the whole child subtree must not turn a current-format checkpoint into a legacy one.
+        # Keep the state_dict metadata so the checkpoint's format remains identifiable.
+        state.clear()
+
+        with pytest.raises(RuntimeError, match="Missing key"):
+            module.load_state_dict(state, strict=True)
+        result = module.load_state_dict(state, strict=False)
+        assert set(result.missing_keys) == missing_keys
+        assert result.unexpected_keys == []
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_non_tensor_extra_state_loads_legacy_and_roundtrips(self, dispatcher_class, nested):
+        class ExtraStateModule(nn.Identity):
+            def __init__(self, value):
+                super().__init__()
+                self.value = {"label": value}
+
+            def get_extra_state(self):
+                return self.value
+
+            def set_extra_state(self, state):
+                self.value = state
+
+        layers = [ExtraStateModule("first"), ExtraStateModule("second")]
+        dispatcher = dispatcher_class(*[K.AugmentationSequential(layer, data_keys=["input"]) for layer in layers])
+        module = nn.Sequential(nn.Identity(), dispatcher) if nested else dispatcher
+        expected = copy.deepcopy(module.state_dict())
+        assert len(expected) == 2
+
+        # The unregistered layout saved version-1 metadata without any child state.
+        legacy = copy.deepcopy(expected)
+        legacy.clear()
+        prefixes = ("", "0", "1") if nested else ("",)
+        legacy._metadata = {name: {"version": 1} for name in prefixes}
+        module.load_state_dict(legacy, strict=True)
+        assert legacy == {}
+        assert module.state_dict() == expected
+
+        for layer in layers:
+            layer.value = {"label": "changed"}
+        module.load_state_dict(expected, strict=True)
+        assert module.state_dict() == expected
