@@ -18,6 +18,7 @@
 from typing import Any, Dict, List, Tuple, Union
 
 from torch import Tensor, nn
+from torch.nn.parameter import is_lazy
 
 from .augment import AugmentationSequential
 
@@ -37,7 +38,10 @@ def _fill_missing_augmentation_state(
         return
     for name, value in module.state_dict(keep_vars=False).items():
         if name.startswith("augmentations."):
-            state_dict[prefix + name] = value.detach().clone() if isinstance(value, Tensor) else value
+            # Lazy parameters and buffers must reach their load hooks without tensor operations.
+            state_dict[prefix + name] = (
+                value.detach().clone() if isinstance(value, Tensor) and not is_lazy(value) else value
+            )
 
 
 class ManyToManyAugmentationDispather(nn.Module):

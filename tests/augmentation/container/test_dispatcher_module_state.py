@@ -161,6 +161,33 @@ class TestDispatcherModuleState(BaseTester):
 
     @pytest.mark.device_agnostic
     @pytest.mark.parametrize("nested", [False, True])
+    @pytest.mark.parametrize("lazy_kind", ["linear", "batch_norm"])
+    def test_legacy_state_keeps_lazy_children_uninitialized(self, dispatcher_class, nested, lazy_kind):
+        layer = nn.LazyLinear(5) if lazy_kind == "linear" else nn.LazyBatchNorm2d()
+        dispatcher = dispatcher_class(K.AugmentationSequential(layer, data_keys=["input"]))
+        module = nn.Sequential(nn.Identity(), dispatcher) if nested else dispatcher
+        uninitialized = {
+            name: value for name, value in module.state_dict().items() if torch.nn.parameter.is_lazy(value)
+        }
+        assert uninitialized
+
+        result = module.load_state_dict({}, strict=True)
+        assert result.missing_keys == []
+        assert result.unexpected_keys == []
+        for name, value in module.state_dict().items():
+            if name in uninitialized:
+                assert value is uninitialized[name]
+                assert torch.nn.parameter.is_lazy(value)
+
+        image = torch.rand(2, 3, 4, 5)
+        output = self.call(dispatcher, image)
+        assert len(output) == 1
+        assert output[0].shape == image.shape
+        assert torch.isfinite(output[0]).all()
+        assert not any(torch.nn.parameter.is_lazy(value) for value in module.state_dict().values())
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("nested", [False, True])
     def test_non_tensor_extra_state_loads_legacy_and_roundtrips(self, dispatcher_class, nested):
         class ExtraStateModule(nn.Identity):
             def __init__(self, value):
