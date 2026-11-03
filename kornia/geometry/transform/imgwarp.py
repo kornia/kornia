@@ -272,14 +272,24 @@ def _empty_warp_output_3d(
         raise NotImplementedError(f"Expected a floating point src, got {src.dtype}.")
     if src.dtype != transform.dtype:
         raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
-    grid_zero = transform.reshape(-1)[:1].sum() * 0.0
-    grid = grid_zero.reshape(1, 1, 1, 1, 1).expand(transform.shape[0], dsize[0], dsize[1], dsize[2], 3)
+    src_batch = src.shape[0]
+    if transform.shape[0] != src_batch:
+        raise RuntimeError(
+            f"Expected src and transform with the same batch size, got {src_batch} and {transform.shape[0]}."
+        )
 
-    sample_src = src
-    if src.shape[-3] == 0 or src.shape[-2] == 0 or src.shape[-1] == 0:
-        src_zero = src.reshape(-1)[:1].sum() * 0.0
-        sample_src = src_zero.reshape(1, 1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1, 1)
-    return _torch_grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    # ``grid_sample`` must not receive a zero-element operand here: MPS before torch 2.14 rejects one with an
+    # internal "Placeholder tensor is empty!" assertion. Sample connected 1x1x1 stand-ins, then expand their zero
+    # result to the requested empty shape so dtype, device, mode and padding_mode still use ``grid_sample``'s checks.
+    sample_batch = max(src_batch, 1)
+    sample_channels = max(src.shape[1], 1)
+    grid_zero = transform.reshape(-1)[:1].sum() * 0.0
+    grid = grid_zero.reshape(1, 1, 1, 1, 1).expand(sample_batch, 1, 1, 1, 3)
+    src_zero = src.reshape(-1)[:1].sum() * 0.0
+    sample_src = src_zero.reshape(1, 1, 1, 1, 1).expand(sample_batch, sample_channels, 1, 1, 1)
+    sampled = _torch_grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    out_zero = sampled.reshape(-1)[:1].sum() * 0.0
+    return out_zero.reshape(1, 1, 1, 1, 1).expand(src_batch, src.shape[1], dsize[0], dsize[1], dsize[2])
 
 
 def warp_perspective(

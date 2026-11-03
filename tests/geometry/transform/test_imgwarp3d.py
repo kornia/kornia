@@ -24,12 +24,54 @@ import kornia
 import kornia.geometry.transform as proj
 from kornia.core.exceptions import ShapeError
 from kornia.core.utils import _torch_grid_sample, _torch_inverse_cast
+from kornia.geometry.transform import imgwarp
 
 from testing.base import BaseTester, assert_close
 
 
 class TestWarpAffine3dEmptyBatch(BaseTester):
     """Empty volume batches retain affine-warp geometry and gradient connections."""
+
+    @pytest.mark.parametrize(
+        ("src_shape", "dsize"),
+        [
+            ((0, 2, 3, 4, 5), (2, 6, 7)),
+            ((1, 2, 3, 4, 5), (0, 4, 5)),
+            ((1, 2, 3, 4, 5), (3, 0, 5)),
+            ((1, 2, 3, 4, 5), (3, 4, 0)),
+            ((1, 0, 3, 4, 5), (0, 4, 5)),
+        ],
+    )
+    def test_empty_grid_sample_operands_6554(self, src_shape, dsize, device, dtype, monkeypatch):
+        """Sample nonempty stand-ins before expanding them to an empty warp."""
+        src = torch.empty(*src_shape, device=device, dtype=dtype, requires_grad=True)
+        matrix = torch.empty(src_shape[0], 3, 4, device=device, dtype=dtype, requires_grad=True)
+        sampled_shapes = []
+        grid_sample = imgwarp._torch_grid_sample
+
+        def capture_grid_sample(sample_src, grid, **kwargs):
+            sampled_shapes.append((sample_src.shape, grid.shape))
+            return grid_sample(sample_src, grid, **kwargs)
+
+        monkeypatch.setattr(imgwarp, "_torch_grid_sample", capture_grid_sample)
+        out = proj.warp_affine3d(src, matrix, dsize)
+
+        assert out.shape == (*src_shape[:2], *dsize)
+        assert out.dtype == dtype
+        assert out.device == device
+        assert len(sampled_shapes) == 1
+        sample_src_shape, grid_shape = sampled_shapes[0]
+        assert all(size > 0 for size in sample_src_shape)
+        assert all(size > 0 for size in grid_shape)
+        assert sample_src_shape[-3:] == (1, 1, 1)
+        assert grid_shape[1:] == (1, 1, 1, 3)
+        out.sum().backward()
+        assert src.grad is not None
+        assert src.grad.shape == src.shape
+        assert torch.isfinite(src.grad).all()
+        assert matrix.grad is not None
+        assert matrix.grad.shape == matrix.shape
+        assert torch.isfinite(matrix.grad).all()
 
     @pytest.mark.parametrize("dsize", [(3, 4, 5), (2, 6, 7)])
     @pytest.mark.parametrize("align_corners", [True, False])
