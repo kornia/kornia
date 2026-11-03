@@ -127,11 +127,8 @@ class StereoCamera:
           tensor. An integer rig is accepted; its ``Q`` is in the default floating dtype.
 
     .. warning::
-        A differing ``cx`` is **rejected**, although ``Q[3, 3] = fy * (cx_left - cx_right)`` exists for that
-        case, so it is zero on every rig the constructor accepts outside graph capture:
-        `#4270 <https://github.com/kornia/kornia/issues/4270>`_. Under graph capture the check is skipped and
-        ``W = Q[3, 3] - fy * d``, so a nonzero disparity with ``fy * d = Q[3, 3]`` also makes ``W = 0``. On a
-        rig with equal ``cx``, a zero disparity (a point at infinity) makes ``W = -fy * d = 0``. Wherever
+        ``W = Q[3, 3] - fy * d`` with ``Q[3, 3] = fy * (cx_left - cx_right)``, so ``W = 0`` where the disparity
+        equals ``cx_left - cx_right``: a point at infinity, which is ``d = 0`` on a rig with equal ``cx``. Wherever
         ``abs(W) <= 1e-8``, which includes small nonzero disparities such as ``d = 1e-9`` at ``fy = 1``, the divide
         is skipped and a finite placeholder, behind the camera on a real rig, is returned, so ``d > 0`` alone does
         not select points in front of the rig. Request
@@ -222,15 +219,17 @@ class StereoCamera:
                 f"Got {rectified_left_camera.dtype} and {rectified_right_camera.dtype}."
             )
 
-        # Ensure all intrinsics parameters (fx, fy, cx, cy) are the same in both cameras.
+        # Ensure fx, fy and cy are the same in both cameras. cx may differ, as a rectification that keeps each
+        # camera's principal point produces (OpenCV's stereoRectify without CALIB_ZERO_DISPARITY).
         # The check reads the data, which graph capture cannot do; skip it under any capture (torch.compile,
         # torch.export).
-        if not is_compiling() and not torch.all(
-            torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])
+        if not is_compiling() and not (
+            torch.all(torch.eq(rectified_left_camera[..., :, :2], rectified_right_camera[..., :, :2]))
+            and torch.all(torch.eq(rectified_left_camera[..., 1:, 2], rectified_right_camera[..., 1:, 2]))
         ):
             raise StereoException(
-                "Expected 'left_rectified_camera' and 'rectified_right_camera' to have"
-                "same parameters except for the last column."
+                "Expected 'rectified_left_camera' and 'rectified_right_camera' to have the same fx, fy and cy; "
+                "only cx and the last column may differ. "
                 f"Got {rectified_left_camera[..., :, :3]} and {rectified_right_camera[..., :, :3]}."
             )
 
