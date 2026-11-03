@@ -1884,9 +1884,10 @@ class TestLearnableRangeCopies(BaseTester):
             assert param.grad is None
             self.assert_close(clone_param.grad, grad)
 
-        other = torch.float32 if dtype == torch.float64 else torch.float64
-        aug.to(dtype=other)
-        assert param.dtype == other
+        if device.type != "mps":  # MPS has no float64 to move to
+            other = torch.float32 if dtype == torch.float64 else torch.float64
+            aug.to(dtype=other)
+            assert param.dtype == other
 
     def test_rgb_shift_takes_a_half_width_tensor_in_any_dtype(self, device, dtype):
         # A 0-d limit is a half-width. Its bounds are not computed from the tensor, so a value that rounds when the
